@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { ZONES, isSharedZone } from './index.js'
 
-// 出典: CONTEXT.md「ゾーン」
+// ルールの挙動ではなく語彙そのものを固定するテストなので、条番号は付かない（ADR-0006）。
+// 出典は CONTEXT.md「ゾーン」。挙動を検証するテストが入りしだい、そちらには条番号を付ける。
 describe('ゾーン', () => {
   it('12 種類ある', () => {
     expect(ZONES).toHaveLength(12)
