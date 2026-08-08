@@ -4,6 +4,9 @@ temp/
 # カード実装（ADR-0002）
 packages/cards/
 
+# 依存
+node_modules/
+
 # ローカル設定
 .claude/settings.local.json
 CLAUDE.local.md
