@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // ADR-0001: エンジンはブラウザとサーバの両方で動く。
+    // DOM も Node の型も持たせないことで、片方でしか動かないコードを型検査で弾く。
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src"]
+}

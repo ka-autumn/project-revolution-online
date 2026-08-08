@@ -1,0 +1,21 @@
+{
+  "name": "project-revolution-online",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --stream typecheck",
+    "test": "vitest run",
+    "verify:engine": "node tools/verify-engine.mjs",
+    "verify": "pnpm typecheck && pnpm test && pnpm verify:engine"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
