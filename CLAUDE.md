@@ -1,6 +1,6 @@
-@~/.claude/revolusion/local.md
+@~/.claude/revolution/local.md
 
-# project-revolusion-online
+# project-revolution-online
 
 ## プロジェクト
 
