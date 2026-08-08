@@ -1,0 +1,6 @@
+# 作業用の参照資料（第三者著作物を含むため配布しない）
+temp/
+
+# ローカル設定
+.claude/settings.local.json
+CLAUDE.local.md
