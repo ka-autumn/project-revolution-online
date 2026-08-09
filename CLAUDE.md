@@ -13,6 +13,10 @@ pnpm ワークスペースのモノレポ。パッケージ構成は `README.md`
 - `pnpm test` — vitest（`pnpm test <パターン>` でファイルを絞れる）
 - `pnpm verify:engine` — エンジンが依存ゼロで、ブラウザ／サーバ両方向けにビルドできることの確認
 
+CI で install するときは `pnpm install --frozen-lockfile` を使う。`pnpm-lock.yaml` は
+`packages/cards` の importer を持っており、cards が無い環境で素の `pnpm install` を
+走らせるとロックファイルからそれが消えてしまうため。
+
 ## 規約
 
 - ドメイン用語は型名を英語、値を日本語にする（ADR-0003）。用語の正は `CONTEXT.md`
