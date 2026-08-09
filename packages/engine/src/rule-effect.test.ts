@@ -12,6 +12,7 @@ import {
 } from './index.js'
 import type { CardInstance, Chooser, DuelState, Square } from './index.js'
 
+// 検証したいルールだけを持つ架空のテストカード（ADR-0002）。
 const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
 
 const strategy = defineStrategy({ name: 'テスト・ストラテジー', level: 1, colors: ['赤'] })

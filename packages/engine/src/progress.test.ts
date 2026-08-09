@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { cardsIn, defineUnit, instantiate, passPriority, prepareDuel, putOnSquare, triggeredAbility } from './index.js'
+import {
+  cardsIn,
+  defineUnit,
+  instantiate,
+  passPriority,
+  prepareDuel,
+  putOnSquare,
+  triggeredAbility,
+} from './index.js'
 import type { Chooser, Deck, DuelState, Phase, Square } from './index.js'
 
 /** 60 枚すべてが別々の名前のデッキ。同じカード名は 4 枚までという規定を避けるため。 */
@@ -160,8 +168,8 @@ describe('リカバリーフェイズ', () => {
   /**
    * 「ターンの終わり」に誘発する能力を持つテストカード（ADR-0002）。
    *
-   * ここで見るのは能力がバンクに乗ることと、乗っている間はフェイズが終わらないことだけ
-   * なので、効果は何もしない。
+   * ここで見るのは能力がバンクに入ることと、バンクにある間はフェイズが終わらないこと
+   * だけなので、効果は何もしない。
    */
   const endOfTurnUnit = defineUnit({
     name: 'テスト・ターンの終わり',
@@ -195,14 +203,14 @@ describe('リカバリーフェイズ', () => {
     expect(next.turn.phase).toBe('リリースフェイズ')
   })
 
-  it('1 度目の連続放棄で「ターンの終わり」に誘発する能力がバンクに乗る', () => {
+  it('1 度目の連続放棄で「ターンの終わり」に誘発する能力がバンクに入る', () => {
     const banked = pass(pass(recoveryPhaseWithUnit()))
 
     expect(banked.bank.map((ability) => ability.source)).toEqual(['ターンの終わりのユニット'])
     expect(banked.turn.phase).toBe('リカバリーフェイズ')
   })
 
-  it('バンクに乗った能力を解決してから終了する', () => {
+  it('バンクに入った能力を解決してから終了する', () => {
     const banked = pass(pass(recoveryPhaseWithUnit()))
     const resolved = pass(pass(banked))
 
