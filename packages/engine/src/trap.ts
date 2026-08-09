@@ -14,8 +14,11 @@ import type { Player } from './player.js'
  * 本人が支配するトラップは対象にならない。トラップゾーンには 1 プレイヤーにつき 1 枚しか
  * カードを置けない（同 3-1）ので、対象になり得るトラップは高々 1 枚である。
  *
+ * トリガーアイコンを持てるのはトラップだけである（`card.ts` の `TrapCard.triggerIcon`）。
+ * トラップ以外のカードがトラップゾーンにあっても対象にならない。
+ *
  * トリガーアイコンに印刷されたスクエアは、そのトラップの支配者（＝相手のトラップゾーンの
- * 持ち主）から見た向きで持っている（`card.ts` の `triggerIcon` 参照）ため、`squareFromView`
+ * 持ち主）から見た向きで持っている（`TrapCard.triggerIcon` 参照）ため、`squareFromView`
  * で盤面に固定した絶対のスクエアに変換してから比べる。
  *
  * 発動条件が満たされた後にバトルまたはスマッシュ判定が発生していた場合、その終了まで権利の
@@ -28,10 +31,12 @@ import type { Player } from './player.js'
 export function checkIntrusion(state: DuelState, invader: Player, square: Square): DuelState {
   const opponent = opponentOf(invader)
   const invaded = cardsIn(state, opponent, 'トラップゾーン')
-    .filter((trap) =>
-      trap.card.triggerIcon.some(
-        (printed) => indexOfSquare(squareFromView(opponent, printed)) === indexOfSquare(square),
-      ),
+    .filter(
+      (trap) =>
+        trap.card.type === 'トラップ' &&
+        trap.card.triggerIcon.some(
+          (printed) => indexOfSquare(squareFromView(opponent, printed)) === indexOfSquare(square),
+        ),
     )
     .map((trap) => trap.id)
     .filter((id) => !state.trapRights.includes(id))

@@ -29,7 +29,10 @@ export type CardType = (typeof CARD_TYPES)[number]
  *
  * 属性もカードに印刷されているが、それを参照するルールをまだ実装していないため、
  * ここには持たせていない。参照する側と一緒に足す。ムーブアイコンはユニットだけが持つ項目
- * なので、ここではなく `UnitCard` に持たせている。
+ * なので、ここではなく `UnitCard` に持たせている。トリガーアイコンも同じ理由で
+ * `TrapCard` に持たせている。「トラップ以外のカードもトラップとしてプレイできる」
+ * （総合ルール 第2部 第20章 3-1）が、発動して解決する効果（`TrapCard.effect`）を
+ * 持てるのはトラップだけなので、トリガーアイコンが意味を持つ場面も無い。
  */
 interface PrintedCard {
   readonly type: CardType
@@ -58,21 +61,6 @@ interface PrintedCard {
   readonly reverseStars: number
   /** テキストが定義する能力（総合ルール 第2部 第10章 1）。改行ごとに別の能力になる（同 第4部 第1章 3）。 */
   readonly abilities: readonly Ability[]
-  /**
-   * トリガーアイコンで赤く塗られたスクエア（総合ルール 第2部 第12章、第20章 3-6）。
-   *
-   * トラップとして裏向きに置かれている間、相手のユニットがここに置かれることを
-   * 「侵入される」と表現し、トラップの発動条件になる（同 3-6・3-8-a、`trap.ts`）。
-   *
-   * 印刷された図なので、ムーブアイコンの矢印の向き（`board.ts` の `squareInDirection`）と
-   * 同じ理由で、支配者の手前を基準にした向きで持つ。盤面に固定した絶対のスクエアに変換
-   * するには `squareFromView` を使う（`trap.ts` の `checkIntrusion` 参照）。
-   *
-   * 空なら、トリガーアイコンを持たないか、トリガーアイコンにスクエアの指定が無い
-   * （同 3-8-b）カード。《 》でくくられた発動条件のテキストそのものはまだ実装していない
-   * （`TrapCard.effect` 参照）ため、侵入以外の発動条件はまだ表現できない。
-   */
-  readonly triggerIcon: readonly Square[]
 }
 
 /** スクエアに置いて使うカード（総合ルール 第2部 第20章 1）。 */
@@ -110,10 +98,24 @@ export interface StrategyCard extends PrintedCard {
 export interface TrapCard extends PrintedCard {
   readonly type: 'トラップ'
   /**
+   * トリガーアイコンで赤く塗られたスクエア（総合ルール 第2部 第12章、第20章 3-6）。
+   *
+   * トラップゾーンに裏向きで置かれている間、相手のユニットがここに置かれることを
+   * 「侵入される」と表現し、発動条件になる（同 3-6・3-8-a、`trap.ts`）。
+   *
+   * 印刷された図なので、ムーブアイコンの矢印の向き（`board.ts` の `squareInDirection`）と
+   * 同じ理由で、支配者の手前を基準にした向きで持つ。盤面に固定した絶対のスクエアに変換
+   * するには `squareFromView` を使う（`trap.ts` の `checkIntrusion` 参照）。
+   *
+   * 空なら、トリガーアイコンを持たないか、トリガーアイコンにスクエアの指定が無い
+   * （同 3-8-b）カード。
+   */
+  readonly triggerIcon: readonly Square[]
+  /**
    * 発動して解決された時に発揮する効果（総合ルール 第2部 第10章 3-2）。
    *
    * 《 》でくくられた発動条件のテキストはまだ持っていない。発動条件のうち、トリガーアイコン
-   * （スクエア）で表される「侵入」だけは `PrintedCard.triggerIcon` として持てる。
+   * （スクエア）で表される「侵入」だけは `triggerIcon` として持てる。
    */
   readonly effect: Effect
 }
@@ -143,8 +145,6 @@ interface CardSpec {
   readonly abilities?: readonly Ability[]
   readonly stars?: number
   readonly reverseStars?: number
-  /** 省略した場合はトリガーアイコンを持たない。 */
-  readonly triggerIcon?: readonly Square[]
 }
 
 interface UnitSpec extends CardSpec {
@@ -161,6 +161,8 @@ interface StrategySpec extends CardSpec {
 }
 
 interface TrapSpec extends CardSpec {
+  /** 省略した場合はトリガーアイコンを持たない。 */
+  readonly triggerIcon?: readonly Square[]
   /** 省略した場合は、発動して解決しても何も起こらない。 */
   readonly effect?: Effect
 }
@@ -177,7 +179,6 @@ function printed<T extends CardType>(type: T, spec: CardSpec) {
     abilities: spec.abilities ?? [],
     stars: spec.stars ?? 0,
     reverseStars: spec.reverseStars ?? 0,
-    triggerIcon: spec.triggerIcon ?? [],
   }
 }
 
@@ -190,7 +191,7 @@ export function defineStrategy(spec: StrategySpec): StrategyCard {
 }
 
 export function defineTrap(spec: TrapSpec): TrapCard {
-  return { ...printed('トラップ', spec), effect: spec.effect ?? noEffect }
+  return { ...printed('トラップ', spec), triggerIcon: spec.triggerIcon ?? [], effect: spec.effect ?? noEffect }
 }
 
 /** そのカードが「夢」を持つか（総合ルール 第5部 第1章 2）。 */
