@@ -10,3 +10,7 @@ node_modules/
 # ローカル設定
 .claude/settings.local.json
 CLAUDE.local.md
+
+# エディタ（JetBrains IDE）
+.idea/
+*.iml
