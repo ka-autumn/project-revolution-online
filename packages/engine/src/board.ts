@@ -101,3 +101,48 @@ function oppositeRow(row: SquareIndex): SquareIndex {
 export function indexOfSquare(square: Square): number {
   return square.row * SQUARE_INDEXES.length + square.column
 }
+
+/**
+ * ムーブアイコンに描かれた矢印の向き（総合ルール 第2部 第11章、第3部 第8章 2-5）。
+ *
+ * 総合ルールは矢印が上下左右斜めいずれの方向も取り得るとしている（同 2-5）が、斜めの
+ * ムーブアイコンを持つカードを実装するまでは参照する必要が無いので、4 方向だけを持つ
+ * （`card.ts` の属性・トリガーアイコンと同じ考え方）。
+ */
+export const MOVE_DIRECTIONS = ['上', '下', '左', '右'] as const
+
+export type MoveDirection = (typeof MOVE_DIRECTIONS)[number]
+
+/**
+ * そのスクエアから見て、そのプレイヤーにとってムーブアイコンの方向にあり隣接するスクエア
+ * （総合ルール 第4部 第6章 2-1）。バトルスペースの外に出るスクエアは無いので `undefined`。
+ *
+ * 上下だけでなく左右も支配者から見て判断する。あるプレイヤーの右ラインは相手の左ラインに
+ * なる（同 第2部 第22章 4）のと同じ理由で、盤面に固定した行・列とプレイヤーから見た
+ * 方向の対応は、どちらのプレイヤーかによって入れ替わる（`areaOf` の行の扱いと同じ）。
+ */
+export function squareInDirection(player: Player, square: Square, direction: MoveDirection): Square | undefined {
+  const forward = player === '先攻' ? 1 : -1
+  const [rowDelta, columnDelta] = deltaOf(direction, forward)
+
+  const row = square.row + rowDelta
+  const column = square.column + columnDelta
+  return isSquareIndex(row) && isSquareIndex(column) ? { row, column } : undefined
+}
+
+function deltaOf(direction: MoveDirection, forward: 1 | -1): readonly [number, number] {
+  switch (direction) {
+    case '上':
+      return [forward, 0]
+    case '下':
+      return [-forward, 0]
+    case '左':
+      return [0, -forward]
+    case '右':
+      return [0, forward]
+  }
+}
+
+function isSquareIndex(value: number): value is SquareIndex {
+  return value === 0 || value === 1 || value === 2
+}

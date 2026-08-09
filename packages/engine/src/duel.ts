@@ -395,3 +395,19 @@ export function findOnSquares(state: DuelState, id: CardId): CardInstance | unde
   }
   return undefined
 }
+
+/**
+ * スクエアにあるそのカードと、置かれているスクエア。どのスクエアにもなければ `undefined`。
+ *
+ * カードと位置の両方が要る呼び出し側（`move.ts`）が、`findOnSquares` とスクエアを探す走査を
+ * 別々に 2 度行わずに済むように、まとめて 1 回の走査で返す。
+ */
+export function locateOnSquares(
+  state: DuelState,
+  id: CardId,
+): { readonly instance: CardInstance; readonly square: Square } | undefined {
+  const index = state.squares.findIndex((cards) => cards.some((card) => card.id === id))
+  const square = BATTLE_SPACE[index]
+  const instance = state.squares[index]?.find((card) => card.id === id)
+  return instance === undefined || square === undefined ? undefined : { instance, square }
+}
