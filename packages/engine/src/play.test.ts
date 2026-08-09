@@ -19,6 +19,7 @@ import {
   playAsTrap,
   playCard,
   putOnSquare,
+  triggeredAbility,
 } from './index.js'
 import type { ActionOutcome, CardInstance, Chooser, DuelState, Phase, PlayDeclaration, Square } from './index.js'
 
@@ -36,6 +37,16 @@ const dreamingUnit = defineUnit({
   bp: 1000,
   sp: 1000,
   abilities: [dream],
+})
+
+/** 「登場した時」に誘発する能力を持つレベル 2 の赤いユニット。 */
+const appearingUnit = defineUnit({
+  name: 'テスト・登場ユニット',
+  level: 2,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [triggeredAbility('登場した時', function* () {})],
 })
 
 /** 敵を 1 枚選んで破壊するレベル 2 の赤いストラテジー。 */
@@ -208,6 +219,39 @@ describe('ユニットのプレイ', () => {
 
     expect(cardsOn(after, centerSquare)).toEqual([])
     expect(idsOf(cardsIn(after, '先攻', '捨札'))).toEqual(['ユニット'])
+  })
+})
+
+// 総合ルール 第2部 第20章 1-4-a（ADR-0006）
+describe('登場', () => {
+  it('プレイされたユニットが置かれると、そのユニット自身の「登場した時」の能力が誘発する', () => {
+    const unit = instantiate({ id: 'ユニット', card: appearingUnit, owner: '先攻' })
+    const after = stateOf(play(readyToPlay([unit], twoEnergies()), { card: 'ユニット', square: homeSquare }))
+
+    expect(after.bank.map((banked) => banked.source)).toEqual(['ユニット'])
+  })
+
+  it('他のユニットの「登場した時」の能力は誘発しない', () => {
+    const newUnit = instantiate({ id: '新入り', card: appearingUnit, owner: '先攻' })
+    const already = instantiate({ id: '先客', card: appearingUnit, owner: '先攻' })
+    const state = putOnSquare(readyToPlay([newUnit], twoEnergies()), centerSquare, already)
+
+    const after = stateOf(play(state, { card: '新入り', square: homeSquare }))
+
+    expect(after.bank.map((banked) => banked.source)).toEqual(['新入り'])
+  })
+
+  // CONTEXT.md「登場」: 「置かれる」の一部でしかない――効果によってスクエアに置かれる場合と
+  // 区別する。効果によるスクエアへの配置は `putOnSquare` を直接使う（`duel.ts` 参照）。
+  // `putOnSquare` はどこからも「登場した時」を誘発させないことそのものを保証する
+  // （`bank.ts` の `triggerAppearance` を呼ぶのは `play.ts` だけ）。将来、効果の実装時に
+  // 誰かが誤って `putOnSquare` の側に誘発を足してしまわないよう、その境目をここで固定する。
+  it('効果でスクエアに置かれた場合は誘発しない', () => {
+    const unit = instantiate({ id: 'ユニット', card: appearingUnit, owner: '先攻' })
+    const state = putOnSquare(emptyDuelState(), homeSquare, unit)
+
+    expect(state.triggered).toEqual([])
+    expect(state.bank).toEqual([])
   })
 })
 
