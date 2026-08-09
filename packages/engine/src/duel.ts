@@ -2,6 +2,8 @@ import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
 import type { Player } from './player.js'
+import { firstTurn } from './turn.js'
+import type { Turn } from './turn.js'
 import type { PlayerZone } from './zone.js'
 
 /**
@@ -52,6 +54,15 @@ export interface DuelState {
    * （総合ルール 第2部 第21章 2-2・5-2）。
    */
   readonly zones: Readonly<Record<Player, Readonly<Record<PlayerZone, readonly CardInstance[]>>>>
+  /**
+   * 進行中のターンとフェイズ、そして優先権。
+   *
+   * カードの位置ではないがここに置いている。どちらのプレイヤーにも見せてよい公開情報
+   * であり、視点ごとに射影した盤面（ADR-0004）にもそのまま載るためである。シードや
+   * 乱数列を盤面に持たないのは、それを送ると先の山札が読めてしまうからであって、
+   * 「カードの位置ではないから」ではない。
+   */
+  readonly turn: Turn
 }
 
 interface InstanceSpec {
@@ -73,7 +84,7 @@ export function instantiate(spec: InstanceSpec): CardInstance {
 }
 
 /**
- * カードが 1 枚も置かれていない盤面。
+ * カードが 1 枚も置かれていない、デュエルの最初のターンの盤面。
  *
  * デッキを山札にして初手を引くところまでは、デュエルの準備の仕事なのでここではやらない。
  */
@@ -81,6 +92,7 @@ export function emptyDuelState(): DuelState {
   return {
     squares: BATTLE_SPACE.map(() => []),
     zones: { 先攻: emptyZones(), 後攻: emptyZones() },
+    turn: firstTurn(),
   }
 }
 
@@ -161,6 +173,22 @@ export function putInZone(
     ...state,
     zones: { ...state.zones, [player]: { ...state.zones[player], [zone]: cards } },
   }
+}
+
+/**
+ * 山札の 1 番上のカードを手札に加える。これを「カードを 1 枚引く」と表現する
+ * （総合ルール 第2部 第21章 1-5）。
+ *
+ * 山札が空なら何も起こらない。山札が 0 枚になったプレイヤーが次に優先権が発生した時に
+ * 敗北すること（総合ルール 第3部 第3章 2）は、引けないこととは別のルールエフェクトで
+ * あり、デュエルの終了を実装する時に足す。
+ */
+export function draw(state: DuelState, player: Player): DuelState {
+  const [top, ...rest] = cardsIn(state, player, '山札')
+  if (top === undefined) return state
+
+  const taken = putInZone(state, player, '山札', rest)
+  return putInZone(taken, player, '手札', [...cardsIn(taken, player, '手札'), top])
 }
 
 /** スクエアにあるそのカード。どのスクエアにもなければ `undefined`。 */
