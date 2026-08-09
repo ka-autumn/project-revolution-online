@@ -57,3 +57,13 @@ export interface Square {
 export const BATTLE_SPACE: readonly Square[] = SQUARE_INDEXES.flatMap((row) =>
   SQUARE_INDEXES.map((column): Square => ({ row, column })),
 )
+
+/**
+ * そのスクエアが `BATTLE_SPACE` の何番目か。
+ *
+ * スクエアごとの情報を `BATTLE_SPACE` と同じ並びの配列で持つ側が、行・列との対応づけを
+ * それぞれで書かずに済むように、並べ方を知っているこのファイルに置いている。
+ */
+export function indexOfSquare(square: Square): number {
+  return square.row * SQUARE_INDEXES.length + square.column
+}
