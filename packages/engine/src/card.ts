@@ -25,9 +25,9 @@ export type CardType = (typeof CARD_TYPES)[number]
 /**
  * 種別によらずカードに印刷されている項目。
  *
- * スターアイコン・属性・ムーブアイコン・トリガーアイコンもカードに印刷されているが、
- * それらを参照するルール（デッキ構築の規定・移動・侵入）をまだ実装していないため、
- * ここには持たせていない。参照する側と一緒に足す。
+ * 属性・ムーブアイコン・トリガーアイコンもカードに印刷されているが、それらを参照する
+ * ルール（移動・侵入）をまだ実装していないため、ここには持たせていない。参照する側と
+ * 一緒に足す。
  */
 interface PrintedCard {
   readonly type: CardType
@@ -39,6 +39,21 @@ interface PrintedCard {
   readonly level: number
   /** 空なら無色（総合ルール 第2部 第3章 3）。 */
   readonly colors: readonly Color[]
+  /**
+   * カード名の左に書かれた ★ の個数。デッキに入れられる合計に上限がある
+   * （総合ルール 第2部 第7章 2）。
+   *
+   * 数字が書かれたスターアイコンは、その数字分のスターを持つカードとして扱う（同 4）
+   * ため、アイコンの個数ではなくスターの個数を持つ。
+   */
+  readonly stars: number
+  /**
+   * リバーススターアイコンの個数。1 個につきスターアイコンの上限が 1 個増える
+   * （総合ルール 第2部 第7章 3）。
+   *
+   * リバーススターアイコンはスターアイコンではない（同 5）ため、`stars` とは別に持つ。
+   */
+  readonly reverseStars: number
   /** テキストが定義する能力（総合ルール 第2部 第10章 1）。改行ごとに別の能力になる（同 第4部 第1章 3）。 */
   readonly abilities: readonly Ability[]
 }
@@ -85,6 +100,8 @@ interface CardSpec {
   readonly level: number
   readonly colors?: readonly Color[]
   readonly abilities?: readonly Ability[]
+  readonly stars?: number
+  readonly reverseStars?: number
 }
 
 interface UnitSpec extends CardSpec {
@@ -103,6 +120,8 @@ function printed<T extends CardType>(type: T, spec: CardSpec) {
     level: spec.level,
     colors: spec.colors ?? [],
     abilities: spec.abilities ?? [],
+    stars: spec.stars ?? 0,
+    reverseStars: spec.reverseStars ?? 0,
   }
 }
 

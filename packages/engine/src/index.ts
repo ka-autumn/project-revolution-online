@@ -4,6 +4,13 @@ export { AREAS, BATTLE_SPACE, LINES, indexOfSquare } from './board.js'
 export type { Area, Line, Square, SquareIndex } from './board.js'
 export { CARD_TYPES, COLORS, defineStrategy, defineTrap, defineUnit, isStrategy } from './card.js'
 export type { Card, CardType, Color, StrategyCard, TrapCard, UnitCard } from './card.js'
+export {
+  CONSTRUCTED_DECK_MINIMUM,
+  SAME_NAME_MAXIMUM,
+  STAR_ICON_MAXIMUM,
+  checkConstructedDeck,
+} from './deck.js'
+export type { Deck, DeckViolation } from './deck.js'
 export { cardsIn, cardsOn, emptyDuelState, instantiate, putOnSquare } from './duel.js'
 export type { CardId, CardInstance, DuelState } from './duel.js'
 export { choose, destroy } from './effect.js'
@@ -12,9 +19,13 @@ export { ORIENTATIONS } from './orientation.js'
 export type { Orientation } from './orientation.js'
 export { PLAYERS } from './player.js'
 export type { Player } from './player.js'
+export { nextInt, randomFromSeed, shuffle } from './random.js'
+export type { Random } from './random.js'
 export { RELATIONS_FROM_PLAYER, RELATIONS_FROM_UNIT } from './relation.js'
 export type { RelationFromPlayer, RelationFromUnit } from './relation.js'
 export { resolveEffect } from './resolve.js'
 export type { Chooser, EffectContext } from './resolve.js'
+export { OPENING_HAND_SIZE, prepareDuel } from './setup.js'
+export type { DuelPreparation, DuelSetup, Seat, SeatedViolation } from './setup.js'
 export { PLAYER_ZONES, SHARED_ZONES, ZONES } from './zone.js'
 export type { PlayerZone, SharedZone, Zone } from './zone.js'

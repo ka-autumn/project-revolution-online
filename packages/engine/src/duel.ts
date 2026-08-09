@@ -138,15 +138,28 @@ export function moveFromSquareTo(state: DuelState, id: CardId, zone: PlayerZone)
   if (card === undefined) return state
 
   const moved: CardInstance = { ...card, controller: card.owner }
-  return {
+  const removed: DuelState = {
+    ...state,
     squares: state.squares.map((cards) => (cards.includes(card) ? cards.filter((each) => each !== card) : cards)),
-    zones: {
-      ...state.zones,
-      [card.owner]: {
-        ...state.zones[card.owner],
-        [zone]: [moved, ...state.zones[card.owner][zone]],
-      },
-    },
+  }
+  return putInZone(removed, card.owner, zone, [moved, ...cardsIn(removed, card.owner, zone)])
+}
+
+/**
+ * そのプレイヤーのそのゾーンの中身を入れ替える。
+ *
+ * ゾーンの入れ物の形を知っているのはこのファイルだけにして、ゾーンを変える側が
+ * 盤面の作り直し方を書かずに済むようにする。
+ */
+export function putInZone(
+  state: DuelState,
+  player: Player,
+  zone: PlayerZone,
+  cards: readonly CardInstance[],
+): DuelState {
+  return {
+    ...state,
+    zones: { ...state.zones, [player]: { ...state.zones[player], [zone]: cards } },
   }
 }
 
