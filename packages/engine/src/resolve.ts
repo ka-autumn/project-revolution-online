@@ -6,12 +6,16 @@ import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
 
 /**
- * 候補の中から 1 つ選ぶ役。能力の支配者にあたる。
+ * 候補の中から 1 つ選ぶ役。
  *
  * エンジンは I/O を持てない（ADR-0001）ため、選択は外から渡してもらう。人間の入力でも
  * AI の思考でも、記録した対戦の再生でも、ここに差し込む形は同じになる。
+ *
+ * 誰が選ぶかは選ばせる場面ごとに決まる（効果の中ならその能力の支配者、バンクにある能力を
+ * 選ぶならその能力の支配者）ため、`player` として渡す。どちらのプレイヤーに尋ねればよいか
+ * を、受け取った側が盤面から組み立て直さずに済むようにする。
  */
-export type Chooser = (candidates: readonly unknown[]) => unknown
+export type Chooser = (candidates: readonly unknown[], player: Player) => unknown
 
 export interface EffectContext {
   /** 能力の支配者（総合ルール 第4部 第7章 1）。味方・敵はこのプレイヤーから見た呼び方になる。 */
@@ -70,7 +74,8 @@ function apply(
   switch (instruction.kind) {
     case '選ぶ': {
       if (instruction.candidates.length === 0) return undefined
-      const chosen = context.chooser(instruction.candidates)
+      // 選ぶのは能力の支配者（総合ルール 第4部 第8章 2-3）。
+      const chosen = context.chooser(instruction.candidates, context.controller)
       if (!instruction.candidates.includes(chosen)) {
         throw new Error('候補にないものが選ばれた')
       }

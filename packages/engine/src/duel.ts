@@ -1,3 +1,4 @@
+import type { TriggeredAbility } from './ability.js'
 import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
@@ -33,8 +34,8 @@ export interface CardInstance {
  *
  * すべての要素が読み取り専用で、盤面を変える関数は新しい盤面を返す。
  *
- * バンクとリゾルブゾーンはまだ持っていない。バンクに入るのはカードではなく能力であり、
- * リゾルブゾーンはカードのプレイと組でしか意味を持たないため、それぞれを実装する時に足す。
+ * リゾルブゾーンはまだ持っていない。カードのプレイと組でしか意味を持たないため、
+ * プレイを実装する時に足す。
  */
 export interface DuelState {
   /**
@@ -63,6 +64,43 @@ export interface DuelState {
    * 「カードの位置ではないから」ではない。
    */
   readonly turn: Turn
+  /**
+   * バンクにある、解決を待っている能力（総合ルール 第2部 第21章 11-1）。
+   *
+   * 後から入った能力もすでにある能力と同列に扱われる（同 11-2）ため、並びに意味はない。
+   * どれを解決するかは、積まれた順ではなく支配者で決まる（同 11-3）。
+   */
+  readonly bank: readonly TriggeredInstance[]
+  /**
+   * 誘発したが、まだバンクに入っていない能力。
+   *
+   * 誘発した時点では何も起こらず、次にどちらかのプレイヤーが優先権を獲得する時に
+   * まとめてバンクに入る（総合ルール 第4部 第7章 2・3）。その間の置き場所がここになる。
+   */
+  readonly triggered: readonly TriggeredInstance[]
+}
+
+/**
+ * 誘発した誘発型能力 1 つ。
+ *
+ * カードではなく能力がバンクに入る（総合ルール 第2部 第21章 11-1）ため、`CardInstance`
+ * とは別に持つ。同じカードの同じ能力が誘発イベントを満たすたびに 1 つずつでき
+ * （同 第4部 第7章 6）、解決の最後にバンクから取り除かれて消滅する（同 第8章 2-7）。
+ *
+ * 誘発してからバンクに入るまでの間も、バンクにある間も、同じ形で持つ。どちらであるかは
+ * 盤面のどちらの並びにいるかで決まる。
+ */
+export interface TriggeredInstance {
+  readonly ability: TriggeredAbility
+  /** 発生源のカード。 */
+  readonly source: CardId
+  /**
+   * 能力の支配者。発生源の支配者である（総合ルール 第4部 第7章 1）。
+   *
+   * 誘発した時点の支配者を写して持つ。発生源がスクエアを離れても能力は残る
+   * （同 第7章 10、第8章 2-5）ので、解決する時に発生源から引き直すことはできない。
+   */
+  readonly controller: Player
 }
 
 interface InstanceSpec {
@@ -93,6 +131,8 @@ export function emptyDuelState(): DuelState {
     squares: BATTLE_SPACE.map(() => []),
     zones: { 先攻: emptyZones(), 後攻: emptyZones() },
     turn: firstTurn(),
+    bank: [],
+    triggered: [],
   }
 }
 

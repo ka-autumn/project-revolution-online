@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { cardsIn, defineUnit, passPriority, prepareDuel } from './index.js'
-import type { Deck, DuelState, Phase } from './index.js'
+import { cardsIn, defineUnit, instantiate, passPriority, prepareDuel, putOnSquare, triggeredAbility } from './index.js'
+import type { Chooser, Deck, DuelState, Phase, Square } from './index.js'
 
 /** 60 枚すべてが別々の名前のデッキ。同じカード名は 4 枚までという規定を避けるため。 */
 function testDeck(prefix: string): Deck {
@@ -16,9 +16,27 @@ function startedDuel(): DuelState {
   return preparation.state
 }
 
-/** 両方のプレイヤーが優先権を放棄して、そのフェイズを終わらせた盤面。 */
+/** 選択を求められたら常に最初の候補を選ぶ。どれを選ぶかを問わないテストで使う。 */
+const chooseFirst: Chooser = (candidates) => candidates[0]
+
+/** 優先権を放棄する。 */
+function pass(state: DuelState): DuelState {
+  return passPriority(state, chooseFirst)
+}
+
+/**
+ * 進行中のフェイズが終わるまで、両方のプレイヤーが優先権を放棄し続けた盤面。
+ *
+ * 放棄 2 回で終わるとは限らない。リカバリーフェイズは連続放棄を 2 度必要とし
+ * （総合ルール 第3部 第10章 3・4）、バンクに能力があれば連続放棄でそれが解決される
+ * （同 第4部 第8章 1-1）だけでフェイズは終わらない。
+ */
 function endPhase(state: DuelState): DuelState {
-  return passPriority(passPriority(state))
+  let current = state
+  while (current.turn.phase === state.turn.phase && current.turn.number === state.turn.number) {
+    current = pass(current)
+  }
+  return current
 }
 
 /** 何もせずにフェイズを送り、そのターンが始まったところまで進めた盤面。 */
@@ -61,7 +79,7 @@ describe('デュエルの開始時のターン', () => {
 // 総合ルール 第3部 第4章 4（ADR-0006）
 describe('優先権の放棄', () => {
   it('片方が放棄すると、もう一方のプレイヤーに優先権が移る', () => {
-    const passed = passPriority(startedDuel())
+    const passed = pass(startedDuel())
 
     expect(passed.turn.priority).toBe('先攻')
     expect(passed.turn.phase).toBe('リリースフェイズ')
@@ -69,15 +87,15 @@ describe('優先権の放棄', () => {
 
   // どのフェイズに移るかは「フェイズの進行」で検証する。ここで見るのは、両方が
   // 放棄した時にフェイズが終わることだけ。
-  it('両方が連続して放棄すると、そのフェイズが終了する', () => {
-    const next = passPriority(passPriority(startedDuel()))
+  it('バンクが空のまま両方が連続して放棄すると、そのフェイズが終了する', () => {
+    const next = pass(pass(startedDuel()))
 
     expect(next.turn.phase).not.toBe('リリースフェイズ')
   })
 
   // 総合ルール 第3部 第5章 1 ほか、各フェイズの 1
   it('次のフェイズでも、非アクティブプレイヤーから優先権が発生し直す', () => {
-    const next = passPriority(passPriority(startedDuel()))
+    const next = pass(pass(startedDuel()))
 
     expect(next.turn.priority).toBe('後攻')
   })
@@ -85,7 +103,7 @@ describe('優先権の放棄', () => {
   it('放棄が続いていなければ、フェイズは終了しない', () => {
     // 1 人目が放棄して 2 人目に優先権が移り、2 人目が放棄した時に初めて終了する。
     // 「連続して」なので、1 人が 1 回放棄しただけでは終わらない。
-    expect(passPriority(startedDuel()).turn.phase).toBe('リリースフェイズ')
+    expect(pass(startedDuel()).turn.phase).toBe('リリースフェイズ')
   })
 })
 
@@ -132,6 +150,74 @@ describe('先攻の第 1 ターン', () => {
 
   it('とばすのは第 1 ターンだけで、先攻の第 2 ターンはとばさない', () => {
     expect(phasesOfTurn(turnNumbered(startedDuel(), 3))).toContain('ドローフェイズ')
+  })
+})
+
+// 総合ルール 第3部 第10章 3・4（ADR-0006）
+describe('リカバリーフェイズ', () => {
+  const someSquare: Square = { row: 2, column: 1 }
+
+  /**
+   * 「ターンの終わり」に誘発する能力を持つテストカード（ADR-0002）。
+   *
+   * ここで見るのは能力がバンクに乗ることと、乗っている間はフェイズが終わらないことだけ
+   * なので、効果は何もしない。
+   */
+  const endOfTurnUnit = defineUnit({
+    name: 'テスト・ターンの終わり',
+    level: 1,
+    bp: 1000,
+    sp: 1000,
+    abilities: [triggeredAbility('ターンの終わり', function* () {})],
+  })
+
+  /** 第 1 ターンのリカバリーフェイズが始まった盤面。 */
+  function recoveryPhase(): DuelState {
+    let current = startedDuel()
+    while (current.turn.phase !== 'リカバリーフェイズ') current = endPhase(current)
+    return current
+  }
+
+  /** そのユニットがスクエアに置かれた、第 1 ターンのリカバリーフェイズ。 */
+  function recoveryPhaseWithUnit(): DuelState {
+    const unit = instantiate({ id: 'ターンの終わりのユニット', card: endOfTurnUnit, owner: '先攻' })
+    return putOnSquare(recoveryPhase(), someSquare, unit)
+  }
+
+  it('1 度目の連続放棄では終了しない', () => {
+    expect(pass(pass(recoveryPhase())).turn.phase).toBe('リカバリーフェイズ')
+  })
+
+  it('2 度目の連続放棄で終了し、次のターンに移る', () => {
+    const next = pass(pass(pass(pass(recoveryPhase()))))
+
+    expect(next.turn.number).toBe(2)
+    expect(next.turn.phase).toBe('リリースフェイズ')
+  })
+
+  it('1 度目の連続放棄で「ターンの終わり」に誘発する能力がバンクに乗る', () => {
+    const banked = pass(pass(recoveryPhaseWithUnit()))
+
+    expect(banked.bank.map((ability) => ability.source)).toEqual(['ターンの終わりのユニット'])
+    expect(banked.turn.phase).toBe('リカバリーフェイズ')
+  })
+
+  it('バンクに乗った能力を解決してから終了する', () => {
+    const banked = pass(pass(recoveryPhaseWithUnit()))
+    const resolved = pass(pass(banked))
+
+    expect(resolved.bank).toEqual([])
+    expect(resolved.turn.phase).toBe('リカバリーフェイズ')
+    expect(pass(pass(resolved)).turn.number).toBe(2)
+  })
+
+  // 総合ルール 第3部 第10章 5
+  it('「ターンの終わり」に誘発する能力は、そのターン中に 1 度しか誘発しない', () => {
+    const banked = pass(pass(recoveryPhaseWithUnit()))
+    const ended = endPhase(banked)
+
+    expect(ended.turn.number).toBe(2)
+    expect(ended.bank).toEqual([])
   })
 })
 

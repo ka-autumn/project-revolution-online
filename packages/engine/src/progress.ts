@@ -1,27 +1,107 @@
+import { phaseBeginning } from './ability.js'
+import { putTriggeredIntoBank, resolveFromBank, trigger } from './bank.js'
 import { draw } from './duel.js'
 import type { DuelState } from './duel.js'
 import { opponentOf } from './player.js'
+import type { Chooser } from './resolve.js'
+import { checkRuleEffects } from './rule-effect.js'
 import { PHASES, beginPhase } from './turn.js'
 import type { Turn } from './turn.js'
 
 /**
  * 優先権を持っているプレイヤーが、それを放棄する。
  *
- * 両方のプレイヤーが連続して放棄したら、進行中のフェイズが終了して次のフェイズに移る
- * （総合ルール 第3部 第4章 4）。そうでなければ、もう一方のプレイヤーに優先権が移るだけ。
+ * 両方のプレイヤーが連続して放棄した時、バンクに能力があればそれを 1 つ解決し、バンクが
+ * 空なら進行中のフェイズが終了する（総合ルール 第3部 第4章 4、第4部 第5章 2）。
+ * そうでなければ、もう一方のプレイヤーに優先権が移るだけである。
  *
- * フェイズが終了する条件にはバンクが空であることも含まれる（同 4）が、バンクはまだ
- * 無いため常に空として扱う。バトルまたはスマッシュ判定の最中なら、終了するのはフェイズ
- * ではなくステップである（同 4）が、そちらもまだ無い。
+ * バトルまたはスマッシュ判定の最中なら、終了するのはフェイズではなくステップである
+ * （同 第3部 第4章 4）が、ステップはまだ無い。
  *
- * 誰が優先権を持っているかは盤面にあるので、放棄するプレイヤーは受け取らない。
+ * 誰が優先権を持っているかは盤面にあるので、放棄するプレイヤーは受け取らない。かわりに
+ * `chooser` を受け取る。連続放棄でバンクにある能力を解決する時、どれを解決するかと、その
+ * 能力の効果が何を選ぶかを決めるのに要るためである。
  */
-export function passPriority(state: DuelState): DuelState {
+export function passPriority(state: DuelState, chooser: Chooser): DuelState {
   const { turn } = state
   if (turn.passedBy === undefined) {
-    return { ...state, turn: { ...turn, priority: opponentOf(turn.priority), passedBy: turn.priority } }
+    const passed = { ...turn, priority: opponentOf(turn.priority), passedBy: turn.priority }
+    return gainPriority({ ...state, turn: passed })
+  }
+  if (state.bank.length > 0) {
+    // 解決の後、非アクティブプレイヤーが優先権を獲得する（総合ルール 第4部 第5章 2）。
+    // 連続した放棄はここで途切れる。
+    return grantPriorityToInactive(resolveFromBank(state, chooser))
+  }
+  if (turn.phase === 'リカバリーフェイズ' && !turn.endOfTurnTriggered) {
+    return endTurnAbilities(state)
   }
   return beginNextPhase(state)
+}
+
+/**
+ * プレイヤーが優先権を獲得する時の手順（総合ルール 第4部 第14章 2、第7章 2）。
+ *
+ * まず、すべてのルールエフェクトをチェックして解決する。それによって新しいルールエフェクト
+ * が発生するなら、それも解決する。発生しなくなったら、誘発していた誘発型能力がすべて
+ * バンクに入る。新しいルールエフェクトの発生も誘発型能力の誘発もなくなるまで、この手順を
+ * 繰り返す。
+ *
+ * 優先権を得るのが誰であるかはこの手順に影響しない（ルールエフェクトはどちらのプレイヤー
+ * にも支配されず、誘発型能力は自動的にバンクに入る）ため、プレイヤーを受け取らない。
+ *
+ * バンクに誘発型能力が入った時にも非アクティブプレイヤーに優先権が発生する（同 第1部
+ * 第1章 5）。いま能力がバンクに入るのは、フェイズの始めと、能力を解決した後と、
+ * リカバリーフェイズの「ターンの終わり」だけで、どれも非アクティブプレイヤーが優先権を
+ * 獲得する場面である。そのため優先権の移動は起こらず、ここでは扱っていない。
+ */
+function gainPriority(state: DuelState): DuelState {
+  let current = state
+  for (;;) {
+    // ルールエフェクトはカードをスクエアから取り除くだけなので、いつか発生しなくなる。
+    const checked = checkRuleEffects(current)
+    if (checked !== current) {
+      current = checked
+      continue
+    }
+    if (current.triggered.length === 0) return current
+    current = putTriggeredIntoBank(current)
+  }
+}
+
+/**
+ * 非アクティブプレイヤーが優先権を獲得する。
+ *
+ * カードや能力が解決された時、バンクに誘発型能力が入った時、特別な行動を行った時に、
+ * 優先権は非アクティブプレイヤーに発生する（総合ルール 第1部 第1章 5、第4部 第5章 2）。
+ * 何かが起きた以上、連続した放棄はそこで途切れる。
+ */
+function grantPriorityToInactive(state: DuelState): DuelState {
+  const { turn } = state
+  const granted = { ...turn, priority: opponentOf(turn.active), passedBy: undefined }
+  return gainPriority({ ...state, turn: granted })
+}
+
+/**
+ * リカバリーフェイズで「ターンの終わり」に誘発する能力を誘発させる
+ * （総合ルール 第3部 第10章 3）。
+ *
+ * リカバリーフェイズだけは、バンクが空で連続して優先権が放棄されてもそこでは終わらない。
+ * 「ターンの終わり」の能力がバンクに乗り、それらを解決した後、もう一度バンクが空で連続して
+ * 放棄された時に終了する（同 3・4）。
+ *
+ * 同 4 には、1〜3 の間に誘発イベントかルールエフェクトが発生していた場合は 1 からやり直す
+ * とある。やり直しても結果が変わらないため、まだ実装していない。やり直しで行うのは
+ * ダメージの除去と「ターンの終わりまで」の効果の終了（同 1）だが、盤面はダメージも継続効果
+ * もまだ持っていない。「リカバリーフェイズの始め」と「ターンの終わり」の能力はそのターン中
+ * に 1 度しか誘発しない（同 5）ので、能力が誘発し直すこともない。
+ */
+function endTurnAbilities(state: DuelState): DuelState {
+  const triggered = trigger(state, 'ターンの終わり')
+  return grantPriorityToInactive({
+    ...triggered,
+    turn: { ...triggered.turn, endOfTurnTriggered: true },
+  })
 }
 
 /**
@@ -29,11 +109,6 @@ export function passPriority(state: DuelState): DuelState {
  *
  * すべてのフェイズが終了したらそのターンは終了し、アクティブプレイヤーが交代して次の
  * ターンに移る（総合ルール 第3部 第4章 6）。
- *
- * リカバリーフェイズだけは、両方が放棄した後に「ターンの終わり」に誘発する能力をバンクに
- * 乗せ、もう一度両方が放棄するまで終わらない（同 第10章 3・4）。ここでは他のフェイズと
- * 同じく 1 巡で終えている。乗せる先のバンクも、繰り返すかどうかを決める誘発イベントも
- * まだ無いため、バンクを実装する時に足す。
  */
 function beginNextPhase(state: DuelState): DuelState {
   const { turn } = state
@@ -52,10 +127,10 @@ function beginNextPhase(state: DuelState): DuelState {
  * とばされるフェイズなら、そのフェイズは存在しないものとして次のフェイズに進む
  * （総合ルール 第3部 第4章 5）。
  *
- * 行うのは今のところドローフェイズのドロー（同 第6章 1-1）だけである。リリースフェイズ
- * のリリース（同 第5章 1）はカードの向きを、リカバリーフェイズのダメージの除去
- * （同 第10章 1）はダメージを、それぞれ盤面が持つようになってから足す。「〜の始め」に
- * 誘発する能力をバンクに入れることも、バンクを実装する時に足す。
+ * どのフェイズも、始めの特別な行動を行い、次に「～の始め」に誘発する能力をバンクに入れ、
+ * その後に非アクティブプレイヤーに優先権が発生する、という順で始まる（同 第5章 1・
+ * 第6章 1-1・第7章 1・第8章 1・第9章 1・第10章 1）。誰が優先権を持つかは `beginPhase`
+ * がすでに決めているので、ここでは行動と誘発だけを順に行う。
  *
  * エネルギーフェイズとスマッシュフェイズのアクティブプレイヤーの行動（同 第7章 1・
  * 第9章 1）はここには来ない。どちらも優先権が発生して「それらを解決した後」に、バンクが
@@ -63,8 +138,37 @@ function beginNextPhase(state: DuelState): DuelState {
  */
 function beginCurrentPhase(state: DuelState): DuelState {
   if (isSkipped(state.turn)) return beginNextPhase(state)
+
+  return gainPriority(triggerBeginning(takeBeginningAction(state)))
+}
+
+/**
+ * フェイズの始めの特別な行動。この行動はバンクを使用しない（総合ルール 第3部 第5章 1
+ * ほか、各フェイズの 1）。
+ *
+ * 行うのは今のところドローフェイズのドロー（同 第6章 1-1）だけである。リリースフェイズ
+ * のリリース（同 第5章 1）はカードの向きを、リカバリーフェイズのダメージの除去
+ * （同 第10章 1）はダメージを、それぞれ盤面が持つようになってから足す。
+ */
+function takeBeginningAction(state: DuelState): DuelState {
   if (state.turn.phase === 'ドローフェイズ') return draw(state, state.turn.active)
   return state
+}
+
+/**
+ * フェイズの始めに誘発する能力を誘発させる。
+ *
+ * ターンの始めに誘発する能力はリリースフェイズの始めに誘発する（総合ルール 第3部
+ * 第5章 1）。ターンの始めはリリースフェイズの始めとは別のできごとなので、別に誘発させる。
+ *
+ * ドローによる「カードを引いた時」やリリースによる「リリースした時」（同 第5章 1・
+ * 第6章 1-1）は、その行動そのものが誘発イベントであり、フェイズの始めに限って起こる
+ * わけではない。それぞれの行動を実装する時に、行動の側から誘発させる。
+ */
+function triggerBeginning(state: DuelState): DuelState {
+  const { phase } = state.turn
+  const begun = phase === 'リリースフェイズ' ? trigger(state, 'ターンの始め') : state
+  return trigger(begun, phaseBeginning(phase))
 }
 
 /**
