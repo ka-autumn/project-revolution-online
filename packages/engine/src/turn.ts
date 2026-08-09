@@ -49,6 +49,15 @@ export interface Turn {
    * 持っているかからは決まらない。行動が行われれば連続は途切れる。
    */
   readonly passedBy: Player | undefined
+  /**
+   * リカバリーフェイズで、「ターンの終わり」に誘発する能力をすでに誘発させたか
+   * （総合ルール 第3部 第10章 3）。
+   *
+   * リカバリーフェイズは、連続放棄を 2 度必要とする唯一のフェイズである。1 度目で
+   * 「ターンの終わり」の能力が誘発し、2 度目でフェイズが終わる（同 3・4）。その 1 度目が
+   * 済んでいるかどうかをここで覚えておく。他のフェイズでは常に `false` のまま。
+   */
+  readonly endOfTurnTriggered: boolean
 }
 
 /**
@@ -59,7 +68,14 @@ export interface Turn {
  * ここにまとめている。
  */
 export function beginPhase(number: number, active: Player, phase: Phase): Turn {
-  return { number, active, phase, priority: opponentOf(active), passedBy: undefined }
+  return {
+    number,
+    active,
+    phase,
+    priority: opponentOf(active),
+    passedBy: undefined,
+    endOfTurnTriggered: false,
+  }
 }
 
 /**

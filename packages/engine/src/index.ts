@@ -12,7 +12,7 @@ export {
 } from './deck.js'
 export type { Deck, DeckViolation } from './deck.js'
 export { cardsIn, cardsOn, draw, emptyDuelState, instantiate, putOnSquare } from './duel.js'
-export type { CardId, CardInstance, DuelState } from './duel.js'
+export type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
 export { choose, destroy } from './effect.js'
 export type { DuelView, Effect, EffectStep, Instruction, UnitOnSquare } from './effect.js'
 export { ORIENTATIONS } from './orientation.js'
