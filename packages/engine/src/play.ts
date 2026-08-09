@@ -1,5 +1,6 @@
 import { cannot, done } from './action.js'
 import type { ActionOutcome, ActionViolation } from './action.js'
+import { triggerAppearance } from './bank.js'
 import { areaOf } from './board.js'
 import type { Square } from './board.js'
 import { hasDream } from './card.js'
@@ -46,9 +47,11 @@ export interface PlayDeclaration {
  * 間、バンクが空で優先権を持っている時である（同 第20章 1-1・2-1）。
  *
  * 宣言してからコストを支払い、バンクを使用せず直ちに解決される（同 第4部 第6章 1-1〜1-4）。
- * 解決が終わると非アクティブプレイヤーが優先権を獲得する（同 1-5）。カードがプレイされた
- * 時に誘発する能力（同 1-5）はまだ扱えない。誘発型能力を持てるのはスクエアにいるユニット
- * だけ（`bank.ts` の `trigger`）で、プレイされたカードはまだスクエアにいないためである。
+ * 解決が終わると非アクティブプレイヤーが優先権を獲得する（同 1-5）。プレイされたユニットが
+ * スクエアに置かれたことで誘発する「登場した時」（同 第2部 第20章 1-4-a）は誘発する
+ * （`placePlayedUnit`）が、それとは別の、カードがプレイされたこと自体に誘発する能力
+ * （同 第4部 第6章 1-5）はまだ扱えない。誘発型能力を持てるのはスクエアにいるユニットだけ
+ * （`bank.ts` の `trigger`）で、ストラテジー・トラップはスクエアにいないためである。
  *
  * トラップはここではプレイできない。トラップはトラップとしてしかプレイできない
  * （同 第2部 第20章 3-1）ので `playAsTrap` を使う。
@@ -175,13 +178,13 @@ function checkSquare(state: DuelState, player: Player, square: Square): ActionVi
  * 第8章 2-7）。プレイしたプレイヤーの支配下で、フリーズ状態で置かれる（同 第2部
  * 第20章 1-4）。
  *
- * プレイされたユニットがスクエアに置かれることを「登場する」と表現する（同 1-4-a）が、
- * 「登場した時」に誘発する能力はまだ誘発させない。誘発するのは置かれたそのユニットの能力
- * だけで、いまある `trigger` はスクエアにいるユニット全部を見てしまうためである。登場を
- * 実装する時に足す。
+ * プレイされたユニットがスクエアに置かれることを「登場する」と表現する（同 1-4-a）。
+ * 登場したことで、置かれたそのユニット自身の「登場した時」に誘発する能力が誘発する
+ * （`triggerAppearance`）。効果によってスクエアに置かれる場合はここを通らないので誘発しない。
  */
 function placePlayedUnit(state: DuelState, id: CardId, square: Square, player: Player): DuelState {
-  const placed = moveToSquare(state, id, square, { controller: player, orientation: 'フリーズ' })
+  const moved = moveToSquare(state, id, square, { controller: player, orientation: 'フリーズ' })
+  const placed = triggerAppearance(moved, id)
   if (areaOf(player, square) !== '中央エリア') return placed
 
   // 中央エリアのスクエアを指定してプレイされたユニットは、ルールエフェクトによって捨札に

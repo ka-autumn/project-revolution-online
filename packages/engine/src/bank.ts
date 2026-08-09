@@ -1,5 +1,6 @@
 import type { TriggerEvent } from './ability.js'
-import type { CardInstance, DuelState, TriggeredInstance } from './duel.js'
+import { findOnSquares } from './duel.js'
+import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
 
@@ -22,6 +23,11 @@ export function trigger(state: DuelState, event: TriggerEvent): DuelState {
   const triggered = state.squares.flatMap((cards) =>
     cards.flatMap((instance) => triggeredBy(instance, event)),
   )
+  return addTriggered(state, triggered)
+}
+
+/** 誘発した能力を、まだバンクに入っていない能力の並びに積む。何も無ければ盤面はそのまま。 */
+function addTriggered(state: DuelState, triggered: readonly TriggeredInstance[]): DuelState {
   if (triggered.length === 0) return state
 
   return { ...state, triggered: [...state.triggered, ...triggered] }
@@ -36,6 +42,27 @@ function triggeredBy(instance: CardInstance, event: TriggerEvent): readonly Trig
       ? [{ ability, source: instance.id, controller: instance.controller }]
       : [],
   )
+}
+
+/**
+ * プレイされたユニットがスクエアに置かれたことで、「登場した時」を誘発させる（総合ルール
+ * 第2部 第20章 1-4-a）。
+ *
+ * 誘発するのは登場したそのユニット自身の能力だけである。他のユニットの「登場した時」の
+ * 能力は誘発しない。誘発イベントを満たすのはそのユニット自身が登場したことであって、
+ * 盤面に他のユニットの「登場した時」の能力があることではないためである。`trigger` は
+ * イベントを満たすスクエアの全ユニットを見てしまうので、対象を 1 枚に絞れるようここを
+ * 別に持つ。
+ *
+ * 呼ぶのはプレイされたユニットを置いた側（`play.ts`）だけである。効果によってスクエアに
+ * 置かれる場合はここを通らない。それは「登場」ではないため誘発しない（同 1-4-a、ADR-0003
+ * の元になる CONTEXT.md「登場」）。
+ */
+export function triggerAppearance(state: DuelState, id: CardId): DuelState {
+  const instance = findOnSquares(state, id)
+  if (instance === undefined) return state
+
+  return addTriggered(state, triggeredBy(instance, '登場した時'))
 }
 
 /**
