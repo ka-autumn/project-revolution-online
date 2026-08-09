@@ -381,12 +381,17 @@ describe('トラップとしてのプレイ', () => {
 
 // 総合ルール 第2部 第20章 3-8〜3-11（ADR-0006）
 describe('トラップの発動', () => {
-  /** トラップゾーンにトラップがあり、敵が 1 枚いる盤面。 */
+  /**
+   * トラップゾーンに、発動する権利を得ているトラップがあり、敵が 1 枚いる盤面。
+   *
+   * 権利をどう得るか（侵入、総合ルール 3-6・3-8）はここでは検証しない。コスト・レベル・
+   * 優先権の挙動を見るテストなので、`trapRights` に直接足して権利がある前提にする。
+   */
   function armed(energies: readonly CardInstance[] = twoEnergies()): DuelState {
     const trap = instantiate({ id: 'トラップ', card: redTrap, owner: '先攻' })
     const enemy = instantiate({ id: '敵', card: redUnit, owner: '後攻' })
     const state = putInZone(putInZone(mainPhase(), '先攻', 'トラップゾーン', [trap]), '先攻', 'エネルギーゾーン', energies)
-    return putOnSquare(state, enemySquare, enemy)
+    return { ...putOnSquare(state, enemySquare, enemy), trapRights: ['トラップ'] }
   }
 
   // 総合ルール 第2部 第20章 3-11
@@ -428,7 +433,9 @@ describe('トラップの発動', () => {
       [energy('赤エネ', '赤'), energy('青エネ', '青')].map((each) => ({ ...each, owner: '後攻' }) as const),
     )
 
-    expect(stateOf(activateTrap(state, 'トラップ', chooseFirst)).turn.priority).toBe('後攻')
+    expect(stateOf(activateTrap({ ...state, trapRights: ['トラップ'] }, 'トラップ', chooseFirst)).turn.priority).toBe(
+      '後攻',
+    )
   })
 
   it('優先権を持っていないプレイヤーのトラップは発動されない', () => {
@@ -450,6 +457,81 @@ describe('トラップの発動', () => {
     )
 
     expect(violationOf(activateTrap(state, 'ユニット', chooseFirst))).toBe('発動できるカードではない')
+  })
+})
+
+// 総合ルール 第2部 第20章 3-6・3-8（ADR-0006）
+describe('トラップの発動条件（侵入）', () => {
+  // 中央エリアのスクエアは先攻・後攻どちらから見ても同じ位置なので、トリガーアイコンが
+  // 支配者から見た向きで解釈されること（`board.ts` の `squareFromView`）に関わらず、
+  // ここでは絶対のスクエアとして中央エリアのスクエアを使う。
+  const intrusionTrap = defineTrap({ name: 'テスト・侵入トラップ', level: 1, triggerIcon: [centerSquare] })
+
+  /** 後攻のトラップゾーンに侵入トラップがある、先攻が行動できるメインフェイズの盤面。 */
+  function readyWithOpponentTrap(): DuelState {
+    const trap = instantiate({ id: 'トラップ', card: intrusionTrap, owner: '後攻' })
+    return putInZone(
+      putInZone(putInZone(mainPhase(), '後攻', 'トラップゾーン', [trap]), '先攻', '手札', [
+        instantiate({ id: 'ユニット', card: redUnit, owner: '先攻' }),
+      ]),
+      '先攻',
+      'エネルギーゾーン',
+      twoEnergies(),
+    )
+  }
+
+  it('相手のユニットがトリガーアイコンのスクエアに登場すると、発動する権利を得る', () => {
+    const after = stateOf(play(readyWithOpponentTrap(), { card: 'ユニット', square: centerSquare }))
+
+    expect(after.trapRights).toEqual(['トラップ'])
+  })
+
+  it('トリガーアイコンに描かれていないスクエアに登場しても権利を得ない', () => {
+    const after = stateOf(play(readyWithOpponentTrap(), { card: 'ユニット', square: homeSquare }))
+
+    expect(after.trapRights).toEqual([])
+  })
+
+  // 「相手のユニットが」なので、トラップの支配者自身が自分のユニットをそのスクエアに
+  // 置いても侵入にならない。
+  it('自分のユニットが同じスクエアに登場しても権利を得ない', () => {
+    const trap = instantiate({ id: 'トラップ', card: intrusionTrap, owner: '先攻' })
+    const state = putInZone(
+      putInZone(putInZone(mainPhase(), '先攻', 'トラップゾーン', [trap]), '先攻', '手札', [
+        instantiate({ id: 'ユニット', card: redUnit, owner: '先攻' }),
+      ]),
+      '先攻',
+      'エネルギーゾーン',
+      twoEnergies(),
+    )
+
+    const after = stateOf(play(state, { card: 'ユニット', square: centerSquare }))
+
+    expect(after.trapRights).toEqual([])
+  })
+
+  // 総合ルール 第4部 第6章 1-5: 解決の後、非アクティブプレイヤーが優先権を獲得する。
+  // 権利を得たのはそのトラップの支配者である後攻なので、そのまま発動できる。
+  it('権利を得た直後、優先権を得た支配者はそのトラップを発動できる', () => {
+    const played = stateOf(play(readyWithOpponentTrap(), { card: 'ユニット', square: centerSquare }))
+    const state = putInZone(played, '後攻', 'エネルギーゾーン', [
+      { ...energy('後攻エネ', '赤'), owner: '後攻', controller: '後攻' },
+    ])
+
+    expect(state.turn.priority).toBe('後攻')
+    // 発動の後も、このターンの非アクティブプレイヤーである後攻に優先権が戻る
+    // （総合ルール 第4部 第5章 2）。
+    expect(stateOf(activateTrap(state, 'トラップ', chooseFirst)).turn.priority).toBe('後攻')
+  })
+
+  // 総合ルール 第2部 第20章 3-8「１度でも優先権をパスすると...権利を失います」
+  it('権利を得たプレイヤーが優先権をパスすると、権利を失って発動できなくなる', () => {
+    const played = stateOf(play(readyWithOpponentTrap(), { card: 'ユニット', square: centerSquare }))
+    // 後攻がパスし、続けて先攻もパスして、後攻に優先権が戻ってくる（次のフェイズの始め）。
+    const passedTwice = passPriority(passPriority(played, chooseFirst), chooseFirst)
+
+    expect(passedTwice.turn.priority).toBe('後攻')
+    expect(violationOf(activateTrap(passedTwice, 'トラップ', chooseFirst))).toBe('発動する権利がない')
   })
 })
 

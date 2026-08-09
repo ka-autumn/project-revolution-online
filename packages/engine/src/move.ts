@@ -7,6 +7,7 @@ import { cardsOn, locateOnSquares, moveToSquare } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
+import { checkIntrusion } from './trap.js'
 import type { UnitCard } from './card.js'
 
 /**
@@ -23,6 +24,9 @@ import type { UnitCard } from './card.js'
  *
  * 選択可能な追加コストや代替コスト、変数を含む使用コスト（同 2-2・2-3）を持つ移動はまだ
  * 書けないため、ここでは扱わない。
+ *
+ * 移動先が相手のトラップのトリガーアイコンのスクエアなら「侵入」になり、そのトラップの
+ * 支配者が発動する権利を得る（同 第2部 第20章 3-6）。
  */
 export function moveUnit(state: DuelState, unit: CardId, destination: Square): ActionOutcome {
   if (!activePlayerMayAct(state, 'メインフェイズ')) return cannot('行える時ではない')
@@ -36,7 +40,8 @@ export function moveUnit(state: DuelState, unit: CardId, destination: Square): A
   }
 
   const moved = moveToSquare(state, unit, destination, { controller: player, orientation: 'リリース' })
-  return done(grantPriorityToInactive(triggerMovement(moved, unit)))
+  const triggered = triggerMovement(moved, unit)
+  return done(grantPriorityToInactive(checkIntrusion(triggered, player, destination)))
 }
 
 /**

@@ -5,6 +5,7 @@ import type { DuelState } from './duel.js'
 import { opponentOf } from './player.js'
 import { grantPriorityToInactive, settleBeforePriority } from './priority.js'
 import type { Chooser } from './resolve.js'
+import { loseTrapRightOnPass } from './trap.js'
 import { PHASES, beginPhase } from './turn.js'
 import type { Turn } from './turn.js'
 
@@ -21,22 +22,26 @@ import type { Turn } from './turn.js'
  * 誰が優先権を持っているかは盤面にあるので、放棄するプレイヤーは受け取らない。かわりに
  * `chooser` を受け取る。連続放棄でバンクにある能力を解決する時、どれを解決するかと、その
  * 能力の効果が何を選ぶかを決めるのに要るためである。
+ *
+ * 優先権を持っていたプレイヤーは、この放棄によって自分のトラップゾーンにあるカードが
+ * 発動する権利を失う（総合ルール 第2部 第20章 3-8）。
  */
 export function passPriority(state: DuelState, chooser: Chooser): DuelState {
-  const { turn } = state
+  const cleared = loseTrapRightOnPass(state, state.turn.priority)
+  const { turn } = cleared
   if (turn.passedBy === undefined) {
     const passed = { ...turn, priority: opponentOf(turn.priority), passedBy: turn.priority }
-    return settleBeforePriority({ ...state, turn: passed })
+    return settleBeforePriority({ ...cleared, turn: passed })
   }
-  if (state.bank.length > 0) {
+  if (cleared.bank.length > 0) {
     // 解決の後、非アクティブプレイヤーが優先権を獲得する（総合ルール 第4部 第5章 2）。
     // 連続した放棄はここで途切れる。
-    return grantPriorityToInactive(resolveFromBank(state, chooser))
+    return grantPriorityToInactive(resolveFromBank(cleared, chooser))
   }
   if (turn.phase === 'リカバリーフェイズ' && !turn.endOfTurnTriggered) {
-    return endTurnAbilities(state)
+    return endTurnAbilities(cleared)
   }
-  return beginNextPhase(state)
+  return beginNextPhase(cleared)
 }
 
 /**

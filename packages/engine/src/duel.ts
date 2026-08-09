@@ -108,6 +108,17 @@ export interface DuelState {
    * 必要がある。次にルールエフェクトがチェックされる時に捨札に置かれ、この並びも空になる。
    */
   readonly playedIntoCenter: readonly CardId[]
+  /**
+   * トラップゾーンにあり、発動条件が満たされて発動する権利を得ているカードの id
+   * （総合ルール 第2部 第20章 3-8）。
+   *
+   * 権利は条件が満たされた瞬間（`trap.ts` の `checkIntrusion`）に持続する状態として持たせ、
+   * 優先権をパスした時（`loseTrapRightOnPass`）や、そのカードがトラップゾーンを離れた時
+   * （`detach`）に取り除く。「優先権を持った時に権利を得る」（同 3-8）という言い回しだが、
+   * 発動できるのはどのみち優先権を持っているプレイヤーだけ（`play.ts` の `activateTrap`）
+   * なので、権利の有無だけを持たせれば同じ結果になる。
+   */
+  readonly trapRights: readonly CardId[]
 }
 
 /**
@@ -169,6 +180,7 @@ export function emptyDuelState(): DuelState {
     resolveZone: [],
     triggered: [],
     playedIntoCenter: [],
+    trapRights: [],
   }
 }
 
@@ -302,15 +314,23 @@ export function moveToSquare(
  * カードをいまある場所から取り除く。どのゾーンにもスクエアにもなければ `undefined`。
  *
  * カードが同時に 2 か所にあることはないので、見つかったところから取り除けばよい。
+ *
+ * トラップゾーンを離れる経路はすべてここを通るので、`trapRights` に残っていればここで
+ * 一緒に取り除く（総合ルール 第2部 第20章 3-8 の権利は、そのカードがトラップゾーンに
+ * あってこそ意味を持つ）。トラップゾーン以外のカードの id が `trapRights` にあることは
+ * 無いので、無条件に取り除いてよい。
  */
 function detach(state: DuelState, id: CardId): { readonly state: DuelState; readonly card: CardInstance } | undefined {
   const onSquare = findOnSquares(state, id)
   if (onSquare !== undefined) {
     return {
-      state: {
-        ...state,
-        squares: state.squares.map((cards) => cards.filter((each) => each !== onSquare)),
-      },
+      state: withoutTrapRight(
+        {
+          ...state,
+          squares: state.squares.map((cards) => cards.filter((each) => each !== onSquare)),
+        },
+        id,
+      ),
       card: onSquare,
     }
   }
@@ -318,7 +338,10 @@ function detach(state: DuelState, id: CardId): { readonly state: DuelState; read
   const resolving = state.resolveZone.find((card) => card.id === id)
   if (resolving !== undefined) {
     return {
-      state: { ...state, resolveZone: state.resolveZone.filter((card) => card !== resolving) },
+      state: withoutTrapRight(
+        { ...state, resolveZone: state.resolveZone.filter((card) => card !== resolving) },
+        id,
+      ),
       card: resolving,
     }
   }
@@ -328,11 +351,20 @@ function detach(state: DuelState, id: CardId): { readonly state: DuelState; read
       const cards = cardsIn(state, player, zone)
       const found = cards.find((card) => card.id === id)
       if (found !== undefined) {
-        return { state: putInZone(state, player, zone, cards.filter((card) => card !== found)), card: found }
+        return {
+          state: withoutTrapRight(putInZone(state, player, zone, cards.filter((card) => card !== found)), id),
+          card: found,
+        }
       }
     }
   }
   return undefined
+}
+
+/** `trapRights` からその id を取り除く。無ければ盤面はそのまま。 */
+function withoutTrapRight(state: DuelState, id: CardId): DuelState {
+  if (!state.trapRights.includes(id)) return state
+  return { ...state, trapRights: state.trapRights.filter((right) => right !== id) }
 }
 
 /**
