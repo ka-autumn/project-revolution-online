@@ -36,7 +36,9 @@ const enterAndDestroy = defineUnit({
 const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
 
 const [enterAbility] = enterAndDestroy.abilities
-if (enterAbility === undefined) throw new Error('テストカードに能力が定義されていない')
+if (enterAbility === undefined || enterAbility.kind !== '誘発型能力') {
+  throw new Error('テストカードに誘発型能力が定義されていない')
+}
 
 const mySquare: Square = { row: 2, column: 1 }
 const enemySquare: Square = { row: 0, column: 1 }

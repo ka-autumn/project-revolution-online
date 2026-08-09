@@ -58,6 +58,19 @@ export interface Turn {
    * 済んでいるかどうかをここで覚えておく。他のフェイズでは常に `false` のまま。
    */
   readonly endOfTurnTriggered: boolean
+  /**
+   * エネルギーフェイズで、アクティブプレイヤーが手札をエネルギーゾーンに置く特別な行動を
+   * すでに行ったか（総合ルール 第3部 第7章 1）。
+   *
+   * 「自分の手札を１枚選んで、持ち主のエネルギーゾーンに……置くことができます」の「1 枚」は
+   * 1 度に置ける枚数ではなく、その行動そのものが 1 枚だけであることを指す。行った後も
+   * バンクは空のまま優先権が戻ってくるので、行ったかどうかを覚えておかないと何度でも
+   * 置けてしまう。
+   *
+   * エネルギーフェイズは 1 ターンに 1 度しかないので、フェイズが始まるたびに `false` に
+   * 戻せばよい。他のフェイズでは常に `false` のまま。
+   */
+  readonly energyPlaced: boolean
 }
 
 /**
@@ -75,6 +88,7 @@ export function beginPhase(number: number, active: Player, phase: Phase): Turn {
     priority: opponentOf(active),
     passedBy: undefined,
     endOfTurnTriggered: false,
+    energyPlaced: false,
   }
 }
 

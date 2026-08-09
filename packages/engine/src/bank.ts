@@ -31,9 +31,11 @@ export function trigger(state: DuelState, event: TriggerEvent): DuelState {
 function triggeredBy(instance: CardInstance, event: TriggerEvent): readonly TriggeredInstance[] {
   if (instance.card.type !== 'ユニット') return []
 
-  return instance.card.abilities
-    .filter((ability) => ability.event === event)
-    .map((ability) => ({ ability, source: instance.id, controller: instance.controller }))
+  return instance.card.abilities.flatMap((ability) =>
+    ability.kind === '誘発型能力' && ability.event === event
+      ? [{ ability, source: instance.id, controller: instance.controller }]
+      : [],
+  )
 }
 
 /**
