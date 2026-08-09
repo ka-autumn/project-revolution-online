@@ -48,19 +48,20 @@ export function cannot(violation: ActionViolation): ActionOutcome {
  * 自分の手札を 1 枚選んで、持ち主のエネルギーゾーンに表向きにリリース状態で置く
  * （総合ルール 第3部 第7章 1）。この特別な行動はバンクを使用しない。
  *
- * 総合ルール 第3部 第7章 1 は、この行動を 1 ターンに何回行えるかを制限していない。
- * ここでも制限しない。制限があるとすれば総合ルール以外に書かれていることになるので、
- * 総合ルールに従うというこのプロジェクトの前提（CONTEXT.md）から外れる。
+ * 置けるのはそのエネルギーフェイズに 1 枚だけである（同）。行った後もバンクは空のまま
+ * 優先権が戻ってくるので、行ったかどうかを `Turn` が覚えている。
  *
  * 特別な行動を行った後、非アクティブプレイヤーが優先権を獲得する（同 第4部 第5章 2）。
  */
 export function placeEnergy(state: DuelState, card: CardId): ActionOutcome {
   if (!activePlayerMayAct(state, 'エネルギーフェイズ')) return cannot('行える時ではない')
+  if (state.turn.energyPlaced) return cannot('行える時ではない')
 
   const player = state.turn.active
   if (findInZone(state, player, '手札', card) === undefined) return cannot('そのゾーンにない')
 
-  return done(grantPriorityToInactive(moveToZone(state, card, 'エネルギーゾーン')))
+  const placed = moveToZone(state, card, 'エネルギーゾーン')
+  return done(grantPriorityToInactive({ ...placed, turn: { ...placed.turn, energyPlaced: true } }))
 }
 
 /**

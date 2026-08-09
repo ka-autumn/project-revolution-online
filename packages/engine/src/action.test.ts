@@ -51,9 +51,9 @@ const idsOf = (cards: readonly CardInstance[]) => cards.map((each) => each.id)
 
 // 総合ルール 第3部 第7章 1（ADR-0006）
 describe('エネルギーゾーンにカードを置く', () => {
-  /** 手札が 1 枚ある、エネルギーフェイズの盤面。 */
+  /** 手札が 2 枚ある、エネルギーフェイズの盤面。 */
   function energyPhase(): DuelState {
-    return putInZone(phaseReadyToAct('エネルギーフェイズ'), '先攻', '手札', [card('手札')])
+    return putInZone(phaseReadyToAct('エネルギーフェイズ'), '先攻', '手札', [card('手札'), card('手札 2')])
   }
 
   it('自分の手札のカードがリリース状態でエネルギーゾーンに置かれる', () => {
@@ -61,7 +61,32 @@ describe('エネルギーゾーンにカードを置く', () => {
 
     expect(idsOf(cardsIn(after, '先攻', 'エネルギーゾーン'))).toEqual(['手札'])
     expect(cardsIn(after, '先攻', 'エネルギーゾーン')[0]?.orientation).toBe('リリース')
-    expect(cardsIn(after, '先攻', '手札')).toEqual([])
+    expect(idsOf(cardsIn(after, '先攻', '手札'))).toEqual(['手札 2'])
+  })
+
+  // 総合ルール 第3部 第7章 1: 置けるのは「自分の手札を 1 枚」である。行った後もバンクは
+  // 空のまま優先権が戻ってくるので、回数を数えていないと何枚でも置けてしまう。
+  it('同じエネルギーフェイズに 2 枚目は置けない', () => {
+    const placed = stateOf(placeEnergy(energyPhase(), '手札'))
+    // 置いた時点で優先権が非アクティブプレイヤーに移っているので戻す。
+    const back = passPriority(placed, chooseFirst)
+
+    expect(violationOf(placeEnergy(back, '手札 2'))).toBe('行える時ではない')
+  })
+
+  it('次のターンのエネルギーフェイズにはまた置ける', () => {
+    const placed = stateOf(placeEnergy(energyPhase(), '手札'))
+    let current = passPriority(placed, chooseFirst)
+    while (current.turn.number === placed.turn.number) current = passPriority(current, chooseFirst)
+    while (current.turn.phase !== 'エネルギーフェイズ') current = passPriority(current, chooseFirst)
+    // 後攻のターンなので、後攻の手札に置くカードを用意する。
+    const next = putInZone(passPriority(current, chooseFirst), '後攻', '手札', [
+      instantiate({ id: '後攻の手札', card: testCard, owner: '後攻' }),
+    ])
+
+    expect(idsOf(cardsIn(stateOf(placeEnergy(next, '後攻の手札')), '後攻', 'エネルギーゾーン'))).toEqual([
+      '後攻の手札',
+    ])
   })
 
   // 総合ルール 第4部 第5章 2: 特別な行動を行った後、非アクティブプレイヤーが優先権を
