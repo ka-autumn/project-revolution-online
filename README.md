@@ -3,7 +3,8 @@
 トレーディングカードゲーム「プロジェクトレヴォリューション」を、ルールを完全に自動適用する形で
 オンライン対戦できるようにするプロジェクト。
 
-用語の正は [`CONTEXT.md`](CONTEXT.md)、設計上の決定は [`docs/adr/`](docs/adr/) にある。
+ルールの拠り所は総合ルール Version 15.00 で、全文が [`docs/rules/`](docs/rules/) にある。
+用語の正は [`CONTEXT.md`](CONTEXT.md)、設計上の決定は [`docs/adr/`](docs/adr/)。
 
 ## 構成
 

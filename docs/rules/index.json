@@ -1,0 +1,4307 @@
+{
+  "source": "プロジェクトレヴォリューション 総合ルール Version 15.00（ＰＲＬＬＰ、2009-12-22）",
+  "clauses": [
+    {
+      "citation": "序文 1",
+      "part": 0,
+      "chapter": 0,
+      "chapterTitle": "総合ルールの意義",
+      "clause": "1",
+      "file": "00-序文-総合ルールの意義.md",
+      "examples": 0
+    },
+    {
+      "citation": "序文 2",
+      "part": 0,
+      "chapter": 0,
+      "chapterTitle": "総合ルールの意義",
+      "clause": "2",
+      "file": "00-序文-総合ルールの意義.md",
+      "examples": 0
+    },
+    {
+      "citation": "序文 3",
+      "part": 0,
+      "chapter": 0,
+      "chapterTitle": "総合ルールの意義",
+      "clause": "3",
+      "file": "00-序文-総合ルールの意義.md",
+      "examples": 0
+    },
+    {
+      "citation": "第1部 第1章 1",
+      "part": 1,
+      "chapter": 1,
+      "chapterTitle": "プロジェクトレヴォリューションの基本原則",
+      "clause": "1",
+      "file": "01-01-プロジェクトレヴォリューションの基本原則.md",
+      "examples": 1
+    },
+    {
+      "citation": "第1部 第1章 2",
+      "part": 1,
+      "chapter": 1,
+      "chapterTitle": "プロジェクトレヴォリューションの基本原則",
+      "clause": "2",
+      "file": "01-01-プロジェクトレヴォリューションの基本原則.md",
+      "examples": 1
+    },
+    {
+      "citation": "第1部 第1章 3",
+      "part": 1,
+      "chapter": 1,
+      "chapterTitle": "プロジェクトレヴォリューションの基本原則",
+      "clause": "3",
+      "file": "01-01-プロジェクトレヴォリューションの基本原則.md",
+      "examples": 1
+    },
+    {
+      "citation": "第1部 第1章 4",
+      "part": 1,
+      "chapter": 1,
+      "chapterTitle": "プロジェクトレヴォリューションの基本原則",
+      "clause": "4",
+      "file": "01-01-プロジェクトレヴォリューションの基本原則.md",
+      "examples": 1
+    },
+    {
+      "citation": "第1部 第1章 5",
+      "part": 1,
+      "chapter": 1,
+      "chapterTitle": "プロジェクトレヴォリューションの基本原則",
+      "clause": "5",
+      "file": "01-01-プロジェクトレヴォリューションの基本原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第1部 第2章 1",
+      "part": 1,
+      "chapter": 2,
+      "chapterTitle": "数値とエネルギー・シンボル",
+      "clause": "1",
+      "file": "01-02-数値とエネルギー・シンボル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第1部 第2章 2",
+      "part": 1,
+      "chapter": 2,
+      "chapterTitle": "数値とエネルギー・シンボル",
+      "clause": "2",
+      "file": "01-02-数値とエネルギー・シンボル.md",
+      "examples": 2
+    },
+    {
+      "citation": "第1部 第2章 3",
+      "part": 1,
+      "chapter": 2,
+      "chapterTitle": "数値とエネルギー・シンボル",
+      "clause": "3",
+      "file": "01-02-数値とエネルギー・シンボル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第1部 第2章 3-1",
+      "part": 1,
+      "chapter": 2,
+      "chapterTitle": "数値とエネルギー・シンボル",
+      "clause": "3-1",
+      "file": "01-02-数値とエネルギー・シンボル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第1部 第2章 3-2",
+      "part": 1,
+      "chapter": 2,
+      "chapterTitle": "数値とエネルギー・シンボル",
+      "clause": "3-2",
+      "file": "01-02-数値とエネルギー・シンボル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第1部 第2章 3-3",
+      "part": 1,
+      "chapter": 2,
+      "chapterTitle": "数値とエネルギー・シンボル",
+      "clause": "3-3",
+      "file": "01-02-数値とエネルギー・シンボル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第1部 第2章 3-4",
+      "part": 1,
+      "chapter": 2,
+      "chapterTitle": "数値とエネルギー・シンボル",
+      "clause": "3-4",
+      "file": "01-02-数値とエネルギー・シンボル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第1部 第3章 1",
+      "part": 1,
+      "chapter": 3,
+      "chapterTitle": "コストの支払い",
+      "clause": "1",
+      "file": "01-03-コストの支払い.md",
+      "examples": 0
+    },
+    {
+      "citation": "第1部 第3章 1-1",
+      "part": 1,
+      "chapter": 3,
+      "chapterTitle": "コストの支払い",
+      "clause": "1-1",
+      "file": "01-03-コストの支払い.md",
+      "examples": 0
+    },
+    {
+      "citation": "第1部 第3章 1-2",
+      "part": 1,
+      "chapter": 3,
+      "chapterTitle": "コストの支払い",
+      "clause": "1-2",
+      "file": "01-03-コストの支払い.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第1章 1",
+      "part": 2,
+      "chapter": 1,
+      "chapterTitle": "デュエルの定義に関する原則",
+      "clause": "1",
+      "file": "02-01-デュエルの定義に関する原則.md",
+      "examples": 2
+    },
+    {
+      "citation": "第2部 第1章 1-1",
+      "part": 2,
+      "chapter": 1,
+      "chapterTitle": "デュエルの定義に関する原則",
+      "clause": "1-1",
+      "file": "02-01-デュエルの定義に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第1章 2",
+      "part": 2,
+      "chapter": 1,
+      "chapterTitle": "デュエルの定義に関する原則",
+      "clause": "2",
+      "file": "02-01-デュエルの定義に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第1章 3",
+      "part": 2,
+      "chapter": 1,
+      "chapterTitle": "デュエルの定義に関する原則",
+      "clause": "3",
+      "file": "02-01-デュエルの定義に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第1章 3-1",
+      "part": 2,
+      "chapter": 1,
+      "chapterTitle": "デュエルの定義に関する原則",
+      "clause": "3-1",
+      "file": "02-01-デュエルの定義に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第1章 4",
+      "part": 2,
+      "chapter": 1,
+      "chapterTitle": "デュエルの定義に関する原則",
+      "clause": "4",
+      "file": "02-01-デュエルの定義に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第1章 5",
+      "part": 2,
+      "chapter": 1,
+      "chapterTitle": "デュエルの定義に関する原則",
+      "clause": "5",
+      "file": "02-01-デュエルの定義に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第1章 5-1",
+      "part": 2,
+      "chapter": 1,
+      "chapterTitle": "デュエルの定義に関する原則",
+      "clause": "5-1",
+      "file": "02-01-デュエルの定義に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第2章 1",
+      "part": 2,
+      "chapter": 2,
+      "chapterTitle": "カードの表記とデータ",
+      "clause": "1",
+      "file": "02-02-カードの表記とデータ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第2章 2",
+      "part": 2,
+      "chapter": 2,
+      "chapterTitle": "カードの表記とデータ",
+      "clause": "2",
+      "file": "02-02-カードの表記とデータ.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第2章 3",
+      "part": 2,
+      "chapter": 2,
+      "chapterTitle": "カードの表記とデータ",
+      "clause": "3",
+      "file": "02-02-カードの表記とデータ.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第3章 1",
+      "part": 2,
+      "chapter": 3,
+      "chapterTitle": "レベルと色",
+      "clause": "1",
+      "file": "02-03-レベルと色.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第3章 2",
+      "part": 2,
+      "chapter": 3,
+      "chapterTitle": "レベルと色",
+      "clause": "2",
+      "file": "02-03-レベルと色.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第3章 3",
+      "part": 2,
+      "chapter": 3,
+      "chapterTitle": "レベルと色",
+      "clause": "3",
+      "file": "02-03-レベルと色.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第3章 4",
+      "part": 2,
+      "chapter": 3,
+      "chapterTitle": "レベルと色",
+      "clause": "4",
+      "file": "02-03-レベルと色.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第3章 5",
+      "part": 2,
+      "chapter": 3,
+      "chapterTitle": "レベルと色",
+      "clause": "5",
+      "file": "02-03-レベルと色.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第4章 1",
+      "part": 2,
+      "chapter": 4,
+      "chapterTitle": "種別",
+      "clause": "1",
+      "file": "02-04-種別.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第4章 2",
+      "part": 2,
+      "chapter": 4,
+      "chapterTitle": "種別",
+      "clause": "2",
+      "file": "02-04-種別.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第4章 2-1",
+      "part": 2,
+      "chapter": 4,
+      "chapterTitle": "種別",
+      "clause": "2-1",
+      "file": "02-04-種別.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第5章 1",
+      "part": 2,
+      "chapter": 5,
+      "chapterTitle": "イラスト",
+      "clause": "1",
+      "file": "02-05-イラスト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第6章 1",
+      "part": 2,
+      "chapter": 6,
+      "chapterTitle": "カード名",
+      "clause": "1",
+      "file": "02-06-カード名.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第6章 1-1",
+      "part": 2,
+      "chapter": 6,
+      "chapterTitle": "カード名",
+      "clause": "1-1",
+      "file": "02-06-カード名.md",
+      "examples": 2
+    },
+    {
+      "citation": "第2部 第6章 1-2",
+      "part": 2,
+      "chapter": 6,
+      "chapterTitle": "カード名",
+      "clause": "1-2",
+      "file": "02-06-カード名.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第6章 2",
+      "part": 2,
+      "chapter": 6,
+      "chapterTitle": "カード名",
+      "clause": "2",
+      "file": "02-06-カード名.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第7章 1",
+      "part": 2,
+      "chapter": 7,
+      "chapterTitle": "スターアイコン・リバーススターアイコン",
+      "clause": "1",
+      "file": "02-07-スターアイコン・リバーススターアイコン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第7章 2",
+      "part": 2,
+      "chapter": 7,
+      "chapterTitle": "スターアイコン・リバーススターアイコン",
+      "clause": "2",
+      "file": "02-07-スターアイコン・リバーススターアイコン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第7章 3",
+      "part": 2,
+      "chapter": 7,
+      "chapterTitle": "スターアイコン・リバーススターアイコン",
+      "clause": "3",
+      "file": "02-07-スターアイコン・リバーススターアイコン.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第7章 4",
+      "part": 2,
+      "chapter": 7,
+      "chapterTitle": "スターアイコン・リバーススターアイコン",
+      "clause": "4",
+      "file": "02-07-スターアイコン・リバーススターアイコン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第7章 5",
+      "part": 2,
+      "chapter": 7,
+      "chapterTitle": "スターアイコン・リバーススターアイコン",
+      "clause": "5",
+      "file": "02-07-スターアイコン・リバーススターアイコン.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第8章 1",
+      "part": 2,
+      "chapter": 8,
+      "chapterTitle": "キーワードアイコン",
+      "clause": "1",
+      "file": "02-08-キーワードアイコン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第8章 2",
+      "part": 2,
+      "chapter": 8,
+      "chapterTitle": "キーワードアイコン",
+      "clause": "2",
+      "file": "02-08-キーワードアイコン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第9章",
+      "part": 2,
+      "chapter": 9,
+      "chapterTitle": "スキルタイトル",
+      "clause": "",
+      "file": "02-09-スキルタイトル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第10章 1",
+      "part": 2,
+      "chapter": 10,
+      "chapterTitle": "テキスト",
+      "clause": "1",
+      "file": "02-10-テキスト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第10章 2",
+      "part": 2,
+      "chapter": 10,
+      "chapterTitle": "テキスト",
+      "clause": "2",
+      "file": "02-10-テキスト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第10章 3",
+      "part": 2,
+      "chapter": 10,
+      "chapterTitle": "テキスト",
+      "clause": "3",
+      "file": "02-10-テキスト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第10章 3-1",
+      "part": 2,
+      "chapter": 10,
+      "chapterTitle": "テキスト",
+      "clause": "3-1",
+      "file": "02-10-テキスト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第10章 3-2",
+      "part": 2,
+      "chapter": 10,
+      "chapterTitle": "テキスト",
+      "clause": "3-2",
+      "file": "02-10-テキスト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第10章 3-3",
+      "part": 2,
+      "chapter": 10,
+      "chapterTitle": "テキスト",
+      "clause": "3-3",
+      "file": "02-10-テキスト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第10章 3-4",
+      "part": 2,
+      "chapter": 10,
+      "chapterTitle": "テキスト",
+      "clause": "3-4",
+      "file": "02-10-テキスト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第10章 3-5",
+      "part": 2,
+      "chapter": 10,
+      "chapterTitle": "テキスト",
+      "clause": "3-5",
+      "file": "02-10-テキスト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第10章 3-6",
+      "part": 2,
+      "chapter": 10,
+      "chapterTitle": "テキスト",
+      "clause": "3-6",
+      "file": "02-10-テキスト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第10章 4",
+      "part": 2,
+      "chapter": 10,
+      "chapterTitle": "テキスト",
+      "clause": "4",
+      "file": "02-10-テキスト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第11章 1",
+      "part": 2,
+      "chapter": 11,
+      "chapterTitle": "ムーブアイコン",
+      "clause": "1",
+      "file": "02-11-ムーブアイコン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第11章 2",
+      "part": 2,
+      "chapter": 11,
+      "chapterTitle": "ムーブアイコン",
+      "clause": "2",
+      "file": "02-11-ムーブアイコン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第12章 1",
+      "part": 2,
+      "chapter": 12,
+      "chapterTitle": "トリガーアイコン",
+      "clause": "1",
+      "file": "02-12-トリガーアイコン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第12章 2",
+      "part": 2,
+      "chapter": 12,
+      "chapterTitle": "トリガーアイコン",
+      "clause": "2",
+      "file": "02-12-トリガーアイコン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第13章 1",
+      "part": 2,
+      "chapter": 13,
+      "chapterTitle": "属性",
+      "clause": "1",
+      "file": "02-13-属性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第13章 1-1",
+      "part": 2,
+      "chapter": 13,
+      "chapterTitle": "属性",
+      "clause": "1-1",
+      "file": "02-13-属性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第13章 1-1-1",
+      "part": 2,
+      "chapter": 13,
+      "chapterTitle": "属性",
+      "clause": "1-1-1",
+      "file": "02-13-属性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第13章 1-2",
+      "part": 2,
+      "chapter": 13,
+      "chapterTitle": "属性",
+      "clause": "1-2",
+      "file": "02-13-属性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第13章 1-3-a",
+      "part": 2,
+      "chapter": 13,
+      "chapterTitle": "属性",
+      "clause": "1-3-a",
+      "file": "02-13-属性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第13章 1-3-b",
+      "part": 2,
+      "chapter": 13,
+      "chapterTitle": "属性",
+      "clause": "1-3-b",
+      "file": "02-13-属性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第13章 2",
+      "part": 2,
+      "chapter": 13,
+      "chapterTitle": "属性",
+      "clause": "2",
+      "file": "02-13-属性.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第13章 3",
+      "part": 2,
+      "chapter": 13,
+      "chapterTitle": "属性",
+      "clause": "3",
+      "file": "02-13-属性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第13章 4",
+      "part": 2,
+      "chapter": 13,
+      "chapterTitle": "属性",
+      "clause": "4",
+      "file": "02-13-属性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第13章 5",
+      "part": 2,
+      "chapter": 13,
+      "chapterTitle": "属性",
+      "clause": "5",
+      "file": "02-13-属性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第14章 1",
+      "part": 2,
+      "chapter": 14,
+      "chapterTitle": "ＢＰ（バトルＢＰ）",
+      "clause": "1",
+      "file": "02-14-ＢＰ（バトルＢＰ）.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第15章 1",
+      "part": 2,
+      "chapter": 15,
+      "chapterTitle": "ＳＰ（スマッシュＢＰ）",
+      "clause": "1",
+      "file": "02-15-ＳＰ（スマッシュＢＰ）.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第16章 1",
+      "part": 2,
+      "chapter": 16,
+      "chapterTitle": "レアリティ",
+      "clause": "1",
+      "file": "02-16-レアリティ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第17章 1",
+      "part": 2,
+      "chapter": 17,
+      "chapterTitle": "カード番号",
+      "clause": "1",
+      "file": "02-17-カード番号.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第18章 1",
+      "part": 2,
+      "chapter": 18,
+      "chapterTitle": "イラストレーター表記",
+      "clause": "1",
+      "file": "02-18-イラストレーター表記.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第19章 1",
+      "part": 2,
+      "chapter": 19,
+      "chapterTitle": "権利表記",
+      "clause": "1",
+      "file": "02-19-権利表記.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 1",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "1",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 1-1",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "1-1",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 1-2",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "1-2",
+      "file": "02-20-種別の詳細.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第20章 1-3",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "1-3",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 1-4",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "1-4",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 1-4-a",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "1-4-a",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 1-5",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "1-5",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 1-6",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "1-6",
+      "file": "02-20-種別の詳細.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第20章 1-7",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "1-7",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 1-8",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "1-8",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 2",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "2",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 2-1",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "2-1",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 2-2",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "2-2",
+      "file": "02-20-種別の詳細.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第20章 2-3",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "2-3",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 2-4",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "2-4",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 2-5",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "2-5",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 2-6",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "2-6",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-1",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-1",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-2",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-2",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-3",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-3",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-4",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-4",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-5",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-5",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-6",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-6",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-7",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-7",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-8",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-8",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-8-a",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-8-a",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-8-b",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-8-b",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-9",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-9",
+      "file": "02-20-種別の詳細.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第20章 3-10",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-10",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-11",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-11",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-12",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-12",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-13",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-13",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第20章 3-14",
+      "part": 2,
+      "chapter": 20,
+      "chapterTitle": "種別の詳細",
+      "clause": "3-14",
+      "file": "02-20-種別の詳細.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 1-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "1-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 1-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "1-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 1-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "1-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 1-4",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "1-4",
+      "file": "02-21-ゾーン.md",
+      "examples": 2
+    },
+    {
+      "citation": "第2部 第21章 1-5",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "1-5",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 1-5-a",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "1-5-a",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 1-5-b",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "1-5-b",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 1-5-c",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "1-5-c",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 1-5-d",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "1-5-d",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 1-6",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "1-6",
+      "file": "02-21-ゾーン.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第21章 2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 2-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "2-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 2-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "2-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 2-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "2-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 2-4",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "2-4",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 3-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "3-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 3-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "3-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 3-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "3-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 2
+    },
+    {
+      "citation": "第2部 第21章 3-4",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "3-4",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 3-5",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "3-5",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 3-6",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "3-6",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 4",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "4",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 4-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "4-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 4-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "4-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 4-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "4-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 5",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "5",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 5-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "5-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 5-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "5-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 5-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "5-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 6",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "6",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 6-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "6-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 6-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "6-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 6-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "6-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 6-4",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "6-4",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 6-5",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "6-5",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 7",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "7",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 7-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "7-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 7-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "7-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 7-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "7-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 7-4",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "7-4",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 7-5",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "7-5",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 8",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "8",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 8-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "8-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 8-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "8-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 8-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "8-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 8-4",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "8-4",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 8-5",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "8-5",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 8-6",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "8-6",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 8-7",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "8-7",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 9",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "9",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 9-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "9-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 9-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "9-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 9-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "9-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 10",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "10",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 10-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "10-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 10-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "10-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 10-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "10-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 11",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "11",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 11-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "11-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 11-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "11-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 11-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "11-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 12",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "12",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 12-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "12-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 12-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "12-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 12-3",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "12-3",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 13",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "13",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 13-1",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "13-1",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第21章 13-2",
+      "part": 2,
+      "chapter": 21,
+      "chapterTitle": "ゾーン",
+      "clause": "13-2",
+      "file": "02-21-ゾーン.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第22章 1",
+      "part": 2,
+      "chapter": 22,
+      "chapterTitle": "ゾーン以外の場所",
+      "clause": "1",
+      "file": "02-22-ゾーン以外の場所.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第22章 2",
+      "part": 2,
+      "chapter": 22,
+      "chapterTitle": "ゾーン以外の場所",
+      "clause": "2",
+      "file": "02-22-ゾーン以外の場所.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第22章 3",
+      "part": 2,
+      "chapter": 22,
+      "chapterTitle": "ゾーン以外の場所",
+      "clause": "3",
+      "file": "02-22-ゾーン以外の場所.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第22章 4",
+      "part": 2,
+      "chapter": 22,
+      "chapterTitle": "ゾーン以外の場所",
+      "clause": "4",
+      "file": "02-22-ゾーン以外の場所.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第22章 4-1",
+      "part": 2,
+      "chapter": 22,
+      "chapterTitle": "ゾーン以外の場所",
+      "clause": "4-1",
+      "file": "02-22-ゾーン以外の場所.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第22章 5",
+      "part": 2,
+      "chapter": 22,
+      "chapterTitle": "ゾーン以外の場所",
+      "clause": "5",
+      "file": "02-22-ゾーン以外の場所.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第22章 6",
+      "part": 2,
+      "chapter": 22,
+      "chapterTitle": "ゾーン以外の場所",
+      "clause": "6",
+      "file": "02-22-ゾーン以外の場所.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第22章 6-1",
+      "part": 2,
+      "chapter": 22,
+      "chapterTitle": "ゾーン以外の場所",
+      "clause": "6-1",
+      "file": "02-22-ゾーン以外の場所.md",
+      "examples": 2
+    },
+    {
+      "citation": "第2部 第23章 1",
+      "part": 2,
+      "chapter": 23,
+      "chapterTitle": "公開情報と非公開情報",
+      "clause": "1",
+      "file": "02-23-公開情報と非公開情報.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第23章 1-1",
+      "part": 2,
+      "chapter": 23,
+      "chapterTitle": "公開情報と非公開情報",
+      "clause": "1-1",
+      "file": "02-23-公開情報と非公開情報.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第23章 2",
+      "part": 2,
+      "chapter": 23,
+      "chapterTitle": "公開情報と非公開情報",
+      "clause": "2",
+      "file": "02-23-公開情報と非公開情報.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第23章 2-1",
+      "part": 2,
+      "chapter": 23,
+      "chapterTitle": "公開情報と非公開情報",
+      "clause": "2-1",
+      "file": "02-23-公開情報と非公開情報.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第23章 3",
+      "part": 2,
+      "chapter": 23,
+      "chapterTitle": "公開情報と非公開情報",
+      "clause": "3",
+      "file": "02-23-公開情報と非公開情報.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第24章 1",
+      "part": 2,
+      "chapter": 24,
+      "chapterTitle": "カードの状態",
+      "clause": "1",
+      "file": "02-24-カードの状態.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第24章 1-1",
+      "part": 2,
+      "chapter": 24,
+      "chapterTitle": "カードの状態",
+      "clause": "1-1",
+      "file": "02-24-カードの状態.md",
+      "examples": 0
+    },
+    {
+      "citation": "第2部 第24章 1-2",
+      "part": 2,
+      "chapter": 24,
+      "chapterTitle": "カードの状態",
+      "clause": "1-2",
+      "file": "02-24-カードの状態.md",
+      "examples": 1
+    },
+    {
+      "citation": "第2部 第24章 1-3",
+      "part": 2,
+      "chapter": 24,
+      "chapterTitle": "カードの状態",
+      "clause": "1-3",
+      "file": "02-24-カードの状態.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第1章 1",
+      "part": 3,
+      "chapter": 1,
+      "chapterTitle": "デュエルの準備",
+      "clause": "1",
+      "file": "03-01-デュエルの準備.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第1章 2",
+      "part": 3,
+      "chapter": 1,
+      "chapterTitle": "デュエルの準備",
+      "clause": "2",
+      "file": "03-01-デュエルの準備.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第1章 3",
+      "part": 3,
+      "chapter": 1,
+      "chapterTitle": "デュエルの準備",
+      "clause": "3",
+      "file": "03-01-デュエルの準備.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第1章 3-1",
+      "part": 3,
+      "chapter": 1,
+      "chapterTitle": "デュエルの準備",
+      "clause": "3-1",
+      "file": "03-01-デュエルの準備.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第1章 3-2",
+      "part": 3,
+      "chapter": 1,
+      "chapterTitle": "デュエルの準備",
+      "clause": "3-2",
+      "file": "03-01-デュエルの準備.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第1章 3-2-1",
+      "part": 3,
+      "chapter": 1,
+      "chapterTitle": "デュエルの準備",
+      "clause": "3-2-1",
+      "file": "03-01-デュエルの準備.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第1章 3-3",
+      "part": 3,
+      "chapter": 1,
+      "chapterTitle": "デュエルの準備",
+      "clause": "3-3",
+      "file": "03-01-デュエルの準備.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第1章 4",
+      "part": 3,
+      "chapter": 1,
+      "chapterTitle": "デュエルの準備",
+      "clause": "4",
+      "file": "03-01-デュエルの準備.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第1章 4-1",
+      "part": 3,
+      "chapter": 1,
+      "chapterTitle": "デュエルの準備",
+      "clause": "4-1",
+      "file": "03-01-デュエルの準備.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第1章 5",
+      "part": 3,
+      "chapter": 1,
+      "chapterTitle": "デュエルの準備",
+      "clause": "5",
+      "file": "03-01-デュエルの準備.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第1章 6",
+      "part": 3,
+      "chapter": 1,
+      "chapterTitle": "デュエルの準備",
+      "clause": "6",
+      "file": "03-01-デュエルの準備.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第2章 1",
+      "part": 3,
+      "chapter": 2,
+      "chapterTitle": "デュエルの開始",
+      "clause": "1",
+      "file": "03-02-デュエルの開始.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第2章 2",
+      "part": 3,
+      "chapter": 2,
+      "chapterTitle": "デュエルの開始",
+      "clause": "2",
+      "file": "03-02-デュエルの開始.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第3章 1",
+      "part": 3,
+      "chapter": 3,
+      "chapterTitle": "デュエルの終了",
+      "clause": "1",
+      "file": "03-03-デュエルの終了.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第3章 2",
+      "part": 3,
+      "chapter": 3,
+      "chapterTitle": "デュエルの終了",
+      "clause": "2",
+      "file": "03-03-デュエルの終了.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第3章 3",
+      "part": 3,
+      "chapter": 3,
+      "chapterTitle": "デュエルの終了",
+      "clause": "3",
+      "file": "03-03-デュエルの終了.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第3章 4",
+      "part": 3,
+      "chapter": 3,
+      "chapterTitle": "デュエルの終了",
+      "clause": "4",
+      "file": "03-03-デュエルの終了.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第3章 5",
+      "part": 3,
+      "chapter": 3,
+      "chapterTitle": "デュエルの終了",
+      "clause": "5",
+      "file": "03-03-デュエルの終了.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第3章 6",
+      "part": 3,
+      "chapter": 3,
+      "chapterTitle": "デュエルの終了",
+      "clause": "6",
+      "file": "03-03-デュエルの終了.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第3章 7",
+      "part": 3,
+      "chapter": 3,
+      "chapterTitle": "デュエルの終了",
+      "clause": "7",
+      "file": "03-03-デュエルの終了.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第3章 8",
+      "part": 3,
+      "chapter": 3,
+      "chapterTitle": "デュエルの終了",
+      "clause": "8",
+      "file": "03-03-デュエルの終了.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第3章 9",
+      "part": 3,
+      "chapter": 3,
+      "chapterTitle": "デュエルの終了",
+      "clause": "9",
+      "file": "03-03-デュエルの終了.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第3章 10",
+      "part": 3,
+      "chapter": 3,
+      "chapterTitle": "デュエルの終了",
+      "clause": "10",
+      "file": "03-03-デュエルの終了.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第3章 11",
+      "part": 3,
+      "chapter": 3,
+      "chapterTitle": "デュエルの終了",
+      "clause": "11",
+      "file": "03-03-デュエルの終了.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第4章 1",
+      "part": 3,
+      "chapter": 4,
+      "chapterTitle": "デュエルの進行に関する原則",
+      "clause": "1",
+      "file": "03-04-デュエルの進行に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第4章 2",
+      "part": 3,
+      "chapter": 4,
+      "chapterTitle": "デュエルの進行に関する原則",
+      "clause": "2",
+      "file": "03-04-デュエルの進行に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第4章 3",
+      "part": 3,
+      "chapter": 4,
+      "chapterTitle": "デュエルの進行に関する原則",
+      "clause": "3",
+      "file": "03-04-デュエルの進行に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第4章 3-1",
+      "part": 3,
+      "chapter": 4,
+      "chapterTitle": "デュエルの進行に関する原則",
+      "clause": "3-1",
+      "file": "03-04-デュエルの進行に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第4章 3-2",
+      "part": 3,
+      "chapter": 4,
+      "chapterTitle": "デュエルの進行に関する原則",
+      "clause": "3-2",
+      "file": "03-04-デュエルの進行に関する原則.md",
+      "examples": 4
+    },
+    {
+      "citation": "第3部 第4章 4",
+      "part": 3,
+      "chapter": 4,
+      "chapterTitle": "デュエルの進行に関する原則",
+      "clause": "4",
+      "file": "03-04-デュエルの進行に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第4章 5",
+      "part": 3,
+      "chapter": 4,
+      "chapterTitle": "デュエルの進行に関する原則",
+      "clause": "5",
+      "file": "03-04-デュエルの進行に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第4章 6",
+      "part": 3,
+      "chapter": 4,
+      "chapterTitle": "デュエルの進行に関する原則",
+      "clause": "6",
+      "file": "03-04-デュエルの進行に関する原則.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第5章 1",
+      "part": 3,
+      "chapter": 5,
+      "chapterTitle": "リリースフェイズ",
+      "clause": "1",
+      "file": "03-05-リリースフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第5章 2",
+      "part": 3,
+      "chapter": 5,
+      "chapterTitle": "リリースフェイズ",
+      "clause": "2",
+      "file": "03-05-リリースフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第6章 1-1",
+      "part": 3,
+      "chapter": 6,
+      "chapterTitle": "ドローフェイズ",
+      "clause": "1-1",
+      "file": "03-06-ドローフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第6章 1-2",
+      "part": 3,
+      "chapter": 6,
+      "chapterTitle": "ドローフェイズ",
+      "clause": "1-2",
+      "file": "03-06-ドローフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第6章 2",
+      "part": 3,
+      "chapter": 6,
+      "chapterTitle": "ドローフェイズ",
+      "clause": "2",
+      "file": "03-06-ドローフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第7章 1",
+      "part": 3,
+      "chapter": 7,
+      "chapterTitle": "エネルギーフェイズ",
+      "clause": "1",
+      "file": "03-07-エネルギーフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第7章 2",
+      "part": 3,
+      "chapter": 7,
+      "chapterTitle": "エネルギーフェイズ",
+      "clause": "2",
+      "file": "03-07-エネルギーフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第8章 1",
+      "part": 3,
+      "chapter": 8,
+      "chapterTitle": "メインフェイズ",
+      "clause": "1",
+      "file": "03-08-メインフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第8章 2",
+      "part": 3,
+      "chapter": 8,
+      "chapterTitle": "メインフェイズ",
+      "clause": "2",
+      "file": "03-08-メインフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第8章 2-1",
+      "part": 3,
+      "chapter": 8,
+      "chapterTitle": "メインフェイズ",
+      "clause": "2-1",
+      "file": "03-08-メインフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第8章 2-2",
+      "part": 3,
+      "chapter": 8,
+      "chapterTitle": "メインフェイズ",
+      "clause": "2-2",
+      "file": "03-08-メインフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第8章 2-3",
+      "part": 3,
+      "chapter": 8,
+      "chapterTitle": "メインフェイズ",
+      "clause": "2-3",
+      "file": "03-08-メインフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第8章 2-4",
+      "part": 3,
+      "chapter": 8,
+      "chapterTitle": "メインフェイズ",
+      "clause": "2-4",
+      "file": "03-08-メインフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第8章 2-5",
+      "part": 3,
+      "chapter": 8,
+      "chapterTitle": "メインフェイズ",
+      "clause": "2-5",
+      "file": "03-08-メインフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第8章 2-6",
+      "part": 3,
+      "chapter": 8,
+      "chapterTitle": "メインフェイズ",
+      "clause": "2-6",
+      "file": "03-08-メインフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第8章 3",
+      "part": 3,
+      "chapter": 8,
+      "chapterTitle": "メインフェイズ",
+      "clause": "3",
+      "file": "03-08-メインフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第9章 1",
+      "part": 3,
+      "chapter": 9,
+      "chapterTitle": "スマッシュフェイズ",
+      "clause": "1",
+      "file": "03-09-スマッシュフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第9章 2",
+      "part": 3,
+      "chapter": 9,
+      "chapterTitle": "スマッシュフェイズ",
+      "clause": "2",
+      "file": "03-09-スマッシュフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第10章 1",
+      "part": 3,
+      "chapter": 10,
+      "chapterTitle": "リカバリーフェイズ",
+      "clause": "1",
+      "file": "03-10-リカバリーフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第10章 2",
+      "part": 3,
+      "chapter": 10,
+      "chapterTitle": "リカバリーフェイズ",
+      "clause": "2",
+      "file": "03-10-リカバリーフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第10章 3",
+      "part": 3,
+      "chapter": 10,
+      "chapterTitle": "リカバリーフェイズ",
+      "clause": "3",
+      "file": "03-10-リカバリーフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第10章 4",
+      "part": 3,
+      "chapter": 10,
+      "chapterTitle": "リカバリーフェイズ",
+      "clause": "4",
+      "file": "03-10-リカバリーフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第10章 5",
+      "part": 3,
+      "chapter": 10,
+      "chapterTitle": "リカバリーフェイズ",
+      "clause": "5",
+      "file": "03-10-リカバリーフェイズ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第11章 1",
+      "part": 3,
+      "chapter": 11,
+      "chapterTitle": "バトル",
+      "clause": "1",
+      "file": "03-11-バトル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第11章 1-1",
+      "part": 3,
+      "chapter": 11,
+      "chapterTitle": "バトル",
+      "clause": "1-1",
+      "file": "03-11-バトル.md",
+      "examples": 1
+    },
+    {
+      "citation": "第3部 第11章 1-2",
+      "part": 3,
+      "chapter": 11,
+      "chapterTitle": "バトル",
+      "clause": "1-2",
+      "file": "03-11-バトル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第11章 1-3",
+      "part": 3,
+      "chapter": 11,
+      "chapterTitle": "バトル",
+      "clause": "1-3",
+      "file": "03-11-バトル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第11章 2",
+      "part": 3,
+      "chapter": 11,
+      "chapterTitle": "バトル",
+      "clause": "2",
+      "file": "03-11-バトル.md",
+      "examples": 1
+    },
+    {
+      "citation": "第3部 第11章 2-1",
+      "part": 3,
+      "chapter": 11,
+      "chapterTitle": "バトル",
+      "clause": "2-1",
+      "file": "03-11-バトル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第11章 2-2",
+      "part": 3,
+      "chapter": 11,
+      "chapterTitle": "バトル",
+      "clause": "2-2",
+      "file": "03-11-バトル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第11章 3",
+      "part": 3,
+      "chapter": 11,
+      "chapterTitle": "バトル",
+      "clause": "3",
+      "file": "03-11-バトル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第11章 4",
+      "part": 3,
+      "chapter": 11,
+      "chapterTitle": "バトル",
+      "clause": "4",
+      "file": "03-11-バトル.md",
+      "examples": 1
+    },
+    {
+      "citation": "第3部 第11章 4-1",
+      "part": 3,
+      "chapter": 11,
+      "chapterTitle": "バトル",
+      "clause": "4-1",
+      "file": "03-11-バトル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第11章 5",
+      "part": 3,
+      "chapter": 11,
+      "chapterTitle": "バトル",
+      "clause": "5",
+      "file": "03-11-バトル.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第12章 1",
+      "part": 3,
+      "chapter": 12,
+      "chapterTitle": "第１バトルステップ",
+      "clause": "1",
+      "file": "03-12-第１バトルステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第13章 1",
+      "part": 3,
+      "chapter": 13,
+      "chapterTitle": "第１ダメージステップ",
+      "clause": "1",
+      "file": "03-13-第１ダメージステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第13章 2",
+      "part": 3,
+      "chapter": 13,
+      "chapterTitle": "第１ダメージステップ",
+      "clause": "2",
+      "file": "03-13-第１ダメージステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第14章 1",
+      "part": 3,
+      "chapter": 14,
+      "chapterTitle": "第２バトルステップ",
+      "clause": "1",
+      "file": "03-14-第２バトルステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第15章 1",
+      "part": 3,
+      "chapter": 15,
+      "chapterTitle": "第２ダメージステップ",
+      "clause": "1",
+      "file": "03-15-第２ダメージステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第15章 2",
+      "part": 3,
+      "chapter": 15,
+      "chapterTitle": "第２ダメージステップ",
+      "clause": "2",
+      "file": "03-15-第２ダメージステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第16章 1",
+      "part": 3,
+      "chapter": 16,
+      "chapterTitle": "バトル終了ステップ",
+      "clause": "1",
+      "file": "03-16-バトル終了ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第16章 1-1",
+      "part": 3,
+      "chapter": 16,
+      "chapterTitle": "バトル終了ステップ",
+      "clause": "1-1",
+      "file": "03-16-バトル終了ステップ.md",
+      "examples": 1
+    },
+    {
+      "citation": "第3部 第16章 2-1",
+      "part": 3,
+      "chapter": 16,
+      "chapterTitle": "バトル終了ステップ",
+      "clause": "2-1",
+      "file": "03-16-バトル終了ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第16章 2-2",
+      "part": 3,
+      "chapter": 16,
+      "chapterTitle": "バトル終了ステップ",
+      "clause": "2-2",
+      "file": "03-16-バトル終了ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第16章 2-3",
+      "part": 3,
+      "chapter": 16,
+      "chapterTitle": "バトル終了ステップ",
+      "clause": "2-3",
+      "file": "03-16-バトル終了ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第16章 3",
+      "part": 3,
+      "chapter": 16,
+      "chapterTitle": "バトル終了ステップ",
+      "clause": "3",
+      "file": "03-16-バトル終了ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第16章 4",
+      "part": 3,
+      "chapter": 16,
+      "chapterTitle": "バトル終了ステップ",
+      "clause": "4",
+      "file": "03-16-バトル終了ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第17章 1",
+      "part": 3,
+      "chapter": 17,
+      "chapterTitle": "スマッシュ判定",
+      "clause": "1",
+      "file": "03-17-スマッシュ判定.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第17章 2",
+      "part": 3,
+      "chapter": 17,
+      "chapterTitle": "スマッシュ判定",
+      "clause": "2",
+      "file": "03-17-スマッシュ判定.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第17章 2-1",
+      "part": 3,
+      "chapter": 17,
+      "chapterTitle": "スマッシュ判定",
+      "clause": "2-1",
+      "file": "03-17-スマッシュ判定.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第17章 2-2",
+      "part": 3,
+      "chapter": 17,
+      "chapterTitle": "スマッシュ判定",
+      "clause": "2-2",
+      "file": "03-17-スマッシュ判定.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第17章 3",
+      "part": 3,
+      "chapter": 17,
+      "chapterTitle": "スマッシュ判定",
+      "clause": "3",
+      "file": "03-17-スマッシュ判定.md",
+      "examples": 2
+    },
+    {
+      "citation": "第3部 第17章 4",
+      "part": 3,
+      "chapter": 17,
+      "chapterTitle": "スマッシュ判定",
+      "clause": "4",
+      "file": "03-17-スマッシュ判定.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第18章 1",
+      "part": 3,
+      "chapter": 18,
+      "chapterTitle": "回復ステップ",
+      "clause": "1",
+      "file": "03-18-回復ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第18章 1-1",
+      "part": 3,
+      "chapter": 18,
+      "chapterTitle": "回復ステップ",
+      "clause": "1-1",
+      "file": "03-18-回復ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第19章 1",
+      "part": 3,
+      "chapter": 19,
+      "chapterTitle": "希望ステップ",
+      "clause": "1",
+      "file": "03-19-希望ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第19章 1-1",
+      "part": 3,
+      "chapter": 19,
+      "chapterTitle": "希望ステップ",
+      "clause": "1-1",
+      "file": "03-19-希望ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第19章 1-2",
+      "part": 3,
+      "chapter": 19,
+      "chapterTitle": "希望ステップ",
+      "clause": "1-2",
+      "file": "03-19-希望ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第20章 1",
+      "part": 3,
+      "chapter": 20,
+      "chapterTitle": "確定ステップ",
+      "clause": "1",
+      "file": "03-20-確定ステップ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第3部 第20章 1-1",
+      "part": 3,
+      "chapter": 20,
+      "chapterTitle": "確定ステップ",
+      "clause": "1-1",
+      "file": "03-20-確定ステップ.md",
+      "examples": 5
+    },
+    {
+      "citation": "第4部 第1章 1",
+      "part": 4,
+      "chapter": 1,
+      "chapterTitle": "能力と効果",
+      "clause": "1",
+      "file": "04-01-能力と効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第1章 2",
+      "part": 4,
+      "chapter": 1,
+      "chapterTitle": "能力と効果",
+      "clause": "2",
+      "file": "04-01-能力と効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第1章 3",
+      "part": 4,
+      "chapter": 1,
+      "chapterTitle": "能力と効果",
+      "clause": "3",
+      "file": "04-01-能力と効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第1章 4",
+      "part": 4,
+      "chapter": 1,
+      "chapterTitle": "能力と効果",
+      "clause": "4",
+      "file": "04-01-能力と効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第1章 5",
+      "part": 4,
+      "chapter": 1,
+      "chapterTitle": "能力と効果",
+      "clause": "5",
+      "file": "04-01-能力と効果.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第1章 6",
+      "part": 4,
+      "chapter": 1,
+      "chapterTitle": "能力と効果",
+      "clause": "6",
+      "file": "04-01-能力と効果.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第2章 1",
+      "part": 4,
+      "chapter": 2,
+      "chapterTitle": "起動型能力",
+      "clause": "1",
+      "file": "04-02-起動型能力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第2章 2",
+      "part": 4,
+      "chapter": 2,
+      "chapterTitle": "起動型能力",
+      "clause": "2",
+      "file": "04-02-起動型能力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第2章 3",
+      "part": 4,
+      "chapter": 2,
+      "chapterTitle": "起動型能力",
+      "clause": "3",
+      "file": "04-02-起動型能力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第2章 4",
+      "part": 4,
+      "chapter": 2,
+      "chapterTitle": "起動型能力",
+      "clause": "4",
+      "file": "04-02-起動型能力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第2章 5",
+      "part": 4,
+      "chapter": 2,
+      "chapterTitle": "起動型能力",
+      "clause": "5",
+      "file": "04-02-起動型能力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第3章 1",
+      "part": 4,
+      "chapter": 3,
+      "chapterTitle": "誘発型能力",
+      "clause": "1",
+      "file": "04-03-誘発型能力.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第3章 2",
+      "part": 4,
+      "chapter": 3,
+      "chapterTitle": "誘発型能力",
+      "clause": "2",
+      "file": "04-03-誘発型能力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第3章 3",
+      "part": 4,
+      "chapter": 3,
+      "chapterTitle": "誘発型能力",
+      "clause": "3",
+      "file": "04-03-誘発型能力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第3章 4",
+      "part": 4,
+      "chapter": 3,
+      "chapterTitle": "誘発型能力",
+      "clause": "4",
+      "file": "04-03-誘発型能力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第3章 4-1",
+      "part": 4,
+      "chapter": 3,
+      "chapterTitle": "誘発型能力",
+      "clause": "4-1",
+      "file": "04-03-誘発型能力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第4章 1",
+      "part": 4,
+      "chapter": 4,
+      "chapterTitle": "常在型能力",
+      "clause": "1",
+      "file": "04-04-常在型能力.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第4章 2",
+      "part": 4,
+      "chapter": 4,
+      "chapterTitle": "常在型能力",
+      "clause": "2",
+      "file": "04-04-常在型能力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第4章 3",
+      "part": 4,
+      "chapter": 4,
+      "chapterTitle": "常在型能力",
+      "clause": "3",
+      "file": "04-04-常在型能力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第5章 1",
+      "part": 4,
+      "chapter": 5,
+      "chapterTitle": "優先権",
+      "clause": "1",
+      "file": "04-05-優先権.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第5章 2",
+      "part": 4,
+      "chapter": 5,
+      "chapterTitle": "優先権",
+      "clause": "2",
+      "file": "04-05-優先権.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第5章 3",
+      "part": 4,
+      "chapter": 5,
+      "chapterTitle": "優先権",
+      "clause": "3",
+      "file": "04-05-優先権.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 1",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "1",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 1-1",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "1-1",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 1-2",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "1-2",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 1-3",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "1-3",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 1-4",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "1-4",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 1-5",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "1-5",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 2",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "2",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 2-1",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "2-1",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 2-2",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "2-2",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 2-3",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "2-3",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 2-4",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "2-4",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第6章 2-5",
+      "part": 4,
+      "chapter": 6,
+      "chapterTitle": "カードのプレイ、トラップの発動、起動型能力の起動",
+      "clause": "2-5",
+      "file": "04-06-カードのプレイ、トラップの発動、起動型能力の起動.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第7章 1",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "1",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第7章 2",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "2",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第7章 3",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "3",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第7章 4",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "4",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第7章 4-1",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "4-1",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第7章 4-2",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "4-2",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第7章 5",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "5",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第7章 6",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "6",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第7章 7",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "7",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第7章 8",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "8",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第7章 9",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "9",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第7章 10",
+      "part": 4,
+      "chapter": 7,
+      "chapterTitle": "誘発型能力の誘発",
+      "clause": "10",
+      "file": "04-07-誘発型能力の誘発.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第8章 1",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "1",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第8章 1-1",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "1-1",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第8章 2",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "2",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第8章 2-1",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "2-1",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第8章 2-2",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "2-2",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第8章 2-3",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "2-3",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第8章 2-4",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "2-4",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第8章 2-5",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "2-5",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第8章 2-6",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "2-6",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第8章 2-7",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "2-7",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第8章 3",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "3",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第8章 4",
+      "part": 4,
+      "chapter": 8,
+      "chapterTitle": "カード、トラップ、起動型能力、誘発型能力の解決",
+      "clause": "4",
+      "file": "04-08-カード、トラップ、起動型能力、誘発型能力の解決.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第9章 1",
+      "part": 4,
+      "chapter": 9,
+      "chapterTitle": "カード、起動型能力、誘発型能力の無効化",
+      "clause": "1",
+      "file": "04-09-カード、起動型能力、誘発型能力の無効化.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第9章 2",
+      "part": 4,
+      "chapter": 9,
+      "chapterTitle": "カード、起動型能力、誘発型能力の無効化",
+      "clause": "2",
+      "file": "04-09-カード、起動型能力、誘発型能力の無効化.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第9章 3",
+      "part": 4,
+      "chapter": 9,
+      "chapterTitle": "カード、起動型能力、誘発型能力の無効化",
+      "clause": "3",
+      "file": "04-09-カード、起動型能力、誘発型能力の無効化.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第10章 1",
+      "part": 4,
+      "chapter": 10,
+      "chapterTitle": "効果",
+      "clause": "1",
+      "file": "04-10-効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第10章 2",
+      "part": 4,
+      "chapter": 10,
+      "chapterTitle": "効果",
+      "clause": "2",
+      "file": "04-10-効果.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第11章 1",
+      "part": 4,
+      "chapter": 11,
+      "chapterTitle": "単発効果",
+      "clause": "1",
+      "file": "04-11-単発効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第12章 1",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "1",
+      "file": "04-12-継続効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第12章 2",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "2",
+      "file": "04-12-継続効果.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第12章 3",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "3",
+      "file": "04-12-継続効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第12章 3-1",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "3-1",
+      "file": "04-12-継続効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第12章 3-2",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "3-2",
+      "file": "04-12-継続効果.md",
+      "examples": 2
+    },
+    {
+      "citation": "第4部 第12章 3-3",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "3-3",
+      "file": "04-12-継続効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第12章 4",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "4",
+      "file": "04-12-継続効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第12章 4-1",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "4-1",
+      "file": "04-12-継続効果.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第12章 4-2",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "4-2",
+      "file": "04-12-継続効果.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第12章 5",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "5",
+      "file": "04-12-継続効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第12章 5-1",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "5-1",
+      "file": "04-12-継続効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第12章 5-2",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "5-2",
+      "file": "04-12-継続効果.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第12章 5-3",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "5-3",
+      "file": "04-12-継続効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第12章 5-4",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "5-4",
+      "file": "04-12-継続効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第12章 5-5",
+      "part": 4,
+      "chapter": 12,
+      "chapterTitle": "継続効果",
+      "clause": "5-5",
+      "file": "04-12-継続効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第13章 1",
+      "part": 4,
+      "chapter": 13,
+      "chapterTitle": "置換効果",
+      "clause": "1",
+      "file": "04-13-置換効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第13章 2",
+      "part": 4,
+      "chapter": 13,
+      "chapterTitle": "置換効果",
+      "clause": "2",
+      "file": "04-13-置換効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第13章 3",
+      "part": 4,
+      "chapter": 13,
+      "chapterTitle": "置換効果",
+      "clause": "3",
+      "file": "04-13-置換効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第13章 4",
+      "part": 4,
+      "chapter": 13,
+      "chapterTitle": "置換効果",
+      "clause": "4",
+      "file": "04-13-置換効果.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第13章 5",
+      "part": 4,
+      "chapter": 13,
+      "chapterTitle": "置換効果",
+      "clause": "5",
+      "file": "04-13-置換効果.md",
+      "examples": 1
+    },
+    {
+      "citation": "第4部 第13章 5-1",
+      "part": 4,
+      "chapter": 13,
+      "chapterTitle": "置換効果",
+      "clause": "5-1",
+      "file": "04-13-置換効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第13章 6",
+      "part": 4,
+      "chapter": 13,
+      "chapterTitle": "置換効果",
+      "clause": "6",
+      "file": "04-13-置換効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第13章 7",
+      "part": 4,
+      "chapter": 13,
+      "chapterTitle": "置換効果",
+      "clause": "7",
+      "file": "04-13-置換効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第13章 7-1",
+      "part": 4,
+      "chapter": 13,
+      "chapterTitle": "置換効果",
+      "clause": "7-1",
+      "file": "04-13-置換効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第13章 7-2",
+      "part": 4,
+      "chapter": 13,
+      "chapterTitle": "置換効果",
+      "clause": "7-2",
+      "file": "04-13-置換効果.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 1",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "1",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 2",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "2",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 3",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "3",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-1",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-1",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-2",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-2",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-3",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-3",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-4",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-4",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-4-1",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-4-1",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-4-2",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-4-2",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-5",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-5",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-6",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-6",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-7",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-7",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-8",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-8",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-9",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-9",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-10",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-10",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-11",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-11",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-12",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-12",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-13",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-13",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第14章 4-14",
+      "part": 4,
+      "chapter": 14,
+      "chapterTitle": "ルールエフェクト",
+      "clause": "4-14",
+      "file": "04-14-ルールエフェクト.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第15章 1",
+      "part": 4,
+      "chapter": 15,
+      "chapterTitle": "無限ループ",
+      "clause": "1",
+      "file": "04-15-無限ループ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第15章 2",
+      "part": 4,
+      "chapter": 15,
+      "chapterTitle": "無限ループ",
+      "clause": "2",
+      "file": "04-15-無限ループ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第15章 3",
+      "part": 4,
+      "chapter": 15,
+      "chapterTitle": "無限ループ",
+      "clause": "3",
+      "file": "04-15-無限ループ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第15章 4",
+      "part": 4,
+      "chapter": 15,
+      "chapterTitle": "無限ループ",
+      "clause": "4",
+      "file": "04-15-無限ループ.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第16章 1",
+      "part": 4,
+      "chapter": 16,
+      "chapterTitle": "不適正な行動の取り消し",
+      "clause": "1",
+      "file": "04-16-不適正な行動の取り消し.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第16章 2",
+      "part": 4,
+      "chapter": 16,
+      "chapterTitle": "不適正な行動の取り消し",
+      "clause": "2",
+      "file": "04-16-不適正な行動の取り消し.md",
+      "examples": 0
+    },
+    {
+      "citation": "第4部 第16章 3",
+      "part": 4,
+      "chapter": 16,
+      "chapterTitle": "不適正な行動の取り消し",
+      "clause": "3",
+      "file": "04-16-不適正な行動の取り消し.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第1章 1",
+      "part": 5,
+      "chapter": 1,
+      "chapterTitle": "夢",
+      "clause": "1",
+      "file": "05-01-夢.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第1章 1-1",
+      "part": 5,
+      "chapter": 1,
+      "chapterTitle": "夢",
+      "clause": "1-1",
+      "file": "05-01-夢.md",
+      "examples": 3
+    },
+    {
+      "citation": "第5部 第1章 2",
+      "part": 5,
+      "chapter": 1,
+      "chapterTitle": "夢",
+      "clause": "2",
+      "file": "05-01-夢.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第2章 1",
+      "part": 5,
+      "chapter": 2,
+      "chapterTitle": "勇気",
+      "clause": "1",
+      "file": "05-02-勇気.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第2章 2",
+      "part": 5,
+      "chapter": 2,
+      "chapterTitle": "勇気",
+      "clause": "2",
+      "file": "05-02-勇気.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第2章 3",
+      "part": 5,
+      "chapter": 2,
+      "chapterTitle": "勇気",
+      "clause": "3",
+      "file": "05-02-勇気.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第2章 4",
+      "part": 5,
+      "chapter": 2,
+      "chapterTitle": "勇気",
+      "clause": "4",
+      "file": "05-02-勇気.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第3章 1",
+      "part": 5,
+      "chapter": 3,
+      "chapterTitle": "希望",
+      "clause": "1",
+      "file": "05-03-希望.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第3章 2",
+      "part": 5,
+      "chapter": 3,
+      "chapterTitle": "希望",
+      "clause": "2",
+      "file": "05-03-希望.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第3章 3",
+      "part": 5,
+      "chapter": 3,
+      "chapterTitle": "希望",
+      "clause": "3",
+      "file": "05-03-希望.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第4章 1",
+      "part": 5,
+      "chapter": 4,
+      "chapterTitle": "信頼",
+      "clause": "1",
+      "file": "05-04-信頼.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第4章 2",
+      "part": 5,
+      "chapter": 4,
+      "chapterTitle": "信頼",
+      "clause": "2",
+      "file": "05-04-信頼.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第4章 3",
+      "part": 5,
+      "chapter": 4,
+      "chapterTitle": "信頼",
+      "clause": "3",
+      "file": "05-04-信頼.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第5章 1",
+      "part": 5,
+      "chapter": 5,
+      "chapterTitle": "友情",
+      "clause": "1",
+      "file": "05-05-友情.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第5章 2",
+      "part": 5,
+      "chapter": 5,
+      "chapterTitle": "友情",
+      "clause": "2",
+      "file": "05-05-友情.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第5章 3",
+      "part": 5,
+      "chapter": 5,
+      "chapterTitle": "友情",
+      "clause": "3",
+      "file": "05-05-友情.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第6章 1",
+      "part": 5,
+      "chapter": 6,
+      "chapterTitle": "根性",
+      "clause": "1",
+      "file": "05-06-根性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第6章 2",
+      "part": 5,
+      "chapter": 6,
+      "chapterTitle": "根性",
+      "clause": "2",
+      "file": "05-06-根性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第6章 3",
+      "part": 5,
+      "chapter": 6,
+      "chapterTitle": "根性",
+      "clause": "3",
+      "file": "05-06-根性.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第7章 1",
+      "part": 5,
+      "chapter": 7,
+      "chapterTitle": "決意",
+      "clause": "1",
+      "file": "05-07-決意.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第7章 1-1",
+      "part": 5,
+      "chapter": 7,
+      "chapterTitle": "決意",
+      "clause": "1-1",
+      "file": "05-07-決意.md",
+      "examples": 3
+    },
+    {
+      "citation": "第5部 第7章 2",
+      "part": 5,
+      "chapter": 7,
+      "chapterTitle": "決意",
+      "clause": "2",
+      "file": "05-07-決意.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第7章 3",
+      "part": 5,
+      "chapter": 7,
+      "chapterTitle": "決意",
+      "clause": "3",
+      "file": "05-07-決意.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第8章 1",
+      "part": 5,
+      "chapter": 8,
+      "chapterTitle": "元気",
+      "clause": "1",
+      "file": "05-08-元気.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第8章 2",
+      "part": 5,
+      "chapter": 8,
+      "chapterTitle": "元気",
+      "clause": "2",
+      "file": "05-08-元気.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第9章 1",
+      "part": 5,
+      "chapter": 9,
+      "chapterTitle": "気合",
+      "clause": "1",
+      "file": "05-09-気合.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第9章 2",
+      "part": 5,
+      "chapter": 9,
+      "chapterTitle": "気合",
+      "clause": "2",
+      "file": "05-09-気合.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第9章 3",
+      "part": 5,
+      "chapter": 9,
+      "chapterTitle": "気合",
+      "clause": "3",
+      "file": "05-09-気合.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第10章 1",
+      "part": 5,
+      "chapter": 10,
+      "chapterTitle": "才気",
+      "clause": "1",
+      "file": "05-10-才気.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第10章 2",
+      "part": 5,
+      "chapter": 10,
+      "chapterTitle": "才気",
+      "clause": "2",
+      "file": "05-10-才気.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第11章 1",
+      "part": 5,
+      "chapter": 11,
+      "chapterTitle": "真剣",
+      "clause": "1",
+      "file": "05-11-真剣.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第11章 2",
+      "part": 5,
+      "chapter": 11,
+      "chapterTitle": "真剣",
+      "clause": "2",
+      "file": "05-11-真剣.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第11章 3",
+      "part": 5,
+      "chapter": 11,
+      "chapterTitle": "真剣",
+      "clause": "3",
+      "file": "05-11-真剣.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第12章 1",
+      "part": 5,
+      "chapter": 12,
+      "chapterTitle": "奇跡",
+      "clause": "1",
+      "file": "05-12-奇跡.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第12章 2",
+      "part": 5,
+      "chapter": 12,
+      "chapterTitle": "奇跡",
+      "clause": "2",
+      "file": "05-12-奇跡.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第12章 3",
+      "part": 5,
+      "chapter": 12,
+      "chapterTitle": "奇跡",
+      "clause": "3",
+      "file": "05-12-奇跡.md",
+      "examples": 5
+    },
+    {
+      "citation": "第5部 第13章 1",
+      "part": 5,
+      "chapter": 13,
+      "chapterTitle": "魅力",
+      "clause": "1",
+      "file": "05-13-魅力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第13章 2",
+      "part": 5,
+      "chapter": 13,
+      "chapterTitle": "魅力",
+      "clause": "2",
+      "file": "05-13-魅力.md",
+      "examples": 3
+    },
+    {
+      "citation": "第5部 第14章 1",
+      "part": 5,
+      "chapter": 14,
+      "chapterTitle": "未来",
+      "clause": "1",
+      "file": "05-14-未来.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第14章 1-1",
+      "part": 5,
+      "chapter": 14,
+      "chapterTitle": "未来",
+      "clause": "1-1",
+      "file": "05-14-未来.md",
+      "examples": 3
+    },
+    {
+      "citation": "第5部 第14章 2",
+      "part": 5,
+      "chapter": 14,
+      "chapterTitle": "未来",
+      "clause": "2",
+      "file": "05-14-未来.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第14章 3",
+      "part": 5,
+      "chapter": 14,
+      "chapterTitle": "未来",
+      "clause": "3",
+      "file": "05-14-未来.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第14章 4",
+      "part": 5,
+      "chapter": 14,
+      "chapterTitle": "未来",
+      "clause": "4",
+      "file": "05-14-未来.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第15章 1",
+      "part": 5,
+      "chapter": 15,
+      "chapterTitle": "幸運",
+      "clause": "1",
+      "file": "05-15-幸運.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第15章 2",
+      "part": 5,
+      "chapter": 15,
+      "chapterTitle": "幸運",
+      "clause": "2",
+      "file": "05-15-幸運.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第16章 1",
+      "part": 5,
+      "chapter": 16,
+      "chapterTitle": "経験",
+      "clause": "1",
+      "file": "05-16-経験.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第16章 1-1",
+      "part": 5,
+      "chapter": 16,
+      "chapterTitle": "経験",
+      "clause": "1-1",
+      "file": "05-16-経験.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第16章 1-2",
+      "part": 5,
+      "chapter": 16,
+      "chapterTitle": "経験",
+      "clause": "1-2",
+      "file": "05-16-経験.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第16章 1-3",
+      "part": 5,
+      "chapter": 16,
+      "chapterTitle": "経験",
+      "clause": "1-3",
+      "file": "05-16-経験.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第16章 2",
+      "part": 5,
+      "chapter": 16,
+      "chapterTitle": "経験",
+      "clause": "2",
+      "file": "05-16-経験.md",
+      "examples": 4
+    },
+    {
+      "citation": "第5部 第17章 1",
+      "part": 5,
+      "chapter": 17,
+      "chapterTitle": "努力",
+      "clause": "1",
+      "file": "05-17-努力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第17章 2",
+      "part": 5,
+      "chapter": 17,
+      "chapterTitle": "努力",
+      "clause": "2",
+      "file": "05-17-努力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第17章 3",
+      "part": 5,
+      "chapter": 17,
+      "chapterTitle": "努力",
+      "clause": "3",
+      "file": "05-17-努力.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第18章 1",
+      "part": 5,
+      "chapter": 18,
+      "chapterTitle": "愛",
+      "clause": "1",
+      "file": "05-18-愛.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第18章 1-1",
+      "part": 5,
+      "chapter": 18,
+      "chapterTitle": "愛",
+      "clause": "1-1",
+      "file": "05-18-愛.md",
+      "examples": 3
+    },
+    {
+      "citation": "第5部 第18章 2",
+      "part": 5,
+      "chapter": 18,
+      "chapterTitle": "愛",
+      "clause": "2",
+      "file": "05-18-愛.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第18章 3",
+      "part": 5,
+      "chapter": 18,
+      "chapterTitle": "愛",
+      "clause": "3",
+      "file": "05-18-愛.md",
+      "examples": 1
+    },
+    {
+      "citation": "第5部 第19章 1",
+      "part": 5,
+      "chapter": 19,
+      "chapterTitle": "親切",
+      "clause": "1",
+      "file": "05-19-親切.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第19章 2",
+      "part": 5,
+      "chapter": 19,
+      "chapterTitle": "親切",
+      "clause": "2",
+      "file": "05-19-親切.md",
+      "examples": 2
+    },
+    {
+      "citation": "第5部 第20章 1",
+      "part": 5,
+      "chapter": 20,
+      "chapterTitle": "苦労",
+      "clause": "1",
+      "file": "05-20-苦労.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第20章 2",
+      "part": 5,
+      "chapter": 20,
+      "chapterTitle": "苦労",
+      "clause": "2",
+      "file": "05-20-苦労.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第21章 1",
+      "part": 5,
+      "chapter": 21,
+      "chapterTitle": "変",
+      "clause": "1",
+      "file": "05-21-変.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第21章 2",
+      "part": 5,
+      "chapter": 21,
+      "chapterTitle": "変",
+      "clause": "2",
+      "file": "05-21-変.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第22章 1",
+      "part": 5,
+      "chapter": 22,
+      "chapterTitle": "超必殺技",
+      "clause": "1",
+      "file": "05-22-超必殺技.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第22章 1-1",
+      "part": 5,
+      "chapter": 22,
+      "chapterTitle": "超必殺技",
+      "clause": "1-1",
+      "file": "05-22-超必殺技.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第22章 1-2",
+      "part": 5,
+      "chapter": 22,
+      "chapterTitle": "超必殺技",
+      "clause": "1-2",
+      "file": "05-22-超必殺技.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第22章 2",
+      "part": 5,
+      "chapter": 22,
+      "chapterTitle": "超必殺技",
+      "clause": "2",
+      "file": "05-22-超必殺技.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第23章 1",
+      "part": 5,
+      "chapter": 23,
+      "chapterTitle": "約束",
+      "clause": "1",
+      "file": "05-23-約束.md",
+      "examples": 0
+    },
+    {
+      "citation": "第5部 第23章 2",
+      "part": 5,
+      "chapter": 23,
+      "chapterTitle": "約束",
+      "clause": "2",
+      "file": "05-23-約束.md",
+      "examples": 0
+    }
+  ]
+}
