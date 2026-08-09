@@ -50,15 +50,33 @@ export interface TriggeredAbility {
 }
 
 /**
+ * キーワード能力「夢」（総合ルール 第5部 第1章）。
+ *
+ * 「このカードは、プランゾーンからプレイできる。」という常在型能力であり、プランゾーンに
+ * ある時に効果を発揮する（同 1・2）。効果を持たないのは、カードをプレイできるゾーンに
+ * 関するルールを変更するだけで、解決される能力ではないためである。
+ *
+ * 総合ルール 第5部には 23 のキーワード能力があるが、それぞれ能力の種類も働き方も違う。
+ * ひとまとめの「キーワード能力」型にせず、実装したものから 1 つずつ型を足していく。
+ */
+export interface DreamAbility {
+  readonly kind: '常在型能力'
+  readonly keyword: '夢'
+}
+
+/**
  * テキストによって決められた、カードが行うことまたは行えること
  * （総合ルール 第4部 第1章 1）。
  *
- * 能力には起動型・誘発型・常在型の 3 つがある（同 2）が、起動型はコストの支払いを、
- * 常在型は継続効果を先に必要とするため、まだ誘発型しかない。
+ * 能力には起動型・誘発型・常在型の 3 つがある（同 2）が、起動型はコストを持つ能力を
+ * 書けるようになってから足す。常在型は「夢」だけで、継続効果を持つものはまだ無い。
  */
-export type Ability = TriggeredAbility
+export type Ability = TriggeredAbility | DreamAbility
 
 /** 誘発型能力を 1 つ書く。 */
 export function triggeredAbility(event: TriggerEvent, effect: Effect): TriggeredAbility {
   return { kind: '誘発型能力', event, effect }
 }
+
+/** 「夢」。何回書いても同じものなので 1 つを使い回す。 */
+export const dream: DreamAbility = { kind: '常在型能力', keyword: '夢' }

@@ -2,9 +2,12 @@ import type { TriggeredAbility } from './ability.js'
 import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
+import type { Orientation } from './orientation.js'
+import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
 import { firstTurn } from './turn.js'
 import type { Turn } from './turn.js'
+import { PLAYER_ZONES } from './zone.js'
 import type { PlayerZone } from './zone.js'
 
 /**
@@ -27,15 +30,22 @@ export interface CardInstance {
   readonly owner: Player
   /** 支配者。効果によって持ち主と食い違うことがある。 */
   readonly controller: Player
+  /**
+   * リリース状態かフリーズ状態か。
+   *
+   * 向きを持つのはスクエア・トラップゾーン・エネルギーゾーン・スマッシュゾーンにある
+   * カードだけである（総合ルール 第2部 第24章 1）。それ以外のゾーンにある間、この値に
+   * 意味はない。ゾーンごとに持たせず 1 枚のカードの属性にしているのは、どの向きで置かれる
+   * かがゾーン移動のたびに決まる（同 第21章 6-3・7-3・8-3・9-3）ためで、置く側が指定した
+   * 向きをそのまま持たせるほうが取り違えにくい。
+   */
+  readonly orientation: Orientation
 }
 
 /**
  * デュエルの進行中の状態すべて。ADR-0001 でいう「盤面」。
  *
  * すべての要素が読み取り専用で、盤面を変える関数は新しい盤面を返す。
- *
- * リゾルブゾーンはまだ持っていない。カードのプレイと組でしか意味を持たないため、
- * プレイを実装する時に足す。
  */
 export interface DuelState {
   /**
@@ -72,12 +82,32 @@ export interface DuelState {
    */
   readonly bank: readonly TriggeredInstance[]
   /**
+   * リゾルブゾーンにあるカード（総合ルール 第2部 第21章 12-1）。
+   *
+   * プレイされたストラテジー・超必殺ストラテジー！と、発動されたトラップが、解決されて
+   * いる間だけここに置かれる。解決の最後にリゾルブゾーンにあるなら持ち主の捨札に置かれる
+   * （同 12-3）が、解決の途中で効果によって別のゾーンへ動かされることもあるため、解決中の
+   * 置き場所を盤面が持つ必要がある。
+   *
+   * 両方のプレイヤーが共有するゾーンなので、`zones` ではなくここに置いている。
+   */
+  readonly resolveZone: readonly CardInstance[]
+  /**
    * 誘発したが、まだバンクに入っていない能力。
    *
    * 誘発した時点では何も起こらず、次にどちらかのプレイヤーが優先権を獲得する時に
    * まとめてバンクに入る（総合ルール 第4部 第7章 2・3）。その間の置き場所がここになる。
    */
   readonly triggered: readonly TriggeredInstance[]
+  /**
+   * 中央エリアのスクエアを指定してプレイされ、そのスクエアに置かれたユニット
+   * （総合ルール 第4部 第14章 4-9・4-10）。
+   *
+   * 中央エリアに置かれたことではなく「中央エリアを指定してプレイされた」ことが条件なので、
+   * 効果によって中央エリアに置かれたユニットと区別できるように、プレイした側が覚えておく
+   * 必要がある。次にルールエフェクトがチェックされる時に捨札に置かれ、この並びも空になる。
+   */
+  readonly playedIntoCenter: readonly CardId[]
 }
 
 /**
@@ -110,6 +140,8 @@ interface InstanceSpec {
   readonly owner: Player
   /** 省略した場合は持ち主が支配する。 */
   readonly controller?: Player
+  /** 省略した場合はリリース状態。カードは通常リリース状態で置かれる（総合ルール 第2部 第21章 6-3・7-3・9-3）。 */
+  readonly orientation?: Orientation
 }
 
 /** カードをデュエルに持ち込む。 */
@@ -119,6 +151,7 @@ export function instantiate(spec: InstanceSpec): CardInstance {
     card: spec.card,
     owner: spec.owner,
     controller: spec.controller ?? spec.owner,
+    orientation: spec.orientation ?? 'リリース',
   }
 }
 
@@ -133,7 +166,9 @@ export function emptyDuelState(): DuelState {
     zones: { 先攻: emptyZones(), 後攻: emptyZones() },
     turn: firstTurn(),
     bank: [],
+    resolveZone: [],
     triggered: [],
+    playedIntoCenter: [],
   }
 }
 
@@ -178,24 +213,126 @@ export function putOnSquare(state: DuelState, square: Square, card: CardInstance
   }
 }
 
+/** そのプレイヤーのそのゾーンにあるそのカード。そこになければ `undefined`。 */
+export function findInZone(
+  state: DuelState,
+  player: Player,
+  zone: PlayerZone,
+  id: CardId,
+): CardInstance | undefined {
+  return cardsIn(state, player, zone).find((card) => card.id === id)
+}
+
+/** リゾルブゾーンにあるカード（総合ルール 第2部 第21章 12-1）。 */
+export function cardsInResolveZone(state: DuelState): readonly CardInstance[] {
+  return state.resolveZone
+}
+
 /**
- * スクエアにあるカードを、そのプレイヤーのゾーンの一番上に移す。スクエアになければ
+ * スクエアにあるカードを、そのカードの持ち主のゾーンの一番上に移す。スクエアになければ
  * 盤面はそのまま。
  *
- * スクエアから出たカードの支配者は持ち主に戻る。「スクエアからスクエア」以外のゾーン移動を
- * したカードは新しいカードとして扱われ、以前のゾーンに関連した効果は失われる
- * （総合ルール 第2部 第21章 1-4）ため、支配者を移し替えていた効果もそこで切れる。
+ * スクエアを離れたカードだけを動かす。破壊やルールエフェクトの対象がすでにスクエアを
+ * 離れていた場合に、手札や捨札にあるそのカードまで動かしてしまわないためである。
  */
 export function moveFromSquareTo(state: DuelState, id: CardId, zone: PlayerZone): DuelState {
-  const card = findOnSquares(state, id)
-  if (card === undefined) return state
+  if (findOnSquares(state, id) === undefined) return state
+  return moveToZone(state, id, zone)
+}
 
-  const moved: CardInstance = { ...card, controller: card.owner }
-  const removed: DuelState = {
-    ...state,
-    squares: state.squares.map((cards) => (cards.includes(card) ? cards.filter((each) => each !== card) : cards)),
+/**
+ * カードをいまある場所から取り除いて、持ち主のゾーンの 1 番上に置く。どこにもなければ
+ * 盤面はそのまま。
+ *
+ * 持ち主以外のゾーンには動かせない。持ち主以外のゾーンに動かされる場合、代わりに持ち主の
+ * 該当するゾーンに動かされる（総合ルール 第2部 第21章 1-2）ためである。
+ *
+ * 動いたカードの支配者は持ち主に戻る。「スクエアからスクエア」以外のゾーン移動をした
+ * カードは新しいカードとして扱われ、以前のゾーンに関連した効果は失われる（同 1-4）ため、
+ * 支配者を移し替えていた効果もそこで切れる。
+ *
+ * 置かれる向きはリリース状態になる。エネルギーゾーン・スマッシュゾーン・トラップゾーンの
+ * いずれも、カードは通常リリース状態で置かれる（同 6-3・7-3・9-3）。フリーズ状態で置く
+ * 効果を書けるようになったら、向きを指定できるようにする。
+ */
+export function moveToZone(state: DuelState, id: CardId, zone: PlayerZone): DuelState {
+  const detached = detach(state, id)
+  if (detached === undefined) return state
+
+  const { card } = detached
+  const moved: CardInstance = { ...card, controller: card.owner, orientation: 'リリース' }
+  return putInZone(detached.state, card.owner, zone, [moved, ...cardsIn(detached.state, card.owner, zone)])
+}
+
+/**
+ * カードをいまある場所から取り除いてリゾルブゾーンに置く（総合ルール 第4部 第8章 2-1）。
+ * どこにもなければ盤面はそのまま。
+ *
+ * リゾルブゾーンは両方のプレイヤーが共有するゾーンなので、持ち主のゾーンに置き換える
+ * 規定（同 第2部 第21章 1-2）は働かない。支配者は、そのカードをプレイまたは発動した
+ * プレイヤーのまま変わらない。
+ */
+export function moveToResolveZone(state: DuelState, id: CardId): DuelState {
+  const detached = detach(state, id)
+  if (detached === undefined) return state
+
+  return { ...detached.state, resolveZone: [...detached.state.resolveZone, detached.card] }
+}
+
+/**
+ * カードをいまある場所から取り除いてスクエアに置く。どこにもなければ盤面はそのまま。
+ *
+ * スクエアに置かれる時、支配者と向きはその場で決まる。プレイされたユニットならプレイした
+ * プレイヤーの支配下でフリーズ状態（総合ルール 第2部 第20章 1-4、第21章 8-3）になる。
+ * 置くことそのものだけを行い、それが登場かどうかは呼ぶ側が決める（同 第20章 1-4-a）。
+ */
+export function moveToSquare(
+  state: DuelState,
+  id: CardId,
+  square: Square,
+  placement: { readonly controller: Player; readonly orientation: Orientation },
+): DuelState {
+  const detached = detach(state, id)
+  if (detached === undefined) return state
+
+  return putOnSquare(detached.state, square, { ...detached.card, ...placement })
+}
+
+/**
+ * カードをいまある場所から取り除く。どのゾーンにもスクエアにもなければ `undefined`。
+ *
+ * カードが同時に 2 か所にあることはないので、見つかったところから取り除けばよい。
+ */
+function detach(state: DuelState, id: CardId): { readonly state: DuelState; readonly card: CardInstance } | undefined {
+  const onSquare = findOnSquares(state, id)
+  if (onSquare !== undefined) {
+    return {
+      state: {
+        ...state,
+        squares: state.squares.map((cards) => cards.filter((each) => each !== onSquare)),
+      },
+      card: onSquare,
+    }
   }
-  return putInZone(removed, card.owner, zone, [moved, ...cardsIn(removed, card.owner, zone)])
+
+  const resolving = state.resolveZone.find((card) => card.id === id)
+  if (resolving !== undefined) {
+    return {
+      state: { ...state, resolveZone: state.resolveZone.filter((card) => card !== resolving) },
+      card: resolving,
+    }
+  }
+
+  for (const player of PLAYERS) {
+    for (const zone of PLAYER_ZONES) {
+      const cards = cardsIn(state, player, zone)
+      const found = cards.find((card) => card.id === id)
+      if (found !== undefined) {
+        return { state: putInZone(state, player, zone, cards.filter((card) => card !== found)), card: found }
+      }
+    }
+  }
+  return undefined
 }
 
 /**
@@ -217,19 +354,37 @@ export function putInZone(
 }
 
 /**
+ * 山札の 1 番上のカード。山札が空なら `undefined`。
+ *
+ * プランゾーンにカードがあれば、それが同時に山札の 1 番上のカードでもある
+ * （総合ルール 第2部 第21章 3-1）。
+ */
+export function topOfLibrary(state: DuelState, player: Player): CardInstance | undefined {
+  return cardsIn(state, player, 'プランゾーン')[0] ?? cardsIn(state, player, '山札')[0]
+}
+
+/**
  * 山札の 1 番上のカードを手札に加える。これを「カードを 1 枚引く」と表現する
  * （総合ルール 第2部 第21章 1-5）。
+ *
+ * プランゾーンにカードがあるなら、それが山札の 1 番上なのでそれを手札に加える。その後
+ * プランゾーンはなくなり、次に現れる山札の 1 番上のカードは裏向きのままになる（同 3-3）。
  *
  * 山札が空なら何も起こらない。山札が 0 枚になったプレイヤーが次に優先権が発生した時に
  * 敗北すること（総合ルール 第3部 第3章 2）は、引けないこととは別のルールエフェクトで
  * あり、デュエルの終了を実装する時に足す。
  */
 export function draw(state: DuelState, player: Player): DuelState {
-  const [top, ...rest] = cardsIn(state, player, '山札')
+  const top = topOfLibrary(state, player)
   if (top === undefined) return state
 
-  const taken = putInZone(state, player, '山札', rest)
-  return putInZone(taken, player, '手札', [...cardsIn(taken, player, '手札'), top])
+  const taken = detach(state, top.id)
+  if (taken === undefined) return state
+
+  return putInZone(taken.state, player, '手札', [
+    ...cardsIn(taken.state, player, '手札'),
+    { ...top, controller: top.owner },
+  ])
 }
 
 /** スクエアにあるそのカード。どのスクエアにもなければ `undefined`。 */

@@ -1,4 +1,5 @@
 import type { Ability } from './ability.js'
+import type { Effect } from './effect.js'
 
 /**
  * カードの色。レベルに含まれるエネルギー・シンボルの色と同じであり、カードの背景や枠の色
@@ -70,11 +71,30 @@ export interface UnitCard extends PrintedCard {
 /** プレイして効果を解決した後、持ち主の捨札に置かれるカード（総合ルール 第2部 第20章 2）。 */
 export interface StrategyCard extends PrintedCard {
   readonly type: 'ストラテジー' | '超必殺ストラテジー！'
+  /**
+   * 解決された時に発揮する効果（総合ルール 第2部 第10章 3-1）。
+   *
+   * `abilities` に入れていないのは、これが起動型・誘発型・常在型のどれでもない
+   * （同 第4部 第1章 2）ためである。プレイされて解決される時に、テキストに書かれている
+   * 順番の通りに指示に従う（同 第8章 2-2）のがこの効果にあたる。
+   *
+   * テキストが段落に分かれている場合は段落ごとに宣言と実行を行う（同 2-4）が、それが
+   * 見えるのは両方のプレイヤーが同時に選択や行動をする時だけなので、1 つの効果にまとめて
+   * 持つ。段落を分けて持つのは、その規定を実装する時でよい。
+   */
+  readonly effect: Effect
 }
 
 /** トラップゾーンに裏向きで置き、後から発動するカード（総合ルール 第2部 第20章 3）。 */
 export interface TrapCard extends PrintedCard {
   readonly type: 'トラップ'
+  /**
+   * 発動して解決された時に発揮する効果（総合ルール 第2部 第10章 3-2）。
+   *
+   * 《 》でくくられた発動条件のテキストはまだ持っていない。トリガーアイコンと組で
+   * 意味を持つため、トリガーアイコンを実装する時に足す。
+   */
+  readonly effect: Effect
 }
 
 export type Card = UnitCard | StrategyCard | TrapCard
@@ -111,7 +131,17 @@ interface UnitSpec extends CardSpec {
 
 interface StrategySpec extends CardSpec {
   readonly type?: 'ストラテジー' | '超必殺ストラテジー！'
+  /** 省略した場合は、解決しても何も起こらない。 */
+  readonly effect?: Effect
 }
+
+interface TrapSpec extends CardSpec {
+  /** 省略した場合は、発動して解決しても何も起こらない。 */
+  readonly effect?: Effect
+}
+
+/** 解決しても何も起こらない効果。効果を書いていないカードに使う。 */
+function* noEffect(): ReturnType<Effect> {}
 
 function printed<T extends CardType>(type: T, spec: CardSpec) {
   return {
@@ -130,9 +160,14 @@ export function defineUnit(spec: UnitSpec): UnitCard {
 }
 
 export function defineStrategy(spec: StrategySpec): StrategyCard {
-  return printed(spec.type ?? 'ストラテジー', spec)
+  return { ...printed(spec.type ?? 'ストラテジー', spec), effect: spec.effect ?? noEffect }
 }
 
-export function defineTrap(spec: CardSpec): TrapCard {
-  return printed('トラップ', spec)
+export function defineTrap(spec: TrapSpec): TrapCard {
+  return { ...printed('トラップ', spec), effect: spec.effect ?? noEffect }
+}
+
+/** そのカードが「夢」を持つか（総合ルール 第5部 第1章 2）。 */
+export function hasDream(card: Card): boolean {
+  return card.abilities.some((ability) => ability.kind === '常在型能力' && ability.keyword === '夢')
 }

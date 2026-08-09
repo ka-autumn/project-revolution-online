@@ -108,6 +108,19 @@ describe('引く', () => {
   it('山札が空なら何も起こらない', () => {
     expect(draw(emptyDuelState(), '先攻')).toEqual(emptyDuelState())
   })
+
+  // 総合ルール 第2部 第21章 3-1・3-3
+  it('プランゾーンにカードがあれば、それが山札の 1 番上なのでそれを引く', () => {
+    const plan = instantiate({ id: 'p1', card: testUnit, owner: '先攻' })
+    const planned = putInZone(library, '先攻', 'プランゾーン', [plan])
+
+    const drawn = draw(planned, '先攻')
+
+    expect(cardsIn(drawn, '先攻', '手札')).toEqual([plan])
+    // プランゾーンはなくなり、次に現れる山札の 1 番上のカードは裏向きのままになる。
+    expect(cardsIn(drawn, '先攻', 'プランゾーン')).toEqual([])
+    expect(cardsIn(drawn, '先攻', '山札')).toEqual([top, second])
+  })
 })
 
 describe('カードインスタンス', () => {
@@ -123,5 +136,10 @@ describe('カードインスタンス', () => {
 
     expect(unit.owner).toBe('先攻')
     expect(unit.controller).toBe('後攻')
+  })
+
+  // 総合ルール 第2部 第21章 6-3・7-3・9-3: カードは通常リリース状態で置かれる。
+  it('向きを指定しなければリリース状態になる', () => {
+    expect(instantiate({ id: 'u1', card: testUnit, owner: '先攻' }).orientation).toBe('リリース')
   })
 })

@@ -1,9 +1,12 @@
-export { TRIGGER_EVENTS, triggeredAbility } from './ability.js'
-export type { Ability, TriggeredAbility, TriggerEvent } from './ability.js'
-export { AREAS, BATTLE_SPACE, LINES, indexOfSquare } from './board.js'
+export { TRIGGER_EVENTS, dream, triggeredAbility } from './ability.js'
+export type { Ability, DreamAbility, TriggeredAbility, TriggerEvent } from './ability.js'
+export { discardTrap, placeEnergy, plan } from './action.js'
+export type { ActionOutcome, ActionViolation } from './action.js'
+export { AREAS, BATTLE_SPACE, LINES, areaOf, indexOfSquare } from './board.js'
 export type { Area, Line, Square, SquareIndex } from './board.js'
-export { CARD_TYPES, COLORS, defineStrategy, defineTrap, defineUnit, isStrategy } from './card.js'
+export { CARD_TYPES, COLORS, defineStrategy, defineTrap, defineUnit, hasDream, isStrategy } from './card.js'
 export type { Card, CardType, Color, StrategyCard, TrapCard, UnitCard } from './card.js'
+export { satisfiesLevel } from './cost.js'
 export {
   CONSTRUCTED_DECK_MINIMUM,
   SAME_NAME_MAXIMUM,
@@ -11,12 +14,22 @@ export {
   checkConstructedDeck,
 } from './deck.js'
 export type { Deck, DeckViolation } from './deck.js'
-export { cardsIn, cardsOn, draw, emptyDuelState, instantiate, putOnSquare } from './duel.js'
+export {
+  cardsIn,
+  cardsInResolveZone,
+  cardsOn,
+  draw,
+  emptyDuelState,
+  instantiate,
+  putOnSquare,
+} from './duel.js'
 export type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
 export { choose, destroy } from './effect.js'
 export type { DuelView, Effect, EffectStep, Instruction, UnitOnSquare } from './effect.js'
 export { ORIENTATIONS } from './orientation.js'
 export type { Orientation } from './orientation.js'
+export { activateTrap, playAsTrap, playCard } from './play.js'
+export type { PlayDeclaration } from './play.js'
 export { PLAYERS } from './player.js'
 export { passPriority } from './progress.js'
 export type { Player } from './player.js'

@@ -1,3 +1,5 @@
+import type { Player } from './player.js'
+
 /**
  * あるプレイヤーから見た、バトルスペースの横 1 列。3 つのスクエアからなる。
  *
@@ -57,6 +59,38 @@ export interface Square {
 export const BATTLE_SPACE: readonly Square[] = SQUARE_INDEXES.flatMap((row) =>
   SQUARE_INDEXES.map((column): Square => ({ row, column })),
 )
+
+/**
+ * 先攻のプレイヤーの味方エリアにあたる行。
+ *
+ * どちらの行を先攻の手前とするかは総合ルールが決めることではない。エリアの呼び名は
+ * 見るプレイヤーによって入れ替わる（総合ルール 第2部 第22章 6）だけで、盤面のどちら側に
+ * 座るかに意味は無いためである。行で識別する以上どちらかに決めておく必要があるので、
+ * 0 を先攻の手前とする。
+ */
+const HOME_ROW_OF_FIRST: SquareIndex = 0
+
+/** 中央エリアにあたる行。どちらのプレイヤーから見ても中央エリアである。 */
+const CENTER_ROW: SquareIndex = 1
+
+/**
+ * そのプレイヤーから見た、そのスクエアのあるエリア（総合ルール 第2部 第22章 6）。
+ *
+ * あるプレイヤーの味方エリアは相手の敵エリアになるため、同じスクエアでも見るプレイヤーに
+ * よって答えが変わる。ルールがエリアを指定する場合は、そのルールに従って行動する
+ * プレイヤーから見て判断する（同 6-1）。
+ */
+export function areaOf(player: Player, square: Square): Area {
+  if (square.row === CENTER_ROW) return '中央エリア'
+
+  const home = player === '先攻' ? HOME_ROW_OF_FIRST : oppositeRow(HOME_ROW_OF_FIRST)
+  return square.row === home ? '味方エリア' : '敵エリア'
+}
+
+/** 盤面の反対側の行。 */
+function oppositeRow(row: SquareIndex): SquareIndex {
+  return row === 0 ? 2 : 0
+}
 
 /**
  * そのスクエアが `BATTLE_SPACE` の何番目か。
