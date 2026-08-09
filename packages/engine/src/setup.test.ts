@@ -56,19 +56,19 @@ describe('デュエルの準備', () => {
     const { state, first } = prepared(20260809)
     const shuffledOfSeat0 = shuffle(decks[0], randomFromSeed(20260809))
     const shuffledOfSeat1 = shuffle(decks[1], shuffledOfSeat0.random)
-    const 先攻の山札 = (first === 0 ? shuffledOfSeat0 : shuffledOfSeat1).value.map((card) => card.name)
+    const shuffledDeck = (first === 0 ? shuffledOfSeat0 : shuffledOfSeat1).value.map((card) => card.name)
 
-    expect(names(state, '先攻', '手札')).toEqual(先攻の山札.slice(0, 5))
-    expect(names(state, '先攻', '山札')).toEqual(先攻の山札.slice(5))
+    expect(names(state, '先攻', '手札')).toEqual(shuffledDeck.slice(0, 5))
+    expect(names(state, '先攻', '山札')).toEqual(shuffledDeck.slice(5))
   })
 
   it('デッキのカードは 1 枚も欠けず、増えもしない', () => {
     const { state, first } = prepared(20260809)
-    const 先攻のデッキ = decks[first]
+    const deckOfFirstPlayer = decks[first]
 
-    expect(
-      [...names(state, '先攻', '手札'), ...names(state, '先攻', '山札')].sort(),
-    ).toEqual(先攻のデッキ.map((card) => card.name).sort())
+    expect([...names(state, '先攻', '手札'), ...names(state, '先攻', '山札')].sort()).toEqual(
+      deckOfFirstPlayer.map((card) => card.name).sort(),
+    )
   })
 
   // ADR-0005: 失敗した対戦をシードから再生できなければならない
@@ -80,7 +80,7 @@ describe('デュエルの準備', () => {
     expect(names(prepared(1).state, '先攻', '山札')).not.toEqual(names(prepared(2).state, '先攻', '山札'))
   })
 
-  // 総合ルール 第2部 第21章 3-1・5-1・6-1・7-1
+  // 総合ルール 第2部 第21章 3-1・5-1・6-1・7-1・8-1・9-1
   it('山札と手札のほかに、カードはどこにもない', () => {
     const { state } = prepared(20260809)
 
@@ -98,11 +98,11 @@ describe('デュエルの準備', () => {
   // 総合ルール 第2部 第1章 1-1
   it('カードの持ち主は、そのカードをデッキに入れたプレイヤーである', () => {
     const { state, first } = prepared(20260809)
-    const 先攻のデッキ = first === 0 ? '先手候補' : '後手候補'
+    const prefixOfFirstPlayer = first === 0 ? '先手候補' : '後手候補'
 
     for (const zone of ['山札', '手札'] as const) {
       for (const instance of cardsIn(state, '先攻', zone)) {
-        expect(instance.card.name.startsWith(先攻のデッキ)).toBe(true)
+        expect(instance.card.name.startsWith(prefixOfFirstPlayer)).toBe(true)
         expect(instance.owner).toBe('先攻')
         expect(instance.controller).toBe('先攻')
       }

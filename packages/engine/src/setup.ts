@@ -1,7 +1,7 @@
 import type { Card } from './card.js'
 import { checkConstructedDeck } from './deck.js'
 import type { Deck, DeckViolation } from './deck.js'
-import { emptyDuelState, instantiate } from './duel.js'
+import { emptyDuelState, instantiate, putInZone } from './duel.js'
 import type { CardInstance, DuelState } from './duel.js'
 import type { Player } from './player.js'
 import { nextInt, randomFromSeed, shuffle } from './random.js'
@@ -54,6 +54,9 @@ export const OPENING_HAND_SIZE = 5
  * 構築戦の規定を満たさないデッキがあれば、盤面を作らずに違反を返す。不正なデッキは
  * 呼ぶ側の誤りではなくプレイヤーの入力なので、例外ではなく値で返す。
  *
+ * シャッフルはデッキごとに 1 回だけ行う。相手のデッキもシャッフルできる（同 4）が、
+ * 何回シャッフルしても結果は不規則な順番であることに変わりがなく、盤面には現れない。
+ *
  * パートナーバトル（同 3-2）と限定戦（同 3-3）は選択ルールなので扱わない。マッチの
  * 2 本目以降で先攻・後攻を負けたプレイヤーが決める（同 5）のは、マッチを実装する時に足す。
  * 先攻が第 1 ターンのドローフェイズを飛ばすこと（同 第2章 2）は、ターンの進行を実装する
@@ -71,6 +74,7 @@ export function prepareDuel(setup: DuelSetup): DuelPreparation {
   const shuffledOfSeat1 = shuffle(numbered(setup.decks[1]), shuffledOfSeat0.random)
   const shuffled = [shuffledOfSeat0.value, shuffledOfSeat1.value] as const
 
+  // `nextInt` は 0 か 1 を返すが、その範囲は型に出ないので `Seat` に絞り直す。
   const decided = nextInt(shuffledOfSeat1.random, SEATS.length)
   const first: Seat = decided.value === 0 ? 0 : 1
 
@@ -107,19 +111,10 @@ function library(deck: readonly NumberedCard[], owner: Player): readonly CardIns
 /**
  * 山札を置き、その上から 5 枚を手札にする（総合ルール 第3部 第1章 6）。
  *
- * 山札以外のゾーンは、デュエル開始時には空である（総合ルール 第2部 第21章 5-1・
- * 6-1・7-1 ほか）。
+ * 山札と手札以外のゾーンには何も置かない。デュエルの開始時には、それらはすべて空である
+ * （総合ルール 第2部 第21章 3-1・5-1・6-1・7-1・8-1・9-1）。
  */
 function deal(state: DuelState, player: Player, cards: readonly CardInstance[]): DuelState {
-  return {
-    ...state,
-    zones: {
-      ...state.zones,
-      [player]: {
-        ...state.zones[player],
-        山札: cards.slice(OPENING_HAND_SIZE),
-        手札: cards.slice(0, OPENING_HAND_SIZE),
-      },
-    },
-  }
+  const drawn = putInZone(state, player, '手札', cards.slice(0, OPENING_HAND_SIZE))
+  return putInZone(drawn, player, '山札', cards.slice(OPENING_HAND_SIZE))
 }
