@@ -8,3 +8,8 @@
 export const PLAYERS = ['先攻', '後攻'] as const
 
 export type Player = (typeof PLAYERS)[number]
+
+/** そのプレイヤーから見た相手。デュエルには 2 人しか参加しないので、常に 1 人に決まる。 */
+export function opponentOf(player: Player): Player {
+  return player === '先攻' ? '後攻' : '先攻'
+}

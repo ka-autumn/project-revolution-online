@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { BATTLE_SPACE, PLAYER_ZONES, cardsIn, cardsOn, defineUnit, emptyDuelState, instantiate, putOnSquare } from './index.js'
+// 山札を組み立てるためだけに `putInZone` を使う。engine の中からゾーンを差し替える
+// ための関数であり、公開する API ではないので `index.js` からは取らない。
+import { putInZone } from './duel.js'
+import {
+  BATTLE_SPACE,
+  PLAYER_ZONES,
+  cardsIn,
+  cardsOn,
+  defineUnit,
+  draw,
+  emptyDuelState,
+  instantiate,
+  putOnSquare,
+} from './index.js'
 import type { Square } from './index.js'
 
 const testUnit = defineUnit({ name: 'テストユニット', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
@@ -60,6 +73,40 @@ describe('スクエアに置く', () => {
     putOnSquare(before, someSquare, instantiate({ id: 'u1', card: testUnit, owner: '先攻' }))
 
     expect(cardsOn(before, someSquare)).toEqual([])
+  })
+})
+
+// 総合ルール 第2部 第21章 1-5（ADR-0006）
+describe('引く', () => {
+  const top = instantiate({ id: 'l1', card: testUnit, owner: '先攻' })
+  const second = instantiate({ id: 'l2', card: testUnit, owner: '先攻' })
+  const library = putInZone(emptyDuelState(), '先攻', '山札', [top, second])
+
+  it('山札の 1 番上のカードが手札に加わる', () => {
+    const drawn = draw(library, '先攻')
+
+    expect(cardsIn(drawn, '先攻', '手札')).toEqual([top])
+    expect(cardsIn(drawn, '先攻', '山札')).toEqual([second])
+  })
+
+  it('すでに手札があるなら、その後ろに加わる', () => {
+    const held = instantiate({ id: 'h1', card: testUnit, owner: '先攻' })
+    const drawn = draw(putInZone(library, '先攻', '手札', [held]), '先攻')
+
+    expect(cardsIn(drawn, '先攻', '手札')).toEqual([held, top])
+  })
+
+  it('引いたプレイヤーのゾーンだけが変わる', () => {
+    const drawn = draw(library, '先攻')
+
+    expect(cardsIn(drawn, '後攻', '山札')).toEqual([])
+    expect(cardsIn(drawn, '後攻', '手札')).toEqual([])
+  })
+
+  // 総合ルール 第3部 第3章 2: 山札が 0 枚になったプレイヤーの敗北は、引けないこととは
+  // 別のルールエフェクトである。
+  it('山札が空なら何も起こらない', () => {
+    expect(draw(emptyDuelState(), '先攻')).toEqual(emptyDuelState())
   })
 })
 
