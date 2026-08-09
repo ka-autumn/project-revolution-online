@@ -2,3 +2,8 @@ packages:
   - packages/*
 allowBuilds:
   esbuild: true
+
+# テストを持つパッケージが自分で vitest を宣言できるようにする。
+# バージョンはここ 1 箇所で決める。
+catalog:
+  vitest: ^4.1.10

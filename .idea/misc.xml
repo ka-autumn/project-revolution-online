@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AIAssistantCustomInstructionsStorage">
+    <option name="instructions">
+      <map>
+        <entry key="AIAssistant.VCS.GenerateCommitMessage">
+          <value>
+            <AIAssistantStoredInstruction>
+              <option name="actionId" value="AIAssistant.VCS.GenerateCommitMessage" />
+              <option name="content" value="Avoid overly verbose descriptions or unnecessary details.&#10;Start with a short sentence in imperative form, no more than 50 characters long.&#10;Then leave an empty line and continue with a more detailed explanation.&#10;Write only one sentence for the first part, and two or three sentences at most for the detailed explanation.&#10;・言語は日本語&#10;・複数の変更には箇条書きを使用&#10;・タイトルの先頭に「[client]」をつけてください" />
+            </AIAssistantStoredInstruction>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="FormatOnSaveOptions">
+    <option name="myRunOnSave" value="true" />
+  </component>
+  <component name="GHAISettings">{}</component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="OptimizeOnSaveOptions">
+    <option name="myRunOnSave" value="true" />
+  </component>
+  <component name="ProjectInspectionProfilesVisibleTreeState">
+    <entry key="Project Default">
+      <profile-state>
+        <expanded-state>
+          <State>
+            <id>Angular</id>
+          </State>
+          <State>
+            <id>CSS</id>
+          </State>
+          <State>
+            <id>Cucumber</id>
+          </State>
+          <State>
+            <id>Docker-compose</id>
+          </State>
+          <State>
+            <id>Dockerfile</id>
+          </State>
+          <State>
+            <id>EditorConfig</id>
+          </State>
+          <State>
+            <id>Flow 型チェッカーJavaScript と TypeScript</id>
+          </State>
+          <State>
+            <id>GitHub Actions</id>
+          </State>
+          <State>
+            <id>HTML</id>
+          </State>
+          <State>
+            <id>HTTP クライアント</id>
+          </State>
+          <State>
+            <id>Handlebars/Mustache</id>
+          </State>
+          <State>
+            <id>JavaScript と TypeScript</id>
+          </State>
+          <State>
+            <id>Less</id>
+          </State>
+          <State>
+            <id>Markdown</id>
+          </State>
+          <State>
+            <id>MongoJS</id>
+          </State>
+          <State>
+            <id>SQL</id>
+          </State>
+          <State>
+            <id>SQL サーバー</id>
+          </State>
+          <State>
+            <id>Sass/SCSS</id>
+          </State>
+          <State>
+            <id>TypeScriptJavaScript と TypeScript</id>
+          </State>
+          <State>
+            <id>switch ステートメントの問題JavaScript と TypeScript</id>
+          </State>
+          <State>
+            <id>インポートと依存関係JavaScript と TypeScript</id>
+          </State>
+          <State>
+            <id>コードスタイル問題CSS</id>
+          </State>
+          <State>
+            <id>コードスタイル問題JavaScript と TypeScript</id>
+          </State>
+          <State>
+            <id>セキュリティ</id>
+          </State>
+          <State>
+            <id>ユーザー定義</id>
+          </State>
+          <State>
+            <id>一般</id>
+          </State>
+          <State>
+            <id>一般JavaScript と TypeScript</id>
+          </State>
+          <State>
+            <id>好ましくない可能性があるコード箇所JavaScript と TypeScript</id>
+          </State>
+          <State>
+            <id>妥当性の問題JavaScript と TypeScript</id>
+          </State>
+          <State>
+            <id>正規表現</id>
+          </State>
+          <State>
+            <id>潜在的なバグCSS</id>
+          </State>
+          <State>
+            <id>潜在的なバグJavaScript と TypeScript</id>
+          </State>
+          <State>
+            <id>無効な要素CSS</id>
+          </State>
+        </expanded-state>
+        <selected-state>
+          <State>
+            <id>ユーザー定義</id>
+          </State>
+        </selected-state>
+      </profile-state>
+    </entry>
+  </component>
+</project>
