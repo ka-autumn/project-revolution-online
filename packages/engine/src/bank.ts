@@ -45,24 +45,38 @@ function triggeredBy(instance: CardInstance, event: TriggerEvent): readonly Trig
 }
 
 /**
- * プレイされたユニットがスクエアに置かれたことで、「登場した時」を誘発させる（総合ルール
- * 第2部 第20章 1-4-a）。
+ * 誘発イベントを満たしたそのカード自身の能力だけを誘発させる。
  *
- * 誘発するのは登場したそのユニット自身の能力だけである。他のユニットの「登場した時」の
- * 能力は誘発しない。誘発イベントを満たすのはそのユニット自身が登場したことであって、
- * 盤面に他のユニットの「登場した時」の能力があることではないためである。`trigger` は
+ * 「登場した時」「移動が起動された時」は、誘発イベントを満たすのがそのカード自身の
+ * できごとであって、盤面に同じ能力を持つ他のカードがあることではない。`trigger` は
  * イベントを満たすスクエアの全ユニットを見てしまうので、対象を 1 枚に絞れるようここを
  * 別に持つ。
+ */
+function triggerSelf(state: DuelState, id: CardId, event: TriggerEvent): DuelState {
+  const instance = findOnSquares(state, id)
+  if (instance === undefined) return state
+
+  return addTriggered(state, triggeredBy(instance, event))
+}
+
+/**
+ * プレイされたユニットがスクエアに置かれたことで、「登場した時」を誘発させる（総合ルール
+ * 第2部 第20章 1-4-a）。
  *
  * 呼ぶのはプレイされたユニットを置いた側（`play.ts`）だけである。効果によってスクエアに
  * 置かれる場合はここを通らない。それは「登場」ではないため誘発しない（同 1-4-a、ADR-0003
  * の元になる CONTEXT.md「登場」）。
  */
 export function triggerAppearance(state: DuelState, id: CardId): DuelState {
-  const instance = findOnSquares(state, id)
-  if (instance === undefined) return state
+  return triggerSelf(state, id, '登場した時')
+}
 
-  return addTriggered(state, triggeredBy(instance, '登場した時'))
+/**
+ * ユニットの移動が起動されたことで、「移動が起動された時」を誘発させる（総合ルール
+ * 第4部 第6章 2-5）。呼ぶのは移動を解決した側（`move.ts`）だけである。
+ */
+export function triggerMovement(state: DuelState, id: CardId): DuelState {
+  return triggerSelf(state, id, '移動が起動された時')
 }
 
 /**

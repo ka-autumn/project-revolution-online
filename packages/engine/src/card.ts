@@ -1,4 +1,5 @@
 import type { Ability } from './ability.js'
+import type { MoveDirection } from './board.js'
 import type { Effect } from './effect.js'
 
 /**
@@ -26,9 +27,9 @@ export type CardType = (typeof CARD_TYPES)[number]
 /**
  * 種別によらずカードに印刷されている項目。
  *
- * 属性・ムーブアイコン・トリガーアイコンもカードに印刷されているが、それらを参照する
- * ルール（移動・侵入）をまだ実装していないため、ここには持たせていない。参照する側と
- * 一緒に足す。
+ * 属性・トリガーアイコンもカードに印刷されているが、それらを参照するルール（侵入）を
+ * まだ実装していないため、ここには持たせていない。参照する側と一緒に足す。ムーブアイコンは
+ * ユニットだけが持つ項目なので、ここではなく `UnitCard` に持たせている。
  */
 interface PrintedCard {
   readonly type: CardType
@@ -66,6 +67,11 @@ export interface UnitCard extends PrintedCard {
   readonly bp: number
   /** スマッシュ時に相手プレイヤーに与えるダメージの数値（総合ルール 第2部 第15章 1）。 */
   readonly sp: number
+  /**
+   * ムーブアイコンの向き（総合ルール 第2部 第11章）。空ならムーブアイコンを持たず、
+   * このユニットは移動できない（同 第3部 第8章 2-5）。
+   */
+  readonly moveIcon: readonly MoveDirection[]
 }
 
 /** プレイして効果を解決した後、持ち主の捨札に置かれるカード（総合ルール 第2部 第20章 2）。 */
@@ -127,6 +133,8 @@ interface CardSpec {
 interface UnitSpec extends CardSpec {
   readonly bp: number
   readonly sp: number
+  /** 省略した場合はムーブアイコンを持たない。 */
+  readonly moveIcon?: readonly MoveDirection[]
 }
 
 interface StrategySpec extends CardSpec {
@@ -156,7 +164,7 @@ function printed<T extends CardType>(type: T, spec: CardSpec) {
 }
 
 export function defineUnit(spec: UnitSpec): UnitCard {
-  return { ...printed('ユニット', spec), bp: spec.bp, sp: spec.sp }
+  return { ...printed('ユニット', spec), bp: spec.bp, sp: spec.sp, moveIcon: spec.moveIcon ?? [] }
 }
 
 export function defineStrategy(spec: StrategySpec): StrategyCard {
