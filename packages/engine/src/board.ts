@@ -83,13 +83,13 @@ const CENTER_ROW: SquareIndex = 1
 export function areaOf(player: Player, square: Square): Area {
   if (square.row === CENTER_ROW) return '中央エリア'
 
-  const home = player === '先攻' ? HOME_ROW_OF_FIRST : oppositeRow(HOME_ROW_OF_FIRST)
+  const home = player === '先攻' ? HOME_ROW_OF_FIRST : oppositeIndex(HOME_ROW_OF_FIRST)
   return square.row === home ? '味方エリア' : '敵エリア'
 }
 
-/** 盤面の反対側の行。 */
-function oppositeRow(row: SquareIndex): SquareIndex {
-  return row === 0 ? 2 : 0
+/** 盤面の反対側の行または列。 */
+function oppositeIndex(index: SquareIndex): SquareIndex {
+  return index === 0 ? 2 : index === 2 ? 0 : 1
 }
 
 /**
@@ -145,4 +145,19 @@ function deltaOf(direction: MoveDirection, forward: 1 | -1): readonly [number, n
 
 function isSquareIndex(value: number): value is SquareIndex {
   return value === 0 || value === 1 || value === 2
+}
+
+/**
+ * 印刷された図として描かれたスクエア（トリガーアイコンなど）を、そのプレイヤーから見て
+ * 解釈した、盤面に固定した行・列のスクエアに変換する。
+ *
+ * カード 1 枚につき印刷は 1 通りしかないが、ムーブアイコンの矢印の向きが支配者から見て
+ * 解釈される（`squareInDirection` 参照）のと同じ理由で、印刷された図に描かれた位置も
+ * 支配者の手前を基準にしていると見なす。先攻を基準の向きとして受け取った図をそのまま返し、
+ * 後攻から見る場合は縦・横とも反対側に折り返す（あるプレイヤーの右ラインは相手の左ライン、
+ * 味方エリアは相手の敵エリアになる、総合ルール 第2部 第22章 4・6 と同じ入れ替わり方）。
+ */
+export function squareFromView(player: Player, printed: Square): Square {
+  if (player === '先攻') return printed
+  return { row: oppositeIndex(printed.row), column: oppositeIndex(printed.column) }
 }

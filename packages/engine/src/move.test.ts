@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
+// 手札やトラップゾーンを組み立てるためだけに `putInZone` を使う。engine の中からゾーンを
+// 差し替えるための関数であり、公開する API ではない。
+import { putInZone } from './duel.js'
 import {
   cardsOn,
+  defineTrap,
   defineUnit,
   emptyDuelState,
   instantiate,
@@ -197,5 +201,21 @@ describe('移動が起動された時', () => {
     const after = stateOf(moveUnit(state, '動くユニット', centerSquare))
 
     expect(after.bank).toEqual([])
+  })
+})
+
+// 総合ルール 第2部 第20章 3-6（ADR-0006）
+describe('移動による侵入', () => {
+  it('相手のユニットがトリガーアイコンのスクエアへ移動すると、発動する権利を得る', () => {
+    const trap = instantiate({
+      id: 'トラップ',
+      card: defineTrap({ name: 'テスト・侵入トラップ', level: 1, triggerIcon: [centerSquare] }),
+      owner: '後攻',
+    })
+    const state = putInZone(putOnSquare(mainPhase(), homeSquare, unit('ユニット')), '後攻', 'トラップゾーン', [trap])
+
+    const after = stateOf(moveUnit(state, 'ユニット', centerSquare))
+
+    expect(after.trapRights).toEqual(['トラップ'])
   })
 })

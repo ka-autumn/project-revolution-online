@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CARD_TYPES, COLORS, defineStrategy, defineTrap, defineUnit, isStrategy } from './index.js'
+import type { Square } from './index.js'
 
 // 総合ルール 第2部 第4章 2（ADR-0006）
 describe('種別', () => {
@@ -39,5 +40,21 @@ describe('カードを定義する', () => {
 
     expect(unit.type).toBe('ユニット')
     expect(unit.abilities).toEqual([])
+  })
+})
+
+// 総合ルール 第2部 第12章、第20章 3-6（ADR-0006）
+describe('トリガーアイコン', () => {
+  it('赤く塗られたスクエアを指定して持たせられる', () => {
+    const square: Square = { row: 0, column: 1 }
+    const trap = defineTrap({ name: 'テストトラップ', level: 1, triggerIcon: [square] })
+
+    expect(trap.triggerIcon).toEqual([square])
+  })
+
+  it('省略した場合はトリガーアイコンを持たない', () => {
+    const trap = defineTrap({ name: 'テストトラップ', level: 1 })
+
+    expect(trap.triggerIcon).toEqual([])
   })
 })

@@ -21,6 +21,7 @@ import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
+import { checkIntrusion } from './trap.js'
 
 /**
  * プレイするカードの宣言（総合ルール 第4部 第6章 1-1）。
@@ -119,11 +120,10 @@ export function playAsTrap(state: DuelState, card: CardId): ActionOutcome {
  * 発動するのは優先権を持っているプレイヤーである。カードのプレイと違い、自分のメインフェイズ
  * であることもバンクが空であることも要らない（同 3-8）。
  *
- * 本来、トラップを発動できるのは、そのトラップの発動条件が満たされて発動する権利を得ている
- * 間だけである（同 3-8）。発動条件は《 》でくくられたテキストとトリガーアイコンで書かれる
- * （同 3-6）が、盤面がまだどちらも持っていないため、権利の有無は判定できない。ここでは、
- * 優先権を持っている間はいつでも発動できるものとして扱う。発動条件を持たないトラップ以外の
- * カードは、トラップゾーンにあっても発動できない（同 3-6）。
+ * トラップを発動できるのは、そのトラップの発動条件が満たされて発動する権利を得ている間だけ
+ * である（同 3-8、`state.trapRights`）。発動条件を持たないトラップ以外のカードは、
+ * トラップゾーンにあっても発動できない（同 3-6）。発動条件のうち実装しているのは「侵入」
+ * だけなので（`trap.ts`）、それ以外の条件で権利を得ることはまだ無い。
  *
  * レベルを満たし（同 3-9）、コストを支払って（同 3-10）、リゾルブゾーンで解決される
  * （同 3-11）。
@@ -133,6 +133,7 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   const instance = findInZone(state, player, 'トラップゾーン', card)
   if (instance === undefined) return cannot('そのゾーンにない')
   if (instance.card.type !== 'トラップ') return cannot('発動できるカードではない')
+  if (!state.trapRights.includes(card)) return cannot('発動する権利がない')
 
   const paid = payUseCost(state, player, instance.card, chooser)
   if (typeof paid === 'string') return cannot(paid)
@@ -185,12 +186,15 @@ function checkSquare(state: DuelState, player: Player, square: Square): ActionVi
 function placePlayedUnit(state: DuelState, id: CardId, square: Square, player: Player): DuelState {
   const moved = moveToSquare(state, id, square, { controller: player, orientation: 'フリーズ' })
   const placed = triggerAppearance(moved, id)
-  if (areaOf(player, square) !== '中央エリア') return placed
+  // 置かれたユニットが相手のトラップのトリガーアイコンのスクエアに置かれたなら「侵入」に
+  // なり、そのトラップの支配者が発動する権利を得る（総合ルール 第2部 第20章 3-6）。
+  const invaded = checkIntrusion(placed, player, square)
+  if (areaOf(player, square) !== '中央エリア') return invaded
 
   // 中央エリアのスクエアを指定してプレイされたユニットは、ルールエフェクトによって捨札に
   // 置かれる（総合ルール 第4部 第14章 4-9）。効果によって中央エリアに置かれたユニットとは
   // 区別されるので、プレイしたこちらが覚えておく。
-  return { ...placed, playedIntoCenter: [...placed.playedIntoCenter, id] }
+  return { ...invaded, playedIntoCenter: [...invaded.playedIntoCenter, id] }
 }
 
 /**
