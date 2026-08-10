@@ -53,27 +53,30 @@ export function legalActions(state: DuelState): readonly LegalAction[] {
 
   const active = state.turn.active
   const priority = state.turn.priority
+  // 手札とスクエア上のユニットは複数の行動の候補になるので、ここで 1 度だけ求めておく。
+  const hand = cardsIn(state, active, '手札')
+  const units = unitsOnSquares(state, active)
 
   return [
     { kind: '優先権を放棄する' as const },
-    ...cardsIn(state, active, '手札').flatMap((card) =>
+    ...hand.flatMap((card) =>
       tryAction({ kind: 'エネルギーを置く', card: card.id }, () => placeEnergy(state, card.id)),
     ),
     ...tryAction({ kind: 'プランする' }, () => plan(state, chooseFirst)),
-    ...unitsOnSquares(state, active).flatMap((unit) =>
+    ...units.flatMap((unit) =>
       tryAction({ kind: 'スマッシュする', unit: unit.id }, () => smash(state, unit.id)),
     ),
     ...cardsIn(state, active, 'トラップゾーン').flatMap((card) =>
       tryAction({ kind: 'トラップを廃棄する', card: card.id }, () => discardTrap(state, card.id)),
     ),
-    ...playableCards(state, active).flatMap((card) => playCandidates(state, card)),
-    ...cardsIn(state, active, '手札').flatMap((card) =>
+    ...[...hand, ...cardsIn(state, active, 'プランゾーン')].flatMap((card) => playCandidates(state, card)),
+    ...hand.flatMap((card) =>
       tryAction({ kind: 'トラップとしてプレイする', card: card.id }, () => playAsTrap(state, card.id)),
     ),
     ...cardsIn(state, priority, 'トラップゾーン').flatMap((card) =>
       tryAction({ kind: 'トラップを発動する', card: card.id }, () => activateTrap(state, card.id, chooseFirst)),
     ),
-    ...unitsOnSquares(state, active).flatMap((unit) => moveCandidates(state, unit.id)),
+    ...units.flatMap((unit) => moveCandidates(state, unit.id)),
   ]
 }
 
@@ -115,11 +118,6 @@ function tryAction(action: LegalAction, attempt: () => ActionOutcome): readonly 
 function outcomeState(outcome: ActionOutcome): DuelState {
   if (outcome.kind !== '行った') throw new Error(`合法手のはずが行えなかった: ${outcome.violation}`)
   return outcome.state
-}
-
-/** そのプレイヤーの手札とプランゾーンにあるカード。プレイの候補になる。 */
-function playableCards(state: DuelState, player: Player): readonly CardInstance[] {
-  return [...cardsIn(state, player, '手札'), ...cardsIn(state, player, 'プランゾーン')]
 }
 
 /** そのプレイヤーが支配する、スクエアにあるユニット。スマッシュ・移動の候補になる。 */

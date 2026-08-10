@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { defineStrategy, defineTrap, defineUnit, dream, genki, playRandomSelfPlay, runSelfPlayBatch } from './index.js'
-import type { Deck, DuelSetup } from './index.js'
+import { defineStrategy, defineTrap, defineUnit, dream, genki, playSelfPlay, runSelfPlayBatch } from './index.js'
+import type { ActionPicker, Deck, DuelSetup } from './index.js'
 
 /** 上下左右すべてのムーブアイコンを持つレベル 0 のユニット。 */
 const moverUnit = defineUnit({ name: 'テスト・自己対戦ユニットA', level: 0, bp: 100, sp: 100, moveIcon: ['上', '下', '左', '右'] })
@@ -37,6 +37,11 @@ const plainUnits = Array.from({ length: 9 }, (_, index) =>
  * バニラユニットだけでは行動空間が狭く、ストラテジー・トラップ・有色コストの経路が
  * 一度も踏まれない（ADR-0005 の「合法手生成の漏れ…を自動で炙り出す」目的が薄れる）ので、
  * これらも混ぜる。
+ *
+ * ただしこのデッキでも、`トラップを発動する`（トリガーアイコンの侵入条件自体の希少性）と、
+ * スマッシュ判定（総合ルール 第3部 第9章 1、プレイヤーへのダメージが 1000 に届く必要がある）
+ * は、ランダムな自己対戦では実際には踏まれない。ファザが炙り出す漏れの探索範囲としては、
+ * この 2 経路は今のところ対象外である。
  */
 const templates = [moverUnit, genkiUnit, dreamUnit, coloredUnit, strategyCard, trapCard, ...plainUnits]
 
@@ -62,26 +67,44 @@ describe('ランダムな自己対戦', () => {
   it('同じシードからは同じ対戦が再生できる', () => {
     const setup: DuelSetup = { decks: [buildDeck(), buildDeck()], seed: 20260810 }
 
-    const first = playRandomSelfPlay({ setup, maxActions: 3000 })
-    const second = playRandomSelfPlay({ setup, maxActions: 3000 })
+    const first = playSelfPlay({ setup, maxActions: 3000 })
+    const second = playSelfPlay({ setup, maxActions: 3000 })
 
     expect(second).toEqual(first)
   })
 
   it('シードが違えば違う対戦になる', () => {
-    const first = playRandomSelfPlay({ setup: { decks: [buildDeck(), buildDeck()], seed: 1 }, maxActions: 3000 })
-    const second = playRandomSelfPlay({ setup: { decks: [buildDeck(), buildDeck()], seed: 2 }, maxActions: 3000 })
+    const first = playSelfPlay({ setup: { decks: [buildDeck(), buildDeck()], seed: 1 }, maxActions: 3000 })
+    const second = playSelfPlay({ setup: { decks: [buildDeck(), buildDeck()], seed: 2 }, maxActions: 3000 })
 
     expect(second).not.toEqual(first)
   })
 
   it('デッキが構築戦の規定を満たさなければ、対戦せずにデッキ不備を返す', () => {
-    const result = playRandomSelfPlay({
+    const result = playSelfPlay({
       setup: { decks: [buildDeck().slice(1), buildDeck()], seed: 1 },
       maxActions: 3000,
     })
 
     expect(result.kind).toBe('デッキ不備')
+  })
+
+  // Spec: `pickAction` を差し替えれば、ランダムに選ぶだけのファザ役の代わりに、決まった手を
+  // 返すプレイヤーで対戦を決定的に進められる（`self-play.ts` の `ActionPicker`）。
+  it('pickAction を差し替えれば、決まった手だけを返すプレイヤーで対戦を進められる', () => {
+    const pickPassPriority: ActionPicker = (actions, random) => {
+      const action = actions.find((candidate) => candidate.kind === '優先権を放棄する')
+      return action === undefined ? undefined : { action, random }
+    }
+
+    const result = playSelfPlay({
+      setup: { decks: [buildDeck(), buildDeck()], seed: 1 },
+      maxActions: 100,
+      pickAction: pickPassPriority,
+    })
+
+    // 双方が優先権を放棄するだけでは何も進まず、決着せずに手数上限に達する。
+    expect(result.kind).toBe('手数上限')
   })
 })
 
@@ -95,17 +118,16 @@ describe('複数シードの自己対戦', () => {
     expect([...result.actionsTaken.keys()]).toEqual([1, 2, 3])
   })
 
-  it('デッキ不備のシードがあれば、そこで打ち切ってそのシードを報告する', () => {
+  it('デッキ不備のシードがあれば、途中で打ち切らずすべてのシードを失敗として報告する', () => {
     const result = runSelfPlayBatch({
       decks: [buildDeck().slice(1), buildDeck()],
       seeds: [1, 2, 3],
       maxActions: 3000,
     })
 
-    expect(result).toEqual({
-      kind: '失敗',
-      seed: 1,
-      result: { kind: 'デッキ不備', violations: expect.anything() },
-    })
+    expect(result.kind).toBe('失敗')
+    if (result.kind !== '失敗') throw new Error('到達しないはず')
+    expect(result.failures.map((failure) => failure.seed)).toEqual([1, 2, 3])
+    expect(result.failures.every((failure) => failure.result.kind === 'デッキ不備')).toBe(true)
   })
 })

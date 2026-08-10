@@ -68,8 +68,19 @@ export { RELATIONS_FROM_PLAYER, RELATIONS_FROM_UNIT } from './relation.js'
 export type { RelationFromPlayer, RelationFromUnit } from './relation.js'
 export { resolveEffect } from './resolve.js'
 export type { Chooser, EffectContext } from './resolve.js'
-export { pickRandomAction, playRandomSelfPlay, randomChooser, runSelfPlayBatch } from './self-play.js'
-export type { ActionPicker, SelfPlayBatchOptions, SelfPlayBatchResult, SelfPlayOptions, SelfPlayResult } from './self-play.js'
+export {
+  pickRandomAction,
+  playSelfPlay,
+  randomChooser,
+  runSelfPlayBatch,
+} from './self-play.js'
+export type {
+  ActionPicker,
+  SelfPlayBatchOptions,
+  SelfPlayBatchResult,
+  SelfPlayOptions,
+  SelfPlayResult,
+} from './self-play.js'
 export { OPENING_HAND_SIZE, prepareDuel } from './setup.js'
 export type { DuelPreparation, DuelSetup, Seat, SeatedViolation } from './setup.js'
 export { SMASH_JUDGMENT_STEPS, smashesOf } from './smash.js'

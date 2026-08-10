@@ -34,8 +34,11 @@ export function randomChooser(random: Random): { readonly chooser: Chooser; read
  * 合法手の中から次に行う 1 つを選ぶプレイヤー（ADR-0005）。
  *
  * 合法手が無ければ `undefined`。乱数を使うプレイヤーは、使った分だけ進めた乱数列を返す。
- * `playRandomSelfPlay` はこれを差し替えられるので、ランダムに選ぶだけのファザ役以外に、
- * 人間の入力や探索によるプレイヤーを挿すこともできる。
+ * `playSelfPlay` はこれを差し替えられるので、ランダムに選ぶだけのファザ役の代わりに、
+ * 決まった手を返すプレイヤーを挿して対戦を決定的に進めることができる。ただし署名は盤面
+ * `DuelState` を受け取らないため、その手を打った結果を評価する探索プレイヤーはこれでは
+ * 書けない（それには `applyLegalAction(state, ...)` で先に進めた盤面が要る）。人間の入力も、
+ * エンジンが I/O を持てない（ADR-0001）ため、この同期的なコールバックとしては挿せない。
  */
 export type ActionPicker = (
   actions: readonly LegalAction[],
@@ -51,8 +54,8 @@ export const pickRandomAction: ActionPicker = (actions, random) => {
   return action === undefined ? undefined : { action, random: picked.random }
 }
 
-export interface SelfPlayOptions {
-  readonly setup: DuelSetup
+/** 自己対戦の回し方。デュエル 1 本でも複数シードでも同じ（ADR-0005）。 */
+export interface SelfPlayPolicy {
   /**
    * 完走とみなさずに打ち切る、行った手数の上限。無限ループそのものを検出するわけではなく、
    * この回数まで決着しなければ「無限ループの疑いがある」ものとして扱う（ADR-0005）。
@@ -60,6 +63,10 @@ export interface SelfPlayOptions {
   readonly maxActions: number
   /** 次に行う手を選ぶプレイヤー。省略すればランダムに選ぶ（`pickRandomAction`）。 */
   readonly pickAction?: ActionPicker
+}
+
+export interface SelfPlayOptions extends SelfPlayPolicy {
+  readonly setup: DuelSetup
 }
 
 export type SelfPlayResult =
@@ -85,7 +92,7 @@ export type SelfPlayResult =
  * 打ち切り、その盤面と崩れた条件を返す。手数が上限に達しても決着しなければ、無限ループの
  * 疑いとして打ち切る。
  */
-export function playRandomSelfPlay(options: SelfPlayOptions): SelfPlayResult {
+export function playSelfPlay(options: SelfPlayOptions): SelfPlayResult {
   const prepared = prepareDuel(options.setup)
   if (prepared.kind !== '準備完了') return prepared
 
@@ -116,39 +123,42 @@ export function playRandomSelfPlay(options: SelfPlayOptions): SelfPlayResult {
 }
 
 /** 複数シード分の自己対戦をまとめて回すのに必要なもの（ADR-0005）。 */
-export interface SelfPlayBatchOptions {
+export interface SelfPlayBatchOptions extends SelfPlayPolicy {
   /** 両プレイヤーのデッキ。シードだけを変えて何度も同じデッキで対戦させる。 */
   readonly decks: readonly [Deck, Deck]
   /** 対戦させるシードの並び。 */
   readonly seeds: readonly number[]
-  readonly maxActions: number
-  readonly pickAction?: ActionPicker
 }
 
 export type SelfPlayBatchResult =
   | { readonly kind: '全て決着'; readonly actionsTaken: ReadonlyMap<number, number> }
-  | { readonly kind: '失敗'; readonly seed: number; readonly result: SelfPlayResult }
+  | {
+      readonly kind: '失敗'
+      /** 決着しなかったシードすべて（シードと、その `playSelfPlay` の結果の組）。 */
+      readonly failures: readonly { readonly seed: number; readonly result: SelfPlayResult }[]
+    }
 
 /**
  * 複数のシードで自己対戦を回し、失敗を集約する（ADR-0005）。
  *
- * ファザとして大量の自己対戦を回すには、1 本ずつ `playRandomSelfPlay` を呼ぶだけでは
- * 済まず、どのシードで何が起きたかを集約する層が要る。最初に失敗したシードが見つかれば
- * そこで打ち切り、そのシードと結果を返す。すべて決着すれば、シードごとの決着までの手数を
- * 返す。
+ * ファザとして大量の自己対戦を回すには、1 本ずつ `playSelfPlay` を呼ぶだけでは済まず、
+ * どのシードで何が起きたかを集約する層が要る。1 回の実行から学べることを最大化するため、
+ * 最初に失敗したシードで打ち切らず、すべてのシードを回しきってから、決着しなかったシード
+ * すべてを返す。すべて決着すれば、シードごとの決着までの手数を返す。
  */
 export function runSelfPlayBatch(options: SelfPlayBatchOptions): SelfPlayBatchResult {
   const actionsTaken = new Map<number, number>()
+  const failures: { readonly seed: number; readonly result: SelfPlayResult }[] = []
 
   for (const seed of options.seeds) {
-    const result = playRandomSelfPlay({
+    const result = playSelfPlay({
       setup: { decks: options.decks, seed },
       maxActions: options.maxActions,
       pickAction: options.pickAction,
     })
-    if (result.kind !== '決着') return { kind: '失敗', seed, result }
-    actionsTaken.set(seed, result.actionsTaken)
+    if (result.kind === '決着') actionsTaken.set(seed, result.actionsTaken)
+    else failures.push({ seed, result })
   }
 
-  return { kind: '全て決着', actionsTaken }
+  return failures.length > 0 ? { kind: '失敗', failures } : { kind: '全て決着', actionsTaken }
 }

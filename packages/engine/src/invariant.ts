@@ -5,11 +5,15 @@ import { PLAYERS } from './player.js'
 import { PLAYER_ZONES } from './zone.js'
 
 /**
- * 盤面が守っているはずの不変条件が崩れていることを説明する値（ADR-0005）。
+ * 盤面の不変条件、および自己対戦が検出する進行上の異常を説明する値（ADR-0005）。
  *
  * `ActionViolation`（`action.ts`）と同じく、呼び出し側が崩れた条件の種類で分岐できるように
  * 構造化する。文字列 1 つに自由文で説明を詰め込むと、種類ごとに違う扱いをしたい場合に文字列を
- * パースし直す必要が出てしまう。
+ * パースし直す必要が出てしまう。ほとんどの種類は `checkBoardInvariants` が盤面そのものを見て
+ * 生成するが、`終了していないのに合法手が無い` だけは例外で、盤面ではなく `legalActions`
+ * （`legal-action.ts`）の列挙結果を見た `self-play.ts` が生成する。デュエルが終了していない
+ * 限り必ず `優先権を放棄する` が候補にあるはずなので、これも自己対戦が炙り出すべき異常として
+ * 同じ型に含める。
  */
 export type InvariantViolation =
   | { readonly kind: 'カードがどこにも見つからない'; readonly card: CardId }
