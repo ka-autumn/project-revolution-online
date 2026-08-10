@@ -11,6 +11,7 @@ import {
   cardsInResolveZone,
   cardsOn,
   findInZone,
+  hasEnded,
   moveToResolveZone,
   moveToSquare,
   moveToZone,
@@ -129,6 +130,10 @@ export function playAsTrap(state: DuelState, card: CardId): ActionOutcome {
  * （同 3-11）。
  */
 export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): ActionOutcome {
+  // 勝敗が決まったデュエルは即座に終了する（総合ルール 第3部 第3章 3）ので、そこから先に
+  // 優先権は発生しない。他の行動は `activePlayerMayAct` が同じことを見ている。
+  if (hasEnded(state)) return cannot('行える時ではない')
+
   const player = state.turn.priority
   const instance = findInZone(state, player, 'トラップゾーン', card)
   if (instance === undefined) return cannot('そのゾーンにない')

@@ -1,4 +1,4 @@
-import type { Ability, DreamAbility, GenkiAbility } from './ability.js'
+import type { Ability, DreamAbility, GenkiAbility, HopeAbility } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
 import type { Effect } from './effect.js'
 
@@ -215,6 +215,18 @@ export function hasGenki(card: Card): boolean {
 }
 
 /**
+ * そのカードが持つ「希望」（総合ルール 第5部 第3章 2）。持たなければ `undefined`。
+ *
+ * 「夢」「元気」と違って効果を持つ能力なので、持つかどうかではなく能力そのものを返す。
+ * 同じカードが「希望」を 2 つ持つことは無いので、最初に見つかったものを返す。
+ */
+export function hopeOf(card: Card): HopeAbility | undefined {
+  return card.abilities.find(
+    (ability): ability is HopeAbility => ability.kind === '特別な能力' && ability.keyword === '希望',
+  )
+}
+
+/**
  * そのユニットのＢＰ（総合ルール 第2部 第14章 1）。バトルで比較され、ダメージと比べられる
  * 数値である（同 第4部 第14章 4-5・4-6）。
  *
@@ -224,4 +236,15 @@ export function hasGenki(card: Card): boolean {
  */
 export function bpOf(unit: UnitCard): number {
   return unit.bp
+}
+
+/**
+ * そのユニットのＳＰ（総合ルール 第2部 第15章 1）。スマッシュした時に相手プレイヤーに
+ * 与えるダメージの数値である（同 第3部 第9章 1）。
+ *
+ * ＢＰと同じ理由で、修整を持つようになった時に直す場所を 1 か所にするために置いている
+ * （`bpOf` 参照）。
+ */
+export function spOf(unit: UnitCard): number {
+  return unit.sp
 }
