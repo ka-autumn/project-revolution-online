@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defineStrategy, defineTrap, defineUnit, dream, genki, playSelfPlay, runSelfPlayBatch } from './index.js'
-import type { ActionPicker, Deck, DuelSetup } from './index.js'
+import type { ActionPicker, Deck, DuelSetup, SelfPlayBatchResult, SelfPlayResult } from './index.js'
 
 /** 上下左右すべてのムーブアイコンを持つレベル 0 のユニット。 */
 const moverUnit = defineUnit({ name: 'テスト・自己対戦ユニットA', level: 0, bp: 100, sp: 100, moveIcon: ['上', '下', '左', '右'] })
@@ -48,6 +48,29 @@ const templates = [moverUnit, genkiUnit, dreamUnit, coloredUnit, strategyCard, t
 /** 構築戦の最小枚数（60 枚）を満たす、15 種類 × 4 枚のデッキ。 */
 function buildDeck(): Deck {
   return templates.flatMap((card) => Array.from({ length: 4 }, () => card))
+}
+
+/** `決着` を期待するアサーションと型の絞り込みを兼ねる。決着していなければ何が起きたかを示す。 */
+function expectDecided(result: SelfPlayResult): result is SelfPlayResult & { readonly kind: '決着' } {
+  expect(result.kind).toBe('決着')
+  if (result.kind !== '決着') throw new Error(`決着したはずだった: ${result.kind}`)
+  return true
+}
+
+/** `全て決着` を期待するアサーションと型の絞り込みを兼ねる。 */
+function expectAllDecided(
+  result: SelfPlayBatchResult,
+): result is SelfPlayBatchResult & { readonly kind: '全て決着' } {
+  expect(result.kind).toBe('全て決着')
+  if (result.kind !== '全て決着') throw new Error(`全て決着したはずだった: ${result.kind}`)
+  return true
+}
+
+/** `失敗` を期待するアサーションと型の絞り込みを兼ねる。 */
+function expectFailed(result: SelfPlayBatchResult): result is SelfPlayBatchResult & { readonly kind: '失敗' } {
+  expect(result.kind).toBe('失敗')
+  if (result.kind !== '失敗') throw new Error(`失敗のはずだった: ${result.kind}`)
+  return true
 }
 
 // ADR-0005: AI の最初の役割はファザである。ランダムに手を選ぶだけのプレイヤーで、大量の
@@ -113,8 +136,7 @@ describe('複数シードの自己対戦', () => {
   it('すべてのシードが決着すれば、シードごとの決着までの手数を返す', () => {
     const result = runSelfPlayBatch({ decks: [buildDeck(), buildDeck()], seeds: [1, 2, 3], maxActions: 3000 })
 
-    expect(result.kind).toBe('全て決着')
-    if (result.kind !== '全て決着') throw new Error('到達しないはず')
+    if (!expectAllDecided(result)) return
     expect([...result.actionsTakenBySeed.keys()]).toEqual([1, 2, 3])
   })
 
@@ -125,14 +147,14 @@ describe('複数シードの自己対戦', () => {
       maxActions: 3000,
     })
 
-    expect(result.kind).toBe('失敗')
-    if (result.kind !== '失敗') throw new Error('到達しないはず')
+    if (!expectFailed(result)) return
     expect(result.failures.map((failure) => failure.seed)).toEqual([1, 2, 3])
     expect(result.failures.every((failure) => failure.result.kind === 'デッキ不備')).toBe(true)
   })
 
   // ADR-0005: 失敗したシードがあっても、同じ実行で決着したシードの手数まで捨ててはならない
-  // （1 回の実行から学べることを最大化する、`runSelfPlayBatch` の doc）。
+  // （1 回の実行から学べることを最大化する、`runSelfPlayBatch` の doc）。期待値は実装の分岐を
+  // 書き写すのではなく、決着分と失敗分が排他かつ全シードを覆うという性質で表現する。
   it('一部のシードだけ手数上限に達しても、決着した残りのシードの手数は失敗と一緒に返る', () => {
     const decks: [Deck, Deck] = [buildDeck(), buildDeck()]
     const seeds = [1, 2, 3, 4, 5]
@@ -140,23 +162,23 @@ describe('複数シードの自己対戦', () => {
     const actionsBySeed = new Map(
       seeds.map((seed) => {
         const result = playSelfPlay({ setup: { decks, seed }, maxActions: 3000 })
-        if (result.kind !== '決着') throw new Error('到達しないはず')
+        if (!expectDecided(result)) throw new Error('決着したはずだった')
         return [seed, result.actionsTaken] as const
       }),
     )
-    const sorted = [...actionsBySeed.values()].sort((a, b) => a - b)
     // 一番手数が短かったシードだけが決着し、残りは手数上限に達するように上限を置く。
-    const threshold = sorted[0]!
-    expect(sorted[sorted.length - 1]).toBeGreaterThan(threshold) // 前提: 手数にばらつきがある
+    const threshold = Math.min(...actionsBySeed.values())
+    expect(Math.max(...actionsBySeed.values())).toBeGreaterThan(threshold) // 前提: 手数にばらつきがある
 
     const result = runSelfPlayBatch({ decks, seeds, maxActions: threshold })
 
-    expect(result.kind).toBe('失敗')
-    if (result.kind !== '失敗') throw new Error('到達しないはず')
-    const decided = seeds.filter((seed) => actionsBySeed.get(seed)! <= threshold)
-    const notDecided = seeds.filter((seed) => actionsBySeed.get(seed)! > threshold)
-    expect([...result.actionsTakenBySeed.keys()].sort()).toEqual(decided.sort())
-    expect(result.failures.map((failure) => failure.seed).sort()).toEqual(notDecided.sort())
+    if (!expectFailed(result)) return
+    const decidedSeeds = [...result.actionsTakenBySeed.keys()]
+    const failedSeeds = result.failures.map((failure) => failure.seed)
+    // 決着した分と失敗した分は排他で、合わせると全シードを覆う（手数が捨てられていないこと）。
+    expect(decidedSeeds.some((seed) => failedSeeds.includes(seed))).toBe(false)
+    expect(new Set([...decidedSeeds, ...failedSeeds])).toEqual(new Set(seeds))
+    expect(decidedSeeds.length).toBeGreaterThan(0) // 本題: 決着した分の手数が捨てられていないこと
     expect(result.failures.every((failure) => failure.result.kind === '手数上限')).toBe(true)
   })
 })
