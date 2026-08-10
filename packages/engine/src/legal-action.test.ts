@@ -63,7 +63,7 @@ function mainPhase(): DuelState {
   return phaseReadyToAct('メインフェイズ')
 }
 
-const kindsOf = (moves: readonly { readonly kind: string }[]) => moves.map((move) => move.kind)
+const kindsOf = (actions: readonly { readonly kind: string }[]) => actions.map((action) => action.kind)
 
 // ADR-0005: 合法手を列挙する機能は、AI のためではなくエンジンの必須機能になる。
 describe('合法手の列挙', () => {
@@ -100,12 +100,12 @@ describe('合法手の列挙', () => {
   it('メインフェイズには、手札のユニットを自分のユニットが無いスクエアへプレイする手が含まれる', () => {
     const state = putInZone(mainPhase(), '先攻', '手札', [instantiate({ id: '手札', card: plainUnit, owner: '先攻' })])
 
-    const moves = legalActions(state)
+    const actions = legalActions(state)
 
-    expect(moves).toContainEqual({ kind: 'カードをプレイする', declaration: { card: '手札', square: homeSquare } })
-    expect(moves).toContainEqual({ kind: 'カードをプレイする', declaration: { card: '手札', square: centerSquare } })
+    expect(actions).toContainEqual({ kind: 'カードをプレイする', declaration: { card: '手札', square: homeSquare } })
+    expect(actions).toContainEqual({ kind: 'カードをプレイする', declaration: { card: '手札', square: centerSquare } })
     // 敵エリアのスクエアは指定できない（総合ルール 第2部 第20章 1-3）。
-    expect(moves).not.toContainEqual({ kind: 'カードをプレイする', declaration: { card: '手札', square: enemySquare } })
+    expect(actions).not.toContainEqual({ kind: 'カードをプレイする', declaration: { card: '手札', square: enemySquare } })
   })
 
   it('手札のカードをトラップとしてプレイする手も含まれる', () => {
@@ -126,11 +126,11 @@ describe('合法手の列挙', () => {
   it('ムーブアイコンの方向に隣接するスクエアへユニットを移動する手が含まれる', () => {
     const state = putOnSquare(mainPhase(), homeSquare, instantiate({ id: 'ユニット', card: moverUnit, owner: '先攻' }))
 
-    const moves = legalActions(state)
+    const actions = legalActions(state)
 
-    expect(moves).toContainEqual({ kind: 'ユニットを移動する', unit: 'ユニット', destination: centerSquare })
+    expect(actions).toContainEqual({ kind: 'ユニットを移動する', unit: 'ユニット', destination: centerSquare })
     // ムーブアイコンの無い方向、または隣接しない方向へは移動できない。
-    expect(moves).not.toContainEqual({ kind: 'ユニットを移動する', unit: 'ユニット', destination: enemySquare })
+    expect(actions).not.toContainEqual({ kind: 'ユニットを移動する', unit: 'ユニット', destination: enemySquare })
   })
 
   it('ムーブアイコンを持たないユニットには移動する手が含まれない', () => {

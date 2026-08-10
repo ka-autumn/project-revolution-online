@@ -52,7 +52,7 @@ describe('ランダムな自己対戦', () => {
     const result = runSelfPlayBatch({
       decks: [buildDeck(), buildDeck()],
       seeds: Array.from({ length: 20 }, (_, seed) => seed),
-      maxMoves: 3000,
+      maxActions: 3000,
     })
 
     expect(result.kind).toBe('全て決着')
@@ -62,15 +62,15 @@ describe('ランダムな自己対戦', () => {
   it('同じシードからは同じ対戦が再生できる', () => {
     const setup: DuelSetup = { decks: [buildDeck(), buildDeck()], seed: 20260810 }
 
-    const first = playRandomSelfPlay({ setup, maxMoves: 3000 })
-    const second = playRandomSelfPlay({ setup, maxMoves: 3000 })
+    const first = playRandomSelfPlay({ setup, maxActions: 3000 })
+    const second = playRandomSelfPlay({ setup, maxActions: 3000 })
 
     expect(second).toEqual(first)
   })
 
   it('シードが違えば違う対戦になる', () => {
-    const first = playRandomSelfPlay({ setup: { decks: [buildDeck(), buildDeck()], seed: 1 }, maxMoves: 3000 })
-    const second = playRandomSelfPlay({ setup: { decks: [buildDeck(), buildDeck()], seed: 2 }, maxMoves: 3000 })
+    const first = playRandomSelfPlay({ setup: { decks: [buildDeck(), buildDeck()], seed: 1 }, maxActions: 3000 })
+    const second = playRandomSelfPlay({ setup: { decks: [buildDeck(), buildDeck()], seed: 2 }, maxActions: 3000 })
 
     expect(second).not.toEqual(first)
   })
@@ -78,7 +78,7 @@ describe('ランダムな自己対戦', () => {
   it('デッキが構築戦の規定を満たさなければ、対戦せずにデッキ不備を返す', () => {
     const result = playRandomSelfPlay({
       setup: { decks: [buildDeck().slice(1), buildDeck()], seed: 1 },
-      maxMoves: 3000,
+      maxActions: 3000,
     })
 
     expect(result.kind).toBe('デッキ不備')
@@ -88,18 +88,18 @@ describe('ランダムな自己対戦', () => {
 // ADR-0005: 複数シードを回して失敗を集約するハーネスそのものの振る舞い。
 describe('複数シードの自己対戦', () => {
   it('すべてのシードが決着すれば、シードごとの決着までの手数を返す', () => {
-    const result = runSelfPlayBatch({ decks: [buildDeck(), buildDeck()], seeds: [1, 2, 3], maxMoves: 3000 })
+    const result = runSelfPlayBatch({ decks: [buildDeck(), buildDeck()], seeds: [1, 2, 3], maxActions: 3000 })
 
     expect(result.kind).toBe('全て決着')
     if (result.kind !== '全て決着') throw new Error('到達しないはず')
-    expect([...result.moves.keys()]).toEqual([1, 2, 3])
+    expect([...result.actionsTaken.keys()]).toEqual([1, 2, 3])
   })
 
   it('デッキ不備のシードがあれば、そこで打ち切ってそのシードを報告する', () => {
     const result = runSelfPlayBatch({
       decks: [buildDeck().slice(1), buildDeck()],
       seeds: [1, 2, 3],
-      maxMoves: 3000,
+      maxActions: 3000,
     })
 
     expect(result).toEqual({

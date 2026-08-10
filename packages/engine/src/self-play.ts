@@ -3,8 +3,8 @@ import type { DuelState } from './duel.js'
 import { hasEnded } from './duel.js'
 import { cardIdsOf, checkBoardInvariants } from './invariant.js'
 import type { InvariantViolation } from './invariant.js'
-import { applyLegalAction, legalActions } from './legal-move.js'
-import type { LegalAction } from './legal-move.js'
+import { applyLegalAction, legalActions } from './legal-action.js'
+import type { LegalAction } from './legal-action.js'
 import { nextInt } from './random.js'
 import type { Random } from './random.js'
 import type { Chooser } from './resolve.js'
@@ -54,22 +54,22 @@ export const pickRandomAction: ActionPicker = (actions, random) => {
 export interface SelfPlayOptions {
   readonly setup: DuelSetup
   /**
-   * 完走とみなさずに打ち切る手数の上限。無限ループそのものを検出するわけではなく、この
-   * 回数まで決着しなければ「無限ループの疑いがある」ものとして扱う（ADR-0005）。
+   * 完走とみなさずに打ち切る、行った手数の上限。無限ループそのものを検出するわけではなく、
+   * この回数まで決着しなければ「無限ループの疑いがある」ものとして扱う（ADR-0005）。
    */
-  readonly maxMoves: number
+  readonly maxActions: number
   /** 次に行う手を選ぶプレイヤー。省略すればランダムに選ぶ（`pickRandomAction`）。 */
   readonly pickAction?: ActionPicker
 }
 
 export type SelfPlayResult =
-  | { readonly kind: '決着'; readonly state: DuelState; readonly moves: number }
-  | { readonly kind: '手数上限'; readonly state: DuelState; readonly moves: number }
+  | { readonly kind: '決着'; readonly state: DuelState; readonly actionsTaken: number }
+  | { readonly kind: '手数上限'; readonly state: DuelState; readonly actionsTaken: number }
   | {
       readonly kind: '不変条件違反'
       readonly state: DuelState
       readonly violations: readonly InvariantViolation[]
-      readonly moves: number
+      readonly actionsTaken: number
     }
   | { readonly kind: 'デッキ不備'; readonly violations: readonly SeatedViolation[] }
 
@@ -94,12 +94,12 @@ export function playRandomSelfPlay(options: SelfPlayOptions): SelfPlayResult {
   let state = prepared.state
   let random = prepared.random
 
-  for (let move = 0; move < options.maxMoves; move += 1) {
+  for (let actionsTaken = 0; actionsTaken < options.maxActions; actionsTaken += 1) {
     const picked = pickAction(legalActions(state), random)
-    // `優先権を放棄する` は終了していない限り必ず合法手にある（`legal-move.ts`）ため、
+    // `優先権を放棄する` は終了していない限り必ず合法手にある（`legal-action.ts`）ため、
     // 実際には起こらない。起こったならそれ自体が不変条件の崩れなので、そう報告する。
     if (picked === undefined) {
-      return { kind: '不変条件違反', state, violations: [{ kind: '終了していないのに合法手が無い' }], moves: move }
+      return { kind: '不変条件違反', state, violations: [{ kind: '終了していないのに合法手が無い' }], actionsTaken }
     }
 
     const { chooser, current } = randomChooser(picked.random)
@@ -107,12 +107,12 @@ export function playRandomSelfPlay(options: SelfPlayOptions): SelfPlayResult {
     random = current()
 
     const violations = checkBoardInvariants(state, initialCardIds)
-    if (violations.length > 0) return { kind: '不変条件違反', state, violations, moves: move + 1 }
+    if (violations.length > 0) return { kind: '不変条件違反', state, violations, actionsTaken: actionsTaken + 1 }
 
-    if (hasEnded(state)) return { kind: '決着', state, moves: move + 1 }
+    if (hasEnded(state)) return { kind: '決着', state, actionsTaken: actionsTaken + 1 }
   }
 
-  return { kind: '手数上限', state, moves: options.maxMoves }
+  return { kind: '手数上限', state, actionsTaken: options.maxActions }
 }
 
 /** 複数シード分の自己対戦をまとめて回すのに必要なもの（ADR-0005）。 */
@@ -121,12 +121,12 @@ export interface SelfPlayBatchOptions {
   readonly decks: readonly [Deck, Deck]
   /** 対戦させるシードの並び。 */
   readonly seeds: readonly number[]
-  readonly maxMoves: number
+  readonly maxActions: number
   readonly pickAction?: ActionPicker
 }
 
 export type SelfPlayBatchResult =
-  | { readonly kind: '全て決着'; readonly moves: ReadonlyMap<number, number> }
+  | { readonly kind: '全て決着'; readonly actionsTaken: ReadonlyMap<number, number> }
   | { readonly kind: '失敗'; readonly seed: number; readonly result: SelfPlayResult }
 
 /**
@@ -138,17 +138,17 @@ export type SelfPlayBatchResult =
  * 返す。
  */
 export function runSelfPlayBatch(options: SelfPlayBatchOptions): SelfPlayBatchResult {
-  const moves = new Map<number, number>()
+  const actionsTaken = new Map<number, number>()
 
   for (const seed of options.seeds) {
     const result = playRandomSelfPlay({
       setup: { decks: options.decks, seed },
-      maxMoves: options.maxMoves,
+      maxActions: options.maxActions,
       pickAction: options.pickAction,
     })
     if (result.kind !== '決着') return { kind: '失敗', seed, result }
-    moves.set(seed, result.moves)
+    actionsTaken.set(seed, result.actionsTaken)
   }
 
-  return { kind: '全て決着', moves }
+  return { kind: '全て決着', actionsTaken }
 }
