@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { putInZone } from './duel.js'
 import {
   PLAYERS,
-  applyMove,
+  applyLegalAction,
   cardsIn,
   cardsOn,
   defineTrap,
@@ -12,7 +12,7 @@ import {
   emptyDuelState,
   hasEnded,
   instantiate,
-  legalMoves,
+  legalActions,
   passPriority,
   putOnSquare,
 } from './index.js'
@@ -68,13 +68,13 @@ const kindsOf = (moves: readonly { readonly kind: string }[]) => moves.map((move
 // ADR-0005: 合法手を列挙する機能は、AI のためではなくエンジンの必須機能になる。
 describe('合法手の列挙', () => {
   it('他に行える行動が無くても、優先権の放棄は常に含まれる', () => {
-    expect(kindsOf(legalMoves(mainPhase()))).toContain('優先権を放棄する')
+    expect(kindsOf(legalActions(mainPhase()))).toContain('優先権を放棄する')
   })
 
   it('デュエルが終了していれば何も無い', () => {
     const ended: DuelState = { ...mainPhase(), result: { kind: '勝利', winner: '先攻' } }
 
-    expect(legalMoves(ended)).toEqual([])
+    expect(legalActions(ended)).toEqual([])
   })
 
   it('エネルギーフェイズには、手札のカードをエネルギーゾーンに置く手が含まれる', () => {
@@ -82,24 +82,25 @@ describe('合法手の列挙', () => {
       instantiate({ id: '手札', card: plainUnit, owner: '先攻' }),
     ])
 
-    expect(legalMoves(state)).toContainEqual({ kind: 'エネルギーを置く', card: '手札' })
+    expect(legalActions(state)).toContainEqual({ kind: 'エネルギーを置く', card: '手札' })
   })
 
+  // 総合ルール 第3部 第7章 1
   it('同じエネルギーフェイズにすでに置いていれば、もう含まれない', () => {
     const state = putInZone(phaseReadyToAct('エネルギーフェイズ'), '先攻', '手札', [
       instantiate({ id: '手札', card: plainUnit, owner: '先攻' }),
     ])
-    const placed = applyMove(state, { kind: 'エネルギーを置く', card: '手札' }, chooseFirst)
+    const placed = applyLegalAction(state, { kind: 'エネルギーを置く', card: '手札' }, chooseFirst)
     // 置いた時点で優先権が非アクティブプレイヤーに移っているので戻す。
     const back = passPriority(placed, chooseFirst)
 
-    expect(kindsOf(legalMoves(back))).not.toContain('エネルギーを置く')
+    expect(kindsOf(legalActions(back))).not.toContain('エネルギーを置く')
   })
 
   it('メインフェイズには、手札のユニットを自分のユニットが無いスクエアへプレイする手が含まれる', () => {
     const state = putInZone(mainPhase(), '先攻', '手札', [instantiate({ id: '手札', card: plainUnit, owner: '先攻' })])
 
-    const moves = legalMoves(state)
+    const moves = legalActions(state)
 
     expect(moves).toContainEqual({ kind: 'カードをプレイする', declaration: { card: '手札', square: homeSquare } })
     expect(moves).toContainEqual({ kind: 'カードをプレイする', declaration: { card: '手札', square: centerSquare } })
@@ -110,7 +111,7 @@ describe('合法手の列挙', () => {
   it('手札のカードをトラップとしてプレイする手も含まれる', () => {
     const state = putInZone(mainPhase(), '先攻', '手札', [instantiate({ id: '手札', card: plainUnit, owner: '先攻' })])
 
-    expect(legalMoves(state)).toContainEqual({ kind: 'トラップとしてプレイする', card: '手札' })
+    expect(legalActions(state)).toContainEqual({ kind: 'トラップとしてプレイする', card: '手札' })
   })
 
   it('自分のトラップゾーンにあるカードを廃棄する手も含まれる', () => {
@@ -118,13 +119,14 @@ describe('合法手の列挙', () => {
       instantiate({ id: 'トラップ', card: plainUnit, owner: '先攻' }),
     ])
 
-    expect(legalMoves(state)).toContainEqual({ kind: 'トラップを廃棄する', card: 'トラップ' })
+    expect(legalActions(state)).toContainEqual({ kind: 'トラップを廃棄する', card: 'トラップ' })
   })
 
+  // 総合ルール 第4部 第6章 2-1
   it('ムーブアイコンの方向に隣接するスクエアへユニットを移動する手が含まれる', () => {
     const state = putOnSquare(mainPhase(), homeSquare, instantiate({ id: 'ユニット', card: moverUnit, owner: '先攻' }))
 
-    const moves = legalMoves(state)
+    const moves = legalActions(state)
 
     expect(moves).toContainEqual({ kind: 'ユニットを移動する', unit: 'ユニット', destination: centerSquare })
     // ムーブアイコンの無い方向、または隣接しない方向へは移動できない。
@@ -134,9 +136,10 @@ describe('合法手の列挙', () => {
   it('ムーブアイコンを持たないユニットには移動する手が含まれない', () => {
     const state = putOnSquare(mainPhase(), homeSquare, instantiate({ id: 'ユニット', card: plainUnit, owner: '先攻' }))
 
-    expect(kindsOf(legalMoves(state))).not.toContain('ユニットを移動する')
+    expect(kindsOf(legalActions(state))).not.toContain('ユニットを移動する')
   })
 
+  // 総合ルール 第3部 第9章 1
   it('中央エリア・敵エリアにある自分のリリース状態のユニットをスマッシュする手が含まれる', () => {
     const state = putOnSquare(
       phaseReadyToAct('スマッシュフェイズ'),
@@ -144,7 +147,7 @@ describe('合法手の列挙', () => {
       instantiate({ id: 'ユニット', card: plainUnit, owner: '先攻' }),
     )
 
-    expect(legalMoves(state)).toContainEqual({ kind: 'スマッシュする', unit: 'ユニット' })
+    expect(legalActions(state)).toContainEqual({ kind: 'スマッシュする', unit: 'ユニット' })
   })
 
   it('発動する権利の無いトラップには発動する手が含まれない', () => {
@@ -153,9 +156,10 @@ describe('合法手の列挙', () => {
       instantiate({ id: 'トラップ', card: trapCard, owner: '先攻' }),
     ])
 
-    expect(kindsOf(legalMoves(state))).not.toContain('トラップを発動する')
+    expect(kindsOf(legalActions(state))).not.toContain('トラップを発動する')
   })
 
+  // 総合ルール 第2部 第20章 3-8
   it('発動する権利があるトラップには発動する手が含まれる', () => {
     const trapCard = defineTrap({ name: 'テスト・トラップ', level: 0 })
     const state: DuelState = {
@@ -163,7 +167,7 @@ describe('合法手の列挙', () => {
       trapConditionsMet: ['トラップ'],
     }
 
-    expect(legalMoves(state)).toContainEqual({ kind: 'トラップを発動する', card: 'トラップ' })
+    expect(legalActions(state)).toContainEqual({ kind: 'トラップを発動する', card: 'トラップ' })
   })
 })
 
@@ -172,7 +176,7 @@ describe('合法手の適用', () => {
   it('その手を選んだ通りに盤面が変わる', () => {
     const state = putInZone(mainPhase(), '先攻', '手札', [instantiate({ id: '手札', card: plainUnit, owner: '先攻' })])
 
-    const after = applyMove(state, { kind: 'カードをプレイする', declaration: { card: '手札', square: homeSquare } }, chooseFirst)
+    const after = applyLegalAction(state, { kind: 'カードをプレイする', declaration: { card: '手札', square: homeSquare } }, chooseFirst)
 
     expect(cardsOn(after, homeSquare).map((each) => each.id)).toEqual(['手札'])
     expect(cardsIn(after, '先攻', '手札')).toEqual([])
@@ -181,7 +185,7 @@ describe('合法手の適用', () => {
   it('優先権を放棄する手はデュエルが終了していても例外にならない', () => {
     const ended: DuelState = { ...mainPhase(), result: { kind: '勝利', winner: '先攻' } }
 
-    const after = applyMove(ended, { kind: '優先権を放棄する' }, chooseFirst)
+    const after = applyLegalAction(ended, { kind: '優先権を放棄する' }, chooseFirst)
 
     expect(hasEnded(after)).toBe(true)
   })

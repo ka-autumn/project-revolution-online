@@ -43,7 +43,7 @@ describe('盤面の不変条件', () => {
     const initial = cardIdsOf(state)
     const vanished: DuelState = { ...state, zones: { ...state.zones, 先攻: { ...state.zones.先攻, 手札: [] } } }
 
-    expect(checkBoardInvariants(vanished, initial)).toEqual(['カード 手札のカード がどこにも見つからない'])
+    expect(checkBoardInvariants(vanished, initial)).toEqual([{ kind: 'カードがどこにも見つからない', card: '手札のカード' }])
   })
 
   it('1 枚のカードが同時に 2 か所にあれば崩れている', () => {
@@ -57,7 +57,7 @@ describe('盤面の不変条件', () => {
       },
     }
 
-    expect(checkBoardInvariants(duplicated, initial)).toEqual(['カード 手札のカード が 2 か所に重複して存在する'])
+    expect(checkBoardInvariants(duplicated, initial)).toEqual([{ kind: 'カードが重複して存在する', card: '手札のカード', count: 2 }])
   })
 
   it('見覚えのないカードが現れていれば崩れている', () => {
@@ -67,7 +67,7 @@ describe('盤面の不変条件', () => {
       instantiate({ id: '見知らぬカード', card: testCard, owner: '先攻' }),
     ])
 
-    expect(checkBoardInvariants(appeared, initial)).toEqual(['見覚えのないカード 見知らぬカード が存在する'])
+    expect(checkBoardInvariants(appeared, initial)).toEqual([{ kind: '見覚えのないカードが存在する', card: '見知らぬカード' }])
   })
 
   it('カードが負のダメージを持っていれば崩れている', () => {
@@ -78,7 +78,7 @@ describe('盤面の不変条件', () => {
       squares: state.squares.map((cards) => cards.map((card) => (card.id === 'スクエアのカード' ? { ...card, damage: -1 } : card))),
     }
 
-    expect(checkBoardInvariants(damaged, initial)).toEqual(['カード スクエアのカード が負のダメージ -1 を持っている'])
+    expect(checkBoardInvariants(damaged, initial)).toEqual([{ kind: 'カードが負のダメージを持っている', card: 'スクエアのカード', damage: -1 }])
   })
 
   it('プレイヤーが負のダメージを受けていれば崩れている', () => {
@@ -86,6 +86,6 @@ describe('盤面の不変条件', () => {
     const initial = cardIdsOf(state)
     const damaged: DuelState = { ...state, damage: { ...state.damage, 先攻: -1 } }
 
-    expect(checkBoardInvariants(damaged, initial)).toEqual(['先攻 が負のダメージ -1 を受けている'])
+    expect(checkBoardInvariants(damaged, initial)).toEqual([{ kind: 'プレイヤーが負のダメージを受けている', player: '先攻', damage: -1 }])
   })
 })

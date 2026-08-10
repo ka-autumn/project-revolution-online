@@ -1,10 +1,24 @@
 import { cardsIn } from './duel.js'
 import type { CardId, CardInstance, DuelState } from './duel.js'
+import type { Player } from './player.js'
 import { PLAYERS } from './player.js'
 import { PLAYER_ZONES } from './zone.js'
 
-/** 盤面が守っているはずの不変条件が崩れていることを説明する文。 */
-export type InvariantViolation = string
+/**
+ * 盤面が守っているはずの不変条件が崩れていることを説明する値（ADR-0005）。
+ *
+ * `ActionViolation`（`action.ts`）と同じく、呼び出し側が崩れた条件の種類で分岐できるように
+ * 構造化する。文字列 1 つに自由文で説明を詰め込むと、種類ごとに違う扱いをしたい場合に文字列を
+ * パースし直す必要が出てしまう。
+ */
+export type InvariantViolation =
+  | { readonly kind: 'カードがどこにも見つからない'; readonly card: CardId }
+  | { readonly kind: 'カードが重複して存在する'; readonly card: CardId; readonly count: number }
+  | { readonly kind: '見覚えのないカードが存在する'; readonly card: CardId }
+  | { readonly kind: 'カードが負のダメージを持っている'; readonly card: CardId; readonly damage: number }
+  | { readonly kind: 'プレイヤーが負のダメージを受けている'; readonly player: Player; readonly damage: number }
+  /** デュエルが終了していないのに合法手が 1 つも無い（`self-play.ts`）。 */
+  | { readonly kind: '終了していないのに合法手が無い' }
 
 /**
  * 盤面にあるすべてのカードの id（ADR-0005 の「盤面の不変条件チェック」の基準を作る）。
@@ -39,19 +53,19 @@ export function checkBoardInvariants(
 
   for (const instance of allCardInstances(state)) {
     seen.set(instance.id, (seen.get(instance.id) ?? 0) + 1)
-    if (instance.damage < 0) violations.push(`カード ${instance.id} が負のダメージ ${instance.damage} を持っている`)
+    if (instance.damage < 0) violations.push({ kind: 'カードが負のダメージを持っている', card: instance.id, damage: instance.damage })
   }
   for (const player of PLAYERS) {
-    if (state.damage[player] < 0) violations.push(`${player} が負のダメージ ${state.damage[player]} を受けている`)
+    if (state.damage[player] < 0) violations.push({ kind: 'プレイヤーが負のダメージを受けている', player, damage: state.damage[player] })
   }
 
   for (const id of initialCardIds) {
     const count = seen.get(id) ?? 0
-    if (count === 0) violations.push(`カード ${id} がどこにも見つからない`)
-    else if (count > 1) violations.push(`カード ${id} が ${count} か所に重複して存在する`)
+    if (count === 0) violations.push({ kind: 'カードがどこにも見つからない', card: id })
+    else if (count > 1) violations.push({ kind: 'カードが重複して存在する', card: id, count })
   }
   for (const id of seen.keys()) {
-    if (!initialCardIds.has(id)) violations.push(`見覚えのないカード ${id} が存在する`)
+    if (!initialCardIds.has(id)) violations.push({ kind: '見覚えのないカードが存在する', card: id })
   }
 
   return violations
