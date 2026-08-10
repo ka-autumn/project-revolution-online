@@ -187,8 +187,19 @@ export interface DuelState {
  * なる（同 4）ためである。
  */
 export type DuelResult =
-  | { readonly kind: '勝敗'; readonly winner: Player }
+  | { readonly kind: '勝利'; readonly winner: Player }
   | { readonly kind: '引き分け' }
+
+/**
+ * そのデュエルが終了しているか（総合ルール 第3部 第3章 3）。
+ *
+ * 勝敗が決まった場合や引き分けになった場合、そのデュエルは即座に終了する。そこから先は
+ * ルールエフェクトも優先権も発生せず、どの行動も行えない。「終わったなら何も起こらない」と
+ * いう同じ判定を各所で書かずに済むように、ここに 1 つ置く。
+ */
+export function hasEnded(state: DuelState): boolean {
+  return state.result !== undefined
+}
 
 /**
  * 誘発した誘発型能力 1 つ。

@@ -40,11 +40,8 @@ function phaseReadyToAct(phase: Phase): DuelState {
 }
 
 /**
- * 山札を積んだ、カードの置かれていない盤面。
- *
- * 山札にあるカードが 0 枚以下のプレイヤーは、次に優先権が発生した時に敗北する
- * （総合ルール 第3部 第3章 2）。優先権を動かすテストでは、それでデュエルが終わって
- * しまわないように山札を積んでおく。
+ * 山札を積んだ、カードの置かれていない盤面。山札が 0 枚以下のプレイヤーは次に優先権が
+ * 発生した時に敗北する（総合ルール 第3部 第3章 2）ので、優先権を動かすテストでは積んでおく。
  */
 function stockedDuelState(): DuelState {
   return PLAYERS.reduce(
@@ -264,7 +261,7 @@ describe('スマッシュする', () => {
     expect(orientationOf(after, centerSquare, 'スマッシュ役')).toBe('フリーズ')
   })
 
-  // 総合ルール 第3部 第9章 1-(2)
+  // 総合ルール 第3部 第9章 1 の (2) の行動
   it('敵エリアの自分のユニットなら、ＳＰ＋500 のダメージを与える', () => {
     const after = stateOf(smash(smashPhaseWith([enemySquare, 'スマッシュ役', sp0]), 'スマッシュ役'))
 

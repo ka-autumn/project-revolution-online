@@ -1,7 +1,7 @@
 import { phaseBeginning } from './ability.js'
 import { resolveFromBank, trigger } from './bank.js'
 import { advanceBattle } from './battle.js'
-import { draw, removeAllDamage } from './duel.js'
+import { draw, hasEnded, removeAllDamage } from './duel.js'
 import type { DuelState } from './duel.js'
 import { opponentOf } from './player.js'
 import { grantPriorityToInactive, settleBeforePriority } from './priority.js'
@@ -32,7 +32,7 @@ import type { Turn } from './turn.js'
  * 発動する権利を失う（総合ルール 第2部 第20章 3-8）。
  */
 export function passPriority(state: DuelState, chooser: Chooser): DuelState {
-  if (state.result !== undefined) return state
+  if (hasEnded(state)) return state
 
   const cleared = loseTrapRightOnPass(state, state.turn.priority)
   const { turn } = cleared

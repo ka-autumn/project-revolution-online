@@ -41,6 +41,7 @@ export {
   cardsOn,
   draw,
   emptyDuelState,
+  hasEnded,
   instantiate,
   librarySize,
   putOnSquare,

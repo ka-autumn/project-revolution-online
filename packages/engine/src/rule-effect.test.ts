@@ -44,11 +44,8 @@ function pass(state: DuelState): DuelState {
 type Placement = readonly [Square, CardInstance]
 
 /**
- * 山札を積んだ、カードの置かれていない盤面。
- *
- * 山札にあるカードが 0 枚以下のプレイヤーは、次に優先権が発生した時に敗北する
- * （総合ルール 第3部 第3章 2）。優先権を動かすテストでは、それでデュエルが終わって
- * しまわないように山札を積んでおく。
+ * 山札を積んだ、カードの置かれていない盤面。山札が 0 枚以下のプレイヤーは次に優先権が
+ * 発生した時に敗北する（総合ルール 第3部 第3章 2）ので、優先権を動かすテストでは積んでおく。
  */
 function stockedDuelState(): DuelState {
   return PLAYERS.reduce(
@@ -208,7 +205,7 @@ describe('デュエルの終了', () => {
     const state = withSmashes(stockedDuelState(), '後攻', 7)
 
     expect(state.result).toBeUndefined()
-    expect(pass(state).result).toEqual({ kind: '勝敗', winner: '先攻' })
+    expect(pass(state).result).toEqual({ kind: '勝利', winner: '先攻' })
   })
 
   it('スマッシュが 6 枚なら敗北しない', () => {
@@ -219,7 +216,7 @@ describe('デュエルの終了', () => {
     const state = withEmptyLibrary(stockedDuelState(), '先攻')
 
     expect(state.result).toBeUndefined()
-    expect(pass(state).result).toEqual({ kind: '勝敗', winner: '後攻' })
+    expect(pass(state).result).toEqual({ kind: '勝利', winner: '後攻' })
   })
 
   // 総合ルール 第3部 第3章 4
@@ -249,6 +246,6 @@ describe('デュエルの終了', () => {
     for (let step = 0; step < 10_000 && current.result === undefined; step += 1) current = pass(current)
 
     // 引けなくなった側が敗北する。どちらが先に尽きるかは先攻・後攻の決まり方による。
-    expect(current.result?.kind).toBe('勝敗')
+    expect(current.result?.kind).toBe('勝利')
   })
 })

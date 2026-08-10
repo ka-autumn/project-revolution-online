@@ -1,6 +1,6 @@
 import { pendingBattle } from './battle.js'
 import { bpOf } from './card.js'
-import { librarySize, moveFromSquareTo } from './duel.js'
+import { hasEnded, librarySize, moveFromSquareTo } from './duel.js'
 import type { CardId, CardInstance, DuelResult, DuelState } from './duel.js'
 import { PLAYERS, opponentOf } from './player.js'
 import type { Player } from './player.js'
@@ -40,7 +40,7 @@ import { smashesOf } from './smash.js'
 export function checkRuleEffects(state: DuelState): DuelState {
   // 勝敗が決まったデュエルは即座に終了する（総合ルール 第3部 第3章 3）。もうルール
   // エフェクトは発生しない。
-  if (state.result !== undefined) return state
+  if (hasEnded(state)) return state
 
   // 敗北のルールエフェクト（同 第4部 第14章 4-1・4-2）。他のルールエフェクトと同時に
   // 発生していても、デュエルが終わる以上その結果は盤面に残らないので、ここで打ち切る。
@@ -70,7 +70,7 @@ function resultOf(state: DuelState): DuelResult | undefined {
   const [loser] = losers
   if (loser === undefined) return undefined
 
-  return losers.length === PLAYERS.length ? { kind: '引き分け' } : { kind: '勝敗', winner: opponentOf(loser) }
+  return losers.length === PLAYERS.length ? { kind: '引き分け' } : { kind: '勝利', winner: opponentOf(loser) }
 }
 
 /** デュエルに敗北する枚数のスマッシュ（総合ルール 第3部 第3章 1、第4部 第14章 4-1）。 */

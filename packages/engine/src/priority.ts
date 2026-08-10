@@ -1,5 +1,6 @@
 import { putTriggeredIntoBank } from './bank.js'
 import { startBattleIfAny } from './battle.js'
+import { hasEnded } from './duel.js'
 import type { DuelState } from './duel.js'
 import { opponentOf } from './player.js'
 import { checkRuleEffects } from './rule-effect.js'
@@ -16,11 +17,10 @@ import type { Phase } from './turn.js'
  * 繰り返す。
  *
  * バトル発生のルールエフェクトだけは、他のルールエフェクトをすべて解決し終えた後に処理する
- * （同 第14章 4-4-1、第3部 第11章 1-1）。バトルが始まると優先権は非アクティブプレイヤーに
- * 発生する（同 第12章 1）ので、誰が得るはずだったかに関わらずそこへ移す。スマッシュ判定の
- * 発生（同 第14章 4-12）も同じで、始まると非アクティブプレイヤーに優先権が発生する
- * （同 第3部 第18章 1）。バトルより後に見るのは、スマッシュ判定中にバトルが発生したなら
- * バトルを先に処理する（同 第17章 2-1）ためである。
+ * （同 第14章 4-4-1、第3部 第11章 1-1）。スマッシュ判定の発生（同 第14章 4-12）はその
+ * 「他のルールエフェクト」の 1 つなので、バトルより先に見る。どちらも、始まると非アクティブ
+ * プレイヤーに優先権が発生する（同 第3部 第12章 1・第18章 1）ので、誰が得るはずだったかに
+ * 関わらずそこへ移す。
  *
  * 勝敗が決まったら、そこで終わる。デュエルは即座に終了する（同 第3章 3）ので、残りの
  * ルールエフェクトも誘発型能力も処理しない。
@@ -39,7 +39,7 @@ import type { Phase } from './turn.js'
 export function settleBeforePriority(state: DuelState): DuelState {
   let current = state
   for (;;) {
-    if (current.result !== undefined) return current
+    if (hasEnded(current)) return current
     // 何も発生していなければ `checkRuleEffects` は渡した盤面をそのまま返すので、
     // 新しいルールエフェクトが発生したかどうかは盤面が入れ替わったかで分かる。
     // ルールエフェクトはカードをスクエアから取り除くだけなので、いつか発生しなくなる。
@@ -48,16 +48,16 @@ export function settleBeforePriority(state: DuelState): DuelState {
       current = checked
       continue
     }
-    const started = startBattleIfAny(current)
-    if (started !== current) {
-      current = toInactive(started)
-      continue
-    }
     // 回復ステップでダメージが 1000 未満に戻る（総合ルール 第3部 第18章 1）ので、
     // 同じダメージで何度も発生することはなく、この繰り返しはいつか終わる。
     const judging = startSmashJudgmentIfAny(current)
     if (judging !== current) {
       current = toInactive(judging)
+      continue
+    }
+    const started = startBattleIfAny(current)
+    if (started !== current) {
+      current = toInactive(started)
       continue
     }
     if (current.triggered.length === 0) return current
@@ -104,7 +104,7 @@ function toInactive(state: DuelState): DuelState {
 export function activePlayerMayAct(state: DuelState, phase: Phase): boolean {
   const { turn } = state
   return (
-    state.result === undefined &&
+    !hasEnded(state) &&
     state.battle === undefined &&
     turn.phase === phase &&
     turn.priority === turn.active &&

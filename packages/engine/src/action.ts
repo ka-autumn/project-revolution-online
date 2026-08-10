@@ -109,7 +109,7 @@ export function plan(state: DuelState, chooser: Chooser): ActionOutcome {
 
 /**
  * 敵エリアにあるユニットでスマッシュした時に、ＳＰに加えて与えるダメージ
- * （総合ルール 第3部 第9章 1-(2)）。
+ * （総合ルール 第3部 第9章 1 の (2) の行動）。
  */
 const ENEMY_AREA_BONUS = 500
 

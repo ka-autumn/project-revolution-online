@@ -179,7 +179,7 @@ describe('スマッシュ判定の発生', () => {
   })
 
   it('1000 未満のダメージでは発生しない', () => {
-    // 敵エリアのＳＰ0 のユニットが与えるのは 500（総合ルール 第3部 第9章 1-(2)）。
+    // 敵エリアのＳＰ0 のユニットが与えるのは 500（総合ルール 第3部 第9章 1 の (2) の行動）。
     const smashed = smashedFromEnemyArea(sp0)
 
     expect(smashed.smashJudgments).toEqual([])
@@ -207,7 +207,7 @@ describe('スマッシュ判定のステップ', () => {
   // 回復ステップ → 第１希望ステップ → 第１確定ステップ → 第２希望ステップ →
   // 第２確定ステップ という 5 つのステップで構成される。
   it('受けたダメージ 1000 ごとに希望ステップと確定ステップを繰り返す', () => {
-    // 敵エリアのＳＰ1500 のユニットが与えるのは 2000（総合ルール 第3部 第9章 1-(2)）。
+    // 敵エリアのＳＰ1500 のユニットが与えるのは 2000（総合ルール 第3部 第9章 1 の (2) の行動）。
     expect(stepsOf(smashedFromEnemyArea(sp1500))).toEqual([
       '回復ステップ',
       '第1希望ステップ',
@@ -316,6 +316,19 @@ describe('希望ステップ', () => {
     expect(idsOf(cardsOn(endStep(state), centerSquare))).toEqual(['スマッシュ役'])
   })
 
+  // 総合ルール 第3部 第3章 2: 山札が 0 枚以下のプレイヤーは、次に優先権が発生した時に
+  // 敗北する。希望ステップで山札の最後の 1 枚を置くのがその経路になる。
+  it('山札の最後の 1 枚を置いたプレイヤーは、次に優先権が発生した時に敗北する', () => {
+    // 2000 のダメージなので希望ステップは 2 回あるが、1 回目で山札が尽きる。
+    const smashed = putInZone(smashedFromEnemyArea(sp1500), '後攻', '山札', [
+      instantiate({ id: '最後の 1 枚', card: vanilla, owner: '後攻' }),
+    ])
+
+    const ended = endStep(smashed)
+    expect(idsOf(cardsIn(ended, '後攻', 'スマッシュゾーン'))).toEqual(['最後の 1 枚'])
+    expect(ended.result).toEqual({ kind: '勝利', winner: '先攻' })
+  })
+
   it('「希望」を持たないカードでは何も起こらない', () => {
     const state = withEnergy(smashedFromCenter(sp1000, [vanilla]), [vanilla])
 
@@ -354,7 +367,7 @@ describe('確定ステップ', () => {
     expect(smashesOf(hopeStep, '後攻')).toHaveLength(6)
     expect(hopeStep.result).toBeUndefined()
 
-    expect(endStep(hopeStep).result).toEqual({ kind: '勝敗', winner: '先攻' })
+    expect(endStep(hopeStep).result).toEqual({ kind: '勝利', winner: '先攻' })
   })
 
   // 総合ルール 第3部 第20章 1 の【例】: 相手のスマッシュは 6。敵エリアのＳＰ0 のユニットで
@@ -374,7 +387,7 @@ describe('確定ステップ', () => {
     expect(judgment.smashJudgments[0]?.repeats).toBe(2)
     // 回復ステップ → 第１希望ステップ → 第１確定ステップ で終わる。
     expect(stepsOf(judgment)).toEqual(['回復ステップ', '第1希望ステップ', '第1確定ステップ'])
-    expect(endStep(endStep(judgment)).result).toEqual({ kind: '勝敗', winner: '先攻' })
+    expect(endStep(endStep(judgment)).result).toEqual({ kind: '勝利', winner: '先攻' })
   })
 
   /** 後攻のスマッシュゾーンにカードを `count` 枚置いた盤面。 */
