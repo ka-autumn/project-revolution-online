@@ -85,6 +85,11 @@ function discardedFrom(cards: readonly CardInstance[]): readonly CardId[] {
  * 捨札に置かれるのは「バトルが発生しなければ」である。バトルが発生したならそのバトルの
  * 終了時に置かれる（同 4-10、第3部 第16章 2-2）ので、これから発生するバトルがある間も、
  * バトルが進行中の間も、ここでは何も返さない。
+ *
+ * 条件は本来「そのユニットが置かれた時にバトルが発生したか」だが、盤面にバトルがあるか
+ * どうかで代用している。バトルは同時に 1 つしか起こらない（`duel.ts` の `battle`）ため
+ * 今は同じことになる。複数のバトルを持つようになったら、どのバトルに紐づくユニットなのかを
+ * 覚える必要が出る。
  */
 function discardedFromCenter(state: DuelState): readonly CardId[] {
   if (state.playedIntoCenter.length === 0) return []

@@ -74,6 +74,15 @@ export interface Battle {
   readonly heldTriggered: readonly TriggeredInstance[]
 }
 
+/** これから発生するバトルの、スクエアとそこで重なっている 2 つのユニット。 */
+interface PendingBattle {
+  readonly square: Square
+  /** そのスクエアに先に置かれていたユニット（総合ルール 第3部 第11章 4）。 */
+  readonly attacked: UnitInstance
+  /** そのスクエアに後から置かれたユニット（同 4）。 */
+  readonly attacker: UnitInstance
+}
+
 /**
  * 支配者の異なる 2 つのユニットが重なっていて、バトルが発生するスクエアとそのユニット。
  * 重なっていなければ `undefined`（総合ルール 第4部 第14章 4-4）。
@@ -88,14 +97,6 @@ export function pendingBattle(state: DuelState): PendingBattle | undefined {
     if (units !== undefined) return { square, ...units }
   }
   return undefined
-}
-
-interface PendingBattle {
-  readonly square: Square
-  /** そのスクエアに先に置かれていたユニット（総合ルール 第3部 第11章 4）。 */
-  readonly attacked: UnitInstance
-  /** そのスクエアに後から置かれたユニット（同 4）。 */
-  readonly attacker: UnitInstance
 }
 
 /**
@@ -132,11 +133,7 @@ export function startBattleIfAny(state: DuelState): DuelState {
     heldBank: state.bank,
     heldTriggered: state.triggered,
   }
-  const held: DuelState = { ...state, battle, bank: [], triggered: [] }
-
-  // 総合ルール 第3部 第12章 1。
-  const begun = trigger(trigger(held, 'バトルの始め'), '第１バトルステップの始め')
-  return triggerAttack(begun, battle.attacker, battle.attacked)
+  return beginStep({ ...state, battle, bank: [], triggered: [] }, battle)
 }
 
 /**
@@ -145,22 +142,46 @@ export function startBattleIfAny(state: DuelState): DuelState {
  * 呼ぶのは、バンクが空で両方のプレイヤーが連続して優先権を放棄した時だけである
  * （総合ルール 第3部 第4章 4）。フェイズのかわりに、進行中のステップが終了する。
  *
+ * 最後のステップまで来ていたらバトルが終了する。ただしバトル終了ステップだけは連続放棄を
+ * 2 度必要とする。1 度目で勝敗の決定後のルールエフェクトを解決して「バトルの終わりに」の
+ * 能力を誘発させ（同 第16章 2-1〜2-3）、2 度目で終わる（同 3）。
+ *
  * ステップが進んだ後は、どのステップでも非アクティブプレイヤーが優先権を獲得する
  * （同 第12章 1・第13章 1・第14章 1・第15章 1・第16章 1）。それは呼ぶ側（`progress.ts`）
  * が行う。
  */
 export function advanceBattle(state: DuelState, battle: Battle): DuelState {
+  const next = BATTLE_STEPS[BATTLE_STEPS.indexOf(battle.step) + 1]
+  if (next === undefined) {
+    return battle.endOfBattleTriggered ? endBattle(state, battle) : resolveEndOfBattle(state, battle)
+  }
+  return beginStep(state, { ...battle, step: next })
+}
+
+/**
+ * 始まったステップの、始めの処理を行う。
+ *
+ * バトルステップは誘発した能力をバンクに入れ（総合ルール 第3部 第12章 1・第14章 1）、
+ * ダメージステップはバトルダメージの応酬を解決し（同 第13章 1・第15章 1）、バトル終了
+ * ステップは勝敗を判定する（同 第16章 1）。フェイズにおける `progress.ts` の
+ * `beginCurrentPhase` と同じ位置づけ。
+ */
+function beginStep(state: DuelState, battle: Battle): DuelState {
+  const begun = withBattle(state, battle)
   switch (battle.step) {
-    case '第１バトルステップ':
-      return exchangeBattleDamage(state, { ...battle, step: '第１ダメージステップ' })
+    case '第１バトルステップ': {
+      // バトルが始まったことによる誘発（同 第12章 1）。「攻撃した時」「攻撃された時」は
+      // そのユニット自身のできごとなので、盤面の全ユニットは見ない。
+      const triggered = trigger(trigger(begun, 'バトルの始め'), '第１バトルステップの始め')
+      return triggerAttack(triggered, battle.attacker, battle.attacked)
+    }
     case '第１ダメージステップ':
-      return trigger(withBattle(state, { ...battle, step: '第２バトルステップ' }), '第２バトルステップの始め')
-    case '第２バトルステップ':
-      return exchangeBattleDamage(state, { ...battle, step: '第２ダメージステップ' })
     case '第２ダメージステップ':
-      return beginEndStep(state, { ...battle, step: 'バトル終了ステップ' })
+      return exchangeBattleDamage(begun, battle)
+    case '第２バトルステップ':
+      return trigger(begun, '第２バトルステップの始め')
     case 'バトル終了ステップ':
-      return battle.endOfBattleTriggered ? endBattle(state, battle) : resolveEndOfBattle(state, battle)
+      return beginEndStep(begun, battle)
   }
 }
 
@@ -179,17 +200,16 @@ export function advanceBattle(state: DuelState, battle: Battle): DuelState {
 function exchangeBattleDamage(state: DuelState, battle: Battle): DuelState {
   const attacker = unitInBattle(state, battle, battle.attacker)
   const attacked = unitInBattle(state, battle, battle.attacked)
-  const advanced = withBattle(state, battle)
-  if (attacker === undefined || attacked === undefined) return advanced
+  if (attacker === undefined || attacked === undefined) return state
 
   const dealers = [attacker, attacked].filter((unit) => dealsDamageIn(battle, unit))
-  if (dealers.length === 0) return advanced
+  if (dealers.length === 0) return state
 
   const damages = dealers.map((unit) => ({
     target: unit.id === attacker.id ? attacked.id : attacker.id,
     amount: bpOf(unit.card),
   }))
-  const damaged = damages.reduce((current, { target, amount }) => dealDamage(current, target, amount), advanced)
+  const damaged = damages.reduce((current, { target, amount }) => dealDamage(current, target, amount), state)
 
   return withBattle(damaged, { ...battle, dealtDamage: [...battle.dealtDamage, ...dealers.map((unit) => unit.id)] })
 }
@@ -211,12 +231,12 @@ function dealsDamageIn(battle: Battle, unit: UnitInstance): boolean {
  * バトル終了ステップを始める（総合ルール 第3部 第16章 1）。
  *
  * まずバトルの勝敗を判定し、勝敗によって誘発する能力と「バトル終了ステップの始め」に
- * 誘発する能力をバンクに乗せる。
+ * 誘発する能力をバンクに乗せる。勝敗そのものは盤面に残さない。参照するのはこの誘発だけで、
+ * 勝者や敗者を後から見るカードがまだ書けないためである。
  */
 function beginEndStep(state: DuelState, battle: Battle): DuelState {
-  const begun = withBattle(state, battle)
-  const winner = winnerOf(begun, battle)
-  const won = winner === undefined ? begun : triggerBattleWin(begun, winner)
+  const winner = winnerOf(state, battle)
+  const won = winner === undefined ? state : triggerBattleWin(state, winner)
   return trigger(won, 'バトル終了ステップの始め')
 }
 

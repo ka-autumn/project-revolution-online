@@ -1,4 +1,4 @@
-import type { Ability } from './ability.js'
+import type { Ability, DreamAbility, GenkiAbility } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
 import type { Effect } from './effect.js'
 
@@ -194,23 +194,33 @@ export function defineTrap(spec: TrapSpec): TrapCard {
   return { ...printed('トラップ', spec), triggerIcon: spec.triggerIcon ?? [], effect: spec.effect ?? noEffect }
 }
 
+/**
+ * そのカードがそのキーワード能力を持つか。
+ *
+ * 常在型のキーワード能力だけを見る。テキストに書かれた能力のうち、名前だけで参照できて
+ * 内容を持たないのはこの形のものである（`ability.ts` の `DreamAbility`・`GenkiAbility`）。
+ */
+function hasKeyword(card: Card, keyword: (DreamAbility | GenkiAbility)['keyword']): boolean {
+  return card.abilities.some((ability) => ability.kind === '常在型能力' && ability.keyword === keyword)
+}
+
 /** そのカードが「夢」を持つか（総合ルール 第5部 第1章 2）。 */
 export function hasDream(card: Card): boolean {
-  return card.abilities.some((ability) => ability.kind === '常在型能力' && ability.keyword === '夢')
+  return hasKeyword(card, '夢')
 }
 
 /** そのカードが「元気」を持つか（総合ルール 第5部 第8章 2）。 */
 export function hasGenki(card: Card): boolean {
-  return card.abilities.some((ability) => ability.kind === '常在型能力' && ability.keyword === '元気')
+  return hasKeyword(card, '元気')
 }
 
 /**
  * そのユニットのＢＰ（総合ルール 第2部 第14章 1）。バトルで比較され、ダメージと比べられる
  * 数値である（同 第4部 第14章 4-5・4-6）。
  *
- * ＢＰを修整する効果をまだ書けないため、いまは印刷された数値がそのままＢＰになる。修整を
- * 持つようになったら、ここが盤面を見るようになる。ＢＰを読む側がすべてここを通っていれば、
- * その時に直すのはこの関数だけで済む。
+ * ＢＰを修整する効果をまだ書けないため、いまは印刷された数値がそのままＢＰになる。ＢＰを
+ * 読む側がすべてここを通っていれば、修整を持つようになった時に直すのはこの関数と、
+ * 修整の在りかを渡すための引数だけで済む。
  */
 export function bpOf(unit: UnitCard): number {
   return unit.bp

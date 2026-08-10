@@ -20,7 +20,6 @@ export {
   cardsIn,
   cardsInResolveZone,
   cardsOn,
-  dealDamage,
   draw,
   emptyDuelState,
   instantiate,

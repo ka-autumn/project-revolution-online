@@ -5,7 +5,6 @@ import { putInZone } from './duel.js'
 import {
   cardsIn,
   cardsOn,
-  dealDamage,
   defineTrap,
   defineUnit,
   emptyDuelState,
@@ -343,7 +342,18 @@ describe('バトルダメージの応酬', () => {
     expect(idsOf(cardsIn(second, '先攻', '捨札'))).toEqual(['攻撃した'])
   })
 
-  // 総合ルール 第3部 第13章 2・第15章 2: ひとかたまりの効果として同時に解決される。
+  // 総合ルール 第3部 第13章 2: 両方のユニットが「元気」を持っている場合、両方のダメージが
+  // 同時に与えられる。
+  it('どちらも「元気」を持てば、第１ダメージステップに両方が同時に与える', () => {
+    const first = atStep(battling(genkiWeak, genkiWeak), '第１ダメージステップ')
+
+    // 同じＢＰどうしなので、両方がＢＰと同じダメージを受けて捨札に置かれる。
+    expect(cardsOn(first, homeSquare)).toEqual([])
+    expect(idsOf(cardsIn(first, '先攻', '捨札'))).toEqual(['攻撃した'])
+    expect(idsOf(cardsIn(first, '後攻', '捨札'))).toEqual(['攻撃された'])
+  })
+
+  // 総合ルール 第3部 第15章 2: ひとかたまりの効果として同時に解決される。
   it('どちらも「元気」を持たなければ、第２ダメージステップに両方が同時に与える', () => {
     const first = atStep(battling(vanilla, vanilla), '第１ダメージステップ')
 
@@ -371,31 +381,31 @@ describe('バトルダメージの応酬', () => {
   })
 })
 
-// 総合ルール 第4部 第14章 4-6（ADR-0006）
-describe('ＢＰと同じかそれ以上のダメージを受けたユニット', () => {
-  it('持ち主の捨札に置かれる', () => {
-    const board = putOnSquare(emptyDuelState(), otherSquare, unitOf('傷ついたユニット', weak, '先攻'))
-    const damaged = dealDamage(board, '傷ついたユニット', 1000)
+// 総合ルール 第3部 第14章 1・第16章 1（ADR-0006）
+describe('ステップの始めに誘発する能力', () => {
+  /** そのできごとに誘発する能力だけを持つユニットが、バトルの外のスクエアにいる盤面。 */
+  function watching(event: '第２バトルステップの始め' | 'バトル終了ステップの始め'): DuelState {
+    const card = defineUnit({
+      name: `テスト・${event}`,
+      level: 1,
+      colors: ['赤'],
+      bp: 3000,
+      sp: 1000,
+      abilities: [triggeredAbility(event, function* () {})],
+    })
+    return putOnSquare(battling(vanilla, vanilla), otherSquare, unitOf('見物人', card, '先攻'))
+  }
 
-    expect(idsOf(cardsIn(pass(damaged), '先攻', '捨札'))).toEqual(['傷ついたユニット'])
+  it('第２バトルステップが始まると「第２バトルステップの始め」がバンクに入る', () => {
+    const step = atStep(watching('第２バトルステップの始め'), '第２バトルステップ')
+
+    expect(banked(step)).toEqual(['見物人／第２バトルステップの始め'])
   })
 
-  it('ＢＰより小さいダメージでは捨札に置かれない', () => {
-    const board = putOnSquare(emptyDuelState(), otherSquare, unitOf('傷ついたユニット', vanilla, '先攻'))
-    const damaged = dealDamage(board, '傷ついたユニット', 1000)
+  it('バトル終了ステップが始まると「バトル終了ステップの始め」がバンクに入る', () => {
+    const step = atStep(watching('バトル終了ステップの始め'), 'バトル終了ステップ')
 
-    expect(idsOf(cardsOn(pass(damaged), otherSquare))).toEqual(['傷ついたユニット'])
-  })
-})
-
-// 総合ルール 第3部 第10章 1（ADR-0006）
-describe('リカバリーフェイズの始め', () => {
-  it('カードに与えられているダメージが取り除かれる', () => {
-    const board = putOnSquare(emptyDuelState(), otherSquare, unitOf('傷ついたユニット', vanilla, '先攻'))
-    let current = dealDamage(board, '傷ついたユニット', 1000)
-    while (current.turn.phase !== 'リカバリーフェイズ') current = pass(current)
-
-    expect(damageOn(current, otherSquare, '傷ついたユニット')).toBe(0)
+    expect(banked(step)).toEqual(['見物人／バトル終了ステップの始め'])
   })
 })
 
@@ -461,7 +471,7 @@ describe('バトル終了ステップの終わり', () => {
   })
 })
 
-// 総合ルール 第2部 第20章 1-1（ADR-0006）
+// 総合ルール 第2部 第20章 3-1「バトル中以外の自分のメインフェイズの間」（ADR-0006）
 describe('バトル中の行動', () => {
   it('アクティブプレイヤーは、自分のメインフェイズに優先権を持っていても行動できない', () => {
     // バトルの始めには非アクティブプレイヤーに優先権が発生するので、放棄させて戻す。
