@@ -22,7 +22,7 @@ import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
-import { checkIntrusion } from './trap.js'
+import { checkIntrusion, hasTrapRight } from './trap.js'
 
 /**
  * プレイするカードの宣言（総合ルール 第4部 第6章 1-1）。
@@ -122,9 +122,10 @@ export function playAsTrap(state: DuelState, card: CardId): ActionOutcome {
  * であることもバンクが空であることも要らない（同 3-8）。
  *
  * トラップを発動できるのは、そのトラップの発動条件が満たされて発動する権利を得ている間だけ
- * である（同 3-8、`state.trapRights`）。発動条件を持たないトラップ以外のカードは、
- * トラップゾーンにあっても発動できない（同 3-6）。発動条件のうち実装しているのは「侵入」
- * だけなので（`trap.ts`）、それ以外の条件で権利を得ることはまだ無い。
+ * である（同 3-8、`trap.ts` の `hasTrapRight`）。バトルやスマッシュ判定が進行中なら、
+ * 発動条件が満たされていても権利は発生していない（同 3-8 ただし書き）。発動条件を持たない
+ * トラップ以外のカードは、トラップゾーンにあっても発動できない（同 3-6）。発動条件のうち
+ * 実装しているのは「侵入」だけなので（`trap.ts`）、それ以外の条件で権利を得ることはまだ無い。
  *
  * レベルを満たし（同 3-9）、コストを支払って（同 3-10）、リゾルブゾーンで解決される
  * （同 3-11）。
@@ -138,7 +139,7 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   const instance = findInZone(state, player, 'トラップゾーン', card)
   if (instance === undefined) return cannot('そのゾーンにない')
   if (instance.card.type !== 'トラップ') return cannot('発動できるカードではない')
-  if (!state.trapRights.includes(card)) return cannot('発動する権利がない')
+  if (!hasTrapRight(state, card)) return cannot('発動する権利がない')
 
   const paid = payUseCost(state, player, instance.card, chooser)
   if (typeof paid === 'string') return cannot(paid)

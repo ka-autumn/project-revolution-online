@@ -405,13 +405,13 @@ describe('トラップの発動', () => {
    * トラップゾーンに、発動する権利を得ているトラップがあり、敵が 1 枚いる盤面。
    *
    * 権利をどう得るか（侵入、総合ルール 3-6・3-8）はここでは検証しない。コスト・レベル・
-   * 優先権の挙動を見るテストなので、`trapRights` に直接足して権利がある前提にする。
+   * 優先権の挙動を見るテストなので、`trapConditionsMet` に直接足して権利がある前提にする。
    */
   function armed(energies: readonly CardInstance[] = twoEnergies()): DuelState {
     const trap = instantiate({ id: 'トラップ', card: redTrap, owner: '先攻' })
     const enemy = instantiate({ id: '敵', card: redUnit, owner: '後攻' })
     const state = putInZone(putInZone(mainPhase(), '先攻', 'トラップゾーン', [trap]), '先攻', 'エネルギーゾーン', energies)
-    return { ...putOnSquare(state, enemySquare, enemy), trapRights: ['トラップ'] }
+    return { ...putOnSquare(state, enemySquare, enemy), trapConditionsMet: ['トラップ'] }
   }
 
   // 総合ルール 第2部 第20章 3-11
@@ -453,9 +453,9 @@ describe('トラップの発動', () => {
       [energy('赤エネ', '赤'), energy('青エネ', '青')].map((each) => ({ ...each, owner: '後攻' }) as const),
     )
 
-    expect(stateOf(activateTrap({ ...state, trapRights: ['トラップ'] }, 'トラップ', chooseFirst)).turn.priority).toBe(
-      '後攻',
-    )
+    expect(
+      stateOf(activateTrap({ ...state, trapConditionsMet: ['トラップ'] }, 'トラップ', chooseFirst)).turn.priority,
+    ).toBe('後攻')
   })
 
   it('優先権を持っていないプレイヤーのトラップは発動されない', () => {
@@ -503,13 +503,13 @@ describe('トラップの発動条件（侵入）', () => {
   it('相手のユニットがトリガーアイコンのスクエアに登場すると、発動する権利を得る', () => {
     const after = stateOf(play(readyWithOpponentTrap(), { card: 'ユニット', square: centerSquare }))
 
-    expect(after.trapRights).toEqual(['トラップ'])
+    expect(after.trapConditionsMet).toEqual(['トラップ'])
   })
 
   it('トリガーアイコンに描かれていないスクエアに登場しても権利を得ない', () => {
     const after = stateOf(play(readyWithOpponentTrap(), { card: 'ユニット', square: homeSquare }))
 
-    expect(after.trapRights).toEqual([])
+    expect(after.trapConditionsMet).toEqual([])
   })
 
   // 「相手のユニットが」なので、トラップの支配者自身が自分のユニットをそのスクエアに
@@ -527,7 +527,7 @@ describe('トラップの発動条件（侵入）', () => {
 
     const after = stateOf(play(state, { card: 'ユニット', square: centerSquare }))
 
-    expect(after.trapRights).toEqual([])
+    expect(after.trapConditionsMet).toEqual([])
   })
 
   // 総合ルール 第4部 第6章 1-5: 解決の後、非アクティブプレイヤーが優先権を獲得する。
@@ -552,6 +552,75 @@ describe('トラップの発動条件（侵入）', () => {
 
     expect(passedTwice.turn.priority).toBe('後攻')
     expect(violationOf(activateTrap(passedTwice, 'トラップ', chooseFirst))).toBe('発動する権利がない')
+  })
+})
+
+// 総合ルール 第2部 第20章 3-8 ただし書き、第3部 第11章 5（ADR-0006）
+describe('侵入と同時にバトルが発生した場合の権利', () => {
+  /** 中央エリアのスクエアにトリガーアイコンを持つ、効果を持たない赤いレベル 1 のトラップ。 */
+  const redIntrusionTrap = defineTrap({
+    name: 'テスト・侵入トラップ（赤）',
+    level: 1,
+    colors: ['赤'],
+    triggerIcon: [centerSquare],
+  })
+
+  /**
+   * 後攻のトラップゾーンに侵入トラップがあり、中央エリアのそのスクエアに後攻のユニットが
+   * いる、先攻が行動できるメインフェイズの盤面。
+   *
+   * 先攻がそのスクエアにユニットをプレイすると、侵入によってトラップの発動条件が満たされる
+   * のと同時に、支配者の異なるユニットが重なってバトルが発生する。
+   */
+  function readyToIntrudeIntoBattle(): DuelState {
+    const trap = instantiate({ id: 'トラップ', card: redIntrusionTrap, owner: '後攻' })
+    const defender = instantiate({ id: '守るユニット', card: redUnit, owner: '後攻' })
+    const state = putInZone(
+      putInZone(putInZone(mainPhase(), '後攻', 'トラップゾーン', [trap]), '先攻', '手札', [
+        instantiate({ id: 'ユニット', card: redUnit, owner: '先攻' }),
+      ]),
+      '先攻',
+      'エネルギーゾーン',
+      twoEnergies(),
+    )
+    // トラップを発動するのは後攻なので、後攻にもコストにするエネルギーを持たせておく。
+    const energized = putInZone(state, '後攻', 'エネルギーゾーン', [
+      { ...energy('後攻エネ', '赤'), owner: '後攻', controller: '後攻' },
+    ])
+    return putOnSquare(energized, centerSquare, defender)
+  }
+
+  /** バトルが終了するまで、両方のプレイヤーが優先権を放棄し続けた盤面。 */
+  function passUntilBattleEnds(state: DuelState): DuelState {
+    let current = state
+    while (current.battle !== undefined) current = passPriority(current, chooseFirst)
+    return current
+  }
+
+  it('侵入と同時にバトルが発生する', () => {
+    const played = stateOf(play(readyToIntrudeIntoBattle(), { card: 'ユニット', square: centerSquare }))
+
+    expect(played.trapConditionsMet).toEqual(['トラップ'])
+    expect(played.battle).not.toBeUndefined()
+  })
+
+  it('バトル中は、発動条件が満たされていても発動できない', () => {
+    const played = stateOf(play(readyToIntrudeIntoBattle(), { card: 'ユニット', square: centerSquare }))
+
+    // バトルの始めには非アクティブプレイヤーである後攻に優先権が発生する
+    // （総合ルール 第3部 第12章 1）ので、発動を妨げているのは優先権ではない。
+    expect(played.turn.priority).toBe('後攻')
+    expect(violationOf(activateTrap(played, 'トラップ', chooseFirst))).toBe('発動する権利がない')
+  })
+
+  it('バトルが終了すると権利が発生し、発動できる', () => {
+    const played = stateOf(play(readyToIntrudeIntoBattle(), { card: 'ユニット', square: centerSquare }))
+    // バトル中の放棄では権利を失わない。失うなら、バトルの終了まで遅らせる意味が無くなる。
+    const ended = passUntilBattleEnds(played)
+
+    expect(ended.battle).toBeUndefined()
+    expect(ended.turn.priority).toBe('後攻')
+    expect(cardsIn(stateOf(activateTrap(ended, 'トラップ', chooseFirst)), '後攻', 'トラップゾーン')).toEqual([])
   })
 })
 
