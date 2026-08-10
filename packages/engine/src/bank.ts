@@ -80,6 +80,26 @@ export function triggerMovement(state: DuelState, id: CardId): DuelState {
 }
 
 /**
+ * バトルが発生したことで、攻撃したユニットの「攻撃した時」と、攻撃されたユニットの
+ * 「攻撃された時」を誘発させる（総合ルール 第3部 第12章 1）。
+ *
+ * 攻撃したのはそのスクエアに後から置かれたユニット、攻撃されたのは先に置かれていた
+ * ユニットである（同 第11章 4）。どちらもそのユニット自身のできごとなので、盤面にある
+ * 同じ能力を持つ他のカードは誘発しない。
+ */
+export function triggerAttack(state: DuelState, attacker: CardId, attacked: CardId): DuelState {
+  return triggerSelf(triggerSelf(state, attacker, '攻撃した時'), attacked, '攻撃された時')
+}
+
+/**
+ * バトルの勝者が決まったことで、そのユニットの「バトルに勝った時」を誘発させる
+ * （総合ルール 第3部 第16章 1・1-1）。
+ */
+export function triggerBattleWin(state: DuelState, winner: CardId): DuelState {
+  return triggerSelf(state, winner, 'バトルに勝った時')
+}
+
+/**
  * 誘発していた能力をすべてバンクに入れる。
  *
  * 複数の誘発型能力が誘発していた場合、すべて同時にバンクに入る（総合ルール 第4部

@@ -1,10 +1,12 @@
-export { TRIGGER_EVENTS, dream, triggeredAbility } from './ability.js'
-export type { Ability, DreamAbility, TriggeredAbility, TriggerEvent } from './ability.js'
+export { TRIGGER_EVENTS, dream, genki, triggeredAbility } from './ability.js'
+export type { Ability, DreamAbility, GenkiAbility, TriggeredAbility, TriggerEvent } from './ability.js'
 export { discardTrap, placeEnergy, plan } from './action.js'
 export type { ActionOutcome, ActionViolation } from './action.js'
+export { BATTLE_STEPS } from './battle.js'
+export type { Battle, BattleStep } from './battle.js'
 export { AREAS, BATTLE_SPACE, LINES, MOVE_DIRECTIONS, areaOf, indexOfSquare, squareInDirection } from './board.js'
 export type { Area, Line, MoveDirection, Square, SquareIndex } from './board.js'
-export { CARD_TYPES, COLORS, defineStrategy, defineTrap, defineUnit, hasDream, isStrategy } from './card.js'
+export { CARD_TYPES, COLORS, bpOf, defineStrategy, defineTrap, defineUnit, hasDream, hasGenki, isStrategy } from './card.js'
 export type { Card, CardType, Color, StrategyCard, TrapCard, UnitCard } from './card.js'
 export { satisfiesLevel } from './cost.js'
 export {
@@ -18,6 +20,7 @@ export {
   cardsIn,
   cardsInResolveZone,
   cardsOn,
+  dealDamage,
   draw,
   emptyDuelState,
   instantiate,

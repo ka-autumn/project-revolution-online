@@ -1,6 +1,7 @@
 import { phaseBeginning } from './ability.js'
 import { resolveFromBank, trigger } from './bank.js'
-import { draw } from './duel.js'
+import { advanceBattle } from './battle.js'
+import { draw, removeAllDamage } from './duel.js'
 import type { DuelState } from './duel.js'
 import { opponentOf } from './player.js'
 import { grantPriorityToInactive, settleBeforePriority } from './priority.js'
@@ -16,8 +17,8 @@ import type { Turn } from './turn.js'
  * 空なら進行中のフェイズが終了する（総合ルール 第3部 第4章 4、第4部 第5章 2）。
  * そうでなければ、もう一方のプレイヤーに優先権が移るだけである。
  *
- * バトルまたはスマッシュ判定の最中なら、終了するのはフェイズではなくステップである
- * （同 第3部 第4章 4）が、ステップはまだ無い。
+ * バトルの最中なら、終了するのはフェイズではなくステップである（同 第3部 第4章 4）。
+ * スマッシュ判定のステップはまだ無い。
  *
  * 誰が優先権を持っているかは盤面にあるので、放棄するプレイヤーは受け取らない。かわりに
  * `chooser` を受け取る。連続放棄でバンクにある能力を解決する時、どれを解決するかと、その
@@ -38,6 +39,12 @@ export function passPriority(state: DuelState, chooser: Chooser): DuelState {
     // 連続した放棄はここで途切れる。
     return grantPriorityToInactive(resolveFromBank(cleared, chooser))
   }
+  // バトルの最中なら、終わるのはフェイズではなく進行中のステップである（総合ルール
+  // 第3部 第4章 4）。どのステップも、進んだ後に非アクティブプレイヤーが優先権を獲得する
+  // （同 第12章 1・第13章 1・第14章 1・第15章 1・第16章 1）。
+  if (cleared.battle !== undefined) {
+    return grantPriorityToInactive(advanceBattle(cleared, cleared.battle))
+  }
   if (turn.phase === 'リカバリーフェイズ' && !turn.endOfTurnTriggered) {
     return endTurnAbilities(cleared)
   }
@@ -54,9 +61,11 @@ export function passPriority(state: DuelState, chooser: Chooser): DuelState {
  *
  * 同 4 には、1〜3 の間に誘発イベントかルールエフェクトが発生していた場合は 1 からやり直す
  * とある。やり直しても結果が変わらないため、まだ実装していない。やり直しで行うのは
- * ダメージの除去と「ターンの終わりまで」の効果の終了（同 1）だが、盤面はダメージも継続効果
- * もまだ持っていない。「リカバリーフェイズの始め」と「ターンの終わり」の能力はそのターン中
- * に 1 度しか誘発しない（同 5）ので、能力が誘発し直すこともない。
+ * ダメージの除去と「ターンの終わりまで」の効果の終了（同 1）だが、ダメージを与えるのは
+ * バトルダメージだけ（`battle.ts`）で、バトルが発生するにはユニットがスクエアに置かれる
+ * 必要があり、リカバリーフェイズにそれは起こらない。継続効果は盤面がまだ持っていない。
+ * 「リカバリーフェイズの始め」と「ターンの終わり」の能力はそのターン中に 1 度しか誘発
+ * しない（同 5）ので、能力が誘発し直すこともない。
  */
 function endTurnAbilities(state: DuelState): DuelState {
   const triggered = trigger(state, 'ターンの終わり')
@@ -108,12 +117,14 @@ function beginCurrentPhase(state: DuelState): DuelState {
  * フェイズの始めの特別な行動。この行動はバンクを使用しない（総合ルール 第3部 第5章 1
  * ほか、各フェイズの 1）。
  *
- * 行うのは今のところドローフェイズのドロー（同 第6章 1-1）だけである。リリースフェイズ
- * のリリース（同 第5章 1）はカードの向きを、リカバリーフェイズのダメージの除去
- * （同 第10章 1）はダメージを、それぞれ盤面が持つようになってから足す。
+ * 行うのはドローフェイズのドロー（同 第6章 1-1）と、リカバリーフェイズのダメージの除去
+ * （同 第10章 1）である。ダメージと同時に終了する「ターンの終わりまで」「このターンの間」の
+ * 効果（同）は、継続効果を盤面が持つようになってから足す。リリースフェイズのリリース
+ * （同 第5章 1）はまだ行っていない。
  */
 function takeBeginningAction(state: DuelState): DuelState {
   if (state.turn.phase === 'ドローフェイズ') return draw(state, state.turn.active)
+  if (state.turn.phase === 'リカバリーフェイズ') return removeAllDamage(state)
   return state
 }
 

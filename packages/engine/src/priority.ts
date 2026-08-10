@@ -1,4 +1,5 @@
 import { putTriggeredIntoBank } from './bank.js'
+import { startBattleIfAny } from './battle.js'
 import type { DuelState } from './duel.js'
 import { opponentOf } from './player.js'
 import { checkRuleEffects } from './rule-effect.js'
@@ -13,9 +14,14 @@ import type { Phase } from './turn.js'
  * バンクに入る。新しいルールエフェクトの発生も誘発型能力の誘発もなくなるまで、この手順を
  * 繰り返す。
  *
- * 誰が優先権を持つかはここでは変えない。それを決めるのは呼ぶ側である。この手順は優先権を
- * 得るのが誰であるかに影響されない（ルールエフェクトはどちらのプレイヤーにも支配されず、
- * 誘発型能力は自動的にバンクに入る）ため、プレイヤーを受け取らない。
+ * バトル発生のルールエフェクトだけは、他のルールエフェクトをすべて解決し終えた後に処理する
+ * （同 第14章 4-4-1、第3部 第11章 1-1）。バトルが始まると優先権は非アクティブプレイヤーに
+ * 発生する（同 第12章 1）ので、誰が得るはずだったかに関わらずそこへ移す。
+ *
+ * 誰が優先権を持つかは、バトルが始まった場合を除いてここでは変えない。それを決めるのは
+ * 呼ぶ側である。この手順は優先権を得るのが誰であるかに影響されない（ルールエフェクトは
+ * どちらのプレイヤーにも支配されず、誘発型能力は自動的にバンクに入る）ため、プレイヤーを
+ * 受け取らない。
  *
  * バンクに誘発型能力が入った時にも非アクティブプレイヤーに優先権が発生する（同 第1部
  * 第1章 5）。いま能力がバンクに入るのは、フェイズの始めと、能力を解決した後と、
@@ -34,6 +40,11 @@ export function settleBeforePriority(state: DuelState): DuelState {
       current = checked
       continue
     }
+    const started = startBattleIfAny(current)
+    if (started !== current) {
+      current = toInactive(started)
+      continue
+    }
     if (current.triggered.length === 0) return current
     current = putTriggeredIntoBank(current)
   }
@@ -47,9 +58,13 @@ export function settleBeforePriority(state: DuelState): DuelState {
  * 第6章 1-5）。何かが起きた以上、連続した放棄はそこで途切れる。
  */
 export function grantPriorityToInactive(state: DuelState): DuelState {
+  return settleBeforePriority(toInactive(state))
+}
+
+/** 優先権を非アクティブプレイヤーに移すだけ。盤面の片づけは行わない。 */
+function toInactive(state: DuelState): DuelState {
   const { turn } = state
-  const granted = { ...turn, priority: opponentOf(turn.active), passedBy: undefined }
-  return settleBeforePriority({ ...state, turn: granted })
+  return { ...state, turn: { ...turn, priority: opponentOf(turn.active), passedBy: undefined } }
 }
 
 /**
@@ -59,9 +74,15 @@ export function grantPriorityToInactive(state: DuelState): DuelState {
  * 「バトル中以外の自分のそのフェイズの間、バンクが空で優先権を持っている時」に行える
  * （総合ルール 第3部 第7章 1・第8章 2、第2部 第20章 1-1・2-1・3-1）。
  *
- * バトル中かどうかは見ていない。バトルがまだ無いためである。
+ * バトル中は、優先権を持っていても行えない。バトル中でも行えるのはトラップの発動と
+ * 「勇気」の起動だけである（同 第2部 第20章 3-8）。
  */
 export function activePlayerMayAct(state: DuelState, phase: Phase): boolean {
   const { turn } = state
-  return turn.phase === phase && turn.priority === turn.active && state.bank.length === 0
+  return (
+    state.battle === undefined &&
+    turn.phase === phase &&
+    turn.priority === turn.active &&
+    state.bank.length === 0
+  )
 }

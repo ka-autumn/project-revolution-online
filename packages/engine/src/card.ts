@@ -198,3 +198,20 @@ export function defineTrap(spec: TrapSpec): TrapCard {
 export function hasDream(card: Card): boolean {
   return card.abilities.some((ability) => ability.kind === '常在型能力' && ability.keyword === '夢')
 }
+
+/** そのカードが「元気」を持つか（総合ルール 第5部 第8章 2）。 */
+export function hasGenki(card: Card): boolean {
+  return card.abilities.some((ability) => ability.kind === '常在型能力' && ability.keyword === '元気')
+}
+
+/**
+ * そのユニットのＢＰ（総合ルール 第2部 第14章 1）。バトルで比較され、ダメージと比べられる
+ * 数値である（同 第4部 第14章 4-5・4-6）。
+ *
+ * ＢＰを修整する効果をまだ書けないため、いまは印刷された数値がそのままＢＰになる。修整を
+ * 持つようになったら、ここが盤面を見るようになる。ＢＰを読む側がすべてここを通っていれば、
+ * その時に直すのはこの関数だけで済む。
+ */
+export function bpOf(unit: UnitCard): number {
+  return unit.bp
+}
