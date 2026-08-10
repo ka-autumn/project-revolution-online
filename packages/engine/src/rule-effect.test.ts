@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+// ダメージを与えるためだけに `dealDamage` を使う。engine の中から盤面を組み替えるための
+// 関数であり、公開する API ではない。
+import { dealDamage } from './duel.js'
 import {
   cardsIn,
   cardsOn,
@@ -97,8 +100,8 @@ describe('同じプレイヤーが支配するユニットが同じスクエア�
   })
 
   // 支配者が違うユニットが重なった場合に起きるのはバトルの発生（同 4-4）であって、
-  // このルールエフェクトではない。バトルはまだ実装していないため、ここでは捨札に
-  // 置かれないことだけを見る。
+  // このルールエフェクトではない。バトルの側は `battle.test.ts` で見るので、ここでは
+  // 捨札に置かれないことだけを見る。
   it('支配者が違うユニットが重なっても、捨札には置かれない', () => {
     const opposed = boardOf(
       [anotherSquare, instantiate({ id: '先攻のユニット', card: vanilla, owner: '先攻' })],
@@ -106,6 +109,37 @@ describe('同じプレイヤーが支配するユニットが同じスクエア�
     )
 
     expect(idsOf(cardsOn(pass(opposed), anotherSquare))).toEqual(['先攻のユニット', '後攻のユニット'])
+  })
+})
+
+// 総合ルール 第4部 第14章 4-5（ADR-0006）
+describe('ＢＰが 0 以下のユニットがスクエアにある', () => {
+  // ＢＰを修整する効果はまだ書けないので、印刷されたＢＰが 0 のカードで見る
+  // （`card.ts` の `bpOf`）。
+  const zeroBp = defineUnit({ name: 'テスト・ＢＰ0', level: 1, colors: ['赤'], bp: 0, sp: 1000 })
+
+  it('持ち主の捨札に置かれる', () => {
+    const placed = boardOf([someSquare, instantiate({ id: 'ＢＰ0のユニット', card: zeroBp, owner: '先攻' })])
+
+    expect(idsOf(cardsIn(pass(placed), '先攻', '捨札'))).toEqual(['ＢＰ0のユニット'])
+  })
+})
+
+// 総合ルール 第4部 第14章 4-6（ADR-0006）
+describe('ＢＰと同じかそれ以上のダメージを受けたユニットがスクエアにある', () => {
+  /** ＢＰ1000 のユニットがそのダメージを受けている盤面。 */
+  function damaged(amount: number): DuelState {
+    const unit = defineUnit({ name: 'テスト・ＢＰ1000', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
+    const placed = boardOf([someSquare, instantiate({ id: '傷ついたユニット', card: unit, owner: '先攻' })])
+    return dealDamage(placed, '傷ついたユニット', amount)
+  }
+
+  it('持ち主の捨札に置かれる', () => {
+    expect(idsOf(cardsIn(pass(damaged(1000)), '先攻', '捨札'))).toEqual(['傷ついたユニット'])
+  })
+
+  it('ＢＰより小さいダメージでは捨札に置かれない', () => {
+    expect(idsOf(cardsOn(pass(damaged(999)), someSquare))).toEqual(['傷ついたユニット'])
   })
 })
 

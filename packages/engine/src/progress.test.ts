@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
+// ダメージを与えるためだけに `dealDamage` を使う。engine の中から盤面を組み替えるための
+// 関数であり、公開する API ではない。
+import { dealDamage } from './duel.js'
 import {
   cardsIn,
+  cardsOn,
   defineUnit,
   instantiate,
   passPriority,
@@ -217,6 +221,20 @@ describe('リカバリーフェイズ', () => {
     expect(resolved.bank).toEqual([])
     expect(resolved.turn.phase).toBe('リカバリーフェイズ')
     expect(pass(pass(resolved)).turn.number).toBe(2)
+  })
+
+  // 総合ルール 第3部 第10章 1
+  it('始めに、カードに与えられているダメージが取り除かれる', () => {
+    const unit = instantiate({ id: '傷ついたユニット', card: endOfTurnUnit, owner: '先攻' })
+    const board = putOnSquare(startedDuel(), someSquare, unit)
+    // ＢＰ1000 のユニットにＢＰ未満のダメージを与える。ＢＰと同じかそれ以上のダメージを
+    // 受けたユニットは、その前に捨札に置かれてしまう（総合ルール 第4部 第14章 4-6）。
+    const damaged = dealDamage(board, '傷ついたユニット', 999)
+
+    let current = damaged
+    while (current.turn.phase !== 'リカバリーフェイズ') current = endPhase(current)
+
+    expect(cardsOn(current, someSquare)[0]?.damage).toBe(0)
   })
 
   // 総合ルール 第3部 第10章 5

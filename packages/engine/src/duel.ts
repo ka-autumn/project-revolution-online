@@ -1,4 +1,5 @@
 import type { TriggeredAbility } from './ability.js'
+import type { Battle } from './battle.js'
 import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
@@ -40,6 +41,15 @@ export interface CardInstance {
    * 向きをそのまま持たせるほうが取り違えにくい。
    */
   readonly orientation: Orientation
+  /**
+   * そのカードが受けているダメージの量（総合ルール 第4部 第14章 4-6）。
+   *
+   * 意味を持つのはスクエアにあるカードだけである。ダメージはリカバリーフェイズの始めに
+   * 取り除かれる（同 第3部 第10章 1）ほか、「スクエアからスクエア」以外のゾーン移動をした
+   * カードは新しいカードとして扱われる（同 第2部 第21章 1-4）ので、そこでも失われる。
+   * 移動でスクエアからスクエアへ動いた場合は維持される。
+   */
+  readonly damage: number
 }
 
 /**
@@ -119,6 +129,18 @@ export interface DuelState {
    * なので、権利の有無だけを持たせれば同じ結果になる。
    */
   readonly trapRights: readonly CardId[]
+  /**
+   * 進行中のバトル（総合ルール 第3部 第11章）。発生していなければ `undefined`。
+   *
+   * バトルはルールエフェクトによって発生する特別な手順であり（同 1）、5 つのステップの間、
+   * フェイズに代わって優先権のやりとりを受け持つ（同 3、第4章 4）。フェイズと違って
+   * 起きていないこともあるので、`turn` とは別にここに持つ。
+   *
+   * 1 つしか持てない。複数のスクエアで同時に起こるバトル（同 1-3）も、バトル中に発生する
+   * バトル（同 2-1）も、ユニットがスクエアに置かれるのが 1 枚ずつである今は起こらない。
+   * 効果でユニットをスクエアに置けるようになったら、並びにして持つ必要が出る。
+   */
+  readonly battle: Battle | undefined
 }
 
 /**
@@ -163,6 +185,7 @@ export function instantiate(spec: InstanceSpec): CardInstance {
     owner: spec.owner,
     controller: spec.controller ?? spec.owner,
     orientation: spec.orientation ?? 'リリース',
+    damage: 0,
   }
 }
 
@@ -181,6 +204,7 @@ export function emptyDuelState(): DuelState {
     triggered: [],
     playedIntoCenter: [],
     trapRights: [],
+    battle: undefined,
   }
 }
 
@@ -266,13 +290,16 @@ export function moveFromSquareTo(state: DuelState, id: CardId, zone: PlayerZone)
  * 置かれる向きはリリース状態になる。エネルギーゾーン・スマッシュゾーン・トラップゾーンの
  * いずれも、カードは通常リリース状態で置かれる（同 6-3・7-3・9-3）。フリーズ状態で置く
  * 効果を書けるようになったら、向きを指定できるようにする。
+ *
+ * 受けていたダメージも失われる。新しいカードとして扱われる（同 1-4）以上、以前のゾーンで
+ * 与えられていたダメージは残らない。
  */
 export function moveToZone(state: DuelState, id: CardId, zone: PlayerZone): DuelState {
   const detached = detach(state, id)
   if (detached === undefined) return state
 
   const { card } = detached
-  const moved: CardInstance = { ...card, controller: card.owner, orientation: 'リリース' }
+  const moved: CardInstance = { ...card, controller: card.owner, orientation: 'リリース', damage: 0 }
   return putInZone(detached.state, card.owner, zone, [moved, ...cardsIn(detached.state, card.owner, zone)])
 }
 
@@ -297,6 +324,9 @@ export function moveToResolveZone(state: DuelState, id: CardId): DuelState {
  * スクエアに置かれる時、支配者と向きはその場で決まる。プレイされたユニットならプレイした
  * プレイヤーの支配下でフリーズ状態（総合ルール 第2部 第20章 1-4、第21章 8-3）になる。
  * 置くことそのものだけを行い、それが登場かどうかは呼ぶ側が決める（同 第20章 1-4-a）。
+ *
+ * 受けているダメージはそのまま持って動く。「スクエアからスクエア」のゾーン移動をしても
+ * そのカードは新しいカードにならない（同 第21章 1-4）ためである。
  */
 export function moveToSquare(
   state: DuelState,
@@ -417,6 +447,40 @@ export function draw(state: DuelState, player: Player): DuelState {
     ...cardsIn(taken.state, player, '手札'),
     { ...top, controller: top.owner },
   ])
+}
+
+/**
+ * スクエアにあるカードにダメージを与える。スクエアになければ盤面はそのまま。
+ *
+ * ダメージはそのカードに載って蓄積する。ＢＰと同じかそれ以上のダメージを受けたユニットが
+ * 捨札に置かれること（総合ルール 第4部 第14章 4-6）はルールエフェクトの仕事なので、
+ * ここでは与えるだけである。
+ */
+export function dealDamage(state: DuelState, id: CardId, amount: number): DuelState {
+  if (findOnSquares(state, id) === undefined) return state
+
+  return {
+    ...state,
+    squares: state.squares.map((cards) =>
+      cards.map((card) => (card.id === id ? { ...card, damage: card.damage + amount } : card)),
+    ),
+  }
+}
+
+/**
+ * スクエアにあるすべてのカードからダメージを取り除く（総合ルール 第3部 第10章 1）。
+ * どのカードもダメージを受けていなければ盤面はそのまま。
+ *
+ * プレイヤーに与えられているダメージ（同）はまだ盤面に無い。スマッシュ判定を実装する時に
+ * 一緒に取り除くようになる。
+ */
+export function removeAllDamage(state: DuelState): DuelState {
+  if (!state.squares.some((cards) => cards.some((card) => card.damage > 0))) return state
+
+  return {
+    ...state,
+    squares: state.squares.map((cards) => cards.map((card) => (card.damage === 0 ? card : { ...card, damage: 0 }))),
+  }
 }
 
 /** スクエアにあるそのカード。どのスクエアにもなければ `undefined`。 */
