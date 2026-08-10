@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-// ダメージを与えるためだけに `dealDamage` を使う。engine の中から盤面を組み替えるための
-// 関数であり、公開する API ではない。
-import { dealDamage } from './duel.js'
+// ダメージを与えたり山札を積んだりするためだけに `dealDamage` と `putInZone` を使う。
+// engine の中から盤面を組み替えるための関数であり、公開する API ではない。
+import { dealDamage, putInZone } from './duel.js'
 import {
+  PLAYERS,
   cardsIn,
   cardsOn,
   defineStrategy,
@@ -10,10 +11,11 @@ import {
   emptyDuelState,
   instantiate,
   passPriority,
+  prepareDuel,
   putOnSquare,
   triggeredAbility,
 } from './index.js'
-import type { CardInstance, Chooser, DuelState, Square } from './index.js'
+import type { CardInstance, Chooser, Deck, DuelState, Player, Square } from './index.js'
 
 // 検証したいルールだけを持つ架空のテストカード（ADR-0002）。
 const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
@@ -41,8 +43,30 @@ function pass(state: DuelState): DuelState {
 
 type Placement = readonly [Square, CardInstance]
 
+/**
+ * 山札を積んだ、カードの置かれていない盤面。
+ *
+ * 山札にあるカードが 0 枚以下のプレイヤーは、次に優先権が発生した時に敗北する
+ * （総合ルール 第3部 第3章 2）。優先権を動かすテストでは、それでデュエルが終わって
+ * しまわないように山札を積んでおく。
+ */
+function stockedDuelState(): DuelState {
+  return PLAYERS.reduce(
+    (state, player) =>
+      putInZone(
+        state,
+        player,
+        '山札',
+        Array.from({ length: 10 }, (_, index) =>
+          instantiate({ id: `${player}の山札${index}`, card: vanilla, owner: player }),
+        ),
+      ),
+    emptyDuelState(),
+  )
+}
+
 function boardOf(...placements: readonly Placement[]): DuelState {
-  return placements.reduce((state, [square, card]) => putOnSquare(state, square, card), emptyDuelState())
+  return placements.reduce((state, [square, card]) => putOnSquare(state, square, card), stockedDuelState())
 }
 
 const idsOf = (cards: readonly CardInstance[]) => cards.map((card) => card.id)
@@ -158,5 +182,73 @@ describe('ルールエフェクトと誘発型能力の順序', () => {
     expect(cardsOn(energyPhase, anotherSquare)).toEqual([])
     expect(energyPhase.bank.map((banked) => banked.source)).toEqual(['能力持ち'])
     expect(energyPhase.triggered).toEqual([])
+  })
+})
+
+// 総合ルール 第3部 第3章 1・2、第4部 第14章 4-1・4-2（ADR-0006）
+describe('デュエルの終了', () => {
+  /** そのプレイヤーのスマッシュゾーンにカードを `count` 枚置いた盤面。 */
+  function withSmashes(state: DuelState, player: Player, count: number): DuelState {
+    return putInZone(
+      state,
+      player,
+      'スマッシュゾーン',
+      Array.from({ length: count }, (_, index) =>
+        instantiate({ id: `${player}のスマッシュ${index}`, card: vanilla, owner: player }),
+      ),
+    )
+  }
+
+  /** そのプレイヤーの山札を空にした盤面。 */
+  function withEmptyLibrary(state: DuelState, player: Player): DuelState {
+    return putInZone(state, player, '山札', [])
+  }
+
+  it('スマッシュが 7 枚以上のプレイヤーは、次に優先権が発生した時に敗北する', () => {
+    const state = withSmashes(stockedDuelState(), '後攻', 7)
+
+    expect(state.result).toBeUndefined()
+    expect(pass(state).result).toEqual({ kind: '勝敗', winner: '先攻' })
+  })
+
+  it('スマッシュが 6 枚なら敗北しない', () => {
+    expect(pass(withSmashes(stockedDuelState(), '後攻', 6)).result).toBeUndefined()
+  })
+
+  it('山札が 0 枚のプレイヤーは、次に優先権が発生した時に敗北する', () => {
+    const state = withEmptyLibrary(stockedDuelState(), '先攻')
+
+    expect(state.result).toBeUndefined()
+    expect(pass(state).result).toEqual({ kind: '勝敗', winner: '後攻' })
+  })
+
+  // 総合ルール 第3部 第3章 4
+  it('両方のプレイヤーが同時に敗北した場合、引き分けになる', () => {
+    const state = withEmptyLibrary(withEmptyLibrary(stockedDuelState(), '先攻'), '後攻')
+
+    expect(pass(state).result).toEqual({ kind: '引き分け' })
+  })
+
+  // 総合ルール 第3部 第3章 3: 勝敗が決まった場合、そのデュエルは即座に終了する。
+  it('勝敗が決まったデュエルでは、それ以上進行しない', () => {
+    const ended = pass(withSmashes(stockedDuelState(), '後攻', 7))
+
+    expect(pass(ended)).toBe(ended)
+  })
+
+  // 完走の確認。デュエルは放っておいても山札が尽きて必ず終わる（総合ルール 第3部 第3章 2）。
+  it('準備から優先権を放棄し続けるだけで、いつか勝敗が決まる', () => {
+    const deck: Deck = Array.from({ length: 60 }, (_, index) =>
+      defineUnit({ name: `テスト${index}`, level: 1, bp: 1000, sp: 1000 }),
+    )
+    const preparation = prepareDuel({ decks: [deck, deck], seed: 20260810 })
+    if (preparation.kind !== '準備完了') throw new Error('準備できるデッキのはずだった')
+
+    let current = preparation.state
+    // 1 ターンに引くのは 1 枚で、山札は 55 枚。放棄だけで進む分には充分に余裕を持たせる。
+    for (let step = 0; step < 10_000 && current.result === undefined; step += 1) current = pass(current)
+
+    // 引けなくなった側が敗北する。どちらが先に尽きるかは先攻・後攻の決まり方による。
+    expect(current.result?.kind).toBe('勝敗')
   })
 })

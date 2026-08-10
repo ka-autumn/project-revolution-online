@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-// ダメージを与えるためだけに `dealDamage` を使う。engine の中から盤面を組み替えるための
-// 関数であり、公開する API ではない。
-import { dealDamage } from './duel.js'
+// ダメージを与えるためだけに `dealDamage` と `damagePlayer` を使う。engine の中から盤面を
+// 組み替えるための関数であり、公開する API ではない。
+import { damagePlayer, dealDamage } from './duel.js'
 import {
   cardsIn,
   cardsOn,
@@ -235,6 +235,18 @@ describe('リカバリーフェイズ', () => {
     while (current.turn.phase !== 'リカバリーフェイズ') current = endPhase(current)
 
     expect(cardsOn(current, someSquare)[0]?.damage).toBe(0)
+  })
+
+  // 総合ルール 第3部 第10章 1: 取り除かれるのはすべてのカードとすべてのプレイヤーに
+  // 与えられているダメージである。
+  it('始めに、プレイヤーに与えられているダメージも取り除かれる', () => {
+    // スマッシュ判定が発生しない量（同 第4部 第14章 4-12）のダメージを与える。
+    const damaged = damagePlayer(startedDuel(), '後攻', 500)
+
+    let current = damaged
+    while (current.turn.phase !== 'リカバリーフェイズ') current = endPhase(current)
+
+    expect(current.damage['後攻']).toBe(0)
   })
 
   // 総合ルール 第3部 第10章 5

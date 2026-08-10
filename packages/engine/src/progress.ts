@@ -6,6 +6,7 @@ import type { DuelState } from './duel.js'
 import { opponentOf } from './player.js'
 import { grantPriorityToInactive, settleBeforePriority } from './priority.js'
 import type { Chooser } from './resolve.js'
+import { advanceSmashJudgment } from './smash.js'
 import { loseTrapRightOnPass } from './trap.js'
 import { PHASES, beginPhase } from './turn.js'
 import type { Turn } from './turn.js'
@@ -17,8 +18,11 @@ import type { Turn } from './turn.js'
  * 空なら進行中のフェイズが終了する（総合ルール 第3部 第4章 4、第4部 第5章 2）。
  * そうでなければ、もう一方のプレイヤーに優先権が移るだけである。
  *
- * バトルの最中なら、終了するのはフェイズではなくステップである（同 第3部 第4章 4）。
- * スマッシュ判定のステップはまだ無い。
+ * バトルやスマッシュ判定の最中なら、終了するのはフェイズではなくステップである
+ * （同 第3部 第4章 4）。
+ *
+ * 勝敗が決まったデュエルでは何も起こらない。デュエルは即座に終了する（同 第3章 3）ので、
+ * そこから先に優先権は発生しない。
  *
  * 誰が優先権を持っているかは盤面にあるので、放棄するプレイヤーは受け取らない。かわりに
  * `chooser` を受け取る。連続放棄でバンクにある能力を解決する時、どれを解決するかと、その
@@ -28,6 +32,8 @@ import type { Turn } from './turn.js'
  * 発動する権利を失う（総合ルール 第2部 第20章 3-8）。
  */
 export function passPriority(state: DuelState, chooser: Chooser): DuelState {
+  if (state.result !== undefined) return state
+
   const cleared = loseTrapRightOnPass(state, state.turn.priority)
   const { turn } = cleared
   if (turn.passedBy === undefined) {
@@ -39,9 +45,18 @@ export function passPriority(state: DuelState, chooser: Chooser): DuelState {
     // 連続した放棄はここで途切れる。
     return grantPriorityToInactive(resolveFromBank(cleared, chooser))
   }
-  // バトルの最中なら、終わるのはフェイズではなく進行中のステップである（総合ルール
-  // 第3部 第4章 4）。どのステップも、進んだ後に非アクティブプレイヤーが優先権を獲得する
-  // （同 第12章 1・第13章 1・第14章 1・第15章 1・第16章 1）。
+  // バトルやスマッシュ判定の最中なら、終わるのはフェイズではなく進行中のステップである
+  // （総合ルール 第3部 第4章 4）。どのステップも、進んだ後に非アクティブプレイヤーが
+  // 優先権を獲得する（同 第12章 1・第13章 1・第14章 1・第15章 1・第16章 1、
+  // 第18章 1・第19章 1・第20章 1）。
+  //
+  // 処理中のスマッシュ判定は並びの最後にある（`duel.ts` の `smashJudgments`）。バトルより
+  // 先に見るのは、バトル中にスマッシュ判定が発生したならスマッシュ判定を先に処理する
+  // （同 第11章 2-2）ためである。
+  const judgment = cleared.smashJudgments.at(-1)
+  if (judgment !== undefined) {
+    return grantPriorityToInactive(advanceSmashJudgment(cleared, judgment, chooser))
+  }
   if (cleared.battle !== undefined) {
     return grantPriorityToInactive(advanceBattle(cleared, cleared.battle))
   }

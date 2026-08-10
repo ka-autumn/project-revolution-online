@@ -1,12 +1,31 @@
-export { TRIGGER_EVENTS, dream, genki, triggeredAbility } from './ability.js'
-export type { Ability, DreamAbility, GenkiAbility, TriggeredAbility, TriggerEvent } from './ability.js'
-export { discardTrap, placeEnergy, plan } from './action.js'
+export { TRIGGER_EVENTS, dream, genki, hope, triggeredAbility } from './ability.js'
+export type {
+  Ability,
+  DreamAbility,
+  GenkiAbility,
+  HopeAbility,
+  TriggeredAbility,
+  TriggerEvent,
+} from './ability.js'
+export { discardTrap, placeEnergy, plan, smash } from './action.js'
 export type { ActionOutcome, ActionViolation } from './action.js'
 export { BATTLE_STEPS } from './battle.js'
 export type { Battle, BattleStep } from './battle.js'
 export { AREAS, BATTLE_SPACE, LINES, MOVE_DIRECTIONS, areaOf, indexOfSquare, squareInDirection } from './board.js'
 export type { Area, Line, MoveDirection, Square, SquareIndex } from './board.js'
-export { CARD_TYPES, COLORS, bpOf, defineStrategy, defineTrap, defineUnit, hasDream, hasGenki, isStrategy } from './card.js'
+export {
+  CARD_TYPES,
+  COLORS,
+  bpOf,
+  defineStrategy,
+  defineTrap,
+  defineUnit,
+  hasDream,
+  hasGenki,
+  hopeOf,
+  isStrategy,
+  spOf,
+} from './card.js'
 export type { Card, CardType, Color, StrategyCard, TrapCard, UnitCard } from './card.js'
 export { satisfiesLevel } from './cost.js'
 export {
@@ -23,9 +42,10 @@ export {
   draw,
   emptyDuelState,
   instantiate,
+  librarySize,
   putOnSquare,
 } from './duel.js'
-export type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
+export type { CardId, CardInstance, DuelResult, DuelState, TriggeredInstance } from './duel.js'
 export { choose, destroy } from './effect.js'
 export type { DuelView, Effect, EffectStep, Instruction, UnitOnSquare } from './effect.js'
 export { moveUnit } from './move.js'
@@ -44,6 +64,8 @@ export { resolveEffect } from './resolve.js'
 export type { Chooser, EffectContext } from './resolve.js'
 export { OPENING_HAND_SIZE, prepareDuel } from './setup.js'
 export type { DuelPreparation, DuelSetup, Seat, SeatedViolation } from './setup.js'
+export { SMASH_JUDGMENT_STEPS, smashesOf } from './smash.js'
+export type { SmashJudgment, SmashJudgmentStep } from './smash.js'
 export { PHASES } from './turn.js'
 export type { Phase, Turn } from './turn.js'
 export { PLAYER_ZONES, SHARED_ZONES, ZONES } from './zone.js'

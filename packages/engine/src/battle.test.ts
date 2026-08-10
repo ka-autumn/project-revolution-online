@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 // ゾーンを差し替えるための関数であり、公開する API ではない（`play.test.ts` と同じ）。
 import { putInZone } from './duel.js'
 import {
+  PLAYERS,
   cardsIn,
   cardsOn,
   defineTrap,
@@ -114,8 +115,28 @@ function unitOf(id: string, card: UnitCard, owner: Player): CardInstance {
  * 後から置かれたほうが「攻撃したユニット」になる（総合ルール 第3部 第11章 4）。
  */
 function facing(attacked: UnitCard, attacker: UnitCard, square: Square = homeSquare): DuelState {
-  const board = putOnSquare(emptyDuelState(), square, unitOf('攻撃された', attacked, '後攻'))
+  const board = putOnSquare(stockedDuelState(), square, unitOf('攻撃された', attacked, '後攻'))
   return putOnSquare(board, square, unitOf('攻撃した', attacker, '先攻'))
+}
+
+/**
+ * 山札を積んだ、カードの置かれていない盤面。
+ *
+ * 山札にあるカードが 0 枚以下のプレイヤーは、次に優先権が発生した時に敗北する
+ * （総合ルール 第3部 第3章 2）。優先権を動かすテストでは、それでデュエルが終わって
+ * しまわないように山札を積んでおく。
+ */
+function stockedDuelState(): DuelState {
+  return PLAYERS.reduce(
+    (state, player) =>
+      putInZone(
+        state,
+        player,
+        '山札',
+        Array.from({ length: 10 }, (_, index) => unitOf(`${player}の山札${index}`, vanilla, player)),
+      ),
+    emptyDuelState(),
+  )
 }
 
 /**
@@ -198,7 +219,7 @@ function stateOf(outcome: ActionOutcome): DuelState {
  * 1 枚あり、バトル中に行動できるかどうかを試せるようにしてある。
  */
 function battleByPlaying(square: Square, played: UnitCard = vanilla): DuelState {
-  let current = emptyDuelState()
+  let current = stockedDuelState()
   while (current.turn.phase !== 'メインフェイズ') current = pass(current)
 
   const hand = [unitOf('攻撃した', played, '先攻'), instantiate({ id: 'トラップ', card: someTrap, owner: '先攻' })]
@@ -229,7 +250,7 @@ describe('バトルの発生', () => {
   })
 
   it('支配者が同じユニットが重なってもバトルは発生しない', () => {
-    const board = putOnSquare(emptyDuelState(), homeSquare, unitOf('先客', vanilla, '先攻'))
+    const board = putOnSquare(stockedDuelState(), homeSquare, unitOf('先客', vanilla, '先攻'))
     const stacked = putOnSquare(board, homeSquare, unitOf('新入り', vanilla, '先攻'))
 
     expect(pass(stacked).battle).toBeUndefined()

@@ -1,6 +1,18 @@
+import { areaOf } from './board.js'
+import type { Area } from './board.js'
+import { spOf } from './card.js'
 import { payPlanCost } from './cost.js'
-import { cardsIn, findInZone, moveToZone, topOfLibrary } from './duel.js'
+import {
+  cardsIn,
+  damagePlayer,
+  findInZone,
+  freezeOnSquare,
+  locateOnSquares,
+  moveToZone,
+  topOfLibrary,
+} from './duel.js'
 import type { CardId, DuelState } from './duel.js'
+import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import type { Chooser } from './resolve.js'
@@ -34,6 +46,8 @@ export type ActionViolation =
   | 'トラップゾーンが空ではない'
   /** そのプレイヤーが支配する、リリース状態のスクエアにいるユニットではない（総合ルール 第4部 第6章 2-1）。 */
   | '移動できるユニットではない'
+  /** 中央エリアまたは敵エリアにある、そのプレイヤーが支配するリリース状態のユニットではない（総合ルール 第3部 第9章 1）。 */
+  | 'スマッシュできるユニットではない'
   /** ムーブアイコンの方向に隣接せず、または自分が支配する他のユニットがいる（総合ルール 第4部 第6章 2-1）。 */
   | '移動先として指定できないスクエア'
 
@@ -91,6 +105,68 @@ export function plan(state: DuelState, chooser: Chooser): ActionOutcome {
   if (paid === undefined) return cannot('コストを支払えない')
 
   return done(grantPriorityToInactive(turnUpTopOfLibrary(paid, player)))
+}
+
+/**
+ * 敵エリアにあるユニットでスマッシュした時に、ＳＰに加えて与えるダメージ
+ * （総合ルール 第3部 第9章 1-(2)）。
+ */
+const ENEMY_AREA_BONUS = 500
+
+/**
+ * スマッシュする（総合ルール 第3部 第9章 1）。
+ *
+ * アクティブプレイヤーが、自分のスマッシュフェイズの間、バンクが空で優先権を持っている時に
+ * 行える特別な行動である。中央エリアにある自分のユニットを 1 枚フリーズすればそのユニットの
+ * ＳＰと同じダメージを、敵エリアにある自分のユニットなら ＳＰ＋500 のダメージを、相手に
+ * 与える。好きな順番で好きな回数行える（同）ので、行ったかどうかは覚えない。フリーズした
+ * ユニットは同じフェイズにもう一度は選べないので、回数はそれで頭打ちになる。
+ *
+ * この特別な行動はバンクを使用せず、行った後は非アクティブプレイヤーが優先権を獲得する
+ * （同 第4部 第5章 2）。与えたダメージが合計 1000 以上になっていれば、そこでスマッシュ判定が
+ * 発生する（同 第14章 4-12、`smash.ts`）。
+ *
+ * スマッシュ判定の最中でも行える。カードのプレイや移動と違って「バトル中以外」のような
+ * 制限が書かれていないためで、これがスマッシュ判定中のスマッシュ判定（同 第3部 第17章 2-2）
+ * が起こる経路になる。
+ */
+export function smash(state: DuelState, unit: CardId): ActionOutcome {
+  if (!activePlayerMayAct(state, 'スマッシュフェイズ')) return cannot('行える時ではない')
+
+  const player = state.turn.active
+  const smashing = smashingUnit(state, player, unit)
+  if (smashing === undefined) return cannot('スマッシュできるユニットではない')
+
+  const frozen = freezeOnSquare(state, unit)
+  const damaged = damagePlayer(frozen, opponentOf(player), smashing.damage)
+  return done(grantPriorityToInactive(damaged))
+}
+
+/**
+ * スマッシュできるユニットと、それが相手に与えるダメージ（総合ルール 第3部 第9章 1）。
+ * スマッシュできるユニットでなければ `undefined`。
+ *
+ * 選べるのは、そのプレイヤーが支配する、中央エリアまたは敵エリアにあるユニットである。
+ * エリアはスマッシュするプレイヤーから見て判断する（同 第2部 第22章 6-1）。フリーズ
+ * できないユニットは選べない（同 第24章 1-1）ので、リリース状態のものだけを見る。
+ */
+function smashingUnit(
+  state: DuelState,
+  player: Player,
+  id: CardId,
+): { readonly damage: number } | undefined {
+  const located = locateOnSquares(state, id)
+  if (located === undefined) return undefined
+
+  const { instance, square } = located
+  if (instance.controller !== player) return undefined
+  if (instance.card.type !== 'ユニット') return undefined
+  if (instance.orientation !== 'リリース') return undefined
+
+  const area: Area = areaOf(player, square)
+  if (area === '味方エリア') return undefined
+
+  return { damage: spOf(instance.card) + (area === '敵エリア' ? ENEMY_AREA_BONUS : 0) }
 }
 
 /**

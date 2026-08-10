@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 // ゾーンを差し替えるための関数であり、公開する API ではない。
 import { putInZone } from './duel.js'
 import {
+  PLAYERS,
   cardsIn,
+  cardsOn,
   defineUnit,
   discardTrap,
   emptyDuelState,
@@ -11,8 +13,10 @@ import {
   passPriority,
   placeEnergy,
   plan,
+  putOnSquare,
+  smash,
 } from './index.js'
-import type { ActionOutcome, CardInstance, Chooser, DuelState, Phase } from './index.js'
+import type { ActionOutcome, CardInstance, Chooser, DuelState, Phase, Square, UnitCard } from './index.js'
 
 /** 選択を求められたら常に最初の候補を選ぶ。どれを選ぶかを問わないテストで使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -30,9 +34,31 @@ function card(id: string): CardInstance {
  * 第7章 1・第8章 1）ので、そこから 1 度放棄させてアクティブプレイヤーに優先権を移す。
  */
 function phaseReadyToAct(phase: Phase): DuelState {
-  let current = emptyDuelState()
+  let current = stockedDuelState()
   while (current.turn.phase !== phase) current = passPriority(current, chooseFirst)
   return passPriority(current, chooseFirst)
+}
+
+/**
+ * 山札を積んだ、カードの置かれていない盤面。
+ *
+ * 山札にあるカードが 0 枚以下のプレイヤーは、次に優先権が発生した時に敗北する
+ * （総合ルール 第3部 第3章 2）。優先権を動かすテストでは、それでデュエルが終わって
+ * しまわないように山札を積んでおく。
+ */
+function stockedDuelState(): DuelState {
+  return PLAYERS.reduce(
+    (state, player) =>
+      putInZone(
+        state,
+        player,
+        '山札',
+        Array.from({ length: 10 }, (_, index) =>
+          instantiate({ id: `${player}の山札${index}`, card: testCard, owner: player }),
+        ),
+      ),
+    emptyDuelState(),
+  )
 }
 
 /** 行えたはずの行動の結果の盤面。 */
@@ -193,5 +219,110 @@ describe('トラップの廃棄', () => {
     const state = putInZone(phaseReadyToAct('エネルギーフェイズ'), '先攻', 'トラップゾーン', [card('トラップ')])
 
     expect(violationOf(discardTrap(state, 'トラップ'))).toBe('行える時ではない')
+  })
+})
+
+// 総合ルール 第3部 第9章 1（ADR-0006）
+describe('スマッシュする', () => {
+  /** ＳＰ 500 のユニット。スマッシュ判定が発生しない量のダメージを与えるのに使う。 */
+  const sp500 = defineUnit({ name: 'テスト・ＳＰ500', level: 1, colors: ['赤'], bp: 1000, sp: 500 })
+
+  /** ＳＰ 0 のユニット。敵エリアの＋500 だけを取り出して確かめるのに使う。 */
+  const sp0 = defineUnit({ name: 'テスト・ＳＰ0', level: 1, colors: ['赤'], bp: 1000, sp: 0 })
+
+  /** 先攻から見た味方エリア・中央エリア・敵エリアのスクエア。 */
+  const homeSquare: Square = { row: 0, column: 1 }
+  const centerSquare: Square = { row: 1, column: 1 }
+  const anotherCenterSquare: Square = { row: 1, column: 0 }
+  const enemySquare: Square = { row: 2, column: 1 }
+
+  /**
+   * アクティブプレイヤー（先攻）のユニットが置かれた、スマッシュフェイズの盤面。
+   *
+   * 効果ではなく盤面に直接置く。中央エリアを指定してプレイされたユニットはルールエフェクト
+   * によって捨札に置かれてしまう（総合ルール 第4部 第14章 4-9）ためである。
+   */
+  function smashPhaseWith(...units: readonly (readonly [Square, string, UnitCard])[]): DuelState {
+    const board = units.reduce(
+      (state, [square, id, card]) => putOnSquare(state, square, instantiate({ id, card, owner: '先攻' })),
+      stockedDuelState(),
+    )
+    let current = board
+    while (current.turn.phase !== 'スマッシュフェイズ') current = passPriority(current, chooseFirst)
+    return passPriority(current, chooseFirst)
+  }
+
+  /** そのスクエアにあるカードの向き。 */
+  function orientationOf(state: DuelState, square: Square, id: string): string | undefined {
+    return cardsOn(state, square).find((each) => each.id === id)?.orientation
+  }
+
+  it('中央エリアの自分のユニットをフリーズして、相手にＳＰと同じダメージを与える', () => {
+    const after = stateOf(smash(smashPhaseWith([centerSquare, 'スマッシュ役', sp500]), 'スマッシュ役'))
+
+    expect(after.damage['後攻']).toBe(500)
+    expect(orientationOf(after, centerSquare, 'スマッシュ役')).toBe('フリーズ')
+  })
+
+  // 総合ルール 第3部 第9章 1-(2)
+  it('敵エリアの自分のユニットなら、ＳＰ＋500 のダメージを与える', () => {
+    const after = stateOf(smash(smashPhaseWith([enemySquare, 'スマッシュ役', sp0]), 'スマッシュ役'))
+
+    expect(after.damage['後攻']).toBe(500)
+  })
+
+  it('味方エリアのユニットではスマッシュできない', () => {
+    const state = smashPhaseWith([homeSquare, 'スマッシュ役', sp500])
+
+    expect(violationOf(smash(state, 'スマッシュ役'))).toBe('スマッシュできるユニットではない')
+  })
+
+  // 総合ルール 第2部 第24章 1-1: すでにフリーズしているカードはフリーズできない。
+  it('フリーズ状態のユニットではスマッシュできない', () => {
+    const state = smashPhaseWith([centerSquare, 'スマッシュ役', sp500])
+    const frozen = stateOf(smash(state, 'スマッシュ役'))
+    const back = passPriority(frozen, chooseFirst)
+
+    expect(violationOf(smash(back, 'スマッシュ役'))).toBe('スマッシュできるユニットではない')
+  })
+
+  it('相手のユニットではスマッシュできない', () => {
+    const state = smashPhaseWith()
+    const enemy = putOnSquare(state, centerSquare, instantiate({ id: '敵', card: sp500, owner: '後攻' }))
+
+    expect(violationOf(smash(enemy, '敵'))).toBe('スマッシュできるユニットではない')
+  })
+
+  // 総合ルール 第3部 第9章 1: (1)〜(2)の行動は好きな順番で好きな回数行える。
+  it('同じスマッシュフェイズに何回でも行える', () => {
+    const state = smashPhaseWith([centerSquare, '1 枚目', sp500], [anotherCenterSquare, '2 枚目', sp500])
+    const once = passPriority(stateOf(smash(state, '1 枚目')), chooseFirst)
+    const twice = stateOf(smash(once, '2 枚目'))
+
+    expect(once.damage['後攻']).toBe(500)
+    // 2 回目で合計 1000 になり、スマッシュ判定が発生してダメージが回復する（総合ルール
+    // 第4部 第14章 4-12、第3部 第18章 1）。判定そのものは `smash.test.ts` で確かめる。
+    expect(twice.smashJudgments).toHaveLength(1)
+  })
+
+  // 総合ルール 第4部 第5章 2: 特別な行動を行った後、非アクティブプレイヤーが優先権を獲得する。
+  it('スマッシュした後、非アクティブプレイヤーが優先権を獲得する', () => {
+    const after = stateOf(smash(smashPhaseWith([centerSquare, 'スマッシュ役', sp500]), 'スマッシュ役'))
+
+    expect(after.turn.priority).toBe('後攻')
+  })
+
+  it('スマッシュフェイズでなければ行えない', () => {
+    const state = putOnSquare(
+      phaseReadyToAct('メインフェイズ'),
+      centerSquare,
+      instantiate({ id: 'スマッシュ役', card: sp500, owner: '先攻' }),
+    )
+
+    expect(violationOf(smash(state, 'スマッシュ役'))).toBe('行える時ではない')
+  })
+
+  it('スクエアにないカードではスマッシュできない', () => {
+    expect(violationOf(smash(smashPhaseWith(), '手札のカード'))).toBe('スマッシュできるユニットではない')
   })
 })

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
+// 山札を積むためだけに `putInZone` を使う。engine の中からゾーンを差し替えるための関数で
+// あり、公開する API ではない。
+import { putInZone } from './duel.js'
 import {
+  PLAYERS,
   cardsIn,
   choose,
   defineUnit,
@@ -53,9 +57,31 @@ type Placement = readonly [Square, CardInstance]
 function energyPhase(...placements: readonly Placement[]): DuelState {
   const board = placements.reduce(
     (state, [square, card]) => putOnSquare(state, square, card),
-    emptyDuelState(),
+    stockedDuelState(),
   )
   return pass(pass(board))
+}
+
+/**
+ * 山札を積んだ、カードの置かれていない盤面。
+ *
+ * 山札にあるカードが 0 枚以下のプレイヤーは、次に優先権が発生した時に敗北する
+ * （総合ルール 第3部 第3章 2）。優先権を動かすテストでは、それでデュエルが終わって
+ * しまわないように山札を積んでおく。
+ */
+function stockedDuelState(): DuelState {
+  return PLAYERS.reduce(
+    (state, player) =>
+      putInZone(
+        state,
+        player,
+        '山札',
+        Array.from({ length: 10 }, (_, index) =>
+          instantiate({ id: `${player}の山札${index}`, card: vanilla, owner: player }),
+        ),
+      ),
+    emptyDuelState(),
+  )
 }
 
 const chooseFirst: Chooser = (candidates) => candidates[0]

@@ -94,14 +94,34 @@ export interface GenkiAbility {
 }
 
 /**
+ * キーワード能力「希望」（総合ルール 第5部 第3章）。
+ *
+ * 「このカードがスマッシュゾーンに表向きで置かれた時、このカードと同じ色のカードがあなたの
+ * エネルギーゾーンにあり、かつこのカードのレベルと同じかそれ以上の枚数のカードがあなたの
+ * エネルギーゾーンにあるならば、指定された効果を発揮する」という特別な能力である（同 2）。
+ *
+ * 誘発型能力に見えるが、種別は起動型・誘発型・常在型のいずれでもない「特別な能力」で
+ * あり、バンクを使用せずただちに解決される（同 1）。誘発型能力として持たせるとバンクに
+ * 入ってしまうので、別の種類として持つ。
+ *
+ * ユニットに限らずどの種別のカードも持てる。スマッシュゾーンに置かれるのは山札の 1 番上の
+ * カードであって、種別を問わないためである。
+ */
+export interface HopeAbility {
+  readonly kind: '特別な能力'
+  readonly keyword: '希望'
+  readonly effect: Effect
+}
+
+/**
  * テキストによって決められた、カードが行うことまたは行えること
  * （総合ルール 第4部 第1章 1）。
  *
  * 能力には起動型・誘発型・常在型の 3 つがある（同 2）が、起動型はコストを持つ能力を
  * 書けるようになってから足す。常在型は「夢」と「元気」だけで、継続効果を持つものは
- * まだ無い。
+ * まだ無い。「希望」はそのどれでもない特別な能力である（同 第5部 第3章 1）。
  */
-export type Ability = TriggeredAbility | DreamAbility | GenkiAbility
+export type Ability = TriggeredAbility | DreamAbility | GenkiAbility | HopeAbility
 
 /** 誘発型能力を 1 つ書く。 */
 export function triggeredAbility(event: TriggerEvent, effect: Effect): TriggeredAbility {
@@ -113,3 +133,8 @@ export const dream: DreamAbility = { kind: '常在型能力', keyword: '夢' }
 
 /** 「元気」。「夢」と同じく 1 つを使い回す。 */
 export const genki: GenkiAbility = { kind: '常在型能力', keyword: '元気' }
+
+/** 「希望―［効果］」を 1 つ書く。効果はカードごとに違うので受け取る。 */
+export function hope(effect: Effect): HopeAbility {
+  return { kind: '特別な能力', keyword: '希望', effect }
+}

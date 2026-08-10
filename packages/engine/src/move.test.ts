@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 // 差し替えるための関数であり、公開する API ではない。
 import { putInZone } from './duel.js'
 import {
+  PLAYERS,
   cardsOn,
   defineTrap,
   defineUnit,
@@ -59,9 +60,29 @@ function unit(id: string, card: UnitCard = omniMover, owner: Player = '先攻'):
  * 第7章 1・第8章 1）ので、そこから 1 度放棄させてアクティブプレイヤーに優先権を移す。
  */
 function phaseReadyToAct(phase: Phase): DuelState {
-  let current = emptyDuelState()
+  let current = stockedDuelState()
   while (current.turn.phase !== phase) current = passPriority(current, chooseFirst)
   return passPriority(current, chooseFirst)
+}
+
+/**
+ * 山札を積んだ、カードの置かれていない盤面。
+ *
+ * 山札にあるカードが 0 枚以下のプレイヤーは、次に優先権が発生した時に敗北する
+ * （総合ルール 第3部 第3章 2）。優先権を動かすテストでは、それでデュエルが終わって
+ * しまわないように山札を積んでおく。
+ */
+function stockedDuelState(): DuelState {
+  return PLAYERS.reduce(
+    (state, player) =>
+      putInZone(
+        state,
+        player,
+        '山札',
+        Array.from({ length: 10 }, (_, index) => unit(`${player}の山札${index}`, omniMover, player)),
+      ),
+    emptyDuelState(),
+  )
 }
 
 /** アクティブプレイヤー（先攻）が行動できる、第 1 ターンのメインフェイズの盤面。 */

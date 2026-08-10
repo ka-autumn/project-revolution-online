@@ -3,6 +3,7 @@ import { startBattleIfAny } from './battle.js'
 import type { DuelState } from './duel.js'
 import { opponentOf } from './player.js'
 import { checkRuleEffects } from './rule-effect.js'
+import { startSmashJudgmentIfAny } from './smash.js'
 import type { Phase } from './turn.js'
 
 /**
@@ -16,7 +17,13 @@ import type { Phase } from './turn.js'
  *
  * バトル発生のルールエフェクトだけは、他のルールエフェクトをすべて解決し終えた後に処理する
  * （同 第14章 4-4-1、第3部 第11章 1-1）。バトルが始まると優先権は非アクティブプレイヤーに
- * 発生する（同 第12章 1）ので、誰が得るはずだったかに関わらずそこへ移す。
+ * 発生する（同 第12章 1）ので、誰が得るはずだったかに関わらずそこへ移す。スマッシュ判定の
+ * 発生（同 第14章 4-12）も同じで、始まると非アクティブプレイヤーに優先権が発生する
+ * （同 第3部 第18章 1）。バトルより後に見るのは、スマッシュ判定中にバトルが発生したなら
+ * バトルを先に処理する（同 第17章 2-1）ためである。
+ *
+ * 勝敗が決まったら、そこで終わる。デュエルは即座に終了する（同 第3章 3）ので、残りの
+ * ルールエフェクトも誘発型能力も処理しない。
  *
  * 誰が優先権を持つかは、バトルが始まった場合を除いてここでは変えない。それを決めるのは
  * 呼ぶ側である。この手順は優先権を得るのが誰であるかに影響されない（ルールエフェクトは
@@ -32,6 +39,7 @@ import type { Phase } from './turn.js'
 export function settleBeforePriority(state: DuelState): DuelState {
   let current = state
   for (;;) {
+    if (current.result !== undefined) return current
     // 何も発生していなければ `checkRuleEffects` は渡した盤面をそのまま返すので、
     // 新しいルールエフェクトが発生したかどうかは盤面が入れ替わったかで分かる。
     // ルールエフェクトはカードをスクエアから取り除くだけなので、いつか発生しなくなる。
@@ -43,6 +51,13 @@ export function settleBeforePriority(state: DuelState): DuelState {
     const started = startBattleIfAny(current)
     if (started !== current) {
       current = toInactive(started)
+      continue
+    }
+    // 回復ステップでダメージが 1000 未満に戻る（総合ルール 第3部 第18章 1）ので、
+    // 同じダメージで何度も発生することはなく、この繰り返しはいつか終わる。
+    const judging = startSmashJudgmentIfAny(current)
+    if (judging !== current) {
+      current = toInactive(judging)
       continue
     }
     if (current.triggered.length === 0) return current
@@ -78,10 +93,18 @@ function toInactive(state: DuelState): DuelState {
  * 自分のメインフェイズの間」）。バトル中に行える行動はここを通らない。トラップの発動は
  * 自分のメインフェイズであることもバンクが空であることも要らない（同 3-8）ため、
  * `play.ts` の `activateTrap` がこの判定を使っていない。
+ *
+ * スマッシュ判定中は見ない。スマッシュ（同 第3部 第9章 1）には「バトル中以外」にあたる
+ * 制限が書かれておらず、スマッシュ判定の最中も行えるためである（`action.ts` の `smash`）。
+ * スマッシュ判定はスマッシュフェイズにしか発生しないので、他のフェイズの行動はフェイズの
+ * 判定で弾かれる。
+ *
+ * 勝敗が決まったデュエルでは何も行えない。デュエルは即座に終了する（同 第3章 3）。
  */
 export function activePlayerMayAct(state: DuelState, phase: Phase): boolean {
   const { turn } = state
   return (
+    state.result === undefined &&
     state.battle === undefined &&
     turn.phase === phase &&
     turn.priority === turn.active &&

@@ -6,6 +6,7 @@ import type { Card } from './card.js'
 import type { Orientation } from './orientation.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
+import type { SmashJudgment } from './smash.js'
 import { firstTurn } from './turn.js'
 import type { Turn } from './turn.js'
 import { PLAYER_ZONES } from './zone.js'
@@ -76,6 +77,15 @@ export interface DuelState {
    */
   readonly zones: Readonly<Record<Player, Readonly<Record<PlayerZone, readonly CardInstance[]>>>>
   /**
+   * プレイヤーが受けているダメージの量（総合ルール 第3部 第9章 1）。
+   *
+   * カードが受けているダメージ（`CardInstance.damage`）と同じく蓄積する。合計 1000 以上に
+   * なるとスマッシュ判定が発生し（同 第4部 第14章 4-12）、その回復ステップで 1000 の
+   * 倍数の分だけ回復する（同 第3部 第18章 1）ため、1000 未満の端数はそこに残る。残った
+   * ダメージはリカバリーフェイズの始めに取り除かれる（同 第10章 1）。
+   */
+  readonly damage: Readonly<Record<Player, number>>
+  /**
    * 進行中のターンとフェイズ、そして優先権。
    *
    * カードの位置ではないがここに置いている。どちらのプレイヤーにも見せてよい公開情報
@@ -141,7 +151,44 @@ export interface DuelState {
    * 効果でユニットをスクエアに置けるようになったら、並びにして持つ必要が出る。
    */
   readonly battle: Battle | undefined
+  /**
+   * 発生しているスマッシュ判定（総合ルール 第3部 第17章）。発生していなければ空。
+   *
+   * バトルと同じく、ルールエフェクトによって発生し、バンクを使用しない特別な手順である
+   * （同 1）。ステップの間、フェイズに代わって優先権のやりとりを受け持つ。
+   *
+   * 並びの最後が処理中のスマッシュ判定で、その前にあるものは「待機中のスマッシュ判定」で
+   * ある（同 2-2）。スマッシュ判定中にスマッシュ判定が発生した場合、先に発生していたほうが
+   * 待機中になり、後から発生したほうを先に処理する。スマッシュ判定の最中もアクティブ
+   * プレイヤーはスマッシュできる（同 第9章 1 に「バトル中以外」のような制限が無い）ので、
+   * これは実際に起こる。
+   *
+   * バトル中のスマッシュ判定（同 第11章 2-2）とスマッシュ判定中のバトル（同 第17章 2-1）は
+   * まだ起こらない。プレイヤーにダメージを与えるのはスマッシュ（同 第9章 1）だけで、それは
+   * バトル中には行えず（`priority.ts` の `activePlayerMayAct`）、スマッシュ判定の間に
+   * ユニットがスクエアに置かれることも無いためである。効果がプレイヤーにダメージを与えたり
+   * ユニットをスクエアに置いたりできるようになったら、どちらも起こるようになる。
+   */
+  readonly smashJudgments: readonly SmashJudgment[]
+  /**
+   * 決まった勝敗（総合ルール 第3部 第3章）。まだ決まっていなければ `undefined`。
+   *
+   * 勝敗が決まったデュエルは即座に終了する（同 3）ので、これが `undefined` でなくなった
+   * 後の盤面はもう動かない。
+   */
+  readonly result: DuelResult | undefined
 }
+
+/**
+ * デュエルの勝敗（総合ルール 第3部 第3章）。
+ *
+ * 敗北したプレイヤーではなく勝利したプレイヤーを持つ。敗北の条件を満たしたプレイヤーが
+ * 敗北し、相手が勝利する（同 1・2）という形しかなく、両方が同時に敗北した場合は引き分けに
+ * なる（同 4）ためである。
+ */
+export type DuelResult =
+  | { readonly kind: '勝敗'; readonly winner: Player }
+  | { readonly kind: '引き分け' }
 
 /**
  * 誘発した誘発型能力 1 つ。
@@ -198,6 +245,7 @@ export function emptyDuelState(): DuelState {
   return {
     squares: BATTLE_SPACE.map(() => []),
     zones: { 先攻: emptyZones(), 後攻: emptyZones() },
+    damage: { 先攻: 0, 後攻: 0 },
     turn: firstTurn(),
     bank: [],
     resolveZone: [],
@@ -205,6 +253,8 @@ export function emptyDuelState(): DuelState {
     playedIntoCenter: [],
     trapRights: [],
     battle: undefined,
+    smashJudgments: [],
+    result: undefined,
   }
 }
 
@@ -434,7 +484,7 @@ export function topOfLibrary(state: DuelState, player: Player): CardInstance | u
  *
  * 山札が空なら何も起こらない。山札が 0 枚になったプレイヤーが次に優先権が発生した時に
  * 敗北すること（総合ルール 第3部 第3章 2）は、引けないこととは別のルールエフェクトで
- * あり、デュエルの終了を実装する時に足す。
+ * あり、`rule-effect.ts` が見る。
  */
 export function draw(state: DuelState, player: Player): DuelState {
   const top = topOfLibrary(state, player)
@@ -468,19 +518,75 @@ export function dealDamage(state: DuelState, id: CardId, amount: number): DuelSt
 }
 
 /**
- * スクエアにあるすべてのカードからダメージを取り除く（総合ルール 第3部 第10章 1）。
- * どのカードもダメージを受けていなければ盤面はそのまま。
+ * プレイヤーにダメージを与える（総合ルール 第3部 第9章 1）。
  *
- * プレイヤーに与えられているダメージ（同）はまだ盤面に無い。スマッシュ判定を実装する時に
- * 一緒に取り除くようになる。
+ * ダメージはそのプレイヤーに載って蓄積する。合計 1000 以上になった時にスマッシュ判定が
+ * 発生すること（同 第4部 第14章 4-12）はルールエフェクトの仕事なので、ここでは与えるだけ
+ * である。
+ */
+export function damagePlayer(state: DuelState, player: Player, amount: number): DuelState {
+  if (amount === 0) return state
+
+  return { ...state, damage: { ...state.damage, [player]: state.damage[player] + amount } }
+}
+
+/**
+ * プレイヤーが受けているダメージを回復する（総合ルール 第3部 第18章 1）。
+ *
+ * 受けている量より多くは回復しない。ダメージは受けている量として持つもので、負の量を
+ * 持つことに意味は無いためである。
+ */
+export function recoverDamage(state: DuelState, player: Player, amount: number): DuelState {
+  const recovered = Math.max(state.damage[player] - amount, 0)
+  if (recovered === state.damage[player]) return state
+
+  return { ...state, damage: { ...state.damage, [player]: recovered } }
+}
+
+/**
+ * すべてのカードとすべてのプレイヤーからダメージを取り除く（総合ルール 第3部 第10章 1）。
+ * どこにもダメージが無ければ盤面はそのまま。
  */
 export function removeAllDamage(state: DuelState): DuelState {
-  if (!state.squares.some((cards) => cards.some((card) => card.damage > 0))) return state
+  const damaged =
+    state.squares.some((cards) => cards.some((card) => card.damage > 0)) ||
+    PLAYERS.some((player) => state.damage[player] > 0)
+  if (!damaged) return state
 
   return {
     ...state,
     squares: state.squares.map((cards) => cards.map((card) => (card.damage === 0 ? card : { ...card, damage: 0 }))),
+    damage: { 先攻: 0, 後攻: 0 },
   }
+}
+
+/**
+ * スクエアにあるカードをフリーズ状態にする（総合ルール 第2部 第24章 1）。スクエアに
+ * なければ盤面はそのまま。
+ *
+ * すでにフリーズしているカードをフリーズすることはできない（同 1-1）。フリーズできるか
+ * どうかは、それをコストや条件にする側（`action.ts` の `smash`）が確かめる。
+ */
+export function freezeOnSquare(state: DuelState, id: CardId): DuelState {
+  if (findOnSquares(state, id) === undefined) return state
+
+  return {
+    ...state,
+    squares: state.squares.map((cards) =>
+      cards.map((card) => (card.id === id ? { ...card, orientation: 'フリーズ' } : card)),
+    ),
+  }
+}
+
+/**
+ * そのプレイヤーの山札にあるカードの枚数。
+ *
+ * プランゾーンにあるカードも山札の 1 番上のカードなので数える（総合ルール 第2部
+ * 第21章 3-1）。山札が 0 枚以下になったプレイヤーは敗北する（同 第3部 第3章 2）ので、
+ * その判定を `topOfLibrary` の有無で代用せず枚数で行えるようにしている。
+ */
+export function librarySize(state: DuelState, player: Player): number {
+  return cardsIn(state, player, '山札').length + cardsIn(state, player, 'プランゾーン').length
 }
 
 /** スクエアにあるそのカード。どのスクエアにもなければ `undefined`。 */
