@@ -592,6 +592,56 @@ export function freezeOnSquare(state: DuelState, id: CardId): DuelState {
 }
 
 /**
+ * そのプレイヤーが支配する、フリーズ状態のカードをすべてリリースする
+ * （総合ルール 第3部 第5章 1）。
+ *
+ * リリースするのはスクエア・トラップゾーン・エネルギーゾーン・スマッシュゾーンにある
+ * カードだけである。向きを持つのはこの 4 つのゾーンにあるカードだけ（総合ルール 第2部
+ * 第24章 1）だからである。
+ *
+ * トラップゾーン・エネルギーゾーン・スマッシュゾーンはプレイヤーごとに分かれたゾーンで、
+ * そこにあるカードは常にそのプレイヤー自身が支配する（`moveToZone` がそこへ動かす時に
+ * 支配者を持ち主へ戻すため）。スクエアは両者のカードが混在するので、支配者で選ぶ。
+ */
+export function releaseAll(state: DuelState, player: Player): DuelState {
+  const released = (['エネルギーゾーン', 'スマッシュゾーン', 'トラップゾーン'] as const).reduce(
+    (current, zone) => releaseZone(current, player, zone),
+    state,
+  )
+  return releaseSquares(released, player)
+}
+
+/** そのプレイヤーのそのゾーンにあるフリーズ状態のカードをすべてリリースする。 */
+function releaseZone(state: DuelState, player: Player, zone: PlayerZone): DuelState {
+  const cards = cardsIn(state, player, zone)
+  if (!cards.some((card) => card.orientation === 'フリーズ')) return state
+
+  return putInZone(
+    state,
+    player,
+    zone,
+    cards.map((card) => (card.orientation === 'フリーズ' ? { ...card, orientation: 'リリース' } : card)),
+  )
+}
+
+/** そのプレイヤーが支配する、スクエアにあるフリーズ状態のカードをすべてリリースする。 */
+function releaseSquares(state: DuelState, player: Player): DuelState {
+  const frozen = state.squares.some((cards) =>
+    cards.some((card) => card.controller === player && card.orientation === 'フリーズ'),
+  )
+  if (!frozen) return state
+
+  return {
+    ...state,
+    squares: state.squares.map((cards) =>
+      cards.map((card) =>
+        card.controller === player && card.orientation === 'フリーズ' ? { ...card, orientation: 'リリース' } : card,
+      ),
+    ),
+  }
+}
+
+/**
  * そのプレイヤーの山札にあるカードの枚数。
  *
  * プランゾーンにあるカードも山札の 1 番上のカードなので数える（総合ルール 第2部

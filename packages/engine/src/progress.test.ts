@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 // ダメージを与えるためだけに `dealDamage` と `damagePlayer` を使う。engine の中から盤面を
 // 組み替えるための関数であり、公開する API ではない。
-import { damagePlayer, dealDamage } from './duel.js'
+import { damagePlayer, dealDamage, putInZone } from './duel.js'
 import {
   cardsIn,
   cardsOn,
@@ -12,7 +12,7 @@ import {
   putOnSquare,
   triggeredAbility,
 } from './index.js'
-import type { Chooser, Deck, DuelState, Phase, Square } from './index.js'
+import type { Chooser, Deck, DuelState, Phase, Player, Square } from './index.js'
 
 /** 60 枚すべてが別々の名前のデッキ。同じカード名は 4 枚までという規定を避けるため。 */
 function testDeck(prefix: string): Deck {
@@ -162,6 +162,54 @@ describe('先攻の第 1 ターン', () => {
 
   it('とばすのは第 1 ターンだけで、先攻の第 2 ターンはとばさない', () => {
     expect(phasesOfTurn(turnNumbered(startedDuel(), 3))).toContain('ドローフェイズ')
+  })
+})
+
+// 総合ルール 第3部 第5章 1（ADR-0006）
+describe('リリースフェイズ', () => {
+  const someSquare: Square = { row: 2, column: 1 }
+  const anotherSquare: Square = { row: 1, column: 2 }
+  const testUnit = defineUnit({ name: 'テスト・リリース', level: 1, bp: 1000, sp: 1000 })
+
+  /** そのプレイヤーが支配する、フリーズ状態のスクエアのカードとエネルギーゾーンのカードを置いた盤面。 */
+  function withFrozenCardsOf(state: DuelState, player: Player): DuelState {
+    const onSquare = instantiate({ id: `${player}のスクエア`, card: testUnit, owner: player, orientation: 'フリーズ' })
+    const withSquare = putOnSquare(state, someSquare, onSquare)
+    const energy = instantiate({ id: `${player}のエネルギー`, card: testUnit, owner: player, orientation: 'フリーズ' })
+    return putInZone(withSquare, player, 'エネルギーゾーン', [energy])
+  }
+
+  it('アクティブプレイヤーが支配するフリーズ状態のカードがリリースされる', () => {
+    // 先攻の第 1 ターンにフリーズ状態で置き、先攻の次のターン（第 3 ターン）の
+    // リリースフェイズまで進める。
+    const withFrozen = withFrozenCardsOf(startedDuel(), '先攻')
+    const turn3 = turnNumbered(withFrozen, 3)
+
+    expect(turn3.turn.phase).toBe('リリースフェイズ')
+    expect(cardsOn(turn3, someSquare)[0]?.orientation).toBe('リリース')
+    expect(cardsIn(turn3, '先攻', 'エネルギーゾーン')[0]?.orientation).toBe('リリース')
+  })
+
+  it('相手が支配するフリーズ状態のカードはリリースされない', () => {
+    // 先攻と後攻、両方が支配するフリーズ状態のカードを置いてから後攻の第 2 ターンの
+    // リリースフェイズまで進める。リリースされるのはそのフェイズのアクティブプレイヤーで
+    // ある後攻が支配するカードだけで、先攻が支配するカードはリリースされない。
+    const put = putInZone(
+      putOnSquare(
+        putOnSquare(startedDuel(), someSquare, instantiate({ id: '先攻のスクエア', card: testUnit, owner: '先攻', orientation: 'フリーズ' })),
+        anotherSquare,
+        instantiate({ id: '後攻のスクエア', card: testUnit, owner: '後攻', orientation: 'フリーズ' }),
+      ),
+      '先攻',
+      'エネルギーゾーン',
+      [instantiate({ id: '先攻のエネルギー', card: testUnit, owner: '先攻', orientation: 'フリーズ' })],
+    )
+    const turn2 = turnNumbered(put, 2)
+
+    expect(turn2.turn.phase).toBe('リリースフェイズ')
+    expect(cardsOn(turn2, someSquare)[0]?.orientation).toBe('フリーズ')
+    expect(cardsIn(turn2, '先攻', 'エネルギーゾーン')[0]?.orientation).toBe('フリーズ')
+    expect(cardsOn(turn2, anotherSquare)[0]?.orientation).toBe('リリース')
   })
 })
 

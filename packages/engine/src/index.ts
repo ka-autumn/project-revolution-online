@@ -45,6 +45,7 @@ export {
   instantiate,
   librarySize,
   putOnSquare,
+  releaseAll,
 } from './duel.js'
 export type { CardId, CardInstance, DuelResult, DuelState, TriggeredInstance } from './duel.js'
 export { choose, destroy } from './effect.js'
