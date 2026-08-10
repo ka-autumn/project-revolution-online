@@ -558,7 +558,7 @@ describe('トラップの発動条件（侵入）', () => {
 // 総合ルール 第2部 第20章 3-8 ただし書き、第3部 第11章 5（ADR-0006）
 describe('侵入と同時にバトルが発生した場合の権利', () => {
   /** 中央エリアのスクエアにトリガーアイコンを持つ、効果を持たない赤いレベル 1 のトラップ。 */
-  const intrusionTrap = defineTrap({
+  const redIntrusionTrap = defineTrap({
     name: 'テスト・侵入トラップ（赤）',
     level: 1,
     colors: ['赤'],
@@ -573,7 +573,7 @@ describe('侵入と同時にバトルが発生した場合の権利', () => {
    * のと同時に、支配者の異なるユニットが重なってバトルが発生する。
    */
   function readyToIntrudeIntoBattle(): DuelState {
-    const trap = instantiate({ id: 'トラップ', card: intrusionTrap, owner: '後攻' })
+    const trap = instantiate({ id: 'トラップ', card: redIntrusionTrap, owner: '後攻' })
     const defender = instantiate({ id: '守るユニット', card: redUnit, owner: '後攻' })
     const state = putInZone(
       putInZone(putInZone(mainPhase(), '後攻', 'トラップゾーン', [trap]), '先攻', '手札', [
@@ -593,11 +593,7 @@ describe('侵入と同時にバトルが発生した場合の権利', () => {
   /** バトルが終了するまで、両方のプレイヤーが優先権を放棄し続けた盤面。 */
   function passUntilBattleEnds(state: DuelState): DuelState {
     let current = state
-    // バトルは 5 ステップで、バトル終了ステップだけ連続放棄を 2 度必要とする
-    // （総合ルール 第3部 第16章 2・3）ので、放棄は最大でも 12 回で足りる。
-    for (let count = 0; count < 12 && current.battle !== undefined; count += 1) {
-      current = passPriority(current, chooseFirst)
-    }
+    while (current.battle !== undefined) current = passPriority(current, chooseFirst)
     return current
   }
 
