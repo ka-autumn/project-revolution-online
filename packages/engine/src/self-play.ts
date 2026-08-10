@@ -130,12 +130,20 @@ export interface SelfPlayBatchOptions extends SelfPlayPolicy {
   readonly seeds: readonly number[]
 }
 
+/** 決着しなかったシードと、その `playSelfPlay` の結果。 */
+export interface SelfPlayFailure {
+  readonly seed: number
+  readonly result: SelfPlayResult
+}
+
 export type SelfPlayBatchResult =
-  | { readonly kind: '全て決着'; readonly actionsTaken: ReadonlyMap<number, number> }
+  | { readonly kind: '全て決着'; readonly actionsTakenBySeed: ReadonlyMap<number, number> }
   | {
       readonly kind: '失敗'
-      /** 決着しなかったシードすべて（シードと、その `playSelfPlay` の結果の組）。 */
-      readonly failures: readonly { readonly seed: number; readonly result: SelfPlayResult }[]
+      /** 決着しなかったシードすべて。 */
+      readonly failures: readonly SelfPlayFailure[]
+      /** 決着したシードだけの、シードごとの決着までの手数。 */
+      readonly actionsTakenBySeed: ReadonlyMap<number, number>
     }
 
 /**
@@ -144,11 +152,11 @@ export type SelfPlayBatchResult =
  * ファザとして大量の自己対戦を回すには、1 本ずつ `playSelfPlay` を呼ぶだけでは済まず、
  * どのシードで何が起きたかを集約する層が要る。1 回の実行から学べることを最大化するため、
  * 最初に失敗したシードで打ち切らず、すべてのシードを回しきってから、決着しなかったシード
- * すべてを返す。すべて決着すれば、シードごとの決着までの手数を返す。
+ * すべてを返す。決着したシードの手数も、失敗があったかどうかに関わらず返す。
  */
 export function runSelfPlayBatch(options: SelfPlayBatchOptions): SelfPlayBatchResult {
-  const actionsTaken = new Map<number, number>()
-  const failures: { readonly seed: number; readonly result: SelfPlayResult }[] = []
+  const actionsTakenBySeed = new Map<number, number>()
+  const failures: SelfPlayFailure[] = []
 
   for (const seed of options.seeds) {
     const result = playSelfPlay({
@@ -156,9 +164,11 @@ export function runSelfPlayBatch(options: SelfPlayBatchOptions): SelfPlayBatchRe
       maxActions: options.maxActions,
       pickAction: options.pickAction,
     })
-    if (result.kind === '決着') actionsTaken.set(seed, result.actionsTaken)
+    if (result.kind === '決着') actionsTakenBySeed.set(seed, result.actionsTaken)
     else failures.push({ seed, result })
   }
 
-  return failures.length > 0 ? { kind: '失敗', failures } : { kind: '全て決着', actionsTaken }
+  return failures.length > 0
+    ? { kind: '失敗', failures, actionsTakenBySeed }
+    : { kind: '全て決着', actionsTakenBySeed }
 }

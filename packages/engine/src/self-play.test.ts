@@ -89,7 +89,7 @@ describe('ランダムな自己対戦', () => {
     expect(result.kind).toBe('デッキ不備')
   })
 
-  // Spec: `pickAction` を差し替えれば、ランダムに選ぶだけのファザ役の代わりに、決まった手を
+  // ADR-0005: `pickAction` を差し替えれば、ランダムに選ぶだけのファザ役の代わりに、決まった手を
   // 返すプレイヤーで対戦を決定的に進められる（`self-play.ts` の `ActionPicker`）。
   it('pickAction を差し替えれば、決まった手だけを返すプレイヤーで対戦を進められる', () => {
     const pickPassPriority: ActionPicker = (actions, random) => {
@@ -115,7 +115,7 @@ describe('複数シードの自己対戦', () => {
 
     expect(result.kind).toBe('全て決着')
     if (result.kind !== '全て決着') throw new Error('到達しないはず')
-    expect([...result.actionsTaken.keys()]).toEqual([1, 2, 3])
+    expect([...result.actionsTakenBySeed.keys()]).toEqual([1, 2, 3])
   })
 
   it('デッキ不備のシードがあれば、途中で打ち切らずすべてのシードを失敗として報告する', () => {
@@ -129,5 +129,34 @@ describe('複数シードの自己対戦', () => {
     if (result.kind !== '失敗') throw new Error('到達しないはず')
     expect(result.failures.map((failure) => failure.seed)).toEqual([1, 2, 3])
     expect(result.failures.every((failure) => failure.result.kind === 'デッキ不備')).toBe(true)
+  })
+
+  // ADR-0005: 失敗したシードがあっても、同じ実行で決着したシードの手数まで捨ててはならない
+  // （1 回の実行から学べることを最大化する、`runSelfPlayBatch` の doc）。
+  it('一部のシードだけ手数上限に達しても、決着した残りのシードの手数は失敗と一緒に返る', () => {
+    const decks: [Deck, Deck] = [buildDeck(), buildDeck()]
+    const seeds = [1, 2, 3, 4, 5]
+    // 手数上限を超えるシードを作るため、まず十分な上限で各シードの決着までの手数を測る。
+    const actionsBySeed = new Map(
+      seeds.map((seed) => {
+        const result = playSelfPlay({ setup: { decks, seed }, maxActions: 3000 })
+        if (result.kind !== '決着') throw new Error('到達しないはず')
+        return [seed, result.actionsTaken] as const
+      }),
+    )
+    const sorted = [...actionsBySeed.values()].sort((a, b) => a - b)
+    // 一番手数が短かったシードだけが決着し、残りは手数上限に達するように上限を置く。
+    const threshold = sorted[0]!
+    expect(sorted[sorted.length - 1]).toBeGreaterThan(threshold) // 前提: 手数にばらつきがある
+
+    const result = runSelfPlayBatch({ decks, seeds, maxActions: threshold })
+
+    expect(result.kind).toBe('失敗')
+    if (result.kind !== '失敗') throw new Error('到達しないはず')
+    const decided = seeds.filter((seed) => actionsBySeed.get(seed)! <= threshold)
+    const notDecided = seeds.filter((seed) => actionsBySeed.get(seed)! > threshold)
+    expect([...result.actionsTakenBySeed.keys()].sort()).toEqual(decided.sort())
+    expect(result.failures.map((failure) => failure.seed).sort()).toEqual(notDecided.sort())
+    expect(result.failures.every((failure) => failure.result.kind === '手数上限')).toBe(true)
   })
 })

@@ -54,29 +54,31 @@ export function legalActions(state: DuelState): readonly LegalAction[] {
   const active = state.turn.active
   const priority = state.turn.priority
   // 手札とスクエア上のユニットは複数の行動の候補になるので、ここで 1 度だけ求めておく。
-  const hand = cardsIn(state, active, '手札')
-  const units = unitsOnSquares(state, active)
+  // どちらも active（今手番のプレイヤー）のものであることを名前で示す。トラップ発動だけは
+  // priority（発動する権利を持つプレイヤー）のトラップゾーンを見るので、混同しないように分ける。
+  const activeHand = cardsIn(state, active, '手札')
+  const activeUnits = unitsOnSquares(state, active)
 
   return [
     { kind: '優先権を放棄する' as const },
-    ...hand.flatMap((card) =>
+    ...activeHand.flatMap((card) =>
       tryAction({ kind: 'エネルギーを置く', card: card.id }, () => placeEnergy(state, card.id)),
     ),
     ...tryAction({ kind: 'プランする' }, () => plan(state, chooseFirst)),
-    ...units.flatMap((unit) =>
+    ...activeUnits.flatMap((unit) =>
       tryAction({ kind: 'スマッシュする', unit: unit.id }, () => smash(state, unit.id)),
     ),
     ...cardsIn(state, active, 'トラップゾーン').flatMap((card) =>
       tryAction({ kind: 'トラップを廃棄する', card: card.id }, () => discardTrap(state, card.id)),
     ),
-    ...[...hand, ...cardsIn(state, active, 'プランゾーン')].flatMap((card) => playCandidates(state, card)),
-    ...hand.flatMap((card) =>
+    ...[...activeHand, ...cardsIn(state, active, 'プランゾーン')].flatMap((card) => playCandidates(state, card)),
+    ...activeHand.flatMap((card) =>
       tryAction({ kind: 'トラップとしてプレイする', card: card.id }, () => playAsTrap(state, card.id)),
     ),
     ...cardsIn(state, priority, 'トラップゾーン').flatMap((card) =>
       tryAction({ kind: 'トラップを発動する', card: card.id }, () => activateTrap(state, card.id, chooseFirst)),
     ),
-    ...units.flatMap((unit) => moveCandidates(state, unit.id)),
+    ...activeUnits.flatMap((unit) => moveCandidates(state, unit.id)),
   ]
 }
 
