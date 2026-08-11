@@ -45,10 +45,15 @@ export {
   instantiate,
   librarySize,
   putOnSquare,
+  releaseAll,
 } from './duel.js'
 export type { CardId, CardInstance, DuelResult, DuelState, TriggeredInstance } from './duel.js'
 export { choose, destroy } from './effect.js'
 export type { DuelView, Effect, EffectStep, Instruction, UnitOnSquare } from './effect.js'
+export { cardIdsOf, checkBoardInvariants } from './invariant.js'
+export type { InvariantViolation } from './invariant.js'
+export { applyLegalAction, legalActions } from './legal-action.js'
+export type { LegalAction } from './legal-action.js'
 export { moveUnit } from './move.js'
 export { ORIENTATIONS } from './orientation.js'
 export type { Orientation } from './orientation.js'
@@ -63,6 +68,16 @@ export { RELATIONS_FROM_PLAYER, RELATIONS_FROM_UNIT } from './relation.js'
 export type { RelationFromPlayer, RelationFromUnit } from './relation.js'
 export { resolveEffect } from './resolve.js'
 export type { Chooser, EffectContext } from './resolve.js'
+export { pickRandomAction, playSelfPlay, randomChooser, runSelfPlayBatch } from './self-play.js'
+export type {
+  ActionPicker,
+  SelfPlayBatchOptions,
+  SelfPlayBatchResult,
+  SelfPlayFailure,
+  SelfPlayOptions,
+  SelfPlayPolicy,
+  SelfPlayResult,
+} from './self-play.js'
 export { OPENING_HAND_SIZE, prepareDuel } from './setup.js'
 export type { DuelPreparation, DuelSetup, Seat, SeatedViolation } from './setup.js'
 export { SMASH_JUDGMENT_STEPS, smashesOf } from './smash.js'

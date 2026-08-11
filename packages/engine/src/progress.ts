@@ -1,7 +1,7 @@
 import { phaseBeginning } from './ability.js'
 import { resolveFromBank, trigger } from './bank.js'
 import { advanceBattle } from './battle.js'
-import { draw, hasEnded, removeAllDamage } from './duel.js'
+import { draw, hasEnded, releaseAll, removeAllDamage } from './duel.js'
 import type { DuelState } from './duel.js'
 import { opponentOf } from './player.js'
 import { grantPriorityToInactive, settleBeforePriority } from './priority.js'
@@ -132,12 +132,13 @@ function beginCurrentPhase(state: DuelState): DuelState {
  * フェイズの始めの特別な行動。この行動はバンクを使用しない（総合ルール 第3部 第5章 1
  * ほか、各フェイズの 1）。
  *
- * 行うのはドローフェイズのドロー（同 第6章 1-1）と、リカバリーフェイズのダメージの除去
- * （同 第10章 1）である。ダメージと同時に終了する「ターンの終わりまで」「このターンの間」の
- * 効果（同）は、継続効果を盤面が持つようになってから足す。リリースフェイズのリリース
- * （同 第5章 1）はまだ行っていない。
+ * 行うのはリリースフェイズのリリース（同 第5章 1）と、ドローフェイズのドロー（同
+ * 第6章 1-1）と、リカバリーフェイズのダメージの除去（同 第10章 1）である。ダメージと
+ * 同時に終了する「ターンの終わりまで」「このターンの間」の効果（同）は、継続効果を盤面が
+ * 持つようになってから足す。
  */
 function takeBeginningAction(state: DuelState): DuelState {
+  if (state.turn.phase === 'リリースフェイズ') return releaseAll(state, state.turn.active)
   if (state.turn.phase === 'ドローフェイズ') return draw(state, state.turn.active)
   if (state.turn.phase === 'リカバリーフェイズ') return removeAllDamage(state)
   return state
