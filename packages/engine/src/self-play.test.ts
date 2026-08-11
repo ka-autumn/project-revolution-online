@@ -50,27 +50,21 @@ function buildDeck(): Deck {
   return templates.flatMap((card) => Array.from({ length: 4 }, () => card))
 }
 
-/** `決着` を期待するアサーションと型の絞り込みを兼ねる。決着していなければ何が起きたかを示す。 */
-function expectDecided(result: SelfPlayResult): result is SelfPlayResult & { readonly kind: '決着' } {
-  expect(result.kind).toBe('決着')
+/** `決着` を期待するアサーション。決着していなければ何が起きたかを示す。 */
+function expectDecided(result: SelfPlayResult): asserts result is SelfPlayResult & { readonly kind: '決着' } {
   if (result.kind !== '決着') throw new Error(`決着したはずだった: ${result.kind}`)
-  return true
 }
 
-/** `全て決着` を期待するアサーションと型の絞り込みを兼ねる。 */
+/** `全て決着` を期待するアサーション。 */
 function expectAllDecided(
   result: SelfPlayBatchResult,
-): result is SelfPlayBatchResult & { readonly kind: '全て決着' } {
-  expect(result.kind).toBe('全て決着')
+): asserts result is SelfPlayBatchResult & { readonly kind: '全て決着' } {
   if (result.kind !== '全て決着') throw new Error(`全て決着したはずだった: ${result.kind}`)
-  return true
 }
 
-/** `失敗` を期待するアサーションと型の絞り込みを兼ねる。 */
-function expectFailed(result: SelfPlayBatchResult): result is SelfPlayBatchResult & { readonly kind: '失敗' } {
-  expect(result.kind).toBe('失敗')
+/** `失敗` を期待するアサーション。 */
+function expectFailed(result: SelfPlayBatchResult): asserts result is SelfPlayBatchResult & { readonly kind: '失敗' } {
   if (result.kind !== '失敗') throw new Error(`失敗のはずだった: ${result.kind}`)
-  return true
 }
 
 // ADR-0005: AI の最初の役割はファザである。ランダムに手を選ぶだけのプレイヤーで、大量の
@@ -136,7 +130,7 @@ describe('複数シードの自己対戦', () => {
   it('すべてのシードが決着すれば、シードごとの決着までの手数を返す', () => {
     const result = runSelfPlayBatch({ decks: [buildDeck(), buildDeck()], seeds: [1, 2, 3], maxActions: 3000 })
 
-    if (!expectAllDecided(result)) return
+    expectAllDecided(result)
     expect([...result.actionsTakenBySeed.keys()]).toEqual([1, 2, 3])
   })
 
@@ -147,7 +141,7 @@ describe('複数シードの自己対戦', () => {
       maxActions: 3000,
     })
 
-    if (!expectFailed(result)) return
+    expectFailed(result)
     expect(result.failures.map((failure) => failure.seed)).toEqual([1, 2, 3])
     expect(result.failures.every((failure) => failure.result.kind === 'デッキ不備')).toBe(true)
   })
@@ -162,7 +156,7 @@ describe('複数シードの自己対戦', () => {
     const actionsBySeed = new Map(
       seeds.map((seed) => {
         const result = playSelfPlay({ setup: { decks, seed }, maxActions: 3000 })
-        if (!expectDecided(result)) throw new Error('決着したはずだった')
+        expectDecided(result)
         return [seed, result.actionsTaken] as const
       }),
     )
@@ -172,7 +166,7 @@ describe('複数シードの自己対戦', () => {
 
     const result = runSelfPlayBatch({ decks, seeds, maxActions: threshold })
 
-    if (!expectFailed(result)) return
+    expectFailed(result)
     const decidedSeeds = [...result.actionsTakenBySeed.keys()]
     const failedSeeds = result.failures.map((failure) => failure.seed)
     // 決着した分と失敗した分は排他で、合わせると全シードを覆う（手数が捨てられていないこと）。
