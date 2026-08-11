@@ -55,6 +55,18 @@ describe('構築戦のデッキ', () => {
     ])
   })
 
+  // 総合ルール 第2部 第6章 1-1 の【例】（ADR-0006）
+  it.each([
+    ['大佛はずむ（♂）', '大佛はずむ'],
+    ['天狐空幻（♂）', '天狐空幻（♀）'],
+  ])('括弧内だけが違う「%s」と「%s」は別のカード名として数える', (firstName, secondName) => {
+    const first = testUnit(firstName)
+    const second = testUnit(secondName)
+    const deck = [...legalDeck(), first, first, first, first, second, second, second, second]
+
+    expect(checkConstructedDeck(deck)).toEqual([])
+  })
+
   // 総合ルール 第2部 第7章 2
   it('スターアイコンは合計 15 個まで', () => {
     expect(checkConstructedDeck(withStars(1, 15))).toEqual([])
