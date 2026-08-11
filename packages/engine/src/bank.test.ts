@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-// 山札を積むためだけに `putInZone` を使う。engine の中からゾーンを差し替えるための関数で
-// あり、公開する API ではない。
-import { putInZone } from './duel.js'
+// ダメージを与えたり山札を積んだりするためだけに `dealDamage` と `putInZone` を使う。
+// engine の中から盤面を組み替えるための関数であり、公開する API ではない。
+import { dealDamage, putInZone } from './duel.js'
 import {
   PLAYERS,
   cardsIn,
@@ -32,6 +32,18 @@ const striker = defineUnit({
       const enemy = yield* choose(duel.enemies())
       yield* destroy(enemy)
     }),
+  ],
+})
+
+/** 味方がスクエアから捨札に置かれるたびに誘発するテストカード。効果は何もしない。 */
+const discardWatcher = defineUnit({
+  name: 'テスト・味方の捨札監視',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    triggeredAbility('あなたのユニットがスクエアから捨札に置かれた時', function* () {}),
   ],
 })
 
@@ -129,6 +141,24 @@ describe('誘発型能力がバンクに入る', () => {
     const state = bothHaveAbility()
 
     expect(state.bank.map((banked) => banked.source).sort()).toEqual(['先攻の能力持ち', '後攻の能力持ち'])
+  })
+
+  // 総合ルール 第4部 第7章 6
+  it('味方のユニット2枚が同時に破壊された時、能力は2回誘発する', () => {
+    const placed = [
+      [firstStrikerSquare, instantiate({ id: 'ユニットＡ', card: discardWatcher, owner: '先攻' })],
+      [firstVanillaSquare, vanillaOf('別のユニット1', '先攻')],
+      [secondVanillaSquare, vanillaOf('別のユニット2', '先攻')],
+    ] as const
+    const board = placed.reduce(
+      (state, [square, card]) => putOnSquare(state, square, card),
+      stockedDuelState(),
+    )
+    const damaged = dealDamage(dealDamage(board, '別のユニット1', 1000), '別のユニット2', 1000)
+
+    const checked = pass(damaged)
+
+    expect(checked.bank.map((banked) => banked.source)).toEqual(['ユニットＡ', 'ユニットＡ'])
   })
 
   // 総合ルール 第4部 第7章 1

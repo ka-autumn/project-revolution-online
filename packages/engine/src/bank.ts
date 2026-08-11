@@ -45,6 +45,28 @@ function triggeredBy(instance: CardInstance, event: TriggerEvent): readonly Trig
 }
 
 /**
+ * 支配するユニットがスクエアから捨札に置かれたことで誘発する能力を積む。
+ *
+ * 同時に複数のユニットが置かれた場合も、誘発イベントを満たした回数だけ誘発する
+ * （総合ルール 第4部 第7章 6）。能力を持つユニット自身も同時にスクエアを離れ得るため、
+ * ゾーン移動前の盤面から能力を探す（同 10）。
+ */
+export function triggerControlledUnitsDiscarded(state: DuelState, discarded: readonly CardId[]): DuelState {
+  const event = 'あなたのユニットがスクエアから捨札に置かれた時'
+  const triggered = discarded.flatMap((id) => {
+    const unit = findOnSquares(state, id)
+    if (unit === undefined || unit.card.type !== 'ユニット') return []
+
+    return state.squares.flatMap((cards) =>
+      cards.flatMap((instance) =>
+        instance.controller === unit.controller ? triggeredBy(instance, event) : [],
+      ),
+    )
+  })
+  return addTriggered(state, triggered)
+}
+
+/**
  * 誘発イベントを満たしたそのカード自身の能力だけを誘発させる。
  *
  * 「登場した時」「移動が起動された時」は、誘発イベントを満たすのがそのカード自身の

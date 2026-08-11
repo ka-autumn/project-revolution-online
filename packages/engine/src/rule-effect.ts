@@ -1,4 +1,5 @@
 import { pendingBattle } from './battle.js'
+import { triggerControlledUnitsDiscarded } from './bank.js'
 import { bpOf } from './card.js'
 import { hasEnded, librarySize, moveFromSquareTo } from './duel.js'
 import type { CardId, CardInstance, DuelResult, DuelState } from './duel.js'
@@ -53,7 +54,8 @@ export function checkRuleEffects(state: DuelState): DuelState {
 
   // すべてのルールエフェクトが同時に発生する（総合ルール 第4部 第14章 2）ので、
   // 1 枚ずつ捨札に置いていっても、途中の盤面でどれを捨札に置くかを決め直さない。
-  const resolved = discarded.reduce((current, id) => moveFromSquareTo(current, id, '捨札'), state)
+  const withTriggered = triggerControlledUnitsDiscarded(state, discarded)
+  const resolved = discarded.reduce((current, id) => moveFromSquareTo(current, id, '捨札'), withTriggered)
   return fromCenter.length === 0 ? resolved : { ...resolved, playedIntoCenter: [] }
 }
 
