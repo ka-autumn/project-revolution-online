@@ -55,6 +55,22 @@ describe('構築戦のデッキ', () => {
     ])
   })
 
+  // 総合ルール 第2部 第6章 1-1 の【例】（ADR-0006）
+  it.each([
+    ['大佛はずむ（♂）', '大佛はずむ'],
+    ['天狐空幻（♂）', '天狐空幻（♀）'],
+  ])('（ ）でくくられた箇所が違う「%s」と「%s」は別のカード名として数える', (firstName, secondName) => {
+    const first = testUnit(firstName)
+    const second = testUnit(secondName)
+    const deck = [...legalDeck(), first, first, first, first, second, second, second, second]
+
+    expect(checkConstructedDeck(deck)).toEqual([])
+    // （ ）でくくられた文もカード名の一部なので、名前が完全に同じなら 4 枚までに数える。
+    expect(checkConstructedDeck([...deck, first])).toEqual([
+      { kind: '同名の入れすぎ', name: firstName, count: 5, maximum: 4 },
+    ])
+  })
+
   // 総合ルール 第2部 第7章 2
   it('スターアイコンは合計 15 個まで', () => {
     expect(checkConstructedDeck(withStars(1, 15))).toEqual([])
