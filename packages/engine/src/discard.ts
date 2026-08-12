@@ -19,9 +19,9 @@ export function discardFromSquares(state: DuelState, ids: readonly CardId[]): Du
     return instance === undefined ? [] : [instance]
   })
   const event = 'あなたのユニットがスクエアから捨札に置かれた時'
-  const triggered = discarded.flatMap((unit) =>
-    unit.card.type === 'ユニット'
-      ? triggeredOnSquares(state, event, (instance) => instance.controller === unit.controller)
+  const triggered = discarded.flatMap((instance) =>
+    instance.card.type === 'ユニット'
+      ? triggeredOnSquares(state, event, (each) => each.controller === instance.controller)
       : [],
   )
   const withTriggered = addTriggered(state, triggered)

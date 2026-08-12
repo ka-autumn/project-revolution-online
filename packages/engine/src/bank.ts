@@ -3,27 +3,7 @@ import { findOnSquares } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
-import { addTriggered, triggeredBy, triggeredOnSquares } from './trigger.js'
-
-/**
- * その誘発イベントを満たしたことで、誘発型能力を誘発させる。
- *
- * 誘発しても即座には何も起こらない（総合ルール 第4部 第7章 2）。誘発した能力は盤面に
- * 積まれるだけで、バンクに入るのは次にどちらかのプレイヤーが優先権を獲得する時である。
- *
- * 見るのはスクエアにあるユニットの能力だけ。ユニットのテキストはスクエアに置かれている間
- * だけ有効である（総合ルール 第4部 第7章 10 に引かれているルール）。スクエアにあっても
- * ユニット以外のカードはそこにある間テキストが有効にならず、ルールエフェクトによって
- * 捨札に置かれる（同 第14章 4-3）。トラップゾーンや手札にあるカードの能力は、トラップの
- * 発動やカードのプレイを実装する時に足す。
- *
- * 誘発イベントを満たすたびに 1 度ずつ誘発する（同 第7章 6）ため、同じ能力が複数回
- * 誘発することもある。ここではイベント 1 つにつき 1 度ずつ積む。
- */
-export function trigger(state: DuelState, event: TriggerEvent): DuelState {
-  const triggered = triggeredOnSquares(state, event, () => true)
-  return addTriggered(state, triggered)
-}
+import { addTriggered, triggeredBy } from './trigger.js'
 
 /**
  * 誘発イベントを満たしたそのカード自身の能力だけを誘発させる。

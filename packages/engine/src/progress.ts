@@ -1,5 +1,5 @@
 import { phaseBeginning } from './ability.js'
-import { resolveFromBank, trigger } from './bank.js'
+import { resolveFromBank } from './bank.js'
 import { advanceBattle } from './battle.js'
 import { draw, hasEnded, releaseAll, removeAllDamage } from './duel.js'
 import type { DuelState } from './duel.js'
@@ -10,6 +10,7 @@ import { advanceSmashJudgment } from './smash.js'
 import { loseTrapRightOnPass } from './trap.js'
 import { PHASES, beginPhase } from './turn.js'
 import type { Turn } from './turn.js'
+import { trigger } from './trigger.js'
 
 /**
  * 優先権を持っているプレイヤーが、それを放棄する。

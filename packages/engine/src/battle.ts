@@ -1,4 +1,4 @@
-import { trigger, triggerAttack, triggerBattleWin } from './bank.js'
+import { triggerAttack, triggerBattleWin } from './bank.js'
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
 import { bpOf, hasGenki } from './card.js'
@@ -6,6 +6,7 @@ import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
 import { cardsOn, dealDamage } from './duel.js'
 import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
+import { trigger } from './trigger.js'
 
 /**
  * バトルを構成する 5 つの連続するステップ（総合ルール 第3部 第11章 3）。
