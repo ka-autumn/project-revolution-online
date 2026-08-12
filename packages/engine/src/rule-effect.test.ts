@@ -185,6 +185,8 @@ describe('複数のルールエフェクトで同じカードが捨札に置か�
       [centerSquare, instantiate({ id: '中央のユニット', card: vanilla, owner: '先攻' })],
     )
     const damaged = dealDamage(board, '中央のユニット', 1000)
+    // 中央エリアを指定した実際のプレイでこの記録が作られることは `battle.test.ts` で検証する。
+    // ここではバトルを経ず、2 つのルールエフェクトが同じ id を返す連結だけを直接試す。
     const playedIntoCenter = { ...damaged, playedIntoCenter: ['中央のユニット'] }
 
     const checked = pass(playedIntoCenter)

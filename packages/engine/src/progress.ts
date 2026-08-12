@@ -8,9 +8,9 @@ import { grantPriorityToInactive, settleBeforePriority } from './priority.js'
 import type { Chooser } from './resolve.js'
 import { advanceSmashJudgment } from './smash.js'
 import { loseTrapRightOnPass } from './trap.js'
+import { trigger } from './trigger.js'
 import { PHASES, beginPhase } from './turn.js'
 import type { Turn } from './turn.js'
-import { trigger } from './trigger.js'
 
 /**
  * 優先権を持っているプレイヤーが、それを放棄する。

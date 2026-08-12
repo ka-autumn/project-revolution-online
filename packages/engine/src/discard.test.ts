@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
+// スクエアから捨札へのゾーン移動を 1 つにまとめる関数であり、公開する API ではない。
+// 誘発が移動前の盤面から起こることを直接確かめるために、ここでだけ使う。
+import { discardFromSquares } from './discard.js'
 import { defineStrategy, defineUnit, emptyDuelState, instantiate, putOnSquare, triggeredAbility } from './index.js'
 import type { CardInstance, DuelState, Square } from './index.js'
-import { discardFromSquares } from './discard.js'
 
-const watcher = defineUnit({
+const discardWatcher = defineUnit({
   name: 'テスト・あなたのユニットの捨札',
   level: 1,
   colors: ['赤'],
@@ -28,7 +30,7 @@ describe('スクエアから捨札への移動による誘発', () => {
   // 総合ルール 第4部 第7章 6・10（ADR-0006）
   it('能力を持つユニット自身も同時に捨札へ置かれる場合、移動直前の能力が誘発する', () => {
     const state = boardOf(
-      [firstSquare, instantiate({ id: '能力持ち', card: watcher, owner: '先攻' })],
+      [firstSquare, instantiate({ id: '能力持ち', card: discardWatcher, owner: '先攻' })],
       [secondSquare, instantiate({ id: '別のユニット', card: vanilla, owner: '先攻' })],
     )
 
@@ -41,7 +43,7 @@ describe('スクエアから捨札への移動による誘発', () => {
   it('「あなたの」は持ち主ではなく支配者を基準に判定する', () => {
     const stolenWatcher = instantiate({
       id: '奪われた能力持ち',
-      card: watcher,
+      card: discardWatcher,
       owner: '後攻',
       controller: '先攻',
     })
@@ -56,7 +58,7 @@ describe('スクエアから捨札への移動による誘発', () => {
   // 総合ルール 第4部 第7章 6、第14章 4-3（ADR-0006）
   it('ユニット以外のカードが捨札へ置かれても誘発しない', () => {
     const state = boardOf(
-      [firstSquare, instantiate({ id: '能力持ち', card: watcher, owner: '先攻' })],
+      [firstSquare, instantiate({ id: '能力持ち', card: discardWatcher, owner: '先攻' })],
       [secondSquare, instantiate({ id: 'ストラテジー', card: strategy, owner: '先攻' })],
     )
 
