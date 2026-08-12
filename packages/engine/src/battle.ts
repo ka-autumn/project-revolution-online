@@ -1,10 +1,12 @@
-import { trigger, triggerAttack, triggerBattleWin } from './bank.js'
+import { triggerAttack, triggerBattleWin } from './bank.js'
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
 import { bpOf, hasGenki } from './card.js'
 import type { UnitCard } from './card.js'
-import { cardsOn, dealDamage, moveFromSquareTo } from './duel.js'
+import { discardFromSquares } from './discard.js'
+import { cardsOn, dealDamage } from './duel.js'
 import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
+import { trigger } from './trigger.js'
 
 /**
  * バトルを構成する 5 つの連続するステップ（総合ルール 第3部 第11章 3）。
@@ -271,7 +273,7 @@ function resolveEndOfBattle(state: DuelState, battle: Battle): DuelState {
 
   // 2 つのルールエフェクトは同時に発生するので、どれを捨札に置くかを先にまとめて決める。
   const discarded = [...(bothRemain ? [battle.attacker] : []), ...state.playedIntoCenter]
-  const resolved = discarded.reduce((current, id) => moveFromSquareTo(current, id, '捨札'), state)
+  const resolved = discardFromSquares(state, discarded)
 
   const triggered = trigger({ ...resolved, playedIntoCenter: [] }, 'バトルの終わりに')
   return withBattle(triggered, { ...battle, endOfBattleTriggered: true })

@@ -32,8 +32,21 @@ const beginner = defineUnit({
   abilities: [triggeredAbility('エネルギーフェイズの始め', function* () {})],
 })
 
+/** あなたのユニットがスクエアから捨札に置かれるたびに誘発する能力を持つユニット。 */
+const discardWatcher = defineUnit({
+  name: 'テスト・あなたのユニットの捨札',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    triggeredAbility('あなたのユニットがスクエアから捨札に置かれた時', function* () {}),
+  ],
+})
+
 const someSquare: Square = { row: 2, column: 1 }
 const anotherSquare: Square = { row: 0, column: 1 }
+const centerSquare: Square = { row: 1, column: 1 }
 
 const chooseFirst: Chooser = (candidates) => candidates[0]
 
@@ -161,6 +174,24 @@ describe('ＢＰと同じかそれ以上のダメージを受けたユニット�
 
   it('ＢＰより小さいダメージでは捨札に置かれない', () => {
     expect(idsOf(cardsOn(pass(damaged(999)), someSquare))).toEqual(['傷ついたユニット'])
+  })
+})
+
+// 総合ルール 第4部 第7章 6、第14章 4-6・4-9（ADR-0006）
+describe('複数のルールエフェクトで同じカードが捨札に置かれる', () => {
+  it('ダメージ超過と中央エリア指定の両方に該当しても、能力は 1 回だけ誘発する', () => {
+    const board = boardOf(
+      [someSquare, instantiate({ id: '能力持ち', card: discardWatcher, owner: '先攻' })],
+      [centerSquare, instantiate({ id: '中央のユニット', card: vanilla, owner: '先攻' })],
+    )
+    const damaged = dealDamage(board, '中央のユニット', 1000)
+    // 中央エリアを指定した実際のプレイでこの記録が作られることは `battle.test.ts` で検証する。
+    // ここではバトルを経ず、2 つのルールエフェクトが同じ id を返す連結だけを直接試す。
+    const playedIntoCenter = { ...damaged, playedIntoCenter: ['中央のユニット'] }
+
+    const checked = pass(playedIntoCenter)
+
+    expect(checked.bank.map((each) => each.source)).toEqual(['能力持ち'])
   })
 })
 

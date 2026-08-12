@@ -86,6 +86,18 @@ const closer = defineUnit({
   abilities: [triggeredAbility('バトルの終わりに', function* () {})],
 })
 
+/** あなたのユニットがスクエアから捨札に置かれるたびに誘発する能力を持つユニット。 */
+const discardWatcher = defineUnit({
+  name: 'テスト・あなたのユニットの捨札',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    triggeredAbility('あなたのユニットがスクエアから捨札に置かれた時', function* () {}),
+  ],
+})
+
 /** 「登場した時」に誘発する能力を持つ、レベル 2 の赤いユニット。 */
 const appearing = defineUnit({
   name: 'テスト・登場ユニット',
@@ -182,6 +194,15 @@ function afterBattle(state: DuelState): DuelState {
   let current = state
   while (current.battle !== undefined) current = endStep(current)
   return current
+}
+
+/** バトル終了ステップに直接置いた盤面。実際のステップ進行では作れない盤面の検証に使う。 */
+function atEndStepDirectly(state: DuelState): DuelState {
+  const battle = state.battle
+  if (battle === undefined) throw new Error('バトルが発生しているはずだった')
+
+  const decided: Battle = { ...battle, step: 'バトル終了ステップ' }
+  return { ...state, battle: decided }
 }
 
 /** バンクにある能力を、発生源と誘発イベントの組で並べたもの。並びに意味はないので整列する。 */
@@ -456,12 +477,7 @@ describe('バトル終了ステップの終わり', () => {
    * エフェクト自体は総合ルールにあるので、盤面を直接組んで検証する。
    */
   function bothRemaining(): DuelState {
-    const state = battling(vanilla, vanilla)
-    const battle = state.battle
-    if (battle === undefined) throw new Error('バトルが発生しているはずだった')
-
-    const decided: Battle = { ...battle, step: 'バトル終了ステップ' }
-    return { ...state, battle: decided }
+    return atEndStepDirectly(battling(vanilla, vanilla))
   }
 
   it('両方のユニットが残っていれば、攻撃側のユニットが持ち主の捨札に置かれる', () => {
@@ -550,4 +566,22 @@ describe('中央エリアを指定してプレイされたユニット', () => {
     expect(cardsOn(ended, centerSquare)).toEqual([])
     expect(idsOf(cardsIn(ended, '先攻', '捨札'))).toEqual(['攻撃した'])
   })
+
+  // 総合ルール 第4部 第7章 6、第14章 4-10・4-11（ADR-0006）
+  it(
+    '攻撃側と中央エリア指定の両方に該当しても、1 回の捨札への移動につき能力は 1 回だけ誘発する',
+    () => {
+      const watching = putOnSquare(
+        battleByPlaying(centerSquare),
+        otherSquare,
+        unitOf('見届け役', discardWatcher, '先攻'),
+      )
+      const atEnd = atEndStepDirectly(watching)
+      const resolved = endStep(atEnd)
+
+      expect(banked(resolved)).toEqual([
+        '見届け役／あなたのユニットがスクエアから捨札に置かれた時',
+      ])
+    },
+  )
 })

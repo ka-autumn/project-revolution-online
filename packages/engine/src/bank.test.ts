@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-// 山札を積むためだけに `putInZone` を使う。engine の中からゾーンを差し替えるための関数で
-// あり、公開する API ではない。
-import { putInZone } from './duel.js'
+// ダメージを与えたり山札を積んだりするためだけに `dealDamage` と `putInZone` を使う。
+// engine の中から盤面を組み替えるための関数であり、公開する API ではない。
+import { dealDamage, putInZone } from './duel.js'
 import {
   PLAYERS,
   cardsIn,
@@ -35,6 +35,18 @@ const striker = defineUnit({
   ],
 })
 
+/** あなたのユニットがスクエアから捨札に置かれるたびに誘発するテストカード。効果は何もしない。 */
+const discardWatcher = defineUnit({
+  name: 'テスト・あなたのユニットの捨札',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    triggeredAbility('あなたのユニットがスクエアから捨札に置かれた時', function* () {}),
+  ],
+})
+
 const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
 
 // 先攻・後攻それぞれの 2 枚を、重ならない別々のスクエアに置く。同じプレイヤーのユニットを
@@ -55,11 +67,7 @@ type Placement = readonly [Square, CardInstance]
  * フェイズに入る。したがってアクティブプレイヤーは常に先攻である。
  */
 function energyPhase(...placements: readonly Placement[]): DuelState {
-  const board = placements.reduce(
-    (state, [square, card]) => putOnSquare(state, square, card),
-    stockedDuelState(),
-  )
-  return pass(pass(board))
+  return pass(pass(boardOf(...placements)))
 }
 
 /**
@@ -81,6 +89,11 @@ function stockedDuelState(): DuelState {
   )
 }
 
+/** 山札を積み、カードを置いただけの盤面。優先権はまだ動かしていない。 */
+function boardOf(...placements: readonly Placement[]): DuelState {
+  return placements.reduce((state, [square, card]) => putOnSquare(state, square, card), stockedDuelState())
+}
+
 const chooseFirst: Chooser = (candidates) => candidates[0]
 
 function pass(state: DuelState): DuelState {
@@ -97,6 +110,9 @@ function recordingChooser(asked: Player[]): Chooser {
 
 const strikerOf = (id: string, owner: Player, controller?: Player): CardInstance =>
   instantiate({ id, card: striker, owner, controller })
+
+const watcherOf = (id: string, owner: Player): CardInstance =>
+  instantiate({ id, card: discardWatcher, owner })
 
 const vanillaOf = (id: string, owner: Player): CardInstance =>
   instantiate({ id, card: vanilla, owner })
@@ -130,6 +146,43 @@ describe('誘発型能力がバンクに入る', () => {
 
     expect(state.bank.map((banked) => banked.source).sort()).toEqual(['先攻の能力持ち', '後攻の能力持ち'])
   })
+
+  // 総合ルール 第4部 第7章 6 の【例】（ADR-0006）
+  it(
+    '「あなたのユニットがスクエアから捨札に置かれた時」の能力は、2 枚が同時に破壊されると 2 回誘発する',
+    () => {
+      const board = boardOf(
+        [firstStrikerSquare, watcherOf('ユニットＡ', '先攻')],
+        [firstVanillaSquare, vanillaOf('別のユニット1', '先攻')],
+        [secondVanillaSquare, vanillaOf('別のユニット2', '先攻')],
+      )
+      const damaged = dealDamage(
+        dealDamage(board, '別のユニット1', 1000),
+        '別のユニット2',
+        1000,
+      )
+
+      const checked = pass(damaged)
+
+      expect(checked.bank.map((banked) => banked.source)).toEqual(['ユニットＡ', 'ユニットＡ'])
+    },
+  )
+
+  // 総合ルール 第4部 第7章 6（ADR-0006）
+  it(
+    '「あなたのユニットがスクエアから捨札に置かれた時」の能力は、相手のユニットでは誘発しない',
+    () => {
+      const board = boardOf(
+        [firstStrikerSquare, watcherOf('ユニットＡ', '先攻')],
+        [secondVanillaSquare, vanillaOf('相手のユニット', '後攻')],
+      )
+      const damaged = dealDamage(board, '相手のユニット', 1000)
+
+      const checked = pass(damaged)
+
+      expect(checked.bank).toEqual([])
+    },
+  )
 
   // 総合ルール 第4部 第7章 1
   it('誘発型能力の支配者は、発生源の支配者である', () => {
