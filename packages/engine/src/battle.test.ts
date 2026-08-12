@@ -86,6 +86,18 @@ const closer = defineUnit({
   abilities: [triggeredAbility('バトルの終わりに', function* () {})],
 })
 
+/** あなたのユニットがスクエアから捨札に置かれるたびに誘発する能力を持つユニット。 */
+const discardWatcher = defineUnit({
+  name: 'テスト・あなたのユニットの捨札',
+  level: 1,
+  colors: ['赤'],
+  bp: 3000,
+  sp: 1000,
+  abilities: [
+    triggeredAbility('あなたのユニットがスクエアから捨札に置かれた時', function* () {}),
+  ],
+})
+
 /** 「登場した時」に誘発する能力を持つ、レベル 2 の赤いユニット。 */
 const appearing = defineUnit({
   name: 'テスト・登場ユニット',
@@ -550,4 +562,24 @@ describe('中央エリアを指定してプレイされたユニット', () => {
     expect(cardsOn(ended, centerSquare)).toEqual([])
     expect(idsOf(cardsIn(ended, '先攻', '捨札'))).toEqual(['攻撃した'])
   })
+
+  // 総合ルール 第4部 第7章 6、第14章 4-10・4-11（ADR-0006）
+  it(
+    '攻撃側と中央エリア指定の両方に該当しても、1 回の捨札への移動につき能力は 1 回だけ誘発する',
+    () => {
+      const state = battleByPlaying(centerSquare)
+      const battle = state.battle
+      if (battle === undefined) throw new Error('バトルが発生しているはずだった')
+
+      const atEnd = {
+        ...putOnSquare(state, otherSquare, unitOf('見届け役', discardWatcher, '先攻')),
+        battle: { ...battle, step: 'バトル終了ステップ' as const },
+      }
+      const resolved = endStep(atEnd)
+
+      expect(banked(resolved)).toEqual([
+        '見届け役／あなたのユニットがスクエアから捨札に置かれた時',
+      ])
+    },
+  )
 })

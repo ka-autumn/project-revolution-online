@@ -35,6 +35,18 @@ const enterAndDestroy = defineUnit({
 
 const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
 
+/** あなたのユニットがスクエアから捨札に置かれるたびに誘発する能力を持つユニット。 */
+const discardWatcher = defineUnit({
+  name: 'テスト・あなたのユニットの捨札',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    triggeredAbility('あなたのユニットがスクエアから捨札に置かれた時', function* () {}),
+  ],
+})
+
 const [enterAbility] = enterAndDestroy.abilities
 if (enterAbility === undefined || enterAbility.kind !== '誘発型能力') {
   throw new Error('テストカードに誘発型能力が定義されていない')
@@ -65,6 +77,16 @@ describe('テストカードの能力を解決する', () => {
     expect(cardsOn(resolved, enemySquare)).toEqual([])
     expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['敵'])
     expect(cardsIn(resolved, '先攻', '捨札')).toEqual([])
+  })
+
+  // 総合ルール 第2部 第21章 5-1、第4部 第7章 6（ADR-0006）
+  it('効果によってあなたのユニットが破壊された時も、捨札への移動で能力が誘発する', () => {
+    const watching = instantiate({ id: '見届け役', card: discardWatcher, owner: '後攻' })
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')], [nextEnemySquare, watching])
+
+    const resolved = resolveEffect(state, enterAbility.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(resolved.triggered.map((each) => each.source)).toEqual(['見届け役'])
   })
 
   // 総合ルール 第2部 第21章 1-2

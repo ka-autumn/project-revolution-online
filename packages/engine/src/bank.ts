@@ -1,8 +1,9 @@
 import type { TriggerEvent } from './ability.js'
 import { findOnSquares } from './duel.js'
-import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
+import type { CardId, DuelState } from './duel.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
+import { addTriggered, triggeredBy, triggeredOnSquares } from './trigger.js'
 
 /**
  * その誘発イベントを満たしたことで、誘発型能力を誘発させる。
@@ -20,49 +21,7 @@ import type { Chooser } from './resolve.js'
  * 誘発することもある。ここではイベント 1 つにつき 1 度ずつ積む。
  */
 export function trigger(state: DuelState, event: TriggerEvent): DuelState {
-  const triggered = state.squares.flatMap((cards) =>
-    cards.flatMap((instance) => triggeredBy(instance, event)),
-  )
-  return addTriggered(state, triggered)
-}
-
-/** 誘発した能力を、まだバンクに入っていない能力の並びに積む。何も無ければ盤面はそのまま。 */
-function addTriggered(state: DuelState, triggered: readonly TriggeredInstance[]): DuelState {
-  if (triggered.length === 0) return state
-
-  return { ...state, triggered: [...state.triggered, ...triggered] }
-}
-
-/** そのカードが持つ能力のうち、その誘発イベントで誘発するもの。 */
-function triggeredBy(instance: CardInstance, event: TriggerEvent): readonly TriggeredInstance[] {
-  if (instance.card.type !== 'ユニット') return []
-
-  return instance.card.abilities.flatMap((ability) =>
-    ability.kind === '誘発型能力' && ability.event === event
-      ? [{ ability, source: instance.id, controller: instance.controller }]
-      : [],
-  )
-}
-
-/**
- * 支配するユニットがスクエアから捨札に置かれたことで誘発する能力を積む。
- *
- * 同時に複数のユニットが置かれた場合も、誘発イベントを満たした回数だけ誘発する
- * （総合ルール 第4部 第7章 6）。能力を持つユニット自身も同時にスクエアを離れ得るため、
- * ゾーン移動前の盤面から能力を探す（同 10）。
- */
-export function triggerControlledUnitsDiscarded(state: DuelState, discarded: readonly CardId[]): DuelState {
-  const event = 'あなたのユニットがスクエアから捨札に置かれた時'
-  const triggered = discarded.flatMap((id) => {
-    const unit = findOnSquares(state, id)
-    if (unit === undefined || unit.card.type !== 'ユニット') return []
-
-    return state.squares.flatMap((cards) =>
-      cards.flatMap((instance) =>
-        instance.controller === unit.controller ? triggeredBy(instance, event) : [],
-      ),
-    )
-  })
+  const triggered = triggeredOnSquares(state, event, () => true)
   return addTriggered(state, triggered)
 }
 

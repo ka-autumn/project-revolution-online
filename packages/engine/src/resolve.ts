@@ -1,6 +1,6 @@
 import { BATTLE_SPACE } from './board.js'
 import type { UnitCard } from './card.js'
-import { moveFromSquareTo } from './duel.js'
+import { discardFromSquares } from './discard.js'
 import type { CardId, DuelState } from './duel.js'
 import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
@@ -87,7 +87,7 @@ function apply(
       }
       // 破壊されたユニットは持ち主の捨札の一番上に置かれる（総合ルール 第2部 第21章 5-1）。
       // すでにスクエアを離れていればこの行動は実行されない。
-      return { state: moveFromSquareTo(state, instruction.target.id, '捨札'), value: undefined }
+      return { state: discardFromSquares(state, [instruction.target.id]), value: undefined }
     }
   }
 }

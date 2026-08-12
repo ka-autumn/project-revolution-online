@@ -1,7 +1,7 @@
 import { pendingBattle } from './battle.js'
-import { triggerControlledUnitsDiscarded } from './bank.js'
 import { bpOf } from './card.js'
-import { hasEnded, librarySize, moveFromSquareTo } from './duel.js'
+import { discardFromSquares } from './discard.js'
+import { hasEnded, librarySize } from './duel.js'
 import type { CardId, CardInstance, DuelResult, DuelState } from './duel.js'
 import { PLAYERS, opponentOf } from './player.js'
 import type { Player } from './player.js'
@@ -15,6 +15,7 @@ import { smashesOf } from './smash.js'
  * ルールエフェクトは、カードの能力ではなくルールによって発生する効果であり、どちらの
  * プレイヤーにも支配されない（総合ルール 第4部 第14章 1）。そのため誰の選択も要らず、
  * 発生しているものは同時に解決される（同 2）。
+ * スクエアから捨札への移動は `discardFromSquares` を通し、そこで誘発型能力も誘発させる。
  *
  * 呼ぶのはプレイヤーが優先権を獲得する時だけである（同 2）。カードや能力の解決中には
  * チェックしない（同 3）。
@@ -54,8 +55,7 @@ export function checkRuleEffects(state: DuelState): DuelState {
 
   // すべてのルールエフェクトが同時に発生する（総合ルール 第4部 第14章 2）ので、
   // 1 枚ずつ捨札に置いていっても、途中の盤面でどれを捨札に置くかを決め直さない。
-  const withTriggered = triggerControlledUnitsDiscarded(state, discarded)
-  const resolved = discarded.reduce((current, id) => moveFromSquareTo(current, id, '捨札'), withTriggered)
+  const resolved = discardFromSquares(state, discarded)
   return fromCenter.length === 0 ? resolved : { ...resolved, playedIntoCenter: [] }
 }
 
