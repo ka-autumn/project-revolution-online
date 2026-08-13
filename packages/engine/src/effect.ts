@@ -87,11 +87,12 @@ export type Instruction =
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
   | {
       readonly kind: 'ゾーンへ置く'
-      readonly card: CardInZone
+      readonly card: CardInZone | UnitOnSquare
       readonly to: PlayerZone
       readonly orientation: Orientation
     }
   | { readonly kind: '山札の1番上をゾーンへ置く'; readonly to: PlayerZone; readonly orientation: Orientation }
+  | { readonly kind: 'カードを引く'; readonly player: Player; readonly count: number }
 
 /**
  * 効果の途中経過。`T` はその手順が効果に返す値。
@@ -180,12 +181,37 @@ export function* damagePlayer(player: Player, amount: number): EffectStep<void> 
  * ゾーンに関連した効果は失われる（同 1-4）。すでにそのゾーンを離れていた場合、この行動は
  * 実行されない（同 第1部 第1章 3）。効果はそのまま続く。
  *
+ * スクエアにいるユニットも渡せる。スクエアから捨札に置くことは「破壊する」と呼ばれ
+ * （同 第2部 第21章 1-5）、それを見て誘発する能力がある（同 第4部 第7章 6）。カードを書く
+ * 側はその場合 `destroy` を使うが、ここに捨札を渡された場合も誘発は起こる。
+ *
  * スクエアへ置く効果はここでは扱わない。プレイされたユニットがスクエアに置かれることは
  * 「登場」と呼ばれて効果によって置かれる場合と区別され（同 第2部 第20章 1-4-a）、
  * 「登場した時」の誘発や「根性」（同 第5部 第6章 3）が働くかどうかがそこで分かれるためである。
  */
-export function* placeInZone(card: CardInZone, to: PlayerZone, orientation: Orientation): EffectStep<void> {
+export function* placeInZone(
+  card: CardInZone | UnitOnSquare,
+  to: PlayerZone,
+  orientation: Orientation,
+): EffectStep<void> {
   yield { kind: 'ゾーンへ置く', card, to, orientation }
+}
+
+/**
+ * そのプレイヤーがカードを引く（総合ルール 第2部 第21章 1-5）。
+ *
+ * 山札の 1 番上のカードを手札に加えることを「引く」と表現する。プランゾーンにカードが
+ * あれば、それが同時に山札の 1 番上のカードである（同 3-1）ので、そちらを引く。
+ *
+ * 山札が空なら引けない。山札が 0 枚になったプレイヤーが次に優先権が発生した時に敗北する
+ * こと（同 第3部 第3章 2）は引けないこととは別のルールエフェクトなので、ここでは何も
+ * 起こらないだけである。
+ *
+ * 引く相手をプレイヤーとして受け取るが、効果が名指しできるのは `DuelView` が渡している
+ * 支配者だけである（`damagePlayer` と同じ）。
+ */
+export function* drawCards(player: Player, count: number): EffectStep<void> {
+  yield { kind: 'カードを引く', player, count }
 }
 
 /**

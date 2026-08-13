@@ -10,6 +10,7 @@ import {
   damagePlayer,
   defineUnit,
   destroy,
+  drawCards,
   emptyDuelState,
   instantiate,
   placeInZone,
@@ -366,6 +367,43 @@ describe('効果によるゾーン間の移動', () => {
     ).toThrowError('効果に見せていないカードが対象にされた')
   })
 
+  // 総合ルール 第2部 第21章 1-2
+  it('スクエアにいるユニットを、持ち主の手札に置ける', () => {
+    const takeBack = triggeredAbility('登場した時', function* (duel) {
+      const enemy = yield* choose(duel.enemies())
+      yield* placeInZone(enemy, '手札', 'リリース')
+    })
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+    const resolved = resolveEffect(state, takeBack.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(cardsOn(resolved, enemySquare)).toEqual([])
+    // 持ち主のゾーンに入る。支配者である「先攻」の手札ではない。
+    expect(idsOf(cardsIn(resolved, '後攻', '手札'))).toEqual(['敵'])
+    expect(cardsIn(resolved, '先攻', '手札')).toEqual([])
+  })
+
+  /**
+   * 総合ルール 第2部 第21章 1-5、第4部 第7章 6。
+   *
+   * スクエアから捨札に置くことは「破壊する」にあたり、それを見て誘発する能力がある。
+   * ゾーンへ置く命令で捨札を指定した場合も、破壊と同じ経路を通さないとその誘発が
+   * 起こらなくなる。
+   */
+  it('スクエアから捨札へ置いた時も、それを見る能力が誘発する', () => {
+    const toDiscard = triggeredAbility('登場した時', function* (duel) {
+      const enemy = yield* choose(duel.enemies())
+      yield* placeInZone(enemy, '捨札', 'リリース')
+    })
+    const watching = instantiate({ id: '見届け役', card: discardWatcher, owner: '後攻' })
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')], [nextEnemySquare, watching])
+
+    const resolved = resolveEffect(state, toDiscard.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['敵'])
+    expect(resolved.triggered.map((each) => each.source)).toEqual(['見届け役'])
+  })
+
   /** 自分の山札の 1 番上のカードを、エネルギーゾーンにフリーズして置く能力。 */
   const stacking = triggeredAbility('登場した時', function* () {
     yield* placeTopOfLibrary('エネルギーゾーン', 'フリーズ')
@@ -413,6 +451,38 @@ describe('効果によるゾーン間の移動', () => {
 
     expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')).toEqual([])
     // 選べなかった場合と違い、置けなかっただけでは効果は打ち切られない。
+    expect(steps).toEqual(['後ろの指示'])
+  })
+
+  // 総合ルール 第2部 第21章 1-5
+  it('カードを引くと、山札の 1 番上が手札に入る', () => {
+    const drawing = triggeredAbility('登場した時', function* (duel) {
+      yield* drawCards(duel.controller, 1)
+    })
+    const board = boardOf([mySquare, mine()])
+    const state = putInZone(board, '先攻', '山札', [
+      instantiate({ id: '山札の上', card: vanilla, owner: '先攻' }),
+      instantiate({ id: '山札の下', card: vanilla, owner: '先攻' }),
+    ])
+
+    const resolved = resolveEffect(state, drawing.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(idsOf(cardsIn(resolved, '先攻', '手札'))).toEqual(['山札の上'])
+    expect(idsOf(cardsIn(resolved, '先攻', '山札'))).toEqual(['山札の下'])
+  })
+
+  // 総合ルール 第1部 第1章 3
+  it('山札が空でも、引けないだけで効果は続く', () => {
+    const steps: string[] = []
+    const drawing = triggeredAbility('登場した時', function* (duel) {
+      yield* drawCards(duel.controller, 1)
+      steps.push('後ろの指示')
+    })
+    const state = boardOf([mySquare, mine()])
+
+    const resolved = resolveEffect(state, drawing.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(cardsIn(resolved, '先攻', '手札')).toEqual([])
     expect(steps).toEqual(['後ろの指示'])
   })
 
