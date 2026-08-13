@@ -8,7 +8,7 @@ import type { CardId, DuelState } from './duel.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import { checkIntrusion } from './trap.js'
-import { hasShinrai } from './card.js'
+import { hasTrust } from './card.js'
 import type { UnitCard } from './card.js'
 
 /**
@@ -40,7 +40,7 @@ export function moveUnit(state: DuelState, unit: CardId, destination: Square): A
     return cannot('移動先として指定できないスクエア')
   }
 
-  if (blockedByShinrai(state, player, destination)) return cannot('「信頼」によって移動できない')
+  if (blockedByTrust(state, player, destination)) return cannot('「信頼」によって移動できない')
 
   const moved = moveToSquare(state, unit, destination, { controller: player, orientation: 'リリース' })
   const triggered = triggerMovement(moved, unit)
@@ -96,10 +96,10 @@ function isMoveDestination(
  * 制限されるのは移動だけで、ユニットのプレイやカードや能力によるゾーン移動は制限されない
  * （同 3）。この判定を移動の経路にだけ置いているのがその区別にあたる。
  */
-function blockedByShinrai(state: DuelState, player: Player, destination: Square): boolean {
+function blockedByTrust(state: DuelState, player: Player, destination: Square): boolean {
   return squaresBeside(destination).some((beside) =>
     cardsOn(state, beside).some(
-      (each) => each.controller !== player && each.card.type === 'ユニット' && hasShinrai(each.card),
+      (each) => each.controller !== player && each.card.type === 'ユニット' && hasTrust(each.card),
     ),
   )
 }

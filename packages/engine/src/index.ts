@@ -1,12 +1,12 @@
-export { TRIGGER_EVENTS, dream, genki, hope, shinrai, triggeredAbility } from './ability.js'
+export { TRIGGER_EVENTS, dream, genki, hope, triggeredAbility, trust } from './ability.js'
 export type {
   Ability,
   DreamAbility,
   GenkiAbility,
   HopeAbility,
-  ShinraiAbility,
   TriggeredAbility,
   TriggerEvent,
+  TrustAbility,
 } from './ability.js'
 export { discardTrap, placeEnergy, plan, smash } from './action.js'
 export type { ActionOutcome, ActionViolation } from './action.js'
@@ -32,7 +32,7 @@ export {
   defineUnit,
   hasDream,
   hasGenki,
-  hasShinrai,
+  hasTrust,
   hopeOf,
   isStrategy,
   spOf,

@@ -106,7 +106,7 @@ export interface GenkiAbility {
  * 制限されるのは移動だけで、ユニットのプレイやカードや能力によるゾーン移動は制限されない
  * （同 3）。そのため、これを見るのは移動の経路（`move.ts`）だけになる。
  */
-export interface ShinraiAbility {
+export interface TrustAbility {
   readonly kind: '常在型能力'
   readonly keyword: '信頼'
 }
@@ -139,7 +139,7 @@ export interface HopeAbility {
  * 書けるようになってから足す。常在型は「夢」「元気」「信頼」だけで、継続効果を持つものは
  * まだ無い。「希望」はそのどれでもない特別な能力である（同 第5部 第3章 1）。
  */
-export type Ability = TriggeredAbility | DreamAbility | GenkiAbility | ShinraiAbility | HopeAbility
+export type Ability = TriggeredAbility | DreamAbility | GenkiAbility | TrustAbility | HopeAbility
 
 /** 誘発型能力を 1 つ書く。 */
 export function triggeredAbility(event: TriggerEvent, effect: Effect): TriggeredAbility {
@@ -153,7 +153,7 @@ export const dream: DreamAbility = { kind: '常在型能力', keyword: '夢' }
 export const genki: GenkiAbility = { kind: '常在型能力', keyword: '元気' }
 
 /** 「信頼」。「夢」と同じく 1 つを使い回す。 */
-export const shinrai: ShinraiAbility = { kind: '常在型能力', keyword: '信頼' }
+export const trust: TrustAbility = { kind: '常在型能力', keyword: '信頼' }
 
 /** 「希望―［効果］」を 1 つ書く。効果はカードごとに違うので受け取る。 */
 export function hope(effect: Effect): HopeAbility {

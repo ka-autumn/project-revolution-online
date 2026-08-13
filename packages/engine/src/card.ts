@@ -1,4 +1,4 @@
-import type { Ability, DreamAbility, GenkiAbility, HopeAbility, ShinraiAbility } from './ability.js'
+import type { Ability, DreamAbility, GenkiAbility, HopeAbility, TrustAbility } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
 import type { Effect } from './effect.js'
 
@@ -200,7 +200,7 @@ export function defineTrap(spec: TrapSpec): TrapCard {
  * 常在型のキーワード能力だけを見る。テキストに書かれた能力のうち、名前だけで参照できて
  * 内容を持たないのはこの形のものである（`ability.ts` の `DreamAbility`・`GenkiAbility`）。
  */
-function hasKeyword(card: Card, keyword: (DreamAbility | GenkiAbility | ShinraiAbility)['keyword']): boolean {
+function hasKeyword(card: Card, keyword: (DreamAbility | GenkiAbility | TrustAbility)['keyword']): boolean {
   return card.abilities.some((ability) => ability.kind === '常在型能力' && ability.keyword === keyword)
 }
 
@@ -215,7 +215,7 @@ export function hasGenki(card: Card): boolean {
 }
 
 /** そのカードが「信頼」を持つか（総合ルール 第5部 第4章 2）。 */
-export function hasShinrai(card: Card): boolean {
+export function hasTrust(card: Card): boolean {
   return hasKeyword(card, '信頼')
 }
 

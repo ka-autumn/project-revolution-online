@@ -20,8 +20,8 @@ import {
   playAsTrap,
   playCard,
   putOnSquare,
-  shinrai,
   triggeredAbility,
+  trust,
 } from './index.js'
 import type { ActionOutcome, CardInstance, Chooser, DuelState, Phase, PlayDeclaration, Square } from './index.js'
 
@@ -227,7 +227,7 @@ describe('ユニットのプレイ', () => {
       colors: ['赤'],
       bp: 1000,
       sp: 1000,
-      abilities: [shinrai],
+      abilities: [trust],
     })
     const beside = putOnSquare(
       readyToPlay([unit()], twoEnergies()),

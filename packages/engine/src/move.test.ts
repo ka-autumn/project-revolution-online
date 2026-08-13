@@ -12,8 +12,8 @@ import {
   moveUnit,
   passPriority,
   putOnSquare,
-  shinrai,
   triggeredAbility,
+  trust,
 } from './index.js'
 import type { ActionOutcome, CardInstance, Chooser, DuelState, Phase, Player, Square, UnitCard } from './index.js'
 
@@ -232,7 +232,7 @@ describe('「信頼」による移動の制限', () => {
     colors: ['赤'],
     bp: 1000,
     sp: 1000,
-    abilities: [shinrai],
+    abilities: [trust],
   })
 
   /** `centerSquare` の左に接するスクエア。 */
