@@ -3,8 +3,8 @@ import type { ActionOutcome, ActionViolation } from './action.js'
 import { triggerAppearance } from './bank.js'
 import { areaOf } from './board.js'
 import type { Square } from './board.js'
-import { hasDream } from './card.js'
-import type { Card } from './card.js'
+import { hasDream, hasGuts } from './card.js'
+import type { Card, UnitCard } from './card.js'
 import { payEnergyCost, satisfiesLevel } from './cost.js'
 import {
   cardsIn,
@@ -82,7 +82,7 @@ export function playCard(state: DuelState, declaration: PlayDeclaration, chooser
     const paid = payUseCost(state, player, card, chooser)
     if (typeof paid === 'string') return cannot(paid)
 
-    return done(grantPriorityToInactive(placePlayedUnit(paid, instance.id, square, player)))
+    return done(grantPriorityToInactive(placePlayedUnit(paid, instance.id, card, square, player)))
   }
 
   const paid = payUseCost(state, player, card, chooser)
@@ -183,14 +183,18 @@ function checkSquare(state: DuelState, player: Player, square: Square): ActionVi
 /**
  * プレイされたユニットを、解決の最後に指定されたスクエアに置く（総合ルール 第4部
  * 第8章 2-7）。プレイしたプレイヤーの支配下で、フリーズ状態で置かれる（同 第2部
- * 第20章 1-4）。
+ * 第20章 1-4）。ただし「根性」を持つユニットは、そのかわりにリリース状態で置かれる
+ * （同 第5部 第6章 2）。
  *
  * プレイされたユニットがスクエアに置かれることを「登場する」と表現する（同 1-4-a）。
  * 登場したことで、置かれたそのユニット自身の「登場した時」に誘発する能力が誘発する
  * （`triggerAppearance`）。効果によってスクエアに置かれる場合はここを通らないので誘発しない。
+ * 「根性」が効果によって置かれる時には働かない（同 第5部 第6章 3）のも、ここを通らない
+ * ことがそのまま境目になっている。
  */
-function placePlayedUnit(state: DuelState, id: CardId, square: Square, player: Player): DuelState {
-  const moved = moveToSquare(state, id, square, { controller: player, orientation: 'フリーズ' })
+function placePlayedUnit(state: DuelState, id: CardId, card: UnitCard, square: Square, player: Player): DuelState {
+  const orientation = hasGuts(card) ? 'リリース' : 'フリーズ'
+  const moved = moveToSquare(state, id, square, { controller: player, orientation })
   const placed = triggerAppearance(moved, id)
   // 置かれたユニットが相手のトラップのトリガーアイコンのスクエアに置かれたなら「侵入」に
   // なり、そのトラップの支配者が発動する権利を得る（総合ルール 第2部 第20章 3-6）。

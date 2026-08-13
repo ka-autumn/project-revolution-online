@@ -112,6 +112,23 @@ export interface TrustAbility {
 }
 
 /**
+ * キーワード能力「根性」（総合ルール 第5部 第6章）。
+ *
+ * 「このカードが登場する時、フリーズ状態のかわりにリリース状態でスクエアに置かれる。」という
+ * 常在型能力である（同 2）。ユニットがスクエアに置かれる時の状態を置換する（同 1）。効果を
+ * 持たないのは、置かれる時の状態を変えるだけで、解決される能力ではないためである
+ * （「夢」「元気」「信頼」と同じ形）。
+ *
+ * 働くのはプレイされてスクエアに置かれる時だけで、カードや能力の効果によってスクエアに
+ * 置かれる時には働かない（同 3）。プレイの経路（`play.ts` の `placePlayedUnit`）だけが
+ * これを見ることが、その区別にあたる。
+ */
+export interface GutsAbility {
+  readonly kind: '常在型能力'
+  readonly keyword: '根性'
+}
+
+/**
  * キーワード能力「希望」（総合ルール 第5部 第3章）。
  *
  * 「このカードがスマッシュゾーンに表向きで置かれた時、このカードと同じ色のカードがあなたの
@@ -136,10 +153,10 @@ export interface HopeAbility {
  * （総合ルール 第4部 第1章 1）。
  *
  * 能力には起動型・誘発型・常在型の 3 つがある（同 2）が、起動型はコストを持つ能力を
- * 書けるようになってから足す。常在型は「夢」「元気」「信頼」だけで、継続効果を持つものは
- * まだ無い。「希望」はそのどれでもない特別な能力である（同 第5部 第3章 1）。
+ * 書けるようになってから足す。常在型は「夢」「元気」「信頼」「根性」だけで、継続効果を
+ * 持つものはまだ無い。「希望」はそのどれでもない特別な能力である（同 第5部 第3章 1）。
  */
-export type Ability = TriggeredAbility | DreamAbility | GenkiAbility | TrustAbility | HopeAbility
+export type Ability = TriggeredAbility | DreamAbility | GenkiAbility | TrustAbility | GutsAbility | HopeAbility
 
 /** 誘発型能力を 1 つ書く。 */
 export function triggeredAbility(event: TriggerEvent, effect: Effect): TriggeredAbility {
@@ -154,6 +171,9 @@ export const genki: GenkiAbility = { kind: '常在型能力', keyword: '元気' 
 
 /** 「信頼」。「夢」と同じく 1 つを使い回す。 */
 export const trust: TrustAbility = { kind: '常在型能力', keyword: '信頼' }
+
+/** 「根性」。「夢」と同じく 1 つを使い回す。 */
+export const guts: GutsAbility = { kind: '常在型能力', keyword: '根性' }
 
 /** 「希望―［効果］」を 1 つ書く。効果はカードごとに違うので受け取る。 */
 export function hope(effect: Effect): HopeAbility {
