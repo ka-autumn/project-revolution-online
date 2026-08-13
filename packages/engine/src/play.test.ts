@@ -21,6 +21,7 @@ import {
   playAsTrap,
   playCard,
   putOnSquare,
+  spirit,
   triggeredAbility,
   trust,
 } from './index.js'
@@ -697,5 +698,45 @@ describe('プランゾーンからのプレイ', () => {
     expect(violationOf(play(state, { card: '夢なし', square: homeSquare }))).toBe(
       'プランゾーンからプレイできない',
     )
+  })
+})
+
+// 総合ルール 第5部 第9章（ADR-0006）
+describe('「気合」', () => {
+  const spiritedUnit = defineUnit({
+    name: 'テスト・気合ユニット',
+    level: 2,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [spirit],
+  })
+
+  /**
+   * 「気合」を持つユニットをプレイし、両者が優先権を放棄して能力を解決したところの盤面。
+   *
+   * 誘発した能力はすぐには解決されず、バンクに入る（総合ルール 第4部 第7章 2）。
+   * 連続して優先権が放棄されて初めて解決される（同 第8章 1-1）。
+   */
+  function afterResolved(): DuelState {
+    const state = readyToPlay([instantiate({ id: '気合ユニット', card: spiritedUnit, owner: '先攻' })], twoEnergies())
+    const played = stateOf(play(state, { card: '気合ユニット', square: homeSquare }))
+    return passPriority(passPriority(played, chooseFirst), chooseFirst)
+  }
+
+  /**
+   * 総合ルール 第5部 第9章 3。
+   *
+   * ここでダメージそのものを見ないのは、スマッシュ判定が始まると回復ステップで 1000
+   * 回復する（同 第3部 第18章 1）ため、能力が解決された後の盤面ではダメージが残って
+   * いないからである。1000 のダメージを与えていること自体は `resolve.test.ts` で見る。
+   */
+  it('登場した時、そのダメージによってスマッシュ判定が発生する', () => {
+    expect(afterResolved().smashJudgments).toHaveLength(1)
+  })
+
+  // 総合ルール 第5部 第9章 2。ダメージを受けるのは「あなた」＝能力の支配者。
+  it('スマッシュ判定を受けるのは能力の支配者であって、相手ではない', () => {
+    expect(afterResolved().smashJudgments[0]?.player).toBe('先攻')
   })
 })

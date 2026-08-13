@@ -4,6 +4,7 @@ import {
   cardsOn,
   choose,
   chooseAtMostOne,
+  damagePlayer,
   defineUnit,
   destroy,
   emptyDuelState,
@@ -259,6 +260,49 @@ describe('「1 枚まで選び」', () => {
     expect(() =>
       resolveEffect(state, enterAbility.effect, { controller: '先攻', chooser: declineAll }),
     ).toThrowError('候補にないものが選ばれた')
+  })
+})
+
+// 総合ルール 第3部 第9章 1（ADR-0006）
+describe('プレイヤーへのダメージ', () => {
+  const damaging = triggeredAbility('登場した時', function* (duel) {
+    yield* damagePlayer(duel.controller, 1000)
+  })
+
+  it('指定したプレイヤーにダメージが蓄積する', () => {
+    const resolved = resolveEffect(boardOf([mySquare, mine()]), damaging.effect, {
+      controller: '先攻',
+      chooser: chooseFirst,
+    })
+
+    expect(resolved.damage).toEqual({ 先攻: 1000, 後攻: 0 })
+  })
+
+  // 総合ルール 第4部 第7章 1。「あなた」は能力の支配者を指す。
+  it('支配者が変われば、ダメージを受けるプレイヤーも変わる', () => {
+    const resolved = resolveEffect(boardOf([mySquare, mine()]), damaging.effect, {
+      controller: '後攻',
+      chooser: chooseFirst,
+    })
+
+    expect(resolved.damage).toEqual({ 先攻: 0, 後攻: 1000 })
+  })
+
+  /**
+   * 総合ルール 第4部 第8章 4。
+   *
+   * ダメージが 1000 以上になるとスマッシュ判定が発生する（同 第14章 4-12）が、それは
+   * ルールエフェクトの仕事であり、効果の解決中にはチェックされない。始まるのは、次に
+   * どちらかのプレイヤーが優先権を獲得する時である。
+   */
+  it('効果の解決中にスマッシュ判定は始まらない', () => {
+    const resolved = resolveEffect(boardOf([mySquare, mine()]), damaging.effect, {
+      controller: '先攻',
+      chooser: chooseFirst,
+    })
+
+    expect(resolved.damage['先攻']).toBe(1000)
+    expect(resolved.smashJudgments).toEqual([])
   })
 })
 
