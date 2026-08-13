@@ -406,6 +406,59 @@ describe('効果によるゾーン間の移動', () => {
     expect(resolved.triggered.map((each) => each.source)).toEqual(['見届け役'])
   })
 
+  // 総合ルール 第2部 第21章 1-3
+  it('山札の 1 番下を指定して戻せる', () => {
+    const toBottom = triggeredAbility('登場した時', function* (duel) {
+      const enemy = yield* choose(duel.enemies())
+      yield* placeInZone(enemy, '山札', 'リリース', '1番下')
+    })
+    const board = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+    const state = putInZone(board, '後攻', '山札', [instantiate({ id: '山札の上', card: vanilla, owner: '後攻' })])
+
+    const resolved = resolveEffect(state, toBottom.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(idsOf(cardsIn(resolved, '後攻', '山札'))).toEqual(['山札の上', '敵'])
+  })
+
+  /**
+   * 総合ルール 第2部 第21章 3-4。
+   *
+   * プランゾーンにあるカードは同時に山札の 1 番上のカードでもある（同 3-1）。裏向きに
+   * しないまま上に別のカードを置くと、山札の 1 番上が 2 枚あることになってしまう。
+   */
+  it('山札の 1 番上に置く時、プランがあれば先に裏向きになる', () => {
+    const toTop = triggeredAbility('登場した時', function* (duel) {
+      const enemy = yield* choose(duel.enemies())
+      yield* placeInZone(enemy, '山札', 'リリース')
+    })
+    const board = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+    const state = putInZone(board, '後攻', 'プランゾーン', [
+      instantiate({ id: 'プラン', card: vanilla, owner: '後攻' }),
+    ])
+
+    const resolved = resolveEffect(state, toTop.effect, { controller: '先攻', chooser: chooseFirst })
+
+    // 裏向きになったプランは山札に戻り、置かれたカードがその上に来る。
+    expect(cardsIn(resolved, '後攻', 'プランゾーン')).toEqual([])
+    expect(idsOf(cardsIn(resolved, '後攻', '山札'))).toEqual(['敵', 'プラン'])
+  })
+
+  it('山札の 1 番下に置く時は、プランはそのままである', () => {
+    const toBottom = triggeredAbility('登場した時', function* (duel) {
+      const enemy = yield* choose(duel.enemies())
+      yield* placeInZone(enemy, '山札', 'リリース', '1番下')
+    })
+    const board = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+    const state = putInZone(board, '後攻', 'プランゾーン', [
+      instantiate({ id: 'プラン', card: vanilla, owner: '後攻' }),
+    ])
+
+    const resolved = resolveEffect(state, toBottom.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(idsOf(cardsIn(resolved, '後攻', 'プランゾーン'))).toEqual(['プラン'])
+    expect(idsOf(cardsIn(resolved, '後攻', '山札'))).toEqual(['敵'])
+  })
+
   /** 自分の山札の 1 番上のカードを、エネルギーゾーンにフリーズして置く能力。 */
   const stacking = triggeredAbility('登場した時', function* () {
     yield* placeTopOfLibrary('エネルギーゾーン', 'フリーズ')

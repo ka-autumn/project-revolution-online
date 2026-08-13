@@ -60,7 +60,7 @@ export {
   putOnSquare,
   releaseAll,
 } from './duel.js'
-export type { CardId, CardInstance, DuelResult, DuelState, TriggeredInstance } from './duel.js'
+export type { CardId, CardInstance, DuelResult, DuelState, LibraryPosition, TriggeredInstance } from './duel.js'
 export {
   choose,
   chooseAtMostOne,

@@ -123,7 +123,13 @@ function apply(
       // すでにそのゾーンを離れていればこの行動は実行されない（総合ルール 第1部 第1章 3）。
       // `moveToZone` がどこにも無いカードを黙って見送るので、ここでは何も足さない。
       return {
-        state: moveToZone(state, instruction.card.id, instruction.to, instruction.orientation),
+        state: moveToZone(
+          state,
+          instruction.card.id,
+          instruction.to,
+          instruction.orientation,
+          instruction.position,
+        ),
         value: undefined,
       }
     }
