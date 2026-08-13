@@ -1,7 +1,7 @@
 import { BATTLE_SPACE } from './board.js'
 import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
-import { cardsIn, damagePlayer, draw, locateOnSquares, moveToZone, topOfLibrary } from './duel.js'
+import { cardsIn, damagePlayer, draw, locateOnSquares, moveToSquare, moveToZone, topOfLibrary } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import type { CardInZone, DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
@@ -136,6 +136,21 @@ function apply(
 
       return { state: moveToZone(state, top.id, instruction.to, instruction.orientation), value: undefined }
     }
+    case 'スクエアへ置く': {
+      if (!shown.has(instruction.card.id)) {
+        throw new Error('効果に見せていないカードが対象にされた')
+      }
+      // 「登場」ではないので、`play.ts` の `placePlayedUnit` を通さない。ここを通らない
+      // ことで、「登場した時」の誘発（`triggerAppearance`）も「根性」による向きの置換
+      // （総合ルール 第5部 第6章 3）も起こらない。指定された向きがそのまま使われる。
+      return {
+        state: moveToSquare(state, instruction.card.id, instruction.square, {
+          controller: context.controller,
+          orientation: instruction.orientation,
+        }),
+        value: undefined,
+      }
+    }
     case 'カードを引く': {
       // 引けない場合は何も起こらないだけで、効果は続く（総合ルール 第1部 第1章 3）。
       let current = state
@@ -186,5 +201,7 @@ function duelView(currentState: () => DuelState, controller: Player, shown: Set<
     allies: () => show(unitsOnSquares().filter((unit) => unit.controller === controller)),
     enemies: () => show(unitsOnSquares().filter((unit) => unit.controller !== controller)),
     hand: showZone('手札'),
+    discardPile: showZone('捨札'),
+    planZone: showZone('プランゾーン'),
   }
 }

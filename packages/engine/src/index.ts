@@ -68,6 +68,7 @@ export {
   destroy,
   drawCards,
   placeInZone,
+  placeOnSquare,
   placeTopOfLibrary,
 } from './effect.js'
 export type { CardInZone, DuelView, Effect, EffectStep, Instruction, UnitOnSquare } from './effect.js'
