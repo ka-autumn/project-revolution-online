@@ -77,6 +77,14 @@ export interface TriggeredAbility {
  *
  * 総合ルール 第5部には 23 のキーワード能力があるが、それぞれ能力の種類も働き方も違う。
  * ひとまとめの「キーワード能力」型にせず、実装したものから 1 つずつ型を足していく。
+ *
+ * キーワード能力の識別子は、日本語名の直訳を名詞で書く（`dream`・`hope`・`trust`・
+ * `guts`・`pep`）。能力が何をするかから名前を付けない。ADR-0003 が英語の識別子に
+ * 求めているのは総合ルールの語と 1 対 1 に対応していることであって、働きを名前で
+ * 説明することではないためである。内容から名前を付けると、どれが直訳でどれが内容ベース
+ * かを 23 個ぶん覚える必要が出るうえ、総合ルールの改定で内容が変わった時に名前だけが
+ * 取り残される。訳語が一意に定まらない場合もローマ字にはせず、そのキーワードを実装する
+ * 時に名詞の直訳から選ぶ。
  */
 export interface DreamAbility {
   readonly kind: '常在型能力'
@@ -91,7 +99,7 @@ export interface DreamAbility {
  * どのステップでバトルダメージを与えるかを変えるだけで、解決される能力ではないためである
  * （「夢」と同じ形）。
  */
-export interface GenkiAbility {
+export interface PepAbility {
   readonly kind: '常在型能力'
   readonly keyword: '元気'
 }
@@ -156,7 +164,7 @@ export interface HopeAbility {
  * 書けるようになってから足す。常在型は「夢」「元気」「信頼」「根性」だけで、継続効果を
  * 持つものはまだ無い。「希望」はそのどれでもない特別な能力である（同 第5部 第3章 1）。
  */
-export type Ability = TriggeredAbility | DreamAbility | GenkiAbility | TrustAbility | GutsAbility | HopeAbility
+export type Ability = TriggeredAbility | DreamAbility | PepAbility | TrustAbility | GutsAbility | HopeAbility
 
 /** 誘発型能力を 1 つ書く。 */
 export function triggeredAbility(event: TriggerEvent, effect: Effect): TriggeredAbility {
@@ -167,7 +175,7 @@ export function triggeredAbility(event: TriggerEvent, effect: Effect): Triggered
 export const dream: DreamAbility = { kind: '常在型能力', keyword: '夢' }
 
 /** 「元気」。「夢」と同じく 1 つを使い回す。 */
-export const genki: GenkiAbility = { kind: '常在型能力', keyword: '元気' }
+export const pep: PepAbility = { kind: '常在型能力', keyword: '元気' }
 
 /** 「信頼」。「夢」と同じく 1 つを使い回す。 */
 export const trust: TrustAbility = { kind: '常在型能力', keyword: '信頼' }

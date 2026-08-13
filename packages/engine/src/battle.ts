@@ -1,7 +1,7 @@
 import { triggerAttack, triggerBattleWin } from './bank.js'
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
-import { bpOf, hasGenki } from './card.js'
+import { bpOf, hasPep } from './card.js'
 import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
 import { cardsOn, dealDamage } from './duel.js'
@@ -225,7 +225,7 @@ function exchangeBattleDamage(state: DuelState, battle: Battle): DuelState {
  */
 function dealsDamageIn(battle: Battle, unit: UnitInstance): boolean {
   return battle.step === '第１ダメージステップ'
-    ? hasGenki(unit.card)
+    ? hasPep(unit.card)
     : !battle.dealtDamage.includes(unit.id)
 }
 

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { defineStrategy, defineTrap, defineUnit, dream, genki, playSelfPlay, runSelfPlayBatch } from './index.js'
+import { defineStrategy, defineTrap, defineUnit, dream, pep, playSelfPlay, runSelfPlayBatch } from './index.js'
 import type { ActionPicker, Deck, DuelSetup, SelfPlayBatchResult, SelfPlayResult } from './index.js'
 
 /** 上下左右すべてのムーブアイコンを持つレベル 0 のユニット。 */
 const moverUnit = defineUnit({ name: 'テスト・自己対戦ユニットA', level: 0, bp: 100, sp: 100, moveIcon: ['上', '下', '左', '右'] })
 
 /** 「元気」を持つレベル 0 のユニット（総合ルール 第5部 第8章 2）。 */
-const genkiUnit = defineUnit({ name: 'テスト・自己対戦ユニットB', level: 0, bp: 100, sp: 500, abilities: [genki] })
+const pepUnit = defineUnit({ name: 'テスト・自己対戦ユニットB', level: 0, bp: 100, sp: 500, abilities: [pep] })
 
 /** 「夢」を持つレベル 0 のユニット（総合ルール 第5部 第1章 2）。プランゾーンからもプレイできる。 */
 const dreamUnit = defineUnit({ name: 'テスト・自己対戦ユニットC', level: 0, bp: 100, sp: 100, abilities: [dream] })
@@ -43,7 +43,7 @@ const plainUnits = Array.from({ length: 9 }, (_, index) =>
  * は、ランダムな自己対戦では実際には踏まれない。ファザが炙り出す漏れの探索範囲としては、
  * この 2 経路は今のところ対象外である。
  */
-const templates = [moverUnit, genkiUnit, dreamUnit, coloredUnit, strategyCard, trapCard, ...plainUnits]
+const templates = [moverUnit, pepUnit, dreamUnit, coloredUnit, strategyCard, trapCard, ...plainUnits]
 
 /** 構築戦の最小枚数（60 枚）を満たす、15 種類 × 4 枚のデッキ。 */
 function buildDeck(): Deck {
