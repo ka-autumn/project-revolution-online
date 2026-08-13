@@ -13,6 +13,7 @@ import {
   passPriority,
   putOnSquare,
   triggeredAbility,
+  trust,
 } from './index.js'
 import type { ActionOutcome, CardInstance, Chooser, DuelState, Phase, Player, Square, UnitCard } from './index.js'
 
@@ -219,6 +220,48 @@ describe('移動が起動された時', () => {
     const after = stateOf(moveUnit(state, '動くユニット', centerSquare))
 
     expect(after.bank).toEqual([])
+  })
+})
+
+// 総合ルール 第5部 第4章（ADR-0006）
+describe('「信頼」による移動の制限', () => {
+  /** 「信頼」を持つユニット。自分では動かないので、ムーブアイコンは持たせていない。 */
+  const trusted = defineUnit({
+    name: 'テスト・信頼ユニット',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [trust],
+  })
+
+  /** `centerSquare` の左に接するスクエア。 */
+  const centerLeftSquare: Square = { row: 1, column: 0 }
+
+  /** 移動しようとしているユニットと、指定したスクエアに置いた「信頼」持ちのいる盤面。 */
+  function facing(square: Square, owner: Player): DuelState {
+    return putOnSquare(putOnSquare(mainPhase(), homeSquare, unit('ユニット')), square, unit('信頼持ち', trusted, owner))
+  }
+
+  // 総合ルール 第5部 第4章 2
+  it('相手の「信頼」の左右に接するスクエアへは移動できない', () => {
+    expect(violationOf(moveUnit(facing(centerLeftSquare, '後攻'), 'ユニット', centerSquare))).toBe(
+      '「信頼」によって移動できない',
+    )
+  })
+
+  // 総合ルール 第5部 第4章 2。制限されるのは左右に接するスクエアだけである。
+  it('相手の「信頼」の上下に接するスクエアへは移動できる', () => {
+    const after = stateOf(moveUnit(facing(farSquare, '後攻'), 'ユニット', centerSquare))
+
+    expect(cardsOn(after, centerSquare)[0]?.id).toBe('ユニット')
+  })
+
+  // 総合ルール 第5部 第4章 2。制限されるのは「相手」だけである。
+  it('自分の「信頼」は自分のユニットの移動を妨げない', () => {
+    const after = stateOf(moveUnit(facing(centerLeftSquare, '先攻'), 'ユニット', centerSquare))
+
+    expect(cardsOn(after, centerSquare)[0]?.id).toBe('ユニット')
   })
 })
 

@@ -21,6 +21,7 @@ import {
   playCard,
   putOnSquare,
   triggeredAbility,
+  trust,
 } from './index.js'
 import type { ActionOutcome, CardInstance, Chooser, DuelState, Phase, PlayDeclaration, Square } from './index.js'
 
@@ -216,6 +217,28 @@ describe('ユニットのプレイ', () => {
     )
 
     expect(violationOf(play(occupied, { card: 'ユニット', square: homeSquare }))).toBe('指定できないスクエア')
+  })
+
+  // 総合ルール 第5部 第4章 3。「信頼」が制限するのは移動だけである（`move.ts`）。
+  it('相手の「信頼」の左右に接するスクエアでも、プレイなら指定できる', () => {
+    const trusted = defineUnit({
+      name: 'テスト・信頼ユニット',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [trust],
+    })
+    const beside = putOnSquare(
+      readyToPlay([unit()], twoEnergies()),
+      // `homeSquare` の左に接するスクエア。
+      { row: 0, column: 0 },
+      instantiate({ id: '信頼持ち', card: trusted, owner: '後攻' }),
+    )
+
+    const after = stateOf(play(beside, { card: 'ユニット', square: homeSquare }))
+
+    expect(cardsOn(after, homeSquare)[0]?.id).toBe('ユニット')
   })
 
   // 総合ルール 第1部 第2章 3-1
