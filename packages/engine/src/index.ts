@@ -61,7 +61,7 @@ export {
   releaseAll,
 } from './duel.js'
 export type { CardId, CardInstance, DuelResult, DuelState, TriggeredInstance } from './duel.js'
-export { choose, chooseAtMostOne, damagePlayer, destroy, placeInZone } from './effect.js'
+export { choose, chooseAtMostOne, damagePlayer, destroy, placeInZone, placeTopOfLibrary } from './effect.js'
 export type { CardInZone, DuelView, Effect, EffectStep, Instruction, UnitOnSquare } from './effect.js'
 export { cardIdsOf, checkBoardInvariants } from './invariant.js'
 export type { InvariantViolation } from './invariant.js'
