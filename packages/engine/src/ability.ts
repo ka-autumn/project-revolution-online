@@ -1,3 +1,4 @@
+import { damagePlayer } from './effect.js'
 import type { Effect } from './effect.js'
 import { PHASES } from './turn.js'
 import type { Phase } from './turn.js'
@@ -182,6 +183,26 @@ export const trust: TrustAbility = { kind: '常在型能力', keyword: '信頼' 
 
 /** 「根性」。「夢」と同じく 1 つを使い回す。 */
 export const guts: GutsAbility = { kind: '常在型能力', keyword: '根性' }
+
+/**
+ * キーワード能力「気合」（総合ルール 第5部 第9章）。
+ *
+ * 「このカードが登場した時、あなたは1000 ダメージを受ける」という誘発型能力である
+ * （同 1・2）。ここまでのキーワード能力と違って専用の型を持たないのは、種類も効果も
+ * 誘発型能力そのものだからである。「夢」などが専用の型を必要としたのは、効果を持たず、
+ * ルールの側が能力の有無を見に行く必要があったためで、「気合」にはその必要が無い。
+ *
+ * ダメージを受けるのは能力の支配者（「あなた」）であって、相手ではない。
+ *
+ * この効果によってスマッシュ判定が発生する（同 3）が、それはダメージが 1000 以上に
+ * なったことをルールエフェクトが見て始めるもの（同 第4部 第14章 4-12）であり、この能力が
+ * 自分で始めるわけではない。
+ *
+ * 「夢」と同じく、何回書いても同じものなので 1 つを使い回す。
+ */
+export const spirit: TriggeredAbility = triggeredAbility('登場した時', function* (duel) {
+  yield* damagePlayer(duel.controller, 1000)
+})
 
 /** 「希望―［効果］」を 1 つ書く。効果はカードごとに違うので受け取る。 */
 export function hope(effect: Effect): HopeAbility {

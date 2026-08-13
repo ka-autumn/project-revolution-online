@@ -56,6 +56,7 @@ export type Instruction =
       readonly mayDecline: boolean
     }
   | { readonly kind: '破壊する'; readonly target: UnitOnSquare }
+  | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
 
 /**
  * 効果の途中経過。`T` はその手順が効果に返す値。
@@ -116,4 +117,19 @@ export function* chooseAtMostOne<T>(candidates: readonly T[]): EffectStep<T | un
  */
 export function* destroy(target: UnitOnSquare): EffectStep<void> {
   yield { kind: '破壊する', target }
+}
+
+/**
+ * プレイヤーにダメージを与える。
+ *
+ * ダメージはそのプレイヤーに載って蓄積する。合計 1000 以上になった時にスマッシュ判定が
+ * 発生する（総合ルール 第4部 第14章 4-12）のはルールエフェクトの仕事であり、効果の解決中に
+ * チェックされることはない（同 第8章 4）。次にどちらかのプレイヤーが優先権を獲得する時に
+ * まとめて処理されるので、ここでは与えるだけでよい。
+ *
+ * 与える相手をプレイヤーとして受け取るが、効果が名指しできるのは `DuelView` が渡している
+ * 支配者だけである。相手を指せるようにするのは、それを必要とするカードを書く時でよい。
+ */
+export function* damagePlayer(player: Player, amount: number): EffectStep<void> {
+  yield { kind: 'プレイヤーにダメージを与える', player, amount }
 }

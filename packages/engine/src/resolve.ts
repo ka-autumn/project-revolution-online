@@ -1,6 +1,7 @@
 import { BATTLE_SPACE } from './board.js'
 import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
+import { damagePlayer } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
@@ -99,6 +100,12 @@ function apply(
       // 破壊されたユニットは持ち主の捨札の一番上に置かれる（総合ルール 第2部 第21章 5-1）。
       // すでにスクエアを離れていればこの行動は実行されない。
       return { state: discardFromSquares(state, [instruction.target.id]), value: undefined }
+    }
+    case 'プレイヤーにダメージを与える': {
+      // スマッシュ判定はここでは始めない。効果の解決中はルールエフェクトがチェックされない
+      // （総合ルール 第4部 第8章 4）ため、次に優先権が発生する時に `settleBeforePriority`
+      // がまとめて処理する。
+      return { state: damagePlayer(state, instruction.player, instruction.amount), value: undefined }
     }
   }
 }
