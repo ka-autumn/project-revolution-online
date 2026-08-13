@@ -1,7 +1,7 @@
 import { BATTLE_SPACE } from './board.js'
 import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
-import { cardsIn, damagePlayer, moveToZone, topOfLibrary } from './duel.js'
+import { cardsIn, damagePlayer, draw, locateOnSquares, moveToZone, topOfLibrary } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import type { CardInZone, DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
@@ -112,6 +112,14 @@ function apply(
       if (!shown.has(instruction.card.id)) {
         throw new Error('効果に見せていないカードが対象にされた')
       }
+      // スクエアから捨札へ置くことは「破壊する」にあたり（総合ルール 第2部 第21章 1-5）、
+      // それを見て誘発する能力がある（同 第4部 第7章 6）。`moveToZone` はその誘発を
+      // 起こさないので、この場合だけ `destroy` と同じ経路を通す。向きの指定は使わない。
+      // 捨札のカードは常にリリース状態で置かれる（同 第2部 第21章 5-3）ためである。
+      if (instruction.to === '捨札' && locateOnSquares(state, instruction.card.id) !== undefined) {
+        return { state: discardFromSquares(state, [instruction.card.id]), value: undefined }
+      }
+
       // すでにそのゾーンを離れていればこの行動は実行されない（総合ルール 第1部 第1章 3）。
       // `moveToZone` がどこにも無いカードを黙って見送るので、ここでは何も足さない。
       return {
@@ -127,6 +135,12 @@ function apply(
       if (top === undefined) return { state, value: undefined }
 
       return { state: moveToZone(state, top.id, instruction.to, instruction.orientation), value: undefined }
+    }
+    case 'カードを引く': {
+      // 引けない場合は何も起こらないだけで、効果は続く（総合ルール 第1部 第1章 3）。
+      let current = state
+      for (let drawn = 0; drawn < instruction.count; drawn += 1) current = draw(current, instruction.player)
+      return { state: current, value: undefined }
     }
   }
 }
