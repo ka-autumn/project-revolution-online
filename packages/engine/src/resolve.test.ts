@@ -12,6 +12,7 @@ import {
   destroy,
   drawCards,
   emptyDuelState,
+  flipPlan,
   guts,
   instantiate,
   placeInZone,
@@ -457,6 +458,52 @@ describe('効果によるゾーン間の移動', () => {
 
     expect(idsOf(cardsIn(resolved, '後攻', 'プランゾーン'))).toEqual(['プラン'])
     expect(idsOf(cardsIn(resolved, '後攻', '山札'))).toEqual(['敵'])
+  })
+
+  /** 相手のプランを裏返す能力。 */
+  const flipping = triggeredAbility('登場した時', function* (duel) {
+    yield* flipPlan(duel.opponent)
+  })
+
+  /** 両方のプレイヤーにプランと山札を用意した盤面。 */
+  function withPlans(): DuelState {
+    let state = boardOf([mySquare, mine()])
+    for (const player of ['先攻', '後攻'] as const) {
+      state = putInZone(state, player, '山札', [instantiate({ id: `${player}の山札`, card: vanilla, owner: player })])
+      state = putInZone(state, player, 'プランゾーン', [
+        instantiate({ id: `${player}のプラン`, card: vanilla, owner: player }),
+      ])
+    }
+    return state
+  }
+
+  // 総合ルール 第2部 第21章 3-4
+  it('プランを裏返すと、そのカードは裏向きの山札の 1 番上に戻る', () => {
+    const resolved = resolveEffect(withPlans(), flipping.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(cardsIn(resolved, '後攻', 'プランゾーン')).toEqual([])
+    expect(idsOf(cardsIn(resolved, '後攻', '山札'))).toEqual(['後攻のプラン', '後攻の山札'])
+  })
+
+  it('裏返るのは指定したプレイヤーのプランだけである', () => {
+    const resolved = resolveEffect(withPlans(), flipping.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(idsOf(cardsIn(resolved, '先攻', 'プランゾーン'))).toEqual(['先攻のプラン'])
+  })
+
+  // 総合ルール 第1部 第1章 3
+  it('プランが無ければ、要求された行動は実行されない', () => {
+    const steps: string[] = []
+    const ability = triggeredAbility('登場した時', function* (duel) {
+      yield* flipPlan(duel.opponent)
+      steps.push('後ろの指示')
+    })
+    const state = boardOf([mySquare, mine()])
+
+    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(cardsIn(resolved, '後攻', '山札')).toEqual([])
+    expect(steps).toEqual(['後ろの指示'])
   })
 
   /** 自分の山札の 1 番上のカードを、エネルギーゾーンにフリーズして置く能力。 */
