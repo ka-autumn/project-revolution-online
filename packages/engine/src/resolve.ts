@@ -1,10 +1,11 @@
 import { BATTLE_SPACE } from './board.js'
 import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
-import { damagePlayer } from './duel.js'
+import { cardsIn, damagePlayer, moveToZone } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
-import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
+import type { CardInZone, DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
+import type { PlayerZone } from './zone.js'
 
 /**
  * 候補の中から 1 つ選ぶ役。
@@ -107,6 +108,17 @@ function apply(
       // がまとめて処理する。
       return { state: damagePlayer(state, instruction.player, instruction.amount), value: undefined }
     }
+    case 'ゾーンへ置く': {
+      if (!shown.has(instruction.card.id)) {
+        throw new Error('効果に見せていないカードが対象にされた')
+      }
+      // すでにそのゾーンを離れていればこの行動は実行されない（総合ルール 第1部 第1章 3）。
+      // `moveToZone` がどこにも無いカードを黙って見送るので、ここでは何も足さない。
+      return {
+        state: moveToZone(state, instruction.card.id, instruction.to, instruction.orientation),
+        value: undefined,
+      }
+    }
   }
 }
 
@@ -134,9 +146,22 @@ function duelView(currentState: () => DuelState, controller: Player, shown: Set<
     return units
   }
 
+  // 支配者自身のゾーンだけを見せる。相手の手札は非公開の情報なので、渡す手段を持たせない
+  // （`effect.ts` の `DuelView.hand`）。
+  const showZone = (zone: PlayerZone) => (): readonly CardInZone[] => {
+    const cards = cardsIn(currentState(), controller, zone).map((instance) => ({
+      id: instance.id,
+      zone,
+      card: instance.card,
+    }))
+    for (const card of cards) shown.add(card.id)
+    return cards
+  }
+
   return {
     controller,
     allies: () => show(unitsOnSquares().filter((unit) => unit.controller === controller)),
     enemies: () => show(unitsOnSquares().filter((unit) => unit.controller !== controller)),
+    hand: showZone('手札'),
   }
 }
