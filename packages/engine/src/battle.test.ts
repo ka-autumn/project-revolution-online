@@ -9,9 +9,9 @@ import {
   defineTrap,
   defineUnit,
   emptyDuelState,
-  genki,
   instantiate,
   passPriority,
+  pep,
   playAsTrap,
   playCard,
   putOnSquare,
@@ -39,13 +39,13 @@ const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['
 const weak = defineUnit({ name: 'テスト・小ＢＰ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
 
 /** 「元気」を持つ、ＢＰが小さいユニット（総合ルール 第5部 第8章）。 */
-const genkiWeak = defineUnit({
+const pepWeak = defineUnit({
   name: 'テスト・元気',
   level: 1,
   colors: ['赤'],
   bp: 1000,
   sp: 1000,
-  abilities: [genki],
+  abilities: [pep],
 })
 
 /** ＢＰが 0 のユニット。置かれた時点でルールエフェクトによって捨札に置かれる。 */
@@ -364,14 +364,14 @@ describe('第１バトルステップ', () => {
 describe('バトルダメージの応酬', () => {
   // 総合ルール 第5部 第8章 2
   it('「元気」を持つユニットは第１ダメージステップにダメージを与える', () => {
-    const damaged = atStep(battling(vanilla, genkiWeak), '第１ダメージステップ')
+    const damaged = atStep(battling(vanilla, pepWeak), '第１ダメージステップ')
 
     expect(damageOn(damaged, homeSquare, '攻撃された')).toBe(1000)
     expect(damageOn(damaged, homeSquare, '攻撃した')).toBe(0)
   })
 
   it('「元気」を持たないユニットは第２ダメージステップにダメージを与える', () => {
-    const first = atStep(battling(vanilla, genkiWeak), '第１ダメージステップ')
+    const first = atStep(battling(vanilla, pepWeak), '第１ダメージステップ')
     const second = atStep(first, '第２ダメージステップ')
 
     // 攻撃したユニットは第１ダメージステップで与えているので、ここでは与えない。
@@ -384,7 +384,7 @@ describe('バトルダメージの応酬', () => {
   // 総合ルール 第3部 第13章 2: 両方のユニットが「元気」を持っている場合、両方のダメージが
   // 同時に与えられる。
   it('どちらも「元気」を持てば、第１ダメージステップに両方が同時に与える', () => {
-    const first = atStep(battling(genkiWeak, genkiWeak), '第１ダメージステップ')
+    const first = atStep(battling(pepWeak, pepWeak), '第１ダメージステップ')
 
     // 同じＢＰどうしなので、両方がＢＰと同じダメージを受けて捨札に置かれる。
     expect(cardsOn(first, homeSquare)).toEqual([])
@@ -410,7 +410,7 @@ describe('バトルダメージの応酬', () => {
   it('バトルを発生させたユニットの一方がスクエアを離れていれば、バトルダメージは発生しない', () => {
     // ＢＰ1000 の「元気」持ちが第１ダメージステップでＢＰ1000 の相手を捨札に送るので、
     // 第２ダメージステップにはもう一方がいない。
-    const first = atStep(battling(weak, genkiWeak), '第１ダメージステップ')
+    const first = atStep(battling(weak, pepWeak), '第１ダメージステップ')
 
     expect(cardsOn(first, homeSquare).map((card) => card.id)).toEqual(['攻撃した'])
 
