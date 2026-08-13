@@ -1,8 +1,9 @@
-export { TRIGGER_EVENTS, dream, genki, hope, triggeredAbility, trust } from './ability.js'
+export { TRIGGER_EVENTS, dream, genki, guts, hope, triggeredAbility, trust } from './ability.js'
 export type {
   Ability,
   DreamAbility,
   GenkiAbility,
+  GutsAbility,
   HopeAbility,
   TriggeredAbility,
   TriggerEvent,
@@ -32,6 +33,7 @@ export {
   defineUnit,
   hasDream,
   hasGenki,
+  hasGuts,
   hasTrust,
   hopeOf,
   isStrategy,

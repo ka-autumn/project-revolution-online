@@ -15,6 +15,7 @@ import {
   destroy,
   dream,
   emptyDuelState,
+  guts,
   instantiate,
   passPriority,
   playAsTrap,
@@ -39,6 +40,16 @@ const dreamingUnit = defineUnit({
   bp: 1000,
   sp: 1000,
   abilities: [dream],
+})
+
+/** 「根性」を持つレベル 2 の赤いユニット（総合ルール 第5部 第6章）。 */
+const gutsyUnit = defineUnit({
+  name: 'テスト・根性ユニット',
+  level: 2,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [guts],
 })
 
 /** 「登場した時」に誘発する能力を持つレベル 2 の赤いユニット。 */
@@ -171,6 +182,21 @@ describe('ユニットのプレイ', () => {
 
     expect(placed?.id).toBe('ユニット')
     expect(placed?.orientation).toBe('フリーズ')
+  })
+
+  /**
+   * 総合ルール 第5部 第6章 2。
+   *
+   * 3 の「効果によってスクエアに置かれる時には働かない」は、効果がユニットをスクエアに
+   * 置く手段をまだ持っていないため試せない。その区別は、この判定をプレイの経路
+   * （`placePlayedUnit`）にだけ置いてあることで保たれている。
+   */
+  it('「根性」を持つユニットは、フリーズ状態のかわりにリリース状態で置かれる', () => {
+    const state = readyToPlay([instantiate({ id: '根性ユニット', card: gutsyUnit, owner: '先攻' })], twoEnergies())
+
+    const after = stateOf(play(state, { card: '根性ユニット', square: homeSquare }))
+
+    expect(cardsOn(after, homeSquare)[0]?.orientation).toBe('リリース')
   })
 
   it('プレイしたプレイヤーの支配下で置かれる', () => {
