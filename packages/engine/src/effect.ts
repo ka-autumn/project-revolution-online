@@ -46,6 +46,14 @@ export interface CardInZone {
 export interface DuelView {
   /** この能力の支配者（総合ルール 第4部 第7章 1）。 */
   readonly controller: Player
+  /**
+   * 支配者から見た相手。テキストの「相手」にあたる。
+   *
+   * 誰が相手かは公開されている情報なので名指しできる。ただし**名指しできることと、その
+   * プレイヤーのゾーンを読めることは別である。** 相手のゾーンを読むアクセサは無いままで、
+   * 相手に対してできるのは、中身を見ずに済む働きかけだけである。
+   */
+  readonly opponent: Player
   /** スクエアにいる、支配者から見た味方すべて。 */
   allies(): readonly UnitOnSquare[]
   /** スクエアにいる、支配者から見た敵すべて。 */
@@ -98,6 +106,7 @@ export type Instruction =
     }
   | { readonly kind: '山札の1番上をゾーンへ置く'; readonly to: PlayerZone; readonly orientation: Orientation }
   | { readonly kind: 'カードを引く'; readonly player: Player; readonly count: number }
+  | { readonly kind: 'プランを裏返す'; readonly player: Player }
   | {
       readonly kind: 'スクエアへ置く'
       readonly card: CardInZone | UnitOnSquare
@@ -252,6 +261,25 @@ export function* placeOnSquare(
   orientation: Orientation,
 ): EffectStep<void> {
   yield { kind: 'スクエアへ置く', card, square, orientation }
+}
+
+/**
+ * そのプレイヤーのプランを裏返す（総合ルール 第2部 第21章 3-4）。
+ *
+ * 山札の 1 番上のカードが表向きの場合にそれをプランと呼ぶ（同 3-1・3-2）ので、裏返すことは
+ * そのカードを裏向きの山札に戻すことにあたる。表向きかどうかを盤面が別に持っていないのは、
+ * それが置かれている場所から決まるためである（`play.ts` 参照）。
+ *
+ * 裏返した後、プランゾーンはなくなる。次に現れる山札の 1 番上のカードは裏向きのままになる
+ * （同 3-3）ので、めくり直されることはない。
+ *
+ * プランが無ければ、この行動は実行されない（同 第1部 第1章 3）。効果はそのまま続く。
+ *
+ * 相手のプランも裏返せる。誰が相手かは公開されている情報であり、裏返すのに中身を読む必要も
+ * ないためである（`DuelView.opponent`）。
+ */
+export function* flipPlan(player: Player): EffectStep<void> {
+  yield { kind: 'プランを裏返す', player }
 }
 
 /**

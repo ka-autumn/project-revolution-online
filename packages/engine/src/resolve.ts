@@ -1,9 +1,19 @@
 import { BATTLE_SPACE } from './board.js'
 import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
-import { cardsIn, damagePlayer, draw, locateOnSquares, moveToSquare, moveToZone, topOfLibrary } from './duel.js'
+import {
+  cardsIn,
+  damagePlayer,
+  draw,
+  faceDownPlan,
+  locateOnSquares,
+  moveToSquare,
+  moveToZone,
+  topOfLibrary,
+} from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import type { CardInZone, DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
+import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import type { PlayerZone } from './zone.js'
 
@@ -157,6 +167,11 @@ function apply(
         value: undefined,
       }
     }
+    case 'プランを裏返す': {
+      // プランが無ければこの行動は実行されない（総合ルール 第1部 第1章 3）。効果は続く。
+      // `faceDownPlan` がプランの無い盤面をそのまま返すので、ここでは何も足さない。
+      return { state: faceDownPlan(state, instruction.player), value: undefined }
+    }
     case 'カードを引く': {
       // 引けない場合は何も起こらないだけで、効果は続く（総合ルール 第1部 第1章 3）。
       let current = state
@@ -204,6 +219,7 @@ function duelView(currentState: () => DuelState, controller: Player, shown: Set<
 
   return {
     controller,
+    opponent: opponentOf(controller),
     allies: () => show(unitsOnSquares().filter((unit) => unit.controller === controller)),
     enemies: () => show(unitsOnSquares().filter((unit) => unit.controller !== controller)),
     hand: showZone('手札'),

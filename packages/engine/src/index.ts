@@ -67,6 +67,7 @@ export {
   damagePlayer,
   destroy,
   drawCards,
+  flipPlan,
   placeInZone,
   placeOnSquare,
   placeTopOfLibrary,
