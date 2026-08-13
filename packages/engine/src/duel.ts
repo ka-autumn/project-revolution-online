@@ -350,19 +350,24 @@ export function moveFromSquareTo(state: DuelState, id: CardId, zone: PlayerZone)
  * カードは新しいカードとして扱われ、以前のゾーンに関連した効果は失われる（同 1-4）ため、
  * 支配者を移し替えていた効果もそこで切れる。
  *
- * 置かれる向きはリリース状態になる。エネルギーゾーン・スマッシュゾーン・トラップゾーンの
- * いずれも、カードは通常リリース状態で置かれる（同 6-3・7-3・9-3）。フリーズ状態で置く
- * 効果を書けるようになったら、向きを指定できるようにする。
+ * 置かれる向きは、指定しなければリリース状態になる。エネルギーゾーン・スマッシュゾーン・
+ * トラップゾーンのいずれも、カードは通常リリース状態で置かれる（同 6-3・7-3・9-3）。
+ * 「フリーズして置く」効果はこれを変えるので、向きを指定して呼ぶ。
  *
  * 受けていたダメージも失われる。新しいカードとして扱われる（同 1-4）以上、以前のゾーンで
  * 与えられていたダメージは残らない。
  */
-export function moveToZone(state: DuelState, id: CardId, zone: PlayerZone): DuelState {
+export function moveToZone(
+  state: DuelState,
+  id: CardId,
+  zone: PlayerZone,
+  orientation: Orientation = 'リリース',
+): DuelState {
   const detached = detach(state, id)
   if (detached === undefined) return state
 
   const { card } = detached
-  const moved: CardInstance = { ...card, controller: card.owner, orientation: 'リリース', damage: 0 }
+  const moved: CardInstance = { ...card, controller: card.owner, orientation, damage: 0 }
   return putInZone(detached.state, card.owner, zone, [moved, ...cardsIn(detached.state, card.owner, zone)])
 }
 

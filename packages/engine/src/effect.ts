@@ -1,7 +1,9 @@
 import type { Square } from './board.js'
-import type { UnitCard } from './card.js'
+import type { Card, UnitCard } from './card.js'
 import type { CardId } from './duel.js'
+import type { Orientation } from './orientation.js'
 import type { Player } from './player.js'
+import type { PlayerZone } from './zone.js'
 
 /**
  * 効果から見た、スクエアにいるユニット 1 枚。
@@ -16,6 +18,20 @@ export interface UnitOnSquare {
   readonly card: UnitCard
   /** そのユニットの支配者。 */
   readonly controller: Player
+}
+
+/**
+ * 効果から見た、ゾーンにあるカード 1 枚。
+ *
+ * `UnitOnSquare` と同じく、盤面が持っているカードそのものではなく、効果に見せてよい分だけを
+ * 写したものである。支配者を持たないのは、効果に見せるゾーンが支配者自身のものだけであり
+ * （`DuelView`）、ゾーンの持ち主で決まるためである。
+ */
+export interface CardInZone {
+  readonly id: CardId
+  /** そのカードがいまあるゾーン。 */
+  readonly zone: PlayerZone
+  readonly card: Card
 }
 
 /**
@@ -34,6 +50,18 @@ export interface DuelView {
   allies(): readonly UnitOnSquare[]
   /** スクエアにいる、支配者から見た敵すべて。 */
   enemies(): readonly UnitOnSquare[]
+  /**
+   * 支配者自身の手札にあるカードすべて。
+   *
+   * 相手の手札を読むためのアクセサは無い。相手の手札は非公開の情報であり、効果が読めては
+   * ならないためである。「読めない」ことを、ここに生やさないことで型として保証している
+   * （ADR-0002・ADR-0004）。相手のゾーンを見る必要が出てきた場合は、それが公開されている
+   * 情報であることを確かめたうえで、そのゾーン専用のアクセサを足す。
+   *
+   * 山札を読むアクセサも無い。「山札の 1 番上」はカードを選ぶ行為ではなく位置の指定なので、
+   * 中身を見せずに動かせる。
+   */
+  hand(): readonly CardInZone[]
 }
 
 /**
@@ -57,6 +85,12 @@ export type Instruction =
     }
   | { readonly kind: '破壊する'; readonly target: UnitOnSquare }
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
+  | {
+      readonly kind: 'ゾーンへ置く'
+      readonly card: CardInZone
+      readonly to: PlayerZone
+      readonly orientation: Orientation
+    }
 
 /**
  * 効果の途中経過。`T` はその手順が効果に返す値。
@@ -132,4 +166,23 @@ export function* destroy(target: UnitOnSquare): EffectStep<void> {
  */
 export function* damagePlayer(player: Player, amount: number): EffectStep<void> {
   yield { kind: 'プレイヤーにダメージを与える', player, amount }
+}
+
+/**
+ * ゾーンにあるカードを、持ち主の別のゾーンの 1 番上に置く。向きを指定する。
+ *
+ * 置けるのは持ち主のゾーンだけである。持ち主以外のゾーンに動かされる場合、代わりに持ち主の
+ * 該当するゾーンに動かされる（総合ルール 第2部 第21章 1-2）。効果に見せているゾーンは
+ * 支配者自身のものだけなので、いまはその区別が表に出る場面が無い。
+ *
+ * 「スクエアからスクエア」以外のゾーン移動をしたカードは新しいカードとして扱われ、以前の
+ * ゾーンに関連した効果は失われる（同 1-4）。すでにそのゾーンを離れていた場合、この行動は
+ * 実行されない（同 第1部 第1章 3）。効果はそのまま続く。
+ *
+ * スクエアへ置く効果はここでは扱わない。プレイされたユニットがスクエアに置かれることは
+ * 「登場」と呼ばれて効果によって置かれる場合と区別され（同 第2部 第20章 1-4-a）、
+ * 「登場した時」の誘発や「根性」（同 第5部 第6章 3）が働くかどうかがそこで分かれるためである。
+ */
+export function* placeInZone(card: CardInZone, to: PlayerZone, orientation: Orientation): EffectStep<void> {
+  yield { kind: 'ゾーンへ置く', card, to, orientation }
 }

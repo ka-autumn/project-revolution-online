@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+// 手札を組み立てるためだけに `putInZone` を使う。engine の中からゾーンを
+// 差し替えるための関数であり、公開する API ではない。
+import { putInZone } from './duel.js'
 import {
   cardsIn,
   cardsOn,
@@ -9,11 +12,12 @@ import {
   destroy,
   emptyDuelState,
   instantiate,
+  placeInZone,
   putOnSquare,
   resolveEffect,
   triggeredAbility,
 } from './index.js'
-import type { CardInstance, Chooser, DuelState, Square, UnitOnSquare } from './index.js'
+import type { CardInZone, CardInstance, Chooser, DuelState, Square, UnitOnSquare } from './index.js'
 
 /**
  * 検証したいルールだけを持つ架空のテストカード（ADR-0002）。
@@ -306,6 +310,71 @@ describe('プレイヤーへのダメージ', () => {
   })
 })
 
+// 総合ルール 第2部 第21章 1-2・1-4（ADR-0006）
+describe('効果によるゾーン間の移動', () => {
+  /** 自分の手札を 1 枚まで選び、エネルギーゾーンにフリーズして置く能力。 */
+  const stashing = triggeredAbility('登場した時', function* (duel) {
+    const card = yield* chooseAtMostOne(duel.hand())
+    if (card !== undefined) yield* placeInZone(card, 'エネルギーゾーン', 'フリーズ')
+  })
+
+  /** 先攻と後攻それぞれの手札を整えた、味方が 1 枚いる盤面。 */
+  function withHands(): DuelState {
+    const board = boardOf([mySquare, mine()])
+    const mineInHand = putInZone(board, '先攻', '手札', [instantiate({ id: '自分の手札', card: vanilla, owner: '先攻' })])
+    return putInZone(mineInHand, '後攻', '手札', [instantiate({ id: '相手の手札', card: vanilla, owner: '後攻' })])
+  }
+
+  it('選んだ手札のカードが、指定した向きでエネルギーゾーンに置かれる', () => {
+    const resolved = resolveEffect(withHands(), stashing.effect, { controller: '先攻', chooser: chooseFirst })
+
+    const [placed] = cardsIn(resolved, '先攻', 'エネルギーゾーン')
+    expect(placed?.id).toBe('自分の手札')
+    expect(placed?.orientation).toBe('フリーズ')
+    expect(cardsIn(resolved, '先攻', '手札')).toEqual([])
+  })
+
+  /**
+   * ADR-0002・ADR-0004。相手の手札は非公開の情報なので、効果から読めてはならない。
+   *
+   * 読む手段が `DuelView` に生えていないことがその保証で、下の「盤面への問い合わせだけ」の
+   * テストが型として押さえている。ここでは、支配者自身の手札を尋ねた時に相手のカードが
+   * 混ざらないことを見る。
+   */
+  it('手札として見えるのは支配者自身のものだけである', () => {
+    const offered: CardInZone[][] = []
+    const record: Chooser = (candidates) => {
+      offered.push(candidates as readonly CardInZone[] as CardInZone[])
+      return candidates[0]
+    }
+
+    resolveEffect(withHands(), stashing.effect, { controller: '先攻', chooser: record })
+
+    expect(offered[0]?.map((each) => each.id)).toEqual(['自分の手札'])
+  })
+
+  it('見せていないカードはゾーンへ置けない', () => {
+    const forge = triggeredAbility('登場した時', function* (duel) {
+      const [card] = duel.hand()
+      if (card === undefined) throw new Error('手札があるうえで試すこと')
+      yield* placeInZone({ ...card, id: '相手の手札' }, 'エネルギーゾーン', 'フリーズ')
+    })
+
+    expect(() =>
+      resolveEffect(withHands(), forge.effect, { controller: '先攻', chooser: chooseFirst }),
+    ).toThrowError('効果に見せていないカードが対象にされた')
+  })
+
+  // 総合ルール 第1部 第1章 3
+  it('手札が 1 枚も無ければ、要求された行動は実行されない', () => {
+    const state = boardOf([mySquare, mine()])
+
+    const resolved = resolveEffect(state, stashing.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')).toEqual([])
+  })
+})
+
 // ADR-0002: カードの実装は engine の公開 API だけで書ける
 describe('効果に渡されるのは盤面への問い合わせだけである', () => {
   it('盤面そのものも、それを書き換える手段も渡されない', () => {
@@ -314,6 +383,10 @@ describe('効果に渡されるのは盤面への問い合わせだけである'
       duel.squares
       // @ts-expect-error 効果はゾーンの中身を直接書き換えられない
       duel.zones
+      // @ts-expect-error 相手の手札は非公開の情報なので、読む手段が無い（ADR-0004）
+      duel.opponentHand
+      // @ts-expect-error 山札の中身も読めない。「1 番上」は位置の指定であって選択ではない
+      duel.library
       yield* destroy(yield* choose(duel.enemies()))
     })
 
