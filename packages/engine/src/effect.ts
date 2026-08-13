@@ -1,6 +1,6 @@
 import type { Square } from './board.js'
 import type { Card, UnitCard } from './card.js'
-import type { CardId } from './duel.js'
+import type { CardId, LibraryPosition } from './duel.js'
 import type { Orientation } from './orientation.js'
 import type { Player } from './player.js'
 import type { PlayerZone } from './zone.js'
@@ -94,6 +94,7 @@ export type Instruction =
       readonly card: CardInZone | UnitOnSquare
       readonly to: PlayerZone
       readonly orientation: Orientation
+      readonly position: LibraryPosition
     }
   | { readonly kind: '山札の1番上をゾーンへ置く'; readonly to: PlayerZone; readonly orientation: Orientation }
   | { readonly kind: 'カードを引く'; readonly player: Player; readonly count: number }
@@ -187,6 +188,10 @@ export function* damagePlayer(player: Player, amount: number): EffectStep<void> 
  * 該当するゾーンに動かされる（総合ルール 第2部 第21章 1-2）。効果に見せているゾーンは
  * 支配者自身のものだけなので、いまはその区別が表に出る場面が無い。
  *
+ * 置く位置は、指定しなければそのゾーンの 1 番上になる。「山札の 1 番下に戻す」であれば
+ * 1 番下を指定する。順番に意味があるのは山札・プランゾーン・捨札だけである
+ * （同 第2部 第21章 1-3）。
+ *
  * 「スクエアからスクエア」以外のゾーン移動をしたカードは新しいカードとして扱われ、以前の
  * ゾーンに関連した効果は失われる（同 1-4）。すでにそのゾーンを離れていた場合、この行動は
  * 実行されない（同 第1部 第1章 3）。効果はそのまま続く。
@@ -203,8 +208,9 @@ export function* placeInZone(
   card: CardInZone | UnitOnSquare,
   to: PlayerZone,
   orientation: Orientation,
+  position: LibraryPosition = '1番上',
 ): EffectStep<void> {
-  yield { kind: 'ゾーンへ置く', card, to, orientation }
+  yield { kind: 'ゾーンへ置く', card, to, orientation, position }
 }
 
 /**

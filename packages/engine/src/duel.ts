@@ -356,19 +356,49 @@ export function moveFromSquareTo(state: DuelState, id: CardId, zone: PlayerZone)
  *
  * 受けていたダメージも失われる。新しいカードとして扱われる（同 1-4）以上、以前のゾーンで
  * 与えられていたダメージは残らない。
+ *
+ * 置く位置は、指定しなければそのゾーンの 1 番上になる。山札の 1 番下に戻す効果はこれを
+ * 変えるので、位置を指定して呼ぶ。山札・プランゾーン・捨札にあるカードの順番は効果か
+ * ルールによらなければ並べ替えられない（同 1-3）ので、位置は置く側が決める。
+ *
+ * 山札の 1 番上に置く場合、そのプレイヤーにプランがあれば先に裏向きにする（同 3-4）。
+ * プランゾーンにあるカードは同時に山札の 1 番上のカードでもある（同 3-1）ため、裏向きに
+ * しないまま上に別のカードを置くと、山札の 1 番上が 2 枚あることになってしまう。
  */
 export function moveToZone(
   state: DuelState,
   id: CardId,
   zone: PlayerZone,
   orientation: Orientation = 'リリース',
+  position: LibraryPosition = '1番上',
 ): DuelState {
   const detached = detach(state, id)
   if (detached === undefined) return state
 
   const { card } = detached
+  const flipped = zone === '山札' && position === '1番上' ? faceDownPlan(detached.state, card.owner) : detached.state
+
   const moved: CardInstance = { ...card, controller: card.owner, orientation, damage: 0 }
-  return putInZone(detached.state, card.owner, zone, [moved, ...cardsIn(detached.state, card.owner, zone)])
+  const rest = cardsIn(flipped, card.owner, zone)
+  return putInZone(flipped, card.owner, zone, position === '1番上' ? [moved, ...rest] : [...rest, moved])
+}
+
+/** ゾーンの中で置く位置。順番に意味があるのは山札・プランゾーン・捨札だけである。 */
+export type LibraryPosition = '1番上' | '1番下'
+
+/**
+ * プランを裏向きにする（総合ルール 第2部 第21章 3-4）。プランが無ければ盤面はそのまま。
+ *
+ * 山札の 1 番上のカードが表向きの場合にそれをプランゾーンと呼ぶ（同 3-1）ので、裏向きに
+ * することはプランゾーンから山札へ移すことにあたる。表向きかどうかを盤面が別に持って
+ * いないのは、それが置かれている場所から決まるためである（`play.ts` 参照）。
+ */
+export function faceDownPlan(state: DuelState, player: Player): DuelState {
+  const [plan] = cardsIn(state, player, 'プランゾーン')
+  if (plan === undefined) return state
+
+  const emptied = putInZone(state, player, 'プランゾーン', [])
+  return putInZone(emptied, player, '山札', [plan, ...cardsIn(emptied, player, '山札')])
 }
 
 /**
