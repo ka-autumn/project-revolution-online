@@ -1,9 +1,10 @@
-export { TRIGGER_EVENTS, dream, genki, hope, triggeredAbility } from './ability.js'
+export { TRIGGER_EVENTS, dream, genki, hope, shinrai, triggeredAbility } from './ability.js'
 export type {
   Ability,
   DreamAbility,
   GenkiAbility,
   HopeAbility,
+  ShinraiAbility,
   TriggeredAbility,
   TriggerEvent,
 } from './ability.js'
@@ -11,7 +12,16 @@ export { discardTrap, placeEnergy, plan, smash } from './action.js'
 export type { ActionOutcome, ActionViolation } from './action.js'
 export { BATTLE_STEPS } from './battle.js'
 export type { Battle, BattleStep } from './battle.js'
-export { AREAS, BATTLE_SPACE, LINES, MOVE_DIRECTIONS, areaOf, indexOfSquare, squareInDirection } from './board.js'
+export {
+  AREAS,
+  BATTLE_SPACE,
+  LINES,
+  MOVE_DIRECTIONS,
+  areaOf,
+  indexOfSquare,
+  squareInDirection,
+  squaresBeside,
+} from './board.js'
 export type { Area, Line, MoveDirection, Square, SquareIndex } from './board.js'
 export {
   CARD_TYPES,
@@ -22,6 +32,7 @@ export {
   defineUnit,
   hasDream,
   hasGenki,
+  hasShinrai,
   hopeOf,
   isStrategy,
   spOf,

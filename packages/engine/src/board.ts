@@ -148,6 +148,19 @@ function isSquareIndex(value: number): value is SquareIndex {
 }
 
 /**
+ * そのスクエアの左右に接するスクエア（総合ルール 第5部 第4章 2）。盤面の端なら 1 つ。
+ *
+ * 左ライン・右ラインの呼び名は見るプレイヤーによって入れ替わる（総合ルール 第2部 第22章 4）
+ * が、左右の両側をまとめたこの 1〜2 マスはどちらから見ても同じ集まりになる。そのため
+ * `squareInDirection` と違ってプレイヤーを受け取らない。
+ */
+export function squaresBeside(square: Square): readonly Square[] {
+  return [square.column - 1, square.column + 1]
+    .filter(isSquareIndex)
+    .map((column) => ({ row: square.row, column }))
+}
+
+/**
  * 印刷された図として描かれたスクエア（トリガーアイコンなど）を、そのプレイヤーから見て
  * 解釈した、盤面に固定した行・列のスクエアに変換する。
  *
