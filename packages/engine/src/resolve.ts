@@ -1,7 +1,7 @@
 import { BATTLE_SPACE } from './board.js'
 import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
-import { cardsIn, damagePlayer, moveToZone } from './duel.js'
+import { cardsIn, damagePlayer, moveToZone, topOfLibrary } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import type { CardInZone, DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
@@ -118,6 +118,15 @@ function apply(
         state: moveToZone(state, instruction.card.id, instruction.to, instruction.orientation),
         value: undefined,
       }
+    }
+    case '山札の1番上をゾーンへ置く': {
+      // 効果に見せていないカードだが、選ばれたものではなく位置で指定されたものなので
+      // `shown` の検査は要らない。効果はどのカードが動いたかを知らないままである。
+      const top = topOfLibrary(state, context.controller)
+      // 山札が空ならこの行動は実行されない（総合ルール 第1部 第1章 3）。効果は続く。
+      if (top === undefined) return { state, value: undefined }
+
+      return { state: moveToZone(state, top.id, instruction.to, instruction.orientation), value: undefined }
     }
   }
 }

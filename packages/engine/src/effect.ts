@@ -91,6 +91,7 @@ export type Instruction =
       readonly to: PlayerZone
       readonly orientation: Orientation
     }
+  | { readonly kind: '山札の1番上をゾーンへ置く'; readonly to: PlayerZone; readonly orientation: Orientation }
 
 /**
  * 効果の途中経過。`T` はその手順が効果に返す値。
@@ -185,4 +186,20 @@ export function* damagePlayer(player: Player, amount: number): EffectStep<void> 
  */
 export function* placeInZone(card: CardInZone, to: PlayerZone, orientation: Orientation): EffectStep<void> {
   yield { kind: 'ゾーンへ置く', card, to, orientation }
+}
+
+/**
+ * 支配者の山札の 1 番上のカードを、別のゾーンの 1 番上に置く。向きを指定する。
+ *
+ * カードを選ぶのではなく位置を指定するので、山札の中身を効果に見せずに動かせる。
+ * `DuelView` に山札を読むアクセサが無いのはそのためである。どのカードが動いたかは、
+ * 効果からは分からないままになる。
+ *
+ * プランゾーンにカードがあれば、それが同時に山札の 1 番上のカードである
+ * （総合ルール 第2部 第21章 3-1）ので、そちらが動く。
+ *
+ * 山札が空なら、この行動は実行されない（同 第1部 第1章 3）。効果はそのまま続く。
+ */
+export function* placeTopOfLibrary(to: PlayerZone, orientation: Orientation): EffectStep<void> {
+  yield { kind: '山札の1番上をゾーンへ置く', to, orientation }
 }

@@ -13,6 +13,7 @@ import {
   emptyDuelState,
   instantiate,
   placeInZone,
+  placeTopOfLibrary,
   putOnSquare,
   resolveEffect,
   triggeredAbility,
@@ -363,6 +364,56 @@ describe('効果によるゾーン間の移動', () => {
     expect(() =>
       resolveEffect(withHands(), forge.effect, { controller: '先攻', chooser: chooseFirst }),
     ).toThrowError('効果に見せていないカードが対象にされた')
+  })
+
+  /** 自分の山札の 1 番上のカードを、エネルギーゾーンにフリーズして置く能力。 */
+  const stacking = triggeredAbility('登場した時', function* () {
+    yield* placeTopOfLibrary('エネルギーゾーン', 'フリーズ')
+  })
+
+  it('山札の 1 番上のカードを、選ばずに指定した向きで置ける', () => {
+    const board = boardOf([mySquare, mine()])
+    const state = putInZone(board, '先攻', '山札', [
+      instantiate({ id: '山札の上', card: vanilla, owner: '先攻' }),
+      instantiate({ id: '山札の下', card: vanilla, owner: '先攻' }),
+    ])
+
+    const resolved = resolveEffect(state, stacking.effect, { controller: '先攻', chooser: chooseFirst })
+
+    const [placed] = cardsIn(resolved, '先攻', 'エネルギーゾーン')
+    expect(placed?.id).toBe('山札の上')
+    expect(placed?.orientation).toBe('フリーズ')
+    expect(idsOf(cardsIn(resolved, '先攻', '山札'))).toEqual(['山札の下'])
+  })
+
+  // 総合ルール 第2部 第21章 3-1
+  it('プランゾーンにカードがあれば、それが山札の 1 番上として動く', () => {
+    const board = boardOf([mySquare, mine()])
+    const stocked = putInZone(board, '先攻', '山札', [instantiate({ id: '山札の上', card: vanilla, owner: '先攻' })])
+    const state = putInZone(stocked, '先攻', 'プランゾーン', [
+      instantiate({ id: 'プラン', card: vanilla, owner: '先攻' }),
+    ])
+
+    const resolved = resolveEffect(state, stacking.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')[0]?.id).toBe('プラン')
+    expect(idsOf(cardsIn(resolved, '先攻', '山札'))).toEqual(['山札の上'])
+  })
+
+  // 総合ルール 第1部 第1章 3
+  it('山札が空なら、要求された行動は実行されない', () => {
+    const steps: string[] = []
+    const ability = triggeredAbility('登場した時', function* () {
+      yield* placeTopOfLibrary('エネルギーゾーン', 'フリーズ')
+      steps.push('後ろの指示')
+    })
+    const state = boardOf([mySquare, mine()])
+
+    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')).toEqual([])
+    // 選べなかった場合と違い、置けなかっただけでは効果は打ち切られない。
+    expect(steps).toEqual(['後ろの指示'])
   })
 
   // 総合ルール 第1部 第1章 3
