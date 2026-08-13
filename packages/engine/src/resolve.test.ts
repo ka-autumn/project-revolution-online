@@ -12,8 +12,10 @@ import {
   destroy,
   drawCards,
   emptyDuelState,
+  guts,
   instantiate,
   placeInZone,
+  placeOnSquare,
   placeTopOfLibrary,
   putOnSquare,
   resolveEffect,
@@ -493,6 +495,77 @@ describe('効果によるゾーン間の移動', () => {
     const resolved = resolveEffect(state, stashing.effect, { controller: '先攻', chooser: chooseFirst })
 
     expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')).toEqual([])
+  })
+})
+
+/**
+ * 総合ルール 第2部 第20章 1-4-a（ADR-0006）。
+ *
+ * プレイされたユニットがスクエアに置かれることだけを「登場」と呼ぶ。効果によって置かれる
+ * のは登場ではない。この 2 つは `play.ts` の `placePlayedUnit` を通るかどうかで分かれて
+ * いて、そこが分かれたままであることをここで押さえる。
+ */
+describe('効果によってスクエアに置くことは「登場」ではない', () => {
+  /** 「登場した時」に誘発する能力を持つユニット。誘発したかどうかを見るために使う。 */
+  const appearing = defineUnit({
+    name: 'テスト・登場誘発',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [triggeredAbility('登場した時', function* () {})],
+  })
+
+  /** 「根性」を持つユニット。置かれる時の向きが置換されるかどうかを見るために使う。 */
+  const gutsy = defineUnit({
+    name: 'テスト・根性',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [guts],
+  })
+
+  /** 自分の捨札にあるカードを 1 枚選び、指定のスクエアにフリーズして置く能力。 */
+  const reviving = triggeredAbility('登場した時', function* (duel) {
+    const card = yield* choose(duel.discardPile())
+    yield* placeOnSquare(card, enemySquare, 'フリーズ')
+  })
+
+  /** 先攻の捨札にそのカードを 1 枚置いた盤面。 */
+  function withInDiscard(instance: CardInstance): DuelState {
+    return putInZone(boardOf([mySquare, mine()]), '先攻', '捨札', [instance])
+  }
+
+  it('置かれること自体は行われる', () => {
+    const state = withInDiscard(instantiate({ id: '戻るカード', card: vanilla, owner: '先攻' }))
+
+    const resolved = resolveEffect(state, reviving.effect, { controller: '先攻', chooser: chooseFirst })
+
+    const [placed] = cardsOn(resolved, enemySquare)
+    expect(placed?.id).toBe('戻るカード')
+    // 能力の支配者の支配下で置かれる。
+    expect(placed?.controller).toBe('先攻')
+    expect(cardsIn(resolved, '先攻', '捨札')).toEqual([])
+  })
+
+  it('「登場した時」に誘発する能力は誘発しない', () => {
+    const state = withInDiscard(instantiate({ id: '登場誘発持ち', card: appearing, owner: '先攻' }))
+
+    const resolved = resolveEffect(state, reviving.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(cardsOn(resolved, enemySquare)[0]?.id).toBe('登場誘発持ち')
+    expect(resolved.triggered).toEqual([])
+  })
+
+  // 総合ルール 第5部 第6章 3
+  it('「根性」は働かず、指定した向きのまま置かれる', () => {
+    const state = withInDiscard(instantiate({ id: '根性持ち', card: gutsy, owner: '先攻' }))
+
+    const resolved = resolveEffect(state, reviving.effect, { controller: '先攻', chooser: chooseFirst })
+
+    // プレイされていればリリース状態になるが、これは登場ではないので置換は起こらない。
+    expect(cardsOn(resolved, enemySquare)[0]?.orientation).toBe('フリーズ')
   })
 })
 

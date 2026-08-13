@@ -62,6 +62,10 @@ export interface DuelView {
    * 中身を見せずに動かせる。
    */
   hand(): readonly CardInZone[]
+  /** 支配者自身の捨札にあるカードすべて。 */
+  discardPile(): readonly CardInZone[]
+  /** 支配者自身のプランゾーンにあるカードすべて。 */
+  planZone(): readonly CardInZone[]
 }
 
 /**
@@ -93,6 +97,12 @@ export type Instruction =
     }
   | { readonly kind: '山札の1番上をゾーンへ置く'; readonly to: PlayerZone; readonly orientation: Orientation }
   | { readonly kind: 'カードを引く'; readonly player: Player; readonly count: number }
+  | {
+      readonly kind: 'スクエアへ置く'
+      readonly card: CardInZone | UnitOnSquare
+      readonly square: Square
+      readonly orientation: Orientation
+    }
 
 /**
  * 効果の途中経過。`T` はその手順が効果に返す値。
@@ -212,6 +222,30 @@ export function* placeInZone(
  */
 export function* drawCards(player: Player, count: number): EffectStep<void> {
   yield { kind: 'カードを引く', player, count }
+}
+
+/**
+ * カードを、能力の支配者の支配下でスクエアに置く。向きを指定する。
+ *
+ * **これは「登場」ではない。** プレイされたユニットがスクエアに置かれることだけを「登場」と
+ * 呼ぶ（総合ルール 第2部 第20章 1-4-a）。効果によって置かれるこの経路では、
+ *
+ * - 「登場した時」に誘発する能力は誘発しない
+ * - 「根性」は働かない（同 第5部 第6章 3）。ここで指定した向きがそのまま使われる
+ *
+ * どちらも、プレイの経路（`play.ts` の `placePlayedUnit`）を通らないことで分かれている。
+ *
+ * どのスクエアに置くかはカードのテキストが決める。「味方エリアに置く」であれば、エリアの
+ * 中のどのスクエアかを支配者が選ぶ。エリアとスクエアの対応は `areaOf`、置けるスクエアの
+ * 一覧は `BATTLE_SPACE` で、いずれもカードの側から使える。自分のユニットがすでにいる
+ * スクエアを避けるかどうかも、テキストの読み方としてカードの側が決める。
+ */
+export function* placeOnSquare(
+  card: CardInZone | UnitOnSquare,
+  square: Square,
+  orientation: Orientation,
+): EffectStep<void> {
+  yield { kind: 'スクエアへ置く', card, square, orientation }
 }
 
 /**
