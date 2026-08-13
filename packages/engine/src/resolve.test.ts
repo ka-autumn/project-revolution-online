@@ -3,6 +3,7 @@ import {
   cardsIn,
   cardsOn,
   choose,
+  chooseAtMostOne,
   defineUnit,
   destroy,
   emptyDuelState,
@@ -52,6 +53,27 @@ if (enterAbility === undefined || enterAbility.kind !== '誘発型能力') {
   throw new Error('テストカードに誘発型能力が定義されていない')
 }
 
+/** 「1 枚まで選び」を持つテストカード。上のカードとの違いは、選ばないことも選べる点だけ。 */
+const enterAndMaybeDestroy = defineUnit({
+  name: 'テスト・登場任意破壊',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    triggeredAbility('登場した時', function* (duel) {
+      const enemy = yield* chooseAtMostOne(duel.enemies())
+      // 選ばれなかった時に何もしないのは、カードの側が決める。
+      if (enemy !== undefined) yield* destroy(enemy)
+    }),
+  ],
+})
+
+const [maybeAbility] = enterAndMaybeDestroy.abilities
+if (maybeAbility === undefined || maybeAbility.kind !== '誘発型能力') {
+  throw new Error('テストカードに誘発型能力が定義されていない')
+}
+
 const mySquare: Square = { row: 2, column: 1 }
 const enemySquare: Square = { row: 0, column: 1 }
 const nextEnemySquare: Square = { row: 0, column: 2 }
@@ -63,6 +85,7 @@ function boardOf(...placements: readonly (readonly [Square, CardInstance])[]): D
 }
 
 const mine = () => instantiate({ id: '味方', card: enterAndDestroy, owner: '先攻' })
+const maybeMine = () => instantiate({ id: '味方', card: enterAndMaybeDestroy, owner: '先攻' })
 const theirs = (id: string) => instantiate({ id, card: vanilla, owner: '後攻' })
 
 const idsOf = (cards: readonly CardInstance[]) => cards.map((card) => card.id)
@@ -172,6 +195,70 @@ describe('実行できない行動', () => {
     const resolved = resolveEffect(state, destroyTwice.effect, { controller: '先攻', chooser: chooseFirst })
 
     expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['敵2', '敵1'])
+  })
+})
+
+describe('「1 枚まで選び」', () => {
+  const declineAll: Chooser = () => undefined
+
+  // 総合ルール 第4部 第8章 2-3
+  it('候補があっても、選ばないことを選べる', () => {
+    const state = boardOf([mySquare, maybeMine()], [enemySquare, theirs('敵')])
+
+    const resolved = resolveEffect(state, maybeAbility.effect, { controller: '先攻', chooser: declineAll })
+
+    expect(idsOf(cardsOn(resolved, enemySquare))).toEqual(['敵'])
+    expect(cardsIn(resolved, '後攻', '捨札')).toEqual([])
+  })
+
+  // 総合ルール 第4部 第8章 2-3
+  it('選んだ場合は、その対象に後ろの指示が行われる', () => {
+    const state = boardOf([mySquare, maybeMine()], [enemySquare, theirs('敵')])
+
+    const resolved = resolveEffect(state, maybeAbility.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['敵'])
+  })
+
+  /**
+   * 「1 枚選び」との違い。あちらは選ぶという行動が実行できないので効果を打ち切る
+   * （総合ルール 第1部 第1章 3、上の「敵が 1 枚もいなければ」のテスト）が、
+   * 「まで」は 0 枚を許しているので、選ばなかった場合と同じ結果になるだけである。
+   */
+  it('候補が 1 つも無くても、効果は打ち切られない', () => {
+    const steps: string[] = []
+    const ability = triggeredAbility('登場した時', function* (duel) {
+      const enemy = yield* chooseAtMostOne(duel.enemies())
+      steps.push(enemy === undefined ? '選ばなかった' : '選んだ')
+      steps.push('後ろの指示')
+    })
+    const state = boardOf([mySquare, maybeMine()])
+
+    resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(steps).toEqual(['選ばなかった', '後ろの指示'])
+  })
+
+  it('選ばないことが認められているかどうかが、選ぶ側に渡る', () => {
+    const asked: (boolean | undefined)[] = []
+    const record: Chooser = (candidates, _player, mayDecline) => {
+      asked.push(mayDecline)
+      return candidates[0]
+    }
+    const state = boardOf([mySquare, maybeMine()], [enemySquare, theirs('敵')])
+
+    resolveEffect(state, maybeAbility.effect, { controller: '先攻', chooser: record })
+
+    expect(asked).toEqual([true])
+  })
+
+  // 総合ルール 第4部 第8章 2-3。テキストの指定に合わない選択は選べない。
+  it('「1 枚選び」では、選ばないことを選べない', () => {
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+    expect(() =>
+      resolveEffect(state, enterAbility.effect, { controller: '先攻', chooser: declineAll }),
+    ).toThrowError('候補にないものが選ばれた')
   })
 })
 

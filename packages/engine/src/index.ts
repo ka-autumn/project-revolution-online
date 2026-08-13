@@ -48,7 +48,7 @@ export {
   releaseAll,
 } from './duel.js'
 export type { CardId, CardInstance, DuelResult, DuelState, TriggeredInstance } from './duel.js'
-export { choose, destroy } from './effect.js'
+export { choose, chooseAtMostOne, destroy } from './effect.js'
 export type { DuelView, Effect, EffectStep, Instruction, UnitOnSquare } from './effect.js'
 export { cardIdsOf, checkBoardInvariants } from './invariant.js'
 export type { InvariantViolation } from './invariant.js'

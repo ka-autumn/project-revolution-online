@@ -14,8 +14,13 @@ import type { Player } from './player.js'
  * 誰が選ぶかは選ばせる場面ごとに決まる（効果の中ならその能力の支配者、バンクにある能力を
  * 選ぶならその能力の支配者）ため、`player` として渡す。どちらのプレイヤーに尋ねればよいか
  * を、受け取った側が盤面から組み立て直さずに済むようにする。
+ *
+ * `mayDecline` が真の時だけ、候補があっても `undefined`（選ばない）を返してよい
+ * （効果の中の「◯枚まで選び」、`effect.ts` の `chooseAtMostOne`）。省略されている場合は
+ * 必ず候補の中から 1 つ選ぶ。コストの支払いやバンクにある能力の選択のように、選ばない
+ * ことが認められていない場面ではこの引数は渡されない。
  */
-export type Chooser = (candidates: readonly unknown[], player: Player) => unknown
+export type Chooser = (candidates: readonly unknown[], player: Player, mayDecline?: boolean) => unknown
 
 export interface EffectContext {
   /** 能力の支配者（総合ルール 第4部 第7章 1）。味方・敵はこのプレイヤーから見た呼び方になる。 */
@@ -73,9 +78,15 @@ function apply(
 ): Outcome | undefined {
   switch (instruction.kind) {
     case '選ぶ': {
-      if (instruction.candidates.length === 0) return undefined
+      // 候補が空の時、「1 枚選び」は選ぶという行動そのものが実行できないので打ち切るが、
+      // 「1 枚まで選び」は 0 枚を許しているので、選ばなかったものとして効果が続く。
+      if (instruction.candidates.length === 0) {
+        return instruction.mayDecline ? { state, value: undefined } : undefined
+      }
       // 選ぶのは能力の支配者（総合ルール 第4部 第8章 2-3）。
-      const chosen = context.chooser(instruction.candidates, context.controller)
+      const chosen = context.chooser(instruction.candidates, context.controller, instruction.mayDecline)
+      // 選ばないことが認められている場面でだけ、候補にないもの（`undefined`）を受け取れる。
+      if (instruction.mayDecline && chosen === undefined) return { state, value: undefined }
       if (!instruction.candidates.includes(chosen)) {
         throw new Error('候補にないものが選ばれた')
       }

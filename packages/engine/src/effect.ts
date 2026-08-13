@@ -46,7 +46,15 @@ export interface DuelView {
  * いった、この下にある記述用の関数を使う。
  */
 export type Instruction =
-  | { readonly kind: '選ぶ'; readonly candidates: readonly unknown[] }
+  | {
+      readonly kind: '選ぶ'
+      readonly candidates: readonly unknown[]
+      /**
+       * 候補があっても「選ばない」ことを選べるか。テキストが「◯枚まで選び」と書いている
+       * 場合に真になる（総合ルール 第4部 第8章 2-3。選択はテキストの指定に従う）。
+       */
+      readonly mayDecline: boolean
+    }
   | { readonly kind: '破壊する'; readonly target: UnitOnSquare }
 
 /**
@@ -72,10 +80,29 @@ export type Effect = (duel: DuelView) => EffectStep<void>
  * 選べなければそれらも実行できないためである。
  */
 export function* choose<T>(candidates: readonly T[]): EffectStep<T> {
-  const chosen = yield { kind: '選ぶ', candidates }
+  const chosen = yield { kind: '選ぶ', candidates, mayDecline: false }
   // 命令を解釈する側が候補の中から選んで返すことを、この関数だけが知っている。
   // 候補が空の場合は解決が打ち切られるので、ここまで戻ってこない。
   return chosen as T
+}
+
+/**
+ * 候補の中から 1 つ選ぶ。ただし選ばないことも選べる。テキストの「◯枚まで選び」にあたる。
+ * 選ばなかった場合は `undefined` を返す（総合ルール 第4部 第8章 2-3）。
+ *
+ * `choose` と違い、候補が 1 つも無くても効果はそこで終わらない。「まで」は 0 枚を許して
+ * いるので、選べなかったことと選ばなかったことが同じ結果になり、後ろに続く指示は
+ * 「選んだもの」を持たないまま進むだけだからである。選ばれなかった時に何もしないのは、
+ * 呼ぶ側が `undefined` を見て決める。
+ *
+ * 「◯」が 2 以上のテキストはまだ書けない。複数を選ぶ仕組みを持っていないためで、
+ * 必要になった時に足す（`card.ts` の属性・トリガーアイコンと同じ考え方）。
+ */
+export function* chooseAtMostOne<T>(candidates: readonly T[]): EffectStep<T | undefined> {
+  const chosen = yield { kind: '選ぶ', candidates, mayDecline: true }
+  // 選ばなかったことを `undefined` で表せるのは、候補がスクエアにいるユニットのように
+  // 必ず値を持つものだけだからである。候補そのものが `undefined` になり得る使い方は無い。
+  return chosen as T | undefined
 }
 
 /**
