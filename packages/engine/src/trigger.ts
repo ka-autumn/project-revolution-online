@@ -1,5 +1,6 @@
-import type { TriggerEvent } from './ability.js'
+import type { Occasion, TriggerEvent, TriggeredAbility } from './ability.js'
 import type { CardInstance, DuelState, TriggeredInstance } from './duel.js'
+import type { Player } from './player.js'
 
 /**
  * その誘発イベントを満たしたことで、誘発型能力を誘発させる。
@@ -27,15 +28,39 @@ export function addTriggered(state: DuelState, triggered: readonly TriggeredInst
   return { ...state, triggered: [...state.triggered, ...triggered] }
 }
 
-/** そのカードが持つ能力のうち、その誘発イベントで誘発するもの。 */
-export function triggeredBy(instance: CardInstance, event: TriggerEvent): readonly TriggeredInstance[] {
+/**
+ * そのカードが持つ能力のうち、その誘発イベントで誘発するもの。
+ *
+ * 能力が絞り込みの述語（`TriggeredAbility.when`）を持つ場合、きっかけを渡してそれが真の
+ * ものだけが誘発する。きっかけを持つ誘発イベントは限られている（`Occasion`）ので、
+ * それ以外のイベントでは `occasion` を渡さない。
+ */
+export function triggeredBy(
+  instance: CardInstance,
+  event: TriggerEvent,
+  occasion?: Occasion,
+): readonly TriggeredInstance[] {
   if (instance.card.type !== 'ユニット') return []
 
   return instance.card.abilities.flatMap((ability) =>
-    ability.kind === '誘発型能力' && ability.event === event
+    ability.kind === '誘発型能力' && ability.event === event && triggers(ability, occasion, instance.controller)
       ? [{ ability, source: instance.id, controller: instance.controller }]
       : [],
   )
+}
+
+/**
+ * 絞り込みの述語を満たすか。述語を持たない能力は、誘発イベントを満たすたびに誘発する。
+ *
+ * きっかけを持たない誘発イベントに述語が付いていた場合は、確かめようがないので投げる。
+ * カードの書き間違いであって、盤面から起こり得る状態ではない。
+ */
+function triggers(ability: TriggeredAbility, occasion: Occasion | undefined, controller: Player): boolean {
+  if (ability.when === undefined) return true
+  if (occasion === undefined) {
+    throw new Error('きっかけを持たない誘発イベントに絞り込みが付いている')
+  }
+  return ability.when(occasion, controller)
 }
 
 /** スクエアにあるカードのうち、`matches` を満たすものが持つ、その誘発イベントで誘発する能力。 */

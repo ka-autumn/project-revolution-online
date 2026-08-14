@@ -23,6 +23,7 @@ import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
 import { checkIntrusion, hasTrapRight } from './trap.js'
+import type { PlayerZone } from './zone.js'
 
 /**
  * プレイするカードの宣言（総合ルール 第4部 第6章 1-1）。
@@ -82,7 +83,10 @@ export function playCard(state: DuelState, declaration: PlayDeclaration, chooser
     const paid = payUseCost(state, player, card, chooser)
     if (typeof paid === 'string') return cannot(paid)
 
-    return done(grantPriorityToInactive(placePlayedUnit(paid, instance.id, card, square, player)))
+    // プレイされたゾーンは、登場した後には分からなくなる（プランゾーンは無くなる、
+    // 総合ルール 第2部 第21章 3-3）。ここで捕まえて誘発の判定まで運ぶ。
+    const from: PlayerZone = inHand === undefined ? 'プランゾーン' : '手札'
+    return done(grantPriorityToInactive(placePlayedUnit(paid, instance.id, card, square, player, from)))
   }
 
   const paid = payUseCost(state, player, card, chooser)
@@ -192,10 +196,17 @@ function checkSquare(state: DuelState, player: Player, square: Square): ActionVi
  * 「根性」が効果によって置かれる時には働かない（同 第5部 第6章 3）のも、ここを通らない
  * ことがそのまま境目になっている。
  */
-function placePlayedUnit(state: DuelState, id: CardId, card: UnitCard, square: Square, player: Player): DuelState {
+function placePlayedUnit(
+  state: DuelState,
+  id: CardId,
+  card: UnitCard,
+  square: Square,
+  player: Player,
+  from: PlayerZone,
+): DuelState {
   const orientation = hasGuts(card) ? 'リリース' : 'フリーズ'
   const moved = moveToSquare(state, id, square, { controller: player, orientation })
-  const placed = triggerAppearance(moved, id)
+  const placed = triggerAppearance(moved, id, { kind: '登場', square, from })
   // 置かれたユニットが相手のトラップのトリガーアイコンのスクエアに置かれたなら「侵入」に
   // なり、そのトラップの支配者が発動する権利を得る（総合ルール 第2部 第20章 3-6）。
   const invaded = checkIntrusion(placed, player, square)

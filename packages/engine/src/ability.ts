@@ -1,7 +1,10 @@
+import type { Square } from './board.js'
 import { damagePlayer } from './effect.js'
 import type { Effect } from './effect.js'
+import type { Player } from './player.js'
 import { PHASES } from './turn.js'
 import type { Phase } from './turn.js'
+import type { PlayerZone } from './zone.js'
 
 /**
  * そのフェイズが始まったこと。
@@ -67,6 +70,55 @@ export interface TriggeredAbility {
   readonly kind: '誘発型能力'
   readonly event: TriggerEvent
   readonly effect: Effect
+  /**
+   * 誘発するかどうかの絞り込み。省略すれば、誘発イベントを満たすたびに誘発する。
+   *
+   * 「味方エリアに登場した時」「プランゾーンから登場した時」のように、誘発イベントに
+   * 条件が付いたテキストがある。これを `TRIGGER_EVENTS` の値として足していく形は採らない。
+   * 絞り込みの軸（エリア・元のゾーン・色・レベル・属性…）は組み合わせで増えるため、
+   * 値が破裂するからである。かわりに、きっかけを見て答えるこの述語で表す。
+   *
+   * **ここに書かれるのはテキストの読み方なので、カードの側にあるのが正しい。** engine が
+   * 読み方を列挙して持つと、カードのためのルールが engine に漏れる（ADR-0002）。
+   *
+   * 「～した時、～ならば」と書かれた条件付誘発型能力（総合ルール 第4部 第7章 8）とは別で
+   * ある。あちらは誘発する時と解決する時の両方で条件をチェックし、解決時に満たされて
+   * いなければ無効化されるが、これは**誘発イベントそのものの一部**として誘発する時に
+   * 1 度だけ判定する。解決時に「プランゾーンから登場した」を確かめようとしても、その
+   * 時点でプランゾーンは無くなっている（同 第2部 第21章 3-3）ので成立しない。
+   */
+  readonly when?: TriggerCondition
+}
+
+/**
+ * きっかけを見て、その能力が誘発するかを答える。
+ *
+ * 支配者を受け取るのは、エリアやラインの呼び名が見るプレイヤーによって入れ替わる
+ * （総合ルール 第2部 第22章 4・6）ためである。「味方エリアに」は支配者から見た呼び方に
+ * なる（同 6-1）。
+ */
+export type TriggerCondition = (occasion: Occasion, controller: Player) => boolean
+
+/**
+ * 誘発のきっかけ。誘発イベントが満たされた**その瞬間の事情**を写したもの。
+ *
+ * 後から盤面を見ても復元できないことを持つ。プランゾーンにあったカードが登場すると
+ * そのプランゾーンは無くなる（総合ルール 第2部 第21章 3-3）ので、「プランゾーンから
+ * 登場した」は出来事の瞬間にしか分からない。
+ *
+ * 誘発イベントごとに形が決まる。きっかけを持つのはいま「登場した時」だけで、他のイベントは
+ * 誘発したこと自体以外に見るものが無い。必要になった時に足す（`card.ts` の属性・トリガー
+ * アイコンと同じ考え方）。
+ */
+export type Occasion = AppearanceOccasion
+
+/** 「登場した時」のきっかけ（総合ルール 第2部 第20章 1-4-a）。 */
+export interface AppearanceOccasion {
+  readonly kind: '登場'
+  /** 置かれたスクエア。エリアの判定は `areaOf` で行う。 */
+  readonly square: Square
+  /** プレイされたゾーン。手札かプランゾーンのいずれかである（同 第4部 第6章 1）。 */
+  readonly from: PlayerZone
 }
 
 /**
@@ -167,9 +219,18 @@ export interface HopeAbility {
  */
 export type Ability = TriggeredAbility | DreamAbility | PepAbility | TrustAbility | GutsAbility | HopeAbility
 
-/** 誘発型能力を 1 つ書く。 */
-export function triggeredAbility(event: TriggerEvent, effect: Effect): TriggeredAbility {
-  return { kind: '誘発型能力', event, effect }
+/**
+ * 誘発型能力を 1 つ書く。
+ *
+ * `when` を渡すと、誘発イベントを満たしたうえでそれが真の時だけ誘発する。渡せるのは
+ * きっかけを持つ誘発イベント（いまは「登場した時」だけ）に対してである。
+ */
+export function triggeredAbility(
+  event: TriggerEvent,
+  effect: Effect,
+  when?: TriggerCondition,
+): TriggeredAbility {
+  return when === undefined ? { kind: '誘発型能力', event, effect } : { kind: '誘発型能力', event, effect, when }
 }
 
 /** 「夢」。何回書いても同じものなので 1 つを使い回す。 */

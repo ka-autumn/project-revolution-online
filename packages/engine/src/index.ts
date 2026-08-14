@@ -1,10 +1,13 @@
 export { TRIGGER_EVENTS, dream, guts, hope, pep, spirit, triggeredAbility, trust } from './ability.js'
 export type {
   Ability,
+  AppearanceOccasion,
   DreamAbility,
   GutsAbility,
   HopeAbility,
+  Occasion,
   PepAbility,
+  TriggerCondition,
   TriggeredAbility,
   TriggerEvent,
   TrustAbility,

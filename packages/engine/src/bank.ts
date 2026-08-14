@@ -1,4 +1,4 @@
-import type { TriggerEvent } from './ability.js'
+import type { AppearanceOccasion, Occasion, TriggerEvent } from './ability.js'
 import { findOnSquares } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import { resolveEffect } from './resolve.js'
@@ -13,11 +13,11 @@ import { addTriggered, triggeredBy } from './trigger.js'
  * イベントを満たすスクエアの全ユニットを見てしまうので、対象を 1 枚に絞れるようここを
  * 別に持つ。
  */
-function triggerSelf(state: DuelState, id: CardId, event: TriggerEvent): DuelState {
+function triggerSelf(state: DuelState, id: CardId, event: TriggerEvent, occasion?: Occasion): DuelState {
   const instance = findOnSquares(state, id)
   if (instance === undefined) return state
 
-  return addTriggered(state, triggeredBy(instance, event))
+  return addTriggered(state, triggeredBy(instance, event, occasion))
 }
 
 /**
@@ -27,9 +27,13 @@ function triggerSelf(state: DuelState, id: CardId, event: TriggerEvent): DuelSta
  * 呼ぶのはプレイされたユニットを置いた側（`play.ts`）だけである。効果によってスクエアに
  * 置かれる場合はここを通らない。それは「登場」ではないため誘発しない（同 1-4-a、ADR-0003
  * の元になる CONTEXT.md「登場」）。
+ *
+ * きっかけ（置かれたスクエアとプレイされたゾーン）をここで受け取る。**プレイされたゾーンは
+ * この瞬間にしか分からない。** プランゾーンにあったカードが登場すると、そのプランゾーンは
+ * 無くなる（同 第2部 第21章 3-3）ためである。
  */
-export function triggerAppearance(state: DuelState, id: CardId): DuelState {
-  return triggerSelf(state, id, '登場した時')
+export function triggerAppearance(state: DuelState, id: CardId, occasion: AppearanceOccasion): DuelState {
+  return triggerSelf(state, id, '登場した時', occasion)
 }
 
 /**
