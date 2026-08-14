@@ -65,6 +65,7 @@ export {
   choose,
   chooseAtMostOne,
   damagePlayer,
+  damageUnit,
   destroy,
   drawCards,
   flipPlan,

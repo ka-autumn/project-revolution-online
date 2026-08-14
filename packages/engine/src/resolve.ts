@@ -4,6 +4,7 @@ import { discardFromSquares } from './discard.js'
 import {
   cardsIn,
   damagePlayer,
+  dealDamage,
   draw,
   faceDownPlan,
   locateOnSquares,
@@ -117,6 +118,16 @@ function apply(
       // （総合ルール 第4部 第8章 4）ため、次に優先権が発生する時に `settleBeforePriority`
       // がまとめて処理する。
       return { state: damagePlayer(state, instruction.player, instruction.amount), value: undefined }
+    }
+    case 'ユニットにダメージを与える': {
+      if (!shown.has(instruction.target.id)) {
+        throw new Error('効果に見せていないカードが対象にされた')
+      }
+      // ＢＰと同じかそれ以上のダメージを受けたユニットが捨札に置かれること（総合ルール
+      // 第4部 第14章 4-6）もルールエフェクトの仕事なので、ここでは始めない。すでに
+      // スクエアを離れていればこの行動は実行されない（同 第1部 第1章 3）。`dealDamage` が
+      // スクエアにないカードをそのまま見送るので、ここでは何も足さない。
+      return { state: dealDamage(state, instruction.target.id, instruction.amount), value: undefined }
     }
     case 'ゾーンへ置く': {
       if (!shown.has(instruction.card.id)) {
