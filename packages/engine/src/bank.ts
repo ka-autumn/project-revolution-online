@@ -1,5 +1,5 @@
 import type { AppearanceOccasion, Occasion, TriggerEvent } from './ability.js'
-import { findOnSquares } from './duel.js'
+import { locateOnSquares } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
@@ -14,10 +14,10 @@ import { addTriggered, triggeredBy } from './trigger.js'
  * 別に持つ。
  */
 function triggerSelf(state: DuelState, id: CardId, event: TriggerEvent, occasion?: Occasion): DuelState {
-  const instance = findOnSquares(state, id)
-  if (instance === undefined) return state
+  const located = locateOnSquares(state, id)
+  if (located === undefined) return state
 
-  return addTriggered(state, triggeredBy(instance, event, occasion))
+  return addTriggered(state, triggeredBy(located, event, occasion))
 }
 
 /**
@@ -107,6 +107,7 @@ export function resolveFromBank(state: DuelState, chooser: Chooser): DuelState {
   const resolved = resolveEffect(state, chosen.ability.effect, {
     controller: chosen.controller,
     chooser,
+    self: chosen.self,
   })
   return { ...resolved, bank: resolved.bank.filter((banked) => banked !== chosen) }
 }

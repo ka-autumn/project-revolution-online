@@ -20,9 +20,11 @@ import {
   placeInZone,
   placeOnSquare,
   placeTopOfLibrary,
+  indexOfSquare,
   putOnSquare,
   release,
   resolveEffect,
+  squaresBeside,
   triggeredAbility,
 } from './index.js'
 import type { CardInZone, CardInstance, Chooser, DuelState, Square, UnitOnSquare } from './index.js'
@@ -450,6 +452,100 @@ describe('ユニットへのダメージ', () => {
     expect(() =>
       resolveEffect(state, forge.effect, { controller: '先攻', chooser: chooseFirst }),
     ).toThrowError('効果に見せていないカードが対象にされた')
+  })
+})
+
+// 総合ルール 第4部 第8章 2-5（ADR-0006）
+describe('効果から見た発生元', () => {
+  /** 発生元とその隣にいる敵を記録する能力。「隣にいる敵」を書けることを見る。 */
+  function watching(record: { self?: Square; beside: string[] }) {
+    return triggeredAbility('登場した時', function* (duel) {
+      const me = duel.self()
+      if (me === undefined) return
+      record.self = me.square
+      const beside = squaresBeside(me.square).map(indexOfSquare)
+      record.beside.push(...duel.enemies().filter((enemy) => beside.includes(indexOfSquare(enemy.square))).map((enemy) => enemy.id))
+    })
+  }
+
+  it('発生元の位置が分かり、隣にいる敵を絞り込める', () => {
+    const record: { self?: Square; beside: string[] } = { beside: [] }
+    const state = boardOf(
+      [enemySquare, mine()],
+      [{ row: 0, column: 0 }, theirs('左の敵')],
+      [{ row: 0, column: 2 }, theirs('右の敵')],
+      [{ row: 2, column: 0 }, theirs('遠い敵')],
+    )
+
+    resolveEffect(state, watching(record).effect, {
+      controller: '先攻',
+      chooser: chooseFirst,
+      self: { id: '味方', square: enemySquare, card: enterAndDestroy, controller: '先攻' },
+    })
+
+    expect(record.self).toEqual(enemySquare)
+    expect(record.beside).toEqual(['左の敵', '右の敵'])
+  })
+
+  /**
+   * 解決する時の位置を返す。誘発してから「スクエアからスクエア」の移動をしていれば、
+   * 移動した後の位置になる（総合ルール 第4部 第8章 2-5 が直前の情報を使うと定めているのは
+   * ゾーン移動をした場合だけである）。
+   */
+  it('誘発した時から動いていれば、解決する時の位置を返す', () => {
+    const record: { self?: Square; beside: string[] } = { beside: [] }
+    // 盤面では中央にいるが、誘発した時点の写しは別のスクエアを指している。
+    const state = boardOf([{ row: 1, column: 1 }, mine()])
+
+    resolveEffect(state, watching(record).effect, {
+      controller: '先攻',
+      chooser: chooseFirst,
+      self: { id: '味方', square: enemySquare, card: enterAndDestroy, controller: '先攻' },
+    })
+
+    expect(record.self).toEqual({ row: 1, column: 1 })
+  })
+
+  // 総合ルール 第4部 第8章 2-5。ゾーン移動をしていた場合は移動する直前の情報を使用する。
+  it('発生元がスクエアを離れていれば、誘発した時点の位置を返す', () => {
+    const record: { self?: Square; beside: string[] } = { beside: [] }
+    // 発生元はどのスクエアにもいない。
+    const state = boardOf([{ row: 0, column: 0 }, theirs('左の敵')])
+
+    resolveEffect(state, watching(record).effect, {
+      controller: '先攻',
+      chooser: chooseFirst,
+      self: { id: '味方', square: enemySquare, card: enterAndDestroy, controller: '先攻' },
+    })
+
+    expect(record.self).toEqual(enemySquare)
+    expect(record.beside).toEqual(['左の敵'])
+  })
+
+  it('発生元がそもそも無ければ undefined を返す', () => {
+    const record: { self?: Square; beside: string[] } = { beside: [] }
+    const state = boardOf([mySquare, mine()])
+
+    resolveEffect(state, watching(record).effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(record.self).toBeUndefined()
+  })
+
+  // ADR-0002: 効果が対象にできるのは、engine が見せたカードだけである
+  it('発生元は見せたカードなので、対象にできる', () => {
+    const destroySelf = triggeredAbility('登場した時', function* (duel) {
+      const me = duel.self()
+      if (me !== undefined) yield* destroy(me)
+    })
+    const state = boardOf([mySquare, mine()])
+
+    const resolved = resolveEffect(state, destroySelf.effect, {
+      controller: '先攻',
+      chooser: chooseFirst,
+      self: { id: '味方', square: mySquare, card: enterAndDestroy, controller: '先攻' },
+    })
+
+    expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['味方'])
   })
 })
 

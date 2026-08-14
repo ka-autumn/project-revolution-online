@@ -383,7 +383,14 @@ describe('カードをプレイできる時', () => {
     const state = readyToPlay([unit()], twoEnergies())
     const banked: DuelState = {
       ...state,
-      bank: [{ ability: { kind: '誘発型能力', event: 'ターンの終わり', effect: function* () {} }, source: 'x', controller: '先攻' }],
+      bank: [
+        {
+          ability: { kind: '誘発型能力', event: 'ターンの終わり', effect: function* () {} },
+          source: 'x',
+          controller: '先攻',
+          self: { id: 'x', square: homeSquare, card: redUnit, controller: '先攻' },
+        },
+      ],
     }
 
     expect(violationOf(play(banked, declaration))).toBe('行える時ではない')
