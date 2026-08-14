@@ -6,6 +6,7 @@ import type {
   PepAbility,
   GutsAbility,
   HopeAbility,
+  PlanReplacingAbility,
   TrustAbility,
 } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
@@ -300,6 +301,18 @@ export function bpModifyingAbilitiesOf(card: Card): readonly BpModifyingAbility[
 export function attributeAddingAbilitiesOf(card: Card): readonly AttributeAddingAbility[] {
   return card.abilities.filter(
     (ability): ability is AttributeAddingAbility => ability.kind === '常在型能力' && 'attributesAdded' in ability,
+  )
+}
+
+/**
+ * そのカードが持つ、プランによるめくりを置き換える常在型能力（総合ルール 第4部 第13章）。
+ *
+ * 同じカードが 2 つ以上持つことはいまのところ無いが、能力の並びから種類で引く形は他と
+ * 同じにしておく。
+ */
+export function planReplacingAbilitiesOf(card: Card): readonly PlanReplacingAbility[] {
+  return card.abilities.filter(
+    (ability): ability is PlanReplacingAbility => ability.kind === '常在型能力' && 'turnsUpUntil' in ability,
   )
 }
 
