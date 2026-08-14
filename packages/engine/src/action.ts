@@ -1,6 +1,7 @@
+import type { PlanReplacingAbility } from './ability.js'
 import { areaOf } from './board.js'
 import type { Area } from './board.js'
-import { spOf } from './card.js'
+import { planReplacingAbilitiesOf, spOf } from './card.js'
 import { payPlanCost } from './cost.js'
 import {
   cardsIn,
@@ -16,6 +17,7 @@ import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import type { Chooser } from './resolve.js'
+import { unitsOnSquares } from './view.js'
 
 /**
  * 行動が行えなかった理由。
@@ -105,6 +107,8 @@ export function placeEnergy(state: DuelState, card: CardId): ActionOutcome {
  *
  * 山札が空なら表返すカードが無い。実行できない行動は実行されない（同 第1部 第1章 3）
  * だけで、コストはすでに支払われている。
+ *
+ * 表返すことは置換効果によって置き換えられることがある（同 第4部 第13章、`turnUpForPlan`）。
  */
 export function plan(state: DuelState, chooser: Chooser): ActionOutcome {
   if (!activePlayerMayAct(state, 'メインフェイズ')) return cannot('行える時ではない')
@@ -113,7 +117,68 @@ export function plan(state: DuelState, chooser: Chooser): ActionOutcome {
   const paid = payPlanCost(state, player, chooser)
   if (paid === undefined) return cannot('コストを支払えない')
 
-  return done(grantPriorityToInactive(turnUpTopOfLibrary(paid, player)))
+  return done(grantPriorityToInactive(turnUpForPlan(paid, player, chooser)))
+}
+
+/**
+ * プランの効果として山札の 1 番上を表返す。置換効果があれば、それに置き換える
+ * （総合ルール 第4部 第13章 2）。
+ *
+ * 置き換えるかどうかは、影響を受けるプレイヤー（プランしたプレイヤー）が選ぶ。いま書ける
+ * テキストが「かわりに〜してよい」の形だからである。
+ *
+ * **複数の置換効果が 1 つの置換イベントを置き換えようとする場合の順序（同 7-1・7-2）は
+ * 扱わない。** 候補として並べて 1 つまで選ばせ、選ばれたものだけを適用する。1 つ置き換え
+ * られた時点で元の置換イベントは起きたことにならない（同 4）ので、残りが何を置き換える
+ * ことになるのかは、そういうテキストが 2 枚以上書けるようになってから決める。
+ *
+ * 置き換えた後は、条件を満たすカードが表返るまで繰り返す。山札が尽きればそこで止まる
+ * （同 第1部 第1章 3）。プランゾーンにあるカードは山札の 1 番上でもある（同 第2部
+ * 第21章 3-1）ので、表返すたびに山札は 1 枚減り、必ず終わる。
+ */
+function turnUpForPlan(state: DuelState, player: Player, chooser: Chooser): DuelState {
+  const replacement = chosenPlanReplacement(state, player, chooser)
+  if (replacement === undefined) return turnUpTopOfLibrary(state, player)
+
+  let current = state
+  for (;;) {
+    current = turnUpTopOfLibrary(current, player)
+
+    const [top] = cardsIn(current, player, 'プランゾーン')
+    if (top === undefined || replacement.turnsUpUntil(top.card)) return current
+    // 次に表返すカードが無ければ、そこで止める。1 度でも多く表返そうとすると、表返せない
+    // のにプランゾーンのカードだけが捨札に置かれることになる。
+    //
+    // ここで見るのは山札そのものである。`topOfLibrary` はプランゾーンにあるカードを
+    // 山札の 1 番上として返す（総合ルール 第2部 第21章 3-1）ので、いま表返したばかりの
+    // カードを数えてしまう。
+    if (cardsIn(current, player, '山札').length === 0) return current
+  }
+}
+
+/**
+ * そのプレイヤーが適用することを選んだ、プランのめくりの置換効果。選ばなければ `undefined`。
+ *
+ * 置換効果を生み出しているのは、そのプレイヤーが支配するスクエアにあるユニットの常在型能力
+ * である（総合ルール 第4部 第4章 1）。テキストが「あなたがプランをして」と書いているので、
+ * 支配者自身がプランした時だけ働く。
+ */
+function chosenPlanReplacement(
+  state: DuelState,
+  player: Player,
+  chooser: Chooser,
+): PlanReplacingAbility | undefined {
+  const candidates = unitsOnSquares(state)
+    .filter((unit) => unit.controller === player)
+    .flatMap((unit) => planReplacingAbilitiesOf(unit.card))
+  if (candidates.length === 0) return undefined
+
+  // 「かわりに〜してよい」なので、選ばないことを選べる。
+  const chosen = chooser(candidates, player, true)
+  if (chosen === undefined) return undefined
+  if (!candidates.includes(chosen as PlanReplacingAbility)) throw new Error('候補にない置換効果が選ばれた')
+
+  return chosen as PlanReplacingAbility
 }
 
 /**

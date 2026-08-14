@@ -13,6 +13,7 @@ import {
   passPriority,
   placeEnergy,
   plan,
+  planReplacing,
   putOnSquare,
   smash,
 } from './index.js'
@@ -191,6 +192,103 @@ describe('プランする', () => {
     const state = putInZone(phaseReadyToAct('エネルギーフェイズ'), '先攻', 'エネルギーゾーン', [card('エネ')])
 
     expect(violationOf(plan(state, chooseFirst))).toBe('行える時ではない')
+  })
+})
+
+// 総合ルール 第4部 第13章（ADR-0006）
+describe('プランによるめくりの置換', () => {
+  /** 表返すのを止めるカード。属性で見分ける。 */
+  const marked = defineUnit({
+    name: 'テスト・目印つき',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    attributes: ['目印'],
+  })
+
+  /** 「かわりに『目印』を持つカードが出るまでめくってよい」という置換効果を持つユニット。 */
+  const replacing = defineUnit({
+    name: 'テスト・プランの置換',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [planReplacing((each) => each.attributes.includes('目印'))],
+  })
+
+  /** 置換効果を適用することを選ぶ。コストの支払いでは最初の候補を選ぶ。 */
+  const replace: Chooser = (candidates) => candidates[0]
+
+  /** 置換効果を適用しないことを選ぶ。「〜してよい」なので選ばないことを選べる。 */
+  const doNotReplace: Chooser = (candidates, _player, mayDecline) =>
+    mayDecline === true ? undefined : candidates[0]
+
+  /**
+   * 山札を積み、エネルギーを 1 枚置いた、メインフェイズの盤面。
+   *
+   * `owner` を渡すと、置換効果を持つユニットをそのプレイヤーが支配してスクエアに置く。
+   */
+  function beforePlanning(library: readonly CardInstance[], owner?: '先攻' | '後攻'): DuelState {
+    const base = phaseReadyToAct('メインフェイズ')
+    const placed =
+      owner === undefined
+        ? base
+        : putOnSquare(base, { row: 0, column: 1 }, instantiate({ id: '置換するユニット', card: replacing, owner }))
+    const stocked = putInZone(placed, '先攻', '山札', library)
+    return putInZone(stocked, '先攻', 'エネルギーゾーン', [card('エネ')])
+  }
+
+  const markedCard = (id: string) => instantiate({ id, card: marked, owner: '先攻' })
+
+  it('置き換えると、条件を満たすカードが表返るまで繰り返す', () => {
+    const state = beforePlanning([card('1 枚目'), card('2 枚目'), markedCard('目印つき'), card('4 枚目')], '先攻')
+
+    const after = stateOf(plan(state, replace))
+
+    expect(idsOf(cardsIn(after, '先攻', 'プランゾーン'))).toEqual(['目印つき'])
+    // 途中で表返ったカードは、次を表返す時に捨札に置かれる（総合ルール 第3部 第8章 2-3）。
+    // 捨札の並びは後に置かれたものが先頭になる（同 第2部 第21章 5-1）。
+    expect(idsOf(cardsIn(after, '先攻', '捨札'))).toEqual(['2 枚目', '1 枚目'])
+    expect(idsOf(cardsIn(after, '先攻', '山札'))).toEqual(['4 枚目'])
+  })
+
+  // 「かわりに〜してよい」なので、置き換えないことを選べる。
+  it('置き換えなければ、1 枚だけ表返す', () => {
+    const state = beforePlanning([card('1 枚目'), markedCard('目印つき')], '先攻')
+
+    const after = stateOf(plan(state, doNotReplace))
+
+    expect(idsOf(cardsIn(after, '先攻', 'プランゾーン'))).toEqual(['1 枚目'])
+    expect(cardsIn(after, '先攻', '捨札')).toEqual([])
+  })
+
+  // 実行できない行動は実行されない（総合ルール 第1部 第1章 3）。
+  it('条件を満たすカードが無ければ、山札が尽きるまで表返して止まる', () => {
+    const state = beforePlanning([card('1 枚目'), card('2 枚目')], '先攻')
+
+    const after = stateOf(plan(state, replace))
+
+    expect(cardsIn(after, '先攻', '山札')).toEqual([])
+    expect(idsOf(cardsIn(after, '先攻', 'プランゾーン'))).toEqual(['2 枚目'])
+    expect(idsOf(cardsIn(after, '先攻', '捨札'))).toEqual(['1 枚目'])
+  })
+
+  // テキストは「あなたがプランをして」なので、支配者自身がプランした時だけ働く。
+  it('相手が支配する置換効果は働かない', () => {
+    const state = beforePlanning([card('1 枚目'), markedCard('目印つき')], '後攻')
+
+    const after = stateOf(plan(state, replace))
+
+    expect(idsOf(cardsIn(after, '先攻', 'プランゾーン'))).toEqual(['1 枚目'])
+  })
+
+  it('置換効果がスクエアに無ければ、1 枚だけ表返す', () => {
+    const state = beforePlanning([card('1 枚目'), markedCard('目印つき')])
+
+    const after = stateOf(plan(state, replace))
+
+    expect(idsOf(cardsIn(after, '先攻', 'プランゾーン'))).toEqual(['1 枚目'])
   })
 })
 

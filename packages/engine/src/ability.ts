@@ -1,5 +1,6 @@
 import { indexOfSquare, squaresAdjacent } from './board.js'
 import type { Square } from './board.js'
+import type { Card } from './card.js'
 import { bpPlus, damagePlayer } from './effect.js'
 import type { AttributeAddition, BpModifier, DuelView, Effect, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
@@ -298,13 +299,45 @@ export interface AttributeAddingAbility {
 }
 
 /**
+ * プランによるめくりを置き換える置換効果を生み出す常在型能力
+ * （総合ルール 第4部 第13章、第3部 第8章 2-3）。
+ *
+ * 置換効果を生み出す能力のテキストは「〜する時、かわりに〜」という語句を含む（同
+ * 第13章 1）。「〜する時」にあたる置換イベントが、プランによって山札の 1 番上を表返すこと
+ * である。置換効果は置換イベントが起きるまで待ち、それを「かわりに」の後に指定されている
+ * 別のイベントに置き換える（同 2）。
+ *
+ * **置換イベントごとに型を分ける。** 誘発イベントに絞り込みを付けた時（`TriggerCondition`）
+ * と同じ理由で、置き換えられるものを 1 つの型にまとめると、置き換えた後に何をするかを表す
+ * 語彙を engine が持つことになり、カードのためのルールが engine に漏れる（ADR-0002）。
+ * 置き換えられる出来事が増えるたびに、その出来事に合った形の型を足す。
+ *
+ * 常在型能力が生み出した置換効果は、その能力が存在する限り、置換イベントが起きるたびに
+ * 何度でも置換する（同 3）。
+ */
+export interface PlanReplacingAbility {
+  readonly kind: '常在型能力'
+  /**
+   * 「かわりに〜が出るまでめくる」の、めくるのをやめるカード。
+   *
+   * **繰り返すこと自体は engine の持ち分で、何が出たら止まるかがカードの読み方である。**
+   * 山札が尽きればそこで止まる。実行できない行動は実行されない（総合ルール 第1部
+   * 第1章 3）。
+   *
+   * 置き換えるかどうかは支配者が選ぶ。いま書けるテキストが「〜してよい」の形だからで、
+   * 選ばせるかどうかを能力の側が持ってはいない。選べないテキストが出てきた時に足す。
+   */
+  readonly turnsUpUntil: (card: Card) => boolean
+}
+
+/**
  * テキストによって決められた、カードが行うことまたは行えること
  * （総合ルール 第4部 第1章 1）。
  *
  * 能力には起動型・誘発型・常在型の 3 つがある（同 2）が、起動型はコストを持つ能力を
  * 書けるようになってから足す。常在型は「夢」「元気」「信頼」「根性」と、継続効果を
- * 生み出すもの（ＢＰの修整・属性の追加）がある。「希望」はそのどれでもない特別な能力で
- * ある（同 第5部 第3章 1）。
+ * 生み出すもの（ＢＰの修整・属性の追加）、置換効果を生み出すものがある。「希望」はその
+ * どれでもない特別な能力である（同 第5部 第3章 1）。
  */
 export type Ability =
   | TriggeredAbility
@@ -315,6 +348,7 @@ export type Ability =
   | HopeAbility
   | BpModifyingAbility
   | AttributeAddingAbility
+  | PlanReplacingAbility
 
 /**
  * 誘発型能力を 1 つ書く。
@@ -370,6 +404,14 @@ export function hope(effect: Effect): HopeAbility {
 /** ＢＰを修整する常在型能力を 1 つ書く。修整の内容はカードごとに違うので受け取る。 */
 export function bpModifying(bpModifiers: (duel: DuelView) => readonly BpModifier[]): BpModifyingAbility {
   return { kind: '常在型能力', bpModifiers }
+}
+
+/**
+ * プランによるめくりを「〜が出るまでめくる」に置き換える常在型能力を 1 つ書く。
+ * 止まる条件はカードごとに違うので受け取る。
+ */
+export function planReplacing(turnsUpUntil: (card: Card) => boolean): PlanReplacingAbility {
+  return { kind: '常在型能力', turnsUpUntil }
 }
 
 /** 属性を加える常在型能力を 1 つ書く。加える内容はカードごとに違うので受け取る。 */

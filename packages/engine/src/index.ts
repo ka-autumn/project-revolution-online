@@ -7,6 +7,7 @@ export {
   guts,
   hope,
   pep,
+  planReplacing,
   spirit,
   triggeredAbility,
   trust,
@@ -21,6 +22,7 @@ export type {
   HopeAbility,
   IntrusionOccasion,
   PepAbility,
+  PlanReplacingAbility,
   TriggerCondition,
   TriggerOccasion,
   TriggeredAbility,
@@ -58,6 +60,7 @@ export {
   hasTrust,
   hopeOf,
   isStrategy,
+  planReplacingAbilitiesOf,
   spOf,
 } from './card.js'
 export type { Attribute, Card, CardType, Color, StrategyCard, TrapCard, UnitCard } from './card.js'
