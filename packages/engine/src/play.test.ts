@@ -633,11 +633,17 @@ describe('発動したトラップの効果に渡されるきっかけ', () => {
     },
   })
 
-  /** 侵入してきた敵そのものを破壊する、レベル 1 の赤いトラップ。 */
+  /**
+   * 侵入してきた敵そのものを破壊する、レベル 1 の赤いトラップ。
+   *
+   * トリガーアイコンは後攻が支配することを想定した向きで持つ。盤面に固定すると
+   * `homeSquare` になる（`board.ts` の `squareFromView`）。
+   */
   const invaderTrap = defineTrap({
     name: 'テスト・侵入者トラップ',
     level: 1,
     colors: ['赤'],
+    triggerIcon: [{ row: 2, column: 1 }],
     effect: function* (_duel, occasion) {
       yield* destroy(occasion.invader)
     },
@@ -694,6 +700,32 @@ describe('発動したトラップの効果に渡されるきっかけ', () => {
 
     expect(cardsOn(after, besideHome)).toEqual([])
     expect(idsOf(cardsOn(after, alsoBesideHome))).toEqual(['別の敵'])
+  })
+
+  // ここまでは発動条件が満たされた状態を直接組み立てているので、登場から発動までを通して
+  // 1 本確かめる。侵入させた側（`placePlayedUnit`）が写したユニットが、そのまま効果に
+  // 渡ることを見る。
+  it('登場によって侵入した敵を、発動したトラップの効果が対象にできる', () => {
+    const trap = instantiate({ id: 'トラップ', card: invaderTrap, owner: '後攻' })
+    const state = putInZone(
+      putInZone(
+        putInZone(putInZone(mainPhase(), '後攻', 'トラップゾーン', [trap]), '先攻', '手札', [
+          instantiate({ id: '侵入するユニット', card: redUnit, owner: '先攻' }),
+        ]),
+        '先攻',
+        'エネルギーゾーン',
+        twoEnergies(),
+      ),
+      '後攻',
+      'エネルギーゾーン',
+      [{ ...energy('後攻エネ', '赤'), owner: '後攻', controller: '後攻' }],
+    )
+
+    const played = stateOf(play(state, { card: '侵入するユニット', square: homeSquare }))
+    const after = stateOf(activateTrap(played, 'トラップ', chooseFirst))
+
+    expect(idsOf(cardsOn(played, homeSquare))).toEqual(['侵入するユニット'])
+    expect(cardsOn(after, homeSquare)).toEqual([])
   })
 
   // 総合ルール 第4部 第8章 2-5 は誘発型能力についての規定で、トラップの発動（同 第2部
