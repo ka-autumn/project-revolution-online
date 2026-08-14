@@ -107,7 +107,7 @@ export function applyLegalAction(state: DuelState, action: LegalAction, chooser:
     case 'トラップを発動する':
       return outcomeState(activateTrap(state, action.card, chooser))
     case 'ユニットを移動する':
-      return outcomeState(moveUnit(state, action.unit, action.destination))
+      return outcomeState(moveUnit(state, action.unit, action.destination, chooser))
   }
 }
 
@@ -153,6 +153,6 @@ function playCandidates(state: DuelState, instance: CardInstance): readonly Lega
 /** そのユニットを移動する候補。9 つのスクエアそれぞれについて試す。 */
 function moveCandidates(state: DuelState, unit: CardId): readonly LegalAction[] {
   return BATTLE_SPACE.flatMap((destination) =>
-    tryAction({ kind: 'ユニットを移動する', unit, destination }, () => moveUnit(state, unit, destination)),
+    tryAction({ kind: 'ユニットを移動する', unit, destination }, () => moveUnit(state, unit, destination, chooseFirst)),
   )
 }
