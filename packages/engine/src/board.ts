@@ -161,6 +161,21 @@ export function squaresBeside(square: Square): readonly Square[] {
 }
 
 /**
+ * そのスクエアの上下左右の隣にあるスクエア（総合ルール 第5部 第5章 2）。盤面の端なら
+ * 2〜3 つになる。斜めに接するスクエアは含まない（同 3）。
+ *
+ * 上下の呼び名は見るプレイヤーによって入れ替わる（`squareInDirection` 参照）が、
+ * 上下左右の 4 方向すべてをまとめたこの 2〜4 マスはどちらから見ても同じ集まりになる。
+ * そのため `squaresBeside` と同じくプレイヤーを受け取らない。
+ */
+export function squaresAdjacent(square: Square): readonly Square[] {
+  const above = [square.row - 1, square.row + 1]
+    .filter(isSquareIndex)
+    .map((row): Square => ({ row, column: square.column }))
+  return [...above, ...squaresBeside(square)]
+}
+
+/**
  * 印刷された図として描かれたスクエア（トリガーアイコンなど）を、そのプレイヤーから見て
  * 解釈した、盤面に固定した行・列のスクエアに変換する。
  *

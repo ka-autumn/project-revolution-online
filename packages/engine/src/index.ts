@@ -1,7 +1,18 @@
-export { TRIGGER_EVENTS, dream, guts, hope, pep, spirit, triggeredAbility, trust } from './ability.js'
+export {
+  TRIGGER_EVENTS,
+  dream,
+  friendship,
+  guts,
+  hope,
+  pep,
+  spirit,
+  triggeredAbility,
+  trust,
+} from './ability.js'
 export type {
   Ability,
   AppearanceOccasion,
+  BpModifyingAbility,
   DreamAbility,
   GutsAbility,
   HopeAbility,
@@ -25,12 +36,14 @@ export {
   areaOf,
   indexOfSquare,
   squareInDirection,
+  squaresAdjacent,
   squaresBeside,
 } from './board.js'
 export type { Area, Line, MoveDirection, Square, SquareIndex } from './board.js'
 export {
   CARD_TYPES,
   COLORS,
+  bpModifyingAbilitiesOf,
   bpOf,
   defineStrategy,
   defineTrap,
@@ -44,6 +57,8 @@ export {
   spOf,
 } from './card.js'
 export type { Card, CardType, Color, StrategyCard, TrapCard, UnitCard } from './card.js'
+export { bpModification } from './continuous.js'
+export type { BpModification } from './continuous.js'
 export { satisfiesLevel } from './cost.js'
 export {
   CONSTRUCTED_DECK_MINIMUM,

@@ -1,4 +1,12 @@
-import type { Ability, DreamAbility, PepAbility, GutsAbility, HopeAbility, TrustAbility } from './ability.js'
+import type {
+  Ability,
+  BpModifyingAbility,
+  DreamAbility,
+  PepAbility,
+  GutsAbility,
+  HopeAbility,
+  TrustAbility,
+} from './ability.js'
 import type { MoveDirection, Square } from './board.js'
 import type { Effect, TrapEffect } from './effect.js'
 
@@ -203,12 +211,16 @@ export function defineTrap(spec: TrapSpec): TrapCard {
  *
  * 常在型のキーワード能力だけを見る。テキストに書かれた能力のうち、名前だけで参照できて
  * 内容を持たないのはこの形のものである（`ability.ts` の `DreamAbility`・`PepAbility`）。
+ * 常在型能力には内容を持つもの（`BpModifyingAbility`）もあるので、名前で引く前に
+ * 名前を持つ側であることを確かめる。
  */
 function hasKeyword(
   card: Card,
   keyword: (DreamAbility | PepAbility | TrustAbility | GutsAbility)['keyword'],
 ): boolean {
-  return card.abilities.some((ability) => ability.kind === '常在型能力' && ability.keyword === keyword)
+  return card.abilities.some(
+    (ability) => ability.kind === '常在型能力' && 'keyword' in ability && ability.keyword === keyword,
+  )
 }
 
 /** そのカードが「夢」を持つか（総合ルール 第5部 第1章 2）。 */
@@ -244,15 +256,28 @@ export function hopeOf(card: Card): HopeAbility | undefined {
 }
 
 /**
+ * そのカードが持つ、ＢＰを修整する常在型能力（総合ルール 第4部 第12章 5-2 の(5)）。
+ *
+ * 「希望」と違って、同じカードが 2 つ以上持つことがあり得る（キーワード能力と、テキストに
+ * 書かれた修整とを同時に持てる）ので、見つかったものをすべて返す。
+ */
+export function bpModifyingAbilitiesOf(card: Card): readonly BpModifyingAbility[] {
+  return card.abilities.filter(
+    (ability): ability is BpModifyingAbility => ability.kind === '常在型能力' && 'bpModifiers' in ability,
+  )
+}
+
+/**
  * そのユニットのＢＰ（総合ルール 第2部 第14章 1）。バトルで比較され、ダメージと比べられる
  * 数値である（同 第4部 第14章 4-5・4-6）。
  *
- * ＢＰを修整する効果をまだ書けないため、いまはカードに書かれている数字がそのままＢＰに
- * なる。ＢＰを読む側がすべてここを通っていれば、修整を持つようになった時に直すのは
- * この関数と、修整の在りかを渡すための引数だけで済む。
+ * カードに書かれている数字に、継続効果による修整を足したものになる（同 第4部 第12章）。
+ * 修整は盤面に書き込まれていないので、読む側が `continuous.ts` の `bpModification` で
+ * 集めてから渡す。**引数を省略できるようにしていない。** 省略できると、修整を渡し忘れた
+ * 呼び出しが書かれている数字をＢＰとして読んでしまい、それが型では見つからないためである。
  */
-export function bpOf(unit: UnitCard): number {
-  return unit.bp
+export function bpOf(unit: UnitCard, modifier: number): number {
+  return unit.bp + modifier
 }
 
 /**
