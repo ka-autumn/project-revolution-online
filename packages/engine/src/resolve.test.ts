@@ -1048,3 +1048,39 @@ describe('効果に渡されるのは盤面への問い合わせだけである'
     ).toThrowError('効果に見せていないカードが対象にされた')
   })
 })
+
+// 総合ルール 第2部 第21章 6-2・6-3、第23章 1-1（ADR-0006）
+describe('効果から見えるエネルギーゾーン', () => {
+  /** それぞれのプレイヤーのエネルギーゾーンに、その枚数のカードを置いた盤面。 */
+  function withEnergies(mineCount: number, theirsCount: number): DuelState {
+    const energies = (player: '先攻' | '後攻', count: number) =>
+      Array.from({ length: count }, (_, index) =>
+        instantiate({ id: `${player}のエネルギー${index}`, card: vanilla, owner: player }),
+      )
+    const board = putInZone(emptyDuelState(), '先攻', 'エネルギーゾーン', energies('先攻', mineCount))
+    return putInZone(board, '後攻', 'エネルギーゾーン', energies('後攻', theirsCount))
+  }
+
+  /** 効果が数えた、両方のプレイヤーのエネルギーの枚数。 */
+  function counted(state: DuelState): readonly number[] {
+    const seen: number[] = []
+    resolveEffect(
+      state,
+      function* (duel) {
+        seen.push(duel.energyCount(duel.controller), duel.energyCount(duel.opponent))
+      },
+      { controller: '先攻', chooser: chooseFirst },
+    )
+    return seen
+  }
+
+  // エネルギーゾーンにあるカードをエネルギーと呼ぶ（同 6-2）。
+  it('エネルギーゾーンにあるカードの枚数を数えられる', () => {
+    expect(counted(withEnergies(3, 1))).toEqual([3, 1])
+  })
+
+  // 両方のエネルギーゾーンにあるカードは全てのプレイヤーが見られる（同 6-3）。
+  it('相手のエネルギーゾーンも数えられる', () => {
+    expect(counted(withEnergies(0, 2))).toEqual([0, 2])
+  })
+})
