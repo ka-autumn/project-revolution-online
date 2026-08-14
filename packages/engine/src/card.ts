@@ -13,7 +13,8 @@ export const COLORS = ['赤', '黒', '青', '白', '緑'] as const
 export type Color = (typeof COLORS)[number]
 
 /**
- * カードの種別。カードに印刷されている分類。
+ * カードの種別。カードに書かれている分類であり、カードのデータの 1 つである
+ * （総合ルール 第2部 第2章 2）。
  *
  * トラップゾーンにあるカードは種別がトラップでなくても「トラップ」と呼ばれる
  * （総合ルール 第2部 第21章 9-2）。種別と、そのカードがいまどう扱われているかは別。
@@ -25,16 +26,16 @@ export const CARD_TYPES = ['ユニット', 'ストラテジー', 'トラップ',
 export type CardType = (typeof CARD_TYPES)[number]
 
 /**
- * 種別によらずカードに印刷されている項目。
+ * 種別によらず、どのカードにも書かれていること（総合ルール 第2部 第2章 1）。
  *
- * 属性もカードに印刷されているが、それを参照するルールをまだ実装していないため、
- * ここには持たせていない。参照する側と一緒に足す。ムーブアイコンはユニットだけが持つ項目
- * なので、ここではなく `UnitCard` に持たせている。トリガーアイコンも同じ理由で
+ * 属性もカードに書かれているが、それを参照するルールをまだ実装していないため、
+ * ここには持たせていない。参照する側と一緒に足す。ムーブアイコンはユニットだけが持つ
+ * ので、ここではなく `UnitCard` に持たせている。トリガーアイコンも同じ理由で
  * `TrapCard` に持たせている。「トラップ以外のカードもトラップとしてプレイできる」
  * （総合ルール 第2部 第20章 3-1）が、発動して解決する効果（`TrapCard.effect`）を
  * 持てるのはトラップだけなので、トリガーアイコンが意味を持つ場面も無い。
  */
-interface PrintedCard {
+interface WrittenCard {
   readonly type: CardType
   readonly name: string
   /**
@@ -64,7 +65,7 @@ interface PrintedCard {
 }
 
 /** スクエアに置いて使うカード（総合ルール 第2部 第20章 1）。 */
-export interface UnitCard extends PrintedCard {
+export interface UnitCard extends WrittenCard {
   readonly type: 'ユニット'
   /** バトルで比較される数値（総合ルール 第2部 第14章 1）。 */
   readonly bp: number
@@ -78,7 +79,7 @@ export interface UnitCard extends PrintedCard {
 }
 
 /** プレイして効果を解決した後、持ち主の捨札に置かれるカード（総合ルール 第2部 第20章 2）。 */
-export interface StrategyCard extends PrintedCard {
+export interface StrategyCard extends WrittenCard {
   readonly type: 'ストラテジー' | '超必殺ストラテジー！'
   /**
    * 解決された時に発揮する効果（総合ルール 第2部 第10章 3-1）。
@@ -95,7 +96,7 @@ export interface StrategyCard extends PrintedCard {
 }
 
 /** トラップゾーンに裏向きで置き、後から発動するカード（総合ルール 第2部 第20章 3）。 */
-export interface TrapCard extends PrintedCard {
+export interface TrapCard extends WrittenCard {
   readonly type: 'トラップ'
   /**
    * トリガーアイコンで赤く塗られたスクエア（総合ルール 第2部 第12章、第20章 3-6）。
@@ -170,7 +171,7 @@ interface TrapSpec extends CardSpec {
 /** 解決しても何も起こらない効果。効果を書いていないカードに使う。 */
 function* noEffect(): ReturnType<Effect> {}
 
-function printed<T extends CardType>(type: T, spec: CardSpec) {
+function written<T extends CardType>(type: T, spec: CardSpec) {
   return {
     type,
     name: spec.name,
@@ -183,15 +184,15 @@ function printed<T extends CardType>(type: T, spec: CardSpec) {
 }
 
 export function defineUnit(spec: UnitSpec): UnitCard {
-  return { ...printed('ユニット', spec), bp: spec.bp, sp: spec.sp, moveIcon: spec.moveIcon ?? [] }
+  return { ...written('ユニット', spec), bp: spec.bp, sp: spec.sp, moveIcon: spec.moveIcon ?? [] }
 }
 
 export function defineStrategy(spec: StrategySpec): StrategyCard {
-  return { ...printed(spec.type ?? 'ストラテジー', spec), effect: spec.effect ?? noEffect }
+  return { ...written(spec.type ?? 'ストラテジー', spec), effect: spec.effect ?? noEffect }
 }
 
 export function defineTrap(spec: TrapSpec): TrapCard {
-  return { ...printed('トラップ', spec), triggerIcon: spec.triggerIcon ?? [], effect: spec.effect ?? noEffect }
+  return { ...written('トラップ', spec), triggerIcon: spec.triggerIcon ?? [], effect: spec.effect ?? noEffect }
 }
 
 /**
@@ -243,9 +244,9 @@ export function hopeOf(card: Card): HopeAbility | undefined {
  * そのユニットのＢＰ（総合ルール 第2部 第14章 1）。バトルで比較され、ダメージと比べられる
  * 数値である（同 第4部 第14章 4-5・4-6）。
  *
- * ＢＰを修整する効果をまだ書けないため、いまは印刷された数値がそのままＢＰになる。ＢＰを
- * 読む側がすべてここを通っていれば、修整を持つようになった時に直すのはこの関数と、
- * 修整の在りかを渡すための引数だけで済む。
+ * ＢＰを修整する効果をまだ書けないため、いまはカードに書かれている数字がそのままＢＰに
+ * なる。ＢＰを読む側がすべてここを通っていれば、修整を持つようになった時に直すのは
+ * この関数と、修整の在りかを渡すための引数だけで済む。
  */
 export function bpOf(unit: UnitCard): number {
   return unit.bp
