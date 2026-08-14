@@ -299,6 +299,52 @@ export interface AttributeAddingAbility {
 }
 
 /**
+ * ユニットの移動が宣言されたこと（総合ルール 第4部 第6章 2-1）のきっかけ。
+ *
+ * 移動に追加コストを課す常在型能力（`MoveCostingAbility`）に渡される。誘発イベントの
+ * 「移動が起動された時」とは別で、あちらは移動が済んだ後（同 2-5）に誘発する。こちらは
+ * 宣言とコストの支払い（同 2-2・2-3）の間なので、ユニットはまだ動いていない。
+ */
+export interface MovementOccasion {
+  readonly kind: '移動'
+  /** 移動するユニット。まだ動いていないので、位置は移動元のスクエアである。 */
+  readonly unit: UnitOnSquare
+  /** 移動先として指定されたスクエア。 */
+  readonly destination: Square
+}
+
+/**
+ * ユニットの移動に課される追加コスト（総合ルール 第4部 第6章 2-2・2-3）。
+ *
+ * 支払うのは移動するプレイヤーである。コストとしてカードのゾーン移動や向きの変化を要求
+ * する場合、支払うプレイヤーのゾーンにあるカードでしか支払えない（同 第1部 第3章 1-1）。
+ *
+ * いま要求できるのはエネルギーをフリーズすることだけである。他のものを要求するテキストが
+ * 出てきた時に、その消費者と一緒に足す。
+ */
+export interface MoveCost {
+  /** フリーズするエネルギーの枚数（総合ルール 第2部 第21章 6-5）。 */
+  readonly energiesFrozen: number
+}
+
+/**
+ * ユニットの移動に追加コストを課す常在型能力（総合ルール 第4部 第6章 2-2・2-3）。
+ *
+ * **置換効果ではない。** 置換効果を生み出す能力のテキストは「〜する時、かわりに〜」という
+ * 語句を含む（同 第13章 1）が、こちらは「〜する時、〜する。そうできないなら、〜できない」
+ * という形で、出来事を別の出来事に置き換えてはいない。移動に追加コストが付き、支払えなければ
+ * 行えなくなる（同 第1部 第1章 2。「できない」という効果が優先される）だけである。
+ *
+ * どの移動にコストが付くかはカードの読み方なので、きっかけを見て答えるこの関数で表す
+ * （`TriggerCondition` と同じ形）。
+ */
+export interface MoveCostingAbility {
+  readonly kind: '常在型能力'
+  /** その移動に課すコスト。課さないなら `undefined`。 */
+  readonly moveCost: (duel: DuelView, occasion: MovementOccasion) => MoveCost | undefined
+}
+
+/**
  * プランによるめくりを置き換える置換効果を生み出す常在型能力
  * （総合ルール 第4部 第13章、第3部 第8章 2-3）。
  *
@@ -336,8 +382,8 @@ export interface PlanReplacingAbility {
  *
  * 能力には起動型・誘発型・常在型の 3 つがある（同 2）が、起動型はコストを持つ能力を
  * 書けるようになってから足す。常在型は「夢」「元気」「信頼」「根性」と、継続効果を
- * 生み出すもの（ＢＰの修整・属性の追加）、置換効果を生み出すものがある。「希望」はその
- * どれでもない特別な能力である（同 第5部 第3章 1）。
+ * 生み出すもの（ＢＰの修整・属性の追加）、置換効果を生み出すもの、移動に追加コストを課す
+ * ものがある。「希望」はそのどれでもない特別な能力である（同 第5部 第3章 1）。
  */
 export type Ability =
   | TriggeredAbility
@@ -349,6 +395,7 @@ export type Ability =
   | BpModifyingAbility
   | AttributeAddingAbility
   | PlanReplacingAbility
+  | MoveCostingAbility
 
 /**
  * 誘発型能力を 1 つ書く。
@@ -412,6 +459,16 @@ export function bpModifying(bpModifiers: (duel: DuelView) => readonly BpModifier
  */
 export function planReplacing(turnsUpUntil: (card: Card) => boolean): PlanReplacingAbility {
   return { kind: '常在型能力', turnsUpUntil }
+}
+
+/**
+ * ユニットの移動に追加コストを課す常在型能力を 1 つ書く。
+ * どの移動にいくら課すかはカードごとに違うので受け取る。
+ */
+export function moveCosting(
+  moveCost: (duel: DuelView, occasion: MovementOccasion) => MoveCost | undefined,
+): MoveCostingAbility {
+  return { kind: '常在型能力', moveCost }
 }
 
 /** 属性を加える常在型能力を 1 つ書く。加える内容はカードごとに違うので受け取る。 */

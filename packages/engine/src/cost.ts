@@ -64,6 +64,33 @@ export function payPlanCost(state: DuelState, player: Player, chooser: Chooser):
 }
 
 /**
+ * 追加コストとして、エネルギーを指定の枚数フリーズする（総合ルール 第2部 第21章 6-5）。
+ * 1 枚でも支払えなければ `undefined`。
+ *
+ * カードのテキストが課すコストであり、レベルの支払い（`payEnergyCost`）とは別である。色は
+ * 問わない。スマッシュゾーンにあるカードでは支払えない（同 第1部 第2章 3-3）ので、
+ * エネルギーゾーンだけを見る。
+ *
+ * どのエネルギーをフリーズするかは支払うプレイヤーが選ぶ（同 第1部 第3章 1-1）。途中まで
+ * 支払って足りなくなった場合は `undefined` を返す。**呼ぶ側は返ってきた盤面だけを使うので、
+ * 支払いかけた分が盤面に残ることはない。**
+ */
+export function freezeEnergies(
+  state: DuelState,
+  player: Player,
+  count: number,
+  chooser: Chooser,
+): DuelState | undefined {
+  let current = state
+  for (let paid = 0; paid < count; paid += 1) {
+    const next = chooseAndFreeze(current, player, ['エネルギーゾーン'], () => true, chooser)
+    if (next === undefined) return undefined
+    current = next
+  }
+  return current
+}
+
+/**
  * そのカードのコストを、そのエネルギーで支払えるか（総合ルール 第1部 第2章 3-2）。
  *
  * 無色のカードは「レベルに任意の色のエネルギー・シンボルが書かれているカード」で支払う

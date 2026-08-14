@@ -6,6 +6,7 @@ import type {
   PepAbility,
   GutsAbility,
   HopeAbility,
+  MoveCostingAbility,
   PlanReplacingAbility,
   TrustAbility,
 } from './ability.js'
@@ -313,6 +314,16 @@ export function attributeAddingAbilitiesOf(card: Card): readonly AttributeAdding
 export function planReplacingAbilitiesOf(card: Card): readonly PlanReplacingAbility[] {
   return card.abilities.filter(
     (ability): ability is PlanReplacingAbility => ability.kind === '常在型能力' && 'turnsUpUntil' in ability,
+  )
+}
+
+/**
+ * そのカードが持つ、ユニットの移動に追加コストを課す常在型能力
+ * （総合ルール 第4部 第6章 2-2・2-3）。
+ */
+export function moveCostingAbilitiesOf(card: Card): readonly MoveCostingAbility[] {
+  return card.abilities.filter(
+    (ability): ability is MoveCostingAbility => ability.kind === '常在型能力' && 'moveCost' in ability,
   )
 }
 

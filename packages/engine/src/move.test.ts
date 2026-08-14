@@ -4,11 +4,14 @@ import { describe, expect, it } from 'vitest'
 import { putInZone } from './duel.js'
 import {
   PLAYERS,
+  cardsIn,
   cardsOn,
   defineTrap,
   defineUnit,
   emptyDuelState,
+  indexOfSquare,
   instantiate,
+  moveCosting,
   moveUnit,
   passPriority,
   putOnSquare,
@@ -105,7 +108,7 @@ describe('ユニットの移動', () => {
   it('ムーブアイコンの方向に隣接するスクエアへ移動できる', () => {
     const state = putOnSquare(mainPhase(), homeSquare, unit('ユニット'))
 
-    const after = stateOf(moveUnit(state, 'ユニット', centerSquare))
+    const after = stateOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))
 
     expect(cardsOn(after, homeSquare)).toEqual([])
     expect(cardsOn(after, centerSquare)[0]?.id).toBe('ユニット')
@@ -115,7 +118,7 @@ describe('ユニットの移動', () => {
   it('リリース状態で置かれる', () => {
     const state = putOnSquare(mainPhase(), homeSquare, unit('ユニット'))
 
-    const after = stateOf(moveUnit(state, 'ユニット', centerSquare))
+    const after = stateOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))
 
     expect(cardsOn(after, centerSquare)[0]?.orientation).toBe('リリース')
   })
@@ -124,42 +127,42 @@ describe('ユニットの移動', () => {
   it('解決した後、非アクティブプレイヤーが優先権を獲得する', () => {
     const state = putOnSquare(mainPhase(), homeSquare, unit('ユニット'))
 
-    expect(stateOf(moveUnit(state, 'ユニット', centerSquare)).turn.priority).toBe('後攻')
+    expect(stateOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst)).turn.priority).toBe('後攻')
   })
 
   it('ムーブアイコンの無い方向へは移動できない', () => {
     const state = putOnSquare(mainPhase(), homeSquare, unit('ユニット', nonMover))
 
-    expect(violationOf(moveUnit(state, 'ユニット', centerSquare))).toBe('移動先として指定できないスクエア')
+    expect(violationOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))).toBe('移動先として指定できないスクエア')
   })
 
   it('隣接していないスクエアへは移動できない', () => {
     const state = putOnSquare(mainPhase(), homeSquare, unit('ユニット'))
 
-    expect(violationOf(moveUnit(state, 'ユニット', farSquare))).toBe('移動先として指定できないスクエア')
+    expect(violationOf(moveUnit(state, 'ユニット', farSquare, chooseFirst))).toBe('移動先として指定できないスクエア')
   })
 
   it('フリーズ状態のユニットは移動できない', () => {
     const frozen = instantiate({ id: 'ユニット', card: omniMover, owner: '先攻', orientation: 'フリーズ' })
     const state = putOnSquare(mainPhase(), homeSquare, frozen)
 
-    expect(violationOf(moveUnit(state, 'ユニット', centerSquare))).toBe('移動できるユニットではない')
+    expect(violationOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))).toBe('移動できるユニットではない')
   })
 
   it('相手が支配するユニットは移動できない', () => {
     const state = putOnSquare(mainPhase(), homeSquare, unit('相手のユニット', omniMover, '後攻'))
 
-    expect(violationOf(moveUnit(state, '相手のユニット', centerSquare))).toBe('移動できるユニットではない')
+    expect(violationOf(moveUnit(state, '相手のユニット', centerSquare, chooseFirst))).toBe('移動できるユニットではない')
   })
 
   it('スクエアにないユニットは移動できない', () => {
-    expect(violationOf(moveUnit(mainPhase(), 'いない', centerSquare))).toBe('移動できるユニットではない')
+    expect(violationOf(moveUnit(mainPhase(), 'いない', centerSquare, chooseFirst))).toBe('移動できるユニットではない')
   })
 
   it('メインフェイズでなければ行えない', () => {
     const state = putOnSquare(phaseReadyToAct('エネルギーフェイズ'), homeSquare, unit('ユニット'))
 
-    expect(violationOf(moveUnit(state, 'ユニット', centerSquare))).toBe('行える時ではない')
+    expect(violationOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))).toBe('行える時ではない')
   })
 })
 
@@ -172,7 +175,7 @@ describe('自分が支配するユニットのあるスクエアへの移動', (
       unit('先客'),
     )
 
-    expect(violationOf(moveUnit(state, 'ユニット', centerSquare))).toBe('移動先として指定できないスクエア')
+    expect(violationOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))).toBe('移動先として指定できないスクエア')
   })
 
   it('相手が支配するユニットのあるスクエアへは移動できる', () => {
@@ -182,7 +185,7 @@ describe('自分が支配するユニットのあるスクエアへの移動', (
       unit('敵', omniMover, '後攻'),
     )
 
-    const after = stateOf(moveUnit(state, 'ユニット', centerSquare))
+    const after = stateOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))
 
     expect(cardsOn(after, centerSquare).map((each) => each.id)).toContain('ユニット')
   })
@@ -194,7 +197,7 @@ describe('移動してもゾーン移動を伴わない', () => {
     const mover = unit('ユニット')
     const state = putOnSquare(mainPhase(), homeSquare, mover)
 
-    const after = stateOf(moveUnit(state, 'ユニット', centerSquare))
+    const after = stateOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))
 
     expect(cardsOn(after, centerSquare)[0]?.card).toBe(mover.card)
   })
@@ -205,7 +208,7 @@ describe('移動が起動された時', () => {
   it('移動したそのユニット自身の能力が誘発する', () => {
     const state = putOnSquare(mainPhase(), homeSquare, unit('ユニット', movingUnit))
 
-    const after = stateOf(moveUnit(state, 'ユニット', centerSquare))
+    const after = stateOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))
 
     expect(after.bank.map((banked) => banked.source)).toEqual(['ユニット'])
   })
@@ -217,7 +220,7 @@ describe('移動が起動された時', () => {
       unit('見てるだけ', movingUnit),
     )
 
-    const after = stateOf(moveUnit(state, '動くユニット', centerSquare))
+    const after = stateOf(moveUnit(state, '動くユニット', centerSquare, chooseFirst))
 
     expect(after.bank).toEqual([])
   })
@@ -245,21 +248,21 @@ describe('「信頼」による移動の制限', () => {
 
   // 総合ルール 第5部 第4章 2
   it('相手の「信頼」の左右に接するスクエアへは移動できない', () => {
-    expect(violationOf(moveUnit(facing(centerLeftSquare, '後攻'), 'ユニット', centerSquare))).toBe(
+    expect(violationOf(moveUnit(facing(centerLeftSquare, '後攻'), 'ユニット', centerSquare, chooseFirst))).toBe(
       '「信頼」によって移動できない',
     )
   })
 
   // 総合ルール 第5部 第4章 2。制限されるのは左右に接するスクエアだけである。
   it('相手の「信頼」の上下に接するスクエアへは移動できる', () => {
-    const after = stateOf(moveUnit(facing(farSquare, '後攻'), 'ユニット', centerSquare))
+    const after = stateOf(moveUnit(facing(farSquare, '後攻'), 'ユニット', centerSquare, chooseFirst))
 
     expect(cardsOn(after, centerSquare)[0]?.id).toBe('ユニット')
   })
 
   // 総合ルール 第5部 第4章 2。制限されるのは「相手」だけである。
   it('自分の「信頼」は自分のユニットの移動を妨げない', () => {
-    const after = stateOf(moveUnit(facing(centerLeftSquare, '先攻'), 'ユニット', centerSquare))
+    const after = stateOf(moveUnit(facing(centerLeftSquare, '先攻'), 'ユニット', centerSquare, chooseFirst))
 
     expect(cardsOn(after, centerSquare)[0]?.id).toBe('ユニット')
   })
@@ -275,8 +278,80 @@ describe('移動による侵入', () => {
     })
     const state = putInZone(putOnSquare(mainPhase(), homeSquare, unit('ユニット')), '後攻', 'トラップゾーン', [trap])
 
-    const after = stateOf(moveUnit(state, 'ユニット', centerSquare))
+    const after = stateOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))
 
     expect(after.trapConditionsMet.map((met) => met.trap)).toEqual(['トラップ'])
+  })
+})
+
+// 総合ルール 第4部 第6章 2-2・2-3（ADR-0006）
+describe('移動に課される追加コスト', () => {
+  /**
+   * 「敵が味方のいるスクエアに移動する時、相手は自分のエネルギーを 2 枚選びフリーズする。
+   * そうできないなら、移動できない」という常在型能力を持つユニット。
+   */
+  const taxing = defineUnit({
+    name: 'テスト・移動に課税',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      moveCosting((duel, occasion) => {
+        if (!duel.enemies().some((enemy) => enemy.id === occasion.unit.id)) return undefined
+        const defended = duel
+          .allies()
+          .some((ally) => indexOfSquare(ally.square) === indexOfSquare(occasion.destination))
+        return defended ? { energiesFrozen: 2 } : undefined
+      }),
+    ],
+  })
+
+  /**
+   * 先攻のユニットが味方エリアにいて、後攻が中央エリアに課税するユニットを置いた盤面。
+   * 先攻のエネルギーゾーンには、渡した枚数のリリース状態のカードがある。
+   */
+  function facingTax(energies: number, defended: Square = centerSquare): DuelState {
+    const board = putOnSquare(mainPhase(), homeSquare, unit('ユニット'))
+    const withDefender = putOnSquare(board, defended, unit('課税するユニット', taxing, '後攻'))
+    return putInZone(
+      withDefender,
+      '先攻',
+      'エネルギーゾーン',
+      Array.from({ length: energies }, (_, index) => unit(`エネ${index}`)),
+    )
+  }
+
+  it('コストを支払えば移動できる', () => {
+    const after = stateOf(moveUnit(facingTax(2), 'ユニット', centerSquare, chooseFirst))
+
+    expect(cardsOn(after, centerSquare).map((each) => each.id)).toContain('ユニット')
+  })
+
+  it('支払ったぶんのエネルギーがフリーズされる', () => {
+    const after = stateOf(moveUnit(facingTax(3), 'ユニット', centerSquare, chooseFirst))
+
+    const frozen = cardsIn(after, '先攻', 'エネルギーゾーン').filter((each) => each.orientation === 'フリーズ')
+    expect(frozen.length).toBe(2)
+  })
+
+  // 「できない」という効果が優先される（総合ルール 第1部 第1章 2）。
+  it('コストを支払えなければ移動できない', () => {
+    expect(violationOf(moveUnit(facingTax(1), 'ユニット', centerSquare, chooseFirst))).toBe('コストを支払えない')
+  })
+
+  it('支払えなかった時、途中まで支払ったエネルギーは残らない', () => {
+    const state = facingTax(1)
+
+    moveUnit(state, 'ユニット', centerSquare, chooseFirst)
+
+    expect(cardsIn(state, '先攻', 'エネルギーゾーン')[0]?.orientation).toBe('リリース')
+  })
+
+  // 「味方のいるスクエアに移動する時」なので、味方のいないスクエアへの移動には課されない。
+  it('条件を満たさない移動には課されない', () => {
+    const after = stateOf(moveUnit(facingTax(0, homeLeftSquare), 'ユニット', centerSquare, chooseFirst))
+
+    expect(cardsOn(after, centerSquare).map((each) => each.id)).toContain('ユニット')
   })
 })
