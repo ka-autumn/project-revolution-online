@@ -10,6 +10,7 @@ import {
   locateOnSquares,
   moveToSquare,
   moveToZone,
+  setOrientationOnSquare,
   topOfLibrary,
 } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
@@ -128,6 +129,18 @@ function apply(
       // スクエアを離れていればこの行動は実行されない（同 第1部 第1章 3）。`dealDamage` が
       // スクエアにないカードをそのまま見送るので、ここでは何も足さない。
       return { state: dealDamage(state, instruction.target.id, instruction.amount), value: undefined }
+    }
+    case '向きを変える': {
+      if (!shown.has(instruction.target.id)) {
+        throw new Error('効果に見せていないカードが対象にされた')
+      }
+      // すでにその向きなら、リリースすることもフリーズすることもできない（総合ルール
+      // 第2部 第24章 1-1）ので、この行動は実行されない（同 第1部 第1章 3）。スクエアを
+      // 離れていた場合も同じで、どちらも `setOrientationOnSquare` が盤面をそのまま返す。
+      return {
+        state: setOrientationOnSquare(state, instruction.target.id, instruction.orientation),
+        value: undefined,
+      }
     }
     case 'ゾーンへ置く': {
       if (!shown.has(instruction.card.id)) {

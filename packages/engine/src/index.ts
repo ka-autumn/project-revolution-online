@@ -69,9 +69,11 @@ export {
   destroy,
   drawCards,
   flipPlan,
+  freeze,
   placeInZone,
   placeOnSquare,
   placeTopOfLibrary,
+  release,
 } from './effect.js'
 export type { CardInZone, DuelView, Effect, EffectStep, Instruction, UnitOnSquare } from './effect.js'
 export { cardIdsOf, checkBoardInvariants } from './invariant.js'
