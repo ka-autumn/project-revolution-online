@@ -609,19 +609,26 @@ export function removeAllDamage(state: DuelState): DuelState {
 }
 
 /**
- * スクエアにあるカードをフリーズ状態にする（総合ルール 第2部 第24章 1）。スクエアに
- * なければ盤面はそのまま。
+ * スクエアにあるカードの向きを変える（総合ルール 第2部 第24章 1）。スクエアに無ければ
+ * 盤面はそのまま。
  *
- * すでにフリーズしているカードをフリーズすることはできない（同 1-1）。フリーズできるか
- * どうかは、それをコストや条件にする側（`action.ts` の `smash`）が確かめる。
+ * リリース状態のカードをフリーズ状態にすることを「フリーズする」、フリーズ状態のカードを
+ * リリース状態にすることを「リリースする」と呼ぶ（同 1）。すでにその向きのカードに対して
+ * それを行うことはできない（同 1-1）ので、その場合は盤面をそのまま返す。
+ *
+ * **行えるかどうかを条件やコストにする側は、ここではなく自分で確かめる。** この関数は
+ * 行える時だけ変えて、行えなければ何もしないというところまでしか引き受けない。スマッシュ
+ * （`action.ts` の `smash`）はフリーズできることを選べる条件にしているので、そちらが
+ * 先に確かめている。
  */
-export function freezeOnSquare(state: DuelState, id: CardId): DuelState {
-  if (findOnSquares(state, id) === undefined) return state
+export function setOrientationOnSquare(state: DuelState, id: CardId, orientation: Orientation): DuelState {
+  const found = findOnSquares(state, id)
+  if (found === undefined || found.orientation === orientation) return state
 
   return {
     ...state,
     squares: state.squares.map((cards) =>
-      cards.map((card) => (card.id === id ? { ...card, orientation: 'フリーズ' } : card)),
+      cards.map((card) => (card.id === id ? { ...card, orientation } : card)),
     ),
   }
 }

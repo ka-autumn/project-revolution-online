@@ -14,12 +14,14 @@ import {
   drawCards,
   emptyDuelState,
   flipPlan,
+  freeze,
   guts,
   instantiate,
   placeInZone,
   placeOnSquare,
   placeTopOfLibrary,
   putOnSquare,
+  release,
   resolveEffect,
   triggeredAbility,
 } from './index.js'
@@ -402,6 +404,111 @@ describe('ユニットへのダメージ', () => {
       const [enemy] = duel.enemies()
       if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
       yield* damageUnit({ ...enemy, id: '味方' }, 500)
+    })
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+    expect(() =>
+      resolveEffect(state, forge.effect, { controller: '先攻', chooser: chooseFirst }),
+    ).toThrowError('効果に見せていないカードが対象にされた')
+  })
+})
+
+// 総合ルール 第2部 第24章 1（ADR-0006）
+describe('効果による向きの変更', () => {
+  const frozenTheirs = (id: string) =>
+    instantiate({ id, card: vanilla, owner: '後攻', orientation: 'フリーズ' })
+  const frozenMine = () =>
+    instantiate({ id: '味方', card: enterAndDestroy, owner: '先攻', orientation: 'フリーズ' })
+
+  const orientationOn = (state: DuelState, square: Square) =>
+    cardsOn(state, square).map((card) => card.orientation)
+
+  const releasing = triggeredAbility('登場した時', function* (duel) {
+    yield* release(yield* choose(duel.enemies()))
+  })
+  const freezing = triggeredAbility('登場した時', function* (duel) {
+    yield* freeze(yield* choose(duel.enemies()))
+  })
+
+  it('フリーズ状態のユニットをリリースする', () => {
+    const state = boardOf([mySquare, mine()], [enemySquare, frozenTheirs('敵')])
+
+    const resolved = resolveEffect(state, releasing.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(orientationOn(resolved, enemySquare)).toEqual(['リリース'])
+  })
+
+  it('リリース状態のユニットをフリーズする', () => {
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+    const resolved = resolveEffect(state, freezing.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(orientationOn(resolved, enemySquare)).toEqual(['フリーズ'])
+  })
+
+  /**
+   * 総合ルール 第2部 第24章 1-1。
+   *
+   * リリース状態のカードをリリースしたり、フリーズ状態のカードをフリーズしたりすることは
+   * できない。実行できない行動は実行されない（同 第1部 第1章 3）ので、盤面は変わらない。
+   */
+  it('すでにリリース状態なら、リリースできない', () => {
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+    const resolved = resolveEffect(state, releasing.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(resolved).toBe(state)
+  })
+
+  it('すでにフリーズ状態なら、フリーズできない', () => {
+    const state = boardOf([mySquare, mine()], [enemySquare, frozenTheirs('敵')])
+
+    const resolved = resolveEffect(state, freezing.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(resolved).toBe(state)
+  })
+
+  // 総合ルール 第1部 第1章 3
+  it('すでにスクエアを離れたユニットの向きは変わらないが、効果はそのまま続く', () => {
+    const ability = triggeredAbility('登場した時', function* (duel) {
+      const [first, second] = duel.enemies()
+      if (first === undefined || second === undefined) throw new Error('敵が 2 枚いる盤面で試すこと')
+      yield* destroy(first)
+      // 1 枚目はもうスクエアにいない。この行動は実行されないだけで、効果は終わらない。
+      yield* freeze(first)
+      yield* freeze(second)
+    })
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵1')], [nextEnemySquare, theirs('敵2')])
+
+    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(orientationOn(resolved, nextEnemySquare)).toEqual(['フリーズ'])
+    // 捨札のカードは常にリリース状態で置かれる（総合ルール 第2部 第21章 5-3）。後から
+    // フリーズしようとした分がそちらに効いていないことを見る。
+    expect(cardsIn(resolved, '後攻', '捨札').map((card) => card.orientation)).toEqual(['リリース'])
+  })
+
+  /**
+   * 向きの変更はカードの状態の変更（総合ルール 第2部 第24章 1）であって、ゾーンの移動では
+   * ない。スクエアへ置き直す経路で代用すると、そのカードがスクエアに「後から置かれた」
+   * ことになり、同じスクエアに支配者の異なるユニットが並んでいる時の順番が入れ替わる。
+   * 順番はバトルでどちらが攻撃したユニットかを決める（`battle.ts`）ので、変わってはならない。
+   */
+  it('向きを変えても、スクエアに置かれた順番は変わらない', () => {
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('先にいる敵')], [enemySquare, frozenMine()])
+
+    const resolved = resolveEffect(state, freezing.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(idsOf(cardsOn(resolved, enemySquare))).toEqual(['先にいる敵', '味方'])
+    expect(orientationOn(resolved, enemySquare)).toEqual(['フリーズ', 'フリーズ'])
+  })
+
+  // ADR-0002: 効果が対象にできるのは、engine が見せたカードだけである
+  it('見せていないユニットの向きは変えられない', () => {
+    const forge = triggeredAbility('登場した時', function* (duel) {
+      const [enemy] = duel.enemies()
+      if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
+      yield* freeze({ ...enemy, id: '味方' })
     })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 

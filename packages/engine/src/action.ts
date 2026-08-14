@@ -6,9 +6,9 @@ import {
   cardsIn,
   damagePlayer,
   findInZone,
-  freezeOnSquare,
   locateOnSquares,
   moveToZone,
+  setOrientationOnSquare,
   topOfLibrary,
 } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
@@ -146,7 +146,7 @@ export function smash(state: DuelState, unit: CardId): ActionOutcome {
   const smashing = smashingUnit(state, player, unit)
   if (smashing === undefined) return cannot('スマッシュできるユニットではない')
 
-  const frozen = freezeOnSquare(state, unit)
+  const frozen = setOrientationOnSquare(state, unit, 'フリーズ')
   const damaged = damagePlayer(frozen, opponentOf(player), smashing.damage)
   return done(grantPriorityToInactive(damaged))
 }

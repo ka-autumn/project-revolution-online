@@ -98,6 +98,7 @@ export type Instruction =
   | { readonly kind: '破壊する'; readonly target: UnitOnSquare }
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
   | { readonly kind: 'ユニットにダメージを与える'; readonly target: UnitOnSquare; readonly amount: number }
+  | { readonly kind: '向きを変える'; readonly target: UnitOnSquare; readonly orientation: Orientation }
   | {
       readonly kind: 'ゾーンへ置く'
       readonly card: CardInZone | UnitOnSquare
@@ -211,6 +212,39 @@ export function* damagePlayer(player: Player, amount: number): EffectStep<void> 
  */
 export function* damageUnit(target: UnitOnSquare, amount: number): EffectStep<void> {
   yield { kind: 'ユニットにダメージを与える', target, amount }
+}
+
+/**
+ * スクエアにいるユニットをリリースする（総合ルール 第2部 第24章 1）。
+ *
+ * フリーズ状態のカードをリリース状態にすることを「リリースする」と呼ぶ。
+ *
+ * **すでにリリース状態のカードをリリースすることはできない**（同 1-1）。その場合この行動は
+ * 実行されない（同 第1部 第1章 3）。効果はそのまま続く。対象がすでにスクエアを離れていた
+ * 場合も同じである。
+ *
+ * これは向きを変えるだけで、ゾーンの移動ではない。置く経路（`placeOnSquare`）に同じ
+ * スクエアを渡して代用しないこと。置く経路を通すと、ユニットがあるスクエアに同じ
+ * プレイヤーの支配するユニットが置かれた時に働くルールエフェクト（同 第4部 第14章 4-7）の
+ * 判定に、向きを変えただけのカードが紛れ込む。
+ */
+export function* release(target: UnitOnSquare): EffectStep<void> {
+  yield { kind: '向きを変える', target, orientation: 'リリース' }
+}
+
+/**
+ * スクエアにいるユニットをフリーズする（総合ルール 第2部 第24章 1）。
+ *
+ * リリース状態のカードをフリーズ状態にすることを「フリーズする」と呼ぶ。すでにフリーズ
+ * 状態のカードをフリーズすることはできない（同 1-1）。実行できない場合の扱いは `release`
+ * と同じである。
+ *
+ * スマッシュのようにフリーズすることをコストにする行動（`action.ts` の `smash`）とは別で、
+ * こちらは効果が行うものである。コストとしてのフリーズは、フリーズできることを先に
+ * 確かめたうえで支払われる。
+ */
+export function* freeze(target: UnitOnSquare): EffectStep<void> {
+  yield { kind: '向きを変える', target, orientation: 'フリーズ' }
 }
 
 /**
