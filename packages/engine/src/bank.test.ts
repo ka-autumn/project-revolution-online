@@ -30,7 +30,7 @@ const striker = defineUnit({
   abilities: [
     triggeredAbility('エネルギーフェイズの始め', function* (duel) {
       const enemy = yield* choose(duel.enemies())
-      yield* destroy(enemy)
+      if (enemy !== undefined) yield* destroy(enemy)
     }),
   ],
 })

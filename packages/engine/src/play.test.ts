@@ -70,7 +70,7 @@ const redStrategy = defineStrategy({
   colors: ['赤'],
   effect: function* (duel) {
     const enemy = yield* choose(duel.enemies())
-    yield* destroy(enemy)
+    if (enemy !== undefined) yield* destroy(enemy)
   },
 })
 
@@ -81,7 +81,7 @@ const redTrap = defineTrap({
   colors: ['赤'],
   effect: function* (duel) {
     const enemy = yield* choose(duel.enemies())
-    yield* destroy(enemy)
+    if (enemy !== undefined) yield* destroy(enemy)
   },
 })
 

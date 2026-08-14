@@ -42,7 +42,7 @@ const enterAndDestroy = defineUnit({
   abilities: [
     triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
-      yield* destroy(enemy)
+      if (enemy !== undefined) yield* destroy(enemy)
     }),
   ],
 })
@@ -209,6 +209,44 @@ describe('実行できない行動', () => {
 
     expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['敵2', '敵1'])
   })
+
+  /**
+   * 総合ルール 第4部 第8章 2-2、第1部 第1章 3（ADR-0006）。
+   *
+   * 解決はテキストに書かれている順番の通りに指示に従うもので、実行できないのはその行動
+   * だけである。選べなかったからといって、選んだものに依存しない後ろの指示まで実行され
+   * なくなってはならない。
+   */
+  it('選べなくても、選んだものに依存しない後ろの指示は実行される', () => {
+    const ability = triggeredAbility('登場した時', function* (duel) {
+      const enemy = yield* choose(duel.enemies())
+      // 選べなければ破壊もできない。それを飛ばすのは効果の側の判断である。
+      if (enemy !== undefined) yield* destroy(enemy)
+      // こちらは選んだものに依存しないので、選べなくても実行される。
+      yield* damagePlayer(duel.controller, 1000)
+    })
+    // 敵が 1 枚もいない盤面。
+    const state = boardOf([mySquare, mine()])
+
+    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(resolved.damage).toEqual({ 先攻: 1000, 後攻: 0 })
+  })
+
+  // 総合ルール 第4部 第8章 2-2
+  it('「1 枚選び」で候補が無くても、効果は最後まで進む', () => {
+    const steps: string[] = []
+    const ability = triggeredAbility('登場した時', function* (duel) {
+      const enemy = yield* choose(duel.enemies())
+      steps.push(enemy === undefined ? '選べなかった' : '選んだ')
+      steps.push('後ろの指示')
+    })
+    const state = boardOf([mySquare, mine()])
+
+    resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(steps).toEqual(['選べなかった', '後ろの指示'])
+  })
 })
 
 describe('「1 枚まで選び」', () => {
@@ -234,9 +272,9 @@ describe('「1 枚まで選び」', () => {
   })
 
   /**
-   * 「1 枚選び」との違い。あちらは選ぶという行動が実行できないので効果を打ち切る
-   * （総合ルール 第1部 第1章 3、上の「敵が 1 枚もいなければ」のテスト）が、
-   * 「まで」は 0 枚を許しているので、選ばなかった場合と同じ結果になるだけである。
+   * ここは「1 枚選び」と同じである。どちらも候補が無ければ選ばれなかったものとして
+   * 効果が続く（総合ルール 第4部 第8章 2-2、上の「敵が 1 枚もいなければ」のテスト）。
+   * 2 つの違いは、候補があるときに選ばないことを選べるかどうかだけである（同 2-3）。
    */
   it('候補が 1 つも無くても、効果は打ち切られない', () => {
     const steps: string[] = []
@@ -323,7 +361,8 @@ describe('ユニットへのダメージ', () => {
   /** 敵 1 枚を選んで、指定した量のダメージを与える能力。 */
   const damaging = (amount: number) =>
     triggeredAbility('登場した時', function* (duel) {
-      yield* damageUnit(yield* choose(duel.enemies()), amount)
+      const target = yield* choose(duel.enemies())
+      if (target !== undefined) yield* damageUnit(target, amount)
     })
 
   const damageOn = (state: DuelState, square: Square) =>
@@ -343,6 +382,7 @@ describe('ユニットへのダメージ', () => {
   it('同じユニットに 2 回与えれば蓄積する', () => {
     const twice = triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
+      if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
       yield* damageUnit(enemy, 300)
       yield* damageUnit(enemy, 400)
     })
@@ -424,10 +464,12 @@ describe('効果による向きの変更', () => {
     cardsOn(state, square).map((card) => card.orientation)
 
   const releasing = triggeredAbility('登場した時', function* (duel) {
-    yield* release(yield* choose(duel.enemies()))
+    const target = yield* choose(duel.enemies())
+    if (target !== undefined) yield* release(target)
   })
   const freezing = triggeredAbility('登場した時', function* (duel) {
-    yield* freeze(yield* choose(duel.enemies()))
+    const target = yield* choose(duel.enemies())
+    if (target !== undefined) yield* freeze(target)
   })
 
   it('フリーズ状態のユニットをリリースする', () => {
@@ -577,6 +619,7 @@ describe('効果によるゾーン間の移動', () => {
   it('スクエアにいるユニットを、持ち主の手札に置ける', () => {
     const takeBack = triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
+      if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
       yield* placeInZone(enemy, '手札', 'リリース')
     })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
@@ -599,6 +642,7 @@ describe('効果によるゾーン間の移動', () => {
   it('スクエアから捨札へ置いた時も、それを見る能力が誘発する', () => {
     const toDiscard = triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
+      if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
       yield* placeInZone(enemy, '捨札', 'リリース')
     })
     const watching = instantiate({ id: '見届け役', card: discardWatcher, owner: '後攻' })
@@ -614,6 +658,7 @@ describe('効果によるゾーン間の移動', () => {
   it('山札の 1 番下を指定して戻せる', () => {
     const toBottom = triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
+      if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
       yield* placeInZone(enemy, '山札', 'リリース', '1番下')
     })
     const board = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
@@ -633,6 +678,7 @@ describe('効果によるゾーン間の移動', () => {
   it('山札の 1 番上に置く時、プランがあれば先に裏向きになる', () => {
     const toTop = triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
+      if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
       yield* placeInZone(enemy, '山札', 'リリース')
     })
     const board = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
@@ -650,6 +696,7 @@ describe('効果によるゾーン間の移動', () => {
   it('山札の 1 番下に置く時は、プランはそのままである', () => {
     const toBottom = triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
+      if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
       yield* placeInZone(enemy, '山札', 'リリース', '1番下')
     })
     const board = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
@@ -755,7 +802,7 @@ describe('効果によるゾーン間の移動', () => {
     const resolved = resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
 
     expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')).toEqual([])
-    // 選べなかった場合と違い、置けなかっただけでは効果は打ち切られない。
+    // 実行できない行動があっても、効果はそのまま続く。
     expect(steps).toEqual(['後ろの指示'])
   })
 
@@ -832,6 +879,7 @@ describe('効果によってスクエアに置くことは「登場」ではな�
   /** 自分の捨札にあるカードを 1 枚選び、指定のスクエアにフリーズして置く能力。 */
   const reviving = triggeredAbility('登場した時', function* (duel) {
     const card = yield* choose(duel.discardPile())
+    if (card === undefined) throw new Error('捨札にカードがある盤面で試すこと')
     yield* placeOnSquare(card, enemySquare, 'フリーズ')
   })
 
@@ -884,7 +932,8 @@ describe('効果に渡されるのは盤面への問い合わせだけである'
       duel.opponentHand
       // @ts-expect-error 山札の中身も読めない。「1 番上」は位置の指定であって選択ではない
       duel.library
-      yield* destroy(yield* choose(duel.enemies()))
+      const enemy = yield* choose(duel.enemies())
+      if (enemy !== undefined) yield* destroy(enemy)
     })
 
     expect(ability.kind).toBe('誘発型能力')
