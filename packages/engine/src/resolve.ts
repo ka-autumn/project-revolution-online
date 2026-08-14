@@ -48,6 +48,19 @@ export interface EffectContext {
    * 効果では渡さない。
    */
   readonly self?: UnitOnSquare
+  /**
+   * `DuelView` を通さずに効果へ直接手渡したユニット。
+   *
+   * 発動したトラップのきっかけに載っている「侵入してきた敵」がこれにあたる（`ability.ts` の
+   * `IntrusionOccasion`）。あれは盤面への問い合わせでは取れない。侵入してきたユニットが
+   * 盤面に残っていても、どれが引き金だったかを盤面から見分ける手立ては無いためである。
+   *
+   * 効果が命令の対象にできるのは engine が見せたカードだけである（`resolveEffect` の
+   * `shown`）。手渡したものも engine が見せたものなので、ここに渡して同じ扱いにする。
+   * スクエアを離れていれば、その対象への命令は実行されないだけである
+   * （総合ルール 第1部 第1章 3）。
+   */
+  readonly handed?: readonly UnitOnSquare[]
 }
 
 /**
@@ -64,6 +77,7 @@ export function resolveEffect(state: DuelState, effect: Effect, context: EffectC
   // 効果に見せたユニット。効果は自分で盤面を探せないので、対象にできるのはここを
   // 通って渡したものだけである（ADR-0002）。
   const shown = new Set<CardId>()
+  for (const unit of context.handed ?? []) shown.add(unit.id)
   const steps = effect(duelView(() => current, context, shown))
 
   let sent: unknown = undefined

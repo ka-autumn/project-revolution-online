@@ -1,4 +1,4 @@
-import type { AppearanceOccasion, Occasion, TriggerEvent } from './ability.js'
+import type { AppearanceOccasion, TriggerEvent, TriggerOccasion } from './ability.js'
 import { locateOnSquares } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import { resolveEffect } from './resolve.js'
@@ -13,7 +13,7 @@ import { addTriggered, triggeredBy } from './trigger.js'
  * イベントを満たすスクエアの全ユニットを見てしまうので、対象を 1 枚に絞れるようここを
  * 別に持つ。
  */
-function triggerSelf(state: DuelState, id: CardId, event: TriggerEvent, occasion?: Occasion): DuelState {
+function triggerSelf(state: DuelState, id: CardId, event: TriggerEvent, occasion?: TriggerOccasion): DuelState {
   const located = locateOnSquares(state, id)
   if (located === undefined) return state
 

@@ -1,6 +1,6 @@
 import type { Square } from './board.js'
 import { damagePlayer } from './effect.js'
-import type { Effect } from './effect.js'
+import type { Effect, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
 import { PHASES } from './turn.js'
 import type { Phase } from './turn.js'
@@ -97,20 +97,28 @@ export interface TriggeredAbility {
  * （総合ルール 第2部 第22章 4・6）ためである。「味方エリアに」は支配者から見た呼び方に
  * なる（同 6-1）。
  */
-export type TriggerCondition = (occasion: Occasion, controller: Player) => boolean
+export type TriggerCondition = (occasion: TriggerOccasion, controller: Player) => boolean
 
 /**
- * 誘発のきっかけ。誘発イベントが満たされた**その瞬間の事情**を写したもの。
+ * 誘発イベントのきっかけ。
  *
- * 後から盤面を見ても復元できないことを持つ。プランゾーンにあったカードが登場すると
- * そのプランゾーンは無くなる（総合ルール 第2部 第21章 3-3）ので、「プランゾーンから
- * 登場した」は出来事の瞬間にしか分からない。
+ * きっかけとは、できごとが起きた**その瞬間の事情**を写したものである。後から盤面を見ても
+ * 復元できないことを持つ。プランゾーンにあったカードが登場するとそのプランゾーンは無くなる
+ * （総合ルール 第2部 第21章 3-3）ので、「プランゾーンから登場した」は出来事の瞬間にしか
+ * 分からない。侵入してきたユニットも、トラップが発動されるまでにスクエアを離れうる。
+ * したがって、できごとの瞬間に捕まえて持ち回るしかない。
+ *
+ * 捕まえたきっかけの行き先は 2 つある。誘発型能力のものは誘発するかの判定
+ * （`TriggerCondition`）に使い、トラップの発動条件のもの（`IntrusionOccasion`）は発動した
+ * 効果に渡す（`effect.ts` の `TrapEffect`）。仕組みは同じなのでここに並べて置くが、経路が
+ * 交わらないので 1 つの型にはまとめない。渡される形が経路ごとに決まっていれば、受け取る
+ * カードの側にどのきっかけなのかを確かめる分岐が要らない。
  *
  * 誘発イベントごとに形が決まる。きっかけを持つのはいま「登場した時」だけで、他のイベントは
  * 誘発したこと自体以外に見るものが無い。必要になった時に足す（`card.ts` の属性・トリガー
  * アイコンと同じ考え方）。
  */
-export type Occasion = AppearanceOccasion
+export type TriggerOccasion = AppearanceOccasion
 
 /** 「登場した時」のきっかけ（総合ルール 第2部 第20章 1-4-a）。 */
 export interface AppearanceOccasion {
@@ -119,6 +127,33 @@ export interface AppearanceOccasion {
   readonly square: Square
   /** プレイされたゾーン。手札かプランゾーンのいずれかである（同 第4部 第6章 1）。 */
   readonly from: PlayerZone
+}
+
+/**
+ * トラップの発動条件「侵入される」のきっかけ（総合ルール 第2部 第20章 3-6）。
+ *
+ * 発動条件が満たされた時に写して盤面が持ち（`duel.ts` の `trapConditionsMet`）、発動した
+ * トラップの効果に渡される（`effect.ts` の `TrapEffect`）。誘発型能力ではないので、バンクも
+ * `TriggeredInstance` も通らない。
+ */
+export interface IntrusionOccasion {
+  readonly kind: '侵入'
+  /**
+   * 侵入してきたユニット。置かれた**その瞬間**の姿を写して持つ。
+   *
+   * したがって `invader.square` が侵入されたスクエアである。トラップが発動されるまでに
+   * そのユニットがスクエアを離れていても、エリアの判定はこの写しから行う。効果が解決される
+   * 時の盤面から引き直さないのは、そもそも引き直せないからである。盤面に残っていても、
+   * どのユニットが引き金だったかを盤面から見分ける手立ては無い。
+   *
+   * 誘発型能力の発生源（`DuelView.self`）とは違い、解決する時に盤面から引き直してからこれを
+   * 使う、という形にはならない。引き直しの根拠である総合ルール 第4部 第8章 2-5 は誘発型能力に
+   * ついての規定であって、トラップの発動（同 第2部 第20章 3-8）に対応する条文は無い。
+   *
+   * このユニットは効果から対象にできる。engine が手渡したものだからで、`resolve.ts` の
+   * `EffectContext.handed` がその扱いを与える。
+   */
+  readonly invader: UnitOnSquare
 }
 
 /**
@@ -223,7 +258,7 @@ export type Ability = TriggeredAbility | DreamAbility | PepAbility | TrustAbilit
  * 誘発型能力を 1 つ書く。
  *
  * `when` を渡すと、誘発イベントを満たしたうえでそれが真の時だけ誘発する。渡せるのは
- * きっかけを持つ誘発イベント（いまは「登場した時」だけ）に対してである。
+ * きっかけを持つ誘発イベント（いまは「登場した時」だけ、`TriggerOccasion`）に対してである。
  */
 export function triggeredAbility(
   event: TriggerEvent,

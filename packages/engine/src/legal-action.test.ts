@@ -16,7 +16,7 @@ import {
   passPriority,
   putOnSquare,
 } from './index.js'
-import type { Chooser, DuelState, Phase, Square } from './index.js'
+import type { Chooser, DuelState, Phase, Square, UnitOnSquare } from './index.js'
 
 /** 選択を求められたら常に最初の候補を選ぶ。どれを選ぶかを問わないテストで使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -162,9 +162,11 @@ describe('合法手の列挙', () => {
   // 総合ルール 第2部 第20章 3-8
   it('発動する権利があるトラップには発動する手が含まれる', () => {
     const trapCard = defineTrap({ name: 'テスト・トラップ', level: 0 })
+    // 発動条件を満たしたできごと。合法手の一覧に中身は関わらない。
+    const invader: UnitOnSquare = { id: '侵入したユニット', square: centerSquare, card: plainUnit, controller: '後攻' }
     const state: DuelState = {
       ...putInZone(mainPhase(), '先攻', 'トラップゾーン', [instantiate({ id: 'トラップ', card: trapCard, owner: '先攻' })]),
-      trapConditionsMet: ['トラップ'],
+      trapConditionsMet: [{ trap: 'トラップ', occasion: { kind: '侵入', invader } }],
     }
 
     expect(legalActions(state)).toContainEqual({ kind: 'トラップを発動する', card: 'トラップ' })

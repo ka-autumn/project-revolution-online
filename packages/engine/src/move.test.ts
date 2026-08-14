@@ -277,6 +277,6 @@ describe('移動による侵入', () => {
 
     const after = stateOf(moveUnit(state, 'ユニット', centerSquare))
 
-    expect(after.trapConditionsMet).toEqual(['トラップ'])
+    expect(after.trapConditionsMet.map((met) => met.trap)).toEqual(['トラップ'])
   })
 })

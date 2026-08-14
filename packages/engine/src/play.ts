@@ -17,12 +17,12 @@ import {
   moveToZone,
 } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
-import type { Effect } from './effect.js'
+import type { Effect, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
-import { checkIntrusion, hasTrapRight } from './trap.js'
+import { checkIntrusion, trapRightOf } from './trap.js'
 import type { PlayerZone } from './zone.js'
 
 /**
@@ -126,7 +126,7 @@ export function playAsTrap(state: DuelState, card: CardId): ActionOutcome {
  * であることもバンクが空であることも要らない（同 3-8）。
  *
  * トラップを発動できるのは、そのトラップの発動条件が満たされて発動する権利を得ている間だけ
- * である（同 3-8、`trap.ts` の `hasTrapRight`）。バトルやスマッシュ判定が進行中なら、
+ * である（同 3-8、`trap.ts` の `trapRightOf`）。バトルやスマッシュ判定が進行中なら、
  * 発動条件が満たされていても権利は発生していない（同 3-8 ただし書き）。発動条件を持たない
  * トラップ以外のカードは、トラップゾーンにあっても発動できない（同 3-6）。発動条件のうち
  * 実装しているのは「侵入」だけなので（`trap.ts`）、それ以外の条件で権利を得ることはまだ無い。
@@ -142,13 +142,20 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   const player = state.turn.priority
   const instance = findInZone(state, player, 'トラップゾーン', card)
   if (instance === undefined) return cannot('そのゾーンにない')
-  if (instance.card.type !== 'トラップ') return cannot('発動できるカードではない')
-  if (!hasTrapRight(state, card)) return cannot('発動する権利がない')
+  const trap = instance.card
+  if (trap.type !== 'トラップ') return cannot('発動できるカードではない')
+  const occasion = trapRightOf(state, card)
+  if (occasion === undefined) return cannot('発動する権利がない')
 
-  const paid = payUseCost(state, player, instance.card, chooser)
+  const paid = payUseCost(state, player, trap, chooser)
   if (typeof paid === 'string') return cannot(paid)
 
-  const resolved = resolveInResolveZone(paid, card, instance.card.effect, player, chooser)
+  // 発動条件を満たしたできごとを効果に渡す（`effect.ts` の `TrapEffect`）。ここで束ねるのは、
+  // きっかけを知っているのが発動する経路だけだからである。解決する側（`resolveEffect`）は
+  // どの経路から来た効果かを知らないままでよい。
+  const resolved = resolveInResolveZone(paid, card, (duel) => trap.effect(duel, occasion), player, chooser, [
+    occasion.invader,
+  ])
   return done(grantPriorityToInactive(resolved))
 }
 
@@ -209,7 +216,7 @@ function placePlayedUnit(
   const placed = triggerAppearance(moved, id, { kind: '登場', square, from })
   // 置かれたユニットが相手のトラップのトリガーアイコンのスクエアに置かれたなら「侵入」に
   // なり、そのトラップの支配者が発動する権利を得る（総合ルール 第2部 第20章 3-6）。
-  const invaded = checkIntrusion(placed, player, square)
+  const invaded = checkIntrusion(placed, { id, square, card, controller: player })
   if (areaOf(player, square) !== '中央エリア') return invaded
 
   // 中央エリアのスクエアを指定してプレイされたユニットは、ルールエフェクトによって捨札に
@@ -227,6 +234,10 @@ function placePlayedUnit(
  *
  * 効果はカードから引かずに受け取る。カードはリゾルブゾーンへ移した後さらに動くことがあり、
  * 解決している途中でカードを引き直せないためである。
+ *
+ * `handed` は、`DuelView` を通さずに効果へ直接渡したユニット（`resolve.ts` の
+ * `EffectContext.handed`）。発動したトラップが、きっかけに載っている侵入してきた敵を
+ * 渡す場合に使う。
  */
 function resolveInResolveZone(
   state: DuelState,
@@ -234,9 +245,10 @@ function resolveInResolveZone(
   effect: Effect,
   controller: Player,
   chooser: Chooser,
+  handed?: readonly UnitOnSquare[],
 ): DuelState {
   const placed = moveToResolveZone(state, id)
-  const resolved = resolveEffect(placed, effect, { controller, chooser })
+  const resolved = resolveEffect(placed, effect, { controller, chooser, handed })
 
   const stillResolving = cardsInResolveZone(resolved).some((each) => each.id === id)
   return stillResolving ? moveToZone(resolved, id, '捨札') : resolved

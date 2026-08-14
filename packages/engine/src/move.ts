@@ -44,7 +44,8 @@ export function moveUnit(state: DuelState, unit: CardId, destination: Square): A
 
   const moved = moveToSquare(state, unit, destination, { controller: player, orientation: 'リリース' })
   const triggered = triggerMovement(moved, unit)
-  return done(grantPriorityToInactive(checkIntrusion(triggered, player, destination)))
+  const invader = { id: unit, square: destination, card: moving.card, controller: player }
+  return done(grantPriorityToInactive(checkIntrusion(triggered, invader)))
 }
 
 /**

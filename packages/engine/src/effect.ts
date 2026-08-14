@@ -1,3 +1,4 @@
+import type { IntrusionOccasion } from './ability.js'
 import type { Square } from './board.js'
 import type { Card, UnitCard } from './card.js'
 import type { CardId, LibraryPosition } from './duel.js'
@@ -147,6 +148,24 @@ export type EffectStep<T> = Generator<Instruction, T, unknown>
  * プレイヤーの選択をはさめるようにするためである。
  */
 export type Effect = (duel: DuelView) => EffectStep<void>
+
+/**
+ * 発動したトラップの効果。第 2 引数で、発動条件を満たしたできごとの写しを受け取る
+ * （総合ルール 第2部 第20章 3-6・3-11）。
+ *
+ * **きっかけは `DuelView` には載せない。** あれは「盤面はどうなっているか」を答えるもので
+ * あり、きっかけは盤面ではない。混ぜると `DuelView` の意味が濁る。
+ *
+ * `Effect` を広げずにトラップだけ別の型にしているのは、渡されるきっかけの形が経路ごとに
+ * 決まっているためである。広い型（あらゆるきっかけ）で受けると、カードの側にどのきっかけ
+ * なのかを確かめる分岐が要る。その分岐は engine が渡すものによって常に同じ側へ倒れるので、
+ * 書いても確かめようがない。
+ *
+ * 発動したトラップの効果は発生源のユニットを持たない（リゾルブゾーンで解決される、同
+ * 第2部 第21章 12-1）ので、`DuelView.self` は常に `undefined` になる。侵入してきた敵と
+ * 侵入されたスクエアは、どちらもここからしか取れない。
+ */
+export type TrapEffect = (duel: DuelView, occasion: IntrusionOccasion) => EffectStep<void>
 
 /**
  * 候補の中から 1 つ選ぶ。選ぶのは能力の支配者（総合ルール 第4部 第8章 2-3）。
