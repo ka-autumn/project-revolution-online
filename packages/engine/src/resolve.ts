@@ -64,8 +64,6 @@ export function resolveEffect(state: DuelState, effect: Effect, context: EffectC
     if (step.done === true) return current
 
     const outcome = apply(current, step.value, context, shown)
-    if (outcome === undefined) return current
-
     current = outcome.state
     sent = outcome.value
   }
@@ -78,25 +76,27 @@ interface Outcome {
 }
 
 /**
- * 命令を 1 つ実行する。効果をここで打ち切るなら `undefined`。
+ * 命令を 1 つ実行する。
  *
- * 実行できない行動は実行されない（総合ルール 第1部 第1章 3）。行動が実行されなかった
- * だけなら効果は続くが、選べなかった場合だけは、選んだものを対象にする行動が後ろに
- * 続いているのが普通なので、そこで打ち切る。
+ * 実行できない行動は実行されない（総合ルール 第1部 第1章 3）が、効果はそのまま続く。
+ * **効果が途中で打ち切られることはない。** 解決はテキストに書かれている順番の通りに
+ * 指示に従うものであり（同 第4部 第8章 2-2）、実行できない指示があってもそれを飛ばして
+ * 次へ進むだけだからである。
  */
 function apply(
   state: DuelState,
   instruction: Instruction,
   context: EffectContext,
   shown: ReadonlySet<CardId>,
-): Outcome | undefined {
+): Outcome {
   switch (instruction.kind) {
     case '選ぶ': {
-      // 候補が空の時、「1 枚選び」は選ぶという行動そのものが実行できないので打ち切るが、
-      // 「1 枚まで選び」は 0 枚を許しているので、選ばなかったものとして効果が続く。
-      if (instruction.candidates.length === 0) {
-        return instruction.mayDecline ? { state, value: undefined } : undefined
-      }
+      // 候補が空なら、選ぶという行動は実行できない（総合ルール 第1部 第1章 3）。効果は
+      // そこで終わらせず、選ばれなかったものとして次の指示へ進む。解決はテキストに
+      // 書かれている順番の通りに指示に従うものであり（同 第4部 第8章 2-2）、実行されない
+      // のはその行動だけだからである。選んだものを対象にする後ろの指示を飛ばすかどうかは、
+      // 効果の側が `undefined` を見て決める（`effect.ts` の `choose`）。
+      if (instruction.candidates.length === 0) return { state, value: undefined }
       // 選ぶのは能力の支配者（総合ルール 第4部 第8章 2-3）。
       const chosen = context.chooser(instruction.candidates, context.controller, instruction.mayDecline)
       // 選ばないことが認められている場面でだけ、候補にないもの（`undefined`）を受け取れる。

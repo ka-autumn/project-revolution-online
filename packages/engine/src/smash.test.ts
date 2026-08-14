@@ -53,7 +53,7 @@ const hopeful = defineUnit({
   abilities: [
     hope(function* (duel) {
       const enemy = yield* choose(duel.enemies())
-      yield* destroy(enemy)
+      if (enemy !== undefined) yield* destroy(enemy)
     }),
   ],
 })
