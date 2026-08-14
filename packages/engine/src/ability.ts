@@ -1,7 +1,7 @@
 import { indexOfSquare, squaresAdjacent } from './board.js'
 import type { Square } from './board.js'
 import { bpPlus, damagePlayer } from './effect.js'
-import type { BpModifier, DuelView, Effect, UnitOnSquare } from './effect.js'
+import type { AttributeAddition, BpModifier, DuelView, Effect, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
 import { PHASES } from './turn.js'
 import type { Phase } from './turn.js'
@@ -278,13 +278,33 @@ export interface BpModifyingAbility {
 }
 
 /**
+ * 属性を加える継続効果を生み出す常在型能力（総合ルール 第2部 第13章 4、
+ * 第4部 第12章 5-2 の(3)）。
+ *
+ * `BpModifyingAbility` と同じ形で、修整の在りかは盤面ではなく、読むたびに集め直す
+ * （`continuous.ts`）。違うのは適用される順番だけで、属性を変更する継続効果 (3) は
+ * ＢＰを修整する継続効果 (5) より先に適用される（同 5-2）。
+ */
+export interface AttributeAddingAbility {
+  readonly kind: '常在型能力'
+  /**
+   * この能力がいま加えている属性すべて。
+   *
+   * 渡される `DuelView` が写しているのは、**属性がまだ加わっていない盤面**である。
+   * 同じ種類の継続効果どうしの順序（同 5-3・5-4）を扱えるようになるまで、加える属性を
+   * 決める時に他の継続効果が加えた属性は見えない。
+   */
+  readonly attributesAdded: (duel: DuelView) => readonly AttributeAddition[]
+}
+
+/**
  * テキストによって決められた、カードが行うことまたは行えること
  * （総合ルール 第4部 第1章 1）。
  *
  * 能力には起動型・誘発型・常在型の 3 つがある（同 2）が、起動型はコストを持つ能力を
- * 書けるようになってから足す。常在型は「夢」「元気」「信頼」「根性」と、ＢＰを修整する
- * 継続効果を生み出すものがある。「希望」はそのどれでもない特別な能力である
- * （同 第5部 第3章 1）。
+ * 書けるようになってから足す。常在型は「夢」「元気」「信頼」「根性」と、継続効果を
+ * 生み出すもの（ＢＰの修整・属性の追加）がある。「希望」はそのどれでもない特別な能力で
+ * ある（同 第5部 第3章 1）。
  */
 export type Ability =
   | TriggeredAbility
@@ -294,6 +314,7 @@ export type Ability =
   | GutsAbility
   | HopeAbility
   | BpModifyingAbility
+  | AttributeAddingAbility
 
 /**
  * 誘発型能力を 1 つ書く。
@@ -349,6 +370,13 @@ export function hope(effect: Effect): HopeAbility {
 /** ＢＰを修整する常在型能力を 1 つ書く。修整の内容はカードごとに違うので受け取る。 */
 export function bpModifying(bpModifiers: (duel: DuelView) => readonly BpModifier[]): BpModifyingAbility {
   return { kind: '常在型能力', bpModifiers }
+}
+
+/** 属性を加える常在型能力を 1 つ書く。加える内容はカードごとに違うので受け取る。 */
+export function attributeAdding(
+  attributesAdded: (duel: DuelView) => readonly AttributeAddition[],
+): AttributeAddingAbility {
+  return { kind: '常在型能力', attributesAdded }
 }
 
 /**

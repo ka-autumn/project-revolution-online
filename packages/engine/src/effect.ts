@@ -1,6 +1,6 @@
 import type { IntrusionOccasion } from './ability.js'
 import type { Square } from './board.js'
-import type { Card, UnitCard } from './card.js'
+import type { Attribute, Card, UnitCard } from './card.js'
 import type { CardId, LibraryPosition } from './duel.js'
 import type { Orientation } from './orientation.js'
 import type { Player } from './player.js'
@@ -192,6 +192,23 @@ export interface BpModifier {
  */
 export function bpPlus(target: UnitOnSquare, amount: number): BpModifier {
   return { target: target.id, amount }
+}
+
+/**
+ * 継続効果が 1 枚のユニットに加える属性 1 つ（総合ルール 第2部 第13章 4、
+ * 第4部 第12章 5-2 の(3)）。
+ *
+ * 加えるだけで、書かれている属性は残る（同 第13章 4）。指定した属性だけを別のものに
+ * 変える形（同 3）は、それを書くテキストが出てきた時に足す。
+ */
+export interface AttributeAddition {
+  readonly target: CardId
+  readonly attribute: Attribute
+}
+
+/** 「そのユニットは〈属性〉としても扱う」。 */
+export function alsoTreatedAs(target: UnitOnSquare, attribute: Attribute): AttributeAddition {
+  return { target: target.id, attribute }
 }
 
 /**
