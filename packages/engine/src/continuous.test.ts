@@ -20,6 +20,7 @@ import {
   friendship,
   instantiate,
   passPriority,
+  playCard,
   putOnSquare,
   resolveEffect,
 } from './index.js'
@@ -142,6 +143,14 @@ function stockedDuelState(): DuelState {
   )
 }
 
+/** アクティブプレイヤー（先攻）が行動できる、第 1 ターンのメインフェイズの盤面。 */
+function mainPhase(): DuelState {
+  let current = stockedDuelState()
+  while (current.turn.phase !== 'メインフェイズ') current = pass(current)
+  // フェイズの始めには非アクティブプレイヤーに優先権が発生している（総合ルール 第3部 第8章 1）。
+  return pass(current)
+}
+
 function boardOf(...placements: readonly Placement[]): DuelState {
   return placements.reduce(
     (state, [square, id, card, owner]) =>
@@ -164,6 +173,7 @@ const idsOf = (cards: readonly { readonly id: string }[]) => cards.map((card) =>
 
 // 総合ルール 第4部 第12章 4-1（ADR-0006）
 describe('常在型能力が生み出した継続効果', () => {
+  // 同 4-1 の【例】: 「他の味方のＢＰを＋1000」の効果は、スクエアにある間ずっと継続する。
   it('能力を持つカードがスクエアにある間、ＢＰを修整する', () => {
     const board = boardOf([homeLeft, '強化するユニット', boosting], [homeRight, '味方', vanilla])
 
@@ -194,14 +204,40 @@ describe('常在型能力が生み出した継続効果', () => {
   })
 })
 
-// 総合ルール 第4部 第12章 4-2（ADR-0006）
+// 総合ルール 第4部 第12章 4-2 の【例】（ADR-0006）
 describe('常在型能力が生み出した継続効果と、後から置かれたカード', () => {
+  // 同 4-2 の【例】: 「他の味方のＢＰを＋1000」の効果は、そのカードがスクエアに置かれて
+  // 効果が発生した後で、スクエアに置かれた味方にも影響を与える。
   it('継続効果が発生した後にスクエアに置かれたユニットにも影響する', () => {
     const later = boardOf([homeLeft, '強化するユニット', boosting], [homeRight, '味方', vanilla])
     const earlier = boardOf([homeRight, '味方', vanilla], [homeLeft, '強化するユニット', boosting])
 
     expect(bpOn(later, '味方', vanilla)).toBe(3000)
     expect(bpOn(earlier, '味方', vanilla)).toBe(bpOn(later, '味方', vanilla))
+  })
+})
+
+// 総合ルール 第4部 第12章 2 の【例】（ADR-0006）
+describe('データを変える継続効果がある時にプレイされたユニット', () => {
+  // 同 2 の【例】: 「他の味方のＢＰを＋1000」を持つカードがスクエアにある状況でユニットを
+  // プレイすると、そのユニットは修整された後のＢＰのユニットとしてスクエアに置かれる。
+  it('修整された後のＢＰで置かれる', () => {
+    const boosted = putOnSquare(
+      mainPhase(),
+      homeLeft,
+      instantiate({ id: '強化するユニット', card: boosting, owner: '先攻' }),
+    )
+    const inHand = putInZone(boosted, '先攻', '手札', [
+      instantiate({ id: 'プレイされたユニット', card: vanilla, owner: '先攻' }),
+    ])
+    const ready = putInZone(inHand, '先攻', 'エネルギーゾーン', [
+      instantiate({ id: '赤エネ', card: vanilla, owner: '先攻' }),
+    ])
+
+    const outcome = playCard(ready, { card: 'プレイされたユニット', square: homeRight }, chooseFirst)
+    if (outcome.kind !== '行った') throw new Error(`行えなかった: ${outcome.violation}`)
+
+    expect(bpOn(outcome.state, 'プレイされたユニット', vanilla)).toBe(3000)
   })
 })
 
@@ -230,17 +266,26 @@ describe('継続効果によって加わる属性', () => {
   })
 })
 
-// 総合ルール 第4部 第12章 5-2（ADR-0006）
+// 総合ルール 第4部 第12章 5-2 の【例】（ADR-0006）
 describe('別の種類に属する継続効果の適用の順序', () => {
-  it('属性を加える継続効果は、ＢＰを修整する継続効果より先に適用される', () => {
-    const board = boardOf(
+  // 同 5-2 の【例】: 「他の〈属性〉の味方のＢＰを＋1000」と「あなたのユニットの属性に
+  // 〈属性〉を加える」の 2 つがスクエアに置かれた順番に関係なく、両方の影響を受ける
+  // ユニットは、まず属性を加えられ、次にＢＰを修整される。
+  it('置かれた順番に関係なく、属性を加える継続効果がＢＰを修整する継続効果より先に適用される', () => {
+    const 属性が先 = boardOf(
       [homeLeft, '属性を加えるユニット', granting],
       [homeCenter, '属性で強化するユニット', boostingAttributed],
       [homeRight, '味方', vanilla],
     )
+    const ＢＰが先 = boardOf(
+      [homeCenter, '属性で強化するユニット', boostingAttributed],
+      [homeLeft, '属性を加えるユニット', granting],
+      [homeRight, '味方', vanilla],
+    )
 
     // 味方はカードに「テスト属性」を持たないが、先に加わるので修整の対象になる。
-    expect(bpOn(board, '味方', vanilla)).toBe(3000)
+    expect(bpOn(属性が先, '味方', vanilla)).toBe(3000)
+    expect(bpOn(ＢＰが先, '味方', vanilla)).toBe(3000)
   })
 
   it('属性で絞る修整は、カードに書かれている属性を持つユニットにも効く', () => {
