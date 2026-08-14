@@ -5,9 +5,10 @@ export type {
   DreamAbility,
   GutsAbility,
   HopeAbility,
-  Occasion,
+  IntrusionOccasion,
   PepAbility,
   TriggerCondition,
+  TriggerOccasion,
   TriggeredAbility,
   TriggerEvent,
   TrustAbility,
@@ -63,7 +64,15 @@ export {
   putOnSquare,
   releaseAll,
 } from './duel.js'
-export type { CardId, CardInstance, DuelResult, DuelState, LibraryPosition, TriggeredInstance } from './duel.js'
+export type {
+  CardId,
+  CardInstance,
+  DuelResult,
+  DuelState,
+  LibraryPosition,
+  TrapConditionMet,
+  TriggeredInstance,
+} from './duel.js'
 export {
   choose,
   chooseAtMostOne,
@@ -78,7 +87,7 @@ export {
   placeTopOfLibrary,
   release,
 } from './effect.js'
-export type { CardInZone, DuelView, Effect, EffectStep, Instruction, UnitOnSquare } from './effect.js'
+export type { CardInZone, DuelView, Effect, EffectStep, Instruction, TrapEffect, UnitOnSquare } from './effect.js'
 export { cardIdsOf, checkBoardInvariants } from './invariant.js'
 export type { InvariantViolation } from './invariant.js'
 export { applyLegalAction, legalActions } from './legal-action.js'

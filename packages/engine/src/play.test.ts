@@ -26,7 +26,18 @@ import {
   triggeredAbility,
   trust,
 } from './index.js'
-import type { ActionOutcome, CardInstance, Chooser, DuelState, Phase, PlayDeclaration, Square } from './index.js'
+import type {
+  ActionOutcome,
+  CardInstance,
+  Chooser,
+  DuelState,
+  Phase,
+  PlayDeclaration,
+  Square,
+  TrapCard,
+  TrapConditionMet,
+  UnitOnSquare,
+} from './index.js'
 
 /** 選択を求められたら常に最初の候補を選ぶ。どれを選ぶかを問わないテストで使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -123,6 +134,26 @@ const redTrap = defineTrap({
 const homeSquare: Square = { row: 0, column: 1 }
 const centerSquare: Square = { row: 1, column: 1 }
 const enemySquare: Square = { row: 2, column: 1 }
+
+/** 侵入してきたことにするユニット。誰がどこに侵入したかを問わないところで使う。 */
+function someIntruder(square: Square = centerSquare): UnitOnSquare {
+  return { id: '侵入したユニット', square, card: redUnit, controller: '後攻' }
+}
+
+/**
+ * そのトラップの発動条件が、侵入によって満たされている状態。
+ *
+ * 権利をどう得るか（総合ルール 第2部 第20章 3-6・3-8）を検証しないテストで、権利がある
+ * 前提を作るために使う。
+ */
+function conditionMet(trap: string, invader: UnitOnSquare = someIntruder()): TrapConditionMet {
+  return { trap, occasion: { kind: '侵入', invader } }
+}
+
+/** 発動条件が満たされているトラップの id。 */
+function trapsMet(state: DuelState): readonly string[] {
+  return state.trapConditionsMet.map((met) => met.trap)
+}
 
 /** エネルギーに使う、その色のカード 1 枚。 */
 function energy(id: string, color: '赤' | '青'): CardInstance {
@@ -502,7 +533,7 @@ describe('トラップの発動', () => {
     const trap = instantiate({ id: 'トラップ', card: redTrap, owner: '先攻' })
     const enemy = instantiate({ id: '敵', card: redUnit, owner: '後攻' })
     const state = putInZone(putInZone(mainPhase(), '先攻', 'トラップゾーン', [trap]), '先攻', 'エネルギーゾーン', energies)
-    return { ...putOnSquare(state, enemySquare, enemy), trapConditionsMet: ['トラップ'] }
+    return { ...putOnSquare(state, enemySquare, enemy), trapConditionsMet: [conditionMet('トラップ')] }
   }
 
   // 総合ルール 第2部 第20章 3-11
@@ -545,7 +576,8 @@ describe('トラップの発動', () => {
     )
 
     expect(
-      stateOf(activateTrap({ ...state, trapConditionsMet: ['トラップ'] }, 'トラップ', chooseFirst)).turn.priority,
+      stateOf(activateTrap({ ...state, trapConditionsMet: [conditionMet('トラップ')] }, 'トラップ', chooseFirst))
+        .turn.priority,
     ).toBe('後攻')
   })
 
@@ -568,6 +600,148 @@ describe('トラップの発動', () => {
     )
 
     expect(violationOf(activateTrap(state, 'ユニット', chooseFirst))).toBe('発動できるカードではない')
+  })
+})
+
+// 総合ルール 第2部 第20章 3-6・3-11、第4部 第8章 2-5（ADR-0006）
+describe('発動したトラップの効果に渡されるきっかけ', () => {
+  /** 後攻が支配する、そのスクエアにいるユニット。先攻から見た敵になる。 */
+  function enemyAt(id: string, square: Square): UnitOnSquare {
+    return { id, square, card: redUnit, controller: '後攻' }
+  }
+
+  /** 先攻から見た味方エリアの、`homeSquare` 以外の 2 つのスクエア。 */
+  const besideHome: Square = { row: 0, column: 0 }
+  const alsoBesideHome: Square = { row: 0, column: 2 }
+
+  /**
+   * 侵入してきた敵と同じエリアにいる敵全員を破壊する、レベル 1 の赤いトラップ。
+   *
+   * エリアは、解決する時の盤面ではなくきっかけの写しから取る。侵入してきたユニットは
+   * 発動するまでにスクエアを離れうるためである（`ability.ts` の `IntrusionOccasion`）。
+   * 対象になる敵のほうは、解決する時の盤面から取る。
+   */
+  const areaTrap = defineTrap({
+    name: 'テスト・エリアトラップ',
+    level: 1,
+    colors: ['赤'],
+    effect: function* (duel, occasion) {
+      const invaded = areaOf(duel.controller, occasion.invader.square)
+      for (const enemy of duel.enemies().filter((each) => areaOf(duel.controller, each.square) === invaded)) {
+        yield* destroy(enemy)
+      }
+    },
+  })
+
+  /**
+   * 侵入してきた敵そのものを破壊する、レベル 1 の赤いトラップ。
+   *
+   * トリガーアイコンは後攻が支配することを想定した向きで持つ。盤面に固定すると
+   * `homeSquare` になる（`board.ts` の `squareFromView`）。
+   */
+  const invaderTrap = defineTrap({
+    name: 'テスト・侵入者トラップ',
+    level: 1,
+    colors: ['赤'],
+    triggerIcon: [{ row: 2, column: 1 }],
+    effect: function* (_duel, occasion) {
+      yield* destroy(occasion.invader)
+    },
+  })
+
+  /**
+   * そのトラップが先攻のトラップゾーンにあり、そのきっかけで発動条件が満たされている盤面。
+   *
+   * `onSquares` に渡したユニットだけがスクエアにいる。侵入してきたユニットを渡さなければ、
+   * 発動するまでにスクエアを離れていた場合になる。
+   */
+  function armedWith(
+    card: TrapCard,
+    invader: UnitOnSquare,
+    onSquares: readonly UnitOnSquare[],
+  ): DuelState {
+    const trap = instantiate({ id: 'トラップ', card, owner: '先攻' })
+    const armed = putInZone(
+      putInZone(mainPhase(), '先攻', 'トラップゾーン', [trap]),
+      '先攻',
+      'エネルギーゾーン',
+      twoEnergies(),
+    )
+    const placed = onSquares.reduce(
+      (state, unit) =>
+        putOnSquare(state, unit.square, instantiate({ id: unit.id, card: unit.card, owner: unit.controller })),
+      armed,
+    )
+    return { ...placed, trapConditionsMet: [conditionMet('トラップ', invader)] }
+  }
+
+  it('侵入されたスクエアを見て、そのエリアにいる敵全員を対象にできる', () => {
+    const invader = enemyAt('侵入者', besideHome)
+    const state = armedWith(areaTrap, invader, [
+      invader,
+      enemyAt('同じエリアの敵', alsoBesideHome),
+      enemyAt('別のエリアの敵', centerSquare),
+    ])
+
+    const after = stateOf(activateTrap(state, 'トラップ', chooseFirst))
+
+    expect(cardsOn(after, besideHome)).toEqual([])
+    expect(cardsOn(after, alsoBesideHome)).toEqual([])
+    expect(idsOf(cardsOn(after, centerSquare))).toEqual(['別のエリアの敵'])
+  })
+
+  // 盤面に残っていても、どのユニットが引き金だったかは盤面からは見分けられない。きっかけに
+  // 載せて手渡したものは、効果から対象にできる（`resolve.ts` の `EffectContext.handed`）。
+  it('侵入してきた敵そのものを対象にできる', () => {
+    const invader = enemyAt('侵入者', besideHome)
+    const state = armedWith(invaderTrap, invader, [invader, enemyAt('別の敵', alsoBesideHome)])
+
+    const after = stateOf(activateTrap(state, 'トラップ', chooseFirst))
+
+    expect(cardsOn(after, besideHome)).toEqual([])
+    expect(idsOf(cardsOn(after, alsoBesideHome))).toEqual(['別の敵'])
+  })
+
+  // ここまでは発動条件が満たされた状態を直接組み立てているので、登場から発動までを通して
+  // 1 本確かめる。侵入させた側（`placePlayedUnit`）が写したユニットが、そのまま効果に
+  // 渡ることを見る。
+  it('登場によって侵入した敵を、発動したトラップの効果が対象にできる', () => {
+    const trap = instantiate({ id: 'トラップ', card: invaderTrap, owner: '後攻' })
+    const state = putInZone(
+      putInZone(
+        putInZone(putInZone(mainPhase(), '後攻', 'トラップゾーン', [trap]), '先攻', '手札', [
+          instantiate({ id: '侵入するユニット', card: redUnit, owner: '先攻' }),
+        ]),
+        '先攻',
+        'エネルギーゾーン',
+        twoEnergies(),
+      ),
+      '後攻',
+      'エネルギーゾーン',
+      [{ ...energy('後攻エネ', '赤'), owner: '後攻', controller: '後攻' }],
+    )
+
+    const played = stateOf(play(state, { card: '侵入するユニット', square: homeSquare }))
+    const after = stateOf(activateTrap(played, 'トラップ', chooseFirst))
+
+    expect(idsOf(cardsOn(played, homeSquare))).toEqual(['侵入するユニット'])
+    expect(cardsOn(after, homeSquare)).toEqual([])
+  })
+
+  // 総合ルール 第4部 第8章 2-5 は誘発型能力についての規定で、トラップの発動（同 第2部
+  // 第20章 3-8）に対応する条文は無い。侵入してきたユニットが退場していても発動し、エリアは
+  // きっかけに写した侵入時のスクエアから取る、と決めている。
+  it('侵入してきたユニットが退場していても、そのエリアの敵は対象になる', () => {
+    const gone = enemyAt('退場した侵入者', besideHome)
+    const state = armedWith(areaTrap, gone, [
+      enemyAt('同じエリアの敵', alsoBesideHome),
+      enemyAt('別のエリアの敵', centerSquare),
+    ])
+
+    const after = stateOf(activateTrap(state, 'トラップ', chooseFirst))
+
+    expect(cardsOn(after, alsoBesideHome)).toEqual([])
+    expect(idsOf(cardsOn(after, centerSquare))).toEqual(['別のエリアの敵'])
   })
 })
 
@@ -594,13 +768,13 @@ describe('トラップの発動条件（侵入）', () => {
   it('相手のユニットがトリガーアイコンのスクエアに登場すると、発動する権利を得る', () => {
     const after = stateOf(play(readyWithOpponentTrap(), { card: 'ユニット', square: centerSquare }))
 
-    expect(after.trapConditionsMet).toEqual(['トラップ'])
+    expect(trapsMet(after)).toEqual(['トラップ'])
   })
 
   it('トリガーアイコンに描かれていないスクエアに登場しても権利を得ない', () => {
     const after = stateOf(play(readyWithOpponentTrap(), { card: 'ユニット', square: homeSquare }))
 
-    expect(after.trapConditionsMet).toEqual([])
+    expect(trapsMet(after)).toEqual([])
   })
 
   // 「相手のユニットが」なので、トラップの支配者自身が自分のユニットをそのスクエアに
@@ -618,7 +792,7 @@ describe('トラップの発動条件（侵入）', () => {
 
     const after = stateOf(play(state, { card: 'ユニット', square: centerSquare }))
 
-    expect(after.trapConditionsMet).toEqual([])
+    expect(trapsMet(after)).toEqual([])
   })
 
   // 総合ルール 第4部 第6章 1-5: 解決の後、非アクティブプレイヤーが優先権を獲得する。
@@ -691,7 +865,7 @@ describe('侵入と同時にバトルが発生した場合の権利', () => {
   it('侵入と同時にバトルが発生する', () => {
     const played = stateOf(play(readyToIntrudeIntoBattle(), { card: 'ユニット', square: centerSquare }))
 
-    expect(played.trapConditionsMet).toEqual(['トラップ'])
+    expect(trapsMet(played)).toEqual(['トラップ'])
     expect(played.battle).not.toBeUndefined()
   })
 

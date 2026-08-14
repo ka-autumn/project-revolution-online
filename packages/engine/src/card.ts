@@ -1,6 +1,6 @@
 import type { Ability, DreamAbility, PepAbility, GutsAbility, HopeAbility, TrustAbility } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
-import type { Effect } from './effect.js'
+import type { Effect, TrapEffect } from './effect.js'
 
 /**
  * カードの色。レベルに含まれるエネルギー・シンボルの色と同じであり、カードの背景や枠の色
@@ -117,8 +117,11 @@ export interface TrapCard extends WrittenCard {
    *
    * 《 》でくくられた発動条件のテキストはまだ持っていない。発動条件のうち、トリガーアイコン
    * （スクエア）で表される「侵入」だけは `triggerIcon` として持てる。
+   *
+   * 効果は第 2 引数で、発動条件を満たしたできごとの写しを受け取る（`effect.ts` の
+   * `TrapEffect`）。「侵入してきた敵」「侵入されたスクエア」はそこからしか取れない。
    */
-  readonly effect: Effect
+  readonly effect: TrapEffect
 }
 
 export type Card = UnitCard | StrategyCard | TrapCard
@@ -165,7 +168,7 @@ interface TrapSpec extends CardSpec {
   /** 省略した場合はトリガーアイコンを持たない。 */
   readonly triggerIcon?: readonly Square[]
   /** 省略した場合は、発動して解決しても何も起こらない。 */
-  readonly effect?: Effect
+  readonly effect?: TrapEffect
 }
 
 /** 解決しても何も起こらない効果。効果を書いていないカードに使う。 */

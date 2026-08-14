@@ -1,4 +1,4 @@
-import type { TriggeredAbility } from './ability.js'
+import type { IntrusionOccasion, TriggeredAbility } from './ability.js'
 import type { Battle } from './battle.js'
 import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
@@ -130,7 +130,7 @@ export interface DuelState {
    */
   readonly playedIntoCenter: readonly CardId[]
   /**
-   * トラップゾーンにあり、発動条件が満たされているカードの id（総合ルール 第2部 第20章 3-8）。
+   * トラップゾーンにあり、発動条件が満たされているカード（総合ルール 第2部 第20章 3-8）。
    *
    * 発動条件が満たされたこと（`trap.ts` の `checkIntrusion`）を持続する状態として持たせ、
    * 優先権をパスした時（`loseTrapRightOnPass`）や、そのカードがトラップゾーンを離れた時
@@ -139,9 +139,9 @@ export interface DuelState {
    * 発動する権利そのものではない。権利は「優先権を得る時」に発生するもので、その時に
    * バトルまたはスマッシュ判定が発生していれば、それが終了するまで発生しない（同 3-8 の
    * ただし書き）。権利があるかどうかは、この並びと進行中のバトル・スマッシュ判定から
-   * `trap.ts` の `hasTrapRight` が決める。
+   * `trap.ts` の `trapRightOf` が決める。
    */
-  readonly trapConditionsMet: readonly CardId[]
+  readonly trapConditionsMet: readonly TrapConditionMet[]
   /**
    * 進行中のバトル（総合ルール 第3部 第11章）。発生していなければ `undefined`。
    *
@@ -241,6 +241,19 @@ export interface TriggeredInstance {
    * （`bank.ts`）が位置を必要としないためである。
    */
   readonly self: UnitOnSquare
+}
+
+/**
+ * 発動条件が満たされているトラップ 1 枚と、そのきっかけ
+ * （総合ルール 第2部 第20章 3-8・3-8-a）。
+ *
+ * `TriggeredInstance` が誘発した時点の事情を写して持つのと同じ形である。どちらも、
+ * 解決される時には盤面から引き直せないことを持つ。
+ */
+export interface TrapConditionMet {
+  readonly trap: CardId
+  /** 発動条件を満たしたできごと。発動した効果に渡される（`play.ts` の `activateTrap`）。 */
+  readonly occasion: IntrusionOccasion
 }
 
 interface InstanceSpec {
@@ -505,10 +518,10 @@ function detach(state: DuelState, id: CardId): { readonly state: DuelState; read
   return undefined
 }
 
-/** `trapConditionsMet` からその id を取り除く。無ければ盤面はそのまま。 */
+/** `trapConditionsMet` からそのカードのぶんを取り除く。無ければ盤面はそのまま。 */
 function withoutTrapCondition(state: DuelState, id: CardId): DuelState {
-  if (!state.trapConditionsMet.includes(id)) return state
-  return { ...state, trapConditionsMet: state.trapConditionsMet.filter((met) => met !== id) }
+  if (!state.trapConditionsMet.some((met) => met.trap === id)) return state
+  return { ...state, trapConditionsMet: state.trapConditionsMet.filter((met) => met.trap !== id) }
 }
 
 /**
