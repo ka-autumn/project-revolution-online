@@ -128,5 +128,8 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
     hand: showZone('手札'),
     discardPile: showZone('捨札'),
     planZone: showZone('プランゾーン'),
+    // 枚数だけを返すので、見せたカードとして覚えるものが無い。数えたことによって、その
+    // カードを対象にできるようにはならない。
+    energyCount: (player) => cardsIn(currentState(), player, 'エネルギーゾーン').length,
   }
 }
