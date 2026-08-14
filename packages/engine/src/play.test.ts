@@ -5,6 +5,7 @@ import { putInZone } from './duel.js'
 import {
   PLAYERS,
   activateTrap,
+  areaOf,
   cardsIn,
   cardsInResolveZone,
   cardsOn,
@@ -61,6 +62,39 @@ const appearingUnit = defineUnit({
   bp: 1000,
   sp: 1000,
   abilities: [triggeredAbility('登場した時', function* () {})],
+})
+
+/**
+ * 「プランゾーンから登場した時」に誘発する能力を持つ、「夢」も持つレベル 2 の赤いユニット。
+ *
+ * 絞り込みは誘発イベントの値ではなく述語で表す（`ability.ts` の `TriggeredAbility.when`）。
+ */
+const fromPlanUnit = defineUnit({
+  name: 'テスト・プランから登場ユニット',
+  level: 2,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    dream,
+    triggeredAbility('登場した時', function* () {}, (occasion) => occasion.from === 'プランゾーン'),
+  ],
+})
+
+/** 「味方エリアに登場した時」に誘発する能力を持つレベル 2 の赤いユニット。 */
+const inHomeAreaUnit = defineUnit({
+  name: 'テスト・味方エリア登場ユニット',
+  level: 2,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    triggeredAbility(
+      '登場した時',
+      function* () {},
+      (occasion, controller) => areaOf(controller, occasion.square) === '味方エリア',
+    ),
+  ],
 })
 
 /** 敵を 1 枚選んで破壊するレベル 2 の赤いストラテジー。 */
@@ -671,6 +705,92 @@ describe('侵入と同時にバトルが発生した場合の権利', () => {
     expect(ended.battle).toBeUndefined()
     expect(ended.turn.priority).toBe('後攻')
     expect(cardsIn(stateOf(activateTrap(ended, 'トラップ', chooseFirst)), '後攻', 'トラップゾーン')).toEqual([])
+  })
+})
+
+/**
+ * 総合ルール 第4部 第7章 8 の裏返し（ADR-0006）。
+ *
+ * 「プランゾーンから登場した時」「味方エリアに登場した時」は、「～した時、～ならば」と
+ * 書かれた条件付誘発型能力ではなく、**誘発イベントそのものに絞り込みが付いたもの**として
+ * 扱う。誘発する時に 1 度だけ判定し、解決する時には確かめ直さない。
+ */
+describe('誘発イベントの絞り込み', () => {
+  function planned(card: CardInstance): DuelState {
+    return putInZone(readyToPlay([], twoEnergies()), '先攻', 'プランゾーン', [card])
+  }
+
+  const sourcesOf = (state: DuelState) => state.bank.map((banked) => banked.source)
+
+  it('プランゾーンからプレイされたなら誘発する', () => {
+    const state = planned(instantiate({ id: 'プランの主', card: fromPlanUnit, owner: '先攻' }))
+
+    const after = stateOf(play(state, { card: 'プランの主', square: homeSquare }))
+
+    expect(sourcesOf(after)).toEqual(['プランの主'])
+  })
+
+  /**
+   * **プレイされたゾーンは登場した後には分からない。** プランゾーンにあったカードが動くと
+   * そのプランゾーンは無くなる（総合ルール 第2部 第21章 3-3）ので、置かれた後の盤面を見て
+   * 判定することはできない。出来事の瞬間に捕まえていることが、この 2 つのテストで分かる。
+   */
+  it('手札からプレイされたなら誘発しない', () => {
+    const unit = instantiate({ id: '手札の主', card: fromPlanUnit, owner: '先攻' })
+    const state = readyToPlay([unit], twoEnergies())
+
+    const after = stateOf(play(state, { card: '手札の主', square: homeSquare }))
+
+    expect(sourcesOf(after)).toEqual([])
+  })
+
+  // 総合ルール 第2部 第22章 6-1。エリアは支配者から見て判断する。
+  it('味方エリアに置かれたなら誘発する', () => {
+    const unit = instantiate({ id: 'ユニット', card: inHomeAreaUnit, owner: '先攻' })
+    const state = readyToPlay([unit], twoEnergies())
+
+    const after = stateOf(play(state, { card: 'ユニット', square: homeSquare }))
+
+    expect(sourcesOf(after)).toEqual(['ユニット'])
+  })
+
+  it('味方エリア以外に置かれたなら誘発しない', () => {
+    const unit = instantiate({ id: 'ユニット', card: inHomeAreaUnit, owner: '先攻' })
+    const state = readyToPlay([unit], twoEnergies())
+
+    const after = stateOf(play(state, { card: 'ユニット', square: centerSquare }))
+
+    expect(sourcesOf(after)).toEqual([])
+  })
+
+  /**
+   * きっかけを持つ誘発イベントは限られている（`ability.ts` の `Occasion`）。それ以外の
+   * イベントに絞り込みを付けても確かめようがないので、黙って誘発させたり誘発させなかったり
+   * せずに投げる。盤面から起こり得る状態ではなく、カードの書き間違いである。
+   */
+  it('きっかけを持たない誘発イベントに絞り込みが付いていれば、投げる', () => {
+    const broken = defineUnit({
+      name: 'テスト・きっかけの無いイベントに絞り込み',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [triggeredAbility('スマッシュフェイズの始め', function* () {}, () => true)],
+    })
+    const state = putOnSquare(mainPhase(), homeSquare, instantiate({ id: '壊れた', card: broken, owner: '先攻' }))
+
+    expect(() => passPriority(passPriority(state, chooseFirst), chooseFirst)).toThrowError(
+      'きっかけを持たない誘発イベントに絞り込みが付いている',
+    )
+  })
+
+  it('絞り込みを持たない能力は、これまで通り誘発する', () => {
+    const unit = instantiate({ id: 'ユニット', card: appearingUnit, owner: '先攻' })
+    const state = readyToPlay([unit], twoEnergies())
+
+    const after = stateOf(play(state, { card: 'ユニット', square: homeSquare }))
+
+    expect(sourcesOf(after)).toEqual(['ユニット'])
   })
 })
 
