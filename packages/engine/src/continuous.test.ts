@@ -24,6 +24,9 @@ import type { Chooser, DuelState, Player, Square, UnitCard } from './index.js'
 // 検証したいルールだけを持つ架空のテストカード（ADR-0002）。
 const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
 
+/** ＢＰが大きいユニット。修整の前後でバトルの結果が変わる相手として使う。 */
+const tough = defineUnit({ name: 'テスト・大ＢＰ', level: 1, colors: ['赤'], bp: 2000, sp: 1000 })
+
 /** 「友情－1000」を持つユニット（総合ルール 第5部 第5章）。 */
 const friendly = defineUnit({
   name: 'テスト・友情',
@@ -217,10 +220,14 @@ describe('バトルダメージ', () => {
    * 後攻のユニットが先に置かれたスクエアに、先攻のユニットが後から置かれた盤面を、
    * バトルが終わるまで進める。後から置かれたほうが攻撃したユニットになる
    * （総合ルール 第3部 第11章 4）。
+   *
+   * 攻撃されたユニットのＢＰは 2000 で、攻撃したユニットに書かれているＢＰ 1000 より
+   * 大きい。修整の後のＢＰでダメージを与えるのでなければ、捨札に置かれるのは攻撃した
+   * ほうになる。
    */
   function throughBattle(...placements: readonly Placement[]): DuelState {
     const board = boardOf(
-      [homeCenter, '攻撃された', vanilla, '後攻'],
+      [homeCenter, '攻撃された', tough, '後攻'],
       [homeCenter, '攻撃した', vanilla],
       ...placements,
     )
@@ -234,17 +241,17 @@ describe('バトルダメージ', () => {
   }
 
   it('修整の後のＢＰと同じ数字のダメージを与える', () => {
-    // 攻撃したユニットのＢＰは 1000＋2000 で、攻撃されたユニットの 1000 を超える。
+    // 攻撃したユニットが与えるのは 1000＋2000 で、攻撃されたユニットの 2000 に届く。
     const after = throughBattle([homeLeft, '強化するユニット', boosting])
 
     expect(idsOf(cardsIn(after, '後攻', '捨札'))).toEqual(['攻撃された'])
     expect(idsOf(cardsOn(after, homeCenter))).toEqual(['攻撃した'])
   })
 
-  it('修整が無ければ、同じ組み合わせでどちらも捨札に置かれる', () => {
+  it('修整が無ければ、同じ組み合わせで逆の結果になる', () => {
     const after = throughBattle()
 
-    expect(idsOf(cardsIn(after, '後攻', '捨札'))).toEqual(['攻撃された'])
     expect(idsOf(cardsIn(after, '先攻', '捨札'))).toEqual(['攻撃した'])
+    expect(idsOf(cardsOn(after, homeCenter))).toEqual(['攻撃された'])
   })
 })
