@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest'
-// ＢＰを修整する能力を書くための一般形。カード側にまだ消費者がいない（キーワード能力
-// 「友情」以外の修整を書くカードが無い）ので、engine の公開 API には出していない。
-import { bpModifying } from './ability.js'
+// 継続効果を適用した後のデータを直に読むために使う。効果の外からデータを読む必要が
+// まだ無いので、engine の公開 API には出していない。
+import { continuousData } from './continuous.js'
 // ダメージを与えたり山札を積んだりするためだけに使う。engine の中から盤面を組み替える
 // ための関数であり、公開する API ではない（`rule-effect.test.ts` と同じ）。
 import { dealDamage, putInZone } from './duel.js'
-import { bpPlus } from './effect.js'
 import {
   PLAYERS,
+  alsoTreatedAs,
+  attributeAdding,
   bpModification,
+  bpModifying,
   bpOf,
+  bpPlus,
   cardsIn,
   cardsOn,
   defineUnit,
@@ -18,8 +21,9 @@ import {
   instantiate,
   passPriority,
   putOnSquare,
+  resolveEffect,
 } from './index.js'
-import type { Chooser, DuelState, Player, Square, UnitCard } from './index.js'
+import type { Attribute, Chooser, DuelState, Player, Square, UnitCard } from './index.js'
 
 // 検証したいルールだけを持つ架空のテストカード（ADR-0002）。
 const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
@@ -45,6 +49,53 @@ const boosting = defineUnit({
   bp: 1000,
   sp: 1000,
   abilities: [bpModifying((duel) => duel.allies().map((ally) => bpPlus(ally, 2000)))],
+})
+
+/** 「テスト属性」を持つユニット。 */
+const attributed = defineUnit({
+  name: 'テスト・属性あり',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  attributes: ['テスト属性'],
+})
+
+/** 別の属性を持つユニット。加えても書かれている属性が残ることを見るために使う。 */
+const otherwiseAttributed = defineUnit({
+  name: 'テスト・別の属性あり',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  attributes: ['別のテスト属性'],
+})
+
+/** 「すべての味方は『テスト属性』としても扱う」。 */
+const granting = defineUnit({
+  name: 'テスト・属性を加える',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [attributeAdding((duel) => duel.allies().map((ally) => alsoTreatedAs(ally, 'テスト属性')))],
+})
+
+/** 「『テスト属性』の味方のＢＰを＋2000」。属性で対象を絞る修整。 */
+const boostingAttributed = defineUnit({
+  name: 'テスト・属性で強化',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    bpModifying((duel) =>
+      duel
+        .allies()
+        .filter((ally) => ally.card.attributes.includes('テスト属性'))
+        .map((ally) => bpPlus(ally, 2000)),
+    ),
+  ],
 })
 
 /** 「すべての敵のＢＰを－1000」。 */
@@ -104,6 +155,11 @@ function bpOn(state: DuelState, id: string, card: UnitCard): number {
   return bpOf(card, bpModification(state)(id))
 }
 
+/** そのユニットがいま持っている属性。カードに書かれているものと、継続効果で加わったもの。 */
+function attributesOn(state: DuelState, id: string, card: UnitCard): readonly Attribute[] {
+  return continuousData(state)(id, card).attributes
+}
+
 const idsOf = (cards: readonly { readonly id: string }[]) => cards.map((card) => card.id)
 
 // 総合ルール 第4部 第12章 4-1（ADR-0006）
@@ -146,6 +202,80 @@ describe('常在型能力が生み出した継続効果と、後から置かれ�
 
     expect(bpOn(later, '味方', vanilla)).toBe(3000)
     expect(bpOn(earlier, '味方', vanilla)).toBe(bpOn(later, '味方', vanilla))
+  })
+})
+
+// 総合ルール 第2部 第13章 4（ADR-0006）
+describe('継続効果によって加わる属性', () => {
+  it('カードに書かれている属性はすべて残る', () => {
+    const board = boardOf(
+      [homeLeft, '属性を加えるユニット', granting],
+      [homeRight, '味方', otherwiseAttributed],
+    )
+
+    expect(attributesOn(board, '味方', otherwiseAttributed)).toEqual(['別のテスト属性', 'テスト属性'])
+  })
+
+  it('すでに書かれている属性を加えても、持っている属性は変わらない', () => {
+    const board = boardOf([homeLeft, '属性を加えるユニット', granting], [homeRight, '味方', attributed])
+
+    expect(attributesOn(board, '味方', attributed)).toEqual(['テスト属性'])
+  })
+
+  // 総合ルール 第4部 第12章 4-1。
+  it('加える能力を持つカードがスクエアに無ければ、加わらない', () => {
+    const board = boardOf([homeRight, '味方', otherwiseAttributed])
+
+    expect(attributesOn(board, '味方', otherwiseAttributed)).toEqual(['別のテスト属性'])
+  })
+})
+
+// 総合ルール 第4部 第12章 5-2（ADR-0006）
+describe('別の種類に属する継続効果の適用の順序', () => {
+  it('属性を加える継続効果は、ＢＰを修整する継続効果より先に適用される', () => {
+    const board = boardOf(
+      [homeLeft, '属性を加えるユニット', granting],
+      [homeCenter, '属性で強化するユニット', boostingAttributed],
+      [homeRight, '味方', vanilla],
+    )
+
+    // 味方はカードに「テスト属性」を持たないが、先に加わるので修整の対象になる。
+    expect(bpOn(board, '味方', vanilla)).toBe(3000)
+  })
+
+  it('属性で絞る修整は、カードに書かれている属性を持つユニットにも効く', () => {
+    const board = boardOf([homeCenter, '属性で強化するユニット', boostingAttributed], [homeRight, '味方', attributed])
+
+    expect(bpOn(board, '味方', attributed)).toBe(3000)
+  })
+
+  it('属性を持たないユニットは、修整の対象にならない', () => {
+    const board = boardOf([homeCenter, '属性で強化するユニット', boostingAttributed], [homeRight, '味方', vanilla])
+
+    expect(bpOn(board, '味方', vanilla)).toBe(1000)
+  })
+})
+
+// 総合ルール 第4部 第12章 2（ADR-0006）
+describe('効果に見せる盤面', () => {
+  it('継続効果を適用した後のデータを写す', () => {
+    const board = boardOf(
+      [homeLeft, '属性を加えるユニット', granting],
+      [homeCenter, '属性で強化するユニット', boostingAttributed],
+      [homeRight, '味方', vanilla],
+    )
+
+    const seen: UnitCard[] = []
+    resolveEffect(
+      board,
+      function* (duel) {
+        for (const ally of duel.allies()) if (ally.id === '味方') seen.push(ally.card)
+      },
+      { controller: '先攻', chooser: chooseFirst },
+    )
+
+    expect(seen[0]?.attributes).toEqual(['テスト属性'])
+    expect(seen[0]?.bp).toBe(3000)
   })
 })
 

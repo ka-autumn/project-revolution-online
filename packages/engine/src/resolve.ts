@@ -1,4 +1,5 @@
 import type { UnitCard } from './card.js'
+import { continuousData } from './continuous.js'
 import { discardFromSquares } from './discard.js'
 import {
   damagePlayer,
@@ -248,5 +249,7 @@ function effectView(currentState: () => DuelState, context: EffectContext, shown
       }
     },
     show: (id) => shown.add(id),
+    // 効果が見るのは継続効果を適用した後のデータである（総合ルール 第4部 第12章 2）。
+    data: continuousData,
   })
 }

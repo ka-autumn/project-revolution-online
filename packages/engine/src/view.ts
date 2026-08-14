@@ -1,10 +1,22 @@
 import { BATTLE_SPACE } from './board.js'
+import type { UnitCard } from './card.js'
 import { cardsIn } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import type { CardInZone, DuelView, UnitOnSquare } from './effect.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import type { PlayerZone } from './zone.js'
+
+/**
+ * スクエアにいるユニットのデータを、いま効果に見せる姿に写す。
+ *
+ * 継続効果はカードのデータを変える（総合ルール 第4部 第12章 2）が、盤面には書き込まれて
+ * いない。**書かれているデータを持つのは盤面で、効果に見せる写しは適用した後のデータを
+ * 持つ。** 実際に何を適用するかは `continuous.ts` が決める。ここが関数を受け取るだけに
+ * しているのは、継続効果を集める側もこの写しを使う（適用の途中の姿を見せる必要がある）
+ * ためで、写す側が集める側を知っていると輪になる。
+ */
+export type UnitData = (id: CardId, written: UnitCard) => UnitCard
 
 /**
  * 盤面を誰の目から写すか。`duelView` に渡す。
@@ -30,6 +42,13 @@ export interface ViewSource {
    * `shown`）。問い合わせるだけで命令を出さない経路では、記録する必要が無いので何もしない。
    */
   show(id: CardId): void
+  /**
+   * その盤面で、ユニットのデータをどう写すか。
+   *
+   * 盤面を受け取るのは、命令を実行するたびに盤面が入れ替わり、そのたびに継続効果を集め直す
+   * ことになるためである（`continuous.ts` の `continuousData`）。
+   */
+  data(state: DuelState): UnitData
 }
 
 /**
@@ -63,9 +82,16 @@ export function unitsOnSquares(state: DuelState): readonly UnitOnSquare[] {
 export function duelView(currentState: () => DuelState, source: ViewSource): DuelView {
   const { controller } = source
 
-  const show = (units: readonly UnitOnSquare[]): readonly UnitOnSquare[] => {
-    for (const unit of units) source.show(unit.id)
-    return units
+  /** スクエアにいるユニットを、継続効果を適用した後の姿で写す。 */
+  const units = (): readonly UnitOnSquare[] => {
+    const state = currentState()
+    const data = source.data(state)
+    return unitsOnSquares(state).map((unit) => ({ ...unit, card: data(unit.id, unit.card) }))
+  }
+
+  const show = (found: readonly UnitOnSquare[]): readonly UnitOnSquare[] => {
+    for (const unit of found) source.show(unit.id)
+    return found
   }
 
   // 支配者自身のゾーンだけを見せる。相手の手札は非公開の情報なので、渡す手段を持たせない
@@ -83,13 +109,22 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
   return {
     controller,
     opponent: opponentOf(controller),
+    /**
+     * 発生源も、スクエアにいる間は継続効果を適用した後の姿で写す。
+     *
+     * スクエアを離れていれば渡された写しをそのまま返す。そのカードにはもう継続効果が
+     * 及んでいない（総合ルール 第4部 第12章 4-1）ためで、返るのは離れる直前の姿になる
+     * （同 第8章 2-5）。
+     */
     self: () => {
       const found = source.self()
-      if (found !== undefined) source.show(found.id)
-      return found
+      if (found === undefined) return undefined
+
+      source.show(found.id)
+      return units().find((unit) => unit.id === found.id) ?? found
     },
-    allies: () => show(unitsOnSquares(currentState()).filter((unit) => unit.controller === controller)),
-    enemies: () => show(unitsOnSquares(currentState()).filter((unit) => unit.controller !== controller)),
+    allies: () => show(units().filter((unit) => unit.controller === controller)),
+    enemies: () => show(units().filter((unit) => unit.controller !== controller)),
     hand: showZone('手札'),
     discardPile: showZone('捨札'),
     planZone: showZone('プランゾーン'),

@@ -1,5 +1,7 @@
 export {
   TRIGGER_EVENTS,
+  attributeAdding,
+  bpModifying,
   dream,
   friendship,
   guts,
@@ -12,6 +14,7 @@ export {
 export type {
   Ability,
   AppearanceOccasion,
+  AttributeAddingAbility,
   BpModifyingAbility,
   DreamAbility,
   GutsAbility,
@@ -43,6 +46,7 @@ export type { Area, Line, MoveDirection, Square, SquareIndex } from './board.js'
 export {
   CARD_TYPES,
   COLORS,
+  attributeAddingAbilitiesOf,
   bpModifyingAbilitiesOf,
   bpOf,
   defineStrategy,
@@ -56,7 +60,7 @@ export {
   isStrategy,
   spOf,
 } from './card.js'
-export type { Card, CardType, Color, StrategyCard, TrapCard, UnitCard } from './card.js'
+export type { Attribute, Card, CardType, Color, StrategyCard, TrapCard, UnitCard } from './card.js'
 export { bpModification } from './continuous.js'
 export type { BpModification } from './continuous.js'
 export { satisfiesLevel } from './cost.js'
@@ -89,6 +93,8 @@ export type {
   TriggeredInstance,
 } from './duel.js'
 export {
+  alsoTreatedAs,
+  bpPlus,
   choose,
   chooseAtMostOne,
   damagePlayer,
@@ -102,7 +108,17 @@ export {
   placeTopOfLibrary,
   release,
 } from './effect.js'
-export type { CardInZone, DuelView, Effect, EffectStep, Instruction, TrapEffect, UnitOnSquare } from './effect.js'
+export type {
+  AttributeAddition,
+  BpModifier,
+  CardInZone,
+  DuelView,
+  Effect,
+  EffectStep,
+  Instruction,
+  TrapEffect,
+  UnitOnSquare,
+} from './effect.js'
 export { cardIdsOf, checkBoardInvariants } from './invariant.js'
 export type { InvariantViolation } from './invariant.js'
 export { applyLegalAction, legalActions } from './legal-action.js'

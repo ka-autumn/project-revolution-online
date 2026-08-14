@@ -1,5 +1,6 @@
 import type {
   Ability,
+  AttributeAddingAbility,
   BpModifyingAbility,
   DreamAbility,
   PepAbility,
@@ -34,14 +35,22 @@ export const CARD_TYPES = ['ユニット', 'ストラテジー', 'トラップ',
 export type CardType = (typeof CARD_TYPES)[number]
 
 /**
+ * カードの属性（総合ルール 第2部 第13章）。
+ *
+ * 総合ルールは属性の一覧を定義していない。存在する属性を確認するにはカードリストを見る
+ * （同 5）ことになっており、`Color` や `CardType` のように閉じた集合として持てない。
+ * したがって綴りの揺れを engine 側では検出できない。
+ */
+export type Attribute = string
+
+/**
  * 種別によらず、どのカードにも書かれていること（総合ルール 第2部 第2章 1）。
  *
- * 属性もカードに書かれているが、それを参照するルールをまだ実装していないため、
- * ここには持たせていない。参照する側と一緒に足す。ムーブアイコンはユニットだけが持つ
- * ので、ここではなく `UnitCard` に持たせている。トリガーアイコンも同じ理由で
- * `TrapCard` に持たせている。「トラップ以外のカードもトラップとしてプレイできる」
- * （総合ルール 第2部 第20章 3-1）が、発動して解決する効果（`TrapCard.effect`）を
- * 持てるのはトラップだけなので、トリガーアイコンが意味を持つ場面も無い。
+ * ムーブアイコンはユニットだけが持つので、ここではなく `UnitCard` に持たせている。
+ * トリガーアイコンも同じ理由で `TrapCard` に持たせている。「トラップ以外のカードも
+ * トラップとしてプレイできる」（総合ルール 第2部 第20章 3-1）が、発動して解決する効果
+ * （`TrapCard.effect`）を持てるのはトラップだけなので、トリガーアイコンが意味を持つ
+ * 場面も無い。
  */
 interface WrittenCard {
   readonly type: CardType
@@ -68,6 +77,19 @@ interface WrittenCard {
    * リバーススターアイコンはスターアイコンではない（同 5）ため、`stars` とは別に持つ。
    */
   readonly reverseStars: number
+  /**
+   * カードに書かれている属性（総合ルール 第2部 第13章）。
+   *
+   * 属性にはメーカーシンボル・メディアシンボル・詳細属性の 3 種類が含まれる（同 1）が、
+   * ここに持つのは詳細属性だけである。テキストが参照しているのが詳細属性だけで、他の 2 つは
+   * 参照する側がいないためである（ムーブアイコン・トリガーアイコンと同じ考え方）。区別が
+   * 要るテキストが出てきた時に、種類ごとに分ける。
+   *
+   * **効果によって属性が加わることがある**（同 4）ので、いま何の属性を持っているかは
+   * ここだけでは決まらない。効果から見えるのは継続効果を適用した後の姿で、それを写すのは
+   * `view.ts` である。
+   */
+  readonly attributes: readonly Attribute[]
   /** テキストが定義する能力（総合ルール 第2部 第10章 1）。改行ごとに別の能力になる（同 第4部 第1章 3）。 */
   readonly abilities: readonly Ability[]
 }
@@ -157,6 +179,8 @@ interface CardSpec {
   readonly abilities?: readonly Ability[]
   readonly stars?: number
   readonly reverseStars?: number
+  /** 省略した場合は属性を持たない。 */
+  readonly attributes?: readonly Attribute[]
 }
 
 interface UnitSpec extends CardSpec {
@@ -191,6 +215,7 @@ function written<T extends CardType>(type: T, spec: CardSpec) {
     abilities: spec.abilities ?? [],
     stars: spec.stars ?? 0,
     reverseStars: spec.reverseStars ?? 0,
+    attributes: spec.attributes ?? [],
   }
 }
 
@@ -264,6 +289,17 @@ export function hopeOf(card: Card): HopeAbility | undefined {
 export function bpModifyingAbilitiesOf(card: Card): readonly BpModifyingAbility[] {
   return card.abilities.filter(
     (ability): ability is BpModifyingAbility => ability.kind === '常在型能力' && 'bpModifiers' in ability,
+  )
+}
+
+/**
+ * そのカードが持つ、属性を加える常在型能力（総合ルール 第4部 第12章 5-2 の(3)）。
+ *
+ * `bpModifyingAbilitiesOf` と同じ理由で、見つかったものをすべて返す。
+ */
+export function attributeAddingAbilitiesOf(card: Card): readonly AttributeAddingAbility[] {
+  return card.abilities.filter(
+    (ability): ability is AttributeAddingAbility => ability.kind === '常在型能力' && 'attributesAdded' in ability,
   )
 }
 
