@@ -1,8 +1,6 @@
-import { BATTLE_SPACE } from './board.js'
 import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
 import {
-  cardsIn,
   damagePlayer,
   dealDamage,
   draw,
@@ -14,10 +12,9 @@ import {
   topOfLibrary,
 } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
-import type { CardInZone, DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
-import { opponentOf } from './player.js'
+import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
-import type { PlayerZone } from './zone.js'
+import { duelView } from './view.js'
 
 /**
  * 候補の中から 1 つ選ぶ役。
@@ -78,7 +75,7 @@ export function resolveEffect(state: DuelState, effect: Effect, context: EffectC
   // 通って渡したものだけである（ADR-0002）。
   const shown = new Set<CardId>()
   for (const unit of context.handed ?? []) shown.add(unit.id)
-  const steps = effect(duelView(() => current, context, shown))
+  const steps = effect(effectView(() => current, context, shown))
 
   let sent: unknown = undefined
   for (;;) {
@@ -228,71 +225,28 @@ function apply(
 }
 
 /**
- * 効果に見せる盤面。
- *
- * 命令を実行するたびに盤面は入れ替わるので、そのつど最新のものを読み直す。
+ * 効果に見せる盤面。写し方そのものは `view.ts` にあり、ここは効果の経路に固有のところ
+ * （発生源の引き直しと、見せたカードの記録）だけを渡す。
  */
-function duelView(currentState: () => DuelState, context: EffectContext, shown: Set<CardId>): DuelView {
-  const { controller } = context
-  const unitsOnSquares = (): readonly UnitOnSquare[] =>
-    currentState().squares.flatMap((cards, index) => {
-      const square = BATTLE_SPACE[index]
-      if (square === undefined) return []
-      return cards.flatMap((instance) =>
-        // スクエアにあってもユニット以外のカードは「味方」「敵」ではない
-        // （総合ルール 第2部 第21章 8-2）。
-        instance.card.type === 'ユニット'
-          ? [{ id: instance.id, square, card: instance.card, controller: instance.controller }]
-          : [],
-      )
-    })
+function effectView(currentState: () => DuelState, context: EffectContext, shown: Set<CardId>): DuelView {
+  return duelView(currentState, {
+    controller: context.controller,
+    /**
+     * 発生源を解決する時の姿で返す。スクエアを離れていれば誘発した時点の写しを使う
+     * （総合ルール 第4部 第8章 2-5、`effect.ts` の `DuelView.self`）。
+     */
+    self: () => {
+      if (context.self === undefined) return undefined
 
-  const show = (units: readonly UnitOnSquare[]): readonly UnitOnSquare[] => {
-    for (const unit of units) shown.add(unit.id)
-    return units
-  }
-
-  // 支配者自身のゾーンだけを見せる。相手の手札は非公開の情報なので、渡す手段を持たせない
-  // （`effect.ts` の `DuelView.hand`）。
-  const showZone = (zone: PlayerZone) => (): readonly CardInZone[] => {
-    const cards = cardsIn(currentState(), controller, zone).map((instance) => ({
-      id: instance.id,
-      zone,
-      card: instance.card,
-    }))
-    for (const card of cards) shown.add(card.id)
-    return cards
-  }
-
-  /**
-   * 発生源を解決する時の姿で返す。スクエアを離れていれば誘発した時点の写しを使う
-   * （総合ルール 第4部 第8章 2-5、`effect.ts` の `DuelView.self`）。
-   */
-  const self = (): UnitOnSquare | undefined => {
-    if (context.self === undefined) return undefined
-
-    const located = locateOnSquares(currentState(), context.self.id)
-    const found =
-      located === undefined || located.instance.card.type !== 'ユニット'
-        ? context.self
-        : {
-            id: located.instance.id,
-            square: located.square,
-            card: located.instance.card,
-            controller: located.instance.controller,
-          }
-    shown.add(found.id)
-    return found
-  }
-
-  return {
-    controller,
-    opponent: opponentOf(controller),
-    self,
-    allies: () => show(unitsOnSquares().filter((unit) => unit.controller === controller)),
-    enemies: () => show(unitsOnSquares().filter((unit) => unit.controller !== controller)),
-    hand: showZone('手札'),
-    discardPile: showZone('捨札'),
-    planZone: showZone('プランゾーン'),
-  }
+      const located = locateOnSquares(currentState(), context.self.id)
+      if (located === undefined || located.instance.card.type !== 'ユニット') return context.self
+      return {
+        id: located.instance.id,
+        square: located.square,
+        card: located.instance.card,
+        controller: located.instance.controller,
+      }
+    },
+    show: (id) => shown.add(id),
+  })
 }
