@@ -1,5 +1,8 @@
 import type { Occasion, TriggerEvent, TriggeredAbility } from './ability.js'
+import { BATTLE_SPACE } from './board.js'
+import type { Square } from './board.js'
 import type { CardInstance, DuelState, TriggeredInstance } from './duel.js'
+import type { UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
 
 /**
@@ -36,15 +39,21 @@ export function addTriggered(state: DuelState, triggered: readonly TriggeredInst
  * それ以外のイベントでは `occasion` を渡さない。
  */
 export function triggeredBy(
-  instance: CardInstance,
+  located: { readonly instance: CardInstance; readonly square: Square },
   event: TriggerEvent,
   occasion?: Occasion,
 ): readonly TriggeredInstance[] {
-  if (instance.card.type !== 'ユニット') return []
+  const { instance, square } = located
+  const { card } = instance
+  if (card.type !== 'ユニット') return []
 
-  return instance.card.abilities.flatMap((ability) =>
+  // 誘発した時点の発生源を写す。解決する時にスクエアを離れていた場合に使う
+  // （`duel.ts` の `TriggeredInstance.self`）。
+  const self: UnitOnSquare = { id: instance.id, square, card, controller: instance.controller }
+
+  return card.abilities.flatMap((ability) =>
     ability.kind === '誘発型能力' && ability.event === event && triggers(ability, occasion, instance.controller)
-      ? [{ ability, source: instance.id, controller: instance.controller }]
+      ? [{ ability, source: instance.id, controller: instance.controller, self }]
       : [],
   )
 }
@@ -69,7 +78,9 @@ export function triggeredOnSquares(
   event: TriggerEvent,
   matches: (instance: CardInstance) => boolean = () => true,
 ): readonly TriggeredInstance[] {
-  return state.squares.flatMap((cards) =>
-    cards.flatMap((instance) => (matches(instance) ? triggeredBy(instance, event) : [])),
-  )
+  return state.squares.flatMap((cards, index) => {
+    const square = BATTLE_SPACE[index]
+    if (square === undefined) return []
+    return cards.flatMap((instance) => (matches(instance) ? triggeredBy({ instance, square }, event) : []))
+  })
 }

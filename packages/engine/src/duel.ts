@@ -3,6 +3,7 @@ import type { Battle } from './battle.js'
 import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
+import type { UnitOnSquare } from './effect.js'
 import type { Orientation } from './orientation.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
@@ -225,6 +226,21 @@ export interface TriggeredInstance {
    * 離れても能力は残るので、解決する時に発生源から引き直すことはできない。
    */
   readonly controller: Player
+  /**
+   * 誘発した時点の発生源。効果が「自分の位置」を見るために使う（`resolve.ts` の `duelView`）。
+   *
+   * 解決する時にはまず盤面から引き直し、**発生源がスクエアを離れていた場合にだけ**これを
+   * 使う。ゾーン移動をしていた場合は移動する直前の情報を使用する（総合ルール 第4部
+   * 第8章 2-5）という規定にあたる。
+   *
+   * 厳密には「移動する直前」ではなく「誘発した時点」を写している。両者が食い違うのは、
+   * 誘発してからスクエアからスクエアへ移動し、そのうえでスクエアを離れた場合だけである。
+   * その並びが起こせるようになった時に、移動の側で写し直す。
+   *
+   * `source` と `controller` を別に持っているのは、バンクからどれを解決するかを選ぶ側
+   * （`bank.ts`）が位置を必要としないためである。
+   */
+  readonly self: UnitOnSquare
 }
 
 interface InstanceSpec {

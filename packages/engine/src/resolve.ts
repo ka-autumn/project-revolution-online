@@ -40,6 +40,14 @@ export interface EffectContext {
   /** 能力の支配者（総合ルール 第4部 第7章 1）。味方・敵はこのプレイヤーから見た呼び方になる。 */
   readonly controller: Player
   readonly chooser: Chooser
+  /**
+   * 誘発した時点の発生源（`duel.ts` の `TriggeredInstance.self`）。
+   *
+   * 効果に `self` を見せるために使う。渡さなければ `DuelView.self` は常に `undefined` に
+   * なる。プレイされたストラテジーや発動したトラップのように、発生源がスクエアにいない
+   * 効果では渡さない。
+   */
+  readonly self?: UnitOnSquare
 }
 
 /**
@@ -56,7 +64,7 @@ export function resolveEffect(state: DuelState, effect: Effect, context: EffectC
   // 効果に見せたユニット。効果は自分で盤面を探せないので、対象にできるのはここを
   // 通って渡したものだけである（ADR-0002）。
   const shown = new Set<CardId>()
-  const steps = effect(duelView(() => current, context.controller, shown))
+  const steps = effect(duelView(() => current, context, shown))
 
   let sent: unknown = undefined
   for (;;) {
@@ -210,7 +218,8 @@ function apply(
  *
  * 命令を実行するたびに盤面は入れ替わるので、そのつど最新のものを読み直す。
  */
-function duelView(currentState: () => DuelState, controller: Player, shown: Set<CardId>): DuelView {
+function duelView(currentState: () => DuelState, context: EffectContext, shown: Set<CardId>): DuelView {
+  const { controller } = context
   const unitsOnSquares = (): readonly UnitOnSquare[] =>
     currentState().squares.flatMap((cards, index) => {
       const square = BATTLE_SPACE[index]
@@ -241,9 +250,31 @@ function duelView(currentState: () => DuelState, controller: Player, shown: Set<
     return cards
   }
 
+  /**
+   * 発生源を解決する時の姿で返す。スクエアを離れていれば誘発した時点の写しを使う
+   * （総合ルール 第4部 第8章 2-5、`effect.ts` の `DuelView.self`）。
+   */
+  const self = (): UnitOnSquare | undefined => {
+    if (context.self === undefined) return undefined
+
+    const located = locateOnSquares(currentState(), context.self.id)
+    const found =
+      located === undefined || located.instance.card.type !== 'ユニット'
+        ? context.self
+        : {
+            id: located.instance.id,
+            square: located.square,
+            card: located.instance.card,
+            controller: located.instance.controller,
+          }
+    shown.add(found.id)
+    return found
+  }
+
   return {
     controller,
     opponent: opponentOf(controller),
+    self,
     allies: () => show(unitsOnSquares().filter((unit) => unit.controller === controller)),
     enemies: () => show(unitsOnSquares().filter((unit) => unit.controller !== controller)),
     hand: showZone('手札'),
