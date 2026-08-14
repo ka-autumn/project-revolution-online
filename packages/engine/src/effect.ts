@@ -97,6 +97,7 @@ export type Instruction =
     }
   | { readonly kind: '破壊する'; readonly target: UnitOnSquare }
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
+  | { readonly kind: 'ユニットにダメージを与える'; readonly target: UnitOnSquare; readonly amount: number }
   | {
       readonly kind: 'ゾーンへ置く'
       readonly card: CardInZone | UnitOnSquare
@@ -188,6 +189,28 @@ export function* destroy(target: UnitOnSquare): EffectStep<void> {
  */
 export function* damagePlayer(player: Player, amount: number): EffectStep<void> {
   yield { kind: 'プレイヤーにダメージを与える', player, amount }
+}
+
+/**
+ * スクエアにいるユニットにダメージを与える。
+ *
+ * ダメージはそのカードに載って蓄積する。ＢＰと同じかそれ以上のダメージを受けたユニットが
+ * 捨札に置かれること（総合ルール 第4部 第14章 4-6）はルールエフェクトの仕事であり、効果の
+ * 解決中にはチェックされない（同 第8章 4）。`damagePlayer` と同じく、次にどちらかの
+ * プレイヤーが優先権を獲得する時にまとめて処理されるので、ここでは与えるだけでよい。
+ *
+ * **捨札に置かれるのを待たずに済ませたい場合は `destroy` を使う。** ＢＰより多いダメージを
+ * 与えることと破壊することは、盤面の上では別の出来事である。
+ *
+ * 載ったダメージは、リカバリーフェイズの始めに取り除かれる（同 第3部 第10章 1）。また
+ * 「スクエアからスクエア」以外のゾーン移動をしたカードは新しいカードとして扱われる
+ * （同 第2部 第21章 1-4）ので、そこでも失われる。
+ *
+ * 対象がすでにスクエアを離れていた場合、この行動は実行されない
+ * （同 第1部 第1章 3）。効果はそのまま続く。
+ */
+export function* damageUnit(target: UnitOnSquare, amount: number): EffectStep<void> {
+  yield { kind: 'ユニットにダメージを与える', target, amount }
 }
 
 /**

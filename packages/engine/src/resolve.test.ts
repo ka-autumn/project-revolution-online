@@ -8,6 +8,7 @@ import {
   choose,
   chooseAtMostOne,
   damagePlayer,
+  damageUnit,
   defineUnit,
   destroy,
   drawCards,
@@ -312,6 +313,101 @@ describe('プレイヤーへのダメージ', () => {
 
     expect(resolved.damage['先攻']).toBe(1000)
     expect(resolved.smashJudgments).toEqual([])
+  })
+})
+
+// 総合ルール 第4部 第14章 4-6（ADR-0006）
+describe('ユニットへのダメージ', () => {
+  /** 敵 1 枚を選んで、指定した量のダメージを与える能力。 */
+  const damaging = (amount: number) =>
+    triggeredAbility('登場した時', function* (duel) {
+      yield* damageUnit(yield* choose(duel.enemies()), amount)
+    })
+
+  const damageOn = (state: DuelState, square: Square) =>
+    cardsOn(state, square).map((card) => card.damage)
+
+  it('選ばれたユニットにダメージが載る', () => {
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+    const resolved = resolveEffect(state, damaging(500).effect, {
+      controller: '先攻',
+      chooser: chooseFirst,
+    })
+
+    expect(damageOn(resolved, enemySquare)).toEqual([500])
+  })
+
+  it('同じユニットに 2 回与えれば蓄積する', () => {
+    const twice = triggeredAbility('登場した時', function* (duel) {
+      const enemy = yield* choose(duel.enemies())
+      yield* damageUnit(enemy, 300)
+      yield* damageUnit(enemy, 400)
+    })
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+    const resolved = resolveEffect(state, twice.effect, { controller: '先攻', chooser: chooseFirst })
+
+    expect(damageOn(resolved, enemySquare)).toEqual([700])
+  })
+
+  /**
+   * 総合ルール 第4部 第8章 4。
+   *
+   * ＢＰと同じかそれ以上のダメージを受けたユニットが捨札に置かれること（同 第14章 4-6）は
+   * ルールエフェクトの仕事であり、効果の解決中にはチェックされない。捨札に置かれるのは、
+   * 次にどちらかのプレイヤーが優先権を獲得する時である（`rule-effect.test.ts`）。
+   * プレイヤーへのダメージとスマッシュ判定の関係（上）と同じ順序になる。
+   */
+  it('ＢＰ以上のダメージでも、効果の解決中には捨札に置かれない', () => {
+    // 敵のＢＰは 1000。
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+    const resolved = resolveEffect(state, damaging(1000).effect, {
+      controller: '先攻',
+      chooser: chooseFirst,
+    })
+
+    expect(idsOf(cardsOn(resolved, enemySquare))).toEqual(['敵'])
+    expect(damageOn(resolved, enemySquare)).toEqual([1000])
+    expect(cardsIn(resolved, '後攻', '捨札')).toEqual([])
+  })
+
+  // 総合ルール 第1部 第1章 3
+  it('すでにスクエアを離れたユニットには与えられないが、効果はそのまま続く', () => {
+    const destroyThenDamage = triggeredAbility('登場した時', function* (duel) {
+      const [first, second] = duel.enemies()
+      if (first === undefined || second === undefined) throw new Error('敵が 2 枚いる盤面で試すこと')
+      yield* destroy(first)
+      // 1 枚目はもうスクエアにいない。この行動は実行されないだけで、効果は終わらない。
+      yield* damageUnit(first, 500)
+      yield* damageUnit(second, 500)
+    })
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵1')], [nextEnemySquare, theirs('敵2')])
+
+    const resolved = resolveEffect(state, destroyThenDamage.effect, {
+      controller: '先攻',
+      chooser: chooseFirst,
+    })
+
+    expect(damageOn(resolved, nextEnemySquare)).toEqual([500])
+    // 捨札に置かれたカードは新しいカードとして扱われる（総合ルール 第2部 第21章 1-4）ので、
+    // 後から与えようとしたダメージがそちらに載ることもない。
+    expect(cardsIn(resolved, '後攻', '捨札').map((card) => card.damage)).toEqual([0])
+  })
+
+  // ADR-0002: 効果が対象にできるのは、engine が見せたカードだけである
+  it('見せていないユニットにはダメージを与えられない', () => {
+    const forge = triggeredAbility('登場した時', function* (duel) {
+      const [enemy] = duel.enemies()
+      if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
+      yield* damageUnit({ ...enemy, id: '味方' }, 500)
+    })
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+    expect(() =>
+      resolveEffect(state, forge.effect, { controller: '先攻', chooser: chooseFirst }),
+    ).toThrowError('効果に見せていないカードが対象にされた')
   })
 })
 
