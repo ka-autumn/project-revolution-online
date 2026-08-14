@@ -168,6 +168,33 @@ export type Effect = (duel: DuelView) => EffectStep<void>
 export type TrapEffect = (duel: DuelView, occasion: IntrusionOccasion) => EffectStep<void>
 
 /**
+ * 継続効果が 1 枚のユニットのＢＰに与える修整（総合ルール 第4部 第12章 5-2 の(5)）。
+ *
+ * 単発効果と違って命令にならない。命令は engine が 1 つずつ実行して盤面を変えていくもの
+ * だが、継続効果は盤面を変えず、効果が続いている間ずっとＢＰの読み方を変えるだけだから
+ * である（同 第12章 1）。engine はこれを盤面に書き込まず、ＢＰを読むたびに集める
+ * （`continuous.ts`）。
+ *
+ * どのユニットへの修整かを `UnitOnSquare` ではなく `CardId` で持つのは、修整を集める
+ * 側が id で引けるようにするためである。写しを持ち回っても、集めた後に必要になるのは
+ * 「誰に」だけになる。
+ */
+export interface BpModifier {
+  readonly target: CardId
+  readonly amount: number
+}
+
+/**
+ * 「そのユニットのＢＰを＋Ｘ」。減らす修整は負の数で書く。
+ *
+ * 対象に取れるのは engine が `DuelView` を通して見せたユニットだけである。カードは盤面を
+ * 自分で探せないので、ここに渡せるものはすべて engine が見せたものになる。
+ */
+export function bpPlus(target: UnitOnSquare, amount: number): BpModifier {
+  return { target: target.id, amount }
+}
+
+/**
  * 候補の中から 1 つ選ぶ。選ぶのは能力の支配者（総合ルール 第4部 第8章 2-3）。
  * 候補が 1 つもなければ `undefined` を返す。
  *

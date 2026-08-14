@@ -1,5 +1,7 @@
 import { pendingBattle } from './battle.js'
 import { bpOf } from './card.js'
+import { bpModification } from './continuous.js'
+import type { BpModification } from './continuous.js'
 import { discardFromSquares } from './discard.js'
 import { hasEnded, librarySize } from './duel.js'
 import type { CardId, CardInstance, DuelResult, DuelState } from './duel.js'
@@ -49,8 +51,12 @@ export function checkRuleEffects(state: DuelState): DuelState {
   const result = resultOf(state)
   if (result !== undefined) return { ...state, result }
 
+  // ＢＰの修整は 1 度だけ集める。ルールエフェクトはすべて同時に発生する（総合ルール
+  // 第4部 第14章 2）ので、どのユニットを捨札に置くかは 1 つの盤面から決まらなければ
+  // ならない。1 枚の写しを全ユニットで使い回すことが、それを構造として保証する。
+  const modification = bpModification(state)
   const fromCenter = discardedFromCenter(state)
-  const discarded = [...state.squares.flatMap(discardedFrom), ...fromCenter]
+  const discarded = [...state.squares.flatMap((cards) => discardedFrom(cards, modification)), ...fromCenter]
   if (discarded.length === 0) return state
 
   // すべてのルールエフェクトが同時に発生する（総合ルール 第4部 第14章 2）ので、
@@ -99,7 +105,7 @@ function isDefeated(state: DuelState, player: Player): boolean {
  * 複数のユニットが「同時に置かれた」場合はそれらがすべて捨札に置かれる（総合ルール
  * 第4部 第14章 4-7）が、同時に置く効果がまだ無いため、ここでは区別していない。
  */
-function discardedFrom(cards: readonly CardInstance[]): readonly CardId[] {
+function discardedFrom(cards: readonly CardInstance[], modification: BpModification): readonly CardId[] {
   const placed = new Set<Player>()
   const discarded: CardId[] = []
   for (const instance of cards) {
@@ -117,7 +123,7 @@ function discardedFrom(cards: readonly CardInstance[]): readonly CardId[] {
     const stacked = placed.has(instance.controller)
     placed.add(instance.controller)
 
-    const bp = bpOf(instance.card)
+    const bp = bpOf(instance.card, modification(instance.id))
     // 総合ルール 第4部 第14章 4-5・4-6。
     if (stacked || bp <= 0 || instance.damage >= bp) discarded.push(instance.id)
   }

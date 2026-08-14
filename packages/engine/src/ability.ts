@@ -1,6 +1,7 @@
+import { indexOfSquare, squaresAdjacent } from './board.js'
 import type { Square } from './board.js'
-import { damagePlayer } from './effect.js'
-import type { Effect, UnitOnSquare } from './effect.js'
+import { bpPlus, damagePlayer } from './effect.js'
+import type { BpModifier, DuelView, Effect, UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
 import { PHASES } from './turn.js'
 import type { Phase } from './turn.js'
@@ -245,14 +246,54 @@ export interface HopeAbility {
 }
 
 /**
+ * ＢＰを修整する継続効果を生み出す常在型能力（総合ルール 第4部 第4章 1、第12章 5-2 の(5)）。
+ *
+ * 「夢」「元気」「信頼」「根性」と違って効果を持つ。あちらはルールの側が能力の有無を見に
+ * 行くだけで、解決されるものが何も無かったが、こちらは「他の味方のＢＰを＋500」のように
+ * 内容がカードごとに違う。
+ *
+ * **修整の在りかは盤面ではない。** engine は修整を盤面に書き込まず、ＢＰを読むたびにここを
+ * 呼んで集め直す（`continuous.ts`）。常在型能力の生み出す継続効果は、能力を持つカードが
+ * 必要なゾーンに置かれている間ずっと続き（同 第12章 4-1）、その継続効果が発生した時点で
+ * 影響を受けなかったカードにも影響を与える（同 4-2）。集め直す形にすれば、発生元が
+ * 失われた時に修整を取り消す処理も、後から置かれたユニットに効かせる処理も要らない。
+ * 「指定されたゾーンに置かれるカードはデータを変更された状態でそのゾーンに置かれる」
+ * （同 第12章 2）も同じ理由で自動的に満たされる。
+ */
+export interface BpModifyingAbility {
+  readonly kind: '常在型能力'
+  /**
+   * この能力がいま与えている修整すべて。影響を与えるユニットが 1 枚も無ければ空になる。
+   *
+   * **「誰にいくつ」を能力の側が答える**形にしている。engine が対象を 1 枚ずつ渡して
+   * 「いくつか」を尋ねる形にしなかったのは、ＢＰを読む側がたいてい盤面にいる全ユニットの
+   * ＢＰを一度に必要とするためである（`rule-effect.ts` は毎回すべてのユニットを見る）。
+   * この形なら修整の表を 1 回で作れて、そのチェックの中の全ユニットが同じ写しで裁かれる
+   * ことが構造として保証される。ルールエフェクトはすべて同時に発生する（同 第14章 2）。
+   *
+   * 渡される `DuelView` の `self` はこの能力を持つユニット自身で、味方・敵はその支配者から
+   * 見た呼び方になる。
+   */
+  readonly bpModifiers: (duel: DuelView) => readonly BpModifier[]
+}
+
+/**
  * テキストによって決められた、カードが行うことまたは行えること
  * （総合ルール 第4部 第1章 1）。
  *
  * 能力には起動型・誘発型・常在型の 3 つがある（同 2）が、起動型はコストを持つ能力を
- * 書けるようになってから足す。常在型は「夢」「元気」「信頼」「根性」だけで、継続効果を
- * 持つものはまだ無い。「希望」はそのどれでもない特別な能力である（同 第5部 第3章 1）。
+ * 書けるようになってから足す。常在型は「夢」「元気」「信頼」「根性」と、ＢＰを修整する
+ * 継続効果を生み出すものがある。「希望」はそのどれでもない特別な能力である
+ * （同 第5部 第3章 1）。
  */
-export type Ability = TriggeredAbility | DreamAbility | PepAbility | TrustAbility | GutsAbility | HopeAbility
+export type Ability =
+  | TriggeredAbility
+  | DreamAbility
+  | PepAbility
+  | TrustAbility
+  | GutsAbility
+  | HopeAbility
+  | BpModifyingAbility
 
 /**
  * 誘発型能力を 1 つ書く。
@@ -303,4 +344,35 @@ export const spirit: TriggeredAbility = triggeredAbility('登場した時', func
 /** 「希望―［効果］」を 1 つ書く。効果はカードごとに違うので受け取る。 */
 export function hope(effect: Effect): HopeAbility {
   return { kind: '特別な能力', keyword: '希望', effect }
+}
+
+/** ＢＰを修整する常在型能力を 1 つ書く。修整の内容はカードごとに違うので受け取る。 */
+export function bpModifying(bpModifiers: (duel: DuelView) => readonly BpModifier[]): BpModifyingAbility {
+  return { kind: '常在型能力', bpModifiers }
+}
+
+/**
+ * キーワード能力「友情」（総合ルール 第5部 第5章）。
+ *
+ * 「友情－Ｘ」は「このカードの上下左右の隣のスクエアにあるすべての味方のＢＰ＋Ｘ」という
+ * 常在型能力である（同 1・2）。斜めに接しているスクエアには影響を与えない（同 3）。
+ *
+ * 「気合」と同じく専用の型を持たないのは、種類も内容も「ＢＰを修整する常在型能力」
+ * そのものだからである。専用の型が要るのは「夢」などのように、効果を持たず、ルールの側が
+ * 能力の有無を見に行く必要があるものだけである。
+ *
+ * 自分自身は影響を受けない。自分がいるのは隣のスクエアではないので、隣接で絞った時点で
+ * 外れる。テキストが「他の」と書いていないのは、書く必要が無いからである。
+ */
+export function friendship(amount: number): BpModifyingAbility {
+  return bpModifying((duel) => {
+    const self = duel.self()
+    if (self === undefined) return []
+
+    const adjacent = squaresAdjacent(self.square).map(indexOfSquare)
+    return duel
+      .allies()
+      .filter((ally) => adjacent.includes(indexOfSquare(ally.square)))
+      .map((ally) => bpPlus(ally, amount))
+  })
 }

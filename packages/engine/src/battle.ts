@@ -2,6 +2,7 @@ import { triggerAttack, triggerBattleWin } from './bank.js'
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
 import { bpOf, hasPep } from './card.js'
+import { bpModification } from './continuous.js'
 import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
 import { cardsOn, dealDamage } from './duel.js'
@@ -207,9 +208,12 @@ function exchangeBattleDamage(state: DuelState, battle: Battle): DuelState {
   const dealers = [attacker, attacked].filter((unit) => dealsDamageIn(battle, unit))
   if (dealers.length === 0) return state
 
+  // 継続効果による修整も「この時点でのＢＰ」に含まれる。与える量を決める前に 1 度だけ
+  // 集めることで、両方が与える場合の 2 つの量が同じ盤面から決まる。
+  const modification = bpModification(state)
   const damages = dealers.map((unit) => ({
     target: unit.id === attacker.id ? attacked.id : attacker.id,
-    amount: bpOf(unit.card),
+    amount: bpOf(unit.card, modification(unit.id)),
   }))
   const damaged = damages.reduce((current, { target, amount }) => dealDamage(current, target, amount), state)
 
