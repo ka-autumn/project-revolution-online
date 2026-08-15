@@ -1,7 +1,9 @@
 import { discardTrap, placeEnergy, plan, smash } from './action.js'
 import type { ActionOutcome } from './action.js'
+import { activateAbility } from './activate.js'
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
+import { activatedAbilitiesOf } from './card.js'
 import { cardsIn, cardsOn, hasEnded } from './duel.js'
 import type { CardId, CardInstance, DuelState } from './duel.js'
 import { moveUnit } from './move.js'
@@ -32,6 +34,13 @@ export type LegalAction =
   | { readonly kind: 'トラップとしてプレイする'; readonly card: CardId }
   | { readonly kind: 'トラップを発動する'; readonly card: CardId }
   | { readonly kind: 'ユニットを移動する'; readonly unit: CardId; readonly destination: Square }
+  /**
+   * スクエアにいるユニットの起動型能力を起動する（総合ルール 第4部 第2章）。
+   *
+   * `ability` はそのカードが持つ起動型能力の並びの位置である。1 枚が 2 つ以上持つことが
+   * ありうるので、カードだけでは指せない。
+   */
+  | { readonly kind: '起動型能力を起動する'; readonly unit: CardId; readonly ability: number }
 
 /** 選択を求められたら常に最初の候補を選ぶ。`legalActions` が合法性だけを確かめるのに使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -79,6 +88,7 @@ export function legalActions(state: DuelState): readonly LegalAction[] {
       tryAction({ kind: 'トラップを発動する', card: card.id }, () => activateTrap(state, card.id, chooseFirst)),
     ),
     ...activeUnits.flatMap((unit) => moveCandidates(state, unit.id)),
+    ...activeUnits.flatMap((unit) => activationCandidates(state, unit)),
   ]
 }
 
@@ -108,6 +118,8 @@ export function applyLegalAction(state: DuelState, action: LegalAction, chooser:
       return outcomeState(activateTrap(state, action.card, chooser))
     case 'ユニットを移動する':
       return outcomeState(moveUnit(state, action.unit, action.destination, chooser))
+    case '起動型能力を起動する':
+      return outcomeState(activateAbility(state, action.unit, action.ability, chooser))
   }
 }
 
@@ -146,6 +158,21 @@ function playCandidates(state: DuelState, instance: CardInstance): readonly Lega
   return BATTLE_SPACE.flatMap((square) =>
     tryAction({ kind: 'カードをプレイする', declaration: { card, square } }, () =>
       playCard(state, { card, square }, chooseFirst),
+    ),
+  )
+}
+
+/**
+ * そのユニットの起動型能力を起動する候補。持っている能力それぞれについて試す。
+ *
+ * 起動できるのは支配者だけである（総合ルール 第4部 第2章 2）。いま書ける起動型能力は自分の
+ * メインフェイズにしか起動できない（同 4）ので、候補になるのはアクティブプレイヤーの
+ * ユニットだけになる。他の時に起動できる能力を足す時に、走査する範囲を広げる。
+ */
+function activationCandidates(state: DuelState, unit: CardInstance): readonly LegalAction[] {
+  return activatedAbilitiesOf(unit.card).flatMap((_ability, index) =>
+    tryAction({ kind: '起動型能力を起動する', unit: unit.id, ability: index }, () =>
+      activateAbility(state, unit.id, index, chooseFirst),
     ),
   )
 }

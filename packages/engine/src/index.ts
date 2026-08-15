@@ -1,6 +1,8 @@
 export {
+  ACTIVATION_TIMINGS,
   CREATED_TRIGGERS,
   TRIGGER_EVENTS,
+  activatedAbility,
   attributeAdding,
   bpModifying,
   dream,
@@ -16,6 +18,9 @@ export {
 } from './ability.js'
 export type {
   Ability,
+  ActivatedAbility,
+  ActivationCost,
+  ActivationTiming,
   AppearanceOccasion,
   AttributeAddingAbility,
   BpModifyingAbility,
@@ -38,6 +43,7 @@ export type {
 } from './ability.js'
 export { discardTrap, placeEnergy, plan, smash } from './action.js'
 export type { ActionOutcome, ActionViolation } from './action.js'
+export { activateAbility } from './activate.js'
 export { BATTLE_STEPS } from './battle.js'
 export type { Battle, BattleStep } from './battle.js'
 export {
@@ -55,6 +61,7 @@ export type { Area, Line, MoveDirection, Square, SquareIndex } from './board.js'
 export {
   CARD_TYPES,
   COLORS,
+  activatedAbilitiesOf,
   attributeAddingAbilitiesOf,
   bpModifyingAbilitiesOf,
   bpOf,
