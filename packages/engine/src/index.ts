@@ -1,4 +1,5 @@
 export {
+  CREATED_TRIGGERS,
   TRIGGER_EVENTS,
   attributeAdding,
   bpModifying,
@@ -18,6 +19,8 @@ export type {
   AppearanceOccasion,
   AttributeAddingAbility,
   BpModifyingAbility,
+  CreatedTrigger,
+  CreatedTriggeredAbility,
   DreamAbility,
   GutsAbility,
   HopeAbility,
@@ -92,8 +95,11 @@ export {
   releaseAll,
 } from './duel.js'
 export type {
+  BankedAbility,
   CardId,
   CardInstance,
+  CreatedAbility,
+  CreatedAbilityInstance,
   DuelResult,
   DuelState,
   LibraryPosition,
@@ -105,6 +111,7 @@ export {
   bpPlus,
   choose,
   chooseAtMostOne,
+  createTriggeredAbility,
   damagePlayer,
   damageUnit,
   destroy,
@@ -120,6 +127,7 @@ export type {
   AttributeAddition,
   BpModifier,
   CardInZone,
+  CreatedAbilityEffect,
   DuelView,
   Effect,
   EffectStep,

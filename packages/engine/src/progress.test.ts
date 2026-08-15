@@ -8,11 +8,12 @@ import {
   defineUnit,
   instantiate,
   passPriority,
+  placeInZone,
   prepareDuel,
   putOnSquare,
   triggeredAbility,
 } from './index.js'
-import type { Chooser, Deck, DuelState, Phase, Player, Square } from './index.js'
+import type { Chooser, CreatedAbility, Deck, DuelState, Phase, Player, Square } from './index.js'
 
 /** 60 枚すべてが別々の名前のデッキ。同じカード名は 4 枚までという規定を避けるため。 */
 function testDeck(prefix: string): Deck {
@@ -335,5 +336,94 @@ describe('ドローフェイズ', () => {
   it('先攻は第 1 ターンにカードを引かない', () => {
     expect(cardsIn(turnNumbered(startedDuel(), 2), '先攻', '手札')).toHaveLength(5)
     expect(cardsIn(drawPhaseOfTurn(3), '先攻', '手札')).toHaveLength(6)
+  })
+})
+
+/**
+ * 総合ルール 第4部 第3章 4（ADR-0006）。
+ *
+ * カードや能力によって作成された誘発型能力は、どのカードにも書かれていないので、スクエアに
+ * あるカードを走査しても見つからない。盤面が直接持っているものが、そのできごとが起きた時に
+ * 誘発する。ここで見るのは「次のあなたのターンの終わり」がいつなのかと、誘発した能力が
+ * 対象を受け取れることである。
+ */
+describe('作成された誘発型能力', () => {
+  const someSquare: Square = { row: 2, column: 1 }
+
+  const target = defineUnit({ name: 'テスト・作られた能力の対象', level: 1, bp: 1000, sp: 1000 })
+
+  /**
+   * 対象のユニットをエネルギーゾーンにフリーズして置く、作成された誘発型能力。
+   *
+   * 対象は engine から効果へ手渡される（`effect.ts` の `CreatedAbilityEffect`）。命令の対象に
+   * できているかどうかが、置かれたかどうかで分かる。
+   */
+  const returnToEnergy = (controller: Player): CreatedAbility => ({
+    ability: {
+      kind: '作成された誘発型能力',
+      trigger: 'あなたのターンの終わり',
+      effect: function* (_duel, affected) {
+        yield* placeInZone(affected, 'エネルギーゾーン', 'フリーズ')
+      },
+    },
+    controller,
+    affecting: '対象',
+  })
+
+  /**
+   * そのプレイヤーが支配する能力が作られていて、対象がスクエアにいる盤面。
+   *
+   * 作るところは効果の側の仕事（`resolve.test.ts`）なので、ここでは盤面に直接置く。
+   */
+  function withCreated(state: DuelState, controller: Player): DuelState {
+    const unit = instantiate({ id: '対象', card: target, owner: controller })
+    return { ...putOnSquare(state, someSquare, unit), createdAbilities: [returnToEnergy(controller)] }
+  }
+
+  /** そのターンのリカバリーフェイズが始まった盤面。 */
+  function recoveryPhaseOfTurn(state: DuelState, number: number): DuelState {
+    let current = turnNumbered(state, number)
+    while (current.turn.phase !== 'リカバリーフェイズ') current = endPhase(current)
+    return current
+  }
+
+  /** 第 1 ターン（先攻のターン）に、後攻が支配する能力が作られた盤面。 */
+  const created = () => withCreated(startedDuel(), '後攻')
+
+  it('相手のターンの終わりでは誘発しない', () => {
+    const endOfFirstTurn = pass(pass(recoveryPhaseOfTurn(created(), 1)))
+
+    expect(endOfFirstTurn.bank).toEqual([])
+    expect(endOfFirstTurn.createdAbilities).toHaveLength(1)
+  })
+
+  it('次のあなたのターンの終わりに誘発する', () => {
+    const endOfSecondTurn = pass(pass(recoveryPhaseOfTurn(created(), 2)))
+
+    expect(endOfSecondTurn.bank).toHaveLength(1)
+    // 誘発と同時に盤面から取り除かれる。これが「1 度だけ」（同 4）にあたる。
+    expect(endOfSecondTurn.createdAbilities).toEqual([])
+  })
+
+  it('解決されると、対象のユニットが効果の命令を受ける', () => {
+    const resolved = pass(pass(pass(pass(recoveryPhaseOfTurn(created(), 2)))))
+
+    expect(cardsOn(resolved, someSquare)).toEqual([])
+    expect(cardsIn(resolved, '後攻', 'エネルギーゾーン').map((card) => card.id)).toEqual(['対象'])
+    expect(cardsIn(resolved, '後攻', 'エネルギーゾーン')[0]?.orientation).toBe('フリーズ')
+  })
+
+  // 総合ルール 第4部 第3章 4-1
+  it('対象がスクエアを離れていれば、そもそも誘発しない', () => {
+    // 消滅させずに対象だけを取り除いた盤面。消滅（同 4-1）が働かなかった場合にどうなるかを
+    // 見るためのもので、通常の経路ではこの形にはならない。
+    const withoutTarget = (state: DuelState): DuelState => ({
+      ...state,
+      squares: state.squares.map((cards) => cards.filter((card) => card.id !== '対象')),
+    })
+
+    const endOfSecondTurn = pass(pass(withoutTarget(recoveryPhaseOfTurn(created(), 2))))
+
+    expect(endOfSecondTurn.bank).toEqual([])
   })
 })

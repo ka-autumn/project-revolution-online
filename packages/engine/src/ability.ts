@@ -2,7 +2,14 @@ import { indexOfSquare, squaresAdjacent } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
 import { bpPlus, damagePlayer } from './effect.js'
-import type { AttributeAddition, BpModifier, DuelView, Effect, UnitOnSquare } from './effect.js'
+import type {
+  AttributeAddition,
+  BpModifier,
+  CreatedAbilityEffect,
+  DuelView,
+  Effect,
+  UnitOnSquare,
+} from './effect.js'
 import type { Player } from './player.js'
 import { PHASES } from './turn.js'
 import type { Phase } from './turn.js'
@@ -374,6 +381,41 @@ export interface PlanReplacingAbility {
    * 選ばせるかどうかを能力の側が持ってはいない。選べないテキストが出てきた時に足す。
    */
   readonly turnsUpUntil: (card: Card) => boolean
+}
+
+/**
+ * 作成された誘発型能力が誘発するできごと（総合ルール 第4部 第3章 4）。
+ *
+ * カードが持つ誘発型能力の誘発イベント（`TRIGGER_EVENTS`）と違い、**誰のターンかまで
+ * 含んだ 1 つの値**である。カードのテキストは「次のあなたのターンの終わりに」のように、
+ * できごとと、それが誰のターンで起こるかを一続きに書くためである。
+ *
+ * 誘発イベントに絞り込みの述語（`TriggerCondition`）を添える形は採らない。ターンに
+ * まつわるできごとで「誰の」が付きうる組み合わせは数えられるほどしかなく、述語にすると
+ * 書ける形が広がりすぎるためである。ここに無いものは、それを書くカードと一緒に足す。
+ *
+ * 「次の」はここに含まれない。特別に規定された期限が無ければ、次にこのできごとが起こった
+ * 時に 1 度だけ誘発する（同 4）ので、engine の側で決まる。
+ */
+export const CREATED_TRIGGERS = ['あなたのターンの終わり'] as const
+
+export type CreatedTrigger = (typeof CREATED_TRIGGERS)[number]
+
+/**
+ * カードや能力によって作成された誘発型能力（総合ルール 第4部 第3章 4）。
+ *
+ * カードに書かれている誘発型能力（`TriggeredAbility`）とは別の型にしている。あちらは
+ * カードが持ち、スクエアにある間だけ有効になるが、こちらは**どのカードにも書かれておらず**、
+ * 作られた時点から盤面が直接持つ（`duel.ts` の `CreatedAbility`）。発生源のカードが無いので
+ * `DuelView.self` も持たない。
+ *
+ * 影響を与える対象のカードは、能力ではなく作られたもの（同）の側が持つ。同じ能力でも作られる
+ * たびに対象が違うためで、これはカードのテキストが定義する部分ではない。
+ */
+export interface CreatedTriggeredAbility {
+  readonly kind: '作成された誘発型能力'
+  readonly trigger: CreatedTrigger
+  readonly effect: CreatedAbilityEffect
 }
 
 /**

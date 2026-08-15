@@ -1,4 +1,4 @@
-import type { IntrusionOccasion } from './ability.js'
+import type { CreatedTrigger, CreatedTriggeredAbility, IntrusionOccasion } from './ability.js'
 import type { Square } from './board.js'
 import type { Attribute, Card, UnitCard } from './card.js'
 import type { CardId, LibraryPosition } from './duel.js'
@@ -153,6 +153,12 @@ export type Instruction =
       readonly square: Square
       readonly orientation: Orientation
     }
+  | {
+      readonly kind: '誘発型能力を作る'
+      readonly ability: CreatedTriggeredAbility
+      /** その能力が影響を与える特定のカード（総合ルール 第4部 第3章 4-1）。 */
+      readonly affecting: CardInZone | UnitOnSquare
+    }
 
 /**
  * 効果の途中経過。`T` はその手順が効果に返す値。
@@ -186,6 +192,23 @@ export type Effect = (duel: DuelView) => EffectStep<void>
  * 侵入されたスクエアは、どちらもここからしか取れない。
  */
 export type TrapEffect = (duel: DuelView, occasion: IntrusionOccasion) => EffectStep<void>
+
+/**
+ * 作成された誘発型能力の効果。第 2 引数で、影響を与える対象のユニットを受け取る
+ * （総合ルール 第4部 第3章 4-1）。
+ *
+ * `TrapEffect` と同じ形である。どちらも、盤面への問い合わせでは取れないものを engine から
+ * 手渡される。対象は作られた時に決まっていて（「そのユニットを」）、後から盤面を見ても
+ * どれだったのかを見分ける手立てが無いためである。
+ *
+ * 渡されるのは**誘発した時点の姿**で、作られた時点のものではない。作られてから誘発するまでの
+ * 間にスクエアからスクエアへ移動していれば、移動した後の位置になる。それ以外のゾーン移動を
+ * していれば能力そのものが消滅している（同 4-1）ので、誘発する時点で対象は必ずスクエアに
+ * いる。
+ *
+ * 発生源のカードが無いので、`DuelView.self` は常に `undefined` になる。
+ */
+export type CreatedAbilityEffect = (duel: DuelView, affected: UnitOnSquare) => EffectStep<void>
 
 /**
  * 継続効果が 1 枚のユニットのＢＰに与える修整（総合ルール 第4部 第12章 5-2 の(5)）。
@@ -461,4 +484,28 @@ export function* flipPlan(player: Player): EffectStep<void> {
  */
 export function* placeTopOfLibrary(to: PlayerZone, orientation: Orientation): EffectStep<void> {
   yield { kind: '山札の1番上をゾーンへ置く', to, orientation }
+}
+
+/**
+ * 誘発型能力を 1 つ作る（総合ルール 第4部 第3章 4）。
+ *
+ * 「〜する。そのカードを次のあなたのターンの終わりに、〜する」のように、いま起こすことと、
+ * 後から起こすこととが 1 つのテキストに書かれている場合の、後半にあたる。作られた能力は
+ * どのカードにも書かれていない状態で盤面に残り、そのできごとが次に起こった時に 1 度だけ
+ * 誘発する（同 4）。
+ *
+ * 影響を与える対象を必ず 1 枚受け取る。作られた後・誘発する前にその対象が「スクエアから
+ * スクエア」以外のゾーン移動をすると、能力は消滅する（同 4-1）。対象を持たない能力を作る
+ * テキストが出てきた時に、無しで作れる形を足す。
+ *
+ * 対象は engine が見せたカードでなければならない（`resolve.ts` の `shown`）。誘発した時に
+ * その時点の姿が効果へ手渡される（`CreatedAbilityEffect`）ので、作る側と誘発した側で対象を
+ * 取り違えようがない。
+ */
+export function* createTriggeredAbility(
+  affecting: CardInZone | UnitOnSquare,
+  trigger: CreatedTrigger,
+  effect: CreatedAbilityEffect,
+): EffectStep<void> {
+  yield { kind: '誘発型能力を作る', ability: { kind: '作成された誘発型能力', trigger, effect }, affecting }
 }
