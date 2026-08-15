@@ -162,6 +162,16 @@ export type {
   VisibleCreatedAbility,
 } from './perspective.js'
 export { activateTrap, playAsTrap, playCard } from './play.js'
+export { applyWithAnswers } from './protocol.js'
+export type {
+  ActionProgress,
+  ChoiceAnswer,
+  FromClient,
+  RoomCode,
+  ToClient,
+  WireCandidate,
+  WireChoice,
+} from './protocol.js'
 export type { PlayDeclaration } from './play.js'
 export { PLAYERS } from './player.js'
 export { passPriority } from './progress.js'
