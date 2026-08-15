@@ -1,4 +1,4 @@
-import type { IntrusionOccasion, TriggeredAbility } from './ability.js'
+import type { CreatedTriggeredAbility, IntrusionOccasion, TriggeredAbility } from './ability.js'
 import type { Battle } from './battle.js'
 import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
@@ -101,7 +101,7 @@ export interface DuelState {
    * 後から入った能力もすでにある能力と同列に扱われる（同 11-2）ため、並びに意味はない。
    * どれを解決するかは、積まれた順ではなく支配者で決まる（同 11-3）。
    */
-  readonly bank: readonly TriggeredInstance[]
+  readonly bank: readonly BankedAbility[]
   /**
    * リゾルブゾーンにあるカード（総合ルール 第2部 第21章 12-1）。
    *
@@ -119,7 +119,15 @@ export interface DuelState {
    * 誘発した時点では何も起こらず、次にどちらかのプレイヤーが優先権を獲得する時に
    * まとめてバンクに入る（総合ルール 第4部 第7章 2・3）。その間の置き場所がここになる。
    */
-  readonly triggered: readonly TriggeredInstance[]
+  readonly triggered: readonly BankedAbility[]
+  /**
+   * カードや能力によって作成された、まだ誘発していない誘発型能力
+   * （総合ルール 第4部 第3章 4）。
+   *
+   * どのカードにも書かれていない能力なので、スクエアにあるカードを走査しても見つからない
+   * （`trigger.ts` の `triggeredOnSquares`）。盤面が直接持つ場所がここになる。
+   */
+  readonly createdAbilities: readonly CreatedAbility[]
   /**
    * 中央エリアのスクエアを指定してプレイされ、そのスクエアに置かれたユニット
    * （総合ルール 第4部 第14章 4-9・4-10）。
@@ -214,6 +222,67 @@ export function hasEnded(state: DuelState): boolean {
  * 誘発してからバンクに入るまでの間も、バンクにある間も、同じ形で持つ。どちらであるかは
  * 盤面のどちらの並びにいるかで決まる。
  */
+/**
+ * 盤面が持っている、作成された誘発型能力 1 つ（総合ルール 第4部 第3章 4）。
+ *
+ * まだ誘発していない。誘発すると `CreatedAbilityInstance` になってバンクへ向かい、ここからは
+ * 取り除かれる。特別に規定された期限が無ければ次に 1 度だけ誘発する（同 4）ので、誘発と
+ * 同時に取り除けばそれがそのまま守られる。
+ *
+ * `TriggeredInstance` と違って発生源のカードを持たない。作った効果はすでに解決を終えて
+ * いて、作ったカードもたいていは捨札にある。支配者は作った効果の支配者を写して持つ。
+ */
+export interface CreatedAbility {
+  readonly ability: CreatedTriggeredAbility
+  /** 能力の支配者。作った効果の支配者である（総合ルール 第4部 第7章 1）。 */
+  readonly controller: Player
+  /**
+   * 影響を与える特定のカード（総合ルール 第4部 第3章 4-1）。
+   *
+   * 作られた後、誘発イベントが満たされる前に、このカードが「スクエアからスクエア」以外の
+   * ゾーン移動をした場合、この能力は消滅する（同 4-1）。取り除くのは `duel.ts` の
+   * `moveToZone` と `moveToSquare` である。
+   */
+  readonly affecting: CardId
+}
+
+/**
+ * 誘発した、作成された誘発型能力 1 つ。
+ *
+ * `TriggeredInstance` と同じく、誘発してからバンクに入るまでの間も、バンクにある間も同じ形で
+ * 持つ。違うのは、発生源のカードを持たないことと、影響を与える対象を誘発した時点の姿で
+ * 写して持つことである。
+ */
+export interface CreatedAbilityInstance {
+  readonly ability: CreatedTriggeredAbility
+  readonly controller: Player
+  /**
+   * 発生源のカードを持たない、ということを型に書いたもの。値は常に無い。
+   *
+   * こう書いておくと、バンクの中身を種類で分けずに `source` を読めて、返るのは `undefined`
+   * になる。「発生源のカードがあるとは限らない」という事実がそのまま型に出る。
+   */
+  readonly source?: undefined
+  /**
+   * 誘発した時点の対象。解決する時に効果へ手渡される（`effect.ts` の `CreatedAbilityEffect`）。
+   *
+   * 誘発してから解決するまでの間に対象がスクエアを離れることはありうる。その場合、対象への
+   * 命令が実行されないだけである（総合ルール 第1部 第1章 3）。消滅する（同 第4部 第3章 4-1）
+   * のは誘発するまでの間だけなので、誘発した後は残る。
+   */
+  readonly affected: UnitOnSquare
+}
+
+/**
+ * 誘発して、バンクへ向かう能力 1 つ。
+ *
+ * カードに書かれている誘発型能力（`TriggeredInstance`）と、作成された誘発型能力
+ * （`CreatedAbilityInstance`）の 2 つがある。どちらもバンクに入って解決される
+ * （総合ルール 第2部 第21章 11-1）ので、盤面は 1 つの並びで持つ。見分けるのは
+ * `ability.kind` である。
+ */
+export type BankedAbility = TriggeredInstance | CreatedAbilityInstance
+
 export interface TriggeredInstance {
   readonly ability: TriggeredAbility
   /** 発生源のカード。 */
@@ -292,6 +361,7 @@ export function emptyDuelState(): DuelState {
     bank: [],
     resolveZone: [],
     triggered: [],
+    createdAbilities: [],
     playedIntoCenter: [],
     trapConditionsMet: [],
     battle: undefined,
@@ -405,7 +475,9 @@ export function moveToZone(
   if (detached === undefined) return state
 
   const { card } = detached
-  const flipped = zone === '山札' && position === '1番上' ? faceDownPlan(detached.state, card.owner) : detached.state
+  // 行き先がスクエアではないので、これは必ず「スクエアからスクエア」以外のゾーン移動である。
+  const vanished = withoutCreatedAbilitiesAffecting(detached.state, id)
+  const flipped = zone === '山札' && position === '1番上' ? faceDownPlan(vanished, card.owner) : vanished
 
   const moved: CardInstance = { ...card, controller: card.owner, orientation, damage: 0 }
   const rest = cardsIn(flipped, card.owner, zone)
@@ -442,7 +514,8 @@ export function moveToResolveZone(state: DuelState, id: CardId): DuelState {
   const detached = detach(state, id)
   if (detached === undefined) return state
 
-  return { ...detached.state, resolveZone: [...detached.state.resolveZone, detached.card] }
+  const vanished = withoutCreatedAbilitiesAffecting(detached.state, id)
+  return { ...vanished, resolveZone: [...vanished.resolveZone, detached.card] }
 }
 
 /**
@@ -454,6 +527,10 @@ export function moveToResolveZone(state: DuelState, id: CardId): DuelState {
  *
  * 受けているダメージはそのまま持って動く。「スクエアからスクエア」のゾーン移動をしても
  * そのカードは新しいカードにならない（同 第21章 1-4）ためである。
+ *
+ * 同じ理由で、そのカードに影響を与える作成された誘発型能力も、スクエアから来た場合には
+ * 消滅しない（同 第4部 第3章 4-1）。**このスクエアへの移動だけが、消滅しないゾーン移動で
+ * ある。**
  */
 export function moveToSquare(
   state: DuelState,
@@ -461,10 +538,12 @@ export function moveToSquare(
   square: Square,
   placement: { readonly controller: Player; readonly orientation: Orientation },
 ): DuelState {
+  const fromSquare = findOnSquares(state, id) !== undefined
   const detached = detach(state, id)
   if (detached === undefined) return state
 
-  return putOnSquare(detached.state, square, { ...detached.card, ...placement })
+  const vanished = fromSquare ? detached.state : withoutCreatedAbilitiesAffecting(detached.state, id)
+  return putOnSquare(vanished, square, { ...detached.card, ...placement })
 }
 
 /**
@@ -516,6 +595,19 @@ function detach(state: DuelState, id: CardId): { readonly state: DuelState; read
     }
   }
   return undefined
+}
+
+/**
+ * そのカードに影響を与える、作成された誘発型能力を消滅させる（総合ルール 第4部 第3章 4-1）。
+ * 無ければ盤面はそのまま。
+ *
+ * 呼ぶのは「スクエアからスクエア」以外のゾーン移動をした時だけである。`detach` の中ではなく
+ * 呼ぶ側に置いているのは、`detach` からはどこへ動かすのかが見えないためで、スクエアから
+ * スクエアへの移動（`moveToSquare`）だけがこれを呼ばない。
+ */
+function withoutCreatedAbilitiesAffecting(state: DuelState, id: CardId): DuelState {
+  if (!state.createdAbilities.some((created) => created.affecting === id)) return state
+  return { ...state, createdAbilities: state.createdAbilities.filter((created) => created.affecting !== id) }
 }
 
 /** `trapConditionsMet` からそのカードのぶんを取り除く。無ければ盤面はそのまま。 */

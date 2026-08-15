@@ -7,6 +7,7 @@ import {
   cardsOn,
   choose,
   chooseAtMostOne,
+  createTriggeredAbility,
   damagePlayer,
   damageUnit,
   defineUnit,
@@ -1127,5 +1128,60 @@ describe('効果から見えるエネルギーゾーン', () => {
 
     expect(idsOf(cardsOn(resolved, mySquare))).toEqual(['先攻のエネルギー0'])
     expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')).toEqual([])
+  })
+})
+
+// 総合ルール 第4部 第3章 4（ADR-0006）
+describe('効果が誘発型能力を作る', () => {
+  /** 味方を 1 枚選び、その味方をあなたのターンの終わりにエネルギーゾーンへ置く能力を作る。 */
+  const postponing = triggeredAbility('登場した時', function* (duel) {
+    const ally = yield* choose(duel.allies())
+    if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+    yield* createTriggeredAbility(ally, 'あなたのターンの終わり', function* (_duel, affected) {
+      yield* placeInZone(affected, 'エネルギーゾーン', 'フリーズ')
+    })
+  })
+
+  const created = (state: DuelState): DuelState =>
+    resolveEffect(state, postponing.effect, { controller: '先攻', chooser: chooseFirst })
+
+  it('作られた能力を盤面が持つ', () => {
+    const resolved = created(boardOf([mySquare, mine()]))
+
+    expect(resolved.createdAbilities.map((each) => each.affecting)).toEqual(['味方'])
+    expect(resolved.createdAbilities.map((each) => each.ability.trigger)).toEqual(['あなたのターンの終わり'])
+  })
+
+  // 作られた能力の支配者は、作った効果の支配者である（総合ルール 第4部 第7章 1）。
+  it('作られた能力の支配者は、作った効果の支配者である', () => {
+    const resolved = resolveEffect(boardOf([enemySquare, theirs('敵')]), postponing.effect, {
+      controller: '後攻',
+      chooser: chooseFirst,
+    })
+
+    expect(resolved.createdAbilities.map((each) => each.controller)).toEqual(['後攻'])
+  })
+
+  // 誘発イベントが起こるまで何も起こらない（総合ルール 第4部 第3章 4）。作った時点では
+  // 盤面はそのままで、対象のユニットも動かない。
+  it('作っただけでは何も起こらない', () => {
+    const resolved = created(boardOf([mySquare, mine()]))
+
+    expect(idsOf(cardsOn(resolved, mySquare))).toEqual(['味方'])
+    expect(resolved.triggered).toEqual([])
+    expect(resolved.bank).toEqual([])
+  })
+
+  it('見せていないカードを対象にはできない', () => {
+    const forge = triggeredAbility('登場した時', function* (duel) {
+      const [ally] = duel.allies()
+      if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+      yield* createTriggeredAbility({ ...ally, id: '敵' }, 'あなたのターンの終わり', function* () {})
+    })
+    const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+    expect(() =>
+      resolveEffect(state, forge.effect, { controller: '先攻', chooser: chooseFirst }),
+    ).toThrowError('効果に見せていないカードが対象にされた')
   })
 })

@@ -6,7 +6,7 @@ import { bpModification } from './continuous.js'
 import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
 import { cardsOn, dealDamage } from './duel.js'
-import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
+import type { BankedAbility, CardId, CardInstance, DuelState } from './duel.js'
 import { trigger } from './trigger.js'
 
 /**
@@ -67,14 +67,14 @@ export interface Battle {
    * バトル中に誘発した能力は別の新しいバンク（`DuelState.bank`）で解決される。バトルが
    * 終了した後、通常のバンクに戻って処理される（同 4）。
    */
-  readonly heldBank: readonly TriggeredInstance[]
+  readonly heldBank: readonly BankedAbility[]
   /**
    * バンクに入ることが予約されている状態で待機させられた能力（総合ルール 第3部 第11章 2）。
    *
    * 誘発しただけでまだバンクに入っていない能力（`DuelState.triggered`）も、バトルが
    * 発生した時点で待機中のバンクと同じ扱いになる。同 2 の【例】がこれにあたる。
    */
-  readonly heldTriggered: readonly TriggeredInstance[]
+  readonly heldTriggered: readonly BankedAbility[]
 }
 
 /** これから発生するバトルの、スクエアとそこで重なっている 2 つのユニット。 */

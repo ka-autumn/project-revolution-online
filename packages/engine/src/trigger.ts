@@ -1,7 +1,8 @@
 import type { TriggerEvent, TriggerOccasion, TriggeredAbility } from './ability.js'
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
-import type { CardInstance, DuelState, TriggeredInstance } from './duel.js'
+import { locateOnSquares } from './duel.js'
+import type { BankedAbility, CardInstance, CreatedAbility, DuelState, TriggeredInstance } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
 
@@ -21,11 +22,56 @@ import type { Player } from './player.js'
  * 誘発することもある。ここではイベント 1 つにつき 1 度ずつ積む。
  */
 export function trigger(state: DuelState, event: TriggerEvent): DuelState {
-  return addTriggered(state, triggeredOnSquares(state, event))
+  return addTriggered(triggerCreated(state, event), triggeredOnSquares(state, event))
+}
+
+/**
+ * 作成された誘発型能力のうち、そのできごとで誘発するものを誘発させ、盤面から取り除く
+ * （総合ルール 第4部 第3章 4）。
+ *
+ * 特別に規定された期限が無ければ、次にそのできごとが起こった時に 1 度だけ誘発する（同 4）。
+ * **誘発と同時に取り除く**ことがそのまま「1 度だけ」にあたる。期限を持つ能力（同 4 の 2 文目）
+ * を書けるようになった時に、取り除かずに残す道を足す。
+ *
+ * 誘発するできごとは、誰のターンかまで含んだ 1 つの値である（`CreatedTrigger`）。「あなたの
+ * ターンの終わり」は、支配者がアクティブプレイヤーであるターンの終わりを指す。
+ *
+ * 対象がスクエアにいなければ誘発しない。作られた後にスクエアを離れていれば能力は消滅して
+ * いる（同 4-1）ので通常は起こらないが、まだスクエアに置かれていないカードを対象に能力を
+ * 作った場合には起こりうる。実行できない行動は実行されない（同 第1部 第1章 3）。
+ */
+function triggerCreated(state: DuelState, event: TriggerEvent): DuelState {
+  const firing = state.createdAbilities.filter((created) => matchesEvent(created, event, state.turn.active))
+  if (firing.length === 0) return state
+
+  const instances = firing.flatMap((created) => {
+    const located = locateOnSquares(state, created.affecting)
+    if (located === undefined) return []
+
+    const { instance, square } = located
+    const { card } = instance
+    if (card.type !== 'ユニット') return []
+
+    const affected: UnitOnSquare = { id: instance.id, square, card, controller: instance.controller }
+    return [{ ability: created.ability, controller: created.controller, affected }]
+  })
+
+  return addTriggered(
+    { ...state, createdAbilities: state.createdAbilities.filter((created) => !firing.includes(created)) },
+    instances,
+  )
+}
+
+/** その作成された誘発型能力が、いま起きた誘発イベントで誘発するか。 */
+function matchesEvent(created: CreatedAbility, event: TriggerEvent, active: Player): boolean {
+  switch (created.ability.trigger) {
+    case 'あなたのターンの終わり':
+      return event === 'ターンの終わり' && created.controller === active
+  }
 }
 
 /** 誘発した能力を、まだバンクに入っていない能力の並びに積む。何も無ければ盤面はそのまま。 */
-export function addTriggered(state: DuelState, triggered: readonly TriggeredInstance[]): DuelState {
+export function addTriggered(state: DuelState, triggered: readonly BankedAbility[]): DuelState {
   if (triggered.length === 0) return state
 
   return { ...state, triggered: [...state.triggered, ...triggered] }

@@ -211,6 +211,19 @@ function apply(
         value: undefined,
       }
     }
+    case '誘発型能力を作る': {
+      // 対象を持つ命令なので、他と同じく engine が見せたカードでなければならない。
+      if (!shown.has(instruction.affecting.id)) {
+        throw new Error('効果に見せていないカードが対象にされた')
+      }
+      // 作られた能力の支配者は、作った効果の支配者である（総合ルール 第4部 第7章 1）。
+      const created = {
+        ability: instruction.ability,
+        controller: context.controller,
+        affecting: instruction.affecting.id,
+      }
+      return { state: { ...state, createdAbilities: [...state.createdAbilities, created] }, value: undefined }
+    }
     case 'プランを裏返す': {
       // プランが無ければこの行動は実行されない（総合ルール 第1部 第1章 3）。効果は続く。
       // `faceDownPlan` がプランの無い盤面をそのまま返すので、ここでは何も足さない。

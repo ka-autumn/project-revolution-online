@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 // 山札を組み立てるためだけに `putInZone` を使う。engine の中からゾーンを差し替える
-// ための関数であり、公開する API ではないので `index.js` からは取らない。
-import { putInZone } from './duel.js'
+// ための関数であり、公開する API ではないので `index.js` からは取らない。カードを動かす
+// `moveToZone` と `moveToSquare` も同じく engine の内部にある。
+import { moveToSquare, moveToZone, putInZone } from './duel.js'
 import {
   BATTLE_SPACE,
   PLAYER_ZONES,
@@ -13,7 +14,7 @@ import {
   instantiate,
   putOnSquare,
 } from './index.js'
-import type { Square } from './index.js'
+import type { CardId, CreatedAbility, DuelState, Square } from './index.js'
 
 const testUnit = defineUnit({ name: 'テストユニット', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
 
@@ -141,5 +142,62 @@ describe('カードインスタンス', () => {
   // 総合ルール 第2部 第21章 6-3・7-3・9-3: カードは通常リリース状態で置かれる。
   it('向きを指定しなければリリース状態になる', () => {
     expect(instantiate({ id: 'u1', card: testUnit, owner: '先攻' }).orientation).toBe('リリース')
+  })
+})
+
+/**
+ * 総合ルール 第4部 第3章 4-1（ADR-0006）。
+ *
+ * 作成された誘発型能力のうち特定のカードに影響を与えるものは、誘発イベントが満たされる前に
+ * そのカードが「スクエアからスクエア」以外のゾーン移動をした場合に消滅する。**消滅しない
+ * ゾーン移動はスクエアからスクエアへの移動だけ**なので、そちらを外して確かめる。
+ */
+describe('作成された誘発型能力の消滅', () => {
+  /** 対象を 1 枚だけ持つ、何もしない能力が作られている盤面を作る。 */
+  const affecting = (id: CardId): CreatedAbility => ({
+    ability: { kind: '作成された誘発型能力', trigger: 'あなたのターンの終わり', effect: function* () {} },
+    controller: '先攻',
+    affecting: id,
+  })
+
+  /** その対象がスクエアにいて、その対象に影響を与える能力が作られている盤面。 */
+  function onSquareWithCreated(): DuelState {
+    const unit = instantiate({ id: '対象', card: testUnit, owner: '先攻' })
+    return { ...putOnSquare(emptyDuelState(), someSquare, unit), createdAbilities: [affecting('対象')] }
+  }
+
+  it('対象がスクエアから捨札に置かれると消滅する', () => {
+    const moved = moveToZone(onSquareWithCreated(), '対象', '捨札')
+
+    expect(moved.createdAbilities).toEqual([])
+  })
+
+  it('対象がスクエアからスクエアへ移動しても消滅しない', () => {
+    const moved = moveToSquare(onSquareWithCreated(), '対象', anotherSquare, {
+      controller: '先攻',
+      orientation: 'リリース',
+    })
+
+    expect(moved.createdAbilities).toHaveLength(1)
+  })
+
+  // スクエアへの移動でも、来たのがスクエア以外なら「スクエアからスクエア」ではない。
+  it('対象がゾーンからスクエアへ移動すると消滅する', () => {
+    const unit = instantiate({ id: '対象', card: testUnit, owner: '先攻' })
+    const inZone = putInZone(emptyDuelState(), '先攻', 'エネルギーゾーン', [unit])
+    const state: DuelState = { ...inZone, createdAbilities: [affecting('対象')] }
+
+    const moved = moveToSquare(state, '対象', someSquare, { controller: '先攻', orientation: 'リリース' })
+
+    expect(moved.createdAbilities).toEqual([])
+  })
+
+  it('対象ではないカードが動いても消滅しない', () => {
+    const other = instantiate({ id: 'よそのカード', card: testUnit, owner: '先攻' })
+    const state = putOnSquare(onSquareWithCreated(), anotherSquare, other)
+
+    const moved = moveToZone(state, 'よそのカード', '捨札')
+
+    expect(moved.createdAbilities).toHaveLength(1)
   })
 })

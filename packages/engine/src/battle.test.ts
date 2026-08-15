@@ -207,7 +207,13 @@ function atEndStepDirectly(state: DuelState): DuelState {
 
 /** バンクにある能力を、発生源と誘発イベントの組で並べたもの。並びに意味はないので整列する。 */
 function banked(state: DuelState): readonly string[] {
-  return state.bank.map((each) => `${each.source}／${each.ability.event}`).sort()
+  return state.bank
+    .map((each) =>
+      each.ability.kind === '誘発型能力'
+        ? `${each.source}／${each.ability.event}`
+        : `作成された能力／${each.ability.trigger}`,
+    )
+    .sort()
 }
 
 const idsOf = (cards: readonly CardInstance[]) => cards.map((card) => card.id)

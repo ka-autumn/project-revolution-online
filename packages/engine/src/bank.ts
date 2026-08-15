@@ -1,6 +1,6 @@
 import type { AppearanceOccasion, TriggerEvent, TriggerOccasion } from './ability.js'
 import { locateOnSquares } from './duel.js'
-import type { CardId, DuelState } from './duel.js'
+import type { BankedAbility, CardId, CreatedAbilityInstance, DuelState } from './duel.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
 import { addTriggered, triggeredBy } from './trigger.js'
@@ -104,10 +104,39 @@ export function resolveFromBank(state: DuelState, chooser: Chooser): DuelState {
   const chosen = candidates.find((banked) => banked === choice)
   if (chosen === undefined) throw new Error('バンクにない能力が選ばれた')
 
-  const resolved = resolveEffect(state, chosen.ability.effect, {
-    controller: chosen.controller,
-    chooser,
-    self: chosen.self,
-  })
+  const resolved = resolveBanked(state, chosen, chooser)
   return { ...resolved, bank: resolved.bank.filter((banked) => banked !== chosen) }
+}
+
+/**
+ * バンクにある能力 1 つの効果を解決する。
+ *
+ * 作成された誘発型能力（総合ルール 第4部 第3章 4）は、発生源のカードを持たないかわりに
+ * 影響を与える対象を持つ。対象は盤面への問い合わせでは取れないので効果へ手渡し、engine が
+ * 見せたものとして命令の対象にできるようにする（`resolve.ts` の `EffectContext.handed`）。
+ */
+function resolveBanked(state: DuelState, banked: BankedAbility, chooser: Chooser): DuelState {
+  if (isCreated(banked)) {
+    const { ability, affected } = banked
+    return resolveEffect(state, (duel) => ability.effect(duel, affected), {
+      controller: banked.controller,
+      chooser,
+      handed: [affected],
+    })
+  }
+  return resolveEffect(state, banked.ability.effect, {
+    controller: banked.controller,
+    chooser,
+    self: banked.self,
+  })
+}
+
+/**
+ * バンクにあるそれが、作成された誘発型能力か。
+ *
+ * 見分けるのは能力の側の `kind` だが、そこを見ても入れ物のほうは絞り込まれないので、
+ * 述語として書く。
+ */
+function isCreated(banked: BankedAbility): banked is CreatedAbilityInstance {
+  return banked.ability.kind === '作成された誘発型能力'
 }
