@@ -24,9 +24,12 @@ pnpm ワークスペースのモノレポ。
 Node.js 22 以上。pnpm は `packageManager` で固定しているため、corepack が有効なら追加の準備は要らない。
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm verify
 ```
+
+`--frozen-lockfile` を付けるのは、`pnpm-lock.yaml` が `packages/cards` の importer を持っているため。
+cards が無い環境で素の `pnpm install` を走らせると、ロックファイルからそれが黙って消える。
 
 `pnpm verify` は次の 3 つを順に実行する。
 
@@ -38,5 +41,8 @@ pnpm verify:engine   # エンジンが依存ゼロで、ブラウザ／サーバ
 
 ## この公開リポジトリだけを clone した場合
 
-`packages/cards` が無いため、ゲームを動かすことはできない。型検査とテストは通る。
+`packages/cards` が無いため、ゲームを動かすことはできない。`pnpm verify` は通る。
 エンジンのテストは実カードではなく架空のテストカードで書くため、カード実装の有無に依存しない（ADR-0002）。
+
+この状態では `pnpm install --frozen-lockfile` を使うこと。上に書いたとおり、素の `pnpm install` は
+`pnpm-lock.yaml` から `packages/cards` の importer を消し、身に覚えのない差分を残す。
