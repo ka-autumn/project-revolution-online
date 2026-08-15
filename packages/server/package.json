@@ -10,9 +10,11 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@revolution/engine": "workspace:*"
+    "@revolution/engine": "workspace:*",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "vitest": "catalog:"
   }
 }
