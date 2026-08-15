@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 // ゾーンを組み立てるためだけに `putInZone` を使う。engine の中からゾーンを差し替えるための
 // 関数であり、公開する API ではない（`smash.test.ts` と同じ）。
 import { putInZone } from './duel.js'
-import { defineUnit, emptyDuelState, instantiate, perspectiveOf, putOnSquare } from './index.js'
+import { defineUnit, emptyDuelState, instantiate, perspectiveOf, putOnSquare, triggeredAbility } from './index.js'
 import type { DuelPerspective, DuelState, Player, PlayerZone, Square, UnitOnSquare, VisibleCard } from './index.js'
 
 // 検証したいのは「どのゾーンにあるか」だけなので、カードは名前しか違わない架空のもので足りる
@@ -119,6 +119,52 @@ describe('視点ごとの盤面の射影', () => {
 
   it('視点のプレイヤーを持つ', () => {
     expect(先攻から.viewer).toBe('先攻')
+  })
+})
+
+// 効果は関数なので通信に載らない（ADR-0004、`VisibleAbility`）。
+describe('解決を待っている能力', () => {
+  /** 「登場した時」に何もしない誘発型能力。効果が落ちることだけを見るので中身は要らない。 */
+  const ability = triggeredAbility('登場した時', function* () {})
+
+  it('バンクにある能力は、支配者と発生源だけになる', () => {
+    const state: DuelState = {
+      ...filledState(),
+      bank: [{ ability, source: INVADER.id, controller: '先攻', self: INVADER }],
+    }
+
+    expect(perspectiveOf(state, '先攻').bank).toEqual([{ controller: '先攻', source: INVADER.id }])
+  })
+
+  // 作成された誘発型能力は、効果が実行中に作ったものでカードを指す名前を持たない
+  // （`duel.ts` の `CreatedAbilityInstance`）。
+  it('作成された誘発型能力は、発生源を持たないまま渡る', () => {
+    const created = { kind: '作成された誘発型能力', trigger: 'あなたのターンの終わり', effect: function* () {} } as const
+    const state: DuelState = {
+      ...filledState(),
+      triggered: [{ ability: created, controller: '後攻', affected: INVADER }],
+    }
+
+    expect(perspectiveOf(state, '先攻').triggered).toEqual([{ controller: '後攻', source: undefined }])
+  })
+
+  // 総合ルール 第3部 第11章 2。バトル中は、それまでのバンクが待機中になる。
+  it('バトルの待機中のバンクも同じ形になる', () => {
+    const state: DuelState = {
+      ...filledState(),
+      battle: {
+        square: INVADED,
+        attacker: INVADER.id,
+        attacked: INVADER.id,
+        step: '第１バトルステップ',
+        dealtDamage: [],
+        endOfBattleTriggered: false,
+        heldBank: [{ ability, source: INVADER.id, controller: '先攻', self: INVADER }],
+        heldTriggered: [],
+      },
+    }
+
+    expect(perspectiveOf(state, '先攻').battle?.heldBank).toEqual([{ controller: '先攻', source: INVADER.id }])
   })
 })
 

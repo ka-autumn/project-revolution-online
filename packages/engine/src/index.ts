@@ -154,7 +154,13 @@ export { moveUnit } from './move.js'
 export { ORIENTATIONS } from './orientation.js'
 export type { Orientation } from './orientation.js'
 export { perspectiveOf } from './perspective.js'
-export type { DuelPerspective, VisibleCard } from './perspective.js'
+export type {
+  DuelPerspective,
+  VisibleAbility,
+  VisibleBattle,
+  VisibleCard,
+  VisibleCreatedAbility,
+} from './perspective.js'
 export { activateTrap, playAsTrap, playCard } from './play.js'
 export type { PlayDeclaration } from './play.js'
 export { PLAYERS } from './player.js'
@@ -182,5 +188,17 @@ export { SMASH_JUDGMENT_STEPS, smashesOf } from './smash.js'
 export type { SmashJudgment, SmashJudgmentStep } from './smash.js'
 export { PHASES } from './turn.js'
 export type { Phase, Turn } from './turn.js'
+export { fromWire, toWire } from './wire.js'
+export type {
+  CardLookup,
+  CardNaming,
+  CardNumber,
+  WireCardInstance,
+  WireCourageConditionMet,
+  WirePerspective,
+  WireTrapConditionMet,
+  WireUnitOnSquare,
+  WireVisibleCard,
+} from './wire.js'
 export { PLAYER_ZONES, SHARED_ZONES, ZONES } from './zone.js'
 export type { PlayerZone, SharedZone, Zone } from './zone.js'
