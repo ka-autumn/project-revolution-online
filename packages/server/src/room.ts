@@ -128,9 +128,17 @@ function roomOf(rooms: Rooms, participant: ParticipantId): Room | undefined {
  *
  * 空いていれば作って待ち、1 人いれば 2 人目として入ってデュエルが始まる。定員は 2 人で、
  * 観戦は扱わない。相手の非公開情報を見てよい人がいない（ADR-0004）ためである。
+ *
+ * すでにその部屋にいる参加者が入り直した場合は、**再入場として扱う**（ADR-0009）。接続が
+ * 切れて繋ぎ直した場合がこれにあたる。
  */
 function enter(rooms: Rooms, participant: ParticipantId, code: RoomCode, setup: RoomSetup): RoomOutcome {
-  if (roomOf(rooms, participant) !== undefined) return refuse(rooms, participant, 'すでに部屋にいる')
+  const current = roomOf(rooms, participant)
+  if (current !== undefined) {
+    if (current.code !== code) return refuse(rooms, participant, 'ほかの部屋にいる')
+
+    return rejoin(rooms, current, participant, setup)
+  }
 
   const room = rooms.get(code)
   if (room === undefined) {
@@ -146,6 +154,45 @@ function enter(rooms: Rooms, participant: ParticipantId, code: RoomCode, setup: 
   }
 
   return start(rooms, room, waiting, participant, setup)
+}
+
+/**
+ * 入り直した人に、いまの様子を送り直す（ADR-0009）。**部屋は変えない。**
+ *
+ * 盤面は差分ではなく毎回まるごと送っている（`wire.ts`）ので、追いつかせる仕組みは要らない。
+ * いまの盤面をもう一度送れば足りる。
+ *
+ * 選択の途中で切れていた場合は、貯めた答えの並びで適用をやり直せば同じ「選んでほしい」が
+ * 返る（ADR-0008）。**送ったメッセージを覚えておく必要は無い。**
+ */
+function rejoin(rooms: Rooms, room: Room, participant: ParticipantId, setup: RoomSetup): RoomOutcome {
+  const duel = room.duel
+  if (duel === undefined) {
+    return { rooms, deliveries: [{ to: participant, message: { kind: '相手を待っている' } }] }
+  }
+
+  const seat = seatOf(duel, participant)
+  if (seat === undefined) return refuse(rooms, participant, '席に着いていない')
+
+  return {
+    rooms,
+    deliveries: [
+      { to: participant, message: { kind: '席についた', seat } },
+      ...boards(duel, setup).filter((delivery) => delivery.to === participant),
+      ...pendingChoice(duel, seat),
+    ],
+  }
+}
+
+/** その席のプレイヤーが答えを待たれているなら、その「選んでほしい」を作り直す。 */
+function pendingChoice(duel: DuelInRoom, seat: Player): readonly Delivery[] {
+  const pending = duel.pending
+  if (pending === undefined || pending.player !== seat) return []
+
+  const progress = applyWithAnswers(duel.state, pending.action, pending.answers)
+  if (progress.kind !== '選んでほしい') return []
+
+  return [{ to: duel.seats[seat], message: { kind: '選んでほしい', choice: progress.choice } }]
 }
 
 /**
