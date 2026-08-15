@@ -13,7 +13,17 @@ import {
   putOnSquare,
   triggeredAbility,
 } from './index.js'
-import type { Chooser, CreatedAbility, Deck, DuelState, Phase, Player, Square } from './index.js'
+import type {
+  Chooser,
+  CourageConditionMet,
+  CreatedAbility,
+  Deck,
+  DuelState,
+  Phase,
+  Player,
+  Square,
+  UnitOnSquare,
+} from './index.js'
 
 /** 60 枚すべてが別々の名前のデッキ。同じカード名は 4 枚までという規定を避けるため。 */
 function testDeck(prefix: string): Deck {
@@ -425,5 +435,36 @@ describe('作成された誘発型能力', () => {
     const endOfSecondTurn = pass(pass(withoutTarget(recoveryPhaseOfTurn(created(), 2))))
 
     expect(endOfSecondTurn.bank).toEqual([])
+  })
+})
+
+/**
+ * 総合ルール 第5部 第2章 2「１度でも優先権をパスすると……起動する権利を失います」（ADR-0006）。
+ *
+ * 権利を失わせるのは `courage.ts` の `loseCourageRightOnPass` だが、それを呼ぶのが優先権の
+ * 放棄だけであることは、ここでしか確かめられない。
+ */
+describe('優先権の放棄と「勇気」の起動条件', () => {
+  const placedCard = defineUnit({ name: 'テスト・置かれたユニット', level: 1, bp: 1000, sp: 1000 })
+
+  /** そのプレイヤーの起動条件が満たされている、第 1 ターンの盤面。 */
+  function withCourageCondition(player: Player): DuelState {
+    const placed: UnitOnSquare = {
+      id: '置かれたユニット',
+      square: { row: 1, column: 1 },
+      card: placedCard,
+      controller: player === '先攻' ? '後攻' : '先攻',
+    }
+    const met: CourageConditionMet = { player, placed }
+    return { ...startedDuel(), courageConditionsMet: [met] }
+  }
+
+  // 第 1 ターンの始めに優先権を持っているのは非アクティブプレイヤー（後攻）である。
+  it('優先権をパスしたプレイヤーは起動条件を失う', () => {
+    expect(pass(withCourageCondition('後攻')).courageConditionsMet).toEqual([])
+  })
+
+  it('相手が優先権をパスしても、自分の起動条件は残る', () => {
+    expect(pass(withCourageCondition('先攻')).courageConditionsMet).toHaveLength(1)
   })
 })

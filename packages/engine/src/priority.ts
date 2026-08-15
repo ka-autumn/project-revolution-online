@@ -76,6 +76,26 @@ export function grantPriorityToInactive(state: DuelState): DuelState {
   return settleBeforePriority(toInactive(state))
 }
 
+/**
+ * バトルまたはスマッシュ判定が進行中で、優先権を得ることで発生するはずの権利が遅れているか。
+ *
+ * 条件が満たされた後、優先権を得る時にバトルまたはスマッシュ判定が発生した場合、それが終了
+ * するまでその権利は発生しない。トラップを発動する権利（総合ルール 第2部 第20章 3-8 ただし
+ * 書き）と、「勇気」を起動する権利（同 第5部 第2章 2 ただし書き）に、同じ形でかかる
+ * （同 第3部 第11章 5・第17章 4）。
+ *
+ * 条文の「優先権を得る時」ではなく、その権利を使おうとする時に見ている。バトルもスマッシュ
+ * 判定も、始まるのも終わるのも優先権を獲得する手前（`settleBeforePriority`）なので、優先権を
+ * 得た後は次に得るまで結果が変わらない。
+ *
+ * 「優先権を得る時に発生した」ものだけでなく、進行中のバトル・スマッシュ判定すべてで権利を
+ * 止めている。進行中の最中に条件が満たされることが、いまは無いためである（`trap.ts` の
+ * `trapRightOf`）。
+ */
+export function deferringRights(state: DuelState): boolean {
+  return state.battle !== undefined || state.smashJudgments.length > 0
+}
+
 /** 優先権を非アクティブプレイヤーに移すだけ。盤面の片づけは行わない。 */
 function toInactive(state: DuelState): DuelState {
   const { turn } = state

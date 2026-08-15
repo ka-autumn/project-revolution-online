@@ -355,6 +355,24 @@ describe('ユニットのプレイ', () => {
     expect(cardsOn(after, centerSquare)).toEqual([])
     expect(idsOf(cardsIn(after, '先攻', '捨札'))).toEqual(['ユニット'])
   })
+
+  /**
+   * 総合ルール 第5部 第2章 2（ADR-0006）。
+   *
+   * 登場も、ユニットがスクエアに置かれることである。中央エリアはどちらのプレイヤーから見ても
+   * 中央エリアなので、相手が「勇気」を起動する権利を得る。置かれたユニットは写して持つので、
+   * 直後にルールエフェクトで捨札に置かれても（同 第4部 第14章 4-9）起動条件は残る。
+   */
+  it('中央エリアに登場すると、相手が「勇気」の起動条件を満たす', () => {
+    const after = stateOf(played(centerSquare))
+
+    expect(after.courageConditionsMet.map((met) => met.player)).toEqual(['後攻'])
+    expect(after.courageConditionsMet[0]?.placed.id).toBe('ユニット')
+  })
+
+  it('味方エリアに登場しても、相手の起動条件は満たされない', () => {
+    expect(stateOf(played(homeSquare)).courageConditionsMet).toEqual([])
+  })
 })
 
 // 総合ルール 第2部 第20章 1-4-a（ADR-0006）

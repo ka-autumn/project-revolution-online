@@ -151,6 +151,19 @@ export interface DuelState {
    */
   readonly trapConditionsMet: readonly TrapConditionMet[]
   /**
+   * 「勇気」の起動条件が満たされているプレイヤーと、そのできごと
+   * （総合ルール 第5部 第2章 2）。
+   *
+   * `trapConditionsMet` と同じく、満たされたことを持続する状態として持ち、優先権をパスした時
+   * （`courage.ts` の `loseCourageRightOnPass`）に取り除く。
+   *
+   * **入れ物を分けているのは、紐づく先が違うためである。** トラップの発動条件はトラップ
+   * ゾーンにある 1 枚に紐づき、発動すればそのカードがゾーンを離れて消える。「勇気」の起動
+   * 条件は手札を持つプレイヤーに紐づき、起動しても消えない。同一のイベントによって複数の
+   * 勇気を起動できる（同 3）ためである。
+   */
+  readonly courageConditionsMet: readonly CourageConditionMet[]
+  /**
    * 進行中のバトル（総合ルール 第3部 第11章）。発生していなければ `undefined`。
    *
    * バトルはルールエフェクトによって発生する特別な手順であり（同 1）、5 つのステップの間、
@@ -325,6 +338,28 @@ export interface TrapConditionMet {
   readonly occasion: IntrusionOccasion
 }
 
+/**
+ * 「勇気」の起動条件が満たされていること（総合ルール 第5部 第2章 2）。
+ *
+ * 「相手のユニットが味方エリアか中央エリアに置かれた時」という部分だけを写して持つ。起動条件
+ * にはこれに続けて「このカードと同じ色のカードがあなたのエネルギーゾーンにあり、かつこの
+ * カードのレベルと同じかそれ以上の枚数のカードがあなたのエネルギーゾーンにあるならば」も
+ * 含まれるが、そちらは**「このカード」ごとに答えが変わる**ので、起動しようとする時に見る
+ * （トラップがレベルとコストを発動する時に見るのと同じ形）。
+ */
+export interface CourageConditionMet {
+  /** 起動する権利を得るプレイヤー。置いた側から見た相手にあたる。 */
+  readonly player: Player
+  /**
+   * そのプレイヤーの味方エリアか中央エリアに置かれた、相手のユニット。
+   *
+   * 置かれた**その瞬間**の姿を写して持つ。`IntrusionOccasion.invader` と同じ理由で、起動
+   * するまでにそのユニットがスクエアを離れていても、後から盤面を見てどれだったのかを
+   * 見分ける手立てが無いためである。効果はこのユニットにダメージを与える（同 2）。
+   */
+  readonly placed: UnitOnSquare
+}
+
 interface InstanceSpec {
   readonly id: CardId
   readonly card: Card
@@ -364,6 +399,7 @@ export function emptyDuelState(): DuelState {
     createdAbilities: [],
     playedIntoCenter: [],
     trapConditionsMet: [],
+    courageConditionsMet: [],
     battle: undefined,
     smashJudgments: [],
     result: undefined,

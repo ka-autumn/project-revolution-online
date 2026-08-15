@@ -13,6 +13,7 @@ import type { CardId, DuelState } from './duel.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import type { Chooser } from './resolve.js'
+import { checkCourageCondition } from './courage.js'
 import { checkIntrusion } from './trap.js'
 import { duelView, unitsOnSquares } from './view.js'
 
@@ -59,7 +60,10 @@ export function moveUnit(
   const moved = moveToSquare(paid, unit, destination, { controller: player, orientation: 'リリース' })
   const triggered = triggerMovement(moved, unit)
   const invader = { id: unit, square: destination, card: moving.card, controller: player }
-  return done(grantPriorityToInactive(checkIntrusion(triggered, invader)))
+  // 移動もユニットがスクエアに置かれることなので、トラップの発動条件（総合ルール 第2部
+  // 第20章 3-6）と「勇気」の起動条件（同 第5部 第2章 2）のどちらも満たしうる。
+  const placed = checkCourageCondition(checkIntrusion(triggered, invader), invader)
+  return done(grantPriorityToInactive(placed))
 }
 
 /**

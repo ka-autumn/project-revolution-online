@@ -282,6 +282,17 @@ describe('移動による侵入', () => {
 
     expect(after.trapConditionsMet.map((met) => met.trap)).toEqual(['トラップ'])
   })
+
+  // 総合ルール 第5部 第2章 2。同じできごとで「勇気」の起動条件も満たされる。移動先が
+  // 相手から見て中央エリアなので、相手が起動する権利を得る。
+  it('相手のユニットが中央エリアへ移動すると、相手が「勇気」の起動条件を満たす', () => {
+    const state = putOnSquare(mainPhase(), homeSquare, unit('ユニット'))
+
+    const after = stateOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))
+
+    expect(after.courageConditionsMet.map((met) => met.player)).toEqual(['後攻'])
+    expect(after.courageConditionsMet[0]?.placed.square).toEqual(centerSquare)
+  })
 })
 
 // 総合ルール 第4部 第6章 2-2・2-3（ADR-0006）

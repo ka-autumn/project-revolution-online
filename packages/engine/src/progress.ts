@@ -7,6 +7,7 @@ import { opponentOf } from './player.js'
 import { grantPriorityToInactive, settleBeforePriority } from './priority.js'
 import type { Chooser } from './resolve.js'
 import { advanceSmashJudgment } from './smash.js'
+import { loseCourageRightOnPass } from './courage.js'
 import { loseTrapRightOnPass } from './trap.js'
 import { trigger } from './trigger.js'
 import { PHASES, beginPhase } from './turn.js'
@@ -30,12 +31,13 @@ import type { Turn } from './turn.js'
  * 能力の効果が何を選ぶかを決めるのに要るためである。
  *
  * 優先権を持っていたプレイヤーは、この放棄によって自分のトラップゾーンにあるカードが
- * 発動する権利を失う（総合ルール 第2部 第20章 3-8）。
+ * 発動する権利（総合ルール 第2部 第20章 3-8）と、手札にある「勇気」を起動する権利
+ * （同 第5部 第2章 2）を失う。
  */
 export function passPriority(state: DuelState, chooser: Chooser): DuelState {
   if (hasEnded(state)) return state
 
-  const cleared = loseTrapRightOnPass(state, state.turn.priority)
+  const cleared = loseCourageRightOnPass(loseTrapRightOnPass(state, state.turn.priority), state.turn.priority)
   const { turn } = cleared
   if (turn.passedBy === undefined) {
     const passed = { ...turn, priority: opponentOf(turn.priority), passedBy: turn.priority }

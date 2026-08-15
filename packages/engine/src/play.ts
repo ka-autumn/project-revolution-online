@@ -6,6 +6,7 @@ import type { Square } from './board.js'
 import { hasDream, hasGuts } from './card.js'
 import type { Card, UnitCard } from './card.js'
 import { payEnergyCost, satisfiesLevel } from './cost.js'
+import { checkCourageCondition } from './courage.js'
 import {
   cardsIn,
   cardsInResolveZone,
@@ -215,8 +216,10 @@ function placePlayedUnit(
   const moved = moveToSquare(state, id, square, { controller: player, orientation })
   const placed = triggerAppearance(moved, id, { kind: '登場', square, from })
   // 置かれたユニットが相手のトラップのトリガーアイコンのスクエアに置かれたなら「侵入」に
-  // なり、そのトラップの支配者が発動する権利を得る（総合ルール 第2部 第20章 3-6）。
-  const invaded = checkIntrusion(placed, { id, square, card, controller: player })
+  // なり、そのトラップの支配者が発動する権利を得る（総合ルール 第2部 第20章 3-6）。相手から
+  // 見て味方エリアか中央エリアなら、あわせて「勇気」の起動条件も満たされる（同 第5部 第2章 2）。
+  const unit: UnitOnSquare = { id, square, card, controller: player }
+  const invaded = checkCourageCondition(checkIntrusion(placed, unit), unit)
   if (areaOf(player, square) !== '中央エリア') return invaded
 
   // 中央エリアのスクエアを指定してプレイされたユニットは、ルールエフェクトによって捨札に
