@@ -131,5 +131,6 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
     // 枚数だけを返すので、見せたカードとして覚えるものが無い。数えたことによって、その
     // カードを対象にできるようにはならない。
     energyCount: (player) => cardsIn(currentState(), player, 'エネルギーゾーン').length,
+    energyZone: showZone('エネルギーゾーン'),
   }
 }

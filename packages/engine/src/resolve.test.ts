@@ -1083,4 +1083,49 @@ describe('効果から見えるエネルギーゾーン', () => {
   it('相手のエネルギーゾーンも数えられる', () => {
     expect(counted(withEnergies(0, 2))).toEqual([0, 2])
   })
+
+  /** 効果が見た、支配者自身のエネルギーゾーンの中身。 */
+  function listed(state: DuelState): readonly CardInZone[] {
+    let seen: readonly CardInZone[] = []
+    resolveEffect(
+      state,
+      function* (duel) {
+        seen = duel.energyZone()
+      },
+      { controller: '先攻', chooser: chooseFirst },
+    )
+    return seen
+  }
+
+  it('エネルギーゾーンにあるカードを 1 枚ずつ見られる', () => {
+    const seen = listed(withEnergies(2, 0))
+
+    expect(seen.map((card) => card.id)).toEqual(['先攻のエネルギー0', '先攻のエネルギー1'])
+    expect(seen.map((card) => card.zone)).toEqual(['エネルギーゾーン', 'エネルギーゾーン'])
+  })
+
+  // 中身を返すのは支配者自身のぶんだけである。相手のエネルギーゾーンも公開されている
+  // （同 6-3）が、そこから選ぶテキストが無いうちは見せる手段を持たせない。
+  it('相手のエネルギーゾーンの中身は返らない', () => {
+    expect(listed(withEnergies(0, 2))).toEqual([])
+  })
+
+  // 数えることと見ることは別である。数えただけのカードは engine が見せたことにならない
+  // ので、対象にはできない（`resolve.ts` の `shown`）。
+  it('見たカードは対象にできる', () => {
+    const state = withEnergies(1, 0)
+
+    const resolved = resolveEffect(
+      state,
+      function* (duel) {
+        const energy = yield* choose(duel.energyZone())
+        if (energy === undefined) throw new Error('エネルギーがある盤面で試すこと')
+        yield* placeOnSquare(energy, mySquare, 'リリース')
+      },
+      { controller: '先攻', chooser: chooseFirst },
+    )
+
+    expect(idsOf(cardsOn(resolved, mySquare))).toEqual(['先攻のエネルギー0'])
+    expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')).toEqual([])
+  })
 })
