@@ -2,6 +2,7 @@ import type {
   Ability,
   ActivatedAbility,
   AttributeAddingAbility,
+  CourageAbility,
   BpModifyingAbility,
   DreamAbility,
   PepAbility,
@@ -289,9 +290,29 @@ export function hopeOf(card: Card): HopeAbility | undefined {
  * 並びの順に意味は無いが、**どれを起動するかは位置で指す**（`legal-action.ts` の
  * `LegalAction`）。1 枚が 2 つ以上持つことを禁じる規定は無いので、「希望」のように最初の
  * 1 つだけを返す形にはしない。
+ *
+ * **キーワード能力の起動型能力は返さない。** いまそれにあたるのは「勇気」だけで、起動できる
+ * のは手札にある間（同 第5部 第2章 1）、しかも起動条件が満たされている間だけである（同 2）。
+ * 走査してスクエアにいるユニットの能力を起動する経路（`activate.ts`）から起動できてしまわない
+ * ように、ここで外す。「勇気」を起動する経路は `courage.ts` にある。
  */
 export function activatedAbilitiesOf(card: Card): readonly ActivatedAbility[] {
-  return card.abilities.filter((ability): ability is ActivatedAbility => ability.kind === '起動型能力')
+  return card.abilities.filter(
+    (ability): ability is ActivatedAbility => ability.kind === '起動型能力' && !('keyword' in ability),
+  )
+}
+
+/**
+ * そのカードが持つ「勇気」（総合ルール 第5部 第2章）。持たなければ `undefined`。
+ *
+ * 「希望」と同じく、同じカードが 2 つ持つことは無いので最初に見つかったものを返す。
+ * 「勇気－Ｘ」は 1 枚につき 1 つのＸしか書かれない。
+ */
+export function courageOf(card: Card): CourageAbility | undefined {
+  return card.abilities.find(
+    (ability): ability is CourageAbility =>
+      ability.kind === '起動型能力' && 'keyword' in ability && ability.keyword === '勇気',
+  )
 }
 
 /**

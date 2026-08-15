@@ -4,6 +4,7 @@ import { activateAbility } from './activate.js'
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
 import { activatedAbilitiesOf } from './card.js'
+import { activateCourage } from './courage.js'
 import { cardsIn, cardsOn, hasEnded } from './duel.js'
 import type { CardId, CardInstance, DuelState } from './duel.js'
 import { moveUnit } from './move.js'
@@ -41,6 +42,14 @@ export type LegalAction =
    * ありうるので、カードだけでは指せない。
    */
   | { readonly kind: '起動型能力を起動する'; readonly unit: CardId; readonly ability: number }
+  /**
+   * 手札にある「勇気」を起動する（総合ルール 第5部 第2章 2）。
+   *
+   * 起動型能力の一種だが、起動できるゾーンも権利の要否も違うので別の行動にしている
+   * （`courage.ts` の `activateCourage`）。1 枚が「勇気」を 2 つ持つことは無いので、
+   * カードだけで指せる。
+   */
+  | { readonly kind: '「勇気」を起動する'; readonly card: CardId }
 
 /** 選択を求められたら常に最初の候補を選ぶ。`legalActions` が合法性だけを確かめるのに使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -89,6 +98,12 @@ export function legalActions(state: DuelState): readonly LegalAction[] {
     ),
     ...activeUnits.flatMap((unit) => moveCandidates(state, unit.id)),
     ...activeUnits.flatMap((unit) => activationCandidates(state, unit)),
+    // 「勇気」を起動できるのは優先権を持っているプレイヤーで、そのカードは手札にある
+    // （総合ルール 第5部 第2章 1・2）。トラップの発動と同じく、アクティブプレイヤーの
+    // ものとは限らない。
+    ...cardsIn(state, priority, '手札').flatMap((card) =>
+      tryAction({ kind: '「勇気」を起動する', card: card.id }, () => activateCourage(state, card.id, chooseFirst)),
+    ),
   ]
 }
 
@@ -120,6 +135,8 @@ export function applyLegalAction(state: DuelState, action: LegalAction, chooser:
       return outcomeState(moveUnit(state, action.unit, action.destination, chooser))
     case '起動型能力を起動する':
       return outcomeState(activateAbility(state, action.unit, action.ability, chooser))
+    case '「勇気」を起動する':
+      return outcomeState(activateCourage(state, action.card, chooser))
   }
 }
 

@@ -1,9 +1,9 @@
-import type { ActivatedAbility } from './ability.js'
+import type { ActivationCost, ActivationTiming } from './ability.js'
 import { cannot, done } from './action.js'
 import type { ActionOutcome } from './action.js'
 import { activatedAbilitiesOf } from './card.js'
 import { payActivationEnergies } from './cost.js'
-import { locateOnSquares, moveToZone } from './duel.js'
+import { hasEnded, locateOnSquares, moveToZone } from './duel.js'
 import type { CardId, CardInstance, DuelState } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
@@ -45,9 +45,9 @@ export function activateAbility(
   const unit = instance.card
   const activated = activatedAbilitiesOf(unit)[ability]
   if (activated === undefined) return cannot('起動できる能力がない')
-  if (!mayActivate(state, activated, instance.controller)) return cannot('行える時ではない')
+  if (!mayActivate(state, activated.timing, instance.controller)) return cannot('行える時ではない')
 
-  const paid = payCost(state, instance, activated, chooser)
+  const paid = payActivationCost(state, instance, activated.cost, chooser)
   if (paid === undefined) return cannot('コストを支払えない')
 
   // 発生源はコストを支払う前の姿を写して渡す。自身を捨札に置くコストを支払っていれば、
@@ -59,16 +59,29 @@ export function activateAbility(
 }
 
 /**
- * いまその能力を起動できる時か（総合ルール 第4部 第2章 4）。
+ * いまその時に起動できるか（総合ルール 第4部 第2章 4）。
  *
  * 起動できるのは支配者だけである（同 2）。既定の時であれば、そのプレイヤーがアクティブ
  * プレイヤーであることまで `activePlayerMayAct` が見ている（優先権を持ち、バンクが空で、
  * バトル中でない自分のメインフェイズ）。
+ *
+ * `'優先権を持っている時'` はキーワード能力「勇気」が既定を上書きしたもので、優先権を持って
+ * いること以外は求めない（同 第5部 第2章 2）。バトル中に起動できないのは、起動する権利が
+ * そもそも発生していない（同 2 ただし書き、`courage.ts` の `courageRightsOf`）ためであって、
+ * 行動そのものが禁じられているからではない。トラップの発動（`play.ts` の `activateTrap`）と
+ * 同じ形である。
+ *
+ * 起動する経路は能力の種類ごとに分かれている（スクエアにいるユニットは `activateAbility`、
+ * 「勇気」は `courage.ts` の `activateCourage`）が、**どの時に起動できるかの判定はここ 1 つ**
+ * にまとめてある。engine が持つと決めたのはこの判定である。
  */
-function mayActivate(state: DuelState, ability: ActivatedAbility, controller: Player): boolean {
-  switch (ability.timing) {
+export function mayActivate(state: DuelState, timing: ActivationTiming, controller: Player): boolean {
+  switch (timing) {
     case '自分のメインフェイズ':
       return activePlayerMayAct(state, 'メインフェイズ') && state.turn.active === controller
+    case '優先権を持っている時':
+      // 勝敗が決まったデュエルではそこから先に優先権が発生しない（同 第3部 第3章 3）。
+      return !hasEnded(state) && state.turn.priority === controller
   }
 }
 
@@ -77,14 +90,16 @@ function mayActivate(state: DuelState, ability: ActivatedAbility, controller: Pl
  *
  * 支払いかけた分が盤面に残ることはない。呼ぶ側は返ってきた盤面だけを使うためで、
  * `cost.ts` の `freezeEnergies` と同じ扱いである。
+ *
+ * どのゾーンにあるカードでも支払える。エネルギーをフリーズするのも、そのカード自身を捨札に
+ * 置くのも、置かれている場所によらないためである。手札にある「勇気」もこれで支払う。
  */
-function payCost(
+export function payActivationCost(
   state: DuelState,
   instance: CardInstance,
-  ability: ActivatedAbility,
+  cost: ActivationCost,
   chooser: Chooser,
 ): DuelState | undefined {
-  const { cost } = ability
   const frozen = payActivationEnergies(
     state,
     instance.controller,
