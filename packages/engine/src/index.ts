@@ -188,5 +188,17 @@ export { SMASH_JUDGMENT_STEPS, smashesOf } from './smash.js'
 export type { SmashJudgment, SmashJudgmentStep } from './smash.js'
 export { PHASES } from './turn.js'
 export type { Phase, Turn } from './turn.js'
+export { fromWire, toWire } from './wire.js'
+export type {
+  CardLookup,
+  CardNaming,
+  CardNumber,
+  WireCardInstance,
+  WireCourageConditionMet,
+  WirePerspective,
+  WireTrapConditionMet,
+  WireUnitOnSquare,
+  WireVisibleCard,
+} from './wire.js'
 export { PLAYER_ZONES, SHARED_ZONES, ZONES } from './zone.js'
 export type { PlayerZone, SharedZone, Zone } from './zone.js'

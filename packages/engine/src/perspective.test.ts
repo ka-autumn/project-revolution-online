@@ -156,7 +156,7 @@ describe('解決を待っている能力', () => {
         square: INVADED,
         attacker: INVADER.id,
         attacked: INVADER.id,
-        step: 'バトル開始ステップ',
+        step: '第１バトルステップ',
         dealtDamage: [],
         endOfBattleTriggered: false,
         heldBank: [{ ability, source: INVADER.id, controller: '先攻', self: INVADER }],
