@@ -1,5 +1,6 @@
 import type {
   Ability,
+  ActivatedAbility,
   AttributeAddingAbility,
   BpModifyingAbility,
   DreamAbility,
@@ -280,6 +281,17 @@ export function hopeOf(card: Card): HopeAbility | undefined {
   return card.abilities.find(
     (ability): ability is HopeAbility => ability.kind === '特別な能力' && ability.keyword === '希望',
   )
+}
+
+/**
+ * そのカードが持つ起動型能力（総合ルール 第4部 第2章）。
+ *
+ * 並びの順に意味は無いが、**どれを起動するかは位置で指す**（`legal-action.ts` の
+ * `LegalAction`）。1 枚が 2 つ以上持つことを禁じる規定は無いので、「希望」のように最初の
+ * 1 つだけを返す形にはしない。
+ */
+export function activatedAbilitiesOf(card: Card): readonly ActivatedAbility[] {
+  return card.abilities.filter((ability): ability is ActivatedAbility => ability.kind === '起動型能力')
 }
 
 /**

@@ -91,6 +91,36 @@ export function freezeEnergies(
 }
 
 /**
+ * 起動型能力のコストのうち、エネルギーをフリーズする分を支払う
+ * （総合ルール 第4部 第2章 1）。1 枚でも支払えなければ `undefined`。
+ *
+ * その能力を持つカードと同じ色のエネルギーで支払う。色の読み方は `payEnergyCost` と同じで、
+ * 無色のカードなら色を問わない（`paysFor`）。
+ *
+ * `payEnergyCost` と分けているのは、枚数の決まり方が違うためである。あちらはレベルを支払う
+ * もので枚数はカードのレベルから決まり、レベルが 0 なら何も支払わない（同 第1部 第2章 3-4）。
+ * こちらはテキストが枚数を決めるので、レベルが 0 のカードでも書かれた枚数を支払う。
+ *
+ * カード自身を捨札に置く分（`ActivationCost.discardsSelf`）はここでは支払わない。どのカードで
+ * あるかを知っているのは起動する経路（`activate.ts`）だけだからである。
+ */
+export function payActivationEnergies(
+  state: DuelState,
+  player: Player,
+  card: Card,
+  count: number,
+  chooser: Chooser,
+): DuelState | undefined {
+  let current = state
+  for (let paid = 0; paid < count; paid += 1) {
+    const next = chooseAndFreeze(current, player, ['エネルギーゾーン'], (energy) => paysFor(card, energy), chooser)
+    if (next === undefined) return undefined
+    current = next
+  }
+  return current
+}
+
+/**
  * そのカードのコストを、そのエネルギーで支払えるか（総合ルール 第1部 第2章 3-2）。
  *
  * 無色のカードは「レベルに任意の色のエネルギー・シンボルが書かれているカード」で支払う

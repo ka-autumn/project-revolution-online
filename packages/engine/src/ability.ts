@@ -384,6 +384,69 @@ export interface PlanReplacingAbility {
 }
 
 /**
+ * 起動型能力を起動できる時（総合ルール 第4部 第2章 4）。
+ *
+ * **どの時に起動できるかは engine が持つ。** 能力はここにある値を 1 つ名指しするだけで、
+ * その値が何を指すかを決めるのは engine の側である。取りうる時は数えられるほどしか無いので、
+ * 盤面を見て答える述語にはしない（`CREATED_TRIGGERS` と同じ形）。
+ *
+ * いまあるのは既定の 1 つだけである。キーワード能力「勇気」は「自分のメインフェイズ中に
+ * 限らずいつでも……優先権を持った時に」（同 第5部 第2章 2）と、これを上書きする。値を足すのは
+ * それを書くカードが出た時である。
+ */
+export const ACTIVATION_TIMINGS = ['自分のメインフェイズ'] as const
+
+export type ActivationTiming = (typeof ACTIVATION_TIMINGS)[number]
+
+/**
+ * 起動型能力を起動するために支払うコスト（総合ルール 第4部 第2章 1）。
+ *
+ * 起動型能力のテキストは「［コスト］ 効果」という書式で書かれ、［ ］でくくられたコストを
+ * すべて支払わなければならない（同 1）。支払うのは能力を起動するプレイヤーであり、コストと
+ * してカードのゾーン移動や向きの変化を要求する場合、そのプレイヤーのゾーンにあるカードか、
+ * そのプレイヤーが支配しているカードでしか支払えない（同 第1部 第3章 1-1）。
+ *
+ * `MoveCost` と同じ育て方をする。いま要求できるものだけを持ち、他のものを要求するテキストが
+ * 出てきた時に、その消費者と一緒に足す。
+ */
+export interface ActivationCost {
+  /**
+   * フリーズするエネルギーの枚数（総合ルール 第2部 第21章 6-5）。
+   *
+   * その能力を持つカードと同じ色のエネルギーで支払う（同 第2部 第20章 1-3 と同じ読み方で、
+   * 無色のカードなら色を問わない）。レベルの支払い（`cost.ts` の `payEnergyCost`）とは別で、
+   * 枚数はレベルではなくテキストが決める。
+   */
+  readonly energiesOfOwnColor: number
+  /**
+   * その能力を持つカード自身を捨札に置くか。
+   *
+   * 支払うのはコストなので、効果が解決される時にはもうそのカードは捨札にある。スクエアを
+   * 離れた発生源として扱われる（`resolve.ts` の `duelView`、総合ルール 第4部 第8章 2-5）。
+   */
+  readonly discardsSelf: boolean
+}
+
+/**
+ * カードが持つ起動型能力（総合ルール 第4部 第2章）。
+ *
+ * ルールが認める起動型能力として「プランする」「ユニットを移動する」がある（同 3）が、
+ * そちらは行動として実装してある（`action.ts` の `plan`、`move.ts` の `moveUnit`）。ここに
+ * あるのはカードのテキストが定義する側である。
+ *
+ * **バンクを使用しない**（同 5）。コストを支払ったらその場で解決される。誘発型能力のように
+ * `TriggeredInstance` になって盤面に積まれることはない。
+ *
+ * 起動できるのはそのカードの支配者だけである（同 2）。
+ */
+export interface ActivatedAbility {
+  readonly kind: '起動型能力'
+  readonly timing: ActivationTiming
+  readonly cost: ActivationCost
+  readonly effect: Effect
+}
+
+/**
  * 作成された誘発型能力が誘発するできごと（総合ルール 第4部 第3章 4）。
  *
  * カードが持つ誘発型能力の誘発イベント（`TRIGGER_EVENTS`）と違い、**誰のターンかまで
@@ -422,12 +485,12 @@ export interface CreatedTriggeredAbility {
  * テキストによって決められた、カードが行うことまたは行えること
  * （総合ルール 第4部 第1章 1）。
  *
- * 能力には起動型・誘発型・常在型の 3 つがある（同 2）が、起動型はコストを持つ能力を
- * 書けるようになってから足す。常在型は「夢」「元気」「信頼」「根性」と、継続効果を
+ * 能力には起動型・誘発型・常在型の 3 つがある（同 2）。常在型は「夢」「元気」「信頼」「根性」と、継続効果を
  * 生み出すもの（ＢＰの修整・属性の追加）、置換効果を生み出すもの、移動に追加コストを課す
  * ものがある。「希望」はそのどれでもない特別な能力である（同 第5部 第3章 1）。
  */
 export type Ability =
+  | ActivatedAbility
   | TriggeredAbility
   | DreamAbility
   | PepAbility
@@ -451,6 +514,20 @@ export function triggeredAbility(
   when?: TriggerCondition,
 ): TriggeredAbility {
   return when === undefined ? { kind: '誘発型能力', event, effect } : { kind: '誘発型能力', event, effect, when }
+}
+
+/**
+ * 起動型能力を 1 つ書く。
+ *
+ * 起動できる時（`ACTIVATION_TIMINGS`）は engine が持つ値の 1 つを名指しする。いまは既定の
+ * 1 つしか無いので省略でき、渡すのはそれ以外の時に起動できるカードが出てからになる。
+ */
+export function activatedAbility(
+  cost: ActivationCost,
+  effect: Effect,
+  timing: ActivationTiming = '自分のメインフェイズ',
+): ActivatedAbility {
+  return { kind: '起動型能力', timing, cost, effect }
 }
 
 /** 「夢」。何回書いても同じものなので 1 つを使い回す。 */
