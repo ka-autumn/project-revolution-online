@@ -6,6 +6,7 @@ import {
   PLAYERS,
   cardsIn,
   cardsOn,
+  courage,
   defineTrap,
   defineUnit,
   emptyDuelState,
@@ -283,15 +284,29 @@ describe('移動による侵入', () => {
     expect(after.trapConditionsMet.map((met) => met.trap)).toEqual(['トラップ'])
   })
 
-  // 総合ルール 第5部 第2章 2。同じできごとで「勇気」の起動条件も満たされる。移動先が
-  // 相手から見て中央エリアなので、相手が起動する権利を得る。
+  /**
+   * 総合ルール 第5部 第2章 2。同じできごとで「勇気」の起動条件も満たされる。移動先が相手から
+   * 見て中央エリアなので、相手が起動する権利を得る。起動条件にはエネルギーの部分も含まれる
+   * ので、相手の手札に「勇気」を置き、エネルギーも用意しておく。
+   */
   it('相手のユニットが中央エリアへ移動すると、相手が「勇気」の起動条件を満たす', () => {
-    const state = putOnSquare(mainPhase(), homeSquare, unit('ユニット'))
+    const courageCard = defineUnit({
+      name: 'テスト・勇気持ち',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [courage(4000)],
+    })
+    const held = putInZone(mainPhase(), '後攻', '手札', [unit('相手の勇気', courageCard, '後攻')])
+    const energized = putInZone(held, '後攻', 'エネルギーゾーン', [unit('相手のエネルギー', omniMover, '後攻')])
+    const state = putOnSquare(energized, homeSquare, unit('ユニット'))
 
     const after = stateOf(moveUnit(state, 'ユニット', centerSquare, chooseFirst))
 
     expect(after.courageConditionsMet.map((met) => met.player)).toEqual(['後攻'])
     expect(after.courageConditionsMet[0]?.placed.square).toEqual(centerSquare)
+    expect(after.courageConditionsMet[0]?.satisfied).toEqual(['相手の勇気'])
   })
 })
 

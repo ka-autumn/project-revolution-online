@@ -390,11 +390,11 @@ export interface PlanReplacingAbility {
  * その値が何を指すかを決めるのは engine の側である。取りうる時は数えられるほどしか無いので、
  * 盤面を見て答える述語にはしない（`CREATED_TRIGGERS` と同じ形）。
  *
- * いまあるのは既定の 1 つだけである。キーワード能力「勇気」は「自分のメインフェイズ中に
- * 限らずいつでも……優先権を持った時に」（同 第5部 第2章 2）と、これを上書きする。値を足すのは
- * それを書くカードが出た時である。
+ * `'優先権を持っている時'` はキーワード能力「勇気」が既定を上書きしたものである（同 第5部
+ * 第2章 2「自分のメインフェイズ中に限らずいつでも……優先権を持った時に」）。「いつでも」と
+ * 書かないのは、優先権は要るためである。値を足すのは、それを書くカードが出た時である。
  */
-export const ACTIVATION_TIMINGS = ['自分のメインフェイズ'] as const
+export const ACTIVATION_TIMINGS = ['自分のメインフェイズ', '優先権を持っている時'] as const
 
 export type ActivationTiming = (typeof ACTIVATION_TIMINGS)[number]
 
@@ -447,6 +447,35 @@ export interface ActivatedAbility {
 }
 
 /**
+ * キーワード能力「勇気」（総合ルール 第5部 第2章）。
+ *
+ * 「勇気－Ｘ」は「手札にある時に効果を発揮する常在型能力であり、同時に、条件を満たした時に
+ * 起動できる起動型能力」である（同 1）。効果を持つので `ActivatedAbility` の仲間だが、
+ * **起動する経路が別**なので別の型にしている（`courage.ts` の `activateCourage`）。
+ *
+ * - 手札にある間だけ働く。ユニットのテキストがスクエアにある間だけ有効になる一般則
+ *   （同 第4部 第7章 10）の例外であり、その規定を持っているのは「勇気」自身である
+ * - 起動できるのは、起動条件が満たされて権利を得ている間だけである（同 第5部 第2章 2）
+ * - 効果の対象は「その味方エリアか中央エリアに置かれた相手のユニット」で、起動条件を
+ *   満たしたできごとから決まる。盤面への問い合わせでは取れないので engine が手渡す
+ *
+ * 効果そのものを持たないのは、テキストがキーワードによって決まっているためである。カードごとに
+ * 違うのはＸだけなので、それだけを持つ。何をするかは `courage.ts` が知っている（「夢」
+ * 「元気」などと同じく、ルールの側が能力を見に行く形）。
+ *
+ * `kind` が `ActivatedAbility` と同じなのは、種類としてはどちらも起動型能力だからである
+ * （同 1）。走査する側は `keyword` の有無で見分ける（`card.ts` の `activatedAbilitiesOf`）。
+ */
+export interface CourageAbility {
+  readonly kind: '起動型能力'
+  readonly keyword: '勇気'
+  /** 「勇気－Ｘ」のＸ。置かれた相手のユニットに与えるダメージ。 */
+  readonly amount: number
+  readonly timing: ActivationTiming
+  readonly cost: ActivationCost
+}
+
+/**
  * 作成された誘発型能力が誘発するできごと（総合ルール 第4部 第3章 4）。
  *
  * カードが持つ誘発型能力の誘発イベント（`TRIGGER_EVENTS`）と違い、**誰のターンかまで
@@ -491,6 +520,7 @@ export interface CreatedTriggeredAbility {
  */
 export type Ability =
   | ActivatedAbility
+  | CourageAbility
   | TriggeredAbility
   | DreamAbility
   | PepAbility
@@ -528,6 +558,23 @@ export function activatedAbility(
   timing: ActivationTiming = '自分のメインフェイズ',
 ): ActivatedAbility {
   return { kind: '起動型能力', timing, cost, effect }
+}
+
+/**
+ * 「勇気－Ｘ」を 1 つ書く。カードごとに違うのはＸだけなので、それだけを受け取る。
+ *
+ * 起動できる時（総合ルール 第5部 第2章 2「自分のメインフェイズ中に限らずいつでも……優先権を
+ * 持った時に」）とコスト（「このカードと同じ色のエネルギーを１支払い、このカードを捨札に
+ * する」）は、キーワードによって決まっているのでここで埋める。
+ */
+export function courage(amount: number): CourageAbility {
+  return {
+    kind: '起動型能力',
+    keyword: '勇気',
+    amount,
+    timing: '優先権を持っている時',
+    cost: { energiesOfOwnColor: 1, discardsSelf: true },
+  }
 }
 
 /** 「夢」。何回書いても同じものなので 1 つを使い回す。 */

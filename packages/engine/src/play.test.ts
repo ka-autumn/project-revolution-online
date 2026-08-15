@@ -12,6 +12,7 @@ import {
   choose,
   defineStrategy,
   defineTrap,
+  courage,
   defineUnit,
   destroy,
   dream,
@@ -364,15 +365,40 @@ describe('ユニットのプレイ', () => {
    * 直後にルールエフェクトで捨札に置かれても（同 第4部 第14章 4-9）起動条件は残る。
    */
   it('中央エリアに登場すると、相手が「勇気」の起動条件を満たす', () => {
-    const after = stateOf(played(centerSquare))
+    const after = stateOf(playedAgainstCourage(centerSquare))
 
     expect(after.courageConditionsMet.map((met) => met.player)).toEqual(['後攻'])
     expect(after.courageConditionsMet[0]?.placed.id).toBe('ユニット')
+    expect(after.courageConditionsMet[0]?.satisfied).toEqual(['相手の勇気'])
   })
 
   it('味方エリアに登場しても、相手の起動条件は満たされない', () => {
-    expect(stateOf(played(homeSquare)).courageConditionsMet).toEqual([])
+    expect(stateOf(playedAgainstCourage(homeSquare)).courageConditionsMet).toEqual([])
   })
+
+  /**
+   * 後攻が「勇気」を手札に持ち、エネルギーの条件も満たしている状態で、先攻がユニットを
+   * プレイした盤面。起動条件にはエネルギーの部分も含まれる（第5部 第2章 2）ので、相手の側も
+   * 整えておく必要がある。
+   */
+  function playedAgainstCourage(square: Square): ActionOutcome {
+    const courageCard = defineUnit({
+      name: 'テスト・勇気持ち',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [courage(4000)],
+    })
+    const base = readyToPlay([unit()], twoEnergies())
+    const held = putInZone(base, '後攻', '手札', [
+      instantiate({ id: '相手の勇気', card: courageCard, owner: '後攻' }),
+    ])
+    const energized = putInZone(held, '後攻', 'エネルギーゾーン', [
+      { ...energy('相手の赤エネ', '赤'), owner: '後攻' as const, controller: '後攻' as const },
+    ])
+    return play(energized, { card: 'ユニット', square })
+  }
 })
 
 // 総合ルール 第2部 第20章 1-4-a（ADR-0006）
