@@ -258,8 +258,8 @@ function seatOf(duel: DuelInRoom, participant: ParticipantId): Player | undefine
  * 行動する。
  *
  * 行えるのは優先権を持っているプレイヤーだけで、行えるのは合法手だけである。どちらも
- * 確かめるのはサーバの側である。**クライアントが同じエンジンを持っていても、それは権威では
- * ない**（ADR-0004）。
+ * 確かめるのはサーバの側である。**クライアントはルールの判断を持たない**（ADR-0010）ので、
+ * ここが唯一の関門になる。
  */
 function act(rooms: Rooms, participant: ParticipantId, action: LegalAction, setup: RoomSetup): RoomOutcome {
   const room = roomOf(rooms, participant)
