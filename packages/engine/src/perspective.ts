@@ -5,7 +5,6 @@ import type {
   CardId,
   CardInstance,
   CourageConditionMet,
-  CreatedAbility,
   DuelResult,
   DuelState,
   TrapConditionMet,
@@ -35,6 +34,45 @@ export type VisibleCard =
   | { readonly kind: '見えていない'; readonly orientation: Orientation }
 
 /**
+ * ある視点から見た、解決を待っている能力 1 つ（ADR-0004）。
+ *
+ * **効果そのものを持たない。** 効果は関数（`Effect`）なので通信に載らず、クライアントに渡す
+ * 手立てが無い。作成された誘発型能力（`duel.ts` の `CreatedAbilityInstance`）にいたっては、
+ * 効果が実行中に作った能力なので、カードを指す名前すら持たない。
+ *
+ * 落としても困らないのは、バンクについて両方のプレイヤーが必要とするのが「誰が支配している
+ * 能力がいくつあるか」までだからである。どれを解決するかは支配者で決まり（総合ルール 第2部
+ * 第21章 11-3）、バンクに能力があるかどうかがスマッシュを行えるかを左右する（`priority.ts` の
+ * `activePlayerMayAct`）。効果が何をするかは、解決した結果が次の盤面として届く。
+ */
+export interface VisibleAbility {
+  readonly controller: Player
+  /** 発生源のカード。作成された誘発型能力は持たない。 */
+  readonly source: CardId | undefined
+}
+
+/**
+ * ある視点から見た、まだ誘発していない、作成された誘発型能力（総合ルール 第4部 第3章 4）。
+ *
+ * `VisibleAbility` と同じ理由で効果を持たない。影響を与える特定のカード（同 4-1）は、スクエアに
+ * あるカードなので公開情報である。
+ */
+export interface VisibleCreatedAbility {
+  readonly controller: Player
+  readonly affecting: CardId
+}
+
+/**
+ * ある視点から見たバトル。待機中のバンクだけが形を変える。
+ *
+ * バトルが持つそれ以外のもの（スクエア・2 つのユニット・ステップ）は公開情報である。
+ */
+export type VisibleBattle = Omit<Battle, 'heldBank' | 'heldTriggered'> & {
+  readonly heldBank: readonly VisibleAbility[]
+  readonly heldTriggered: readonly VisibleAbility[]
+}
+
+/**
  * 完全な盤面から導いた、あるプレイヤーが見てよい盤面（ADR-0004）。
  *
  * サーバだけが完全な盤面（`DuelState`）を持ち、クライアントにはこれを送る。全体を送れば
@@ -48,15 +86,14 @@ export type VisibleCard =
  *   非公開のカードを名指しするうえ、相手の権利は視点のプレイヤーが行える行動を左右しない
  * - `squares` と `resolveZone` は `CardInstance` のまま。スクエアにあるカードは公開情報であり
  *   （同 第23章 1-1）、リゾルブゾーンにあるカードは表向きで置かれる（同 第21章 12-2）
- * - `bank` と `triggered` と `createdAbilities` もそのまま。誘発するのはスクエアにあるユニットの
- *   能力だけ（`trigger.ts` の `triggeredOnSquares`）で、発生源は公開情報である。バンクの中身は
- *   両方のプレイヤーが解決するものを選ぶために要る（同 第21章 11-3）
- * - `turn`・`damage`・`battle`・`smashJudgments`・`result` もそのまま。どれもカードの位置ではなく、
- *   どちらのプレイヤーにも見せてよい（`DuelState.turn` の doc）
+ * - `bank`・`triggered`・`createdAbilities`、そしてバトルが持つ待機中のバンクは、効果を落とした
+ *   `VisibleAbility` になる。効果は関数なので渡す手立てが無く、落としても困らない（同型の doc）
+ * - `turn`・`damage`・`smashJudgments`・`result` はそのまま。どれもカードの位置ではなく、どちらの
+ *   プレイヤーにも見せてよい（`DuelState.turn` の doc）
  *
- * **これは通信の形式ではない。** `CardInstance.card` は効果を関数として持つので、そのままでは
- * 送れない。何を送り、クライアントがどうカードを引き直すかは、通信を作る時に決める。ここで
- * 決めているのは「誰に何が見えてよいか」だけである。
+ * **これは通信の形式そのものではない。** 残っている `CardInstance.card` も効果を関数として持つ
+ * ので、そのままでは送れない。カードをどう名指しし、クライアントがどう引き直すかは `wire.ts`
+ * が決める。ここで決めているのは「誰に何が見えてよいか」である。
  */
 export interface DuelPerspective {
   /** この盤面を見ているプレイヤー。 */
@@ -65,16 +102,16 @@ export interface DuelPerspective {
   readonly zones: Readonly<Record<Player, Readonly<Record<PlayerZone, readonly VisibleCard[]>>>>
   readonly damage: Readonly<Record<Player, number>>
   readonly turn: Turn
-  readonly bank: readonly BankedAbility[]
+  readonly bank: readonly VisibleAbility[]
   readonly resolveZone: readonly CardInstance[]
-  readonly triggered: readonly BankedAbility[]
-  readonly createdAbilities: readonly CreatedAbility[]
+  readonly triggered: readonly VisibleAbility[]
+  readonly createdAbilities: readonly VisibleCreatedAbility[]
   readonly playedIntoCenter: readonly CardId[]
   /** 視点のプレイヤーが持っている、発動条件が満たされているトラップ。 */
   readonly trapConditionsMet: readonly TrapConditionMet[]
   /** 視点のプレイヤーの、「勇気」の起動条件が満たされていること。 */
   readonly courageConditionsMet: readonly CourageConditionMet[]
-  readonly battle: Battle | undefined
+  readonly battle: VisibleBattle | undefined
   readonly smashJudgments: readonly SmashJudgment[]
   readonly result: DuelResult | undefined
 }
@@ -135,6 +172,19 @@ function projectZones(state: DuelState, viewer: Player): DuelPerspective['zones'
   return Object.fromEntries(PLAYERS.map((owner) => [owner, zonesOf(owner)])) as DuelPerspective['zones']
 }
 
+/** 解決を待っている能力から、効果を落とす。 */
+function visibleAbility(banked: BankedAbility): VisibleAbility {
+  return { controller: banked.controller, source: banked.source }
+}
+
+function visibleBattle(battle: Battle): VisibleBattle {
+  return {
+    ...battle,
+    heldBank: battle.heldBank.map(visibleAbility),
+    heldTriggered: battle.heldTriggered.map(visibleAbility),
+  }
+}
+
 /** そのトラップが視点のプレイヤーのトラップゾーンにあるか。 */
 function ownsTrap(state: DuelState, viewer: Player, met: TrapConditionMet): boolean {
   return cardsIn(state, viewer, 'トラップゾーン').some((card) => card.id === met.trap)
@@ -154,14 +204,14 @@ export function perspectiveOf(state: DuelState, viewer: Player): DuelPerspective
     zones: projectZones(state, viewer),
     damage: state.damage,
     turn: state.turn,
-    bank: state.bank,
+    bank: state.bank.map(visibleAbility),
     resolveZone: state.resolveZone,
-    triggered: state.triggered,
-    createdAbilities: state.createdAbilities,
+    triggered: state.triggered.map(visibleAbility),
+    createdAbilities: state.createdAbilities.map(({ controller, affecting }) => ({ controller, affecting })),
     playedIntoCenter: state.playedIntoCenter,
     trapConditionsMet: state.trapConditionsMet.filter((met) => ownsTrap(state, viewer, met)),
     courageConditionsMet: state.courageConditionsMet.filter((met) => met.player === viewer),
-    battle: state.battle,
+    battle: state.battle === undefined ? undefined : visibleBattle(state.battle),
     smashJudgments: state.smashJudgments,
     result: state.result,
   }

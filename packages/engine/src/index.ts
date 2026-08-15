@@ -154,7 +154,13 @@ export { moveUnit } from './move.js'
 export { ORIENTATIONS } from './orientation.js'
 export type { Orientation } from './orientation.js'
 export { perspectiveOf } from './perspective.js'
-export type { DuelPerspective, VisibleCard } from './perspective.js'
+export type {
+  DuelPerspective,
+  VisibleAbility,
+  VisibleBattle,
+  VisibleCard,
+  VisibleCreatedAbility,
+} from './perspective.js'
 export { activateTrap, playAsTrap, playCard } from './play.js'
 export type { PlayDeclaration } from './play.js'
 export { PLAYERS } from './player.js'
