@@ -11,5 +11,8 @@
   },
   "dependencies": {
     "@revolution/engine": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
   }
 }

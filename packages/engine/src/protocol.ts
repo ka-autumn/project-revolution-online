@@ -62,6 +62,7 @@ export type FromClient =
 
 /** サーバからクライアントへ送るもの。 */
 export type ToClient =
+  | { readonly kind: '相手を待っている' }
   | { readonly kind: '席についた'; readonly seat: Player }
   | { readonly kind: '盤面'; readonly perspective: WirePerspective }
   | { readonly kind: '選んでほしい'; readonly choice: WireChoice }
