@@ -222,32 +222,32 @@ describe('行動する', () => {
   })
 })
 
+/**
+ * メインフェイズまで進めて、アクティブプレイヤーにプランさせたところ。
+ *
+ * プランするコストはエネルギーかスマッシュを 1 枚フリーズすることなので（総合ルール 第3部
+ * 第8章 2-3）、その前にエネルギーフェイズで手札を 1 枚エネルギーゾーンに置いておく（同 第7章 2）。
+ */
+function planning(): { readonly outcome: RoomOutcome; readonly acting: ParticipantId } {
+  const inEnergyPhase = readyToAct(passUntil(started(), 'エネルギーフェイズ'))
+  const board = boardOf(inEnergyPhase.deliveries, 'あ')
+  const acting = participantAt(board.turn.active, board.viewer)
+  const [inHand] = boardOf(inEnergyPhase.deliveries, acting).zones[board.turn.active].手札
+  if (inHand?.kind !== '見えている') throw new Error('自分の手札は見えているはずだった')
+
+  const placed = send(inEnergyPhase.rooms, acting, {
+    kind: '行動する',
+    action: { kind: 'エネルギーを置く', card: inHand.instance.id },
+  })
+  const inMainPhase = readyToAct(passUntil(placed, 'メインフェイズ'))
+  return {
+    outcome: send(inMainPhase.rooms, acting, { kind: '行動する', action: { kind: 'プランする' } }),
+    acting,
+  }
+}
+
 // ADR-0008。選択は候補の番号で答え、行動はやり直して適用する。
 describe('選ぶ', () => {
-  /**
-   * メインフェイズまで進めて、アクティブプレイヤーにプランさせたところ。
-   *
-   * プランするコストはエネルギーかスマッシュを 1 枚フリーズすることなので（総合ルール 第3部
-   * 第8章 2-3）、その前にエネルギーフェイズで手札を 1 枚エネルギーゾーンに置いておく（同 第7章 2）。
-   */
-  function planning(): { readonly outcome: RoomOutcome; readonly acting: ParticipantId } {
-    const inEnergyPhase = readyToAct(passUntil(started(), 'エネルギーフェイズ'))
-    const board = boardOf(inEnergyPhase.deliveries, 'あ')
-    const acting = participantAt(board.turn.active, board.viewer)
-    const [inHand] = boardOf(inEnergyPhase.deliveries, acting).zones[board.turn.active].手札
-    if (inHand?.kind !== '見えている') throw new Error('自分の手札は見えているはずだった')
-
-    const placed = send(inEnergyPhase.rooms, acting, {
-      kind: '行動する',
-      action: { kind: 'エネルギーを置く', card: inHand.instance.id },
-    })
-    const inMainPhase = readyToAct(passUntil(placed, 'メインフェイズ'))
-    return {
-      outcome: send(inMainPhase.rooms, acting, { kind: '行動する', action: { kind: 'プランする' } }),
-      acting,
-    }
-  }
-
   it('選ぶ人にだけ、選んでほしいことが届く', () => {
     const { outcome, acting } = planning()
 
@@ -281,5 +281,87 @@ describe('選ぶ', () => {
     // プランの効果として山札の 1 番上が表返り、プランゾーンに置かれる（総合ルール 第3部 第8章 2-3）。
     const board = boardOf(answered.deliveries, acting)
     expect(board.zones[board.viewer].プランゾーン).toHaveLength(1)
+  })
+})
+
+// ADR-0009。接続が切れても部屋は残り、同じ合言葉で入り直せば続きから打てる。
+describe('入り直す', () => {
+  it('席と、いまの盤面が送り直される', () => {
+    const outcome = started()
+    const before = boardOf(outcome.deliveries, 'あ')
+
+    const again = send(outcome.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+
+    expect(seatOf(again.deliveries, 'あ')).toBe(before.viewer)
+    expect(boardOf(again.deliveries, 'あ')).toEqual(before)
+  })
+
+  // 入り直したのは片方だけなので、相手には何も起こらない。
+  it('相手には何も届かない', () => {
+    const again = send(started().rooms, 'あ', { kind: '部屋に入る', room: CODE })
+
+    expect(again.deliveries.every((delivery) => delivery.to === 'あ')).toBe(true)
+  })
+
+  it('部屋も盤面もそのまま', () => {
+    const outcome = started()
+
+    const again = send(outcome.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+
+    expect(again.rooms).toEqual(outcome.rooms)
+  })
+
+  it('入り直した後も、続きから打てる', () => {
+    const outcome = started()
+    const board = boardOf(outcome.deliveries, 'あ')
+    const acting = participantAt(board.turn.priority, board.viewer)
+
+    const again = send(outcome.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+    const passed = send(again.rooms, acting, PASS)
+
+    expect(passed.deliveries.map((delivery) => delivery.message.kind)).toEqual(['盤面', '盤面'])
+  })
+
+  /**
+   * 選択の途中で切れても、同じ選択を求められる（ADR-0008 / ADR-0009）。
+   *
+   * 貯めた答えの並びで適用をやり直せば同じものが返るので、送ったメッセージを覚えておく必要は無い。
+   */
+  it('選択の途中で入り直すと、同じ選択が送り直される', () => {
+    const { outcome, acting } = planning()
+    const asked = to(outcome.deliveries, acting)[0]
+    if (asked?.kind !== '選んでほしい') throw new Error('選んでほしいが届いたはずだった')
+
+    const again = send(outcome.rooms, acting, { kind: '部屋に入る', room: CODE })
+
+    expect(to(again.deliveries, acting).map((message) => message.kind)).toEqual([
+      '席についた',
+      '盤面',
+      '選んでほしい',
+    ])
+    expect(to(again.deliveries, acting).find((message) => message.kind === '選んでほしい')).toEqual(asked)
+  })
+
+  it('選ぶ人でないほうが入り直しても、選んでほしいことは届かない', () => {
+    const { outcome, acting } = planning()
+    const other = acting === 'あ' ? 'い' : 'あ'
+
+    const again = send(outcome.rooms, other, { kind: '部屋に入る', room: CODE })
+
+    expect(to(again.deliveries, other).map((message) => message.kind)).toEqual(['席についた', '盤面'])
+  })
+
+  it('まだ 1 人で待っている間に入り直すと、また待つ', () => {
+    const waiting = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP)
+
+    const again = send(waiting.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+
+    expect(again.deliveries).toEqual([{ to: 'あ', message: { kind: '相手を待っている' } }])
+  })
+
+  it('別のルームコードには移れない', () => {
+    const again = send(started().rooms, 'あ', { kind: '部屋に入る', room: 'べつのあいことば' })
+
+    expect(to(again.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: 'ほかの部屋にいる' }])
   })
 })

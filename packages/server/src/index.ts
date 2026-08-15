@@ -1,9 +1,11 @@
 /**
  * サーバの公開 API。
  *
- * サーバが完全な盤面を持つ唯一の権威となる（ADR-0004）。ここにあるのは、ルームコードで 2 人を
- * 繋いでデュエルを進める決まりごとだけで、**通信の手立ては持たない**（`room.ts`）。ソケットを
- * 張ってこれを呼ぶところは、クライアント（#14）と合わせて入る。
+ * サーバが完全な盤面を持つ唯一の権威となる（ADR-0004）。決まりごと（`room.ts`）と、それを
+ * WebSocket に載せるところ（`serve.ts`、ADR-0009）に分かれている。前者は受け取ったメッセージ
+ * 1 つから次の状態と送るものを返すだけの純粋な関数で、通信の手立ては持たない。
  */
 export { emptyRooms, receive } from './room.js'
 export type { Delivery, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
+export { serve } from './serve.js'
+export type { RunningServer, ServeOptions } from './serve.js'
