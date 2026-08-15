@@ -105,6 +105,7 @@ export type {
   BankedAbility,
   CardId,
   CardInstance,
+  CourageConditionMet,
   CreatedAbility,
   CreatedAbilityInstance,
   DuelResult,

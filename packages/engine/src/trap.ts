@@ -5,6 +5,7 @@ import type { CardId, DuelState } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
+import { deferringRights } from './priority.js'
 
 /**
  * 相手のユニットがそのスクエアに置かれたことで、トリガーアイコンにそのスクエアが描かれた
@@ -72,24 +73,16 @@ export function checkIntrusion(state: DuelState, invader: UnitOnSquare): DuelSta
  * 発動条件が満たされていること（`checkIntrusion`）に加えて、バトルもスマッシュ判定も
  * 進行中でないことが要る。発動条件が満たされた後、優先権を得る時にバトルまたはスマッシュ
  * 判定が発生した場合、それが終了するまで権利は発生しない（同 3-8 ただし書き、第3部
- * 第11章 5・第17章 4）。
+ * 第11章 5・第17章 4）。その判定は「勇気」を起動する権利と共通なので、`priority.ts` の
+ * `deferringRights` に置いてある。
  *
- * 条文の「優先権を得る時」ではなく、発動しようとする時に見ている。バトルもスマッシュ判定も、
- * 始まるのも終わるのも優先権を獲得する手前（`priority.ts` の `settleBeforePriority`）
- * なので、優先権を得た後は次に得るまで結果が変わらない。
- *
- * 「優先権を得る時に発生した」バトルだけでなく、進行中のバトルすべてで権利を止めている。
- * 進行中のバトルやスマッシュ判定の最中に発動条件が満たされることは、いまは無いためである。
  * 発動条件のうち実装しているのは侵入だけで（`checkIntrusion`）、その侵入を起こす登場と移動は
  * バトル中には行えず（`priority.ts` の `activePlayerMayAct`）、スマッシュ判定が発生する
  * スマッシュフェイズにはどちらも行えない。効果でユニットをスクエアに置けるようになったら、
  * どちらの読み方を採るかを決める必要が出る。
- *
- * 同じ遅延は手札にある「勇気－Ｘ」の起動する権利にもかかる（同 第3部 第11章 5・第17章 4）が、
- * キーワード能力「勇気」がまだ無いため実装していない。
  */
 export function trapRightOf(state: DuelState, id: CardId): IntrusionOccasion | undefined {
-  if (deferringTrapRights(state)) return undefined
+  if (deferringRights(state)) return undefined
   return state.trapConditionsMet.find((met) => met.trap === id)?.occasion
 }
 
@@ -112,7 +105,7 @@ export function trapRightOf(state: DuelState, id: CardId): IntrusionOccasion | u
  * キーワード能力「勇気」がまだ無いため実装していない。
  */
 export function loseTrapRightOnPass(state: DuelState, player: Player): DuelState {
-  if (deferringTrapRights(state)) return state
+  if (deferringRights(state)) return state
 
   const ownIds: readonly CardId[] = cardsIn(state, player, 'トラップゾーン').map((trap) => trap.id)
   if (!state.trapConditionsMet.some((met) => ownIds.includes(met.trap))) return state
@@ -120,12 +113,4 @@ export function loseTrapRightOnPass(state: DuelState, player: Player): DuelState
     ...state,
     trapConditionsMet: state.trapConditionsMet.filter((met) => !ownIds.includes(met.trap)),
   }
-}
-
-/**
- * バトルまたはスマッシュ判定が進行中で、トラップを発動する権利の発生が遅れているか
- * （総合ルール 第2部 第20章 3-8 ただし書き）。
- */
-function deferringTrapRights(state: DuelState): boolean {
-  return state.battle !== undefined || state.smashJudgments.length > 0
 }
