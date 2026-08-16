@@ -1,4 +1,12 @@
-import type { CardId, LegalAction, Player, WireCandidate, WireChoice, WirePerspective } from '@revolution/engine'
+import type {
+  CardId,
+  ChoicePurpose,
+  LegalAction,
+  Player,
+  WireCandidate,
+  WireChoice,
+  WirePerspective,
+} from '@revolution/engine'
 import type { Session } from './session.js'
 import { nameOf, namesIn, squareLabel } from './view-model.js'
 
@@ -26,6 +34,8 @@ export interface CandidateView {
 
 /** 答えを待たれている選択。 */
 export interface ChoiceView {
+  /** 何を聞かれているか。見出しにそのまま出す。 */
+  readonly asking: string
   /** 選ばないことを選べるか。 */
   readonly mayDecline: boolean
   /**
@@ -114,11 +124,40 @@ function candidateLabel(candidate: WireCandidate, index: number, names: Readonly
   return candidate.kind === '見えている' ? `${position}: ${nameOf(names, candidate.card)}` : `${position}（裏向き）`
 }
 
+/**
+ * 何を聞かれているかの言い回し。
+ *
+ * **engine が持つのは種類だけ**（`resolve.ts` の `ChoicePurpose`）で、言葉にするのはこちらの
+ * 仕事である。engine は表示を持たない（ADR-0001）。
+ *
+ * 効果が選ばせている場合は「効果の対象」までしか言えない。何のための対象かはカードのテキストが
+ * 決めることで、テキストは通信に載っていない（#93）。
+ */
+function askingFor(purpose: ChoicePurpose): string {
+  switch (purpose) {
+    case 'プレイのコスト':
+      return 'プレイのコストとしてフリーズするエネルギーを選んでください'
+    case 'プランのコスト':
+      return 'プランのコストとしてフリーズするカードを選んでください'
+    case '移動のコスト':
+      return '移動のコストとしてフリーズするエネルギーを選んでください'
+    case '起動のコスト':
+      return '起動のコストとしてフリーズするエネルギーを選んでください'
+    case '解決する能力':
+      return '解決する能力を選んでください'
+    case 'プランの置き換え':
+      return 'プランのめくりを置き換える能力を選んでください'
+    case '効果の対象':
+      return '効果の対象を選んでください'
+  }
+}
+
 /** 選んでほしいと言われたことを、画面に出す形にする。 */
 export function choiceView(board: WirePerspective, choice: WireChoice): ChoiceView {
   const names = namesIn(board)
 
   return {
+    asking: askingFor(choice.purpose),
     mayDecline: choice.mayDecline,
     mayRewind: choice.answered > 0,
     candidates: choice.candidates.map((candidate, index) => ({

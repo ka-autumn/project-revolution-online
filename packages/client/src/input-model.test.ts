@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { indexOfSquare } from '@revolution/engine'
+import { CHOICE_PURPOSES, indexOfSquare } from '@revolution/engine'
 import type { LegalAction, Player, WireChoice, WirePerspective } from '@revolution/engine'
 import { actionViews, automaticAction, choiceView } from './input-model.js'
 import { applyMessage, connecting } from './session.js'
@@ -121,6 +121,7 @@ describe('選ぶ候補', () => {
   it('届いた並びのまま番号が振られる', () => {
     const choice: WireChoice = {
       player: '先攻',
+      purpose: '効果の対象',
       mayDecline: false,
       answered: 0,
       candidates: [{ kind: '見えていない' }, { kind: '見えている', card: 'スクエアの1枚' }, { kind: '見えていない' }],
@@ -137,6 +138,7 @@ describe('選ぶ候補', () => {
   it('見えない候補は、位置で示される', () => {
     const choice: WireChoice = {
       player: '先攻',
+      purpose: '効果の対象',
       mayDecline: false,
       answered: 0,
       candidates: [{ kind: '見えていない' }, { kind: '見えていない' }, { kind: '見えていない' }],
@@ -152,6 +154,7 @@ describe('選ぶ候補', () => {
   it('見えている候補には、どのカードかが出る', () => {
     const choice: WireChoice = {
       player: '先攻',
+      purpose: '効果の対象',
       mayDecline: false,
       answered: 0,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
@@ -162,7 +165,13 @@ describe('選ぶ候補', () => {
 
   /** 「◯枚まで選び」のように、選ばないことを選べる場面がある（`resolve.ts` の `Chooser`）。 */
   it('選ばないことを選べるかが伝わる', () => {
-    const choice: WireChoice = { player: '先攻', mayDecline: true, answered: 0, candidates: [{ kind: '見えていない' }] }
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: '効果の対象',
+      mayDecline: true,
+      answered: 0,
+      candidates: [{ kind: '見えていない' }],
+    }
 
     expect(choiceView(board(), choice).mayDecline).toBe(true)
   })
@@ -176,9 +185,51 @@ describe('選ぶ候補', () => {
     ['1 つ答えていれば、戻れる', 1, true],
     ['2 つ答えていても、戻れる', 2, true],
   ] as const)('%s', (_, answered, expected) => {
-    const choice: WireChoice = { player: '先攻', mayDecline: false, answered, candidates: [{ kind: '見えていない' }] }
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: '効果の対象',
+      mayDecline: false,
+      answered,
+      candidates: [{ kind: '見えていない' }],
+    }
 
     expect(choiceView(board(), choice).mayRewind).toBe(expected)
+  })
+
+  /**
+   * 何を聞かれているかが出る。
+   *
+   * 候補だけを見せても、それがコストの支払いなのか効果の対象なのかは分からない。engine が
+   * 持つのは種類だけ（`ChoicePurpose`）で、言葉にするのはクライアントの仕事である。
+   */
+  it.each([
+    ['プレイのコスト', 'プレイのコストとしてフリーズするエネルギーを選んでください'],
+    ['プランのコスト', 'プランのコストとしてフリーズするカードを選んでください'],
+    ['移動のコスト', '移動のコストとしてフリーズするエネルギーを選んでください'],
+    ['起動のコスト', '起動のコストとしてフリーズするエネルギーを選んでください'],
+    ['解決する能力', '解決する能力を選んでください'],
+    ['プランの置き換え', 'プランのめくりを置き換える能力を選んでください'],
+    ['効果の対象', '効果の対象を選んでください'],
+  ] as const)('%s なら、そう聞かれる', (purpose, expected) => {
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose,
+      mayDecline: false,
+      answered: 0,
+      candidates: [{ kind: '見えていない' }],
+    }
+
+    expect(choiceView(board(), choice).asking).toBe(expected)
+  })
+
+  /** 種類を足したら言い回しも足す。足し忘れると型検査で落ちる（`askingFor` の `switch`）。 */
+  it('どの種類にも言い回しがある', () => {
+    const asked = CHOICE_PURPOSES.map((purpose) => {
+      const choice: WireChoice = { player: '先攻', purpose, mayDecline: false, answered: 0, candidates: [] }
+      return choiceView(board(), choice).asking
+    })
+
+    expect(new Set(asked).size).toBe(CHOICE_PURPOSES.length)
   })
 })
 
@@ -224,7 +275,13 @@ describe('自動で送る手', () => {
     const acting = receiving([{ kind: '優先権を放棄する' }])
     const asked = applyMessage(acting, {
       kind: '選んでほしい',
-      choice: { player: '先攻', mayDecline: false, answered: 0, candidates: [{ kind: '見えていない' }] },
+      choice: {
+        player: '先攻',
+        purpose: '効果の対象',
+        mayDecline: false,
+        answered: 0,
+        candidates: [{ kind: '見えていない' }],
+      },
     })
 
     expect(automaticAction(asked)).toBeUndefined()

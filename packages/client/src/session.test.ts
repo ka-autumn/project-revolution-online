@@ -20,6 +20,7 @@ function board(turn: number): WirePerspective {
 
 const CHOICE: WireChoice = {
   player: '先攻',
+  purpose: '効果の対象',
   mayDecline: false,
   answered: 0,
   candidates: [{ kind: '見えていない' }, { kind: '見えている', card: 'あるカード' }],

@@ -3,7 +3,7 @@ import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
 import { perspectiveOf } from './perspective.js'
 import type { Player } from './player.js'
-import type { Chooser } from './resolve.js'
+import type { ChoicePurpose, Chooser } from './resolve.js'
 import type { WirePerspective } from './wire.js'
 
 /**
@@ -49,6 +49,13 @@ export type WireCandidate =
 /** 選んでほしいこと 1 つ。**選ぶプレイヤーにだけ送る**（ADR-0008）。 */
 export interface WireChoice {
   readonly player: Player
+  /**
+   * 何のために選ばせているか（`resolve.ts` の `ChoicePurpose`）。
+   *
+   * 候補だけを見せても、それがコストの支払いなのか効果の対象なのかは分からない。**何を
+   * 聞かれているかが分からないまま選ばせない**ために載せる。
+   */
+  readonly purpose: ChoicePurpose
   /** 選ばないことを選べるか。 */
   readonly mayDecline: boolean
   readonly candidates: readonly WireCandidate[]
@@ -164,12 +171,14 @@ function describeChoice(
   state: DuelState,
   candidates: readonly unknown[],
   player: Player,
+  purpose: ChoicePurpose,
   mayDecline: boolean,
   answered: number,
 ): WireChoice {
   const visible = visibleIds(state, player)
   return {
     player,
+    purpose,
     mayDecline,
     answered,
     candidates: candidates.map((candidate): WireCandidate => {
@@ -197,11 +206,11 @@ export function applyWithAnswers(
   answers: readonly ChoiceAnswer[],
 ): ActionProgress {
   let remaining = answers
-  const chooser: Chooser = (candidates, player, mayDecline = false) => {
+  const chooser: Chooser = (candidates, player, purpose, mayDecline = false) => {
     const [answer, ...rest] = remaining
     if (answer === undefined) {
       // 答えが尽きたところで止まるので、ここまでに答えた数は渡された答えの数そのものである。
-      const choice = describeChoice(state, candidates, player, mayDecline, answers.length)
+      const choice = describeChoice(state, candidates, player, purpose, mayDecline, answers.length)
       throw { kind: CHOICE_NEEDED, choice } satisfies ChoiceNeeded
     }
 

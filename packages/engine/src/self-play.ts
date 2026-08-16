@@ -22,7 +22,8 @@ import type { DuelSetup, SeatedViolation } from './setup.js'
  */
 export function randomChooser(random: Random): { readonly chooser: Chooser; readonly current: () => Random } {
   let state = random
-  const chooser: Chooser = (candidates, _player, mayDecline = false) => {
+  // 何のための選択かは、自動で選ぶ側には関わらない。
+  const chooser: Chooser = (candidates, _player, _purpose, mayDecline = false) => {
     // 選ばないことが認められている場面では、それも 1 つの選択肢として同じ確率で引く。
     // そうしないと、自己対戦が「選ばなかった」場合の分岐を一度も通らない。
     const picked = nextInt(state, mayDecline ? candidates.length + 1 : candidates.length)

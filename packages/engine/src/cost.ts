@@ -2,7 +2,7 @@ import type { Card } from './card.js'
 import { cardsIn, putInZone } from './duel.js'
 import type { CardInstance, DuelState } from './duel.js'
 import type { Player } from './player.js'
-import type { Chooser } from './resolve.js'
+import type { ChoicePurpose, Chooser } from './resolve.js'
 import type { PlayerZone } from './zone.js'
 
 /**
@@ -49,7 +49,7 @@ export function payEnergyCost(
 ): DuelState | undefined {
   if (card.level === 0) return state
 
-  return chooseAndFreeze(state, player, ['エネルギーゾーン'], (energy) => paysFor(card, energy), chooser)
+  return chooseAndFreeze(state, player, ['エネルギーゾーン'], (energy) => paysFor(card, energy), chooser, 'プレイのコスト')
 }
 
 /**
@@ -60,7 +60,7 @@ export function payEnergyCost(
  * 色は問わない。
  */
 export function payPlanCost(state: DuelState, player: Player, chooser: Chooser): DuelState | undefined {
-  return chooseAndFreeze(state, player, ['エネルギーゾーン', 'スマッシュゾーン'], () => true, chooser)
+  return chooseAndFreeze(state, player, ['エネルギーゾーン', 'スマッシュゾーン'], () => true, chooser, 'プランのコスト')
 }
 
 /**
@@ -83,7 +83,7 @@ export function freezeEnergies(
 ): DuelState | undefined {
   let current = state
   for (let paid = 0; paid < count; paid += 1) {
-    const next = chooseAndFreeze(current, player, ['エネルギーゾーン'], () => true, chooser)
+    const next = chooseAndFreeze(current, player, ['エネルギーゾーン'], () => true, chooser, '移動のコスト')
     if (next === undefined) return undefined
     current = next
   }
@@ -113,7 +113,14 @@ export function payActivationEnergies(
 ): DuelState | undefined {
   let current = state
   for (let paid = 0; paid < count; paid += 1) {
-    const next = chooseAndFreeze(current, player, ['エネルギーゾーン'], (energy) => paysFor(card, energy), chooser)
+    const next = chooseAndFreeze(
+      current,
+      player,
+      ['エネルギーゾーン'],
+      (energy) => paysFor(card, energy),
+      chooser,
+      '起動のコスト',
+    )
     if (next === undefined) return undefined
     current = next
   }
@@ -146,6 +153,7 @@ function chooseAndFreeze(
   zones: readonly PlayerZone[],
   accepts: (card: CardInstance) => boolean,
   chooser: Chooser,
+  purpose: ChoicePurpose,
 ): DuelState | undefined {
   const candidates = zones.flatMap((zone) =>
     cardsIn(state, player, zone)
@@ -158,6 +166,7 @@ function chooseAndFreeze(
   const chosen = chooser(
     candidates.map(({ card }) => card),
     player,
+    purpose,
   )
   const found = candidates.find(({ card }) => card === chosen)
   if (found === undefined) throw new Error('候補にないカードが選ばれた')
