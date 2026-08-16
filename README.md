@@ -31,6 +31,12 @@ pnpm verify
 `--frozen-lockfile` を付けるのは、`pnpm-lock.yaml` が `packages/cards` の importer を持っているため。
 cards が無い環境で素の `pnpm install` を走らせると、ロックファイルからそれが黙って消える。
 
+対戦画面は vite で動かす。
+
+```sh
+pnpm --filter @revolution/client dev
+```
+
 `pnpm verify` は次の 3 つを順に実行する。
 
 ```sh
