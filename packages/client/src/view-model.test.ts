@@ -620,19 +620,19 @@ describe('操作ログ', () => {
 
   // #111。総合ルール 第3部 第16章 1-1。
   describe('バトルが終わった', () => {
-    it('勝者が自分なら「勝ち」になる', () => {
+    it('勝者が自分なら、カード名を添えて「勝ち」になる', () => {
       const board = withLog({ kind: 'バトルが終わった', winner: '置いてある' })
 
-      expect(texts(board)).toEqual(['バトル終了：自分の勝ち'])
+      expect(texts(board)).toEqual(['バトル終了：自分のテスト・置いてあるの勝ち'])
     })
 
-    it('勝者が相手なら「負け」になる', () => {
+    it('勝者が相手なら、カード名を添えて「勝ち」になる', () => {
       const board: WirePerspective = {
         ...withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('勝ったユニット', '後攻')]),
         log: [{ kind: 'バトルが終わった', winner: '勝ったユニット' }],
       }
 
-      expect(texts(board)).toEqual(['バトル終了：相手の勝ち'])
+      expect(texts(board)).toEqual(['バトル終了：相手のテスト・勝ったユニットの勝ち'])
     })
 
     it('引き分けなら「引き分け」になる', () => {

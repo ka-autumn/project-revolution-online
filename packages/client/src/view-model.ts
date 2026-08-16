@@ -233,13 +233,13 @@ export function namesIn(board: WirePerspective): ReadonlyMap<CardId, string> {
 }
 
 /**
- * 表側が見えているカードの支配者。見えていなければ `undefined`。
+ * 表側が見えているカード 1 枚。見えていなければ `undefined`。
  *
- * バトルの勝敗（#111）を「自分」「相手」で言うのに使う。持ち主ではなく支配者で決めるのは
- * `CardView.controlledBy` と同じ（総合ルール 第2部 第21章 8-2）。
+ * バトルの勝敗（#111）を「自分」「相手」の名前とカード名の両方で言うのに使う。名前も支配者も
+ * 同じ 1 枚から引くので、見えているかどうかの判断が 1 回で済む。
  */
-function controllerOf(board: WirePerspective, id: CardId): Player | undefined {
-  return visibleInstances(board).find((instance) => instance.id === id)?.controller
+function visibleInstanceOf(board: WirePerspective, id: CardId): WireCardInstance | undefined {
+  return visibleInstances(board).find((instance) => instance.id === id)
 }
 
 /**
@@ -469,8 +469,9 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         return { whose: undefined, text: about(named(event.to), 'に', `バトルダメージ ${event.amount}`) }
       case 'バトルが終わった': {
         if (event.winner === undefined) return { whose: undefined, text: 'バトル終了：引き分け' }
-        const controller = controllerOf(board, event.winner)
-        return { whose: undefined, text: controller === undefined ? 'バトル終了' : `バトル終了：${whose(controller)}の勝ち` }
+        const winner = visibleInstanceOf(board, event.winner)
+        const text = winner === undefined ? 'バトル終了' : `バトル終了：${whose(winner.controller)}の${winner.card.name}の勝ち`
+        return { whose: undefined, text }
       }
       case 'ルールで捨札に置かれた': {
         const cards = event.cards.map((card) => nameOf(names, card))
