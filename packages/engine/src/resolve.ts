@@ -32,7 +32,49 @@ import { duelView } from './view.js'
  * 必ず候補の中から 1 つ選ぶ。コストの支払いやバンクにある能力の選択のように、選ばない
  * ことが認められていない場面ではこの引数は渡されない。
  */
-export type Chooser = (candidates: readonly unknown[], player: Player, mayDecline?: boolean) => unknown
+/**
+ * 何のために選ばせているか。
+ *
+ * **ルールの判断には使わない。** 選ぶ人に「いま何を聞かれているのか」を伝えるためだけに持つ。
+ * 候補だけを見せても、それがコストの支払いなのか効果の対象なのかは分からない。
+ *
+ * 述語をいくつも足すかわりに数え上げているのは、選ばせる場所が数えられるためである
+ * （engine の中で `Chooser` を呼ぶのは 4 か所しかない）。
+ *
+ * 効果が選ばせる場合は、どれも `効果の対象` になる。何のための対象かはカードのテキストが
+ * 決めることで、テキストは engine に無い（#93）。
+ */
+export const CHOICE_PURPOSES = [
+  /** プレイするためのレベルの支払い（総合ルール 第1部 第2章 3-1、`cost.ts` の `payEnergyCost`）。 */
+  'プレイのコスト',
+  /** プランするためのコストの支払い（同 第3部 第8章 2-3）。スマッシュでも支払える（同 第2部 第21章 7-5）。 */
+  'プランのコスト',
+  /** ユニットを移動するための追加コストの支払い（同 第4部 第6章 2-2）。 */
+  '移動のコスト',
+  /** 起動型能力のコストの支払い（同 第4部 第2章 1）。 */
+  '起動のコスト',
+  /** バンクから解決する能力を選ぶ（同 第2部 第21章 11-3）。 */
+  '解決する能力',
+  /** プランのめくりを置き換える能力を適用するか（同 第4部 第13章）。 */
+  'プランの置き換え',
+  /** 効果が命令の中で選ばせている（`effect.ts` の `choose`・`chooseAtMostOne`）。 */
+  '効果の対象',
+] as const
+
+export type ChoicePurpose = (typeof CHOICE_PURPOSES)[number]
+
+/**
+ * 選ばせる手立て。呼ぶ側が渡す。
+ *
+ * `purpose` は選ぶ人に見せるためのもので、返す答えを左右しない。答えを自動で決める実装
+ * （`legal-action.ts` の `chooseFirst`、`self-play.ts` の `randomChooser`）は受け取らなくてよい。
+ */
+export type Chooser = (
+  candidates: readonly unknown[],
+  player: Player,
+  purpose: ChoicePurpose,
+  mayDecline?: boolean,
+) => unknown
 
 export interface EffectContext {
   /** 能力の支配者（総合ルール 第4部 第7章 1）。味方・敵はこのプレイヤーから見た呼び方になる。 */
@@ -118,7 +160,12 @@ function apply(
       // 効果の側が `undefined` を見て決める（`effect.ts` の `choose`）。
       if (instruction.candidates.length === 0) return { state, value: undefined }
       // 選ぶのは能力の支配者（総合ルール 第4部 第8章 2-3）。
-      const chosen = context.chooser(instruction.candidates, context.controller, instruction.mayDecline)
+      const chosen = context.chooser(
+        instruction.candidates,
+        context.controller,
+        '効果の対象',
+        instruction.mayDecline,
+      )
       // 選ばないことが認められている場面でだけ、候補にないもの（`undefined`）を受け取れる。
       if (instruction.mayDecline && chosen === undefined) return { state, value: undefined }
       if (!instruction.candidates.includes(chosen)) {

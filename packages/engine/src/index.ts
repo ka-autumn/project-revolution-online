@@ -182,8 +182,8 @@ export { nextInt, randomFromSeed, shuffle } from './random.js'
 export type { Random } from './random.js'
 export { RELATIONS_FROM_PLAYER, RELATIONS_FROM_UNIT } from './relation.js'
 export type { RelationFromPlayer, RelationFromUnit } from './relation.js'
-export { resolveEffect } from './resolve.js'
-export type { Chooser, EffectContext } from './resolve.js'
+export { CHOICE_PURPOSES, resolveEffect } from './resolve.js'
+export type { ChoicePurpose, Chooser, EffectContext } from './resolve.js'
 export { pickRandomAction, playSelfPlay, randomChooser, runSelfPlayBatch } from './self-play.js'
 export type {
   ActionPicker,

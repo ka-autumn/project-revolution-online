@@ -100,7 +100,7 @@ export function resolveFromBank(state: DuelState, chooser: Chooser): DuelState {
   if (first === undefined) return state
 
   // 候補はすべて同じプレイヤーの支配する能力なので、選ぶプレイヤーはどれから見ても同じ。
-  const choice = chooser(candidates, first.controller)
+  const choice = chooser(candidates, first.controller, '解決する能力')
   const chosen = candidates.find((banked) => banked === choice)
   if (chosen === undefined) throw new Error('バンクにない能力が選ばれた')
 

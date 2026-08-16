@@ -136,7 +136,7 @@ export interface ChoiceHandlers {
 /** 選ぶ候補を並べる。答えるのは番号である（ADR-0008）。 */
 export function choiceElement(view: ChoiceView, handlers: ChoiceHandlers): HTMLElement {
   const node = element('section', 'choice')
-  node.append(element('h2', 'choice__title', '選んでください'))
+  node.append(element('h2', 'choice__title', view.asking))
 
   const list = element('div', 'choice__list')
   for (const candidate of view.candidates) {

@@ -201,4 +201,44 @@ describe('1 つの行動で 2 回選ぶ', () => {
     expectAdvanced(progress)
     expect(cardsIn(progress.state, '先攻', 'プランゾーン')).toHaveLength(1)
   })
+
+  /**
+   * 同じ行動の中でも、聞かれていることは変わる。
+   *
+   * 候補だけを見せても、それがコストの支払いなのか置き換えるかどうかなのかは分からない。
+   * **何を聞かれているかが分からないまま選ばせない**ために、種類を載せている。
+   */
+  it('1 回目と 2 回目で、何のための選択かが変わる', () => {
+    const first = applyWithAnswers(withReplacement(), PLANNING, [])
+    const second = applyWithAnswers(withReplacement(), PLANNING, [0])
+
+    expectChoice(first)
+    expectChoice(second)
+    expect(first.choice.purpose).toBe('プランのコスト')
+    expect(second.choice.purpose).toBe('プランの置き換え')
+  })
+})
+
+// #14。候補だけでは何を聞かれているか分からないので、何のための選択かを載せる。
+describe('何のための選択か', () => {
+  it('プランのコストを支払うところでは、プランのコストになる', () => {
+    const progress = applyWithAnswers(beforePlanning(), PLANNING, [])
+
+    expectChoice(progress)
+    expect(progress.choice.purpose).toBe('プランのコスト')
+  })
+
+  /** ユニットをプレイする時、レベルの支払いにどのエネルギーを使うかを選ぶ（総合ルール 第1部 第2章 3-1）。 */
+  it('プレイのコストを支払うところでは、プレイのコストになる', () => {
+    const withHand = putInZone(beforePlanning(), '先攻', '手札', [card('手札の1枚')])
+    const play: LegalAction = {
+      kind: 'カードをプレイする',
+      declaration: { card: '手札の1枚', square: { row: 0, column: 1 } },
+    }
+
+    const progress = applyWithAnswers(withHand, play, [])
+
+    expectChoice(progress)
+    expect(progress.choice.purpose).toBe('プレイのコスト')
+  })
 })
