@@ -1,7 +1,7 @@
 import { connect } from './connection.js'
 import type { Connection } from './connection.js'
 import type { RoomCode } from '@revolution/engine'
-import { actionViews, choiceView } from './input-model.js'
+import { actionViews, automaticAction, choiceView } from './input-model.js'
 import { actionsElement, boardElement, choiceElement } from './render.js'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
@@ -101,6 +101,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     onMessage: (message) => {
       session = applyMessage(session, message)
       draw(root, session, open, connection)
+
+      // 放棄しか行えない場面は押させずに送る。**描いてから送る**ので、進む前の盤面が一度は
+      // 画面に出る。送った結果は次の盤面として届き、そこでまた同じ判断をする。
+      const automatic = automaticAction(session)
+      if (automatic !== undefined) connection.send({ kind: '行動する', action: automatic })
     },
     onOpenChanged: (value) => {
       open = value

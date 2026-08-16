@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { indexOfSquare } from '@revolution/engine'
 import type { LegalAction, Player, WireChoice, WirePerspective } from '@revolution/engine'
-import { actionViews, choiceView } from './input-model.js'
+import { actionViews, automaticAction, choiceView } from './input-model.js'
+import { applyMessage, connecting } from './session.js'
+import type { Session } from './session.js'
 import { emptyBoard, instance, unitFace, withZone } from './test-support.js'
 
 /**
@@ -160,5 +162,58 @@ describe('選ぶ候補', () => {
     const choice: WireChoice = { player: '先攻', mayDecline: true, candidates: [{ kind: '見えていない' }] }
 
     expect(choiceView(board(), choice).mayDecline).toBe(true)
+  })
+})
+
+/**
+ * 押させずに送ってよい手。
+ *
+ * **ルールの判断ではない**（ADR-0010）。届いた並びの中身を見ているだけで、何が行えるかを
+ * 決めているのはサーバである。
+ */
+describe('自動で送る手', () => {
+  /** 席についたうえで、その手が届いた状態。 */
+  function receiving(actions: readonly LegalAction[]): Session {
+    const seated = applyMessage(connecting(), { kind: '席についた', seat: '先攻' })
+    return applyMessage(seated, { kind: '盤面', perspective: board(), actions })
+  }
+
+  /** 放棄しか行えないなら、選ぶ余地が無い。 */
+  it('放棄しか行えないなら、それを送る', () => {
+    expect(automaticAction(receiving([{ kind: '優先権を放棄する' }]))).toEqual({ kind: '優先権を放棄する' })
+  })
+
+  it('ほかにも行えることがあれば、送らない', () => {
+    const session = receiving([{ kind: '優先権を放棄する' }, { kind: 'プランする' }])
+
+    expect(automaticAction(session)).toBeUndefined()
+  })
+
+  /** 優先権を持っていない側には空で届く（`server` の `room.ts` の `boards`）。 */
+  it('何も行えないなら、送らない', () => {
+    expect(automaticAction(receiving([]))).toBeUndefined()
+  })
+
+  /** 1 つでも、放棄でなければ選ばせる。打つ手を勝手に打ってはならない。 */
+  it('1 つでも放棄でなければ、送らない', () => {
+    expect(automaticAction(receiving([{ kind: 'プランする' }]))).toBeUndefined()
+  })
+
+  /**
+   * 選ぶのを待たれている間は送らない。サーバも `選ぶのを待っている` として断る（`room.ts` の
+   * `act`）。
+   */
+  it('選ぶのを待たれている間は、送らない', () => {
+    const acting = receiving([{ kind: '優先権を放棄する' }])
+    const asked = applyMessage(acting, {
+      kind: '選んでほしい',
+      choice: { player: '先攻', mayDecline: false, candidates: [{ kind: '見えていない' }] },
+    })
+
+    expect(automaticAction(asked)).toBeUndefined()
+  })
+
+  it('まだ席についていないなら、送らない', () => {
+    expect(automaticAction(connecting())).toBeUndefined()
   })
 })

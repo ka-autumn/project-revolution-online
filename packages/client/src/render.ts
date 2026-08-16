@@ -1,6 +1,6 @@
 import type { ChoiceAnswer, LegalAction } from '@revolution/engine'
 import type { ActionView, ChoiceView } from './input-model.js'
-import type { BoardView, CardView, SideView, SquareView, ZoneView } from './view-model.js'
+import type { AbilityView, BattleView, BoardView, CardView, SideView, SquareView, ZoneView } from './view-model.js'
 
 /**
  * 画面に出す値（`view-model.ts`）を DOM にする。
@@ -17,6 +17,25 @@ function element(tag: string, className: string, text?: string): HTMLElement {
   return node
 }
 
+/**
+ * 詳しく見たときに出す札。
+ *
+ * 出す・隠すは CSS に任せている（`style.css` の `.card:hover` / `.card:focus-within`）。
+ * 押した時だけ出す形にすると、押すことが操作（#94）とぶつかる。
+ */
+function panelElement(card: CardView & { readonly kind: '表' }): HTMLElement {
+  const node = element('div', 'card__panel')
+  node.append(element('div', 'card__panel-name', card.name))
+
+  const rows = element('dl', 'card__panel-rows')
+  for (const row of card.details) {
+    rows.append(element('dt', 'card__panel-label', row.label), element('dd', 'card__panel-value', row.value))
+  }
+  node.append(rows)
+
+  return node
+}
+
 function cardElement(card: CardView): HTMLElement {
   if (card.kind === '裏') {
     const back = element('div', `card card--back card--${card.orientation}`)
@@ -24,9 +43,15 @@ function cardElement(card: CardView): HTMLElement {
     return back
   }
 
-  const node = element('div', `card card--${card.orientation}`)
-  node.append(element('span', 'card__name', card.name), element('span', 'card__detail', card.detail))
+  const node = element('div', `card card--${card.orientation} card--${card.controlledBy}`)
+  // キーボードでも詳細を出せるようにする。マウスを乗せるだけの形にすると触れない人が出る。
+  node.tabIndex = 0
+  node.setAttribute('aria-label', `${card.controlledBy}の${card.name}`)
+  // 色だけで区別させない。色を見分けられない人にも分かるように、文字でも出す。
+  node.append(element('span', 'card__whose', card.controlledBy))
+  node.append(element('span', 'card__name', card.name), element('span', 'card__detail', card.summary))
   if (card.damage > 0) node.append(element('span', 'card__damage', `ダメージ ${card.damage}`))
+  node.append(panelElement(card))
 
   return node
 }
@@ -112,11 +137,43 @@ export function choiceElement(view: ChoiceView, onAnswer: (answer: ChoiceAnswer)
   return node
 }
 
+/** バトルの様子（総合ルール 第3部 第11章）。 */
+function battleElement(battle: BattleView): HTMLElement {
+  return element(
+    'p',
+    'board__battle',
+    `バトル: ${battle.where}・${battle.step}（攻撃 ${battle.attacker} / 被攻撃 ${battle.attacked}）`,
+  )
+}
+
+/** 解決を待っている能力の並び。何をする能力かは出せない（`view-model.ts` の `AbilityView`）。 */
+function abilitiesElement(title: string, abilities: readonly AbilityView[]): HTMLElement {
+  const node = element('section', 'bank')
+  node.append(element('h3', 'bank__title', `${title}（${abilities.length}）`))
+
+  const list = element('ul', 'bank__list')
+  for (const ability of abilities) {
+    list.append(element('li', 'bank__item', `${ability.whose}: ${ability.source ?? '発生源なし'}`))
+  }
+  node.append(list)
+
+  return node
+}
+
 /** 盤面ひととおりを組み立てる。 */
 export function boardElement(view: BoardView): HTMLElement {
   const node = element('div', 'board')
   node.append(element('p', 'board__turn', view.turn))
+  if (view.battle !== undefined) node.append(battleElement(view.battle))
   if (view.result !== undefined) node.append(element('p', 'board__result', view.result))
+
+  if (view.bank.length > 0 || view.triggered.length > 0) {
+    const waiting = element('div', 'board__waiting')
+    if (view.bank.length > 0) waiting.append(abilitiesElement('バンク', view.bank))
+    if (view.triggered.length > 0) waiting.append(abilitiesElement('誘発した能力', view.triggered))
+    node.append(waiting)
+  }
+
   node.append(sideElement(view.opponent), squaresElement(view.squares), sideElement(view.own))
 
   return node
