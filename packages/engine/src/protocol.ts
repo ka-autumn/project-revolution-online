@@ -37,13 +37,19 @@ export type ChoiceAnswer = number | '選ばない'
  * として自分の裏向きのスマッシュをフリーズできる（総合ルール 第2部 第21章 7-5）が、スマッシュは
  * どちらのプレイヤーにも見えない（同 7-3）。
  *
- * 能力そのものを選ぶ場面（バンクにある能力、プランのめくりを置き換える置換効果）では、いまは
- * どれも `見えていない` になる。`Chooser` は候補を `unknown` として受け取る——選ばせる場面ごとに
- * 候補の型が違うためである——ので、カードを指しているかどうかしか外から尋ねられない。何の能力
- * であるかまで見せるには、`Chooser` が候補の描き方を持つ必要がある。
+ * 能力そのものを選ぶ場面（バンクにある能力、プランのめくりを置き換える置換効果）では、カード
+ * ではなく能力が並ぶ。**どのカードから出た能力かまでは見せられる**ので、裏向きのカードと同じ
+ * 扱いにはしない。何をする能力かは見せられない（効果は関数なので通信に載らない）。
  */
 export type WireCandidate =
   | { readonly kind: '見えている'; readonly card: CardId }
+  /**
+   * カードそのものではなく、解決を待っている能力。
+   *
+   * `source` は発生源のカード。見えていないか、発生源を持たない能力（作成された誘発型能力、
+   * `duel.ts` の `CreatedAbilityInstance`）なら `undefined` になる。
+   */
+  | { readonly kind: '能力'; readonly source: CardId | undefined }
   | { readonly kind: '見えていない' }
 
 /** 選んでほしいこと 1 つ。**選ぶプレイヤーにだけ送る**（ADR-0008）。 */
@@ -142,6 +148,40 @@ function cardIdOf(candidate: unknown): CardId | undefined {
 }
 
 /**
+ * その候補が能力であるとき、その発生源のカードの識別子。持たなければ `undefined`。
+ *
+ * 解決を待っている能力は発生源を覚えている（`duel.ts` の `TriggeredInstance.source`）。
+ * 作成された誘発型能力は発生源のカードを持たない（同 `CreatedAbilityInstance.source`）ので、
+ * その場合も `undefined` になる。
+ */
+function sourceOf(candidate: unknown): CardId | undefined {
+  if (typeof candidate !== 'object' || candidate === null) return undefined
+
+  const { source } = candidate as { readonly source?: unknown }
+  return typeof source === 'string' ? source : undefined
+}
+
+/**
+ * 候補 1 つを、送れる形にする。
+ *
+ * **候補の型は選ばせる場面ごとに違う。** `Chooser` が候補を `unknown` として受け取るのはその
+ * ためで、候補そのものからは何であるか尋ねられない。何が来るかを知っているのは呼んだ側なので、
+ * **何のための選択か**（`ChoicePurpose`）から読み方を決める。
+ */
+function describeCandidate(candidate: unknown, purpose: ChoicePurpose, visible: ReadonlySet<CardId>): WireCandidate {
+  // 能力が並ぶ場面。カードではないので、発生源のカードで指す。
+  if (purpose === '解決する能力' || purpose === 'プランの置き換え') {
+    const source = sourceOf(candidate)
+    return { kind: '能力', source: source !== undefined && visible.has(source) ? source : undefined }
+  }
+
+  const id = cardIdOf(candidate)
+  if (id === undefined || !visible.has(id)) return { kind: '見えていない' }
+
+  return { kind: '見えている', card: id }
+}
+
+/**
  * その視点から表側が見えているカードの識別子すべて。
  *
  * 見え方の決まりを二度書かずに済むよう、射影（ADR-0004）から取り出す。
@@ -181,12 +221,7 @@ function describeChoice(
     purpose,
     mayDecline,
     answered,
-    candidates: candidates.map((candidate): WireCandidate => {
-      const id = cardIdOf(candidate)
-      if (id === undefined || !visible.has(id)) return { kind: '見えていない' }
-
-      return { kind: '見えている', card: id }
-    }),
+    candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, visible)),
   }
 }
 
@@ -207,6 +242,12 @@ export function applyWithAnswers(
 ): ActionProgress {
   let remaining = answers
   const chooser: Chooser = (candidates, player, purpose, mayDecline = false) => {
+    // 選ぶ余地が無いなら聞かない。候補が 1 つで、選ばないことも選べないなら、答えは 1 通りしか
+    // 無く、押させても盤面は同じところへ進む。**答えとして数えない**ので、`ひとつ戻る`
+    // （ADR-0008）はこの手前の選択まで戻る。
+    const [only] = candidates
+    if (candidates.length === 1 && !mayDecline) return only
+
     const [answer, ...rest] = remaining
     if (answer === undefined) {
       // 答えが尽きたところで止まるので、ここまでに答えた数は渡された答えの数そのものである。
