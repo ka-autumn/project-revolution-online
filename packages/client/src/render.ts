@@ -43,9 +43,12 @@ function cardElement(card: CardView): HTMLElement {
     return back
   }
 
-  const node = element('div', `card card--${card.orientation}`)
+  const node = element('div', `card card--${card.orientation} card--${card.controlledBy}`)
   // キーボードでも詳細を出せるようにする。マウスを乗せるだけの形にすると触れない人が出る。
   node.tabIndex = 0
+  node.setAttribute('aria-label', `${card.controlledBy}の${card.name}`)
+  // 色だけで区別させない。色を見分けられない人にも分かるように、文字でも出す。
+  node.append(element('span', 'card__whose', card.controlledBy))
   node.append(element('span', 'card__name', card.name), element('span', 'card__detail', card.summary))
   if (card.damage > 0) node.append(element('span', 'card__damage', `ダメージ ${card.damage}`))
   node.append(panelElement(card))

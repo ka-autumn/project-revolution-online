@@ -38,6 +38,17 @@ export type CardView =
       readonly kind: '表'
       readonly id: CardId
       readonly name: string
+      /**
+       * 支配者が見る人自身か、相手か（総合ルール 第4部 第7章 1）。
+       *
+       * **持ち主ではなく支配者で決める。** スクエアにいるユニットが「味方」か「敵」かを分ける
+       * のは支配者である（同 第2部 第21章 8-2）。持ち主と支配者は食い違いうる（`duel.ts` の
+       * `instantiate`）ので、食い違っていれば詳細のほうに両方出る。
+       *
+       * **1 枚ごとに持つ。** バトル中は支配者の違う 2 体が同じスクエアに並ぶ（同 第3部 第11章 1）
+       * ので、スクエア単位では決まらない。
+       */
+      readonly controlledBy: '自分' | '相手'
       /** 小さいカードに添える 1 行。「Lv1 赤 BP1000 SP1000」のような形。 */
       readonly summary: string
       /** 詳しく見たときに出す全部。**能力テキストは持たない**（通信に載っていない、#93）。 */
@@ -225,13 +236,19 @@ function summaryOf(face: WireCardFace): string {
  * 持っていない項目は行ごと出さない（スターを持たないカードに「スター 0」と書かない）。
  * **能力テキストはここに無い。** 通信に載っていないためで、載せるのは #93。
  */
-function detailsOf(instance: WireCardInstance): readonly DetailRow[] {
+function detailsOf(instance: WireCardInstance, viewer: Player): readonly DetailRow[] {
   const face = instance.card
   const rows: DetailRow[] = [
     { label: '種別', value: face.type },
     { label: 'レベル', value: String(face.level) },
     { label: '色', value: colorsOf(face) },
+    { label: '支配者', value: whoseLabel(viewer, instance.controller) },
   ]
+
+  // 持ち主と支配者は食い違いうる。同じなら 1 行で足りる。
+  if (instance.owner !== instance.controller) {
+    rows.push({ label: '持ち主', value: whoseLabel(viewer, instance.owner) })
+  }
 
   if (face.type === 'ユニット') {
     rows.push({ label: 'ＢＰ', value: String(face.bp) }, { label: 'ＳＰ', value: String(face.sp) })
@@ -250,20 +267,23 @@ function detailsOf(instance: WireCardInstance): readonly DetailRow[] {
   return rows
 }
 
-function faceUpView(instance: WireCardInstance): CardView {
+function faceUpView(instance: WireCardInstance, viewer: Player): CardView {
   return {
     kind: '表',
     id: instance.id,
     name: instance.card.name,
+    controlledBy: whoseLabel(viewer, instance.controller),
     summary: summaryOf(instance.card),
-    details: detailsOf(instance),
+    details: detailsOf(instance, viewer),
     orientation: instance.orientation,
     damage: instance.damage,
   }
 }
 
-function cardView(card: WireVisibleCard): CardView {
-  return card.kind === '見えている' ? faceUpView(card.instance) : { kind: '裏', orientation: card.orientation }
+function cardView(card: WireVisibleCard, viewer: Player): CardView {
+  return card.kind === '見えている'
+    ? faceUpView(card.instance, viewer)
+    : { kind: '裏', orientation: card.orientation }
 }
 
 function zoneView(board: WirePerspective, owner: Player, zone: PlayerZone): ZoneView {
@@ -272,13 +292,18 @@ function zoneView(board: WirePerspective, owner: Player, zone: PlayerZone): Zone
   return {
     zone,
     count: cards.length,
-    cards: COUNTED_ZONES.includes(zone) ? [] : cards.map(cardView),
+    cards: COUNTED_ZONES.includes(zone) ? [] : cards.map((card) => cardView(card, board.viewer)),
   }
+}
+
+/** そのプレイヤーが見る人自身か、相手か。 */
+function whoseLabel(viewer: Player, player: Player): '自分' | '相手' {
+  return player === viewer ? '自分' : '相手'
 }
 
 /** 見る人自身のものか、相手のものか。 */
 function whoseOf(board: WirePerspective, player: Player): '自分' | '相手' {
-  return player === board.viewer ? '自分' : '相手'
+  return whoseLabel(board.viewer, player)
 }
 
 function sideView(board: WirePerspective, player: Player): SideView {
@@ -307,7 +332,7 @@ function squareViews(board: WirePerspective): readonly (readonly SquareView[])[]
       return {
         square,
         area: areaOf(board.viewer, square),
-        cards: board.squares[indexOfSquare(square)]?.map(faceUpView) ?? [],
+        cards: board.squares[indexOfSquare(square)]?.map((card) => faceUpView(card, board.viewer)) ?? [],
       }
     }),
   )

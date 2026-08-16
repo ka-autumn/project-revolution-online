@@ -9,8 +9,9 @@
   --gap: 0.4rem;
   --card-width: 4.4rem;
   --line: #8a8a8a;
-  --own: #1b3a5c;
-  --opponent: #5c1b1b;
+  /* 明るい地にも暗い地にも乗る中間の明度にする。テーマは既定のまま両対応にしている。 */
+  --own: #2f6fb0;
+  --opponent: #b04a4a;
   color-scheme: light dark;
 }
 
@@ -159,6 +160,39 @@ body {
 
 .card--back {
   background: repeating-linear-gradient(45deg, #6663, #6663 4px, transparent 4px, transparent 8px);
+}
+
+/*
+ * 支配者で色を分ける（総合ルール 第2部 第21章 8-2 の「味方」「敵」）。
+ *
+ * スクエアはどちらのユニットも同じ枠に並ぶので、色が無いと見分けが付かない。**色だけに
+ * 頼らない**ため、`card__whose` で文字も出している。
+ */
+.card--自分 {
+  border-color: var(--own);
+  border-left-width: 4px;
+}
+
+.card--相手 {
+  border-color: var(--opponent);
+  border-left-width: 4px;
+}
+
+/* 地が濃いので、文字は白で固定する。テーマで反転させると読めなくなる。 */
+.card__whose {
+  align-self: flex-end;
+  padding: 0 2px;
+  border-radius: 2px;
+  color: #fff;
+  font-size: 0.55rem;
+}
+
+.card--自分 .card__whose {
+  background: var(--own);
+}
+
+.card--相手 .card__whose {
+  background: var(--opponent);
 }
 
 .card__name {

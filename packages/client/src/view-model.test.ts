@@ -137,6 +137,24 @@ describe('カードの詳細', () => {
     expect(detailOf(view, 'トリガーアイコン')).toBeUndefined()
   })
 
+  /** 持ち主と支配者が同じなら 1 行で足りる。 */
+  it('支配者が出る。持ち主が同じなら、持ち主の行は出ない', () => {
+    const view = inHand(instance('じぶんの1枚', '先攻'))
+
+    expect(detailOf(view, '支配者')).toBe('自分')
+    expect(detailOf(view, '持ち主')).toBeUndefined()
+  })
+
+  it('持ち主と支配者が食い違えば、両方出る', () => {
+    const taken: WireCardInstance = { ...instance('とられた1枚', '後攻'), controller: '先攻' }
+    const view = boardView(withZone(emptyBoard('先攻'), '先攻', '手札', [{ kind: '見えている', instance: taken }]))
+    const [card] = zoneOf(view, '自分', '手札').cards
+    if (card?.kind !== '表') throw new Error('自分の手札は見えるはずだった')
+
+    expect(card.details.find((row) => row.label === '支配者')?.value).toBe('自分')
+    expect(card.details.find((row) => row.label === '持ち主')?.value).toBe('相手')
+  })
+
   it('スターと属性は、持っていれば出る', () => {
     const starred = instance('すたーあり', '先攻', {
       card: unitFace('テスト・星', { stars: 2, reverseStars: 1, attributes: ['属性ア', '属性イ'] }),
@@ -262,6 +280,51 @@ describe('スクエア', () => {
       orientation: 'リリース',
       damage: 0,
     })
+  })
+
+  /**
+   * スクエアはどちらのユニットも同じ枠に並ぶので、どちらのものかが分からないと読めない。
+   * 分けるのは支配者である（総合ルール 第2部 第21章 8-2 の「味方」「敵」）。
+   */
+  it.each(['先攻', '後攻'] as const)('%s から見て、自分のユニットと相手のユニットが分かれる', (viewer: Player) => {
+    const mine = instance('じぶんの1枚', viewer)
+    const theirs = instance('あいての1枚', viewer === '先攻' ? '後攻' : '先攻')
+    const placed = withSquare(withSquare(emptyBoard(viewer), { row: 0, column: 0 }, [mine]), { row: 2, column: 2 }, [
+      theirs,
+    ])
+    const view = boardView(placed)
+    const all = view.squares.flat().flatMap((square) => square.cards)
+
+    expect(all.map((card) => (card.kind === '表' ? [card.id, card.controlledBy] : []))).toEqual(
+      expect.arrayContaining([
+        ['じぶんの1枚', '自分'],
+        ['あいての1枚', '相手'],
+      ]),
+    )
+  })
+
+  /**
+   * バトル中は支配者の違う 2 体が同じスクエアに並ぶ（総合ルール 第3部 第11章 1）。
+   * **スクエア単位では決まらない**ので、1 枚ごとに持つ。
+   */
+  it('同じスクエアに並んでも、1 枚ずつ分かれる', () => {
+    const attacker = instance('せめた1枚', '先攻')
+    const attacked = instance('うけた1枚', '後攻')
+    const view = boardView(withSquare(emptyBoard('先攻'), { row: 1, column: 1 }, [attacker, attacked]))
+
+    expect(view.squares[1]?.[1]?.cards.map((card) => (card.kind === '表' ? card.controlledBy : '裏'))).toEqual([
+      '自分',
+      '相手',
+    ])
+  })
+
+  /** 分けるのは持ち主ではなく支配者である（同 8-2）。食い違えば支配者に従う。 */
+  it('持ち主と支配者が食い違えば、支配者に従う', () => {
+    const taken = instance('とられた1枚', '後攻', { controller: '先攻' })
+    const view = boardView(withSquare(emptyBoard('先攻'), { row: 1, column: 1 }, [taken]))
+    const [card] = view.squares[1]?.[1]?.cards ?? []
+
+    expect(card).toMatchObject({ controlledBy: '自分' })
   })
 })
 
