@@ -151,6 +151,35 @@ describe('選ぶ候補', () => {
     ])
   })
 
+  /**
+   * バンクの能力はカードではないので、**どのカードから出た能力か**で指す（総合ルール 第2部
+   * 第21章 11-3）。裏向きのカードと同じ出し方にすると、何を選んでいるのか分からない。
+   */
+  it('能力の候補には、発生源のカードが出る', () => {
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: '解決する能力',
+      mayDecline: false,
+      answered: 0,
+      candidates: [{ kind: '能力', source: 'スクエアの1枚' }],
+    }
+
+    expect(choiceView(board(), choice).candidates[0]?.label).toBe('1 番目: テスト・盤上の戦士 の能力')
+  })
+
+  /** 作成された誘発型能力は発生源のカードを持たない（`duel.ts` の `CreatedAbilityInstance`）。 */
+  it('発生源を持たない能力は、位置で示される', () => {
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: '解決する能力',
+      mayDecline: false,
+      answered: 0,
+      candidates: [{ kind: '能力', source: undefined }],
+    }
+
+    expect(choiceView(board(), choice).candidates[0]?.label).toBe('1 番目（発生源のない能力）')
+  })
+
   it('見えている候補には、どのカードかが出る', () => {
     const choice: WireChoice = {
       player: '先攻',

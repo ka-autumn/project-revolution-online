@@ -298,25 +298,42 @@ describe('行動する', () => {
 /**
  * メインフェイズまで進めて、アクティブプレイヤーにプランさせたところ。
  *
- * プランするコストはエネルギーかスマッシュを 1 枚フリーズすることなので（総合ルール 第3部
- * 第8章 2-3）、その前にエネルギーフェイズで手札を 1 枚エネルギーゾーンに置いておく（同 第7章 2）。
+ * プランするコストはエネルギーかスマッシュを 1 枚フリーズすることである（総合ルール 第3部
+ * 第8章 2-3）。**フリーズできるカードが 2 枚以上ないと選択にならない**（候補が 1 つで選ばない
+ * ことも選べないなら聞かれない、`protocol.ts` の `applyWithAnswers`）ので、エネルギーが 2 枚
+ * 貯まるまでターンを進める。エネルギーは 1 ターンに 1 枚しか置けない（同 第7章 1）ため、同じ
+ * プレイヤーのエネルギーフェイズを 2 度通すことになる。
  */
 function planning(): { readonly outcome: RoomOutcome; readonly acting: ParticipantId } {
-  const inEnergyPhase = readyToAct(passUntil(started(), 'エネルギーフェイズ'))
-  const board = boardOf(inEnergyPhase.deliveries, 'あ')
+  let current = started()
+  for (let turns = 0; turns < 8; turns += 1) {
+    current = placeEnergy(readyToAct(passUntil(current, 'エネルギーフェイズ')))
+
+    const inMainPhase = readyToAct(passUntil(current, 'メインフェイズ'))
+    const board = boardOf(inMainPhase.deliveries, 'あ')
+    const acting = participantAt(board.turn.active, board.viewer)
+    if (boardOf(inMainPhase.deliveries, acting).zones[board.turn.active].エネルギーゾーン.length >= 2) {
+      return {
+        outcome: send(inMainPhase.rooms, acting, { kind: '行動する', action: { kind: 'プランする' } }),
+        acting,
+      }
+    }
+    current = inMainPhase
+  }
+  throw new Error('エネルギーが 2 枚あるメインフェイズに届かなかった')
+}
+
+/** アクティブプレイヤーが手札を 1 枚エネルギーゾーンに置く（総合ルール 第3部 第7章 1）。 */
+function placeEnergy(outcome: RoomOutcome): RoomOutcome {
+  const board = boardOf(outcome.deliveries, 'あ')
   const acting = participantAt(board.turn.active, board.viewer)
-  const [inHand] = boardOf(inEnergyPhase.deliveries, acting).zones[board.turn.active].手札
+  const [inHand] = boardOf(outcome.deliveries, acting).zones[board.turn.active].手札
   if (inHand?.kind !== '見えている') throw new Error('自分の手札は見えているはずだった')
 
-  const placed = send(inEnergyPhase.rooms, acting, {
+  return send(outcome.rooms, acting, {
     kind: '行動する',
     action: { kind: 'エネルギーを置く', card: inHand.instance.id },
   })
-  const inMainPhase = readyToAct(passUntil(placed, 'メインフェイズ'))
-  return {
-    outcome: send(inMainPhase.rooms, acting, { kind: '行動する', action: { kind: 'プランする' } }),
-    acting,
-  }
 }
 
 /**

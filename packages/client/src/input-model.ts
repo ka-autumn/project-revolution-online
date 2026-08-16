@@ -118,10 +118,22 @@ export function automaticAction(session: Session): LegalAction | undefined {
  * **見えないものもそのまま候補になる。** プランのコストとして自分の裏向きのスマッシュを
  * フリーズできる（総合ルール 第2部 第21章 7-5）が、スマッシュはどちらのプレイヤーにも
  * 見えない（同 7-3）。何であるかを出せないので、**位置で示す**。
+ *
+ * 能力は、どのカードから出たかで指す。何をする能力かは出せない（効果は関数なので通信に
+ * 載らない）。発生源を持たない能力（作成された誘発型能力）もあるので、その時は位置だけになる。
  */
 function candidateLabel(candidate: WireCandidate, index: number, names: ReadonlyMap<CardId, string>): string {
   const position = `${index + 1} 番目`
-  return candidate.kind === '見えている' ? `${position}: ${nameOf(names, candidate.card)}` : `${position}（裏向き）`
+  switch (candidate.kind) {
+    case '見えている':
+      return `${position}: ${nameOf(names, candidate.card)}`
+    case '能力':
+      return candidate.source === undefined
+        ? `${position}（発生源のない能力）`
+        : `${position}: ${nameOf(names, candidate.source)} の能力`
+    case '見えていない':
+      return `${position}（裏向き）`
+  }
 }
 
 /**

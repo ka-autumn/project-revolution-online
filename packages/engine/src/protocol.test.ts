@@ -12,8 +12,9 @@ import {
   passPriority,
   planReplacing,
   putOnSquare,
+  triggeredAbility,
 } from './index.js'
-import type { ActionProgress, CardInstance, Chooser, DuelState, LegalAction, Phase } from './index.js'
+import type { ActionProgress, CardInstance, Chooser, DuelState, LegalAction, Phase, Square } from './index.js'
 
 /** 選択を求められたら常に最初の候補を選ぶ。盤面を進めるためだけに使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -169,14 +170,19 @@ describe('1 つの行動で 2 回選ぶ', () => {
     abilities: [planReplacing((each) => each.attributes.includes('目印'))],
   })
 
-  /** コストのエネルギーが 1 枚あり、置換効果を持つユニットがスクエアにいる盤面。 */
+  /**
+   * コストのエネルギーが 2 枚あり、置換効果を持つユニットがスクエアにいる盤面。
+   *
+   * エネルギーを 2 枚置いているのは、**1 枚では選択にならない**ためである。候補が 1 つで
+   * 選ばないことも選べないなら聞かれない（`applyWithAnswers`）。
+   */
   function withReplacement(): DuelState {
     const placed = putOnSquare(
       phaseReadyToAct('メインフェイズ'),
       { row: 0, column: 1 },
       instantiate({ id: '置換するユニット', card: replacing, owner: '先攻' }),
     )
-    return putInZone(placed, '先攻', 'エネルギーゾーン', [card('エネ')])
+    return putInZone(placed, '先攻', 'エネルギーゾーン', [card('エネ1'), card('エネ2')])
   }
 
   it('1 回目に答えると、2 回目を尋ねてくる', () => {
@@ -187,12 +193,18 @@ describe('1 つの行動で 2 回選ぶ', () => {
     expect(progress.choice.mayDecline).toBe(true)
   })
 
-  // 候補が能力なので、カードを指していない。番号だけで選ぶことになる（`WireCandidate`）。
-  it('カードを指していない候補は、見えていないものとして並ぶ', () => {
+  /**
+   * 候補は能力であってカードではない。
+   *
+   * 置換効果は常在型能力なので、発生源のカードを覚えていない（`action.ts` の
+   * `chosenPlanReplacement` は能力だけを集める）。裏向きのカードと同じ扱いにはせず、
+   * 能力として並べる。
+   */
+  it('置換効果の候補は、発生源のない能力として並ぶ', () => {
     const progress = applyWithAnswers(withReplacement(), PLANNING, [0])
 
     expectChoice(progress)
-    expect(progress.choice.candidates).toEqual([{ kind: '見えていない' }])
+    expect(progress.choice.candidates).toEqual([{ kind: '能力', source: undefined }])
   })
 
   it('2 回目に選ばないと答えると、行動が終わる', () => {
@@ -216,6 +228,142 @@ describe('1 つの行動で 2 回選ぶ', () => {
     expectChoice(second)
     expect(first.choice.purpose).toBe('プランのコスト')
     expect(second.choice.purpose).toBe('プランの置き換え')
+  })
+})
+
+/**
+ * #14。**選ぶ余地が無いなら聞かない。**
+ *
+ * 候補が 1 つで、選ばないことも選べないなら、答えは 1 通りしかない。押させても盤面は同じ
+ * ところへ進むので、押させない。
+ */
+describe('選ぶ余地が無い選択', () => {
+  /** フリーズできるカードが 1 枚しかない盤面。プランのコストに選ぶ余地が無い。 */
+  function oneEnergyOnly(): DuelState {
+    return putInZone(phaseReadyToAct('メインフェイズ'), '先攻', 'エネルギーゾーン', [card('ただ 1 枚のエネ')])
+  }
+
+  it('候補が 1 つなら聞かずに進む', () => {
+    const progress = applyWithAnswers(oneEnergyOnly(), PLANNING, [])
+
+    expectAdvanced(progress)
+    expect(cardsIn(progress.state, '先攻', 'プランゾーン')).toHaveLength(1)
+  })
+
+  /** 聞かなかったぶんは答えとして数えない。答えの並びは実際に選んだものだけになる。 */
+  it('聞かなかった選択は、答えを消費しない', () => {
+    const progress = applyWithAnswers(oneEnergyOnly(), PLANNING, [])
+
+    expectAdvanced(progress)
+    // 候補が 1 つのエネルギーがフリーズされている（総合ルール 第2部 第24章 1）。
+    expect(cardsIn(progress.state, '先攻', 'エネルギーゾーン')[0]?.orientation).toBe('フリーズ')
+  })
+
+  /** 候補が 2 つ以上あれば聞く。選ぶ余地があるかどうかだけで決まる。 */
+  it('候補が 2 つあれば聞く', () => {
+    const progress = applyWithAnswers(beforePlanning(), PLANNING, [])
+
+    expectChoice(progress)
+    expect(progress.choice.candidates.length).toBeGreaterThan(1)
+  })
+
+  /**
+   * 候補が 1 つでも、選ばないことを選べるなら聞く。
+   *
+   * 「かわりに〜してよい」は、適用するかしないかの 2 通りである（総合ルール 第4部 第13章）。
+   */
+  it('選ばないことを選べるなら、候補が 1 つでも聞く', () => {
+    const replacing = defineUnit({
+      name: 'テスト・プランの置換',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [planReplacing((each) => each.attributes.includes('目印'))],
+    })
+    const placed = putOnSquare(
+      phaseReadyToAct('メインフェイズ'),
+      { row: 0, column: 1 },
+      instantiate({ id: '置換するユニット', card: replacing, owner: '先攻' }),
+    )
+    const state = putInZone(placed, '先攻', 'エネルギーゾーン', [card('ただ 1 枚のエネ')])
+
+    // コストは聞かれずに払われ、置換するかどうかだけを聞かれる。
+    const progress = applyWithAnswers(state, PLANNING, [])
+
+    expectChoice(progress)
+    expect(progress.choice.purpose).toBe('プランの置き換え')
+  })
+})
+
+/**
+ * #14。バンクから解決する能力を選ぶ（総合ルール 第2部 第21章 11-3）。
+ *
+ * 候補はカードではなく能力である。**どのカードから出た能力かまでは見せられる**ので、裏向きの
+ * カードと同じ扱いにはしない。
+ */
+describe('バンクの能力を選ぶ', () => {
+  const source = defineUnit({
+    name: 'テスト・誘発するユニット',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [triggeredAbility('登場した時', function* () {})],
+  })
+
+  /** スクエアにいるユニット 2 体の能力が、バンクで解決を待っている盤面。 */
+  function waitingInBank(): DuelState {
+    const squares: readonly (readonly [string, Square])[] = [
+      ['誘発したユニットA', { row: 0, column: 0 }],
+      ['誘発したユニットB', { row: 0, column: 2 }],
+    ]
+    const placed = squares.reduce(
+      (state, [id, square]) => putOnSquare(state, square, instantiate({ id, card: source, owner: '先攻' })),
+      phaseReadyToAct('メインフェイズ'),
+    )
+    const [triggered] = source.abilities
+    if (triggered?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
+
+    return {
+      ...placed,
+      bank: squares.map(([id, square]) => ({
+        ability: triggered,
+        source: id,
+        controller: '先攻' as const,
+        self: { id, square, card: source, controller: '先攻' as const },
+      })),
+    }
+  }
+
+  const PASS: LegalAction = { kind: '優先権を放棄する' }
+
+  it('どのカードから出た能力かが分かる', () => {
+    const progress = applyWithAnswers(waitingInBank(), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.purpose).toBe('解決する能力')
+    expect(progress.choice.candidates).toEqual([
+      { kind: '能力', source: '誘発したユニットA' },
+      { kind: '能力', source: '誘発したユニットB' },
+    ])
+  })
+
+  /** 発生源はスクエアにいるので公開情報である（総合ルール 第2部 第23章 1-1）。 */
+  it('裏向きのカードとしては並ばない', () => {
+    const progress = applyWithAnswers(waitingInBank(), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.candidates.some((candidate) => candidate.kind === '見えていない')).toBe(false)
+  })
+
+  /** 1 つしか無ければ選ぶ余地が無いので、聞かずに解決する。 */
+  it('バンクに 1 つしか無ければ聞かない', () => {
+    const only = waitingInBank()
+    const progress = applyWithAnswers({ ...only, bank: only.bank.slice(0, 1) }, PASS, [])
+
+    expectAdvanced(progress)
+    expect(progress.state.bank).toHaveLength(0)
   })
 })
 
