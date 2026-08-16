@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { choose, defineStrategy, defineUnit } from '@revolution/engine'
+import { CONSTRUCTED_DECK_MINIMUM, choose, defineStrategy, defineUnit, drawCards } from '@revolution/engine'
 import type { Card, Deck, FromClient, LegalAction, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
 import { emptyRooms, receive } from './room.js'
 import type { Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
@@ -45,15 +45,40 @@ function buildDeck(): Deck {
 
 const SETUP: RoomSetup = { decks: [buildDeck(), buildDeck()], seed: 20260816 }
 
+/**
+ * 引くだけで山札を空にするストラテジー。**支配者が自分で負ける**（総合ルール 第3部 第3章 2）。
+ *
+ * 決着した部屋を作るために要る。部屋はメッセージだけで動かすので、終わった盤面を外から差し込む
+ * 手立てが無い。誰が勝つかはここで確かめたいことではなく、部屋が終わっていることだけが要る。
+ */
+const DECKOUT_NAME = 'テスト・部屋の引き切り'
+
+const DECKOUT: Card = defineStrategy({
+  name: DECKOUT_NAME,
+  level: 0,
+  effect: function* (duel) {
+    yield* drawCards(duel.controller, CONSTRUCTED_DECK_MINIMUM)
+  },
+})
+
+/** 2 度選ばせるストラテジーを、引き切るストラテジーに差し替えたデッキ。ほかは同じ。 */
+function buildEndingDeck(): Deck {
+  return Object.entries(CARDS).flatMap(([id, card]) =>
+    Array.from({ length: 4 }, () => (id === 'TEST-S' ? DECKOUT : card)),
+  )
+}
+
+const ENDING_SETUP: RoomSetup = { decks: [buildEndingDeck(), buildEndingDeck()], seed: 20260816 }
+
 const CODE = 'あいことば'
 
 /** 優先権を放棄する。部屋を進めるのに何度も送る。 */
 const PASS: FromClient = { kind: '行動する', action: { kind: '優先権を放棄する' } }
 
 /** 2 人が入って、デュエルが始まったところ。 */
-function started(): RoomOutcome {
-  const first = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP)
-  return receive(first.rooms, 'い', { kind: '部屋に入る', room: CODE }, SETUP)
+function started(setup: RoomSetup = SETUP): RoomOutcome {
+  const first = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, setup)
+  return receive(first.rooms, 'い', { kind: '部屋に入る', room: CODE }, setup)
 }
 
 /** その参加者に届いたメッセージ。 */
@@ -348,9 +373,7 @@ function choosingTwice(): { readonly outcome: RoomOutcome; readonly acting: Part
   for (let steps = 0; steps < 300; steps += 1) {
     const board = boardOf(current.deliveries, 'あ')
     const acting = participantAt(board.turn.priority, board.viewer)
-    const play = actionsOf(current.deliveries, acting).find(
-      (action) => action.kind === 'カードをプレイする' && action.declaration.card === strategyInHand(current, acting),
-    )
+    const play = playFromHand(current, acting, STRATEGY_NAME)
     if (play !== undefined) return { outcome: send(current.rooms, acting, { kind: '行動する', action: play }), acting }
 
     current = readyToAct(answerAll(send(current.rooms, acting, PASS)))
@@ -358,14 +381,47 @@ function choosingTwice(): { readonly outcome: RoomOutcome; readonly acting: Part
   throw new Error('2 度選ばせる行動に届かなかった')
 }
 
-/** その参加者の手札にあるストラテジーの識別子。持っていなければ `undefined`。 */
-function strategyInHand(outcome: RoomOutcome, participant: ParticipantId): string | undefined {
+/** その参加者が、その名前のカードを手札からプレイする手。行えなければ `undefined`。 */
+function playFromHand(outcome: RoomOutcome, participant: ParticipantId, name: string): LegalAction | undefined {
+  const inHand = cardInHand(outcome, participant, name)
+
+  return actionsOf(outcome.deliveries, participant).find(
+    (action) => action.kind === 'カードをプレイする' && action.declaration.card === inHand,
+  )
+}
+
+/** その参加者の手札にある、その名前のカードの識別子。持っていなければ `undefined`。 */
+function cardInHand(outcome: RoomOutcome, participant: ParticipantId, name: string): string | undefined {
   const board = boardOf(outcome.deliveries, participant)
   const found = board.zones[board.viewer].手札.find(
-    (card) => card.kind === '見えている' && card.instance.card.name === STRATEGY_NAME,
+    (card) => card.kind === '見えている' && card.instance.card.name === name,
   )
 
   return found?.kind === '見えている' ? found.instance.id : undefined
+}
+
+/**
+ * 決着するまで進めた部屋（#92）。
+ *
+ * 山札を引き切るストラテジーを持っているほうが、自分のメインフェイズにプレイできるまで放棄で
+ * 進める。どちらが先に引くかはシードで決まるので、席を決め打ちにせず、持っているほうを探す。
+ */
+function ended(): RoomOutcome {
+  let current = readyToAct(passUntil(started(ENDING_SETUP), 'メインフェイズ'))
+  for (let steps = 0; steps < 300; steps += 1) {
+    const board = boardOf(current.deliveries, 'あ')
+    const acting = participantAt(board.turn.priority, board.viewer)
+    const play = playFromHand(current, acting, DECKOUT_NAME)
+    if (play !== undefined) {
+      const over = answerAll(send(current.rooms, acting, { kind: '行動する', action: play }))
+      if (boardOf(over.deliveries, 'あ').result === undefined) throw new Error('決着したはずだった')
+
+      return over
+    }
+
+    current = readyToAct(answerAll(send(current.rooms, acting, PASS)))
+  }
+  throw new Error('決着に届かなかった')
 }
 
 // ADR-0008。選択は候補の番号で答え、行動はやり直して適用する。
@@ -591,10 +647,83 @@ describe('入り直す', () => {
 
     expect(again.deliveries).toEqual([{ to: 'あ', message: { kind: '相手を待っている' } }])
   })
+})
 
-  it('別のルームコードには移れない', () => {
-    const again = send(started().rooms, 'あ', { kind: '部屋に入る', room: 'べつのあいことば' })
+/**
+ * #92。対戦を 1 回終えたら、同じ名乗りのまま別の部屋に入れる。
+ *
+ * 切断では部屋から抜けない（ADR-0009）ので、意図して抜ける口が別に要る。違う合言葉で入り直す
+ * ことがそれにあたり、**打っている途中の部屋だけは抜けられない**。
+ */
+describe('別の部屋に移る', () => {
+  const OTHER = 'べつのあいことば'
+
+  it('決着した部屋にいた人は、別の部屋に入れる', () => {
+    const moved = send(ended().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+
+    expect(to(moved.deliveries, 'あ')).toEqual([{ kind: '相手を待っている' }])
+  })
+
+  it('決着した部屋にいた 2 人が移ると、そこでまた始まる', () => {
+    const first = send(ended().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+
+    const again = send(first.rooms, 'い', { kind: '部屋に入る', room: OTHER })
+
+    expect([seatOf(again.deliveries, 'あ'), seatOf(again.deliveries, 'い')].sort()).toEqual(['先攻', '後攻'])
+  })
+
+  it('相手を待っているだけの人は、別の部屋に入れる', () => {
+    const waiting = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP)
+
+    const moved = send(waiting.rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+
+    expect(to(moved.deliveries, 'あ')).toEqual([{ kind: '相手を待っている' }])
+    expect([...moved.rooms.keys()]).toEqual([OTHER])
+  })
+
+  /** 合言葉の打ち間違いで、打っている途中の対戦が消えてはならない。 */
+  it('打っている途中なら移れない', () => {
+    const again = send(started().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
 
     expect(to(again.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: 'ほかの部屋にいる' }])
+  })
+
+  it('誰もいなくなった部屋は残らない', () => {
+    const first = send(ended().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+
+    const second = send(first.rooms, 'い', { kind: '部屋に入る', room: OTHER })
+
+    expect([...second.rooms.keys()]).toEqual([OTHER])
+  })
+
+  /** 片方が残っているなら、その人はまだ終わった盤面を見に入り直せる（ADR-0009）。 */
+  it('片方が残っている間は、部屋も残る', () => {
+    const moved = send(ended().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+
+    const again = send(moved.rooms, 'い', { kind: '部屋に入る', room: CODE })
+
+    expect([...moved.rooms.keys()].sort()).toEqual([CODE, OTHER].sort())
+    expect(boardOf(again.deliveries, 'い').result).toBeDefined()
+  })
+
+  /** 席が 1 つ空いたように見えても、そこは始まっているデュエルの部屋である。 */
+  it('決着した部屋に、席に着いていない人は入れない', () => {
+    const moved = send(ended().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+
+    const outsider = send(moved.rooms, 'う', { kind: '部屋に入る', room: CODE })
+
+    expect(to(outsider.deliveries, 'う')).toEqual([{ kind: '行えなかった', reason: '対戦が終わっている部屋' }])
+  })
+
+  /** 入れなかった時に抜けたことにすると、どこにもいない参加者ができてしまう。 */
+  it('移れなかったときは、元の部屋にいるまま', () => {
+    const over = ended()
+    const opened = receive(over.rooms, 'う', { kind: '部屋に入る', room: OTHER }, SETUP)
+    const full = receive(opened.rooms, 'え', { kind: '部屋に入る', room: OTHER }, SETUP)
+
+    const refused = send(full.rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+
+    expect(to(refused.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '部屋がいっぱい' }])
+    expect(refused.rooms).toEqual(full.rooms)
   })
 })

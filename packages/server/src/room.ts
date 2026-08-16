@@ -1,5 +1,6 @@
 import {
   applyWithAnswers,
+  hasEnded,
   legalActions,
   perspectiveOf,
   prepareDuel,
@@ -119,6 +120,33 @@ function withRoom(rooms: Rooms, room: Room): Rooms {
   return new Map([...rooms, [room.code, room]])
 }
 
+/**
+ * その部屋から 1 人を抜けさせる。誰もいなくなった部屋は取り除く。
+ *
+ * 席の並び（`duel.seats`）からは抜かない。**抜けられるのは終わったデュエルの部屋だけ**であり、
+ * 終わった盤面はもう動かない（総合ルール 第3部 第3章 3）ので、誰がどちらの席にいたかは
+ * そのまま残しておいてよい。残ったほうが入り直せば、同じ席で終わった盤面を見られる。
+ */
+function withoutParticipant(rooms: Rooms, room: Room, participant: ParticipantId): Rooms {
+  const remaining = room.participants.filter((each) => each !== participant)
+  const next = new Map(rooms)
+  if (remaining.length === 0) next.delete(room.code)
+  else next.set(room.code, { ...room, participants: remaining })
+
+  return next
+}
+
+/**
+ * その部屋を抜けて、別の部屋に移れるか（#92）。
+ *
+ * 移れるのは、まだ相手を待っているだけの部屋と、決着した部屋である。**打っている途中の部屋は
+ * 抜けられない。** 合言葉を打ち間違えただけで対戦が消えることになるためである。意図して
+ * 投げ出す経路は、席をどう扱うかを決めてから別に足す。
+ */
+function canLeave(room: Room): boolean {
+  return room.duel === undefined || hasEnded(room.duel.state)
+}
+
 /** その参加者がいる部屋。どこにもいなければ `undefined`。 */
 function roomOf(rooms: Rooms, participant: ParticipantId): Room | undefined {
   return [...rooms.values()].find((room) => room.participants.includes(participant))
@@ -132,20 +160,24 @@ function roomOf(rooms: Rooms, participant: ParticipantId): Room | undefined {
  *
  * すでにその部屋にいる参加者が入り直した場合は、**再入場として扱う**（ADR-0009）。接続が
  * 切れて繋ぎ直した場合がこれにあたる。
+ *
+ * 違う合言葉が来た場合は、抜けてよい部屋にいるなら移る（#92）。**入れなかった場合は元の部屋に
+ * いるまま**にする。移れないことが分かった時点で抜けたことにすると、どこにもいない参加者が
+ * できてしまう。
  */
 function enter(rooms: Rooms, participant: ParticipantId, code: RoomCode, setup: RoomSetup): RoomOutcome {
   const current = roomOf(rooms, participant)
   if (current !== undefined) {
-    if (current.code !== code) return refuse(rooms, participant, 'ほかの部屋にいる')
-
-    return rejoin(rooms, current, participant)
+    if (current.code === code) return rejoin(rooms, current, participant)
+    if (!canLeave(current)) return refuse(rooms, participant, 'ほかの部屋にいる')
   }
+  const left = current === undefined ? rooms : withoutParticipant(rooms, current, participant)
 
-  const room = rooms.get(code)
+  const room = left.get(code)
   if (room === undefined) {
     const opened: Room = { code, participants: [participant], duel: undefined }
     return {
-      rooms: withRoom(rooms, opened),
+      rooms: withRoom(left, opened),
       deliveries: [{ to: participant, message: { kind: '相手を待っている' } }],
     }
   }
@@ -153,8 +185,13 @@ function enter(rooms: Rooms, participant: ParticipantId, code: RoomCode, setup: 
   if (waiting === undefined || room.participants.length >= 2) {
     return refuse(rooms, participant, '部屋がいっぱい')
   }
+  // 決着した部屋から片方だけが抜けると、デュエルを持ったまま 1 人になった部屋が残る。そこへ
+  // 席に着いていない人を入れると、始まっているデュエルを上書きしてしまう。
+  if (room.duel !== undefined) {
+    return refuse(rooms, participant, '対戦が終わっている部屋')
+  }
 
-  return start(rooms, room, waiting, participant, setup)
+  return start(left, room, waiting, participant, setup)
 }
 
 /**
