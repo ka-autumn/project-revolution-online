@@ -6,9 +6,12 @@
 //
 //     pnpm serve --decks ../revolution-decks/index.ts
 //
-// 渡すモジュールは、カードのまとまり 2 つを `sets` として export する。
+// 渡すモジュールは、デッキ 2 つを `decks` として export する。デッキはただのカードの並びなので、
+// **何をどの枚数入れるかは渡す側が決める。** セット全部を 1 種 3 枚ずつ入れたいだけなら
+// `buildDeck` を通せばよい。
 //
-//     export const sets = [TRIAL_DECK_F, TRIAL_DECK_G]
+//     import { buildDeck } from '@revolution/server'
+//     export const decks = [buildDeck(TRIAL_DECK_F), buildDeck(TRIAL_DECK_G)]
 //
 // 束ねてから走らせるのは、node が `.js` で終わる import を `.ts` に読み替えないためである
 // （リポジトリ全体がその書き方をしている）。エンジンを検証するところ（`verify-engine.mjs`）と
@@ -49,7 +52,7 @@ function options(argv) {
 
   const decks = read('decks')
   if (decks === undefined || decks === '') {
-    throw new Error('--decks <モジュールのパス> が要ります。カードのまとまり 2 つを `sets` として export するモジュールを指してください')
+    throw new Error('--decks <モジュールのパス> が要ります。デッキ 2 つを `decks` として export するモジュールを指してください')
   }
 
   return { decks, port: Number(read('port') ?? process.env.PORT ?? DEFAULT_PORT) }
@@ -63,16 +66,16 @@ function options(argv) {
  */
 function entryPoint(decksModule, port) {
   return `
-import { checkDecks, serve, setupFromSets } from ${JSON.stringify(serverEntry)}
-import { sets } from ${JSON.stringify(specifier(decksModule))}
+import { checkDecks, serve, setupFromDecks } from ${JSON.stringify(serverEntry)}
+import { decks } from ${JSON.stringify(specifier(decksModule))}
 
-if (!Array.isArray(sets) || sets.length !== 2) {
-  console.error('渡されたモジュールは、カードのまとまり 2 つを sets として export していません')
+if (!Array.isArray(decks) || decks.length !== 2 || !decks.every(Array.isArray)) {
+  console.error('渡されたモジュールは、デッキ 2 つを decks として export していません')
   process.exit(1)
 }
 
-const setup = setupFromSets(sets)
-const violations = checkDecks(setup().decks)
+const setup = setupFromDecks(decks)
+const violations = checkDecks(decks)
 if (violations.length > 0) {
   console.error('デッキが構築戦の規定を満たしていません:')
   for (const { seat, violation } of violations) console.error(\`  \${seat + 1} 人目: \${JSON.stringify(violation)}\`)

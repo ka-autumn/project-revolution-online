@@ -43,8 +43,11 @@ pnpm serve --decks packages/decks/src/index.ts   # 対戦サーバ（既定で 8
 pnpm --filter @revolution/client dev             # 対戦画面（既定で 5173 番）
 ```
 
-`--decks` に渡すのは、カードのまとまり 2 つを `sets` として export するモジュールである。
+`--decks` に渡すのは、デッキ 2 つを `decks` として export するモジュールである。
 **このリポジトリはどのカードを使うかを知らない**（ADR-0002）ので、実行時に受け取る。
+
+デッキはただのカードの並びなので、何をどの枚数入れるかは渡す側が決める。セット全部を
+1 種 3 枚ずつ積みたいだけなら `buildDeck`（`@revolution/server`）を通せばよい。
 
 ブラウザ 2 つで、同じ部屋の合言葉・違う名乗りで開く。
 

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { CONSTRUCTED_DECK_MINIMUM, defineUnit } from '@revolution/engine'
 import type { Card } from '@revolution/engine'
-import { COPIES_PER_CARD, buildDeck, checkDecks, setupFromSets } from './deck.js'
+import { COPIES_PER_CARD, buildDeck, checkDecks, setupFromDecks } from './deck.js'
 import type { CardSet } from './deck.js'
+import type { Deck } from '@revolution/engine'
 
 /**
  * カードのまとまりからデッキを組むところ（#105）。
@@ -72,14 +73,12 @@ describe('デッキの不備を確かめる', () => {
 })
 
 describe('部屋に渡すもの', () => {
-  const sets: readonly [CardSet, CardSet] = [TWENTY, setOf('相手', 20)]
+  const decks: readonly [Deck, Deck] = [buildDeck(TWENTY), buildDeck(setOf('相手', 20))]
 
-  it('2 人分のデッキを渡す', () => {
-    const setup = setupFromSets(sets)()
+  it('渡されたデッキをそのまま渡す', () => {
+    const setup = setupFromDecks(decks)()
 
-    expect(setup.decks).toHaveLength(2)
-    expect(setup.decks[0]).toHaveLength(CONSTRUCTED_DECK_MINIMUM)
-    expect(setup.decks[1]).toHaveLength(CONSTRUCTED_DECK_MINIMUM)
+    expect(setup.decks).toBe(decks)
   })
 
   /**
@@ -87,16 +86,27 @@ describe('部屋に渡すもの', () => {
    * なる。**たまたま同じ値が 2 回続くことはありうる**ので、何度か引いて 1 つでも違えばよい。
    */
   it('呼ぶたびにシードが変わる', () => {
-    const setup = setupFromSets(sets)
+    const setup = setupFromDecks(decks)
     const seeds = new Set(Array.from({ length: 20 }, () => setup().seed))
 
     expect(seeds.size).toBeGreaterThan(1)
   })
 
-  /** デッキは組み直さない。カードの実装は使い回してよい値である。 */
-  it('デッキは組み直さない', () => {
-    const setup = setupFromSets(sets)
+  /**
+   * **セットを通さなくてよい。** デッキはただのカードの並びなので、枚数を変えたデッキも
+   * そのまま渡せる。総合ルール 第3部 第1章 3-1 は同名 4 枚までなので、4 枚積みも規定の内側。
+   */
+  it('セットを通さずに組んだデッキも渡せる', () => {
+    const [four, two] = [Object.values(TWENTY)[0] as Card, Object.values(TWENTY)[1] as Card]
+    const handmade: Deck = [
+      ...Array.from({ length: 4 }, () => four),
+      ...Array.from({ length: 2 }, () => two),
+      ...buildDeck(setOf('のこり', 18)),
+    ]
 
-    expect(setup().decks).toBe(setup().decks)
+    const setup = setupFromDecks([handmade, buildDeck(TWENTY)])()
+
+    expect(setup.decks[0]).toHaveLength(4 + 2 + 18 * COPIES_PER_CARD)
+    expect(checkDecks([setup.decks[0]])).toEqual([])
   })
 })
