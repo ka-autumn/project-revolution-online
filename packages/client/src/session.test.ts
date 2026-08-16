@@ -78,6 +78,23 @@ describe('届いたものを畳む', () => {
     expect(stage.choice).toEqual(CHOICE)
   })
 
+  /**
+   * 選んでいる間は行えることが無い。サーバも `選ぶのを待っている` として断る（`room.ts` の
+   * `act`）ので、1 つ前の盤面と一緒に届いた手を並べ続けてはならない（#14 の完了条件）。
+   */
+  it('選んでほしいと言われたら、行える手は消える', () => {
+    const acting = fold(SEATED, {
+      kind: '盤面',
+      perspective: board(1),
+      actions: [{ kind: '優先権を放棄する' }],
+    })
+
+    const stage = applyMessage(acting, { kind: '選んでほしい', choice: CHOICE }).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.actions).toEqual([])
+  })
+
   /** 選び終われば盤面が動く。答えるものはもう無い。 */
   it('盤面が届いたら、選ぶことは終わっている', () => {
     const stage = fold(SEATED, { kind: '選んでほしい', choice: CHOICE }, {

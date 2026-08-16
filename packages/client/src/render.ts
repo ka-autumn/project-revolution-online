@@ -1,3 +1,5 @@
+import type { ChoiceAnswer, LegalAction } from '@revolution/engine'
+import type { ActionView, ChoiceView } from './input-model.js'
 import type { BoardView, CardView, SideView, SquareView, ZoneView } from './view-model.js'
 
 /**
@@ -66,6 +68,46 @@ function squaresElement(rows: BoardView['squares']): HTMLElement {
     for (const square of row) line.append(squareElement(square))
     node.append(line)
   }
+
+  return node
+}
+
+function button(label: string, onPress: () => void): HTMLElement {
+  const node = element('button', 'choice__button', label)
+  node.addEventListener('click', onPress)
+
+  return node
+}
+
+/**
+ * 行える手を並べる。
+ *
+ * 並べるのは届いたものだけである。**押せない手は画面に出ない**（ADR-0010）。
+ */
+export function actionsElement(views: readonly ActionView[], onAction: (action: LegalAction) => void): HTMLElement {
+  const node = element('section', 'actions')
+  node.append(element('h2', 'actions__title', '行える手'))
+  if (views.length === 0) {
+    node.append(element('p', 'actions__none', 'いまは行えることがありません'))
+    return node
+  }
+
+  const list = element('div', 'actions__list')
+  for (const view of views) list.append(button(view.label, () => onAction(view.action)))
+  node.append(list)
+
+  return node
+}
+
+/** 選ぶ候補を並べる。答えるのは番号である（ADR-0008）。 */
+export function choiceElement(view: ChoiceView, onAnswer: (answer: ChoiceAnswer) => void): HTMLElement {
+  const node = element('section', 'choice')
+  node.append(element('h2', 'choice__title', '選んでください'))
+
+  const list = element('div', 'choice__list')
+  for (const candidate of view.candidates) list.append(button(candidate.label, () => onAnswer(candidate.index)))
+  if (view.mayDecline) list.append(button('選ばない', () => onAnswer('選ばない')))
+  node.append(list)
 
   return node
 }

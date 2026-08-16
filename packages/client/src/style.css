@@ -128,3 +128,39 @@ body {
 .card__damage {
   color: #b00;
 }
+
+/* 行える手と選ぶ候補。並べるのは届いたものだけ（ADR-0010）。 */
+.actions,
+.choice {
+  margin: calc(var(--gap) * 2) 0;
+  padding: var(--gap);
+  border: 1px solid var(--line);
+}
+
+.actions__title,
+.choice__title {
+  margin: 0 0 var(--gap);
+  font-size: 1rem;
+}
+
+.actions__none {
+  margin: 0;
+  color: #666;
+}
+
+.actions__list,
+.choice__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
+.choice__button {
+  padding: 4px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.choice {
+  border-color: var(--own);
+}

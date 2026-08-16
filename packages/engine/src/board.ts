@@ -87,6 +87,17 @@ export function areaOf(player: Player, square: Square): Area {
   return square.row === home ? '味方エリア' : '敵エリア'
 }
 
+/**
+ * そのプレイヤーから見た、そのスクエアのあるライン（総合ルール 第2部 第22章 4）。
+ *
+ * あるプレイヤーの右ラインは相手の左ラインになるため、同じスクエアでも見るプレイヤーによって
+ * 答えが変わる（`areaOf` の行の扱いと同じ）。どちらから見た呼び名かは、ルールならそのルールに
+ * 従って行動するプレイヤー、カードや能力ならその支配者で決まる（同 4-1）。
+ */
+export function lineOf(player: Player, square: Square): Line {
+  return LINES[squareFromView(player, square).column]
+}
+
 /** 盤面の反対側の行または列。 */
 function oppositeIndex(index: SquareIndex): SquareIndex {
   return index === 0 ? 2 : index === 2 ? 0 : 1

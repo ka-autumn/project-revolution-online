@@ -83,7 +83,9 @@ export function applyMessage(session: Session, message: ToClient): Session {
     case '選んでほしい':
       if (stage.kind !== '打っている') return session
 
-      return { stage: { ...stage, choice: message.choice }, refusal: undefined }
+      // 選んでいる間は行えることが無い。サーバも `選ぶのを待っている` として断る（`room.ts` の
+      // `act`）ので、1 つ前の盤面と一緒に届いた手をそのまま並べ続けてはならない。
+      return { stage: { ...stage, actions: [], choice: message.choice }, refusal: undefined }
     case '行えなかった':
       return { ...session, refusal: message.reason }
   }

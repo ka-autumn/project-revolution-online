@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AREAS, BATTLE_SPACE, LINES } from './index.js'
+import { AREAS, BATTLE_SPACE, LINES, areaOf, lineOf } from './index.js'
 
 // 総合ルール 第2部 第22章 2（ADR-0006）
 describe('バトルスペース', () => {
@@ -42,5 +42,29 @@ describe('エリアとライン', () => {
     for (const column of columns) {
       expect(BATTLE_SPACE.filter((square) => square.column === column)).toHaveLength(3)
     }
+  })
+
+  // 総合ルール 第2部 第22章 6
+  it('あるプレイヤーの味方エリアは、相手の敵エリアになる', () => {
+    const square = { row: 0, column: 1 } as const
+
+    expect(areaOf('先攻', square)).toBe('味方エリア')
+    expect(areaOf('後攻', square)).toBe('敵エリア')
+  })
+
+  // 総合ルール 第2部 第22章 4
+  it('あるプレイヤーの右ラインは、相手の左ラインになる', () => {
+    const square = { row: 1, column: 2 } as const
+
+    expect(lineOf('先攻', square)).toBe('右ライン')
+    expect(lineOf('後攻', square)).toBe('左ライン')
+  })
+
+  // 総合ルール 第2部 第22章 4。中央ラインだけは、どちらから見ても同じ呼び名になる。
+  it('中央ラインは、どちらから見ても中央ラインである', () => {
+    const square = { row: 1, column: 1 } as const
+
+    expect(lineOf('先攻', square)).toBe('中央ライン')
+    expect(lineOf('後攻', square)).toBe('中央ライン')
   })
 })
