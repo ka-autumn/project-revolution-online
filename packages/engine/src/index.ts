@@ -55,6 +55,7 @@ export {
   MOVE_DIRECTIONS,
   areaOf,
   indexOfSquare,
+  squareFromView,
   squareInDirection,
   squaresAdjacent,
   squaresBeside,
