@@ -7,6 +7,9 @@ packages/cards/
 # 依存
 node_modules/
 
+# ビルド出力
+dist/
+
 # ローカル設定
 .claude/settings.local.json
 CLAUDE.local.md

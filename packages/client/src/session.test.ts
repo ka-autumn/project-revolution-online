@@ -1,0 +1,122 @@
+import { describe, expect, it } from 'vitest'
+import type { ToClient, WireChoice, WirePerspective } from '@revolution/engine'
+import { applyMessage, connecting } from './session.js'
+import type { Session } from './session.js'
+import { emptyBoard } from './test-support.js'
+
+/**
+ * 届いたものを畳むところ（ADR-0010）。
+ *
+ * クライアントで確かめられるのはここまでである。**ルールの判断はいっさい持たない**ので、
+ * 「この盤面ならこの手が行える」を見ることはできないし、見てはならない。見るのは「届いたものが
+ * どう画面に出る形になるか」だけである。
+ */
+
+/** 盤面の中身は畳むところに関係しないので、何ターン目かだけを違えて区別する。 */
+function board(turn: number): WirePerspective {
+  const empty = emptyBoard('先攻')
+  return { ...empty, turn: { ...empty.turn, number: turn } }
+}
+
+const CHOICE: WireChoice = {
+  player: '先攻',
+  mayDecline: false,
+  candidates: [{ kind: '見えていない' }, { kind: '見えている', card: 'あるカード' }],
+}
+
+/** 届いたものを順に畳む。 */
+function fold(...messages: readonly ToClient[]): Session {
+  return messages.reduce(applyMessage, connecting())
+}
+
+const SEATED: ToClient = { kind: '席についた', seat: '先攻' }
+
+describe('届いたものを畳む', () => {
+  it('繋いだ直後は、まだ何も届いていない', () => {
+    expect(connecting()).toEqual({ stage: { kind: '繋いでいる' }, refusal: undefined })
+  })
+
+  it('相手を待っていると言われたら、待っている', () => {
+    expect(fold({ kind: '相手を待っている' }).stage).toEqual({ kind: '相手を待っている' })
+  })
+
+  it('席についたら、盤面が届く前でも席は分かる', () => {
+    const stage = fold(SEATED).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.seat).toBe('先攻')
+    expect(stage.board).toBeUndefined()
+  })
+
+  it('盤面と行える手は一緒に届く', () => {
+    const stage = fold(SEATED, {
+      kind: '盤面',
+      perspective: board(1),
+      actions: [{ kind: '優先権を放棄する' }],
+    }).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.board).toEqual(board(1))
+    expect(stage.actions).toEqual([{ kind: '優先権を放棄する' }])
+  })
+
+  /**
+   * 行える手を数えるのはサーバである（ADR-0010）。届いたものをそのまま持つだけで、優先権を
+   * 持っていないほうには空で届く（`server` の `room.ts` の `boards`）。
+   */
+  it('行える手が空なら、行えることは無い', () => {
+    const stage = fold(SEATED, { kind: '盤面', perspective: board(1), actions: [] }).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.actions).toEqual([])
+  })
+
+  it('選んでほしいと言われたら、候補を覚える', () => {
+    const stage = fold(SEATED, { kind: '選んでほしい', choice: CHOICE }).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.choice).toEqual(CHOICE)
+  })
+
+  /** 選び終われば盤面が動く。答えるものはもう無い。 */
+  it('盤面が届いたら、選ぶことは終わっている', () => {
+    const stage = fold(SEATED, { kind: '選んでほしい', choice: CHOICE }, {
+      kind: '盤面',
+      perspective: board(2),
+      actions: [],
+    }).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.choice).toBeUndefined()
+  })
+
+  it('入り直して席についたら、前の盤面は残らない', () => {
+    const played = fold(SEATED, { kind: '盤面', perspective: board(1), actions: [] })
+    const stage = applyMessage(played, SEATED).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.board).toBeUndefined()
+  })
+})
+
+describe('断られたこと', () => {
+  it('断られた理由を覚える', () => {
+    expect(fold(SEATED, { kind: '行えなかった', reason: '優先権が無い' }).refusal).toBe('優先権が無い')
+  })
+
+  /** 席につく前にも断られる。3 人目が入ろうとした場合がこれにあたる（`room.ts` の `enter`）。 */
+  it('席につく前に断られても覚える', () => {
+    const session = fold({ kind: '行えなかった', reason: '部屋がいっぱい' })
+
+    expect(session.stage).toEqual({ kind: '繋いでいる' })
+    expect(session.refusal).toBe('部屋がいっぱい')
+  })
+
+  it('盤面が動いたら消える', () => {
+    const refused = fold(SEATED, { kind: '行えなかった', reason: '行えない行動' })
+
+    const advanced = applyMessage(refused, { kind: '盤面', perspective: board(2), actions: [] })
+
+    expect(advanced.refusal).toBeUndefined()
+  })
+})
