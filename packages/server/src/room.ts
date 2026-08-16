@@ -104,6 +104,10 @@ export function receive(
       return act(rooms, participant, message.action)
     case '選ぶ':
       return answer(rooms, participant, message.answer)
+    case 'ひとつ戻る':
+      return rewind(rooms, participant, 'ひとつ')
+    case '取り消す':
+      return rewind(rooms, participant, 'すべて')
   }
 }
 
@@ -302,6 +306,39 @@ function answer(rooms: Rooms, participant: ParticipantId, chosen: ChoiceAnswer):
   if (seatOf(duel, participant) !== pending.player) return refuse(rooms, participant, '選ぶ人ではない')
 
   return advance(rooms, room, duel, { ...pending, answers: [...pending.answers, chosen] })
+}
+
+/** どこまで戻すか。 */
+type Rewind = 'ひとつ' | 'すべて'
+
+/**
+ * 選びかけているものを戻す（ADR-0008）。
+ *
+ * **戻れるのは、盤面をまだ進めていないからである。** 答えが足りているところまで進めては
+ * やり直す形なので、行動が終わるまで `duel.state` は動かない。貯めた答えを捨てれば、行動を
+ * 始める前と同じ盤面がそこにある。**取り消すために巻き戻す仕組みは要らない。**
+ *
+ * 見たものを見なかったことにはできない、という心配は要らない。選ぶ時に見せる候補は、**行動を
+ * 始める前の盤面で見えていたものだけ**である（`protocol.ts` の `describeChoice`）。選んでいる
+ * 間に新しく分かることが無いので、戻っても得をしない。
+ *
+ * まだ 1 つも答えていなければ、`ひとつ` でも行動そのものを取り消す。戻る先が無いためである。
+ */
+function rewind(rooms: Rooms, participant: ParticipantId, how: Rewind): RoomOutcome {
+  const room = roomOf(rooms, participant)
+  if (room?.duel === undefined) return refuse(rooms, participant, 'デュエルが始まっていない')
+
+  const duel = room.duel
+  const pending = duel.pending
+  if (pending === undefined) return refuse(rooms, participant, '選ぶところではない')
+  if (seatOf(duel, participant) !== pending.player) return refuse(rooms, participant, '選ぶ人ではない')
+
+  if (how === 'すべて' || pending.answers.length === 0) {
+    const cleared: DuelInRoom = { ...duel, pending: undefined }
+    return { rooms: withRoom(rooms, { ...room, duel: cleared }), deliveries: boards(cleared) }
+  }
+
+  return advance(rooms, room, duel, { ...pending, answers: pending.answers.slice(0, -1) })
 }
 
 /**

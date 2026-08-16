@@ -122,6 +122,7 @@ describe('選ぶ候補', () => {
     const choice: WireChoice = {
       player: '先攻',
       mayDecline: false,
+      answered: 0,
       candidates: [{ kind: '見えていない' }, { kind: '見えている', card: 'スクエアの1枚' }, { kind: '見えていない' }],
     }
 
@@ -137,6 +138,7 @@ describe('選ぶ候補', () => {
     const choice: WireChoice = {
       player: '先攻',
       mayDecline: false,
+      answered: 0,
       candidates: [{ kind: '見えていない' }, { kind: '見えていない' }, { kind: '見えていない' }],
     }
 
@@ -151,6 +153,7 @@ describe('選ぶ候補', () => {
     const choice: WireChoice = {
       player: '先攻',
       mayDecline: false,
+      answered: 0,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
@@ -159,9 +162,23 @@ describe('選ぶ候補', () => {
 
   /** 「◯枚まで選び」のように、選ばないことを選べる場面がある（`resolve.ts` の `Chooser`）。 */
   it('選ばないことを選べるかが伝わる', () => {
-    const choice: WireChoice = { player: '先攻', mayDecline: true, candidates: [{ kind: '見えていない' }] }
+    const choice: WireChoice = { player: '先攻', mayDecline: true, answered: 0, candidates: [{ kind: '見えていない' }] }
 
     expect(choiceView(board(), choice).mayDecline).toBe(true)
+  })
+
+  /**
+   * 戻れるかどうかを数えているのはサーバである（ADR-0008）。クライアントは何度答えたかを
+   * 覚えていない。**切れて入り直しても正しく出る**のはそのためである。
+   */
+  it.each([
+    ['まだ答えていなければ、戻る先が無い', 0, false],
+    ['1 つ答えていれば、戻れる', 1, true],
+    ['2 つ答えていても、戻れる', 2, true],
+  ] as const)('%s', (_, answered, expected) => {
+    const choice: WireChoice = { player: '先攻', mayDecline: false, answered, candidates: [{ kind: '見えていない' }] }
+
+    expect(choiceView(board(), choice).mayRewind).toBe(expected)
   })
 })
 
@@ -207,7 +224,7 @@ describe('自動で送る手', () => {
     const acting = receiving([{ kind: '優先権を放棄する' }])
     const asked = applyMessage(acting, {
       kind: '選んでほしい',
-      choice: { player: '先攻', mayDecline: false, candidates: [{ kind: '見えていない' }] },
+      choice: { player: '先攻', mayDecline: false, answered: 0, candidates: [{ kind: '見えていない' }] },
     })
 
     expect(automaticAction(asked)).toBeUndefined()

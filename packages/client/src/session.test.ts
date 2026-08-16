@@ -21,6 +21,7 @@ function board(turn: number): WirePerspective {
 const CHOICE: WireChoice = {
   player: '先攻',
   mayDecline: false,
+  answered: 0,
   candidates: [{ kind: '見えていない' }, { kind: '見えている', card: 'あるカード' }],
 }
 

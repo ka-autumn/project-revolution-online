@@ -43,6 +43,20 @@ function participantOf(url: string | undefined): ParticipantId | undefined {
   return named === null || named === '' ? undefined : named
 }
 
+/**
+ * 受け取ってよいメッセージの種類（`protocol.ts` の `FromClient`）。
+ *
+ * `FromClient` に足したら、ここにも足す。**足し忘れると読めないメッセージとして黙って断られる**
+ * ので、種類をキーにした表にして、抜けが型検査で落ちるようにしている。
+ */
+const ACCEPTED: Readonly<Record<FromClient['kind'], true>> = {
+  部屋に入る: true,
+  行動する: true,
+  選ぶ: true,
+  ひとつ戻る: true,
+  取り消す: true,
+}
+
 /** 受け取ったバイト列をメッセージとして読む。読めなければ `undefined`。 */
 function parse(data: unknown): FromClient | undefined {
   try {
@@ -50,7 +64,8 @@ function parse(data: unknown): FromClient | undefined {
     if (typeof parsed !== 'object' || parsed === null) return undefined
 
     const { kind } = parsed as { readonly kind?: unknown }
-    return kind === '部屋に入る' || kind === '行動する' || kind === '選ぶ' ? (parsed as FromClient) : undefined
+    // `hasOwn` で引く。`in` だと `toString` のような受け継いだ名前まで通ってしまう。
+    return typeof kind === 'string' && Object.hasOwn(ACCEPTED, kind) ? (parsed as FromClient) : undefined
   } catch {
     return undefined
   }

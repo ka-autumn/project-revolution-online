@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { defineStrategy, defineUnit } from '@revolution/engine'
-import type { Card, Deck, FromClient, LegalAction, ToClient, WirePerspective } from '@revolution/engine'
+import { choose, defineStrategy, defineUnit } from '@revolution/engine'
+import type { Card, Deck, FromClient, LegalAction, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
 import { emptyRooms, receive } from './room.js'
 import type { Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
 
@@ -11,12 +11,31 @@ import type { Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './r
  * 定義した架空のカードである。
  */
 
+/**
+ * 1 つの行動で 2 度選ばせるカード。
+ *
+ * **`ひとつ戻る` が意味を持つのは、答えが 2 つ以上要る行動だけである。** レベル 0 のユニットは
+ * コストを払わないので何も選ばせず、プランは 1 度で終わる。2 度聞かれる場面をここで作る。
+ * 何を選んだかは使わない。聞かれる回数だけが要る。
+ */
+const STRATEGY_NAME = 'テスト・部屋のストラテジー'
+
 const CARDS: Readonly<Record<string, Card>> = Object.fromEntries([
   ...Array.from({ length: 14 }, (_, index) => [
     `TEST-${index}`,
     defineUnit({ name: `テスト・部屋${index}`, level: 0, bp: 100, sp: 100, moveIcon: ['上'] }),
   ]),
-  ['TEST-S', defineStrategy({ name: 'テスト・部屋のストラテジー', level: 0 })],
+  [
+    'TEST-S',
+    defineStrategy({
+      name: STRATEGY_NAME,
+      level: 0,
+      effect: function* () {
+        yield* choose(['ひとつめのア', 'ひとつめのイ'])
+        yield* choose(['ふたつめのア', 'ふたつめのイ'])
+      },
+    }),
+  ],
 ])
 
 /** 構築戦の最小枚数（60 枚）を満たす、15 種類 × 4 枚のデッキ（総合ルール 第3部 第1章 3-1）。 */
@@ -48,6 +67,14 @@ function boardOf(deliveries: readonly Delivery[], participant: ParticipantId): W
   if (board === undefined) throw new Error('盤面が届いたはずだった')
 
   return board.perspective
+}
+
+/** その参加者に届いた、選んでほしいこと。 */
+function choiceOf(deliveries: readonly Delivery[], participant: ParticipantId): WireChoice {
+  const asked = to(deliveries, participant).find((message) => message.kind === '選んでほしい')
+  if (asked === undefined) throw new Error('選んでほしいが届いたはずだった')
+
+  return asked.choice
 }
 
 /** その参加者に届いた、行える手（ADR-0010）。 */
@@ -292,6 +319,38 @@ function planning(): { readonly outcome: RoomOutcome; readonly acting: Participa
   }
 }
 
+/**
+ * 2 度選ばせる行動を始めたところまで進める。
+ *
+ * 2 度聞くのは `TEST-S` のストラテジーだけなので、それを手札に持っているほうが自分のメイン
+ * フェイズにプレイできるまで、放棄で進める。どちらが先に引くかはシードで決まるので、席を
+ * 決め打ちにせず、持っているほうを探す。
+ */
+function choosingTwice(): { readonly outcome: RoomOutcome; readonly acting: ParticipantId } {
+  let current = readyToAct(passUntil(started(), 'メインフェイズ'))
+  for (let steps = 0; steps < 300; steps += 1) {
+    const board = boardOf(current.deliveries, 'あ')
+    const acting = participantAt(board.turn.priority, board.viewer)
+    const play = actionsOf(current.deliveries, acting).find(
+      (action) => action.kind === 'カードをプレイする' && action.declaration.card === strategyInHand(current, acting),
+    )
+    if (play !== undefined) return { outcome: send(current.rooms, acting, { kind: '行動する', action: play }), acting }
+
+    current = readyToAct(answerAll(send(current.rooms, acting, PASS)))
+  }
+  throw new Error('2 度選ばせる行動に届かなかった')
+}
+
+/** その参加者の手札にあるストラテジーの識別子。持っていなければ `undefined`。 */
+function strategyInHand(outcome: RoomOutcome, participant: ParticipantId): string | undefined {
+  const board = boardOf(outcome.deliveries, participant)
+  const found = board.zones[board.viewer].手札.find(
+    (card) => card.kind === '見えている' && card.instance.card.name === STRATEGY_NAME,
+  )
+
+  return found?.kind === '見えている' ? found.instance.id : undefined
+}
+
 // ADR-0008。選択は候補の番号で答え、行動はやり直して適用する。
 describe('選ぶ', () => {
   it('選ぶ人にだけ、選んでほしいことが届く', () => {
@@ -327,6 +386,117 @@ describe('選ぶ', () => {
     // プランの効果として山札の 1 番上が表返り、プランゾーンに置かれる（総合ルール 第3部 第8章 2-3）。
     const board = boardOf(answered.deliveries, acting)
     expect(board.zones[board.viewer].プランゾーン).toHaveLength(1)
+  })
+
+  it('まだ何も答えていなければ、答えた数は 0 で届く', () => {
+    const { outcome, acting } = planning()
+
+    expect(choiceOf(outcome.deliveries, acting).answered).toBe(0)
+  })
+})
+
+/**
+ * ADR-0008。**盤面をまだ進めていないので、選びかけたものは捨てれば元に戻る。**
+ *
+ * 答えが足りているところまで進めてはやり直す形なので、行動が終わるまで盤面は動かない。
+ * 巻き戻す仕組みを別に持つ必要が無い。
+ */
+describe('選ぶのをやめる', () => {
+  it('取り消すと、行動する前の盤面が両方に届く', () => {
+    const { outcome, acting } = planning()
+    const before = boardOf(readyToAct(passUntil(started(), 'メインフェイズ')).deliveries, 'あ')
+
+    const cancelled = send(outcome.rooms, acting, { kind: '取り消す' })
+
+    expect(cancelled.deliveries.map((delivery) => delivery.message.kind)).toEqual(['盤面', '盤面'])
+    // プランは解決していないので、プランゾーンは空のままである。
+    expect(boardOf(cancelled.deliveries, acting).zones[before.turn.active].プランゾーン).toEqual([])
+  })
+
+  /** 取り消した後は、また行動できる。断られる状態に落ちない。 */
+  it('取り消すと、行える手がまた届く', () => {
+    const { outcome, acting } = planning()
+
+    const cancelled = send(outcome.rooms, acting, { kind: '取り消す' })
+
+    expect(actionsOf(cancelled.deliveries, acting)).toContainEqual({ kind: 'プランする' })
+  })
+
+  it('取り消した後は、同じ行動をやり直せる', () => {
+    const { outcome, acting } = planning()
+    const cancelled = send(outcome.rooms, acting, { kind: '取り消す' })
+
+    const again = send(cancelled.rooms, acting, { kind: '行動する', action: { kind: 'プランする' } })
+
+    expect(to(again.deliveries, acting).map((message) => message.kind)).toEqual(['選んでほしい'])
+  })
+
+  /** まだ 1 つも答えていなければ、戻る先が無いので行動そのものを取り消す。 */
+  it('ひとつ戻るは、答えていなければ取り消すのと同じになる', () => {
+    const { outcome, acting } = planning()
+
+    const back = send(outcome.rooms, acting, { kind: 'ひとつ戻る' })
+
+    expect(back.deliveries.map((delivery) => delivery.message.kind)).toEqual(['盤面', '盤面'])
+    expect(actionsOf(back.deliveries, acting)).toContainEqual({ kind: 'プランする' })
+  })
+
+  it('選ぶところでなければ断られる', () => {
+    const outcome = readyToAct(passUntil(started(), 'メインフェイズ'))
+    const board = boardOf(outcome.deliveries, 'あ')
+    const acting = participantAt(board.turn.priority, board.viewer)
+
+    const refused = send(outcome.rooms, acting, { kind: '取り消す' })
+
+    expect(to(refused.deliveries, acting)).toEqual([{ kind: '行えなかった', reason: '選ぶところではない' }])
+  })
+
+  it('選ぶ人でなければ取り消せない', () => {
+    const { outcome, acting } = planning()
+    const other = acting === 'あ' ? 'い' : 'あ'
+
+    const refused = send(outcome.rooms, other, { kind: '取り消す' })
+
+    expect(to(refused.deliveries, other)).toEqual([{ kind: '行えなかった', reason: '選ぶ人ではない' }])
+  })
+
+  /** 取り消しは、相手には知らせない。何を試したかは相手の知る筋合いではない。 */
+  it('取り消しても、相手に届くのは盤面だけ', () => {
+    const { outcome, acting } = planning()
+    const other = acting === 'あ' ? 'い' : 'あ'
+
+    const cancelled = send(outcome.rooms, acting, { kind: '取り消す' })
+
+    expect(to(cancelled.deliveries, other).map((message) => message.kind)).toEqual(['盤面'])
+  })
+
+  /**
+   * 2 度聞かれる行動で、1 つ答えてから戻す。
+   *
+   * 貯めた答えの末尾を捨ててやり直すだけである（ADR-0008）。**同じ盤面と同じ答えの並びからは
+   * 必ず同じところまで進む**ので、1 つ前と同じことをもう一度聞かれる。
+   */
+  it('ひとつ戻ると、1 つ前の選択をやり直せる', () => {
+    const { outcome, acting } = choosingTwice()
+    expect(choiceOf(outcome.deliveries, acting).answered).toBe(0)
+
+    const answered = send(outcome.rooms, acting, { kind: '選ぶ', answer: 0 })
+    expect(choiceOf(answered.deliveries, acting).answered).toBe(1)
+
+    const back = send(answered.rooms, acting, { kind: 'ひとつ戻る' })
+
+    expect(choiceOf(back.deliveries, acting)).toEqual(choiceOf(outcome.deliveries, acting))
+  })
+
+  /** 戻したあとは、違う答えを選べる。行動そのものは取り消されていない。 */
+  it('ひとつ戻っても、行動は取り消されない', () => {
+    const { outcome, acting } = choosingTwice()
+    const answered = send(outcome.rooms, acting, { kind: '選ぶ', answer: 0 })
+
+    const back = send(answered.rooms, acting, { kind: 'ひとつ戻る' })
+    const again = send(back.rooms, acting, { kind: '選ぶ', answer: 1 })
+
+    expect(choiceOf(again.deliveries, acting).answered).toBe(1)
   })
 })
 
