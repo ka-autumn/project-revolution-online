@@ -54,7 +54,13 @@ export function activateAbility(
   // 解決する時にはもうスクエアにいない（総合ルール 第4部 第8章 2-5、`resolve.ts` の
   // `duelView`）。
   const self: UnitOnSquare = { id: instance.id, square, card: unit, controller: instance.controller }
-  const resolved = resolveEffect(paid, activated.effect, { controller: instance.controller, chooser, self })
+  const resolved = resolveEffect(paid, activated.effect, {
+    controller: instance.controller,
+    via: '起動',
+    source: instance.id,
+    chooser,
+    self,
+  })
   return done(grantPriorityToInactive(resolved))
 }
 

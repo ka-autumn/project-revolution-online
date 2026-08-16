@@ -3,11 +3,13 @@ import type {
   Area,
   BattleStep,
   CardId,
+  DuelEvent,
   DuelResult,
   LoggedInstruction,
   Orientation,
   Player,
   PlayerZone,
+  ResolutionVia,
   Square,
   SquareIndex,
   WireCardFace,
@@ -146,6 +148,20 @@ export interface LogLine {
    */
   readonly whose: '自分' | '相手' | undefined
   readonly text: string
+}
+
+/**
+ * 効果の解決 1 つ分のカットイン（#104）。
+ *
+ * **落とす判断はここに無い。** 見てはならないカードは名指しされないまま届く。盤面の一部
+ * ではなく、盤面より上に一時的に重なるものなので `BoardView` には持たせない。
+ */
+export interface CutInView {
+  readonly whose: '自分' | '相手'
+  /** 「◯◯の効果、誘発！」のような 1 行。 */
+  readonly heading: string
+  /** 効果が何をしたか。命令 1 つが 1 行。 */
+  readonly lines: readonly string[]
 }
 
 /** 画面に出す盤面ひととおり。 */
@@ -422,7 +438,7 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
       }
       case '能力を解決した': {
         const source = named(event.source)
-        return { whose: whose(event.controller), text: source === undefined ? '能力を解決' : `能力を解決：${source}` }
+        return { whose: whose(event.controller), text: source === undefined ? event.via : `${event.via}：${source}` }
       }
       case '命令を実行した':
         return { whose: whose(event.controller), text: instructionLine(event.instruction, board, named, whose) }
@@ -487,6 +503,66 @@ function instructionLine(
     case 'カードを引く':
       return `${whose(instruction.player)}が ${instruction.count} 枚引いた`
   }
+}
+
+/**
+ * カットインの見出し（#104）。
+ *
+ * 「発動」はトラップの言葉である（総合ルール 第2部 第20章 3-10）。起動型能力の「起動」
+ * （同 第4部 第2章 1）や誘発型能力の「誘発」（同 第3章 2）と取り違えると別のことを指すので、
+ * 経路ごとに総合ルールの言葉づかいへ寄せる。**画面の側で推測しない**（`event.via` をそのまま
+ * 使う）。
+ *
+ * 名前が分かっていなければ、助詞や「の効果」を伴わない形にする。`about` と同じ考え方で、
+ * 名前が落ちた時にそれだけが浮かないようにする。
+ */
+function headingOf(via: ResolutionVia, name: string | undefined): string {
+  switch (via) {
+    case '誘発':
+    case '起動':
+      return name === undefined ? `効果、${via}！` : `${name}の効果、${via}！`
+    case '発動':
+      return name === undefined ? 'トラップを発動！' : `${name}を発動！`
+    case 'プレイ':
+      return name === undefined ? 'カードをプレイ！' : `${name}をプレイ！`
+    case '希望':
+      return name === undefined ? '希望！' : `${name}の希望！`
+  }
+}
+
+/**
+ * 新しく届いた分から、出すカットインを作る（#104）。
+ *
+ * 切り出し方は「`能力を解決した` から、次の別種のできごとまでの `命令を実行した`」。1 つの
+ * 解決の中に含まれる `選んでほしい` の往復（複数の答えに分かれて届く盤面）はここでは扱わない
+ * ——`fresh` は 1 回の `盤面` メッセージぶんの差分でしかなく、答えを待っている間は次の盤面が
+ * 届かないので、そこで途切れることはない。
+ *
+ * 本文は既存の `instructionLine` をそのまま使い回す。**新しい言い換えを二度書かない。**
+ */
+export function cutInViews(board: WirePerspective, fresh: readonly DuelEvent[]): readonly CutInView[] {
+  const names = namesIn(board)
+  const whose = (player: Player): '自分' | '相手' => whoseOf(board, player)
+  const named = (card: CardId | undefined): string | undefined =>
+    card === undefined ? undefined : nameOf(names, card)
+
+  const views: { whose: '自分' | '相手'; heading: string; lines: string[] }[] = []
+  let open: (typeof views)[number] | undefined
+
+  for (const event of fresh) {
+    if (event.kind === '能力を解決した') {
+      open = { whose: whose(event.controller), heading: headingOf(event.via, named(event.source)), lines: [] }
+      views.push(open)
+      continue
+    }
+    if (event.kind === '命令を実行した' && open !== undefined) {
+      open.lines.push(instructionLine(event.instruction, board, named, whose))
+      continue
+    }
+    open = undefined
+  }
+
+  return views
 }
 
 /** 決着した勝敗を、見る人から見た言い方にする。 */

@@ -28,7 +28,13 @@ import {
   squaresBeside,
   triggeredAbility,
 } from './index.js'
-import type { CardInZone, CardInstance, Chooser, DuelState, Square, UnitOnSquare } from './index.js'
+import type { CardInZone, CardInstance, Chooser, DuelState, ResolutionVia, Square, UnitOnSquare } from './index.js'
+
+/**
+ * このファイルのテストはどの経路で解決されたかを見ていないので、決め打ちで 1 つ使い回す
+ * （#104）。経路そのものを見るテストは `log.test.ts` に置く。
+ */
+const VIA: ResolutionVia = '誘発'
 
 /**
  * 検証したいルールだけを持つ架空のテストカード（ADR-0002）。
@@ -123,7 +129,7 @@ describe('テストカードの能力を解決する', () => {
   it('選ばれた敵はスクエアから持ち主の捨札の一番上に置かれる', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
-    const resolved = resolveEffect(state, enterAbility.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, enterAbility.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(cardsOn(resolved, enemySquare)).toEqual([])
     expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['敵'])
@@ -135,7 +141,7 @@ describe('テストカードの能力を解決する', () => {
     const watching = instantiate({ id: '見届け役', card: discardWatcher, owner: '後攻' })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')], [nextEnemySquare, watching])
 
-    const resolved = resolveEffect(state, enterAbility.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, enterAbility.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(resolved.triggered.map((each) => each.source)).toEqual(['見届け役'])
   })
@@ -145,7 +151,7 @@ describe('テストカードの能力を解決する', () => {
     const stolen = instantiate({ id: '奪われた味方', card: vanilla, owner: '後攻', controller: '先攻' })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')], [nextEnemySquare, stolen])
 
-    const resolved = resolveEffect(state, enterAbility.effect, { controller: '後攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, enterAbility.effect, { controller: '後攻', via: VIA, chooser: chooseFirst })
 
     // 「後攻」から見ると、先攻が支配しているこの 2 枚がどちらも敵にあたる。
     expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['奪われた味方'])
@@ -156,7 +162,7 @@ describe('テストカードの能力を解決する', () => {
     const stolen = instantiate({ id: '奪われた敵', card: vanilla, owner: '後攻', controller: '先攻' })
     const state = boardOf([mySquare, mine()], [enemySquare, stolen])
 
-    const resolved = resolveEffect(state, enterAbility.effect, { controller: '後攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, enterAbility.effect, { controller: '後攻', via: VIA, chooser: chooseFirst })
 
     expect(cardsIn(resolved, '後攻', '捨札')[0]?.controller).toBe('後攻')
   })
@@ -170,7 +176,7 @@ describe('テストカードの能力を解決する', () => {
       offered.push(candidates as readonly UnitOnSquare[] as UnitOnSquare[])
       return candidates[0]
     }
-    resolveEffect(state, enterAbility.effect, { controller: '先攻', chooser: recordThenChoose })
+    resolveEffect(state, enterAbility.effect, { controller: '先攻', via: VIA, chooser: recordThenChoose })
 
     expect(offered).toHaveLength(1)
     expect(offered[0]?.map((unit) => unit.id)).toEqual(['敵'])
@@ -180,9 +186,10 @@ describe('テストカードの能力を解決する', () => {
   it('敵が 1 枚もいなければ、要求された行動は実行されない', () => {
     const state = boardOf([mySquare, mine()])
 
-    const resolved = resolveEffect(state, enterAbility.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, enterAbility.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
-    expect(resolved).toEqual(state)
+    // 解決を始めたこと自体は記録される（#104）ので、比べるのはログを除いた盤面にする。
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
   })
 
   // 総合ルール 第4部 第8章 2-3
@@ -190,7 +197,7 @@ describe('テストカードの能力を解決する', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵1')], [nextEnemySquare, theirs('敵2')])
 
     const chooseSecond: Chooser = (candidates) => candidates[1]
-    const resolved = resolveEffect(state, enterAbility.effect, { controller: '先攻', chooser: chooseSecond })
+    const resolved = resolveEffect(state, enterAbility.effect, { controller: '先攻', via: VIA, chooser: chooseSecond })
 
     expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['敵2'])
     expect(idsOf(cardsOn(resolved, enemySquare))).toEqual(['敵1'])
@@ -200,7 +207,7 @@ describe('テストカードの能力を解決する', () => {
   it('元の盤面は変わらない', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
-    resolveEffect(state, enterAbility.effect, { controller: '先攻', chooser: chooseFirst })
+    resolveEffect(state, enterAbility.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(idsOf(cardsOn(state, enemySquare))).toEqual(['敵'])
     expect(cardsIn(state, '後攻', '捨札')).toEqual([])
@@ -220,7 +227,7 @@ describe('実行できない行動', () => {
     })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵1')], [nextEnemySquare, theirs('敵2')])
 
-    const resolved = resolveEffect(state, destroyTwice.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, destroyTwice.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['敵2', '敵1'])
   })
@@ -243,7 +250,7 @@ describe('実行できない行動', () => {
     // 敵が 1 枚もいない盤面。
     const state = boardOf([mySquare, mine()])
 
-    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(resolved.damage).toEqual({ 先攻: 1000, 後攻: 0 })
   })
@@ -258,7 +265,7 @@ describe('実行できない行動', () => {
     })
     const state = boardOf([mySquare, mine()])
 
-    resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+    resolveEffect(state, ability.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(steps).toEqual(['選べなかった', '後ろの指示'])
   })
@@ -271,7 +278,7 @@ describe('「1 枚まで選び」', () => {
   it('候補があっても、選ばないことを選べる', () => {
     const state = boardOf([mySquare, maybeMine()], [enemySquare, theirs('敵')])
 
-    const resolved = resolveEffect(state, maybeAbility.effect, { controller: '先攻', chooser: declineAll })
+    const resolved = resolveEffect(state, maybeAbility.effect, { controller: '先攻', via: VIA, chooser: declineAll })
 
     expect(idsOf(cardsOn(resolved, enemySquare))).toEqual(['敵'])
     expect(cardsIn(resolved, '後攻', '捨札')).toEqual([])
@@ -281,7 +288,7 @@ describe('「1 枚まで選び」', () => {
   it('選んだ場合は、その対象に後ろの指示が行われる', () => {
     const state = boardOf([mySquare, maybeMine()], [enemySquare, theirs('敵')])
 
-    const resolved = resolveEffect(state, maybeAbility.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, maybeAbility.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['敵'])
   })
@@ -300,7 +307,7 @@ describe('「1 枚まで選び」', () => {
     })
     const state = boardOf([mySquare, maybeMine()])
 
-    resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+    resolveEffect(state, ability.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(steps).toEqual(['選ばなかった', '後ろの指示'])
   })
@@ -313,7 +320,7 @@ describe('「1 枚まで選び」', () => {
     }
     const state = boardOf([mySquare, maybeMine()], [enemySquare, theirs('敵')])
 
-    resolveEffect(state, maybeAbility.effect, { controller: '先攻', chooser: record })
+    resolveEffect(state, maybeAbility.effect, { controller: '先攻', via: VIA, chooser: record })
 
     expect(asked).toEqual([true])
   })
@@ -323,7 +330,7 @@ describe('「1 枚まで選び」', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
     expect(() =>
-      resolveEffect(state, enterAbility.effect, { controller: '先攻', chooser: declineAll }),
+      resolveEffect(state, enterAbility.effect, { controller: '先攻', via: VIA, chooser: declineAll }),
     ).toThrowError('候補にないものが選ばれた')
   })
 })
@@ -337,6 +344,7 @@ describe('プレイヤーへのダメージ', () => {
   it('指定したプレイヤーにダメージが蓄積する', () => {
     const resolved = resolveEffect(boardOf([mySquare, mine()]), damaging.effect, {
       controller: '先攻',
+      via: VIA,
       chooser: chooseFirst,
     })
 
@@ -347,6 +355,7 @@ describe('プレイヤーへのダメージ', () => {
   it('支配者が変われば、ダメージを受けるプレイヤーも変わる', () => {
     const resolved = resolveEffect(boardOf([mySquare, mine()]), damaging.effect, {
       controller: '後攻',
+      via: VIA,
       chooser: chooseFirst,
     })
 
@@ -363,6 +372,7 @@ describe('プレイヤーへのダメージ', () => {
   it('効果の解決中にスマッシュ判定は始まらない', () => {
     const resolved = resolveEffect(boardOf([mySquare, mine()]), damaging.effect, {
       controller: '先攻',
+      via: VIA,
       chooser: chooseFirst,
     })
 
@@ -388,6 +398,7 @@ describe('ユニットへのダメージ', () => {
 
     const resolved = resolveEffect(state, damaging(500).effect, {
       controller: '先攻',
+      via: VIA,
       chooser: chooseFirst,
     })
 
@@ -403,7 +414,7 @@ describe('ユニットへのダメージ', () => {
     })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
-    const resolved = resolveEffect(state, twice.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, twice.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(damageOn(resolved, enemySquare)).toEqual([700])
   })
@@ -422,6 +433,7 @@ describe('ユニットへのダメージ', () => {
 
     const resolved = resolveEffect(state, damaging(1000).effect, {
       controller: '先攻',
+      via: VIA,
       chooser: chooseFirst,
     })
 
@@ -444,6 +456,7 @@ describe('ユニットへのダメージ', () => {
 
     const resolved = resolveEffect(state, destroyThenDamage.effect, {
       controller: '先攻',
+      via: VIA,
       chooser: chooseFirst,
     })
 
@@ -463,7 +476,7 @@ describe('ユニットへのダメージ', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
     expect(() =>
-      resolveEffect(state, forge.effect, { controller: '先攻', chooser: chooseFirst }),
+      resolveEffect(state, forge.effect, { controller: '先攻', via: VIA, chooser: chooseFirst }),
     ).toThrowError('効果に見せていないカードが対象にされた')
   })
 })
@@ -492,6 +505,7 @@ describe('効果から見た発生元', () => {
 
     resolveEffect(state, watching(record).effect, {
       controller: '先攻',
+      via: VIA,
       chooser: chooseFirst,
       self: { id: '味方', square: enemySquare, card: enterAndDestroy, controller: '先攻' },
     })
@@ -512,6 +526,7 @@ describe('効果から見た発生元', () => {
 
     resolveEffect(state, watching(record).effect, {
       controller: '先攻',
+      via: VIA,
       chooser: chooseFirst,
       self: { id: '味方', square: enemySquare, card: enterAndDestroy, controller: '先攻' },
     })
@@ -527,6 +542,7 @@ describe('効果から見た発生元', () => {
 
     resolveEffect(state, watching(record).effect, {
       controller: '先攻',
+      via: VIA,
       chooser: chooseFirst,
       self: { id: '味方', square: enemySquare, card: enterAndDestroy, controller: '先攻' },
     })
@@ -539,7 +555,7 @@ describe('効果から見た発生元', () => {
     const record: { self?: Square; beside: string[] } = { beside: [] }
     const state = boardOf([mySquare, mine()])
 
-    resolveEffect(state, watching(record).effect, { controller: '先攻', chooser: chooseFirst })
+    resolveEffect(state, watching(record).effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(record.self).toBeUndefined()
   })
@@ -554,6 +570,7 @@ describe('効果から見た発生元', () => {
 
     const resolved = resolveEffect(state, destroySelf.effect, {
       controller: '先攻',
+      via: VIA,
       chooser: chooseFirst,
       self: { id: '味方', square: mySquare, card: enterAndDestroy, controller: '先攻' },
     })
@@ -584,7 +601,7 @@ describe('効果による向きの変更', () => {
   it('フリーズ状態のユニットをリリースする', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, frozenTheirs('敵')])
 
-    const resolved = resolveEffect(state, releasing.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, releasing.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(orientationOn(resolved, enemySquare)).toEqual(['リリース'])
   })
@@ -592,7 +609,7 @@ describe('効果による向きの変更', () => {
   it('リリース状態のユニットをフリーズする', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
-    const resolved = resolveEffect(state, freezing.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, freezing.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(orientationOn(resolved, enemySquare)).toEqual(['フリーズ'])
   })
@@ -606,7 +623,7 @@ describe('効果による向きの変更', () => {
   it('すでにリリース状態なら、リリースできない', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
-    const resolved = resolveEffect(state, releasing.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, releasing.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(withoutLog(resolved)).toEqual(withoutLog(state))
   })
@@ -614,7 +631,7 @@ describe('効果による向きの変更', () => {
   it('すでにフリーズ状態なら、フリーズできない', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, frozenTheirs('敵')])
 
-    const resolved = resolveEffect(state, freezing.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, freezing.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(withoutLog(resolved)).toEqual(withoutLog(state))
   })
@@ -631,7 +648,7 @@ describe('効果による向きの変更', () => {
     })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵1')], [nextEnemySquare, theirs('敵2')])
 
-    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(orientationOn(resolved, nextEnemySquare)).toEqual(['フリーズ'])
     // 捨札のカードは常にリリース状態で置かれる（総合ルール 第2部 第21章 5-3）。後から
@@ -648,7 +665,7 @@ describe('効果による向きの変更', () => {
   it('向きを変えても、スクエアに置かれた順番は変わらない', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('先にいる敵')], [enemySquare, frozenMine()])
 
-    const resolved = resolveEffect(state, freezing.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, freezing.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(idsOf(cardsOn(resolved, enemySquare))).toEqual(['先にいる敵', '味方'])
     expect(orientationOn(resolved, enemySquare)).toEqual(['フリーズ', 'フリーズ'])
@@ -664,7 +681,7 @@ describe('効果による向きの変更', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
     expect(() =>
-      resolveEffect(state, forge.effect, { controller: '先攻', chooser: chooseFirst }),
+      resolveEffect(state, forge.effect, { controller: '先攻', via: VIA, chooser: chooseFirst }),
     ).toThrowError('効果に見せていないカードが対象にされた')
   })
 })
@@ -685,7 +702,7 @@ describe('効果によるゾーン間の移動', () => {
   }
 
   it('選んだ手札のカードが、指定した向きでエネルギーゾーンに置かれる', () => {
-    const resolved = resolveEffect(withHands(), stashing.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(withHands(), stashing.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     const [placed] = cardsIn(resolved, '先攻', 'エネルギーゾーン')
     expect(placed?.id).toBe('自分の手札')
@@ -707,7 +724,7 @@ describe('効果によるゾーン間の移動', () => {
       return candidates[0]
     }
 
-    resolveEffect(withHands(), stashing.effect, { controller: '先攻', chooser: record })
+    resolveEffect(withHands(), stashing.effect, { controller: '先攻', via: VIA, chooser: record })
 
     expect(offered[0]?.map((each) => each.id)).toEqual(['自分の手札'])
   })
@@ -720,7 +737,7 @@ describe('効果によるゾーン間の移動', () => {
     })
 
     expect(() =>
-      resolveEffect(withHands(), forge.effect, { controller: '先攻', chooser: chooseFirst }),
+      resolveEffect(withHands(), forge.effect, { controller: '先攻', via: VIA, chooser: chooseFirst }),
     ).toThrowError('効果に見せていないカードが対象にされた')
   })
 
@@ -733,7 +750,7 @@ describe('効果によるゾーン間の移動', () => {
     })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
-    const resolved = resolveEffect(state, takeBack.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, takeBack.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(cardsOn(resolved, enemySquare)).toEqual([])
     // 持ち主のゾーンに入る。支配者である「先攻」の手札ではない。
@@ -757,7 +774,7 @@ describe('効果によるゾーン間の移動', () => {
     const watching = instantiate({ id: '見届け役', card: discardWatcher, owner: '後攻' })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')], [nextEnemySquare, watching])
 
-    const resolved = resolveEffect(state, toDiscard.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, toDiscard.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['敵'])
     expect(resolved.triggered.map((each) => each.source)).toEqual(['見届け役'])
@@ -773,7 +790,7 @@ describe('効果によるゾーン間の移動', () => {
     const board = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
     const state = putInZone(board, '後攻', '山札', [instantiate({ id: '山札の上', card: vanilla, owner: '後攻' })])
 
-    const resolved = resolveEffect(state, toBottom.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, toBottom.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(idsOf(cardsIn(resolved, '後攻', '山札'))).toEqual(['山札の上', '敵'])
   })
@@ -795,7 +812,7 @@ describe('効果によるゾーン間の移動', () => {
       instantiate({ id: 'プラン', card: vanilla, owner: '後攻' }),
     ])
 
-    const resolved = resolveEffect(state, toTop.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, toTop.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     // 裏向きになったプランは山札に戻り、置かれたカードがその上に来る。
     expect(cardsIn(resolved, '後攻', 'プランゾーン')).toEqual([])
@@ -813,7 +830,7 @@ describe('効果によるゾーン間の移動', () => {
       instantiate({ id: 'プラン', card: vanilla, owner: '後攻' }),
     ])
 
-    const resolved = resolveEffect(state, toBottom.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, toBottom.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(idsOf(cardsIn(resolved, '後攻', 'プランゾーン'))).toEqual(['プラン'])
     expect(idsOf(cardsIn(resolved, '後攻', '山札'))).toEqual(['敵'])
@@ -838,14 +855,14 @@ describe('効果によるゾーン間の移動', () => {
 
   // 総合ルール 第2部 第21章 3-4
   it('プランを裏返すと、そのカードは裏向きの山札の 1 番上に戻る', () => {
-    const resolved = resolveEffect(withPlans(), flipping.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(withPlans(), flipping.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(cardsIn(resolved, '後攻', 'プランゾーン')).toEqual([])
     expect(idsOf(cardsIn(resolved, '後攻', '山札'))).toEqual(['後攻のプラン', '後攻の山札'])
   })
 
   it('裏返るのは指定したプレイヤーのプランだけである', () => {
-    const resolved = resolveEffect(withPlans(), flipping.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(withPlans(), flipping.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(idsOf(cardsIn(resolved, '先攻', 'プランゾーン'))).toEqual(['先攻のプラン'])
   })
@@ -859,7 +876,7 @@ describe('効果によるゾーン間の移動', () => {
     })
     const state = boardOf([mySquare, mine()])
 
-    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(cardsIn(resolved, '後攻', '山札')).toEqual([])
     expect(steps).toEqual(['後ろの指示'])
@@ -877,7 +894,7 @@ describe('効果によるゾーン間の移動', () => {
       instantiate({ id: '山札の下', card: vanilla, owner: '先攻' }),
     ])
 
-    const resolved = resolveEffect(state, stacking.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, stacking.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     const [placed] = cardsIn(resolved, '先攻', 'エネルギーゾーン')
     expect(placed?.id).toBe('山札の上')
@@ -893,7 +910,7 @@ describe('効果によるゾーン間の移動', () => {
       instantiate({ id: 'プラン', card: vanilla, owner: '先攻' }),
     ])
 
-    const resolved = resolveEffect(state, stacking.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, stacking.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')[0]?.id).toBe('プラン')
     expect(idsOf(cardsIn(resolved, '先攻', '山札'))).toEqual(['山札の上'])
@@ -908,7 +925,7 @@ describe('効果によるゾーン間の移動', () => {
     })
     const state = boardOf([mySquare, mine()])
 
-    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, ability.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')).toEqual([])
     // 実行できない行動があっても、効果はそのまま続く。
@@ -926,7 +943,7 @@ describe('効果によるゾーン間の移動', () => {
       instantiate({ id: '山札の下', card: vanilla, owner: '先攻' }),
     ])
 
-    const resolved = resolveEffect(state, drawing.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, drawing.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(idsOf(cardsIn(resolved, '先攻', '手札'))).toEqual(['山札の上'])
     expect(idsOf(cardsIn(resolved, '先攻', '山札'))).toEqual(['山札の下'])
@@ -941,7 +958,7 @@ describe('効果によるゾーン間の移動', () => {
     })
     const state = boardOf([mySquare, mine()])
 
-    const resolved = resolveEffect(state, drawing.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, drawing.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(cardsIn(resolved, '先攻', '手札')).toEqual([])
     expect(steps).toEqual(['後ろの指示'])
@@ -951,7 +968,7 @@ describe('効果によるゾーン間の移動', () => {
   it('手札が 1 枚も無ければ、要求された行動は実行されない', () => {
     const state = boardOf([mySquare, mine()])
 
-    const resolved = resolveEffect(state, stashing.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, stashing.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')).toEqual([])
   })
@@ -1000,7 +1017,7 @@ describe('効果によってスクエアに置くことは「登場」ではな�
   it('置かれること自体は行われる', () => {
     const state = withInDiscard(instantiate({ id: '戻るカード', card: vanilla, owner: '先攻' }))
 
-    const resolved = resolveEffect(state, reviving.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, reviving.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     const [placed] = cardsOn(resolved, enemySquare)
     expect(placed?.id).toBe('戻るカード')
@@ -1012,7 +1029,7 @@ describe('効果によってスクエアに置くことは「登場」ではな�
   it('「登場した時」に誘発する能力は誘発しない', () => {
     const state = withInDiscard(instantiate({ id: '登場誘発持ち', card: appearing, owner: '先攻' }))
 
-    const resolved = resolveEffect(state, reviving.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, reviving.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(cardsOn(resolved, enemySquare)[0]?.id).toBe('登場誘発持ち')
     expect(resolved.triggered).toEqual([])
@@ -1022,7 +1039,7 @@ describe('効果によってスクエアに置くことは「登場」ではな�
   it('「根性」は働かず、指定した向きのまま置かれる', () => {
     const state = withInDiscard(instantiate({ id: '根性持ち', card: gutsy, owner: '先攻' }))
 
-    const resolved = resolveEffect(state, reviving.effect, { controller: '先攻', chooser: chooseFirst })
+    const resolved = resolveEffect(state, reviving.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     // プレイされていればリリース状態になるが、これは登場ではないので置換は起こらない。
     expect(cardsOn(resolved, enemySquare)[0]?.orientation).toBe('フリーズ')
@@ -1057,7 +1074,7 @@ describe('効果に渡されるのは盤面への問い合わせだけである'
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
     expect(() =>
-      resolveEffect(state, forge.effect, { controller: '先攻', chooser: chooseFirst }),
+      resolveEffect(state, forge.effect, { controller: '先攻', via: VIA, chooser: chooseFirst }),
     ).toThrowError('効果に見せていないカードが対象にされた')
   })
 })
@@ -1082,7 +1099,7 @@ describe('効果から見えるエネルギーゾーン', () => {
       function* (duel) {
         seen.push(duel.energyCount(duel.controller), duel.energyCount(duel.opponent))
       },
-      { controller: '先攻', chooser: chooseFirst },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
     )
     return seen
   }
@@ -1105,7 +1122,7 @@ describe('効果から見えるエネルギーゾーン', () => {
       function* (duel) {
         seen = duel.energyZone()
       },
-      { controller: '先攻', chooser: chooseFirst },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
     )
     return seen
   }
@@ -1135,7 +1152,7 @@ describe('効果から見えるエネルギーゾーン', () => {
         if (energy === undefined) throw new Error('エネルギーがある盤面で試すこと')
         yield* placeOnSquare(energy, mySquare, 'リリース')
       },
-      { controller: '先攻', chooser: chooseFirst },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
     )
 
     expect(idsOf(cardsOn(resolved, mySquare))).toEqual(['先攻のエネルギー0'])
@@ -1155,7 +1172,7 @@ describe('効果が誘発型能力を作る', () => {
   })
 
   const created = (state: DuelState): DuelState =>
-    resolveEffect(state, postponing.effect, { controller: '先攻', chooser: chooseFirst })
+    resolveEffect(state, postponing.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
   it('作られた能力を盤面が持つ', () => {
     const resolved = created(boardOf([mySquare, mine()]))
@@ -1168,6 +1185,7 @@ describe('効果が誘発型能力を作る', () => {
   it('作られた能力の支配者は、作った効果の支配者である', () => {
     const resolved = resolveEffect(boardOf([enemySquare, theirs('敵')]), postponing.effect, {
       controller: '後攻',
+      via: VIA,
       chooser: chooseFirst,
     })
 
@@ -1193,7 +1211,7 @@ describe('効果が誘発型能力を作る', () => {
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
     expect(() =>
-      resolveEffect(state, forge.effect, { controller: '先攻', chooser: chooseFirst }),
+      resolveEffect(state, forge.effect, { controller: '先攻', via: VIA, chooser: chooseFirst }),
     ).toThrowError('効果に見せていないカードが対象にされた')
   })
 })

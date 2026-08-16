@@ -1,7 +1,6 @@
 import type { AppearanceOccasion, TriggerEvent, TriggerOccasion } from './ability.js'
 import { locateOnSquares } from './duel.js'
 import type { BankedAbility, CardId, CreatedAbilityInstance, DuelState } from './duel.js'
-import { record } from './log.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
 import { addTriggered, triggeredBy } from './trigger.js'
@@ -105,14 +104,7 @@ export function resolveFromBank(state: DuelState, chooser: Chooser): DuelState {
   const chosen = candidates.find((banked) => banked === choice)
   if (chosen === undefined) throw new Error('バンクにない能力が選ばれた')
 
-  // 解決を始めたことを、その効果が出す命令より先に残す（#95）。どの命令がどの能力から
-  // 出たものかは、ログの並びで分かる。
-  const resolving = record(state, {
-    kind: '能力を解決した',
-    controller: chosen.controller,
-    source: chosen.source,
-  })
-  const resolved = resolveBanked(resolving, chosen, chooser)
+  const resolved = resolveBanked(state, chosen, chooser)
   return { ...resolved, bank: resolved.bank.filter((banked) => banked !== chosen) }
 }
 
@@ -128,12 +120,15 @@ function resolveBanked(state: DuelState, banked: BankedAbility, chooser: Chooser
     const { ability, affected } = banked
     return resolveEffect(state, (duel) => ability.effect(duel, affected), {
       controller: banked.controller,
+      via: '誘発',
       chooser,
       handed: [affected],
     })
   }
   return resolveEffect(state, banked.ability.effect, {
     controller: banked.controller,
+    via: '誘発',
+    source: banked.source,
     chooser,
     self: banked.self,
   })

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { indexOfSquare } from '@revolution/engine'
-import type { Player, PlayerZone, Square, WireCardInstance, WirePerspective } from '@revolution/engine'
+import type { DuelEvent, Player, PlayerZone, Square, WireCardInstance, WirePerspective } from '@revolution/engine'
 import { emptyBoard, instance, unitFace, withZone } from './test-support.js'
-import { boardView, logLines } from './view-model.js'
+import { boardView, cutInViews, logLines } from './view-model.js'
 import type { BoardView, CardView, SideView } from './view-model.js'
 
 /**
@@ -513,6 +513,22 @@ describe('操作ログ', () => {
     expect(texts(board)).toEqual(['トラップとしてプレイする'])
   })
 
+  /**
+   * 見出しの言葉が経路と取り違えられていないことを、操作ログの側でも確かめる（#104）。
+   * 「発動」はトラップの言葉である（総合ルール 第2部 第20章 3-10）。
+   */
+  it('能力の解決は、経路の言葉で出る', () => {
+    const board = withLog({ kind: '能力を解決した', controller: '先攻', via: '発動', source: '置いてある' })
+
+    expect(texts(board)).toEqual(['発動：テスト・置いてある'])
+  })
+
+  it('能力の解決は、発生源が名指しされていなければ経路の言葉だけが出る', () => {
+    const board = withLog({ kind: '能力を解決した', controller: '先攻', via: '誘発', source: undefined })
+
+    expect(texts(board)).toEqual(['誘発'])
+  })
+
   it('効果が実行した命令が出る', () => {
     const board = withLog({
       kind: '命令を実行した',
@@ -538,5 +554,96 @@ describe('操作ログ', () => {
 
   it('何も起きていなければ空', () => {
     expect(logLines(emptyBoard('先攻'))).toEqual([])
+  })
+})
+
+/**
+ * 効果の解決 1 つ分のカットイン（#104）。
+ *
+ * 見出しの言葉が経路と取り違えられていないこと、本文が命令から組み立てられること、
+ * 見てはならないものが出ないことを見る。**落とす判断はここに無い**ので、確かめられるのは
+ * 「届いたできごとから作り出していないか」だけである。
+ */
+describe('カットイン', () => {
+  const ON_SQUARE: Square = { row: 1, column: 1 }
+  const board = withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('置いてある', '先攻')])
+  const NAME = 'テスト・置いてある'
+
+  it.each([
+    ['誘発', `${NAME}の効果、誘発！`],
+    ['起動', `${NAME}の効果、起動！`],
+    ['発動', `${NAME}を発動！`],
+    ['プレイ', `${NAME}をプレイ！`],
+    ['希望', `${NAME}の希望！`],
+  ] as const)('見出しは経路ごとに変わる（%s）', (via, heading) => {
+    const fresh: readonly DuelEvent[] = [{ kind: '能力を解決した', controller: '先攻', via, source: '置いてある' }]
+
+    expect(cutInViews(board, fresh).map((view) => view.heading)).toEqual([heading])
+  })
+
+  it('発生源が名指しされていなければ、経路だけの見出しになる', () => {
+    const fresh: readonly DuelEvent[] = [{ kind: '能力を解決した', controller: '先攻', via: '発動', source: undefined }]
+
+    expect(cutInViews(board, fresh)[0]?.heading).toBe('トラップを発動！')
+  })
+
+  it('本文は命令 1 つにつき 1 行になる', () => {
+    const fresh: readonly DuelEvent[] = [
+      { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: '置いてある' } },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
+    ]
+
+    expect(cutInViews(board, fresh)[0]?.lines).toEqual([`${NAME}を選んだ`, `${NAME}を破壊した`])
+  })
+
+  /** 解決 → 命令 → 行動 → 解決 → 命令、で 2 つのカットインに切れる。 */
+  it('次の別種のできごとが来ると切れる', () => {
+    const fresh: readonly DuelEvent[] = [
+      { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: '置いてある' } },
+      { kind: '行動した', player: '先攻', action: '優先権を放棄する', card: undefined, square: undefined },
+      { kind: '能力を解決した', controller: '先攻', via: '起動', source: '置いてある' },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
+    ]
+
+    const views = cutInViews(board, fresh)
+
+    expect(views).toHaveLength(2)
+    expect(views[0]?.lines).toEqual([`${NAME}を選んだ`])
+    expect(views[1]?.lines).toEqual([`${NAME}を破壊した`])
+  })
+
+  it('「能力を解決した」で始まらない並びからは何も出ない', () => {
+    const fresh: readonly DuelEvent[] = [
+      { kind: '行動した', player: '先攻', action: '優先権を放棄する', card: undefined, square: undefined },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: '置いてある' } },
+    ]
+
+    expect(cutInViews(board, fresh)).toEqual([])
+  })
+
+  it('誰のできごとかが出る', () => {
+    const fresh: readonly DuelEvent[] = [{ kind: '能力を解決した', controller: '後攻', via: '誘発', source: undefined }]
+
+    expect(cutInViews(board, fresh)[0]?.whose).toBe('相手')
+  })
+
+  /** 見えないカードの名前は、画面のどこにも出ない（`view-model.test.ts` の他の描画と同じ）。 */
+  it('見えないカードの名前は、カットインのどこにも出ない', () => {
+    const secret = unitFace('テスト・見えないはずのカード')
+    const secretBoard = withZone(board, '後攻', '手札', [{ kind: '見えていない', orientation: 'リリース' }])
+    expect(JSON.stringify(secretBoard)).not.toContain(secret.name)
+
+    const fresh: readonly DuelEvent[] = [
+      { kind: '能力を解決した', controller: '先攻', via: '誘発', source: undefined },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: undefined } },
+    ]
+
+    expect(JSON.stringify(cutInViews(secretBoard, fresh))).not.toContain(secret.name)
+  })
+
+  it('新しく届いた分が空なら、カットインも空', () => {
+    expect(cutInViews(board, [])).toEqual([])
   })
 })

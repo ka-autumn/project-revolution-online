@@ -19,6 +19,7 @@ import {
 } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import type { Effect, UnitOnSquare } from './effect.js'
+import type { ResolutionVia } from './log.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import { resolveEffect } from './resolve.js'
@@ -93,7 +94,9 @@ export function playCard(state: DuelState, declaration: PlayDeclaration, chooser
   const paid = payUseCost(state, player, card, chooser)
   if (typeof paid === 'string') return cannot(paid)
 
-  return done(grantPriorityToInactive(resolveInResolveZone(paid, instance.id, card.effect, player, chooser)))
+  return done(
+    grantPriorityToInactive(resolveInResolveZone(paid, instance.id, card.effect, player, 'プレイ', chooser)),
+  )
 }
 
 /**
@@ -154,7 +157,7 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   // 発動条件を満たしたできごとを効果に渡す（`effect.ts` の `TrapEffect`）。ここで束ねるのは、
   // きっかけを知っているのが発動する経路だけだからである。解決する側（`resolveEffect`）は
   // どの経路から来た効果かを知らないままでよい。
-  const resolved = resolveInResolveZone(paid, card, (duel) => trap.effect(duel, occasion), player, chooser, [
+  const resolved = resolveInResolveZone(paid, card, (duel) => trap.effect(duel, occasion), player, '発動', chooser, [
     occasion.invader,
   ])
   return done(grantPriorityToInactive(resolved))
@@ -241,17 +244,21 @@ function placePlayedUnit(
  * `handed` は、`DuelView` を通さずに効果へ直接渡したユニット（`resolve.ts` の
  * `EffectContext.handed`）。発動したトラップが、きっかけに載っている侵入してきた敵を
  * 渡す場合に使う。
+ *
+ * `via` はプレイと発動のどちらでここへ来たか（#104）。呼ぶ側しか知らないので、ここでは
+ * 受け取るだけで判断しない。
  */
 function resolveInResolveZone(
   state: DuelState,
   id: CardId,
   effect: Effect,
   controller: Player,
+  via: ResolutionVia,
   chooser: Chooser,
   handed?: readonly UnitOnSquare[],
 ): DuelState {
   const placed = moveToResolveZone(state, id)
-  const resolved = resolveEffect(placed, effect, { controller, chooser, handed })
+  const resolved = resolveEffect(placed, effect, { controller, via, source: id, chooser, handed })
 
   const stillResolving = cardsInResolveZone(resolved).some((each) => each.id === id)
   return stillResolving ? moveToZone(resolved, id, '捨札') : resolved

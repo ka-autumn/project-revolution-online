@@ -222,7 +222,7 @@ function resolveHope(state: DuelState, placed: CardInstance, chooser: Chooser): 
   const controller = placed.owner
   if (!satisfiesLevel(state, controller, placed.card)) return state
 
-  return resolveEffect(state, hope.effect, { controller, chooser })
+  return resolveEffect(state, hope.effect, { controller, via: '希望', source: placed.id, chooser })
 }
 
 /** 処理中のスマッシュ判定を差し替える。 */

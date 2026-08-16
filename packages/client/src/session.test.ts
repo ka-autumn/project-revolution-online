@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ToClient, WireChoice, WirePerspective } from '@revolution/engine'
+import type { DuelEvent, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
 import { emptyBoard } from './test-support.js'
@@ -16,6 +16,12 @@ import { emptyBoard } from './test-support.js'
 function board(turn: number): WirePerspective {
   const empty = emptyBoard('先攻')
   return { ...empty, turn: { ...empty.turn, number: turn } }
+}
+
+/** ログを積んだ盤面。中身は問わないので、同じできごとを繰り返して使う。 */
+function boardWithLog(turn: number, count: number): WirePerspective {
+  const event: DuelEvent = { kind: 'バトルが終わった' }
+  return { ...board(turn), log: Array.from({ length: count }, () => event) }
 }
 
 const CHOICE: WireChoice = {
@@ -115,6 +121,66 @@ describe('届いたものを畳む', () => {
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
     expect(stage.board).toBeUndefined()
+  })
+})
+
+/**
+ * この盤面で新しく届いたできごと（#104）。カットインが読む分で、盤面の中身そのものは
+ * 問わないので、ログの長さの変化だけを見る。
+ */
+describe('この盤面で新しく届いたできごと', () => {
+  it('最初の盤面では、まだ何も新しくない', () => {
+    const stage = fold(SEATED, { kind: '盤面', perspective: boardWithLog(1, 2), actions: [] }).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.fresh).toEqual([])
+  })
+
+  it('増えた分だけが新しく届いたことになる', () => {
+    const stage = fold(
+      SEATED,
+      { kind: '盤面', perspective: boardWithLog(1, 2), actions: [] },
+      { kind: '盤面', perspective: boardWithLog(2, 5), actions: [] },
+    ).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.fresh).toEqual(boardWithLog(2, 5).log.slice(2))
+  })
+
+  // ADR-0009。入り直しても最初の盤面から届くので、それまでの履歴を演出し直してはならない。
+  it('入り直して席についたら、空に戻る', () => {
+    const played = fold(SEATED, { kind: '盤面', perspective: boardWithLog(1, 3), actions: [] })
+    const stage = applyMessage(played, SEATED).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.fresh).toEqual([])
+  })
+
+  // ADR-0008。やり直すとログが短くなることがあるが、その時は何も演出しない。
+  it('ログが短くなっていたら、新しく届いた分は無い', () => {
+    const stage = fold(
+      SEATED,
+      { kind: '盤面', perspective: boardWithLog(1, 5), actions: [] },
+      { kind: '盤面', perspective: boardWithLog(2, 2), actions: [] },
+    ).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.fresh).toEqual([])
+  })
+
+  // 選んでいる間に新しいできごとが増えることは無い（盤面が動いていないため）。参照が変わら
+  // なければ、同じカットインを出し直すことも無い。
+  it('選んでほしいが届いても、新しく届いた分は変わらない', () => {
+    const acting = fold(SEATED, { kind: '盤面', perspective: boardWithLog(1, 2), actions: [] })
+    const before = acting.stage.kind === '打っている' ? acting.stage.fresh : undefined
+
+    const stage = applyMessage(acting, {
+      kind: '選んでほしい',
+      choice: { player: '先攻', purpose: '効果の対象', mayDecline: false, answered: 0, candidates: [] },
+    }).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.fresh).toBe(before)
   })
 })
 

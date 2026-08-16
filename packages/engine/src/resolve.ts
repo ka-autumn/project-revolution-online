@@ -15,6 +15,7 @@ import {
 import type { CardId, DuelState } from './duel.js'
 import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import { loggedInstruction, record } from './log.js'
+import type { ResolutionVia } from './log.js'
 import type { Player } from './player.js'
 import { duelView } from './view.js'
 
@@ -80,6 +81,10 @@ export type Chooser = (
 export interface EffectContext {
   /** 能力の支配者（総合ルール 第4部 第7章 1）。味方・敵はこのプレイヤーから見た呼び方になる。 */
   readonly controller: Player
+  /** どの経路の解決か（#104）。**入口が言う。**ここで推測しない。 */
+  readonly via: ResolutionVia
+  /** 発生源のカード。作成された誘発型能力（`duel.ts` の `CreatedAbilityInstance`）は持たない。 */
+  readonly source?: CardId
   readonly chooser: Chooser
   /**
    * 誘発した時点の発生源（`duel.ts` の `TriggeredInstance.self`）。
@@ -112,9 +117,18 @@ export interface EffectContext {
  *
  * 誘発型能力がバンクを経由して解決されるまでの流れ（総合ルール 第4部 第7章 2）は
  * まだ実装していない。この関数は、そこにたどり着いた後の 1 つの効果だけを扱う。
+ *
+ * 解決を始めたことを、その効果が出す命令より先に残す（#95・#104）。**解決の入口はすべて
+ * ここを通る**ので、出すところをここ 1 つに寄せている。入口ごとに書くと、足し忘れても型が
+ * 通ってしまう。どの命令がどの能力から出たものかは、ログの並びで分かる。
  */
 export function resolveEffect(state: DuelState, effect: Effect, context: EffectContext): DuelState {
-  let current = state
+  let current = record(state, {
+    kind: '能力を解決した',
+    controller: context.controller,
+    via: context.via,
+    source: context.source,
+  })
   // 効果に見せたユニット。効果は自分で盤面を探せないので、対象にできるのはここを
   // 通って渡したものだけである（ADR-0002）。
   const shown = new Set<CardId>()

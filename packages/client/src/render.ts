@@ -1,6 +1,15 @@
 import type { ChoiceAnswer, LegalAction } from '@revolution/engine'
 import type { ActionView, ChoiceView } from './input-model.js'
-import type { AbilityView, BattleView, BoardView, CardView, SideView, SquareView, ZoneView } from './view-model.js'
+import type {
+  AbilityView,
+  BattleView,
+  BoardView,
+  CardView,
+  CutInView,
+  SideView,
+  SquareView,
+  ZoneView,
+} from './view-model.js'
 
 /**
  * 画面に出す値（`view-model.ts`）を DOM にする。
@@ -196,6 +205,31 @@ function logElement(lines: BoardView['log']): HTMLElement {
     list.append(item)
   }
   node.append(list)
+
+  return node
+}
+
+/**
+ * カットインを重ねる層（#104）。
+ *
+ * 盤面の上に重ねるだけで、**押せる場所は塞がない**（`style.css` の `.cut-in-layer` の
+ * `pointer-events: none`）。いつ消すかはここでは決めない。溜めない出し方の管理は
+ * `index.ts` のタイマーの仕事である。
+ */
+export function cutInElement(views: readonly CutInView[]): HTMLElement {
+  const node = element('div', 'cut-in-layer')
+  for (const view of views) {
+    const cutIn = element('div', `cut-in cut-in--${view.whose}`)
+    // 誰の効果かを色だけで区別させない。文字でも出す。
+    cutIn.append(element('span', 'cut-in__whose', view.whose))
+    cutIn.append(element('p', 'cut-in__heading', view.heading))
+
+    const lines = element('div', 'cut-in__lines')
+    for (const line of view.lines) lines.append(element('p', 'cut-in__line', line))
+    cutIn.append(lines)
+
+    node.append(cutIn)
+  }
 
   return node
 }
