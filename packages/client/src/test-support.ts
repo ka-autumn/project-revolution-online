@@ -49,6 +49,7 @@ export function emptyBoard(viewer: Player): WirePerspective {
     battle: undefined,
     smashJudgments: [],
     result: undefined,
+    log: [],
   }
 }
 

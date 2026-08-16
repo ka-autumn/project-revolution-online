@@ -299,3 +299,39 @@ body {
 .choice__back .choice__button {
   color: #666;
 }
+
+/*
+ * 操作ログ（#95）。新しいものが下に増えるので、下端を見せたまま中でスクロールさせる。
+ * 盤面より下に置いて、画面の高さを押し上げないようにしている。
+ */
+.log {
+  margin-top: calc(var(--gap) * 2);
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+}
+
+.log__title {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.log__list {
+  max-height: 12rem;
+  margin: 2px 0 0;
+  padding-left: 1.6em;
+  overflow-y: auto;
+  font-size: 0.75rem;
+}
+
+.log__item--自分 {
+  color: var(--own);
+}
+
+.log__item--相手 {
+  color: var(--opponent);
+}
+
+/* 誰のできごとかを色だけで区別させない。 */
+.log__whose::after {
+  content: '：';
+}

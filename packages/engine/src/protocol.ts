@@ -1,7 +1,8 @@
 import type { CardId, DuelState } from './duel.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
-import { perspectiveOf } from './perspective.js'
+import { cardIdOf } from './log.js'
+import { perspectiveOf, visibleIds } from './perspective.js'
 import type { Player } from './player.js'
 import type { ChoicePurpose, Chooser } from './resolve.js'
 import type { WirePerspective } from './wire.js'
@@ -134,20 +135,6 @@ function isChoiceNeeded(thrown: unknown): thrown is ChoiceNeeded {
 }
 
 /**
- * その候補が指しているカードの識別子。カードを指していなければ `undefined`。
- *
- * `Chooser` は候補を `unknown` として受け取る。選ばせる場面ごとに候補の型が違う（スクエアに
- * あるユニット・ゾーンにあるカード・バンクにある能力・置換効果）ためである。通信に載せる時に
- * 必要なのは「どのカードのことか」だけなので、尋ねるのもその 1 つだけにしている。
- */
-function cardIdOf(candidate: unknown): CardId | undefined {
-  if (typeof candidate !== 'object' || candidate === null) return undefined
-
-  const { id } = candidate as { readonly id?: unknown }
-  return typeof id === 'string' ? id : undefined
-}
-
-/**
  * その候補が能力であるとき、その発生源のカードの識別子。持たなければ `undefined`。
  *
  * 解決を待っている能力は発生源を覚えている（`duel.ts` の `TriggeredInstance.source`）。
@@ -182,24 +169,6 @@ function describeCandidate(candidate: unknown, purpose: ChoicePurpose, visible: 
 }
 
 /**
- * その視点から表側が見えているカードの識別子すべて。
- *
- * 見え方の決まりを二度書かずに済むよう、射影（ADR-0004）から取り出す。
- */
-function visibleIds(state: DuelState, viewer: Player): ReadonlySet<CardId> {
-  const perspective = perspectiveOf(state, viewer)
-  return new Set([
-    ...Object.values(perspective.zones).flatMap((zones) =>
-      Object.values(zones).flatMap((cards) =>
-        cards.flatMap((card) => (card.kind === '見えている' ? [card.instance.id] : [])),
-      ),
-    ),
-    ...perspective.squares.flat().map((card) => card.id),
-    ...perspective.resolveZone.map((card) => card.id),
-  ])
-}
-
-/**
  * 選んでほしいことを、送れる形にする。
  *
  * 見えているかどうかは**行動を始める前の盤面**で判定する。選択が起こるのは行動の途中の盤面に
@@ -215,7 +184,7 @@ function describeChoice(
   mayDecline: boolean,
   answered: number,
 ): WireChoice {
-  const visible = visibleIds(state, player)
+  const visible = visibleIds(perspectiveOf(state, player))
   return {
     player,
     purpose,

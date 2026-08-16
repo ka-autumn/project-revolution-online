@@ -2,6 +2,7 @@ import type { MoveDirection, Square } from './board.js'
 import type { Attribute, Card, CardType, Color, UnitCard } from './card.js'
 import type { CardId, CardInstance, DuelResult } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
+import type { DuelEvent } from './log.js'
 import type { Orientation } from './orientation.js'
 import type {
   DuelPerspective,
@@ -136,6 +137,15 @@ export interface WirePerspective {
   readonly battle: VisibleBattle | undefined
   readonly smashJudgments: readonly SmashJudgment[]
   readonly result: DuelResult | undefined
+  /**
+   * ここまでに起きたできごと（#95）。射影が落とした後のものがそのまま載る。
+   *
+   * **形を変えずに済むのは、できごとがカードを識別子でしか指していないためである**
+   * （`log.ts` の `DuelEvent`）。カードそのものを持っていないので、表記に書き出す必要が無い。
+   * 名前を出したければ、受け取った側が同じ盤面から引ける。名指しされているカードは、そこに
+   * 見えているカードだけである（`perspective.ts` の `visibleIds`）。
+   */
+  readonly log: readonly DuelEvent[]
 }
 
 /** 種別によらず書かれていることを写す。**能力と効果は写さない。** */

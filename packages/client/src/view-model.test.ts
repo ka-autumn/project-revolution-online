@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { indexOfSquare } from '@revolution/engine'
 import type { Player, PlayerZone, Square, WireCardInstance, WirePerspective } from '@revolution/engine'
 import { emptyBoard, instance, unitFace, withZone } from './test-support.js'
-import { boardView } from './view-model.js'
+import { boardView, logLines } from './view-model.js'
 import type { BoardView, CardView, SideView } from './view-model.js'
 
 /**
@@ -448,5 +448,95 @@ describe('解決を待っている能力', () => {
 
   it('積まれていなければ空', () => {
     expect(boardView(emptyBoard('先攻')).bank).toEqual([])
+  })
+})
+
+/**
+ * 操作ログ（#95）。
+ *
+ * **落とす判断はここに無い。** 見てはならないカードは名指しされないまま届く
+ * （`perspective.ts` の `DuelPerspective.log`）ので、ここで見るのは「届いたできごとを
+ * どう読める行にするか」と、「名指しされていないものを勝手に補っていないか」である。
+ */
+describe('操作ログ', () => {
+  const ON_SQUARE: Square = { row: 1, column: 1 }
+
+  /** そのできごとだけを持つ盤面。スクエアに 1 枚置いて、名前を引けるようにしておく。 */
+  function withLog(...log: WirePerspective['log']): WirePerspective {
+    const board = withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('置いてある', '先攻')])
+    return { ...board, log }
+  }
+
+  /** 出た行の文だけ。 */
+  function texts(board: WirePerspective): readonly string[] {
+    return logLines(board).map((line) => line.text)
+  }
+
+  it('行った手が、行われた順に出る', () => {
+    const board = withLog(
+      { kind: '行動した', player: '先攻', action: '優先権を放棄する', card: undefined, square: undefined },
+      { kind: '行動した', player: '後攻', action: 'プランする', card: undefined, square: undefined },
+    )
+
+    expect(logLines(board)).toEqual([
+      { whose: '自分', text: '優先権を放棄する' },
+      { whose: '相手', text: 'プランする' },
+    ])
+  })
+
+  it('指されたカードとスクエアが出る', () => {
+    const board = withLog({
+      kind: '行動した',
+      player: '先攻',
+      action: 'カードをプレイする',
+      card: '置いてある',
+      square: ON_SQUARE,
+    })
+
+    expect(texts(board)).toEqual(['カードをプレイする：テスト・置いてある（中央エリアの中央ライン）'])
+  })
+
+  /**
+   * 名指しされていなければ、名前のところは出ない。**「見えていないカード」とも書かない。**
+   * 名指しが落ちたのか、そもそもカードを指していないできごとなのかは、届いたものからは
+   * 見分けられない。
+   */
+  it('名指しされていないカードは、名前を作り出さない', () => {
+    const board = withLog({
+      kind: '行動した',
+      player: '後攻',
+      action: 'トラップとしてプレイする',
+      card: undefined,
+      square: undefined,
+    })
+
+    expect(texts(board)).toEqual(['トラップとしてプレイする'])
+  })
+
+  it('効果が実行した命令が出る', () => {
+    const board = withLog({
+      kind: '命令を実行した',
+      controller: '後攻',
+      instruction: { kind: 'ユニットにダメージを与える', card: '置いてある', amount: 500 },
+    })
+
+    expect(logLines(board)).toEqual([{ whose: '相手', text: 'テスト・置いてあるにダメージ 500' }])
+  })
+
+  /** ルールエフェクトはどちらのプレイヤーにも支配されない（総合ルール 第4部 第14章 1）。 */
+  it('ルールが起こしたことは、誰のものにもならない', () => {
+    const board = withLog({ kind: 'ルールで捨札に置かれた', cards: ['置いてある'] })
+
+    expect(logLines(board)).toEqual([{ whose: undefined, text: 'ルールで捨札：テスト・置いてある' }])
+  })
+
+  it('決着は、見る人から見た言い方で出る', () => {
+    const board = withLog({ kind: '決着した', result: { kind: '勝利', winner: '後攻' } })
+
+    expect(texts(board)).toEqual(['決着：負け'])
+  })
+
+  it('何も起きていなければ空', () => {
+    expect(logLines(emptyBoard('先攻'))).toEqual([])
   })
 })

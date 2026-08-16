@@ -7,6 +7,8 @@ import { activatedAbilitiesOf } from './card.js'
 import { activateCourage } from './courage.js'
 import { cardsIn, cardsOn, hasEnded } from './duel.js'
 import type { CardId, CardInstance, DuelState } from './duel.js'
+import { record } from './log.js'
+import type { DuelEvent } from './log.js'
 import { moveUnit } from './move.js'
 import type { Player } from './player.js'
 import { activateTrap, playAsTrap, playCard } from './play.js'
@@ -112,8 +114,39 @@ export function legalActions(state: DuelState): readonly LegalAction[] {
  *
  * `action` は `legalActions` が返したものだけを渡す前提であり、その時と盤面が変わっていなければ
  * 必ず成功する。コストの支払いや効果の中の選択は `chooser` に委ねる。
+ *
+ * 行った手をログに残す（#95）。**残すのはここだけである。** `legalActions` は候補を試すのに
+ * 行動そのもの（`placeEnergy` など）を直接呼ぶので、数え上げただけの行動はログに積まれない。
  */
 export function applyLegalAction(state: DuelState, action: LegalAction, chooser: Chooser): DuelState {
+  return applyTo(record(state, actionEvent(state, action)), action, chooser)
+}
+
+/** 行った手のできごと。行動が指しているカードとスクエアを取り出す。 */
+function actionEvent(state: DuelState, action: LegalAction): DuelEvent {
+  const taken = { kind: '行動した', player: state.turn.priority, action: action.kind } as const
+  switch (action.kind) {
+    case '優先権を放棄する':
+    case 'プランする':
+      return { ...taken, card: undefined, square: undefined }
+    case 'エネルギーを置く':
+    case 'トラップを廃棄する':
+    case 'トラップとしてプレイする':
+    case 'トラップを発動する':
+    case '「勇気」を起動する':
+      return { ...taken, card: action.card, square: undefined }
+    case 'スマッシュする':
+    case '起動型能力を起動する':
+      return { ...taken, card: action.unit, square: undefined }
+    case 'カードをプレイする':
+      return { ...taken, card: action.declaration.card, square: action.declaration.square }
+    case 'ユニットを移動する':
+      return { ...taken, card: action.unit, square: action.destination }
+  }
+}
+
+/** 種類ごとに、その行動を行う。 */
+function applyTo(state: DuelState, action: LegalAction, chooser: Chooser): DuelState {
   switch (action.kind) {
     case '優先権を放棄する':
       return passPriority(state, chooser)

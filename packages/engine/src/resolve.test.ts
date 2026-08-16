@@ -96,6 +96,18 @@ const nextEnemySquare: Square = { row: 0, column: 2 }
 
 const chooseFirst: Chooser = (candidates) => candidates[0]
 
+/**
+ * できごとの記録を除いた盤面（#95）。
+ *
+ * 「実行できない行動は実行されず、盤面は変わらない」ことを見るのに使う。**選んだことは
+ * 記録に残る**（`log.ts`）ので、記録まで含めると同じにはならない。記録はルールの判断に
+ * 使われないので、盤面が変わっていないことはこれで見てよい。
+ */
+function withoutLog(state: DuelState): Omit<DuelState, 'log'> {
+  const { log, ...board } = state
+  return board
+}
+
 function boardOf(...placements: readonly (readonly [Square, CardInstance])[]): DuelState {
   return placements.reduce((state, [square, card]) => putOnSquare(state, square, card), emptyDuelState())
 }
@@ -596,7 +608,7 @@ describe('効果による向きの変更', () => {
 
     const resolved = resolveEffect(state, releasing.effect, { controller: '先攻', chooser: chooseFirst })
 
-    expect(resolved).toBe(state)
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
   })
 
   it('すでにフリーズ状態なら、フリーズできない', () => {
@@ -604,7 +616,7 @@ describe('効果による向きの変更', () => {
 
     const resolved = resolveEffect(state, freezing.effect, { controller: '先攻', chooser: chooseFirst })
 
-    expect(resolved).toBe(state)
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
   })
 
   // 総合ルール 第1部 第1章 3
