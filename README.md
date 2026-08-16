@@ -16,8 +16,10 @@ pnpm ワークスペースのモノレポ。
 | `packages/cards` | カード実装。独立した非公開リポジトリであり、この公開リポジトリには含まれない（ADR-0002） |
 | `packages/server` | 盤面の唯一の権威（ADR-0004） |
 | `packages/client` | 対戦画面。受け取った盤面を描いて選んだものを送るだけで、ルールの判断は持たない（ADR-0010） |
+| `packages/host` | 実カードのデッキを渡してサーバを立てるところ。カードを import するため、cards と同じくこの公開リポジトリには含まれない |
 
-依存の向きは cards → engine の一方向で、engine は cards を知らない。
+依存の向きは cards → engine の一方向で、engine は cards を知らない。カードとサーバの両方を
+知っているのは host だけで、サーバ自身はカードを知らない（ADR-0002）。
 
 ## 開発
 
@@ -28,14 +30,32 @@ pnpm install --frozen-lockfile
 pnpm verify
 ```
 
-`--frozen-lockfile` を付けるのは、`pnpm-lock.yaml` が `packages/cards` の importer を持っているため。
-cards が無い環境で素の `pnpm install` を走らせると、ロックファイルからそれが黙って消える。
+`--frozen-lockfile` を付けるのは、`pnpm-lock.yaml` が `packages/cards` と `packages/host` の
+importer を持っているため。それらが無い環境で素の `pnpm install` を走らせると、ロックファイルから
+黙って消える。
 
-対戦画面は vite で動かす。
+## 対戦する
+
+サーバと対戦画面を別々に立てる。
 
 ```sh
-pnpm --filter @revolution/client dev
+pnpm --filter @revolution/host start    # 対戦サーバ（既定で 8787 番）
+pnpm --filter @revolution/client dev    # 対戦画面（既定で 5173 番）
 ```
+
+ブラウザ 2 つで、同じ部屋の合言葉・違う名乗りで開く。
+
+```
+http://localhost:5173/?participant=あ&room=あいことば
+http://localhost:5173/?participant=い&room=あいことば
+```
+
+名乗り（`participant`）は認証ではない（ADR-0009）。これを知っている人がその席に座れるので、
+切れても同じ名乗りで開き直せば続きから打てる。
+
+サーバを立てるには `packages/host` が要る（カードの実装を渡すため）。無い場合は下を参照。
+
+## 開発の確認
 
 `pnpm verify` は次の 3 つを順に実行する。
 
@@ -47,8 +67,9 @@ pnpm verify:engine   # エンジンが依存ゼロで、ブラウザ／サーバ
 
 ## この公開リポジトリだけを clone した場合
 
-`packages/cards` が無いため、ゲームを動かすことはできない。`pnpm verify` は通る。
+`packages/cards` と `packages/host` が無いため、対戦を動かすことはできない。`pnpm verify` は通る。
 エンジンのテストは実カードではなく架空のテストカードで書くため、カード実装の有無に依存しない（ADR-0002）。
+クライアントも同じで、テストは手で組み立てた盤面に対して書くため、カード実装を要らない（ADR-0010）。
 
 この状態では `pnpm install --frozen-lockfile` を使うこと。上に書いたとおり、素の `pnpm install` は
-`pnpm-lock.yaml` から `packages/cards` の importer を消し、身に覚えのない差分を残す。
+`pnpm-lock.yaml` から非公開パッケージの importer を消し、身に覚えのない差分を残す。
