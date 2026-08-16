@@ -1,6 +1,6 @@
-import type { Square } from './board.js'
-import type { Card, UnitCard } from './card.js'
-import type { CardId, CardInstance, CourageConditionMet, DuelResult, TrapConditionMet } from './duel.js'
+import type { MoveDirection, Square } from './board.js'
+import type { Attribute, Card, CardType, Color, UnitCard } from './card.js'
+import type { CardId, CardInstance, DuelResult } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
 import type { Orientation } from './orientation.js'
 import type {
@@ -18,29 +18,69 @@ import { PLAYER_ZONES } from './zone.js'
 import type { PlayerZone } from './zone.js'
 
 /**
- * カードを指す名前（ADR-0002 / ADR-0004）。
+ * どの種別のカードにも書かれていることのうち、通信に載せる分（総合ルール 第2部 第2章 1）。
  *
- * **engine はこの中身を読まない。** カードの同一性は番号だが、その番号を知っているのはカードを
- * 実装している側であって、engine ではない。名前の付け方も引き直し方も外から渡してもらう
- * （`toWire` の `numberOf`、`fromWire` の `cardOf`）。engine にとっては、往復して同じカードに
- * 戻れる不透明な文字列でしかない。
- *
- * カード名ではないことに注意する。同じ名前のカードが複数あり（総合ルール 第3部 第1章 3-1 の
- * 「同名のカードはデッキに 4 枚まで」が成り立つのはそのためである）、名前では 1 枚を指せない。
+ * 載せるのは**カードに印刷されている値そのもの**であって、継続効果を適用した後の姿ではない。
+ * 修整を適用するのは `view.ts` の仕事で、それには完全な盤面が要る。ＢＰの修整や加わった属性を
+ * 見せたくなったら、カードの表記とは別の項目として盤面の側に足す。
  */
-export type CardNumber = string
+interface WireWrittenCard {
+  readonly name: string
+  readonly level: number
+  readonly colors: readonly Color[]
+  readonly stars: number
+  readonly reverseStars: number
+  readonly attributes: readonly Attribute[]
+}
 
-/** 通信に載せる形にした `CardInstance`。カードそのものの代わりに番号を持つ。 */
+/** 通信に載せる `UnitCard` の表記。 */
+export interface WireUnitFace extends WireWrittenCard {
+  readonly type: 'ユニット'
+  readonly bp: number
+  readonly sp: number
+  readonly moveIcon: readonly MoveDirection[]
+}
+
+/** 通信に載せる `StrategyCard` の表記。 */
+export interface WireStrategyFace extends WireWrittenCard {
+  readonly type: 'ストラテジー' | '超必殺ストラテジー！'
+}
+
+/** 通信に載せる `TrapCard` の表記。 */
+export interface WireTrapFace extends WireWrittenCard {
+  readonly type: 'トラップ'
+  readonly triggerIcon: readonly Square[]
+}
+
+/**
+ * カードに書かれていることのうち、画面に出すもの（ADR-0010）。
+ *
+ * **カードの同一性を指すものではない。** 同じ名前のカードは複数あり（総合ルール 第3部 第1章 3-1
+ * の「同名のカードはデッキに 4 枚まで」が成り立つのはそのためである）、表記では 1 枚を指せない。
+ * 盤面の 1 枚を指すのは識別子（`CardInstance.id`）であって、こちらは「その 1 枚に何が書かれて
+ * いるか」だけを持つ。
+ *
+ * **能力を持たない。** 能力は関数（`Ability` の `Effect`）なので通信に載らない。落としても
+ * 困らないのは、クライアントがルールの判断を持たない（ADR-0010）ためである。何が起こるかは、
+ * 解決した結果が次の盤面として届く。
+ *
+ * 種別ごとに書かれていることが違う（ムーブアイコンはユニットだけ、トリガーアイコンはトラップ
+ * だけが持つ）ので、`Card` と同じく種別で分けた組にしている。持たない項目を `undefined` に
+ * しないのは、JSON にすると値の無い項目が消えてしまうためである。
+ */
+export type WireCardFace = WireUnitFace | WireStrategyFace | WireTrapFace
+
+/** 通信に載せる形にした `CardInstance`。カードそのものの代わりに表記を持つ。 */
 export interface WireCardInstance {
   readonly id: CardId
-  readonly card: CardNumber
+  readonly card: WireCardFace
   readonly owner: Player
   readonly controller: Player
   readonly orientation: Orientation
   readonly damage: number
 }
 
-/** 通信に載せる形にした `VisibleCard`。見えていない側は元から番号を持たない。 */
+/** 通信に載せる形にした `VisibleCard`。見えていない側は元から表記を持たない。 */
 export type WireVisibleCard =
   | { readonly kind: '見えている'; readonly instance: WireCardInstance }
   | { readonly kind: '見えていない'; readonly orientation: Orientation }
@@ -49,7 +89,7 @@ export type WireVisibleCard =
 export interface WireUnitOnSquare {
   readonly id: CardId
   readonly square: Square
-  readonly card: CardNumber
+  readonly card: WireUnitFace
   readonly controller: Player
 }
 
@@ -67,16 +107,16 @@ export interface WireCourageConditionMet {
 }
 
 /**
- * サーバがクライアントへ送る、視点ごとの盤面（ADR-0004）。
+ * サーバがクライアントへ送る、視点ごとの盤面（ADR-0004 / ADR-0010）。
  *
  * `DuelPerspective` が「誰に何が見えてよいか」を決めた形であるのに対して、これは「それをどう
  * 送るか」を決めた形である。**違いはカードの持ち方だけで、それ以外はそのまま写している。**
  * 能力の効果はすでに射影の側で落ちている（`perspective.ts` の `VisibleAbility`）。
  *
- * 残っていた `CardInstance.card` も、カードのデータと効果（関数）を持つ `Card` そのものなので
- * 送れない。かわりに番号（`CardNumber`）を載せ、受け取った側が自分の持つカードの実装から引き
- * 直す。engine がカードを知らないまま（ADR-0002）両側で同じ盤面を持てるのは、この引き直しを
- * 外に出しているからである。
+ * 残っていた `CardInstance.card` は、カードのデータと効果（関数）を持つ `Card` そのものなので
+ * 送れない。かわりに**カードに書かれていること**（`WireCardFace`）を載せる。表記はどれもただの
+ * 値なので、engine がカードを知らないまま（ADR-0002）自分で書き出せる。受け取った側にカードの
+ * 実装は要らず、クライアントは公開のまま作れる（ADR-0010）。
  *
  * **この型は JSON にできるものだけでできている。** 関数も `Map` も `Set` も含まない。
  */
@@ -98,23 +138,54 @@ export interface WirePerspective {
   readonly result: DuelResult | undefined
 }
 
-/** カードを番号で呼ぶ。カードを実装している側が渡す。 */
-export type CardNaming = (card: Card) => CardNumber
-
-/** 番号からカードを引き直す。カードを実装している側が渡す。 */
-export type CardLookup = (number: CardNumber) => Card
-
-function instanceToWire(instance: CardInstance, numberOf: CardNaming): WireCardInstance {
-  return { ...instance, card: numberOf(instance.card) }
+/** 種別によらず書かれていることを写す。**能力と効果は写さない。** */
+function written(card: Card): WireWrittenCard & { readonly type: CardType } {
+  return {
+    type: card.type,
+    name: card.name,
+    level: card.level,
+    colors: card.colors,
+    stars: card.stars,
+    reverseStars: card.reverseStars,
+    attributes: card.attributes,
+  }
 }
 
-function unitToWire(unit: UnitOnSquare, numberOf: CardNaming): WireUnitOnSquare {
-  return { ...unit, card: numberOf(unit.card) }
+/** ユニットに書かれていることを写す。 */
+function unitFaceOf(card: UnitCard): WireUnitFace {
+  return { ...written(card), type: 'ユニット', bp: card.bp, sp: card.sp, moveIcon: card.moveIcon }
 }
 
-function visibleToWire(visible: VisibleCard, numberOf: CardNaming): WireVisibleCard {
+/**
+ * カードに書かれていることを写す（ADR-0010）。
+ *
+ * `{ ...card }` で写していないのは、そうすると能力と効果まで載ってしまうためである。関数は
+ * `JSON.stringify` で黙って落ちるので、混ざっていても通信の相手からは見えない。**混ぜないこと
+ * を型で保てるように、項目を 1 つずつ書き写している。**
+ */
+function faceOf(card: Card): WireCardFace {
+  switch (card.type) {
+    case 'ユニット':
+      return unitFaceOf(card)
+    case 'トラップ':
+      return { ...written(card), type: 'トラップ', triggerIcon: card.triggerIcon }
+    case 'ストラテジー':
+    case '超必殺ストラテジー！':
+      return { ...written(card), type: card.type }
+  }
+}
+
+function instanceToWire(instance: CardInstance): WireCardInstance {
+  return { ...instance, card: faceOf(instance.card) }
+}
+
+function unitToWire(unit: UnitOnSquare): WireUnitOnSquare {
+  return { ...unit, card: unitFaceOf(unit.card) }
+}
+
+function visibleToWire(visible: VisibleCard): WireVisibleCard {
   return visible.kind === '見えている'
-    ? { kind: '見えている', instance: instanceToWire(visible.instance, numberOf) }
+    ? { kind: '見えている', instance: instanceToWire(visible.instance) }
     : visible
 }
 
@@ -123,85 +194,32 @@ function visibleToWire(visible: VisibleCard, numberOf: CardNaming): WireVisibleC
  *
  * 射影（`perspectiveOf`）を通した後のものを渡す。**完全な盤面をここに渡してはならない。**
  * 落とす仕事はこの関数ではなく射影が持っていて、ここは形を変えるだけである。
+ *
+ * **逆向きの変換は無い。** 表記からカードには戻せず、戻せる必要も無い。受け取ったクライアントは
+ * 盤面を描いて選んだものを送るだけで、デュエルを進めるのは完全な盤面を持つサーバだけである
+ * （ADR-0010）。
  */
-export function toWire(perspective: DuelPerspective, numberOf: CardNaming): WirePerspective {
+export function toWire(perspective: DuelPerspective): WirePerspective {
   const zonesOf = (owner: Player): Readonly<Record<PlayerZone, readonly WireVisibleCard[]>> =>
     Object.fromEntries(
       PLAYER_ZONES.map((zone): readonly [PlayerZone, readonly WireVisibleCard[]] => [
         zone,
-        perspective.zones[owner][zone].map((card) => visibleToWire(card, numberOf)),
+        perspective.zones[owner][zone].map(visibleToWire),
       ]),
     ) as Record<PlayerZone, readonly WireVisibleCard[]>
 
   return {
     ...perspective,
-    squares: perspective.squares.map((square) => square.map((card) => instanceToWire(card, numberOf))),
+    squares: perspective.squares.map((square) => square.map(instanceToWire)),
     zones: Object.fromEntries(PLAYERS.map((owner) => [owner, zonesOf(owner)])) as WirePerspective['zones'],
-    resolveZone: perspective.resolveZone.map((card) => instanceToWire(card, numberOf)),
+    resolveZone: perspective.resolveZone.map(instanceToWire),
     trapConditionsMet: perspective.trapConditionsMet.map((met) => ({
       ...met,
-      occasion: { ...met.occasion, invader: unitToWire(met.occasion.invader, numberOf) },
+      occasion: { ...met.occasion, invader: unitToWire(met.occasion.invader) },
     })),
     courageConditionsMet: perspective.courageConditionsMet.map((met) => ({
       ...met,
-      placed: unitToWire(met.placed, numberOf),
+      placed: unitToWire(met.placed),
     })),
-  }
-}
-
-function instanceFromWire(instance: WireCardInstance, cardOf: CardLookup): CardInstance {
-  return { ...instance, card: cardOf(instance.card) }
-}
-
-/**
- * ユニットとして引き直す。
- *
- * `UnitOnSquare` はユニットしか持てない（スクエアにあるユニット以外のカードは、ルールエフェクト
- * によって捨札に置かれる。総合ルール 第4部 第14章 4-3）。引き直した結果がユニットでなければ、
- * 送り手と受け手が違うカードを見ているということなので、そこで止める。
- */
-function unitFromWire(unit: WireUnitOnSquare, cardOf: CardLookup): UnitOnSquare {
-  const card = cardOf(unit.card)
-  if (card.type !== 'ユニット') throw new Error(`ユニットのはずだった: ${unit.card}`)
-
-  return { ...unit, card: card satisfies UnitCard }
-}
-
-function visibleFromWire(visible: WireVisibleCard, cardOf: CardLookup): VisibleCard {
-  return visible.kind === '見えている'
-    ? { kind: '見えている', instance: instanceFromWire(visible.instance, cardOf) }
-    : visible
-}
-
-/**
- * 通信に載せた形から、視点ごとの盤面に戻す（ADR-0004）。
- *
- * `toWire` の逆で、番号からカードを引き直す。同じカードの実装を持っている限り、往復すると
- * 元の盤面に戻る。**戻るのは射影であって完全な盤面ではない。** 受け取った側がそこから先へ
- * デュエルを進めることはできず、それができるのは完全な盤面を持つサーバだけである。
- */
-export function fromWire(wire: WirePerspective, cardOf: CardLookup): DuelPerspective {
-  const zonesOf = (owner: Player): Readonly<Record<PlayerZone, readonly VisibleCard[]>> =>
-    Object.fromEntries(
-      PLAYER_ZONES.map((zone): readonly [PlayerZone, readonly VisibleCard[]] => [
-        zone,
-        wire.zones[owner][zone].map((card) => visibleFromWire(card, cardOf)),
-      ]),
-    ) as Record<PlayerZone, readonly VisibleCard[]>
-
-  return {
-    ...wire,
-    squares: wire.squares.map((square) => square.map((card) => instanceFromWire(card, cardOf))),
-    zones: Object.fromEntries(PLAYERS.map((owner) => [owner, zonesOf(owner)])) as DuelPerspective['zones'],
-    resolveZone: wire.resolveZone.map((card) => instanceFromWire(card, cardOf)),
-    trapConditionsMet: wire.trapConditionsMet.map(
-      (met): TrapConditionMet => ({
-        ...met,
-        occasion: { ...met.occasion, invader: unitFromWire(met.occasion.invader, cardOf) },
-      }),
-    ),
-    courageConditionsMet: wire.courageConditionsMet.map(
-      (met): CourageConditionMet => ({ ...met, placed: unitFromWire(met.placed, cardOf) }),
-    ),
   }
 }
