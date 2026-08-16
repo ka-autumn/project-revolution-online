@@ -7,6 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "serve": "node tools/serve.mjs",
     "typecheck": "pnpm -r --stream typecheck",
     "test": "vitest run",
     "verify:engine": "node tools/verify-engine.mjs",
