@@ -285,7 +285,9 @@ function turnUpTopOfLibrary(state: DuelState, player: Player): DuelState {
   const cleared = current === undefined ? state : moveToZone(state, current.id, '捨札')
 
   const top = topOfLibrary(cleared, player)
-  if (top === undefined) return cleared
+  // 何もめくれず、置き換えられたプランもなければ、この呼び出しは何もしていない（#111）。
+  if (top === undefined && current === undefined) return cleared
 
-  return moveToZone(cleared, top.id, 'プランゾーン')
+  const placed = top === undefined ? cleared : moveToZone(cleared, top.id, 'プランゾーン')
+  return record(placed, { kind: 'プランをめくった', player, card: top?.id, discarded: current?.id })
 }

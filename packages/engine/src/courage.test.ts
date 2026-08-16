@@ -271,6 +271,7 @@ const battleInProgress: Battle = {
   step: '第１バトルステップ',
   dealtDamage: [],
   endOfBattleTriggered: false,
+  result: undefined,
   heldBank: [],
   heldTriggered: [],
 }

@@ -381,6 +381,7 @@ describe('バトル', () => {
         step: '第１ダメージステップ',
         dealtDamage: [],
         endOfBattleTriggered: false,
+        result: undefined,
         heldBank: [],
         heldTriggered: [],
       },
@@ -472,15 +473,16 @@ describe('操作ログ', () => {
     return logLines(board).map((line) => line.text)
   }
 
-  it('行った手が、行われた順に出る', () => {
+  /** 新しいものが先頭に出る（#111）。 */
+  it('行った手が、行われた順とは逆に出る', () => {
     const board = withLog(
-      { kind: '行動した', player: '先攻', action: '優先権を放棄する', card: undefined, square: undefined },
+      { kind: '行動した', player: '先攻', action: 'エネルギーを置く', card: undefined, square: undefined },
       { kind: '行動した', player: '後攻', action: 'プランする', card: undefined, square: undefined },
     )
 
     expect(logLines(board)).toEqual([
-      { whose: '自分', text: '優先権を放棄する' },
       { whose: '相手', text: 'プランする' },
+      { whose: '自分', text: 'エネルギーを置く' },
     ])
   })
 
@@ -550,6 +552,101 @@ describe('操作ログ', () => {
     const board = withLog({ kind: '決着した', result: { kind: '勝利', winner: '後攻' } })
 
     expect(texts(board)).toEqual(['決着：負け'])
+  })
+
+  // #111。使ったカードが分かるようにする。
+  it('コストとして支払ったカードが出る', () => {
+    const board = withLog({
+      kind: 'コストを支払った',
+      player: '先攻',
+      zone: 'エネルギーゾーン',
+      card: '置いてある',
+      purpose: 'プランのコスト',
+    })
+
+    expect(texts(board)).toEqual(['テスト・置いてあるをコストとしてフリーズした'])
+  })
+
+  /**
+   * スマッシュは裏向きで、支払った本人からも見られない（総合ルール 第2部 第21章 7-3）ので
+   * 名前は出せない。かわりにゾーンの名前で言う。
+   */
+  it('コストとしてスマッシュをフリーズした時は、ゾーンの名前で出る', () => {
+    const board = withLog({
+      kind: 'コストを支払った',
+      player: '先攻',
+      zone: 'スマッシュゾーン',
+      card: undefined,
+      purpose: 'プランのコスト',
+    })
+
+    expect(texts(board)).toEqual(['コストとしてスマッシュをフリーズした'])
+  })
+
+  // 総合ルール 第3部 第19章 1。表向きなのはそこだけなので、この時にしか名指しできない。
+  it('希望ステップで表向きに置いたカードが出る', () => {
+    const board = withLog({ kind: '希望ステップでめくった', player: '後攻', card: '置いてある', name: 'テスト・置いてある' })
+
+    expect(texts(board)).toEqual(['テスト・置いてあるを希望ステップでめくった'])
+  })
+
+  /**
+   * 裏返された後は盤面のどこにも見えなくなる（`namesIn` が名前を引けない）ので、盤面から
+   * 引き直さず、できごとが持つ名前をそのまま出すことを見る。
+   */
+  it('盤面に見えていなくても、持っている名前が出る', () => {
+    const board = withLog({ kind: '希望ステップでめくった', player: '後攻', card: '見えなくなったカード', name: 'テスト・裏返された' })
+
+    expect(texts(board)).toEqual(['テスト・裏返されたを希望ステップでめくった'])
+  })
+
+  // #111。CONTEXT.md「プランする」：山札の 1 番上をめくってプランゾーンに置く。
+  describe('プランをめくった', () => {
+    it('めくったカードが出る', () => {
+      const board = withLog({ kind: 'プランをめくった', player: '先攻', card: '置いてある', discarded: undefined })
+
+      expect(texts(board)).toEqual(['プランをめくった：テスト・置いてある'])
+    })
+
+    it('置き換えられた古いプランが捨札に置かれたことも出る', () => {
+      const board: WirePerspective = {
+        ...withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('新しいプラン', '先攻'), instance('古いプラン', '先攻')]),
+        log: [{ kind: 'プランをめくった', player: '先攻', card: '新しいプラン', discarded: '古いプラン' }],
+      }
+
+      expect(texts(board)).toEqual(['プランをめくった：テスト・新しいプラン（テスト・古いプランを捨札へ）'])
+    })
+  })
+
+  // #111。総合ルール 第3部 第16章 1-1。
+  describe('バトルが終わった', () => {
+    it('勝者が自分なら「勝ち」になる', () => {
+      const board = withLog({ kind: 'バトルが終わった', winner: '置いてある' })
+
+      expect(texts(board)).toEqual(['バトル終了：自分の勝ち'])
+    })
+
+    it('勝者が相手なら「負け」になる', () => {
+      const board: WirePerspective = {
+        ...withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('勝ったユニット', '後攻')]),
+        log: [{ kind: 'バトルが終わった', winner: '勝ったユニット' }],
+      }
+
+      expect(texts(board)).toEqual(['バトル終了：相手の勝ち'])
+    })
+
+    it('引き分けなら「引き分け」になる', () => {
+      const board = withLog({ kind: 'バトルが終わった', winner: undefined })
+
+      expect(texts(board)).toEqual(['バトル終了：引き分け'])
+    })
+
+    /** 勝者が名指しされていなければ、勝敗を作り出さない。 */
+    it('勝者が見えていなければ勝敗を言わない', () => {
+      const board = withLog({ kind: 'バトルが終わった', winner: '見えていないカード' })
+
+      expect(texts(board)).toEqual(['バトル終了'])
+    })
   })
 
   it('何も起きていなければ空', () => {

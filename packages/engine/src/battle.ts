@@ -76,6 +76,16 @@ export interface Battle {
    * 発生した時点で待機中のバンクと同じ扱いになる。同 2 の【例】がこれにあたる。
    */
   readonly heldTriggered: readonly BankedAbility[]
+  /**
+   * バトル終了ステップの開始時に判定した勝敗（総合ルール 第3部 第16章 1-1、#111）。
+   *
+   * まだそのステップに来ていなければ `undefined`。判定した後は、勝者がいればそのユニットの
+   * 識別子を、引き分けなら `winner: undefined` を内側に持つ——外側の `undefined`（未判定）と
+   * 見分けられるようにするためである。**判定した時点のものをここに固定する。** 勝敗の決定後の
+   * ルールエフェクト（同 2-1・2-2）でユニットがスクエアを離れても、`winnerOf` を後から
+   * 呼び直すと結果が変わってしまう。
+   */
+  readonly result: { readonly winner: CardId | undefined } | undefined
 }
 
 /** これから発生するバトルの、スクエアとそこで重なっている 2 つのユニット。 */
@@ -132,6 +142,7 @@ export function startBattleIfAny(state: DuelState): DuelState {
     step: '第１バトルステップ',
     dealtDamage: [],
     endOfBattleTriggered: false,
+    result: undefined,
     // バンクとバンクに入ることが予約されている能力を、バトルが終わるまで待機させる
     // （総合ルール 第3部 第11章 2）。この後で誘発する能力は新しいバンクに入る。
     heldBank: state.bank,
@@ -256,13 +267,17 @@ function dealsDamageIn(battle: Battle, unit: UnitInstance): boolean {
  * バトル終了ステップを始める（総合ルール 第3部 第16章 1）。
  *
  * まずバトルの勝敗を判定し、勝敗によって誘発する能力と「バトル終了ステップの始め」に
- * 誘発する能力をバンクに乗せる。勝敗そのものは盤面に残さない。参照するのはこの誘発だけで、
- * 勝者や敗者を後から見るカードがまだ書けないためである。
+ * 誘発する能力をバンクに乗せる。カードから見た「勝敗そのもの」は盤面に残さない。勝者や
+ * 敗者を後から見るカードがまだ書けないためで、参照するのはこの誘発だけである。
+ *
+ * 判定した勝敗はログに出すため `battle.result` には残す（#111）。カードのテキストが参照
+ * できないことと、ログに出すことは別である。
  */
 function beginEndStep(state: DuelState, battle: Battle): DuelState {
   const winner = winnerOf(state, battle)
+  const withResult = { ...battle, result: { winner } }
   const won = winner === undefined ? state : triggerBattleWin(state, winner)
-  return trigger(won, 'バトル終了ステップの始め')
+  return trigger(withBattle(won, withResult), 'バトル終了ステップの始め')
 }
 
 /**
@@ -322,7 +337,8 @@ function endBattle(state: DuelState, battle: Battle): DuelState {
       bank: [...state.bank, ...battle.heldBank],
       triggered: [...state.triggered, ...battle.heldTriggered],
     },
-    { kind: 'バトルが終わった' },
+    // ここに来る時点でバトル終了ステップは始まっているので、`result` は必ず判定済み。
+    { kind: 'バトルが終わった', winner: battle.result?.winner },
   )
 }
 

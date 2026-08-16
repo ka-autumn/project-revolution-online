@@ -4,6 +4,7 @@ import type { Instruction } from './effect.js'
 import type { LegalAction } from './legal-action.js'
 import type { Orientation } from './orientation.js'
 import type { Player } from './player.js'
+import type { ChoicePurpose } from './resolve.js'
 import type { PlayerZone } from './zone.js'
 
 /**
@@ -80,6 +81,52 @@ export type DuelEvent =
     }
   /** プレイヤーがダメージを受けた（総合ルール 第3部 第9章 1）。 */
   | { readonly kind: 'ダメージを受けた'; readonly player: Player; readonly amount: number }
+  /**
+   * コストとして、カードをフリーズして支払った（総合ルール 第1部 第2章 3-2、第2部
+   * 第24章 1、第4部 第2章 1、第3部 第8章 2-3、第4部 第6章 2-2）。
+   *
+   * フリーズしたカードは、エネルギーゾーンだけでなくスマッシュゾーンにもありうる
+   * （プランのコスト、同 第2部 第21章 7-5）。**`zone` は必ず持つ。** どちらのゾーンを
+   * 使ったかはフリーズしたカードの枚数から誰でも分かる公開情報（同 第2部 第23章 1-1）
+   * だが、`card` はそうではない——エネルギーゾーンのカードは表向きで公開情報だが、
+   * スマッシュは裏向きで持ち主からも見られない（同 7-3）ので、`スマッシュゾーン` から
+   * 支払った時の `card` は常に `undefined` になる。`purpose` はどのコストかを画面に
+   * 伝えるためだけに持つ（`resolve.ts` の `ChoicePurpose` と同じ考え方）。
+   */
+  | {
+      readonly kind: 'コストを支払った'
+      readonly player: Player
+      readonly zone: 'エネルギーゾーン' | 'スマッシュゾーン'
+      readonly card: CardId | undefined
+      readonly purpose: ChoicePurpose
+    }
+  /**
+   * プランして山札の 1 番上をめくった（総合ルール 第3部 第8章 2-3）。
+   *
+   * すでにプランゾーンにカードがあったなら、それを捨札に置いてから次のカードをめくる
+   * （同、CONTEXT.md「プランする」）ので、その 2 つを 1 つのできごとにまとめて持つ。
+   * `card` は山札が尽きていれば `undefined`（同 第1部 第1章 3）。`discarded` は、めくる前の
+   * プランゾーンにカードが無ければ `undefined`。
+   */
+  | {
+      readonly kind: 'プランをめくった'
+      readonly player: Player
+      readonly card: CardId | undefined
+      readonly discarded: CardId | undefined
+    }
+  /**
+   * 希望ステップで、山札の 1 番上をスマッシュゾーンに表向きで置いた（総合ルール 第3部
+   * 第19章 1）。
+   *
+   * 表向きなのはここだけの間で、確定ステップで裏返されればスマッシュとして誰からも
+   * 見えなくなる（同 第20章 1、`smash.ts` の `SmashJudgment.faceUp`）。それでも、この
+   * できごとは `card` と `name` を落とさず持ち続ける。**他のできごとと違い、名前を「いま」
+   * の見え方から引かない。** 裏返された後に見えなくなるのは「これから先」の話であって、
+   * すでに公開された事実を無かったことにはしない（`perspective.ts` の `projectEvent`）。
+   * 山札が空で置けなければここへは来ない（`smash.ts` の `beginHopeStep`）ので、常に何かを
+   * 指す。
+   */
+  | { readonly kind: '希望ステップでめくった'; readonly player: Player; readonly card: CardId; readonly name: string }
   /** バトルが発生した（総合ルール 第3部 第11章 1）。 */
   | {
       readonly kind: 'バトルが始まった'
@@ -94,7 +141,14 @@ export type DuelEvent =
       readonly to: CardId | undefined
       readonly amount: number
     }
-  | { readonly kind: 'バトルが終わった' }
+  /**
+   * バトルが終わった（総合ルール 第3部 第16章 3・4）。
+   *
+   * `winner` は、バトル終了ステップの開始時に判定した勝者（同 1-1、`battle.ts` の
+   * `winnerOf`）。引き分けなら `undefined`。**判定した時点のものを持ち回る。** 勝敗の決定後の
+   * ルールエフェクト（同 2-1・2-2）でユニットがスクエアを離れても、ここに残る結果は変わらない。
+   */
+  | { readonly kind: 'バトルが終わった'; readonly winner: CardId | undefined }
   /** ルールエフェクトによって捨札に置かれた（総合ルール 第4部 第14章 4）。 */
   | { readonly kind: 'ルールで捨札に置かれた'; readonly cards: readonly CardId[] }
   /** 勝敗が決まった（総合ルール 第3部 第3章）。 */

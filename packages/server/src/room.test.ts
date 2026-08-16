@@ -635,16 +635,17 @@ describe('入り直す', () => {
    * #95。**ログは盤面の一部として届く**（`log.ts`）ので、追いつかせる仕組みは要らない。
    * 入り直した人にいまの盤面を送り直せば、それまでのできごともそのまま届く。
    */
+  /**
+   * `優先権を放棄する` はログに残らない（#111）ので、何か残る行動として `エネルギーを置く`
+   * を使う。
+   */
   it('それまでのログも送り直される', () => {
-    const outcome = started()
-    const board = boardOf(outcome.deliveries, 'あ')
-    const acting = participantAt(board.turn.priority, board.viewer)
-    const passed = send(outcome.rooms, acting, PASS)
-    expect(boardOf(passed.deliveries, 'あ').log).not.toEqual([]) // 前提: 何か起きている
+    const acted = placeEnergy(readyToAct(passUntil(started(), 'エネルギーフェイズ')))
+    expect(boardOf(acted.deliveries, 'あ').log).not.toEqual([]) // 前提: 何か起きている
 
-    const again = send(passed.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+    const again = send(acted.rooms, 'あ', { kind: '部屋に入る', room: CODE })
 
-    expect(boardOf(again.deliveries, 'あ').log).toEqual(boardOf(passed.deliveries, 'あ').log)
+    expect(boardOf(again.deliveries, 'あ').log).toEqual(boardOf(acted.deliveries, 'あ').log)
   })
 
   it('選ぶ人でないほうが入り直しても、選んでほしいことは届かない', () => {

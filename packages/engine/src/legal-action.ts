@@ -117,9 +117,13 @@ export function legalActions(state: DuelState): readonly LegalAction[] {
  *
  * 行った手をログに残す（#95）。**残すのはここだけである。** `legalActions` は候補を試すのに
  * 行動そのもの（`placeEnergy` など）を直接呼ぶので、数え上げただけの行動はログに積まれない。
+ *
+ * **`優先権を放棄する` だけは残さない。** バトルやスマッシュ判定の各ステップは連続した放棄で
+ * 進む（総合ルール 第3部 第4章 4）ため、ここを積むとログがそれで埋まってしまう（#111）。
  */
 export function applyLegalAction(state: DuelState, action: LegalAction, chooser: Chooser): DuelState {
-  return applyTo(record(state, actionEvent(state, action)), action, chooser)
+  const logged = action.kind === '優先権を放棄する' ? state : record(state, actionEvent(state, action))
+  return applyTo(logged, action, chooser)
 }
 
 /** 行った手のできごと。行動が指しているカードとスクエアを取り出す。 */

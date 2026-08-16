@@ -187,16 +187,20 @@ function abilitiesElement(title: string, abilities: readonly AbilityView[]): HTM
 }
 
 /**
- * 起きたできごとを並べる（#95）。新しいものを下に足す。
+ * 起きたできごとを並べる（#95）。新しいものを先頭に置く（#111）。
  *
  * 出せるのは届いた分だけである。見てはならないカードは名指しされないまま届く
  * （`perspective.ts` の `DuelPerspective.log`）ので、ここで隠すことは無い。
+ *
+ * 並びを逆にしても番号は起きた順のままにするため、`<ol>` の `reversed` 属性に任せる
+ * （`lines` の並びは `view-model.ts` の `logLines` がすでに新しい順にしている）。
  */
 function logElement(lines: BoardView['log']): HTMLElement {
   const node = element('section', 'log')
   node.append(element('h2', 'log__title', `操作ログ（${lines.length}）`))
 
   const list = element('ol', 'log__list')
+  list.setAttribute('reversed', '')
   for (const line of lines) {
     const item = element('li', `log__item${line.whose === undefined ? '' : ` log__item--${line.whose}`}`)
     // 誰のできごとかを色だけで区別させない。文字でも出す。
