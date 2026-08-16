@@ -175,17 +175,34 @@ function instructions(state: DuelState): readonly unknown[] {
 
 describe('行った手の記録', () => {
   it('行われた順に残る', () => {
-    const once = applyLegalAction(stocked(), PASS, chooseFirst)
-    const twice = applyLegalAction(once, PASS, chooseFirst)
+    const energy = instantiate({ id: '置くカード', card: vanilla, owner: '先攻' })
+    const placed = applyLegalAction(
+      readyToAct('エネルギーフェイズ', inZone(stocked(), '先攻', '手札', energy)),
+      { kind: 'エネルギーを置く', card: energy.id },
+      chooseFirst,
+    )
+    const planned = applyLegalAction(readyToAct('メインフェイズ', placed), { kind: 'プランする' }, chooseFirst)
 
-    expect(only(twice, '行動した').map((event) => event.action)).toEqual(['優先権を放棄する', '優先権を放棄する'])
+    expect(only(planned, '行動した').map((event) => event.action)).toEqual(['エネルギーを置く', 'プランする'])
   })
 
-  // フェイズの始めに優先権を持つのは非アクティブプレイヤー（総合ルール 第3部 第5章 1）。
   it('行ったプレイヤーが残る', () => {
+    const energy = instantiate({ id: '置くカード', card: vanilla, owner: '先攻' })
+    const state = readyToAct('エネルギーフェイズ', inZone(stocked(), '先攻', '手札', energy))
+
+    const placed = applyLegalAction(state, { kind: 'エネルギーを置く', card: energy.id }, chooseFirst)
+
+    expect(only(placed, '行動した')[0]?.player).toBe('先攻')
+  })
+
+  /**
+   * バトルやスマッシュ判定の各ステップは連続した放棄で進む（総合ルール 第3部 第4章 4）ため、
+   * これを積むとログがそれで埋まってしまう（#111）。
+   */
+  it('優先権を放棄する行動は残らない', () => {
     const passed = applyLegalAction(stocked(), PASS, chooseFirst)
 
-    expect(only(passed, '行動した')[0]?.player).toBe('後攻')
+    expect(only(passed, '行動した')).toEqual([])
   })
 
   it('指したカードが残る', () => {
@@ -485,6 +502,154 @@ describe('スマッシュの記録', () => {
   })
 })
 
+// 総合ルール 第3部 第8章 2-3、CONTEXT.md「プランする」（#111）。
+describe('プランの記録', () => {
+  it('プランして山札の 1 番上をめくったことが残る', () => {
+    const energy = instantiate({ id: 'エネルギー', card: vanilla, owner: '先攻' })
+    const state = readyToAct('メインフェイズ', inZone(stocked(), '先攻', 'エネルギーゾーン', energy))
+
+    const planned = applyLegalAction(state, { kind: 'プランする' }, chooseFirst)
+
+    expect(only(planned, 'プランをめくった')).toEqual([
+      { kind: 'プランをめくった', player: '先攻', card: '先攻の山札0', discarded: undefined },
+    ])
+  })
+
+  /** すでにプランがあるなら、それを捨札に置いてから次のカードをめくる（CONTEXT.md「プランする」）。 */
+  it('すでにプランゾーンにカードがあれば、それが捨札に置かれてから次がめくられる', () => {
+    const withEnergies = [0, 1].reduce(
+      (state, index) => inZone(state, '先攻', 'エネルギーゾーン', instantiate({ id: `エネルギー${index}`, card: vanilla, owner: '先攻' })),
+      stocked(),
+    )
+    const firstPlanned = applyLegalAction(readyToAct('メインフェイズ', withEnergies), { kind: 'プランする' }, chooseFirst)
+    const secondPlanned = applyLegalAction(
+      readyToAct('メインフェイズ', firstPlanned),
+      { kind: 'プランする' },
+      chooseFirst,
+    )
+
+    expect(only(secondPlanned, 'プランをめくった').at(-1)).toEqual({
+      kind: 'プランをめくった',
+      player: '先攻',
+      card: '先攻の山札1',
+      discarded: '先攻の山札0',
+    })
+  })
+})
+
+/**
+ * コストの支払いは `cost.ts` の `chooseAndFreeze` 1 か所に集まっている（プレイ・プラン・
+ * 移動・起動の 4 つの公開関数がすべてここを通す）ので、代表として「プランのコスト」だけを
+ * 見る（#111）。
+ */
+describe('コストの支払いの記録', () => {
+  it('フリーズして支払ったカードが残る', () => {
+    const energy = instantiate({ id: 'エネルギー', card: vanilla, owner: '先攻' })
+    const state = readyToAct('メインフェイズ', inZone(stocked(), '先攻', 'エネルギーゾーン', energy))
+
+    const planned = applyLegalAction(state, { kind: 'プランする' }, chooseFirst)
+
+    expect(only(planned, 'コストを支払った')).toEqual([
+      { kind: 'コストを支払った', player: '先攻', zone: 'エネルギーゾーン', card: 'エネルギー', purpose: 'プランのコスト' },
+    ])
+  })
+
+  /**
+   * プランはスマッシュでも支払える（総合ルール 第2部 第21章 7-5）。どちらのゾーンから
+   * 支払ったかは、フリーズしたカードの枚数から誰でも分かる公開情報である（同 第23章 1-1）
+   * ので、ゾーンは常に残す。
+   */
+  it('スマッシュをフリーズして支払った時は、ゾーンが残る', () => {
+    const smashCard = instantiate({ id: 'スマッシュ', card: vanilla, owner: '先攻' })
+    const state = readyToAct('メインフェイズ', inZone(stocked(), '先攻', 'スマッシュゾーン', smashCard))
+
+    const planned = applyLegalAction(state, { kind: 'プランする' }, chooseFirst)
+
+    expect(only(planned, 'コストを支払った')).toEqual([
+      { kind: 'コストを支払った', player: '先攻', zone: 'スマッシュゾーン', card: 'スマッシュ', purpose: 'プランのコスト' },
+    ])
+  })
+
+  /**
+   * スマッシュは裏向きで、支払った本人を含めて誰からも見られない（同 第2部 第21章 7-3）。
+   * エネルギーゾーンと違い、持ち主でも名指しできない。
+   */
+  it('スマッシュから支払ったカードは、支払った本人からも見えない', () => {
+    const smashCard = instantiate({ id: 'スマッシュ', card: vanilla, owner: '先攻' })
+    const state = readyToAct('メインフェイズ', inZone(stocked(), '先攻', 'スマッシュゾーン', smashCard))
+
+    const planned = applyLegalAction(state, { kind: 'プランする' }, chooseFirst)
+
+    expect(perspectiveOf(planned, '先攻').log.filter((event) => event.kind === 'コストを支払った')).toEqual([
+      { kind: 'コストを支払った', player: '先攻', zone: 'スマッシュゾーン', card: undefined, purpose: 'プランのコスト' },
+    ])
+  })
+})
+
+describe('バトルの記録', () => {
+  // バニラよりＢＰが大きく、バトルダメージで確実に相手を捨札に置くユニット。
+  const strong = defineUnit({ name: 'テスト・強い', level: 1, colors: ['赤'], bp: 3000, sp: 500 })
+
+  /** バトルが終わるまで、両方が優先権を放棄し続けた盤面。 */
+  function afterBattle(state: DuelState): DuelState {
+    let current = state
+    while (current.battle !== undefined) current = passPriority(current, chooseFirst)
+    return current
+  }
+
+  // 総合ルール 第3部 第16章 1-1。片方だけが残れば、そのユニットが勝者になる。
+  it('勝ったユニットが残る', () => {
+    const defended = instantiate({ id: '守った', card: vanilla, owner: '後攻' })
+    const attacker = instantiate({ id: '攻めた', card: strong, owner: '先攻' })
+    const attacking = putOnSquare(putOnSquare(stocked(), mySquare, defended), mySquare, attacker)
+
+    const ended = afterBattle(passPriority(attacking, chooseFirst))
+
+    expect(only(ended, 'バトルが終わった')).toEqual([{ kind: 'バトルが終わった', winner: '攻めた' }])
+  })
+
+  // 総合ルール 第3部 第16章 1-1。両方とも捨札に置かれれば、引き分けになる。
+  it('両方とも捨札に置かれれば引き分けになる', () => {
+    const first = instantiate({ id: '片方', card: vanilla, owner: '後攻' })
+    const second = instantiate({ id: 'もう片方', card: vanilla, owner: '先攻' })
+    const facing = putOnSquare(putOnSquare(stocked(), mySquare, first), mySquare, second)
+
+    const ended = afterBattle(passPriority(facing, chooseFirst))
+
+    expect(only(ended, 'バトルが終わった')).toEqual([{ kind: 'バトルが終わった', winner: undefined }])
+  })
+})
+
+// 総合ルール 第3部 第19章 1。表向きなのはそこだけなので、この時にしか名指しできない。
+describe('希望ステップの記録', () => {
+  /**
+   * 敵エリアからのスマッシュでちょうど 1000（ＳＰ 500 ＋敵エリアの 500）のダメージを与え、
+   * 希望ステップまで進めた盤面。
+   *
+   * `mySquare`（row 2）は先攻の味方エリアではなく敵エリアになる（`areaOf` の
+   * `HOME_ROW_OF_FIRST` は row 0 なので、先攻から見て反対側の row 2 が敵エリア）。
+   */
+  function atHopeStep(): DuelState {
+    const library = Array.from({ length: 10 }, (_, index) =>
+      instantiate({ id: index === 0 ? '後攻の山札の上' : `後攻の山札${index}`, card: vanilla, owner: '後攻' }),
+    )
+    const smasher = instantiate({ id: 'スマッシュ役', card: vanilla, owner: '先攻' })
+    const board = putOnSquare(putInZone(stocked(), '後攻', '山札', library), mySquare, smasher)
+
+    const smashed = applyLegalAction(readyToAct('スマッシュフェイズ', board), { kind: 'スマッシュする', unit: 'スマッシュ役' }, chooseFirst)
+
+    let current = smashed
+    while (current.smashJudgments.at(-1)?.step !== '希望ステップ') current = passPriority(current, chooseFirst)
+    return current
+  }
+
+  it('表向きに置いたカードが残る', () => {
+    expect(only(atHopeStep(), '希望ステップでめくった')).toEqual([
+      { kind: '希望ステップでめくった', player: '後攻', card: '後攻の山札の上', name: vanilla.name },
+    ])
+  })
+})
+
 /**
  * ADR-0004。**見え方の決まりは射影ひとつしか無い**（`perspective.ts` の `seesFace`）ので、
  * ログもそこから落ちる。
@@ -541,6 +706,52 @@ describe('視点ごとの落とし方', () => {
     expect(perspectiveOf(state, '先攻').log).toEqual([
       { ...event, instruction: { kind: 'ゾーンへ置く', card: undefined, to: '手札' } },
     ])
+  })
+
+  // #111。バトルの勝者も、見えていなければ名指しされない。
+  it('バトルの勝者も落ちる', () => {
+    const event: DuelEvent = { kind: 'バトルが終わった', winner: hidden.id }
+
+    const state = logged(event)
+
+    expect(perspectiveOf(state, '先攻').log).toEqual([{ ...event, winner: undefined }])
+  })
+
+  // #111。プランをめくって手札に加える置換効果などで、めくったカードが手札に渡ることがある。
+  it('プランをめくったカードも落ちる', () => {
+    const event: DuelEvent = { kind: 'プランをめくった', player: '後攻', card: hidden.id, discarded: shown.id }
+
+    const state = logged(event)
+
+    expect(perspectiveOf(state, '先攻').log).toEqual([{ ...event, card: undefined }])
+  })
+
+  // #111。フリーズして支払ったカードも落ちうる（見えなくなった後の状態から判断するため）。
+  it('コストで支払ったカードも落ちる', () => {
+    const event: DuelEvent = {
+      kind: 'コストを支払った',
+      player: '後攻',
+      zone: 'エネルギーゾーン',
+      card: hidden.id,
+      purpose: 'プランのコスト',
+    }
+
+    const state = logged(event)
+
+    expect(perspectiveOf(state, '先攻').log).toEqual([{ ...event, card: undefined }])
+  })
+
+  /**
+   * 一度公開されたことは取り消せない事実なので、他のできごとと違って「いま」見えるかどうか
+   * では落ちない（`log.ts` の `希望ステップでめくった`）。`hidden` は相手の手札にあり、他の
+   * できごとなら名指しが落ちる（`相手の手札にあるカードは名指しされない`）が、ここでは残る。
+   */
+  it('希望ステップでめくったカードは落ちない', () => {
+    const event: DuelEvent = { kind: '希望ステップでめくった', player: '後攻', card: hidden.id, name: 'テスト・バニラ' }
+
+    const state = logged(event)
+
+    expect(perspectiveOf(state, '先攻').log).toEqual([event])
   })
 })
 

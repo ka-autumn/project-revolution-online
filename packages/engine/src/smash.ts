@@ -2,6 +2,7 @@ import { hopeOf } from './card.js'
 import { satisfiesLevel } from './cost.js'
 import { cardsIn, moveToZone, recoverDamage, topOfLibrary } from './duel.js'
 import type { CardId, CardInstance, DuelState } from './duel.js'
+import { record } from './log.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
 import { resolveEffect } from './resolve.js'
@@ -187,12 +188,23 @@ function beginRecoveryStep(state: DuelState, judgment: SmashJudgment): DuelState
  * 山札が空なら置くカードが無い。実際にはそこへ来ない。山札が 0 枚以下になったプレイヤーは
  * 次に優先権が発生した時に敗北する（同 第3部 第3章 2）ので、最後の 1 枚を置いた希望ステップ
  * の後の優先権でデュエルが終わり、次の希望ステップは始まらないためである。
+ *
+ * 表向きに置いたことをログに残す。確定ステップで裏返されればスマッシュとして誰からも
+ * 見えなくなる（同 第20章 1）ので、このできごとが唯一その正体を見せる機会になる。**名前を
+ * 焼き込んで持つ。** 一度見せたものを、裏返された後の見え方から改めて引き直しはしない
+ * （`log.ts` の `DuelEvent`）。
  */
 function beginHopeStep(state: DuelState, judgment: SmashJudgment, chooser: Chooser): DuelState {
   const top = topOfLibrary(state, judgment.player)
   if (top === undefined) return withJudgment(state, { ...judgment, faceUp: undefined })
 
-  const placed = withJudgment(moveToZone(state, top.id, 'スマッシュゾーン'), { ...judgment, faceUp: top.id })
+  const moved = withJudgment(moveToZone(state, top.id, 'スマッシュゾーン'), { ...judgment, faceUp: top.id })
+  const placed = record(moved, {
+    kind: '希望ステップでめくった',
+    player: judgment.player,
+    card: top.id,
+    name: top.card.name,
+  })
   return resolveHope(placed, top, chooser)
 }
 

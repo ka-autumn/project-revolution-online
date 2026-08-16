@@ -1,6 +1,7 @@
 import type { Card } from './card.js'
 import { cardsIn, putInZone } from './duel.js'
 import type { CardInstance, DuelState } from './duel.js'
+import { record } from './log.js'
 import type { Player } from './player.js'
 import type { ChoicePurpose, Chooser } from './resolve.js'
 import type { PlayerZone } from './zone.js'
@@ -146,11 +147,14 @@ function paysFor(card: Card, energy: CardInstance): boolean {
  * 支払いに使えるカードを 1 枚選んでフリーズする。候補が無ければ `undefined`。
  *
  * 選ぶのはコストを支払うプレイヤーである（総合ルール 第1部 第3章 1-1）。
+ *
+ * どのカードを支払いに使ったかをログに残す（#111）。コストの支払いはここ 1 か所に
+ * 集まっている（4 つの公開関数はすべてここを通す）ので、残すのもここだけでよい。
  */
 function chooseAndFreeze(
   state: DuelState,
   player: Player,
-  zones: readonly PlayerZone[],
+  zones: readonly ('エネルギーゾーン' | 'スマッシュゾーン')[],
   accepts: (card: CardInstance) => boolean,
   chooser: Chooser,
   purpose: ChoicePurpose,
@@ -171,7 +175,13 @@ function chooseAndFreeze(
   const found = candidates.find(({ card }) => card === chosen)
   if (found === undefined) throw new Error('候補にないカードが選ばれた')
 
-  return freeze(state, player, found.zone, found.card)
+  return record(freeze(state, player, found.zone, found.card), {
+    kind: 'コストを支払った',
+    player,
+    zone: found.zone,
+    card: found.card.id,
+    purpose,
+  })
 }
 
 /** リリース状態のカードをフリーズ状態にする（総合ルール 第2部 第24章 1）。 */

@@ -244,8 +244,16 @@ function projectEvent(event: DuelEvent, visible: ReadonlySet<CardId>): DuelEvent
     // カードは普通そのまま残る。後から捨札を離れて見えなくなったものだけが落ちる。
     case 'ルールで捨札に置かれた':
       return { ...event, cards: event.cards.filter((card) => visible.has(card)) }
-    case 'ダメージを受けた':
     case 'バトルが終わった':
+      return { ...event, winner: seen(event.winner, visible) }
+    case 'コストを支払った':
+      return { ...event, card: seen(event.card, visible) }
+    case 'プランをめくった':
+      return { ...event, card: seen(event.card, visible), discarded: seen(event.discarded, visible) }
+    // 一度表向きに置かれたことは取り消せない事実なので、裏返された後もそのまま残す
+    // （`log.ts` の `希望ステップでめくった`）。ここだけ「いま」の見え方から名指しを落とさない。
+    case '希望ステップでめくった':
+    case 'ダメージを受けた':
     case '決着した':
       return event
   }

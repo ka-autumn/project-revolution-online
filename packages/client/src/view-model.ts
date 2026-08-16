@@ -187,7 +187,7 @@ export interface BoardView {
   readonly squares: readonly (readonly SquareView[])[]
   /** 決着していれば、その 1 行。 */
   readonly result: string | undefined
-  /** 起きたできごと。古いものから並ぶ（#95）。 */
+  /** 起きたできごと。新しいものから並ぶ（#95、#111）。 */
   readonly log: readonly LogLine[]
 }
 
@@ -209,14 +209,9 @@ const COUNTED_ZONES: readonly PlayerZone[] = ['山札']
 
 const SQUARE_INDEXES: readonly SquareIndex[] = [0, 1, 2]
 
-/**
- * 表側が見えているカードを、識別子で名前が引ける表にする。
- *
- * 行える手（`input-model.ts`）もバトルもバンクも、カードを識別子で指してくる。名前に直せるのは
- * 盤面に載っているものだけである。
- */
-export function namesIn(board: WirePerspective): ReadonlyMap<CardId, string> {
-  const visible = [
+/** 表側が見えているカードすべて。盤面のどこかに載っているものだけである。 */
+function visibleInstances(board: WirePerspective): readonly WireCardInstance[] {
+  return [
     ...board.squares.flat(),
     ...board.resolveZone,
     ...Object.values(board.zones).flatMap((zones) =>
@@ -225,8 +220,26 @@ export function namesIn(board: WirePerspective): ReadonlyMap<CardId, string> {
       ),
     ),
   ]
+}
 
-  return new Map(visible.map((instance) => [instance.id, instance.card.name]))
+/**
+ * 表側が見えているカードを、識別子で名前が引ける表にする。
+ *
+ * 行える手（`input-model.ts`）もバトルもバンクも、カードを識別子で指してくる。名前に直せるのは
+ * 盤面に載っているものだけである。
+ */
+export function namesIn(board: WirePerspective): ReadonlyMap<CardId, string> {
+  return new Map(visibleInstances(board).map((instance) => [instance.id, instance.card.name]))
+}
+
+/**
+ * 表側が見えているカード 1 枚。見えていなければ `undefined`。
+ *
+ * バトルの勝敗（#111）を「自分」「相手」の名前とカード名の両方で言うのに使う。名前も支配者も
+ * 同じ 1 枚から引くので、見えているかどうかの判断が 1 回で済む。
+ */
+function visibleInstanceOf(board: WirePerspective, id: CardId): WireCardInstance | undefined {
+  return visibleInstances(board).find((instance) => instance.id === id)
 }
 
 /**
@@ -421,6 +434,9 @@ function resultLine(board: WirePerspective): string | undefined {
  * 名指しされていないカードは、そのまま出さない。**「見えていないカード」とも書かない。**
  * 名指しが落ちたのか、そもそもカードを指していないできごとなのかは、届いたものからは
  * 見分けられない（`log.ts` の `DuelEvent`）。分からないことを書き分けようとしない。
+ *
+ * **新しいものを先頭にする（#111）。** `board.log` 自体は起きた順（古いものが先）のままで、
+ * 並べ替えるのはここだけである。最新を確認するのに毎回下までスクロールしなくて済む。
  */
 export function logLines(board: WirePerspective): readonly LogLine[] {
   const names = namesIn(board)
@@ -451,16 +467,39 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
       }
       case 'バトルダメージを与えた':
         return { whose: undefined, text: about(named(event.to), 'に', `バトルダメージ ${event.amount}`) }
-      case 'バトルが終わった':
-        return { whose: undefined, text: 'バトル終了' }
+      case 'バトルが終わった': {
+        if (event.winner === undefined) return { whose: undefined, text: 'バトル終了：引き分け' }
+        const winner = visibleInstanceOf(board, event.winner)
+        const text = winner === undefined ? 'バトル終了' : `バトル終了：${whose(winner.controller)}の${winner.card.name}の勝ち`
+        return { whose: undefined, text }
+      }
       case 'ルールで捨札に置かれた': {
         const cards = event.cards.map((card) => nameOf(names, card))
         return { whose: undefined, text: `ルールで捨札：${cards.join('・')}` }
       }
       case '決着した':
         return { whose: undefined, text: `決着：${resultLabel(event.result, board.viewer)}` }
+      case 'コストを支払った': {
+        // スマッシュは裏向きで、持ち主からも見られない（総合ルール 第2部 第21章 7-3）ので
+        // 名前を出しようが無い。かわりにゾーンの名前で言う。
+        if (event.zone === 'スマッシュゾーン') {
+          return { whose: whose(event.player), text: 'コストとしてスマッシュをフリーズした' }
+        }
+        return { whose: whose(event.player), text: about(named(event.card), 'を', 'コストとしてフリーズした') }
+      }
+      case 'プランをめくった': {
+        const revealed = named(event.card)
+        const discarded = named(event.discarded)
+        const text = `${revealed === undefined ? 'プランをめくった' : `プランをめくった：${revealed}`}${
+          discarded === undefined ? '' : `（${discarded}を捨札へ）`
+        }`
+        return { whose: whose(event.player), text }
+      }
+      // 裏返された後も名前を持ち続ける（`log.ts` の `DuelEvent`）ので、盤面から引き直さない。
+      case '希望ステップでめくった':
+        return { whose: whose(event.player), text: `${event.name}を希望ステップでめくった` }
     }
-  })
+  }).reverse()
 }
 
 /**
