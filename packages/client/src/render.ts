@@ -1,0 +1,81 @@
+import type { BoardView, CardView, SideView, SquareView, ZoneView } from './view-model.js'
+
+/**
+ * 画面に出す値（`view-model.ts`）を DOM にする。
+ *
+ * **ここに判断を置かない。** 何を出すかはビューモデルがすでに決めていて、ここは要素を作って
+ * 並べるだけである。テストがあるのはビューモデルまでで、この層は薄く保つ（#14）。
+ */
+
+function element(tag: string, className: string, text?: string): HTMLElement {
+  const node = document.createElement(tag)
+  node.className = className
+  if (text !== undefined) node.textContent = text
+
+  return node
+}
+
+function cardElement(card: CardView): HTMLElement {
+  if (card.kind === '裏') {
+    const back = element('div', `card card--back card--${card.orientation}`)
+    back.setAttribute('aria-label', `裏向きのカード（${card.orientation}）`)
+    return back
+  }
+
+  const node = element('div', `card card--${card.orientation}`)
+  node.append(element('span', 'card__name', card.name), element('span', 'card__detail', card.detail))
+  if (card.damage > 0) node.append(element('span', 'card__damage', `ダメージ ${card.damage}`))
+
+  return node
+}
+
+function zoneElement(zone: ZoneView): HTMLElement {
+  const node = element('section', `zone zone--${zone.zone}`)
+  node.append(element('h3', 'zone__title', `${zone.zone}（${zone.count}）`))
+
+  const cards = element('div', 'zone__cards')
+  for (const card of zone.cards) cards.append(cardElement(card))
+  node.append(cards)
+
+  return node
+}
+
+function sideElement(side: SideView): HTMLElement {
+  const node = element('section', `side side--${side.whose}`)
+  node.append(element('h2', 'side__title', `${side.whose}（${side.player}）・ダメージ ${side.damage}`))
+
+  const zones = element('div', 'side__zones')
+  for (const zone of side.zones) zones.append(zoneElement(zone))
+  node.append(zones)
+
+  return node
+}
+
+function squareElement(square: SquareView): HTMLElement {
+  const node = element('div', `square square--${square.area}`)
+  node.setAttribute('aria-label', `${square.area} ${square.square.row}-${square.square.column}`)
+  for (const card of square.cards) node.append(cardElement(card))
+
+  return node
+}
+
+function squaresElement(rows: BoardView['squares']): HTMLElement {
+  const node = element('div', 'battle-space')
+  for (const row of rows) {
+    const line = element('div', 'battle-space__row')
+    for (const square of row) line.append(squareElement(square))
+    node.append(line)
+  }
+
+  return node
+}
+
+/** 盤面ひととおりを組み立てる。 */
+export function boardElement(view: BoardView): HTMLElement {
+  const node = element('div', 'board')
+  node.append(element('p', 'board__turn', view.turn))
+  if (view.result !== undefined) node.append(element('p', 'board__result', view.result))
+  node.append(sideElement(view.opponent), squaresElement(view.squares), sideElement(view.own))
+
+  return node
+}

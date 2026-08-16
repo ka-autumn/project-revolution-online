@@ -1,0 +1,130 @@
+/*
+ * 対戦画面の見た目。
+ *
+ * 読める最低限に留めている。何が出るかを決めているのは `view-model.ts` で、ここはその置き方
+ * だけを持つ。
+ */
+
+:root {
+  --gap: 0.4rem;
+  --line: #8a8a8a;
+  --own: #1b3a5c;
+  --opponent: #5c1b1b;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  padding: var(--gap);
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+}
+
+.status,
+.refusal {
+  margin: var(--gap) 0;
+}
+
+.refusal {
+  color: #b00;
+}
+
+.board__turn {
+  margin: var(--gap) 0;
+  font-weight: bold;
+}
+
+.board__result {
+  margin: var(--gap) 0;
+  font-size: 1.4rem;
+  font-weight: bold;
+}
+
+/* 味方エリアが下、敵エリアが上（`view-model.ts` の `squareViews`）。 */
+.battle-space {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  margin: calc(var(--gap) * 2) 0;
+}
+
+.battle-space__row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap);
+}
+
+.square {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-height: 5rem;
+  padding: 2px;
+  border: 1px solid var(--line);
+}
+
+.square--味方エリア {
+  border-color: var(--own);
+}
+
+.square--敵エリア {
+  border-color: var(--opponent);
+}
+
+.side__title {
+  margin: var(--gap) 0;
+  font-size: 1rem;
+}
+
+.side__zones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
+.zone {
+  min-width: 6rem;
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+}
+
+.zone__title {
+  margin: 0 0 2px;
+  font-size: 0.75rem;
+  font-weight: normal;
+}
+
+.zone__cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  width: 5.5rem;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 0.7rem;
+  line-height: 1.2;
+}
+
+/* フリーズは横倒し（総合ルール 第2部 第24章）。 */
+.card--フリーズ {
+  transform: rotate(90deg);
+}
+
+.card--back {
+  min-height: 2.5rem;
+  background: repeating-linear-gradient(45deg, #6663, #6663 4px, transparent 4px, transparent 8px);
+}
+
+.card__name {
+  font-weight: bold;
+}
+
+.card__damage {
+  color: #b00;
+}
