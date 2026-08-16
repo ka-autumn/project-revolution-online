@@ -24,7 +24,7 @@ import {
   putOnSquare,
   resolveEffect,
 } from './index.js'
-import type { Attribute, Chooser, DuelState, Player, Square, UnitCard } from './index.js'
+import type { Attribute, Chooser, DuelState, Player, ResolutionVia, Square, UnitCard } from './index.js'
 
 // 検証したいルールだけを持つ架空のテストカード（ADR-0002）。
 const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
@@ -117,6 +117,9 @@ const centerCenter: Square = { row: 1, column: 1 }
 const centerLeft: Square = { row: 1, column: 0 }
 
 const chooseFirst: Chooser = (candidates) => candidates[0]
+
+/** このファイルのテストは経路を見ていない（#104）。 */
+const VIA: ResolutionVia = '誘発'
 
 function pass(state: DuelState): DuelState {
   return passPriority(state, chooseFirst)
@@ -316,7 +319,7 @@ describe('効果に見せる盤面', () => {
       function* (duel) {
         for (const ally of duel.allies()) if (ally.id === '味方') seen.push(ally.card)
       },
-      { controller: '先攻', chooser: chooseFirst },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
     )
 
     expect(seen[0]?.attributes).toEqual(['テスト属性'])

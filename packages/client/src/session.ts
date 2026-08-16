@@ -1,4 +1,4 @@
-import type { LegalAction, Player, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
+import type { DuelEvent, LegalAction, Player, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
 
 /**
  * クライアントがいまどこにいるか。
@@ -25,6 +25,14 @@ export type Stage =
       readonly actions: readonly LegalAction[]
       /** 答えを待たれている選択。待たれていなければ `undefined`。 */
       readonly choice: WireChoice | undefined
+      /**
+       * この盤面で新しく届いたできごと（#104）。最初の盤面と入り直しでは空。
+       *
+       * ログは毎回まるごと届く（ADR-0011）ので、**1 つ前の盤面のログの長さから先**が新しい分に
+       * なる。行き先が見えなくなったできごとは後から名指しが落ちる（`perspective.ts`）ので、
+       * 中身を見比べてはならない。長さで切る。
+       */
+      readonly fresh: readonly DuelEvent[]
     }
 
 /**
@@ -70,16 +78,20 @@ export function applyMessage(session: Session, message: ToClient): Session {
       return { stage: { kind: '相手を待っている' }, refusal: undefined }
     case '席についた':
       return {
-        stage: { kind: '打っている', seat: message.seat, board: undefined, actions: [], choice: undefined },
+        stage: { kind: '打っている', seat: message.seat, board: undefined, actions: [], choice: undefined, fresh: [] },
         refusal: undefined,
       }
-    case '盤面':
+    case '盤面': {
       if (stage.kind !== '打っている') return session
 
+      // 最初の盤面には比べる相手がいない。入り直しても最初の盤面から届く（ADR-0009）ので、
+      // ここでも履歴を演出し直さない。
+      const fresh = stage.board === undefined ? [] : message.perspective.log.slice(stage.board.log.length)
       return {
-        stage: { ...stage, board: message.perspective, actions: message.actions, choice: undefined },
+        stage: { ...stage, board: message.perspective, actions: message.actions, choice: undefined, fresh },
         refusal: undefined,
       }
+    }
     case '選んでほしい':
       if (stage.kind !== '打っている') return session
 

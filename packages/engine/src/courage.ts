@@ -138,7 +138,7 @@ export function activateCourage(state: DuelState, card: CardId, chooser: Chooser
     function* () {
       yield* damageUnit(placed, ability.amount)
     },
-    { controller: player, chooser, handed: [placed] },
+    { controller: player, via: '起動', source: card, chooser, handed: [placed] },
   )
   return done(grantPriorityToInactive(resolved))
 }

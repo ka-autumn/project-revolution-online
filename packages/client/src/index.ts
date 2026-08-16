@@ -1,11 +1,12 @@
 import { connect } from './connection.js'
 import type { Connection } from './connection.js'
-import type { RoomCode } from '@revolution/engine'
+import type { DuelEvent, RoomCode } from '@revolution/engine'
 import { actionViews, automaticAction, choiceView } from './input-model.js'
-import { actionsElement, boardElement, choiceElement } from './render.js'
+import { actionsElement, boardElement, choiceElement, cutInElement } from './render.js'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
-import { boardView } from './view-model.js'
+import { boardView, cutInViews } from './view-model.js'
+import type { CutInView } from './view-model.js'
 
 /**
  * クライアントの起動点。
@@ -18,6 +19,9 @@ import { boardView } from './view-model.js'
  * この 3 つを繋ぐところ（ここ）である。テストがあるのは前の 2 つまでで、DOM を触る層は
  * 薄く保っている。
  */
+
+/** カットインを出しておく長さ（#104）。演出が押し付けがましくならない程度の初期値。 */
+const CUT_IN_DURATION_MS = 2600
 
 export interface MountOptions {
   /** サーバの WebSocket の URL。 */
@@ -55,8 +59,18 @@ function line(className: string, text: string): HTMLElement {
  *
  * 差分を当てずに毎回作り直している。盤面も差分ではなくまるごと届く（`wire.ts`）ので、
  * 追いつかせるものが無い。
+ *
+ * `cutIns` は盤面の一部ではなく、いま出す分だけを呼ぶ側（`mount` のタイマー）が渡す。
+ * ここで毎回作り直しても、CSS の `animation` を使っていないのでちらつかない
+ * （`style.css` の `.cut-in-layer`）。
  */
-function draw(root: HTMLElement, session: Session, open: boolean, connection: Connection): void {
+function draw(
+  root: HTMLElement,
+  session: Session,
+  open: boolean,
+  connection: Connection,
+  cutIns: readonly CutInView[],
+): void {
   root.replaceChildren()
 
   const status = statusOf(session, open)
@@ -83,6 +97,9 @@ function draw(root: HTMLElement, session: Session, open: boolean, connection: Co
         ),
       )
     }
+
+    // 盤面より上に重ねる層なので最後に足す。押せる場所は塞がない（`style.css`）。
+    if (cutIns.length > 0) root.append(cutInElement(cutIns))
   }
 
   if (session.refusal !== undefined) root.append(line('refusal', `行えませんでした: ${session.refusal}`))
@@ -98,13 +115,58 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let session = connecting()
   let open = false
 
+  // いま出しているカットインと、後から出す分の待ち行列（#104）。`fresh` は盤面が届くたびに
+  // 新しい配列で届く（`session.ts`）ので、参照を覚えておけば「前回と同じ盤面」を区別できる
+  // ——`選んでほしい` の到着で `draw` をやり直しても、待ち行列を作り直さずに済む。
+  //
+  // **すぐに置き換えない。** 行える手が「優先権を放棄する」だけの場面はクライアントが自動で
+  // 送る（`automaticAction`）ので、盤面がほぼ間を置かず届き続けることがある。届くたびに
+  // 消して作り直すと、画面が描き直される前に次の盤面が届いて、一度も見えないまま消える。
+  // **出し切ってから次へ進める**ことで、続けて起きても積み上がらず、かつ 1 つずつは必ず
+  // 見える時間を確保する。
+  let cutIns: readonly CutInView[] = []
+  let queue: (readonly CutInView[])[] = []
+  let cutInTimer: ReturnType<typeof setTimeout> | undefined
+  let lastFresh: readonly DuelEvent[] | undefined
+
+  const redraw = (): void => draw(root, session, open, connection, cutIns)
+
+  /** 待ち行列の先頭を出す。無ければ消える。呼ぶたびにタイマーを 1 つだけ張る。 */
+  function showNextCutIn(): void {
+    const [next, ...rest] = queue
+    queue = rest
+    cutIns = next ?? []
+    if (next === undefined) return
+
+    cutInTimer = setTimeout(() => {
+      cutInTimer = undefined
+      showNextCutIn()
+      redraw()
+    }, CUT_IN_DURATION_MS)
+  }
+
+  /** 新しく届いた分を待ち行列に足す。何も出ていなければ、その場で出し始める。 */
+  function enqueueCutIns(): void {
+    const stage = session.stage
+    if (stage.kind !== '打っている' || stage.fresh === lastFresh) return
+    lastFresh = stage.fresh
+    if (stage.board === undefined) return
+
+    const views = cutInViews(stage.board, stage.fresh)
+    if (views.length === 0) return
+
+    queue = [...queue, views]
+    if (cutInTimer === undefined) showNextCutIn()
+  }
+
   const connection: Connection = connect({
     url: options.url,
     participant: options.participant,
     room: options.room,
     onMessage: (message) => {
       session = applyMessage(session, message)
-      draw(root, session, open, connection)
+      enqueueCutIns()
+      redraw()
 
       // 放棄しか行えない場面は押させずに送る。**描いてから送る**ので、進む前の盤面が一度は
       // 画面に出る。送った結果は次の盤面として届き、そこでまた同じ判断をする。
@@ -113,11 +175,14 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
     onOpenChanged: (value) => {
       open = value
-      draw(root, session, open, connection)
+      redraw()
     },
   })
 
-  draw(root, session, open, connection)
+  redraw()
 
-  return () => connection.close()
+  return () => {
+    if (cutInTimer !== undefined) clearTimeout(cutInTimer)
+    connection.close()
+  }
 }
