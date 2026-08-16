@@ -1,64 +1,36 @@
 import { describe, expect, it } from 'vitest'
-import { CONSTRUCTED_DECK_MINIMUM, defineUnit } from '@revolution/engine'
-import type { Card } from '@revolution/engine'
-import { COPIES_PER_CARD, buildDeck, checkDecks, setupFromDecks } from './deck.js'
-import type { CardSet } from './deck.js'
-import type { Deck } from '@revolution/engine'
+import { defineUnit } from '@revolution/engine'
+import type { Card, Deck } from '@revolution/engine'
+import { checkDecks, setupFromDecks } from './deck.js'
 
 /**
- * カードのまとまりからデッキを組むところ（#105）。
+ * 持ち込まれたデッキを、部屋に渡せる形にするところ（#105）。
  *
- * **カードを知らない。** 実カードを名指しするのは、これを呼ぶ側（非公開）である。ここで使うのは
- * エンジンの中で定義した架空のカードで、確かめるのは枚数と規定への適合だけである。
+ * **デッキの組み方は持たない。** 何をどの枚数入れるかは持ち込む側が決めることで、ここが見るのは
+ * 規定への適合だけである。実カードを名指しするのも持ち込む側（非公開）なので、ここで使うのは
+ * エンジンの中で定義した架空のカードになる。
  */
 
-/** その名前で `count` 種類のカードを持つまとまり。 */
-function setOf(prefix: string, count: number): CardSet {
-  return Object.fromEntries(
-    Array.from({ length: count }, (_, index): readonly [string, Card] => [
-      `${prefix}-${index}`,
-      defineUnit({ name: `テスト・${prefix}${index}`, level: 0, bp: 100, sp: 100 }),
-    ]),
-  )
+function someCard(name: string): Card {
+  return defineUnit({ name: `テスト・${name}`, level: 0, bp: 100, sp: 100 })
 }
 
-/** トライアルデッキと同じ 20 種のまとまり。 */
-const TWENTY = setOf('デッキ', 20)
+/** すべて違う名前の `count` 枚のデッキ。中身が何であるかは、ここでは関わらない。 */
+function deckOf(prefix: string, count: number): Deck {
+  return Array.from({ length: count }, (_, index) => someCard(`${prefix}${index}`))
+}
 
-describe('デッキを組む', () => {
-  it('1 種につき 3 枚並べる', () => {
-    const deck = buildDeck(setOf('小さい', 2))
-
-    expect(deck).toHaveLength(2 * COPIES_PER_CARD)
-  })
-
-  /** 収録 20 種 × 3 枚で、構築戦の最小枚数（総合ルール 第3部 第1章 3-1）にちょうど届く。 */
-  it('20 種なら構築戦の最小枚数にちょうど届く', () => {
-    expect(buildDeck(TWENTY)).toHaveLength(CONSTRUCTED_DECK_MINIMUM)
-  })
-
-  /** 同じカードの実装が 3 つ並ぶ。1 枚につき 1 つの値なので、同一性で並ぶ。 */
-  it('同じカードが 3 枚ずつ並ぶ', () => {
-    const set = setOf('ひとつ', 1)
-    const only = Object.values(set)[0]
-
-    expect(buildDeck(set)).toEqual([only, only, only])
-  })
-
-  /** 鍵が何であるかは見ない。値だけを取り出す。 */
-  it('鍵の付け方に関わらず組める', () => {
-    expect(buildDeck({ 'まったく違う鍵': Object.values(TWENTY)[0] as Card })).toHaveLength(COPIES_PER_CARD)
-  })
-})
+/** 構築戦の規定を満たすデッキ（総合ルール 第3部 第1章 3-1、60 枚以上）。 */
+const LEGAL = deckOf('規定内', 60)
 
 describe('デッキの不備を確かめる', () => {
   it('規定を満たしていれば、不備は無い', () => {
-    expect(checkDecks([buildDeck(TWENTY), buildDeck(TWENTY)])).toEqual([])
+    expect(checkDecks([LEGAL, LEGAL])).toEqual([])
   })
 
-  /** 総合ルール 第3部 第1章 3-1。構築戦のデッキは 60 枚以上。 */
+  // 総合ルール 第3部 第1章 3-1
   it('枚数が足りなければ、何人目のデッキかが分かる', () => {
-    const violations = checkDecks([buildDeck(TWENTY), buildDeck(setOf('少ない', 2))])
+    const violations = checkDecks([LEGAL, deckOf('少ない', 10)])
 
     expect(violations).toHaveLength(1)
     expect(violations[0]?.seat).toBe(1)
@@ -66,15 +38,33 @@ describe('デッキの不備を確かめる', () => {
   })
 
   it('両方に不備があれば、両方とも出る', () => {
-    const small = buildDeck(setOf('少ない', 2))
+    const small = deckOf('少ない', 10)
 
     expect(checkDecks([small, small]).map((each) => each.seat)).toEqual([0, 1])
+  })
+
+  /**
+   * 総合ルール 第3部 第1章 3-1。同名のカードはデッキに 4 枚まで。
+   *
+   * **枚数だけを見ているのではない**ことを、60 枚あるが同名が多すぎるデッキで確かめる。
+   */
+  it('同名が多すぎれば、枚数が足りていても不備になる', () => {
+    const same = someCard('同じ名前')
+
+    const violations = checkDecks([Array.from({ length: 60 }, () => same)])
+
+    expect(violations.map((each) => each.violation.kind)).toContain('同名の入れすぎ')
+  })
+
+  it('デッキが 1 つでも確かめられる', () => {
+    expect(checkDecks([LEGAL])).toEqual([])
   })
 })
 
 describe('部屋に渡すもの', () => {
-  const decks: readonly [Deck, Deck] = [buildDeck(TWENTY), buildDeck(setOf('相手', 20))]
+  const decks: readonly [Deck, Deck] = [LEGAL, deckOf('相手', 60)]
 
+  /** 組み直さない。持ち込まれたものをそのまま渡す。 */
   it('渡されたデッキをそのまま渡す', () => {
     const setup = setupFromDecks(decks)()
 
@@ -93,20 +83,17 @@ describe('部屋に渡すもの', () => {
   })
 
   /**
-   * **セットを通さなくてよい。** デッキはただのカードの並びなので、枚数を変えたデッキも
-   * そのまま渡せる。総合ルール 第3部 第1章 3-1 は同名 4 枚までなので、4 枚積みも規定の内側。
+   * **積み方を問わない。** デッキはただのカードの並びなので、同名を 4 枚入れたデッキも
+   * そのまま渡せる（総合ルール 第3部 第1章 3-1 は同名 4 枚まで）。「セット全部を一律に積む」
+   * ような取り決めは、ここではなく持ち込む側が持つ。
    */
-  it('セットを通さずに組んだデッキも渡せる', () => {
-    const [four, two] = [Object.values(TWENTY)[0] as Card, Object.values(TWENTY)[1] as Card]
-    const handmade: Deck = [
-      ...Array.from({ length: 4 }, () => four),
-      ...Array.from({ length: 2 }, () => two),
-      ...buildDeck(setOf('のこり', 18)),
-    ]
+  it('積み方を問わずに渡せる', () => {
+    const four = someCard('4 枚積み')
+    const handmade: Deck = [...Array.from({ length: 4 }, () => four), ...deckOf('のこり', 56)]
 
-    const setup = setupFromDecks([handmade, buildDeck(TWENTY)])()
+    const setup = setupFromDecks([handmade, LEGAL])()
 
-    expect(setup.decks[0]).toHaveLength(4 + 2 + 18 * COPIES_PER_CARD)
+    expect(setup.decks[0]).toHaveLength(60)
     expect(checkDecks([setup.decks[0]])).toEqual([])
   })
 })

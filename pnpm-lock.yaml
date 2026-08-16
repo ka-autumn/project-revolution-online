@@ -55,9 +55,9 @@ importers:
       '@revolution/cards':
         specifier: workspace:*
         version: link:../cards
-      '@revolution/server':
+      '@revolution/engine':
         specifier: workspace:*
-        version: link:../server
+        version: link:../engine
 
   packages/engine:
     devDependencies:

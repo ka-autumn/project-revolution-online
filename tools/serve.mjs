@@ -7,11 +7,12 @@
 //     pnpm serve --decks ../revolution-decks/index.ts
 //
 // 渡すモジュールは、デッキ 2 つを `decks` として export する。デッキはただのカードの並びなので、
-// **何をどの枚数入れるかは渡す側が決める。** セット全部を 1 種 3 枚ずつ入れたいだけなら
-// `buildDeck` を通せばよい。
+// **何をどの枚数入れるかは渡す側が決める。** このリポジトリは積み方の取り決めを持たない。
 //
-//     import { buildDeck } from '@revolution/server'
-//     export const decks = [buildDeck(TRIAL_DECK_F), buildDeck(TRIAL_DECK_G)]
+//     export const decks = [[cardA, cardA, cardB, ...], [...]]
+//
+// 立てる時に構築戦の規定（総合ルール 第3部 第1章 3-1）を満たしているかを確かめるので、
+// 満たしていなければその場で分かる。
 //
 // 束ねてから走らせるのは、node が `.js` で終わる import を `.ts` に読み替えないためである
 // （リポジトリ全体がその書き方をしている）。エンジンを検証するところ（`verify-engine.mjs`）と
