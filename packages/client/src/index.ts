@@ -115,31 +115,48 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let session = connecting()
   let open = false
 
-  // いま出しているカットインと、消すタイマー（#104）。`fresh` は盤面が届くたびに新しい配列で
-  // 届く（`session.ts`）ので、参照を覚えておけば「前回と同じ盤面」を区別できる——`選んでほしい`
-  // の到着で `draw` をやり直しても、出ているカットインを作り直さずに済む。
+  // いま出しているカットインと、後から出す分の待ち行列（#104）。`fresh` は盤面が届くたびに
+  // 新しい配列で届く（`session.ts`）ので、参照を覚えておけば「前回と同じ盤面」を区別できる
+  // ——`選んでほしい` の到着で `draw` をやり直しても、待ち行列を作り直さずに済む。
+  //
+  // **すぐに置き換えない。** 行える手が「優先権を放棄する」だけの場面はクライアントが自動で
+  // 送る（`automaticAction`）ので、盤面がほぼ間を置かず届き続けることがある。届くたびに
+  // 消して作り直すと、画面が描き直される前に次の盤面が届いて、一度も見えないまま消える。
+  // **出し切ってから次へ進める**ことで、続けて起きても積み上がらず、かつ 1 つずつは必ず
+  // 見える時間を確保する。
   let cutIns: readonly CutInView[] = []
+  let queue: (readonly CutInView[])[] = []
   let cutInTimer: ReturnType<typeof setTimeout> | undefined
   let lastFresh: readonly DuelEvent[] | undefined
 
   const redraw = (): void => draw(root, session, open, connection, cutIns)
 
-  /** 新しく届いた分からカットインを作り直す。**積まない。**続けて起きたら置き換える。 */
-  function refreshCutIns(): void {
+  /** 待ち行列の先頭を出す。無ければ消える。呼ぶたびにタイマーを 1 つだけ張る。 */
+  function showNextCutIn(): void {
+    const [next, ...rest] = queue
+    queue = rest
+    cutIns = next ?? []
+    if (next === undefined) return
+
+    cutInTimer = setTimeout(() => {
+      cutInTimer = undefined
+      showNextCutIn()
+      redraw()
+    }, CUT_IN_DURATION_MS)
+  }
+
+  /** 新しく届いた分を待ち行列に足す。何も出ていなければ、その場で出し始める。 */
+  function enqueueCutIns(): void {
     const stage = session.stage
     if (stage.kind !== '打っている' || stage.fresh === lastFresh) return
     lastFresh = stage.fresh
+    if (stage.board === undefined) return
 
-    if (cutInTimer !== undefined) clearTimeout(cutInTimer)
-    cutIns = stage.board === undefined ? [] : cutInViews(stage.board, stage.fresh)
+    const views = cutInViews(stage.board, stage.fresh)
+    if (views.length === 0) return
 
-    if (cutIns.length > 0) {
-      cutInTimer = setTimeout(() => {
-        cutIns = []
-        cutInTimer = undefined
-        redraw()
-      }, CUT_IN_DURATION_MS)
-    }
+    queue = [...queue, views]
+    if (cutInTimer === undefined) showNextCutIn()
   }
 
   const connection: Connection = connect({
@@ -148,7 +165,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     room: options.room,
     onMessage: (message) => {
       session = applyMessage(session, message)
-      refreshCutIns()
+      enqueueCutIns()
       redraw()
 
       // 放棄しか行えない場面は押させずに送る。**描いてから送る**ので、進む前の盤面が一度は
