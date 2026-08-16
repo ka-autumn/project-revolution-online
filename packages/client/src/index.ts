@@ -1,6 +1,8 @@
 import { connect } from './connection.js'
+import type { Connection } from './connection.js'
 import type { RoomCode } from '@revolution/engine'
-import { boardElement } from './render.js'
+import { actionViews, choiceView } from './input-model.js'
+import { actionsElement, boardElement, choiceElement } from './render.js'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
 import { boardView } from './view-model.js'
@@ -40,28 +42,46 @@ function statusOf(session: Session, open: boolean): string | undefined {
   }
 }
 
-function draw(root: HTMLElement, session: Session, open: boolean): void {
+function line(className: string, text: string): HTMLElement {
+  const node = document.createElement('p')
+  node.className = className
+  node.textContent = text
+
+  return node
+}
+
+/**
+ * いまの状態を丸ごと描き直す。
+ *
+ * 差分を当てずに毎回作り直している。盤面も差分ではなくまるごと届く（`wire.ts`）ので、
+ * 追いつかせるものが無い。
+ */
+function draw(root: HTMLElement, session: Session, open: boolean, connection: Connection): void {
   root.replaceChildren()
 
   const status = statusOf(session, open)
-  if (status !== undefined) {
-    const line = document.createElement('p')
-    line.className = 'status'
-    line.textContent = status
-    root.append(line)
-  }
+  if (status !== undefined) root.append(line('status', status))
 
   const stage = session.stage
   if (stage.kind === '打っている' && stage.board !== undefined) {
-    root.append(boardElement(boardView(stage.board)))
+    const board = stage.board
+    root.append(boardElement(boardView(board)))
+
+    // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
+    if (stage.choice !== undefined) {
+      root.append(
+        choiceElement(choiceView(board, stage.choice), (answer) => connection.send({ kind: '選ぶ', answer })),
+      )
+    } else {
+      root.append(
+        actionsElement(actionViews(board, stage.actions), (action) =>
+          connection.send({ kind: '行動する', action }),
+        ),
+      )
+    }
   }
 
-  if (session.refusal !== undefined) {
-    const refusal = document.createElement('p')
-    refusal.className = 'refusal'
-    refusal.textContent = `行えませんでした: ${session.refusal}`
-    root.append(refusal)
-  }
+  if (session.refusal !== undefined) root.append(line('refusal', `行えませんでした: ${session.refusal}`))
 }
 
 /**
@@ -74,21 +94,21 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let session = connecting()
   let open = false
 
-  const connection = connect({
+  const connection: Connection = connect({
     url: options.url,
     participant: options.participant,
     room: options.room,
     onMessage: (message) => {
       session = applyMessage(session, message)
-      draw(root, session, open)
+      draw(root, session, open, connection)
     },
     onOpenChanged: (value) => {
       open = value
-      draw(root, session, open)
+      draw(root, session, open, connection)
     },
   })
 
-  draw(root, session, open)
+  draw(root, session, open, connection)
 
   return () => connection.close()
 }
