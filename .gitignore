@@ -1,9 +1,9 @@
 # 作業用の参照資料（第三者著作物を含むため配布しない）
 temp/
 
-# カード実装（ADR-0002）と、それを import してサーバを立てるところ
+# カード実装（ADR-0002）と、それを名指しして渡すところ
 packages/cards/
-packages/host/
+packages/decks/
 
 # 依存
 node_modules/
