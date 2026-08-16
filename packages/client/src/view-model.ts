@@ -1,6 +1,7 @@
-import { areaOf, indexOfSquare, squareFromView } from '@revolution/engine'
+import { areaOf, indexOfSquare, lineOf, squareFromView } from '@revolution/engine'
 import type {
   Area,
+  BattleStep,
   CardId,
   Orientation,
   Player,
@@ -24,6 +25,12 @@ import type {
  * から画面に出ない。
  */
 
+/** カードの詳細に出す 1 行。 */
+export interface DetailRow {
+  readonly label: string
+  readonly value: string
+}
+
 /** 画面に出す 1 枚。 */
 export type CardView =
   | {
@@ -31,8 +38,10 @@ export type CardView =
       readonly kind: '表'
       readonly id: CardId
       readonly name: string
-      /** 名前に添える 1 行。「Lv1 赤 BP1000 SP1000」のような形。 */
-      readonly detail: string
+      /** 小さいカードに添える 1 行。「Lv1 赤 BP1000 SP1000」のような形。 */
+      readonly summary: string
+      /** 詳しく見たときに出す全部。**能力テキストは持たない**（通信に載っていない、#93）。 */
+      readonly details: readonly DetailRow[]
       readonly orientation: Orientation
       /** 乗っているダメージ（総合ルール 第2部 第16章）。 */
       readonly damage: number
@@ -83,11 +92,42 @@ export interface SideView {
   readonly zones: readonly ZoneView[]
 }
 
+/**
+ * 解決を待っている能力 1 つ（総合ルール 第2部 第21章 11）。
+ *
+ * **何をする能力かは出せない。** 効果は関数なので射影の時点で落としてある
+ * （`perspective.ts` の `VisibleAbility`）。出せるのは誰の能力で、どのカードから出たかまで。
+ * それでも「バンクに何か積まれている」はスマッシュを行えるかを左右する（`priority.ts` の
+ * `activePlayerMayAct`）ので、見えるだけで判断に効く。
+ */
+export interface AbilityView {
+  readonly whose: '自分' | '相手'
+  /** 発生源のカードの名前。作成された誘発型能力など、指せないものは `undefined`。 */
+  readonly source: string | undefined
+}
+
+/** 発生しているバトル（総合ルール 第3部 第11章）。 */
+export interface BattleView {
+  /** 見る人から見たスクエアの呼び名。 */
+  readonly where: string
+  readonly step: BattleStep
+  /** 攻撃したユニットの名前（総合ルール 第3部 第11章 4）。 */
+  readonly attacker: string
+  /** 攻撃されたユニットの名前（同 4）。 */
+  readonly attacked: string
+}
+
 /** 画面に出す盤面ひととおり。 */
 export interface BoardView {
   readonly seat: Player
   /** 「第 3 ターン・メインフェイズ・自分の優先権」のような 1 行。 */
   readonly turn: string
+  /** 発生しているバトル。無ければ `undefined`。 */
+  readonly battle: BattleView | undefined
+  /** バンクで解決を待っている能力（総合ルール 第2部 第21章 11-1）。 */
+  readonly bank: readonly AbilityView[]
+  /** 誘発したが、まだバンクに置かれていない能力（同 第4部 第3章 3）。 */
+  readonly triggered: readonly AbilityView[]
   /** 相手の持ち物。画面の上に出す。 */
   readonly opponent: SideView
   /** 自分の持ち物。画面の下に出す。 */
@@ -120,13 +160,94 @@ const COUNTED_ZONES: readonly PlayerZone[] = ['山札']
 
 const SQUARE_INDEXES: readonly SquareIndex[] = [0, 1, 2]
 
+/**
+ * 表側が見えているカードを、識別子で名前が引ける表にする。
+ *
+ * 行える手（`input-model.ts`）もバトルもバンクも、カードを識別子で指してくる。名前に直せるのは
+ * 盤面に載っているものだけである。
+ */
+export function namesIn(board: WirePerspective): ReadonlyMap<CardId, string> {
+  const visible = [
+    ...board.squares.flat(),
+    ...board.resolveZone,
+    ...Object.values(board.zones).flatMap((zones) =>
+      Object.values(zones).flatMap((cards) =>
+        cards.flatMap((card) => (card.kind === '見えている' ? [card.instance] : [])),
+      ),
+    ),
+  ]
+
+  return new Map(visible.map((instance) => [instance.id, instance.card.name]))
+}
+
+/**
+ * その識別子のカードの名前。見えていなければ、名前ではなく見えていないことを返す。
+ *
+ * **名前を作り出さない。** 届いていないカードが指されたら、そのまま見えていないと出す。
+ */
+export function nameOf(names: ReadonlyMap<CardId, string>, id: CardId): string {
+  return names.get(id) ?? '見えていないカード'
+}
+
+/** 見る人から見たスクエアの呼び方（総合ルール 第2部 第22章 4・6）。 */
+export function squareLabel(viewer: Player, square: Square): string {
+  return `${areaOf(viewer, square)}の${lineOf(viewer, square)}`
+}
+
+/**
+ * 印刷された図に描かれたスクエアの呼び方（トリガーアイコン）。
+ *
+ * 印刷は支配者の手前を基準にしている（`board.ts` の `squareFromView`）。先攻がその基準の向き
+ * なので、先攻から見た呼び名がそのまま「カードに描かれている位置」の呼び名になる。**盤面の
+ * どこかを指しているのではない**ので、見る人が誰かとは関係しない。
+ */
+function printedSquareLabel(printed: Square): string {
+  return squareLabel('先攻', printed)
+}
+
+const COLORLESS = '無色'
+
+function colorsOf(face: WireCardFace): string {
+  return face.colors.length === 0 ? COLORLESS : face.colors.join('・')
+}
+
 /** カードに書かれていることを 1 行にする。 */
-function detailOf(face: WireCardFace): string {
-  const colors = face.colors.length === 0 ? '無色' : face.colors.join('・')
+function summaryOf(face: WireCardFace): string {
   const body = face.type === 'ユニット' ? `BP${face.bp} SP${face.sp}` : face.type
   const attributes = face.attributes.length === 0 ? '' : ` 《${face.attributes.join('・')}》`
 
-  return `Lv${face.level} ${colors} ${body}${attributes}`
+  return `Lv${face.level} ${colorsOf(face)} ${body}${attributes}`
+}
+
+/**
+ * 詳しく見たときに出す全部。
+ *
+ * 持っていない項目は行ごと出さない（スターを持たないカードに「スター 0」と書かない）。
+ * **能力テキストはここに無い。** 通信に載っていないためで、載せるのは #93。
+ */
+function detailsOf(instance: WireCardInstance): readonly DetailRow[] {
+  const face = instance.card
+  const rows: DetailRow[] = [
+    { label: '種別', value: face.type },
+    { label: 'レベル', value: String(face.level) },
+    { label: '色', value: colorsOf(face) },
+  ]
+
+  if (face.type === 'ユニット') {
+    rows.push({ label: 'ＢＰ', value: String(face.bp) }, { label: 'ＳＰ', value: String(face.sp) })
+    if (face.moveIcon.length > 0) rows.push({ label: 'ムーブアイコン', value: face.moveIcon.join('・') })
+  }
+  if (face.type === 'トラップ' && face.triggerIcon.length > 0) {
+    rows.push({ label: 'トリガーアイコン', value: face.triggerIcon.map(printedSquareLabel).join('・') })
+  }
+  if (face.stars > 0) rows.push({ label: 'スター', value: String(face.stars) })
+  if (face.reverseStars > 0) rows.push({ label: 'リバーススター', value: String(face.reverseStars) })
+  if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join('・') })
+
+  rows.push({ label: '向き', value: instance.orientation })
+  if (instance.damage > 0) rows.push({ label: 'ダメージ', value: String(instance.damage) })
+
+  return rows
 }
 
 function faceUpView(instance: WireCardInstance): CardView {
@@ -134,7 +255,8 @@ function faceUpView(instance: WireCardInstance): CardView {
     kind: '表',
     id: instance.id,
     name: instance.card.name,
-    detail: detailOf(instance.card),
+    summary: summaryOf(instance.card),
+    details: detailsOf(instance),
     orientation: instance.orientation,
     damage: instance.damage,
   }
@@ -154,10 +276,15 @@ function zoneView(board: WirePerspective, owner: Player, zone: PlayerZone): Zone
   }
 }
 
+/** 見る人自身のものか、相手のものか。 */
+function whoseOf(board: WirePerspective, player: Player): '自分' | '相手' {
+  return player === board.viewer ? '自分' : '相手'
+}
+
 function sideView(board: WirePerspective, player: Player): SideView {
   return {
     player,
-    whose: player === board.viewer ? '自分' : '相手',
+    whose: whoseOf(board, player),
     damage: board.damage[player],
     zones: ZONE_ORDER.map((zone) => zoneView(board, player, zone)),
   }
@@ -188,11 +315,36 @@ function squareViews(board: WirePerspective): readonly (readonly SquareView[])[]
 
 /** ターンの様子を 1 行にする。 */
 function turnLine(board: WirePerspective): string {
-  const whose = (player: Player): string => (player === board.viewer ? '自分' : '相手')
+  const whose = (player: Player): string => whoseOf(board, player)
 
   return `第 ${board.turn.number} ターン・${whose(board.turn.active)}のターン・${board.turn.phase}・${whose(
     board.turn.priority,
   )}の優先権`
+}
+
+/** 発生しているバトル。 */
+function battleView(board: WirePerspective, names: ReadonlyMap<CardId, string>): BattleView | undefined {
+  const battle = board.battle
+  if (battle === undefined) return undefined
+
+  return {
+    where: squareLabel(board.viewer, battle.square),
+    step: battle.step,
+    attacker: nameOf(names, battle.attacker),
+    attacked: nameOf(names, battle.attacked),
+  }
+}
+
+/** 解決を待っている能力の並び。 */
+function abilityViews(
+  board: WirePerspective,
+  abilities: readonly { readonly controller: Player; readonly source: CardId | undefined }[],
+  names: ReadonlyMap<CardId, string>,
+): readonly AbilityView[] {
+  return abilities.map((ability) => ({
+    whose: whoseOf(board, ability.controller),
+    source: ability.source === undefined ? undefined : nameOf(names, ability.source),
+  }))
 }
 
 /** 決着していれば、その 1 行。 */
@@ -207,10 +359,14 @@ function resultLine(board: WirePerspective): string | undefined {
 /** 届いた盤面を、画面に出す形にする。 */
 export function boardView(board: WirePerspective): BoardView {
   const opponent = board.viewer === '先攻' ? '後攻' : '先攻'
+  const names = namesIn(board)
 
   return {
     seat: board.viewer,
     turn: turnLine(board),
+    battle: battleView(board, names),
+    bank: abilityViews(board, board.bank, names),
+    triggered: abilityViews(board, board.triggered, names),
     opponent: sideView(board, opponent),
     own: sideView(board, board.viewer),
     squares: squareViews(board),

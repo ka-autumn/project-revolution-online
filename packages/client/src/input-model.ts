@@ -1,13 +1,6 @@
-import { areaOf, lineOf } from '@revolution/engine'
-import type {
-  CardId,
-  LegalAction,
-  Player,
-  Square,
-  WireCandidate,
-  WireChoice,
-  WirePerspective,
-} from '@revolution/engine'
+import type { CardId, LegalAction, Player, WireCandidate, WireChoice, WirePerspective } from '@revolution/engine'
+import type { Session } from './session.js'
+import { nameOf, namesIn, squareLabel } from './view-model.js'
 
 /**
  * 行える手と選ぶ候補から、画面に出す値を作る（#14）。
@@ -36,37 +29,6 @@ export interface ChoiceView {
   /** 選ばないことを選べるか。 */
   readonly mayDecline: boolean
   readonly candidates: readonly CandidateView[]
-}
-
-/** 表側が見えているカードを、識別子で引ける表にする。 */
-function namesById(board: WirePerspective): ReadonlyMap<CardId, string> {
-  const visible = [
-    ...board.squares.flat(),
-    ...board.resolveZone,
-    ...Object.values(board.zones).flatMap((zones) =>
-      Object.values(zones).flatMap((cards) =>
-        cards.flatMap((card) => (card.kind === '見えている' ? [card.instance] : [])),
-      ),
-    ),
-  ]
-
-  return new Map(visible.map((instance) => [instance.id, instance.card.name]))
-}
-
-/**
- * その識別子のカードの名前。見えていなければ、名前ではなく見えていないことを返す。
- *
- * 行える手が指すカードは、行うプレイヤーからは見えているはずである（自分の手札・自分の
- * トラップ・スクエアにいるユニット）。見えないものが指されていたら、それは名前を作り出す
- * ところではないので、そのまま「見えていないカード」と出す。
- */
-function nameOf(names: ReadonlyMap<CardId, string>, id: CardId): string {
-  return names.get(id) ?? '見えていないカード'
-}
-
-/** 見る人から見たスクエアの呼び方（総合ルール 第2部 第22章 4・6）。 */
-function squareLabel(viewer: Player, square: Square): string {
-  return `${areaOf(viewer, square)}の${lineOf(viewer, square)}`
 }
 
 function labelOf(action: LegalAction, viewer: Player, names: ReadonlyMap<CardId, string>): string {
@@ -101,9 +63,36 @@ function labelOf(action: LegalAction, viewer: Player, names: ReadonlyMap<CardId,
  * 減らせば行える手が画面から消える（ADR-0010）。
  */
 export function actionViews(board: WirePerspective, actions: readonly LegalAction[]): readonly ActionView[] {
-  const names = namesById(board)
+  const names = namesIn(board)
 
   return actions.map((action) => ({ action, label: labelOf(action, board.viewer, names) }))
+}
+
+/**
+ * 人に押させずに送ってよい手。無ければ `undefined`（ADR-0010）。
+ *
+ * **放棄しか行えない場面だけ**を自動にする。選ぶ余地が無いので、押させても盤面は同じところへ
+ * 進む。放棄しか行えない場面はデュエル中に何度も来る（フェイズの始めに非アクティブプレイヤーへ
+ * 優先権が発生する、総合ルール 第3部 第7章 1・第8章 1）ので、そのたびに押させると打つ手の
+ * ある場面が埋もれる。
+ *
+ * **これはルールの判断ではない。** 何を行えるかを決めているのはサーバで、ここが見ているのは
+ * 届いた並びの中身だけである。並びが空でも、放棄以外が混じっていても、何も送らない。
+ *
+ * 選ぶのを待たれている間は送らない。サーバも `選ぶのを待っている` として断る（`room.ts` の
+ * `act`）。届いた手はその時点で空になっている（`session.ts`）が、二重の関門にしている。
+ *
+ * **返答の速さが情報になる**（#97）。手を持っていない場面だけが即座に返るので、相手からは
+ * それと分かる。先送りにしている。
+ */
+export function automaticAction(session: Session): LegalAction | undefined {
+  const stage = session.stage
+  if (stage.kind !== '打っている' || stage.choice !== undefined) return undefined
+
+  const [only, ...rest] = stage.actions
+  if (only === undefined || rest.length > 0) return undefined
+
+  return only.kind === '優先権を放棄する' ? only : undefined
 }
 
 /**
@@ -120,7 +109,7 @@ function candidateLabel(candidate: WireCandidate, index: number, names: Readonly
 
 /** 選んでほしいと言われたことを、画面に出す形にする。 */
 export function choiceView(board: WirePerspective, choice: WireChoice): ChoiceView {
-  const names = namesById(board)
+  const names = namesIn(board)
 
   return {
     mayDecline: choice.mayDecline,

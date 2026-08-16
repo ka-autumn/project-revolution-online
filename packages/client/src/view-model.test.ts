@@ -46,9 +46,14 @@ describe('カード 1 枚', () => {
     })
     const view = boardView(withZone(emptyBoard('先攻'), '先攻', '手札', [{ kind: '見えている', instance: card }]))
 
-    expect(zoneOf(view, '自分', '手札').cards).toEqual([
-      { kind: '表', id: 'じぶんの1枚', name: 'テスト・戦士', detail: 'Lv2 赤・白 BP3000 SP2000', orientation: 'リリース', damage: 0 },
-    ])
+    expect(zoneOf(view, '自分', '手札').cards[0]).toMatchObject({
+      kind: '表',
+      id: 'じぶんの1枚',
+      name: 'テスト・戦士',
+      summary: 'Lv2 赤・白 BP3000 SP2000',
+      orientation: 'リリース',
+      damage: 0,
+    })
   })
 
   it('見えていないカードは、向きだけが出る', () => {
@@ -72,7 +77,93 @@ describe('カード 1 枚', () => {
     const view = boardView(withZone(emptyBoard('先攻'), '先攻', '手札', [{ kind: '見えている', instance: colorless }]))
     const [card] = zoneOf(view, '自分', '手札').cards
 
-    expect(card).toMatchObject({ detail: 'Lv1 無色 BP1000 SP1000' })
+    expect(card).toMatchObject({ summary: 'Lv1 無色 BP1000 SP1000' })
+  })
+})
+
+describe('カードの詳細', () => {
+  /** 詳細に出る 1 行を引く。 */
+  function detailOf(view: BoardView, label: string): string | undefined {
+    const [card] = zoneOf(view, '自分', '手札').cards
+    if (card?.kind !== '表') throw new Error('自分の手札は見えるはずだった')
+
+    return card.details.find((row) => row.label === label)?.value
+  }
+
+  /** その 1 枚を自分の手札に置いた盤面。 */
+  function inHand(card: WireCardInstance): BoardView {
+    return boardView(withZone(emptyBoard('先攻'), '先攻', '手札', [{ kind: '見えている', instance: card }]))
+  }
+
+  it('ユニットはＢＰ・ＳＰ・ムーブアイコンが出る', () => {
+    const view = inHand(
+      instance('ゆにっと', '先攻', { card: unitFace('テスト・戦士', { bp: 3000, sp: 2000, moveIcon: ['上', '右'] }) }),
+    )
+
+    expect(detailOf(view, 'ＢＰ')).toBe('3000')
+    expect(detailOf(view, 'ＳＰ')).toBe('2000')
+    expect(detailOf(view, 'ムーブアイコン')).toBe('上・右')
+  })
+
+  /**
+   * トリガーアイコンは**カードに印刷された図**であって、盤面のどこかを指してはいない
+   * （`board.ts` の `squareFromView`）。支配者の手前を基準にした呼び名で出す。
+   */
+  it('トラップはトリガーアイコンが、支配者から見た呼び名で出る', () => {
+    const trap: WireCardInstance = {
+      ...instance('とらっぷ', '先攻'),
+      card: {
+        type: 'トラップ',
+        name: 'テスト・罠',
+        level: 1,
+        colors: [],
+        stars: 0,
+        reverseStars: 0,
+        attributes: [],
+        triggerIcon: [{ row: 0, column: 0 }],
+      },
+    }
+
+    expect(detailOf(inHand(trap), 'トリガーアイコン')).toBe('味方エリアの左ライン')
+  })
+
+  /** 持っていない項目は行ごと出さない。「スター 0」と書いても読む人の役に立たない。 */
+  it('持っていない項目は出ない', () => {
+    const plain = instance('すたーなし', '先攻', { card: unitFace('テスト・素', { stars: 0, attributes: [] }) })
+    const view = inHand(plain)
+
+    expect(detailOf(view, 'スター')).toBeUndefined()
+    expect(detailOf(view, '属性')).toBeUndefined()
+    expect(detailOf(view, 'トリガーアイコン')).toBeUndefined()
+  })
+
+  it('スターと属性は、持っていれば出る', () => {
+    const starred = instance('すたーあり', '先攻', {
+      card: unitFace('テスト・星', { stars: 2, reverseStars: 1, attributes: ['属性ア', '属性イ'] }),
+    })
+    const view = inHand(starred)
+
+    expect(detailOf(view, 'スター')).toBe('2')
+    expect(detailOf(view, 'リバーススター')).toBe('1')
+    expect(detailOf(view, '属性')).toBe('属性ア・属性イ')
+  })
+
+  /**
+   * 能力テキストは通信に載っていない（#93）。**無いものを作り出していない**ことを見る。
+   * 載るようになったらこのテストは書き換わる。
+   */
+  it('能力テキストは出ない', () => {
+    const view = inHand(instance('てきすとなし', '先攻'))
+
+    expect(detailOf(view, 'テキスト')).toBeUndefined()
+  })
+
+  it('見えていないカードは詳細を持たない', () => {
+    const view = boardView(
+      withZone(emptyBoard('先攻'), '後攻', '手札', [{ kind: '見えていない', orientation: 'リリース' }]),
+    )
+
+    expect(zoneOf(view, '相手', '手札').cards[0]).not.toHaveProperty('details')
   })
 })
 
@@ -163,16 +254,14 @@ describe('スクエア', () => {
     const unit = instance('まんなかの1枚', '先攻')
     const view = boardView(withSquare(emptyBoard('先攻'), { row: 1, column: 1 }, [unit]))
 
-    expect(view.squares[1]?.[1]?.cards).toEqual([
-      {
-        kind: '表',
-        id: 'まんなかの1枚',
-        name: 'テスト・まんなかの1枚',
-        detail: 'Lv1 赤 BP1000 SP1000',
-        orientation: 'リリース',
-        damage: 0,
-      },
-    ])
+    expect(view.squares[1]?.[1]?.cards[0]).toMatchObject({
+      kind: '表',
+      id: 'まんなかの1枚',
+      name: 'テスト・まんなかの1枚',
+      summary: 'Lv1 赤 BP1000 SP1000',
+      orientation: 'リリース',
+      damage: 0,
+    })
   })
 })
 
@@ -209,5 +298,92 @@ describe('プレイヤーの様子', () => {
 
   it('決着していなければ、結果は出ない', () => {
     expect(boardView(emptyBoard('先攻')).result).toBeUndefined()
+  })
+})
+
+// 総合ルール 第3部 第11章。いまバトルのどの段階かが分かる。
+describe('バトル', () => {
+  /** 攻撃側と被攻撃側がスクエアにいる、バトル中の盤面。 */
+  function inBattle(viewer: Player): WirePerspective {
+    const square = { row: 1, column: 1 } as const
+    const attacker = instance('せめた1枚', '先攻', { card: unitFace('テスト・攻め手') })
+    const attacked = instance('うけた1枚', '後攻', { card: unitFace('テスト・受け手') })
+
+    return {
+      ...withSquare(emptyBoard(viewer), square, [attacker, attacked]),
+      battle: {
+        square,
+        attacker: 'せめた1枚',
+        attacked: 'うけた1枚',
+        step: '第１ダメージステップ',
+        dealtDamage: [],
+        endOfBattleTriggered: false,
+        heldBank: [],
+        heldTriggered: [],
+      },
+    }
+  }
+
+  it('どのステップかと、どのユニット同士かが出る', () => {
+    expect(boardView(inBattle('先攻')).battle).toEqual({
+      where: '中央エリアの中央ライン',
+      step: '第１ダメージステップ',
+      attacker: 'テスト・攻め手',
+      attacked: 'テスト・受け手',
+    })
+  })
+
+  /** スクエアの呼び名は見る人によって入れ替わる（総合ルール 第2部 第22章 4・6）。 */
+  it('起きている場所は、見る人から見た呼び名で出る', () => {
+    expect(boardView(inBattle('後攻')).battle?.where).toBe('中央エリアの中央ライン')
+  })
+
+  it('バトルが起きていなければ出ない', () => {
+    expect(boardView(emptyBoard('先攻')).battle).toBeUndefined()
+  })
+})
+
+// 総合ルール 第2部 第21章 11。バンクに何が積まれているか。
+describe('解決を待っている能力', () => {
+  /** バンクに 2 つ、誘発した能力が 1 つある盤面。 */
+  function withAbilities(): WirePerspective {
+    const unit = instance('はっせいげん', '先攻', { card: unitFace('テスト・発生源') })
+
+    return {
+      ...withSquare(emptyBoard('先攻'), { row: 1, column: 1 }, [unit]),
+      bank: [
+        { controller: '先攻', source: 'はっせいげん' },
+        { controller: '後攻', source: undefined },
+      ],
+      triggered: [{ controller: '先攻', source: 'はっせいげん' }],
+    }
+  }
+
+  it('誰の能力で、どのカードから出たかが分かる', () => {
+    expect(boardView(withAbilities()).bank).toEqual([
+      { whose: '自分', source: 'テスト・発生源' },
+      { whose: '相手', source: undefined },
+    ])
+  })
+
+  /** 誘発したがまだバンクに置かれていない能力（総合ルール 第4部 第3章 3）も分かれて出る。 */
+  it('誘発した能力は、バンクとは分かれて出る', () => {
+    const view = boardView(withAbilities())
+
+    expect(view.triggered).toEqual([{ whose: '自分', source: 'テスト・発生源' }])
+  })
+
+  /**
+   * 何をする能力かは出せない。効果は関数なので射影の時点で落ちている（`perspective.ts` の
+   * `VisibleAbility`）。**出せないものを作り出していない**ことを見る。
+   */
+  it('何をする能力かは出ない', () => {
+    const [ability] = boardView(withAbilities()).bank
+
+    expect(Object.keys(ability ?? {}).sort()).toEqual(['source', 'whose'])
+  })
+
+  it('積まれていなければ空', () => {
+    expect(boardView(emptyBoard('先攻')).bank).toEqual([])
   })
 })
