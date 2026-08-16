@@ -52,6 +52,14 @@ export interface WireChoice {
   /** 選ばないことを選べるか。 */
   readonly mayDecline: boolean
   readonly candidates: readonly WireCandidate[]
+  /**
+   * この行動でここまでに答えた数。
+   *
+   * 戻れるかどうかがここで決まる。0 なら戻る先が無く、取り消せるのは行動そのものだけである。
+   * 数えるのはサーバであって、クライアントが覚えておくのではない。**切れて入り直しても
+   * 同じ数が届く**（`room.ts` の `pendingChoice`）ため。
+   */
+  readonly answered: number
 }
 
 /** クライアントからサーバへ送るもの。 */
@@ -59,6 +67,20 @@ export type FromClient =
   | { readonly kind: '部屋に入る'; readonly room: RoomCode }
   | { readonly kind: '行動する'; readonly action: LegalAction }
   | { readonly kind: '選ぶ'; readonly answer: ChoiceAnswer }
+  /**
+   * 直前に答えたものを取り消して、その選択をやり直す（ADR-0008）。
+   *
+   * 答えていなければ、行動そのものを取り消す（`取り消す` と同じになる）。
+   */
+  | { readonly kind: 'ひとつ戻る' }
+  /**
+   * 行動そのものを取り消して、行動する前に戻る。
+   *
+   * **戻れるのは、盤面をまだ進めていないからである。** 答えが足りているところまで進めては
+   * やり直す形（ADR-0008）なので、行動が終わるまで `DuelState` は動かない。貯めた答えを
+   * 捨てれば、行動を始める前と同じ盤面がそこにある。
+   */
+  | { readonly kind: '取り消す' }
 
 /** サーバからクライアントへ送るもの。 */
 export type ToClient =
@@ -143,11 +165,13 @@ function describeChoice(
   candidates: readonly unknown[],
   player: Player,
   mayDecline: boolean,
+  answered: number,
 ): WireChoice {
   const visible = visibleIds(state, player)
   return {
     player,
     mayDecline,
+    answered,
     candidates: candidates.map((candidate): WireCandidate => {
       const id = cardIdOf(candidate)
       if (id === undefined || !visible.has(id)) return { kind: '見えていない' }
@@ -176,7 +200,8 @@ export function applyWithAnswers(
   const chooser: Chooser = (candidates, player, mayDecline = false) => {
     const [answer, ...rest] = remaining
     if (answer === undefined) {
-      const choice = describeChoice(state, candidates, player, mayDecline)
+      // 答えが尽きたところで止まるので、ここまでに答えた数は渡された答えの数そのものである。
+      const choice = describeChoice(state, candidates, player, mayDecline, answers.length)
       throw { kind: CHOICE_NEEDED, choice } satisfies ChoiceNeeded
     }
 

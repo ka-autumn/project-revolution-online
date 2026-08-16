@@ -28,6 +28,13 @@ export interface CandidateView {
 export interface ChoiceView {
   /** 選ばないことを選べるか。 */
   readonly mayDecline: boolean
+  /**
+   * 直前に答えたものを取り消せるか。
+   *
+   * まだ 1 つも答えていなければ戻る先が無い。その場合でも行動そのものは取り消せる
+   * （盤面はまだ動いていない、ADR-0008）ので、やめる側はいつでも押せる。
+   */
+  readonly mayRewind: boolean
   readonly candidates: readonly CandidateView[]
 }
 
@@ -113,6 +120,7 @@ export function choiceView(board: WirePerspective, choice: WireChoice): ChoiceVi
 
   return {
     mayDecline: choice.mayDecline,
+    mayRewind: choice.answered > 0,
     candidates: choice.candidates.map((candidate, index) => ({
       index,
       label: candidateLabel(candidate, index, names),

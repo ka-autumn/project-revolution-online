@@ -70,7 +70,11 @@ function draw(root: HTMLElement, session: Session, open: boolean, connection: Co
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (stage.choice !== undefined) {
       root.append(
-        choiceElement(choiceView(board, stage.choice), (answer) => connection.send({ kind: '選ぶ', answer })),
+        choiceElement(choiceView(board, stage.choice), {
+          onAnswer: (answer) => connection.send({ kind: '選ぶ', answer }),
+          onRewind: () => connection.send({ kind: 'ひとつ戻る' }),
+          onCancel: () => connection.send({ kind: '取り消す' }),
+        }),
       )
     } else {
       root.append(

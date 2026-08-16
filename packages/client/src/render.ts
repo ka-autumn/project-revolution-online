@@ -124,15 +124,32 @@ export function actionsElement(views: readonly ActionView[], onAction: (action: 
   return node
 }
 
+/** 選ぶところで押せる、答える以外のもの。 */
+export interface ChoiceHandlers {
+  readonly onAnswer: (answer: ChoiceAnswer) => void
+  /** 直前に答えたものを取り消す。 */
+  readonly onRewind: () => void
+  /** 行動そのものを取り消す。 */
+  readonly onCancel: () => void
+}
+
 /** 選ぶ候補を並べる。答えるのは番号である（ADR-0008）。 */
-export function choiceElement(view: ChoiceView, onAnswer: (answer: ChoiceAnswer) => void): HTMLElement {
+export function choiceElement(view: ChoiceView, handlers: ChoiceHandlers): HTMLElement {
   const node = element('section', 'choice')
   node.append(element('h2', 'choice__title', '選んでください'))
 
   const list = element('div', 'choice__list')
-  for (const candidate of view.candidates) list.append(button(candidate.label, () => onAnswer(candidate.index)))
-  if (view.mayDecline) list.append(button('選ばない', () => onAnswer('選ばない')))
+  for (const candidate of view.candidates) {
+    list.append(button(candidate.label, () => handlers.onAnswer(candidate.index)))
+  }
+  if (view.mayDecline) list.append(button('選ばない', () => handlers.onAnswer('選ばない')))
   node.append(list)
+
+  // 戻る側は、答える側と並べない。押し間違えると選びかけたものが消える。
+  const back = element('div', 'choice__back')
+  if (view.mayRewind) back.append(button('ひとつ戻る', handlers.onRewind))
+  back.append(button('この行動をやめる', handlers.onCancel))
+  node.append(back)
 
   return node
 }
