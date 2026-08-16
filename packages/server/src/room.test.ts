@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { defineStrategy, defineUnit } from '@revolution/engine'
-import type { Card, CardNaming, Deck, FromClient, ToClient, WirePerspective } from '@revolution/engine'
+import type { Card, Deck, FromClient, LegalAction, ToClient, WirePerspective } from '@revolution/engine'
 import { emptyRooms, receive } from './room.js'
 import type { Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
 
 /**
  * 部屋を、メッセージだけで動かして確かめる。
  *
- * サーバはカードを知れない（ADR-0002）ので、デッキも番号の付け方も外から渡す。ここで使うのは
- * エンジンの中で定義した架空のカードである。
+ * サーバはカードを知れない（ADR-0002）ので、デッキは外から渡す。ここで使うのはエンジンの中で
+ * 定義した架空のカードである。
  */
 
 const CARDS: Readonly<Record<string, Card>> = Object.fromEntries([
@@ -19,19 +19,12 @@ const CARDS: Readonly<Record<string, Card>> = Object.fromEntries([
   ['TEST-S', defineStrategy({ name: 'テスト・部屋のストラテジー', level: 0 })],
 ])
 
-const numberOf: CardNaming = (card) => {
-  const found = Object.entries(CARDS).find(([, each]) => each === card)
-  if (found === undefined) throw new Error(`番号を知らないカード: ${card.name}`)
-
-  return found[0]
-}
-
 /** 構築戦の最小枚数（60 枚）を満たす、15 種類 × 4 枚のデッキ（総合ルール 第3部 第1章 3-1）。 */
 function buildDeck(): Deck {
   return Object.values(CARDS).flatMap((card) => Array.from({ length: 4 }, () => card))
 }
 
-const SETUP: RoomSetup = { decks: [buildDeck(), buildDeck()], seed: 20260816, numberOf }
+const SETUP: RoomSetup = { decks: [buildDeck(), buildDeck()], seed: 20260816 }
 
 const CODE = 'あいことば'
 
@@ -55,6 +48,14 @@ function boardOf(deliveries: readonly Delivery[], participant: ParticipantId): W
   if (board === undefined) throw new Error('盤面が届いたはずだった')
 
   return board.perspective
+}
+
+/** その参加者に届いた、行える手（ADR-0010）。 */
+function actionsOf(deliveries: readonly Delivery[], participant: ParticipantId): readonly LegalAction[] {
+  const board = to(deliveries, participant).find((message) => message.kind === '盤面')
+  if (board === undefined) throw new Error('盤面が届いたはずだった')
+
+  return board.actions
 }
 
 /** その参加者が着いた席。 */
@@ -179,6 +180,51 @@ describe('部屋が配る盤面', () => {
     const board = boardOf(outcome.deliveries, 'あ')
 
     expect(board.zones[board.viewer].手札.every((card) => card.kind === '見えている')).toBe(true)
+  })
+})
+
+// #14 の完了条件。打てない手が画面に出ない。クライアントは行える手を数え上げられない（ADR-0010）。
+describe('盤面と一緒に届く、行える手', () => {
+  it('優先権を持っているほうには届く', () => {
+    const outcome = started()
+    const board = boardOf(outcome.deliveries, 'あ')
+    const acting = participantAt(board.turn.priority, board.viewer)
+
+    // 優先権を持っていれば、少なくとも放棄はできる（総合ルール 第3部 第3章 2）。
+    expect(actionsOf(outcome.deliveries, acting)).toContainEqual({ kind: '優先権を放棄する' })
+  })
+
+  /** 相手が何を行えるかは、そのプレイヤーが知る筋合いの無いことである。 */
+  it('優先権を持っていないほうには届かない', () => {
+    const outcome = started()
+    const board = boardOf(outcome.deliveries, 'あ')
+    const waiting = participantAt(board.turn.priority, board.viewer) === 'あ' ? 'い' : 'あ'
+
+    expect(actionsOf(outcome.deliveries, waiting)).toEqual([])
+  })
+
+  /**
+   * 届いた手はどれも、そのまま送り返せば通る。
+   *
+   * UI は届いた手だけを並べる（ADR-0010）ので、ここに断られるものが混ざっていれば、押しても
+   * 何も起こらないボタンが画面に出ることになる。**送る側と断る側が同じ `legalActions` を
+   * 見ている**ことを、部屋の外側から確かめる。
+   */
+  it('届いた手はどれも断られない', () => {
+    // メインフェイズまで進める。始まった直後は放棄しか行えず、断られる手が混ざる余地が無い。
+    const outcome = readyToAct(passUntil(started(), 'メインフェイズ'))
+    const board = boardOf(outcome.deliveries, 'あ')
+    const acting = participantAt(board.turn.priority, board.viewer)
+    const actions = actionsOf(outcome.deliveries, acting)
+    expect(actions.length).toBeGreaterThan(1) // 前提: 放棄以外にも行えることがある
+
+    const refused = actions.flatMap((action) =>
+      send(outcome.rooms, acting, { kind: '行動する', action }).deliveries.filter(
+        (delivery) => delivery.message.kind === '行えなかった',
+      ),
+    )
+
+    expect(refused).toEqual([])
   })
 })
 

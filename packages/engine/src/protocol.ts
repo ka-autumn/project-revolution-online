@@ -64,7 +64,21 @@ export type FromClient =
 export type ToClient =
   | { readonly kind: '相手を待っている' }
   | { readonly kind: '席についた'; readonly seat: Player }
-  | { readonly kind: '盤面'; readonly perspective: WirePerspective }
+  | {
+      readonly kind: '盤面'
+      readonly perspective: WirePerspective
+      /**
+       * 受け取ったプレイヤーがいま行える行動（ADR-0010）。行えることが無ければ空になる。
+       *
+       * **クライアントはルールの判断を持たない**ので、行える手を数え上げられるのはサーバだけ
+       * である（`legalActions` は完全な盤面を要る）。盤面と一緒に送ることで、UI は打てる手だけを
+       * 並べればよくなり、打てない手を描いて断られる経路が無くなる。
+       *
+       * 優先権を持っていないプレイヤーには空で届く。優先権を持つのは 1 人だけ（総合ルール 第3部
+       * 第3章 1）で、相手が何を行えるかはその人が知る筋合いの無いことである。
+       */
+      readonly actions: readonly LegalAction[]
+    }
   | { readonly kind: '選んでほしい'; readonly choice: WireChoice }
   | { readonly kind: '行えなかった'; readonly reason: string }
 

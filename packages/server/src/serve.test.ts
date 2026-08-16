@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
 import { defineStrategy, defineUnit } from '@revolution/engine'
-import type { Card, CardNaming, Deck, FromClient, ToClient } from '@revolution/engine'
+import type { Card, Deck, FromClient, ToClient } from '@revolution/engine'
 import type { RoomSetup } from './room.js'
 import { serve } from './serve.js'
 import type { RunningServer } from './serve.js'
@@ -21,19 +21,12 @@ const CARDS: Readonly<Record<string, Card>> = Object.fromEntries([
   ['TEST-S', defineStrategy({ name: 'テスト・接続のストラテジー', level: 0 })],
 ])
 
-const numberOf: CardNaming = (card) => {
-  const found = Object.entries(CARDS).find(([, each]) => each === card)
-  if (found === undefined) throw new Error(`番号を知らないカード: ${card.name}`)
-
-  return found[0]
-}
-
 /** 構築戦の最小枚数（60 枚）を満たすデッキ（総合ルール 第3部 第1章 3-1）。 */
 function buildDeck(): Deck {
   return Object.values(CARDS).flatMap((card) => Array.from({ length: 4 }, () => card))
 }
 
-const setup = (): RoomSetup => ({ decks: [buildDeck(), buildDeck()], seed: 20260816, numberOf })
+const setup = (): RoomSetup => ({ decks: [buildDeck(), buildDeck()], seed: 20260816 })
 
 const CODE = 'あいことば'
 

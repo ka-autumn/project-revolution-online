@@ -6,7 +6,6 @@ import {
   toWire,
 } from '@revolution/engine'
 import type {
-  CardNaming,
   ChoiceAnswer,
   Deck,
   DuelState,
@@ -25,9 +24,9 @@ import type {
  * 返すだけの純粋な関数である。ソケットを張るのも、受け取ったバイト列を組み立て直すのも、これを
  * 呼ぶ側の仕事になる。盤面を進めるところと同じように（ADR-0001）、決まりごとと I/O を分けている。
  *
- * **カードを知らない。** 使うデッキも、カードを番号で呼ぶ方法（ADR-0008）も、外から渡してもらう
- * （`RoomSetup`）。サーバがカードの実装に依存すると、カードを持たない環境（ADR-0002）で
- * 組み立てられなくなる。
+ * **カードを知らない。** 使うデッキは外から渡してもらう（`RoomSetup`）。サーバがカードの実装に
+ * 依存すると、カードを持たない環境（ADR-0002）で組み立てられなくなる。盤面に載せるカードの
+ * 表記は engine が自分で書き出す（ADR-0010、`wire.ts`）ので、ここで読むことは無い。
  */
 
 /** 部屋にいる 1 人。誰であるかを決めるのは通信の側なので、識別子だけを受け取る。 */
@@ -39,8 +38,6 @@ export interface RoomSetup {
   readonly decks: readonly [Deck, Deck]
   /** シャッフルと先攻・後攻の決定に使うシード（ADR-0005）。部屋ごとに変える。 */
   readonly seed: number
-  /** カードを番号で呼ぶ方法（ADR-0008）。 */
-  readonly numberOf: CardNaming
 }
 
 /** 適用しかけている行動と、そこまでに受け取った答え（ADR-0008）。 */
@@ -104,9 +101,9 @@ export function receive(
     case '部屋に入る':
       return enter(rooms, participant, message.room, setup)
     case '行動する':
-      return act(rooms, participant, message.action, setup)
+      return act(rooms, participant, message.action)
     case '選ぶ':
-      return answer(rooms, participant, message.answer, setup)
+      return answer(rooms, participant, message.answer)
   }
 }
 
@@ -137,7 +134,7 @@ function enter(rooms: Rooms, participant: ParticipantId, code: RoomCode, setup: 
   if (current !== undefined) {
     if (current.code !== code) return refuse(rooms, participant, 'ほかの部屋にいる')
 
-    return rejoin(rooms, current, participant, setup)
+    return rejoin(rooms, current, participant)
   }
 
   const room = rooms.get(code)
@@ -165,7 +162,7 @@ function enter(rooms: Rooms, participant: ParticipantId, code: RoomCode, setup: 
  * 選択の途中で切れていた場合は、貯めた答えの並びで適用をやり直せば同じ「選んでほしい」が
  * 返る（ADR-0008）。**送ったメッセージを覚えておく必要は無い。**
  */
-function rejoin(rooms: Rooms, room: Room, participant: ParticipantId, setup: RoomSetup): RoomOutcome {
+function rejoin(rooms: Rooms, room: Room, participant: ParticipantId): RoomOutcome {
   const duel = room.duel
   if (duel === undefined) {
     return { rooms, deliveries: [{ to: participant, message: { kind: '相手を待っている' } }] }
@@ -178,7 +175,7 @@ function rejoin(rooms: Rooms, room: Room, participant: ParticipantId, setup: Roo
     rooms,
     deliveries: [
       { to: participant, message: { kind: '席についた', seat } },
-      ...boards(duel, setup).filter((delivery) => delivery.to === participant),
+      ...boards(duel).filter((delivery) => delivery.to === participant),
       ...pendingChoice(duel, seat),
     ],
   }
@@ -228,7 +225,7 @@ function start(
     rooms: withRoom(rooms, seated),
     deliveries: [
       ...seats(duel).map(([player, to]) => ({ to, message: { kind: '席についた', seat: player } as const })),
-      ...boards(duel, setup),
+      ...boards(duel),
     ],
   }
 }
@@ -241,11 +238,27 @@ function seats(duel: DuelInRoom): readonly (readonly [Player, ParticipantId])[] 
   ]
 }
 
-/** いまの盤面を、それぞれの視点で射影して両方に送る（ADR-0004）。 */
-function boards(duel: DuelInRoom, setup: RoomSetup): readonly Delivery[] {
+/**
+ * いまの盤面を、それぞれの視点で射影して両方に送る（ADR-0004）。
+ *
+ * 行える手も一緒に送る（ADR-0010）。数え上げるのは優先権を持っているプレイヤーのぶんだけで、
+ * もう 1 人には空で届く。優先権を持たないプレイヤーは何も行えない（総合ルール 第3部 第3章 1）
+ * ので、送るものが無い。
+ *
+ * 選ぶのを待っている間も空で届く。行動の途中であり、次に受け取るのは答えだけだからである
+ * （`act` が `選ぶのを待っている` として断る）。**打てない手を並べさせないために、断る側と
+ * 送る側で同じ判断をしている。**
+ */
+function boards(duel: DuelInRoom): readonly Delivery[] {
+  const actions = duel.pending === undefined ? legalActions(duel.state) : []
+
   return seats(duel).map(([player, to]) => ({
     to,
-    message: { kind: '盤面', perspective: toWire(perspectiveOf(duel.state, player), setup.numberOf) },
+    message: {
+      kind: '盤面',
+      perspective: toWire(perspectiveOf(duel.state, player)),
+      actions: player === duel.state.turn.priority ? actions : [],
+    },
   }))
 }
 
@@ -261,7 +274,7 @@ function seatOf(duel: DuelInRoom, participant: ParticipantId): Player | undefine
  * 確かめるのはサーバの側である。**クライアントはルールの判断を持たない**（ADR-0010）ので、
  * ここが唯一の関門になる。
  */
-function act(rooms: Rooms, participant: ParticipantId, action: LegalAction, setup: RoomSetup): RoomOutcome {
+function act(rooms: Rooms, participant: ParticipantId, action: LegalAction): RoomOutcome {
   const room = roomOf(rooms, participant)
   if (room?.duel === undefined) return refuse(rooms, participant, 'デュエルが始まっていない')
 
@@ -275,11 +288,11 @@ function act(rooms: Rooms, participant: ParticipantId, action: LegalAction, setu
     return refuse(rooms, participant, '行えない行動')
   }
 
-  return advance(rooms, room, duel, { action, answers: [], player: seat }, setup)
+  return advance(rooms, room, duel, { action, answers: [], player: seat })
 }
 
 /** 選んだ答えを受け取る。答えるのは、選んでほしいと言われたプレイヤーだけである。 */
-function answer(rooms: Rooms, participant: ParticipantId, chosen: ChoiceAnswer, setup: RoomSetup): RoomOutcome {
+function answer(rooms: Rooms, participant: ParticipantId, chosen: ChoiceAnswer): RoomOutcome {
   const room = roomOf(rooms, participant)
   if (room?.duel === undefined) return refuse(rooms, participant, 'デュエルが始まっていない')
 
@@ -288,7 +301,7 @@ function answer(rooms: Rooms, participant: ParticipantId, chosen: ChoiceAnswer, 
   if (pending === undefined) return refuse(rooms, participant, '選ぶところではない')
   if (seatOf(duel, participant) !== pending.player) return refuse(rooms, participant, '選ぶ人ではない')
 
-  return advance(rooms, room, duel, { ...pending, answers: [...pending.answers, chosen] }, setup)
+  return advance(rooms, room, duel, { ...pending, answers: [...pending.answers, chosen] })
 }
 
 /**
@@ -297,13 +310,7 @@ function answer(rooms: Rooms, participant: ParticipantId, chosen: ChoiceAnswer, 
  * 進んだなら両方に新しい盤面を送る。まだ選ぶことがあるなら、**選ぶプレイヤーにだけ**候補を送る。
  * 候補にはそのプレイヤーだけが見てよいものが含まれる（総合ルール 第2部 第23章 3）。
  */
-function advance(
-  rooms: Rooms,
-  room: Room,
-  duel: DuelInRoom,
-  pending: PendingAction,
-  setup: RoomSetup,
-): RoomOutcome {
+function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAction): RoomOutcome {
   const progress = applyWithAnswers(duel.state, pending.action, pending.answers)
   if (progress.kind === '選んでほしい') {
     const choice = progress.choice
@@ -315,7 +322,7 @@ function advance(
   }
 
   const advanced: DuelInRoom = { ...duel, state: progress.state, pending: undefined }
-  return { rooms: withRoom(rooms, { ...room, duel: advanced }), deliveries: boards(advanced, setup) }
+  return { rooms: withRoom(rooms, { ...room, duel: advanced }), deliveries: boards(advanced) }
 }
 
 /**
