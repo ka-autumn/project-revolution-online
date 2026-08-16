@@ -177,6 +177,29 @@ function abilitiesElement(title: string, abilities: readonly AbilityView[]): HTM
   return node
 }
 
+/**
+ * 起きたできごとを並べる（#95）。新しいものを下に足す。
+ *
+ * 出せるのは届いた分だけである。見てはならないカードは名指しされないまま届く
+ * （`perspective.ts` の `DuelPerspective.log`）ので、ここで隠すことは無い。
+ */
+function logElement(lines: BoardView['log']): HTMLElement {
+  const node = element('section', 'log')
+  node.append(element('h2', 'log__title', `操作ログ（${lines.length}）`))
+
+  const list = element('ol', 'log__list')
+  for (const line of lines) {
+    const item = element('li', `log__item${line.whose === undefined ? '' : ` log__item--${line.whose}`}`)
+    // 誰のできごとかを色だけで区別させない。文字でも出す。
+    if (line.whose !== undefined) item.append(element('span', 'log__whose', line.whose))
+    item.append(element('span', 'log__text', line.text))
+    list.append(item)
+  }
+  node.append(list)
+
+  return node
+}
+
 /** 盤面ひととおりを組み立てる。 */
 export function boardElement(view: BoardView): HTMLElement {
   const node = element('div', 'board')
@@ -192,6 +215,7 @@ export function boardElement(view: BoardView): HTMLElement {
   }
 
   node.append(sideElement(view.opponent), squaresElement(view.squares), sideElement(view.own))
+  node.append(logElement(view.log))
 
   return node
 }

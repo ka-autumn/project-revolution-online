@@ -7,6 +7,7 @@ import type { UnitCard } from './card.js'
 import { discardFromSquares } from './discard.js'
 import { cardsOn, dealDamage } from './duel.js'
 import type { BankedAbility, CardId, CardInstance, DuelState } from './duel.js'
+import { record } from './log.js'
 import { trigger } from './trigger.js'
 
 /**
@@ -136,7 +137,15 @@ export function startBattleIfAny(state: DuelState): DuelState {
     heldBank: state.bank,
     heldTriggered: state.triggered,
   }
-  return beginStep({ ...state, battle, bank: [], triggered: [] }, battle)
+  const started = { ...state, battle, bank: [], triggered: [] }
+  const begun = record(started, {
+    kind: 'バトルが始まった',
+    square: battle.square,
+    attacker: battle.attacker,
+    attacked: battle.attacked,
+  })
+
+  return beginStep(begun, battle)
 }
 
 /**
@@ -212,10 +221,20 @@ function exchangeBattleDamage(state: DuelState, battle: Battle): DuelState {
   // 集めることで、両方が与える場合の 2 つの量が同じ盤面から決まる。
   const modification = bpModification(state)
   const damages = dealers.map((unit) => ({
+    from: unit.id,
     target: unit.id === attacker.id ? attacked.id : attacker.id,
     amount: bpOf(unit.card, modification(unit.id)),
   }))
-  const damaged = damages.reduce((current, { target, amount }) => dealDamage(current, target, amount), state)
+  const damaged = damages.reduce(
+    (current, { from, target, amount }) =>
+      record(dealDamage(current, target, amount), {
+        kind: 'バトルダメージを与えた',
+        from,
+        to: target,
+        amount,
+      }),
+    state,
+  )
 
   return withBattle(damaged, { ...battle, dealtDamage: [...battle.dealtDamage, ...dealers.map((unit) => unit.id)] })
 }
@@ -277,7 +296,9 @@ function resolveEndOfBattle(state: DuelState, battle: Battle): DuelState {
 
   // 2 つのルールエフェクトは同時に発生するので、どれを捨札に置くかを先にまとめて決める。
   const discarded = [...(bothRemain ? [battle.attacker] : []), ...state.playedIntoCenter]
-  const resolved = discardFromSquares(state, discarded)
+  const moved = discardFromSquares(state, discarded)
+  const resolved =
+    discarded.length === 0 ? moved : record(moved, { kind: 'ルールで捨札に置かれた', cards: discarded })
 
   const triggered = trigger({ ...resolved, playedIntoCenter: [] }, 'バトルの終わりに')
   return withBattle(triggered, { ...battle, endOfBattleTriggered: true })
@@ -294,12 +315,15 @@ function resolveEndOfBattle(state: DuelState, battle: Battle): DuelState {
  * まだ盤面が持たないため何もすることがない。
  */
 function endBattle(state: DuelState, battle: Battle): DuelState {
-  return {
-    ...state,
-    battle: undefined,
-    bank: [...state.bank, ...battle.heldBank],
-    triggered: [...state.triggered, ...battle.heldTriggered],
-  }
+  return record(
+    {
+      ...state,
+      battle: undefined,
+      bank: [...state.bank, ...battle.heldBank],
+      triggered: [...state.triggered, ...battle.heldTriggered],
+    },
+    { kind: 'バトルが終わった' },
+  )
 }
 
 /** 効果から見えるかたちではなく、盤面が持っているままのユニット。 */

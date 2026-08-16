@@ -14,6 +14,7 @@ import {
 } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
+import { loggedInstruction, record } from './log.js'
 import type { Player } from './player.js'
 import { duelView } from './view.js'
 
@@ -126,7 +127,7 @@ export function resolveEffect(state: DuelState, effect: Effect, context: EffectC
     if (step.done === true) return current
 
     const outcome = apply(current, step.value, context, shown)
-    current = outcome.state
+    current = recorded(current, outcome, step.value, context.controller)
     sent = outcome.value
   }
 }
@@ -135,6 +136,31 @@ interface Outcome {
   readonly state: DuelState
   /** その命令が効果に返す値。 */
   readonly value: unknown
+  /**
+   * その命令が実際に触れたもの。命令そのものには書かれていないものだけを持つ
+   * （`log.ts` の `loggedInstruction`）。
+   */
+  readonly subject?: unknown
+}
+
+/**
+ * 実行した命令をログに残す（#95）。
+ *
+ * **盤面が変わらなかった命令は残さない。** 実行できない行動は実行されない（総合ルール
+ * 第1部 第1章 3）ので、対象がすでにその場を離れていれば何も起きていない。engine の中の
+ * 手続きは、何も起こらない時に渡された盤面をそのまま返す（`duel.ts` の `moveToZone`・
+ * `dealDamage` ほか）ので、入れ替わったかどうかで見分けられる。
+ *
+ * 選ぶことだけは盤面を変えないので、選ばれたものがあったかどうかで見る。
+ */
+function recorded(before: DuelState, outcome: Outcome, instruction: Instruction, controller: Player): DuelState {
+  if (outcome.state === before && outcome.subject === undefined) return outcome.state
+
+  return record(outcome.state, {
+    kind: '命令を実行した',
+    controller,
+    instruction: loggedInstruction(instruction, outcome.subject),
+  })
 }
 
 /**
@@ -171,7 +197,7 @@ function apply(
       if (!instruction.candidates.includes(chosen)) {
         throw new Error('候補にないものが選ばれた')
       }
-      return { state, value: chosen }
+      return { state, value: chosen, subject: chosen }
     }
     case '破壊する': {
       if (!shown.has(instruction.target.id)) {
@@ -241,7 +267,11 @@ function apply(
       // 山札が空ならこの行動は実行されない（総合ルール 第1部 第1章 3）。効果は続く。
       if (top === undefined) return { state, value: undefined }
 
-      return { state: moveToZone(state, top.id, instruction.to, instruction.orientation), value: undefined }
+      return {
+        state: moveToZone(state, top.id, instruction.to, instruction.orientation),
+        value: undefined,
+        subject: top,
+      }
     }
     case 'スクエアへ置く': {
       if (!shown.has(instruction.card.id)) {

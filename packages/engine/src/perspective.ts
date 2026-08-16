@@ -9,6 +9,7 @@ import type {
   DuelState,
   TrapConditionMet,
 } from './duel.js'
+import type { DuelEvent, LoggedInstruction } from './log.js'
 import type { Orientation } from './orientation.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
@@ -114,6 +115,18 @@ export interface DuelPerspective {
   readonly battle: VisibleBattle | undefined
   readonly smashJudgments: readonly SmashJudgment[]
   readonly result: DuelResult | undefined
+  /**
+   * ここまでに起きたできごと（ADR-0011）。**見てはならないカードは名指ししない。**
+   *
+   * 落とすかどうかは、射影したこの盤面から表側が見えるかどうかで決まる（`visibleIds`）。
+   * **見え方の決まりを二度書かないための形である。** ログのために `seesFace` を読み直すと、
+   * 片方だけ直した時に漏れる。
+   *
+   * 見えなくなったカードは、そのできごとの時に見えていても落ちる。落とすのは「いま」の
+   * 見え方で決まるためで、**少なく見せる側に倒している**（`protocol.ts` の `describeChoice`
+   * と同じ）。
+   */
+  readonly log: readonly DuelEvent[]
 }
 
 /**
@@ -185,6 +198,69 @@ function visibleBattle(battle: Battle): VisibleBattle {
   }
 }
 
+/**
+ * その射影から表側が見えているカードの識別子すべて。
+ *
+ * 見え方の決まり（`seesFace`）を二度書かずに済むよう、**射影した結果から取り出す。** ログを
+ * 落とすのにも（`projectEvent`）、選ぶ時の候補を落とすのにも（`protocol.ts` の
+ * `describeChoice`）、同じここを通す。
+ */
+export function visibleIds(perspective: DuelPerspective): ReadonlySet<CardId> {
+  return new Set([
+    ...Object.values(perspective.zones).flatMap((zones) =>
+      Object.values(zones).flatMap((cards) =>
+        cards.flatMap((card) => (card.kind === '見えている' ? [card.instance.id] : [])),
+      ),
+    ),
+    ...perspective.squares.flat().map((card) => card.id),
+    ...perspective.resolveZone.map((card) => card.id),
+  ])
+}
+
+/** 見えているならその識別子、見えていなければ `undefined`。 */
+function seen(card: CardId | undefined, visible: ReadonlySet<CardId>): CardId | undefined {
+  return card !== undefined && visible.has(card) ? card : undefined
+}
+
+/**
+ * できごと 1 つから、見えていないカードの名指しを落とす。
+ *
+ * 落とした結果は「そのできごとがカードを指していない」場合と同じ形になる。読む側から見れば
+ * どちらも「名指しできるカードが無い」ことであり、区別する必要は無い。
+ */
+function projectEvent(event: DuelEvent, visible: ReadonlySet<CardId>): DuelEvent {
+  switch (event.kind) {
+    case '行動した':
+      return { ...event, card: seen(event.card, visible) }
+    case '能力を解決した':
+      return { ...event, source: seen(event.source, visible) }
+    case '命令を実行した':
+      return { ...event, instruction: projectInstruction(event.instruction, visible) }
+    case 'バトルが始まった':
+      return { ...event, attacker: seen(event.attacker, visible), attacked: seen(event.attacked, visible) }
+    case 'バトルダメージを与えた':
+      return { ...event, from: seen(event.from, visible), to: seen(event.to, visible) }
+    // 捨札はすべてのカードをいつでも見られる（総合ルール 第2部 第21章 5-2）ので、置かれた
+    // カードは普通そのまま残る。後から捨札を離れて見えなくなったものだけが落ちる。
+    case 'ルールで捨札に置かれた':
+      return { ...event, cards: event.cards.filter((card) => visible.has(card)) }
+    case 'ダメージを受けた':
+    case 'バトルが終わった':
+    case '決着した':
+      return event
+  }
+}
+
+/**
+ * 命令 1 つから、見えていないカードの名指しを落とす。
+ *
+ * カードを指すところの名前が `card` に揃えてある（`log.ts` の `LoggedInstruction`）ので、
+ * 命令の種類ごとに書き分ける必要が無い。
+ */
+function projectInstruction(instruction: LoggedInstruction, visible: ReadonlySet<CardId>): LoggedInstruction {
+  return 'card' in instruction ? { ...instruction, card: seen(instruction.card, visible) } : instruction
+}
+
 /** そのトラップが視点のプレイヤーのトラップゾーンにあるか。 */
 function ownsTrap(state: DuelState, viewer: Player, met: TrapConditionMet): boolean {
   return cardsIn(state, viewer, 'トラップゾーン').some((card) => card.id === met.trap)
@@ -198,6 +274,14 @@ function ownsTrap(state: DuelState, viewer: Player, met: TrapConditionMet): bool
  * サーバだけである。
  */
 export function perspectiveOf(state: DuelState, viewer: Player): DuelPerspective {
+  const board = projectBoard(state, viewer)
+  // ログを落とすのに、落とし終えた盤面が要る（`DuelPerspective.log`）。同じ射影を二度
+  // 作らずに済むよう、盤面を先に組み立ててからログを足す。
+  return { ...board, log: state.log.map((event) => projectEvent(event, visibleIds(board))) }
+}
+
+/** ログ以外の射影。 */
+function projectBoard(state: DuelState, viewer: Player): DuelPerspective {
   return {
     viewer,
     squares: state.squares,
@@ -214,5 +298,6 @@ export function perspectiveOf(state: DuelState, viewer: Player): DuelPerspective
     battle: state.battle === undefined ? undefined : visibleBattle(state.battle),
     smashJudgments: state.smashJudgments,
     result: state.result,
+    log: [],
   }
 }

@@ -631,6 +631,22 @@ describe('入り直す', () => {
     expect(to(again.deliveries, acting).find((message) => message.kind === '選んでほしい')).toEqual(asked)
   })
 
+  /**
+   * #95。**ログは盤面の一部として届く**（`log.ts`）ので、追いつかせる仕組みは要らない。
+   * 入り直した人にいまの盤面を送り直せば、それまでのできごともそのまま届く。
+   */
+  it('それまでのログも送り直される', () => {
+    const outcome = started()
+    const board = boardOf(outcome.deliveries, 'あ')
+    const acting = participantAt(board.turn.priority, board.viewer)
+    const passed = send(outcome.rooms, acting, PASS)
+    expect(boardOf(passed.deliveries, 'あ').log).not.toEqual([]) // 前提: 何か起きている
+
+    const again = send(passed.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+
+    expect(boardOf(again.deliveries, 'あ').log).toEqual(boardOf(passed.deliveries, 'あ').log)
+  })
+
   it('選ぶ人でないほうが入り直しても、選んでほしいことは届かない', () => {
     const { outcome, acting } = planning()
     const other = acting === 'あ' ? 'い' : 'あ'

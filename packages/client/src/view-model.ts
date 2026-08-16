@@ -3,6 +3,8 @@ import type {
   Area,
   BattleStep,
   CardId,
+  DuelResult,
+  LoggedInstruction,
   Orientation,
   Player,
   PlayerZone,
@@ -128,6 +130,24 @@ export interface BattleView {
   readonly attacked: string
 }
 
+/**
+ * 操作ログの 1 行（#95）。
+ *
+ * **落とす判断はここには無い。** 見てはならないカードは、名指しされないまま届く
+ * （`perspective.ts` の `DuelPerspective.log`）。ここでできるのは、届いたできごとを読める
+ * 文に直すことだけである。
+ */
+export interface LogLine {
+  /**
+   * 誰のできごとか。どちらのものでもなければ `undefined`。
+   *
+   * ルールエフェクトはどちらのプレイヤーにも支配されない（総合ルール 第4部 第14章 1）ので、
+   * 誰のものでもない行になる。
+   */
+  readonly whose: '自分' | '相手' | undefined
+  readonly text: string
+}
+
 /** 画面に出す盤面ひととおり。 */
 export interface BoardView {
   readonly seat: Player
@@ -151,6 +171,8 @@ export interface BoardView {
   readonly squares: readonly (readonly SquareView[])[]
   /** 決着していれば、その 1 行。 */
   readonly result: string | undefined
+  /** 起きたできごと。古いものから並ぶ（#95）。 */
+  readonly log: readonly LogLine[]
 }
 
 /** ゾーンを並べる順。届く順ではなく、画面での置き場所である。 */
@@ -374,11 +396,104 @@ function abilityViews(
 
 /** 決着していれば、その 1 行。 */
 function resultLine(board: WirePerspective): string | undefined {
-  const result = board.result
-  if (result === undefined) return undefined
+  return board.result === undefined ? undefined : resultLabel(board.result, board.viewer)
+}
+
+/**
+ * 起きたできごとを、読める行にする（#95）。
+ *
+ * 名指しされていないカードは、そのまま出さない。**「見えていないカード」とも書かない。**
+ * 名指しが落ちたのか、そもそもカードを指していないできごとなのかは、届いたものからは
+ * 見分けられない（`log.ts` の `DuelEvent`）。分からないことを書き分けようとしない。
+ */
+export function logLines(board: WirePerspective): readonly LogLine[] {
+  const names = namesIn(board)
+  const whose = (player: Player): '自分' | '相手' => whoseOf(board, player)
+  /** 名指しされているなら、その名前。名指しされていなければ `undefined`。 */
+  const named = (card: CardId | undefined): string | undefined =>
+    card === undefined ? undefined : nameOf(names, card)
+
+  return board.log.map((event): LogLine => {
+    switch (event.kind) {
+      case '行動した': {
+        const name = named(event.card)
+        const where = event.square === undefined ? '' : `（${squareLabel(board.viewer, event.square)}）`
+        return { whose: whose(event.player), text: `${event.action}${name === undefined ? '' : `：${name}`}${where}` }
+      }
+      case '能力を解決した': {
+        const source = named(event.source)
+        return { whose: whose(event.controller), text: source === undefined ? '能力を解決' : `能力を解決：${source}` }
+      }
+      case '命令を実行した':
+        return { whose: whose(event.controller), text: instructionLine(event.instruction, board, named, whose) }
+      case 'ダメージを受けた':
+        return { whose: whose(event.player), text: `ダメージ ${event.amount} を受けた` }
+      case 'バトルが始まった': {
+        const where = squareLabel(board.viewer, event.square)
+        const units = [named(event.attacker), named(event.attacked)].filter((name) => name !== undefined)
+        return { whose: undefined, text: `バトル（${where}）${units.length === 0 ? '' : `：${units.join(' と ')}`}` }
+      }
+      case 'バトルダメージを与えた':
+        return { whose: undefined, text: about(named(event.to), 'に', `バトルダメージ ${event.amount}`) }
+      case 'バトルが終わった':
+        return { whose: undefined, text: 'バトル終了' }
+      case 'ルールで捨札に置かれた': {
+        const cards = event.cards.map((card) => nameOf(names, card))
+        return { whose: undefined, text: `ルールで捨札：${cards.join('・')}` }
+      }
+      case '決着した':
+        return { whose: undefined, text: `決着：${resultLabel(event.result, board.viewer)}` }
+    }
+  })
+}
+
+/**
+ * 名前が分かっていれば「◯◯を破壊した」の形にする。名指しされていなければ、そのまま出す。
+ *
+ * 助詞を呼ぶ側から渡すのは、**名前が落ちた時に助詞だけが残らないようにする**ためである。
+ */
+function about(name: string | undefined, particle: 'を' | 'に', text: string): string {
+  return name === undefined ? text : `${name}${particle}${text}`
+}
+
+/** 命令 1 つを 1 行にする。 */
+function instructionLine(
+  instruction: LoggedInstruction,
+  board: WirePerspective,
+  named: (card: CardId | undefined) => string | undefined,
+  whose: (player: Player) => '自分' | '相手',
+): string {
+  switch (instruction.kind) {
+    case '選ぶ':
+      return about(named(instruction.card), 'を', '選んだ')
+    case '破壊する':
+      return about(named(instruction.card), 'を', '破壊した')
+    case 'プレイヤーにダメージを与える':
+      return `${whose(instruction.player)}にダメージ ${instruction.amount}`
+    case 'ユニットにダメージを与える':
+      return about(named(instruction.card), 'に', `ダメージ ${instruction.amount}`)
+    case '向きを変える':
+      return about(named(instruction.card), 'を', instruction.orientation)
+    case 'ゾーンへ置く':
+      return about(named(instruction.card), 'を', `${instruction.to}へ`)
+    case '山札の1番上をゾーンへ置く':
+      return about(named(instruction.card), 'を', `${instruction.to}へ（山札の 1 番上）`)
+    case 'スクエアへ置く':
+      return about(named(instruction.card), 'を', `${squareLabel(board.viewer, instruction.square)}へ`)
+    case '誘発型能力を作る':
+      return about(named(instruction.card), 'に', '能力を作った')
+    case 'プランを裏返す':
+      return `${whose(instruction.player)}のプランを裏返した`
+    case 'カードを引く':
+      return `${whose(instruction.player)}が ${instruction.count} 枚引いた`
+  }
+}
+
+/** 決着した勝敗を、見る人から見た言い方にする。 */
+function resultLabel(result: DuelResult, viewer: Player): string {
   if (result.kind === '引き分け') return '引き分け'
 
-  return result.winner === board.viewer ? '勝ち' : '負け'
+  return result.winner === viewer ? '勝ち' : '負け'
 }
 
 /** 届いた盤面を、画面に出す形にする。 */
@@ -396,5 +511,6 @@ export function boardView(board: WirePerspective): BoardView {
     own: sideView(board, board.viewer),
     squares: squareViews(board),
     result: resultLine(board),
+    log: logLines(board),
   }
 }

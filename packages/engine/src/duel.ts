@@ -4,6 +4,7 @@ import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
 import type { UnitOnSquare } from './effect.js'
+import type { DuelEvent } from './log.js'
 import type { Orientation } from './orientation.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
@@ -201,6 +202,14 @@ export interface DuelState {
    * 後の盤面はもう動かない。
    */
   readonly result: DuelResult | undefined
+  /**
+   * ここまでに起きたできごと（ADR-0011、`log.ts`）。古いものから並ぶ。
+   *
+   * **盤面の一部として持つ。** できごとを外へ知らせる口をエンジンに生やすことはできない
+   * （ADR-0001）ので、積んでおいて盤面と同じ道で届ける。**ルールの判断には使わない。**
+   * 読むのは射影（`perspective.ts`）だけで、ここを見て盤面が変わることは無い。
+   */
+  readonly log: readonly DuelEvent[]
 }
 
 /**
@@ -417,6 +426,7 @@ export function emptyDuelState(): DuelState {
     battle: undefined,
     smashJudgments: [],
     result: undefined,
+    log: [],
   }
 }
 

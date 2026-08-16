@@ -13,6 +13,7 @@ import {
   topOfLibrary,
 } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
+import { record } from './log.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
@@ -219,7 +220,14 @@ export function smash(state: DuelState, unit: CardId): ActionOutcome {
   if (smashing === undefined) return cannot('スマッシュできるユニットではない')
 
   const frozen = setOrientationOnSquare(state, unit, 'フリーズ')
-  const damaged = damagePlayer(frozen, opponentOf(player), smashing.damage)
+  // 与えた量をログに残す（#95）。行った手そのものは `applyLegalAction` が残しているが、
+  // どれだけのダメージになったかはユニットのＳＰと置かれているエリアで決まるので、盤面を
+  // 見比べても分からない。
+  const damaged = record(damagePlayer(frozen, opponentOf(player), smashing.damage), {
+    kind: 'ダメージを受けた',
+    player: opponentOf(player),
+    amount: smashing.damage,
+  })
   return done(grantPriorityToInactive(damaged))
 }
 

@@ -5,6 +5,7 @@ import type { BpModification } from './continuous.js'
 import { discardFromSquares } from './discard.js'
 import { hasEnded, librarySize } from './duel.js'
 import type { CardId, CardInstance, DuelResult, DuelState } from './duel.js'
+import { record } from './log.js'
 import { PLAYERS, opponentOf } from './player.js'
 import type { Player } from './player.js'
 import { smashesOf } from './smash.js'
@@ -49,7 +50,7 @@ export function checkRuleEffects(state: DuelState): DuelState {
   // 敗北のルールエフェクト（同 第4部 第14章 4-1・4-2）。他のルールエフェクトと同時に
   // 発生していても、デュエルが終わる以上その結果は盤面に残らないので、ここで打ち切る。
   const result = resultOf(state)
-  if (result !== undefined) return { ...state, result }
+  if (result !== undefined) return record({ ...state, result }, { kind: '決着した', result })
 
   // ＢＰの修整は 1 度だけ集める。ルールエフェクトはすべて同時に発生する（総合ルール
   // 第4部 第14章 2）ので、どのユニットを捨札に置くかは 1 つの盤面から決まらなければ
@@ -61,7 +62,10 @@ export function checkRuleEffects(state: DuelState): DuelState {
 
   // すべてのルールエフェクトが同時に発生する（総合ルール 第4部 第14章 2）ので、
   // 1 枚ずつ捨札に置いていっても、途中の盤面でどれを捨札に置くかを決め直さない。
-  const resolved = discardFromSquares(state, discarded)
+  const resolved = record(discardFromSquares(state, discarded), {
+    kind: 'ルールで捨札に置かれた',
+    cards: discarded,
+  })
   return fromCenter.length === 0 ? resolved : { ...resolved, playedIntoCenter: [] }
 }
 
