@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { indexOfSquare } from '@revolution/engine'
-import type { DuelEvent, Player, PlayerZone, Square, WireCardInstance, WirePerspective } from '@revolution/engine'
+import type { DuelEvent, Player, PlayerZone, Square, Turn, WireCardInstance, WirePerspective } from '@revolution/engine'
 import { emptyBoard, instance, unitFace, withZone } from './test-support.js'
-import { boardView, cutInViews, logLines } from './view-model.js'
+import { boardView, cutInViews, logLines, transitionViews } from './view-model.js'
 import type { BoardView, CardView, SideView } from './view-model.js'
 
 /**
@@ -742,5 +742,59 @@ describe('カットイン', () => {
 
   it('新しく届いた分が空なら、カットインも空', () => {
     expect(cutInViews(board, [])).toEqual([])
+  })
+})
+
+/**
+ * フェイズ・ターンの切り替わり（#96）。
+ *
+ * 通信の形式は変えず、前後の盤面で `turn` を比べるだけで作れることを見る。ターンが変わる
+ * 時は必ずフェイズも変わる（`turn.ts` の `beginPhase`）ので、両方出ることも確かめる。
+ */
+describe('フェイズ・ターンの切り替わり', () => {
+  const board = emptyBoard('先攻')
+
+  it('比べる相手がいなければ、何も出ない', () => {
+    expect(transitionViews(undefined, board)).toEqual([])
+  })
+
+  it('ターンもフェイズも変わっていなければ、何も出ない', () => {
+    expect(transitionViews(board.turn, board)).toEqual([])
+  })
+
+  it('フェイズだけ変わっていれば、フェイズの見出しだけ出る', () => {
+    const changed: WirePerspective = { ...board, turn: { ...board.turn, phase: 'スマッシュフェイズ' } }
+
+    expect(transitionViews(board.turn, changed)).toEqual([{ heading: 'スマッシュフェイズ' }])
+  })
+
+  it('ターン数だけ変わっていれば、ターンの見出しだけ出る', () => {
+    const changed: WirePerspective = { ...board, turn: { ...board.turn, number: 2 } }
+
+    expect(transitionViews(board.turn, changed)).toEqual([{ heading: '第 2 ターン：自分のターン' }])
+  })
+
+  it('手番が変わっていれば、ターン数が同じでもターンの見出しが出る', () => {
+    const changed: WirePerspective = { ...board, turn: { ...board.turn, active: '後攻' } }
+
+    expect(transitionViews(board.turn, changed)).toEqual([{ heading: '第 1 ターン：相手のターン' }])
+  })
+
+  it('見る人から見た手番の呼び方になる', () => {
+    const opponentView = emptyBoard('後攻')
+    const changed: WirePerspective = { ...opponentView, turn: { ...opponentView.turn, active: '先攻', number: 2 } }
+
+    expect(transitionViews(opponentView.turn, changed)).toEqual([{ heading: '第 2 ターン：相手のターン' }])
+  })
+
+  /** 新しいターンは必ず最初のフェイズから始まる（`turn.ts` の `beginPhase`）。 */
+  it('ターンが変わる時は、フェイズの見出しも一緒に出る', () => {
+    const nextTurn: Turn = { ...board.turn, number: 2, active: '後攻', phase: 'リリースフェイズ' }
+    const changed: WirePerspective = { ...board, turn: nextTurn }
+
+    expect(transitionViews(board.turn, changed)).toEqual([
+      { heading: '第 2 ターン：相手のターン' },
+      { heading: 'リリースフェイズ' },
+    ])
   })
 })

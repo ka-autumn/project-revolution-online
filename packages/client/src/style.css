@@ -344,11 +344,12 @@ body {
 }
 
 /*
- * カットイン（#104）。盤面より上に重ねるだけで、**押せる場所は塞がない**
- * （`pointer-events: none`）。`index.ts` が毎回作り直すので、`animation` も `transition` も
- * ここには置かない。無関係な再描画（`選んでほしい` の到着など）で走り直してちらつく。
+ * 演出の層（#96・#104）。フェイズ・ターンの切り替わりと効果解決のカットインを、盤面より
+ * 上に重ねて出す。**押せる場所は塞がない**（`pointer-events: none`）。`index.ts` が毎回
+ * 作り直すので、`animation` も `transition` プロパティもここには置かない。無関係な再描画
+ * （`選んでほしい` の到着など）で走り直してちらつく。
  */
-.cut-in-layer {
+.overlay-layer {
   position: fixed;
   inset: 0;
   z-index: 20;
@@ -358,6 +359,18 @@ body {
   gap: var(--gap);
   padding-top: calc(var(--gap) * 4);
   pointer-events: none;
+}
+
+/* フェイズ・ターンの切り替わり（#96）。どちらのプレイヤーのものでもないので色を持たない。 */
+.transition-banner {
+  margin: 0;
+  padding: var(--gap) calc(var(--gap) * 3);
+  border: 2px solid var(--line);
+  border-radius: 4px;
+  background: Canvas;
+  box-shadow: 0 2px 10px #0006;
+  font-size: 1.3rem;
+  font-weight: bold;
 }
 
 .cut-in {

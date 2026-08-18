@@ -12,6 +12,7 @@ import type {
   ResolutionVia,
   Square,
   SquareIndex,
+  Turn,
   WireCardFace,
   WireCardInstance,
   WirePerspective,
@@ -162,6 +163,29 @@ export interface CutInView {
   readonly heading: string
   /** 効果が何をしたか。命令 1 つが 1 行。 */
   readonly lines: readonly string[]
+}
+
+/**
+ * フェイズ・ターンが変わったことを知らせる演出 1 つ（#96）。
+ *
+ * 効果解決のカットイン（`CutInView`）と同じ層に重ねるが、どちらのプレイヤーの
+ * できごとでもない進行の合図なので、プレイヤーの色は持たない。
+ */
+export interface TransitionView {
+  /** 「第 4 ターン：後攻のターン」「メインフェイズ」のような 1 行。 */
+  readonly heading: string
+}
+
+/**
+ * いま出す演出ひとまとめ（#96・#104）。
+ *
+ * フェイズ・ターンの切り替わりと効果解決のカットインは、出す中身は別だが**溜めない・
+ * 操作を妨げない**という出し方の決まりは同じである。1 回の盤面到着から作られる分を
+ * 1 つの塊として、同じ待ち行列（`index.ts`）で順に出す。
+ */
+export interface Overlay {
+  readonly transitions: readonly TransitionView[]
+  readonly cutIns: readonly CutInView[]
 }
 
 /** 画面に出す盤面ひととおり。 */
@@ -599,6 +623,32 @@ export function cutInViews(board: WirePerspective, fresh: readonly DuelEvent[]):
       continue
     }
     open = undefined
+  }
+
+  return views
+}
+
+/**
+ * 前後のターンを比べて、フェイズ・ターンが変わったことを知らせる演出を作る（#96）。
+ *
+ * **通信の形式は変えない。** `turn.phase`・`turn.number`・`turn.active`（`WirePerspective.turn`）
+ * を比べるだけで分かる。`previousTurn` は比べる相手が無ければ `undefined`（最初の盤面・
+ * 入り直し、`session.ts`）で、その時は何も変わったことにしない。
+ *
+ * **ターンが変わる時は必ずフェイズも最初のフェイズに変わる**（`turn.ts` の `beginPhase`）。
+ * 両方変わっていれば両方を出す——ターンの案内だけでは、どのフェイズから始まったかが
+ * 分からない。
+ */
+export function transitionViews(previousTurn: Turn | undefined, board: WirePerspective): readonly TransitionView[] {
+  if (previousTurn === undefined) return []
+  const turn = board.turn
+
+  const views: TransitionView[] = []
+  if (previousTurn.number !== turn.number || previousTurn.active !== turn.active) {
+    views.push({ heading: `第 ${turn.number} ターン：${whoseOf(board, turn.active)}のターン` })
+  }
+  if (previousTurn.phase !== turn.phase) {
+    views.push({ heading: turn.phase })
   }
 
   return views
