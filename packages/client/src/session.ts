@@ -1,4 +1,4 @@
-import type { DuelEvent, LegalAction, Player, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
+import type { DuelEvent, LegalAction, Player, ToClient, Turn, WireChoice, WirePerspective } from '@revolution/engine'
 
 /**
  * クライアントがいまどこにいるか。
@@ -33,6 +33,12 @@ export type Stage =
        * 中身を見比べてはならない。長さで切る。
        */
       readonly fresh: readonly DuelEvent[]
+      /**
+       * 1 つ前の盤面でのターン（#96）。フェイズ・ターンが変わったことを知らせる演出
+       * （`view-model.ts` の `transitionViews`）が、比べる相手として使う。最初の盤面と
+       * 入り直しでは `undefined`——比べる相手が無いので、何も変わったことにしない。
+       */
+      readonly previousTurn: Turn | undefined
     }
 
 /**
@@ -78,7 +84,15 @@ export function applyMessage(session: Session, message: ToClient): Session {
       return { stage: { kind: '相手を待っている' }, refusal: undefined }
     case '席についた':
       return {
-        stage: { kind: '打っている', seat: message.seat, board: undefined, actions: [], choice: undefined, fresh: [] },
+        stage: {
+          kind: '打っている',
+          seat: message.seat,
+          board: undefined,
+          actions: [],
+          choice: undefined,
+          fresh: [],
+          previousTurn: undefined,
+        },
         refusal: undefined,
       }
     case '盤面': {
@@ -88,7 +102,14 @@ export function applyMessage(session: Session, message: ToClient): Session {
       // ここでも履歴を演出し直さない。
       const fresh = stage.board === undefined ? [] : message.perspective.log.slice(stage.board.log.length)
       return {
-        stage: { ...stage, board: message.perspective, actions: message.actions, choice: undefined, fresh },
+        stage: {
+          ...stage,
+          board: message.perspective,
+          actions: message.actions,
+          choice: undefined,
+          fresh,
+          previousTurn: stage.board?.turn,
+        },
         refusal: undefined,
       }
     }

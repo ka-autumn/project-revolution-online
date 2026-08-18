@@ -5,9 +5,10 @@ import type {
   BattleView,
   BoardView,
   CardView,
-  CutInView,
+  Overlay,
   SideView,
   SquareView,
+  TransitionView,
   ZoneView,
 } from './view-model.js'
 
@@ -213,16 +214,24 @@ function logElement(lines: BoardView['log']): HTMLElement {
   return node
 }
 
+/** フェイズ・ターンの切り替わりを知らせる 1 行（#96）。 */
+function transitionElement(view: TransitionView): HTMLElement {
+  return element('p', 'transition-banner', view.heading)
+}
+
 /**
- * カットインを重ねる層（#104）。
+ * 演出を重ねる層（#96・#104）。
  *
- * 盤面の上に重ねるだけで、**押せる場所は塞がない**（`style.css` の `.cut-in-layer` の
+ * 盤面の上に重ねるだけで、**押せる場所は塞がない**（`style.css` の `.overlay-layer` の
  * `pointer-events: none`）。いつ消すかはここでは決めない。溜めない出し方の管理は
- * `index.ts` のタイマーの仕事である。
+ * `index.ts` のタイマーの仕事である——フェイズ・ターンの切り替わりも効果解決のカットインも、
+ * 同じ待ち行列を通って出る（`view-model.ts` の `Overlay`）。
  */
-export function cutInElement(views: readonly CutInView[]): HTMLElement {
-  const node = element('div', 'cut-in-layer')
-  for (const view of views) {
+export function overlayElement(overlay: Overlay): HTMLElement {
+  const node = element('div', 'overlay-layer')
+  for (const view of overlay.transitions) node.append(transitionElement(view))
+
+  for (const view of overlay.cutIns) {
     const cutIn = element('div', `cut-in cut-in--${view.whose}`)
     // 誰の効果かを色だけで区別させない。文字でも出す。
     cutIn.append(element('span', 'cut-in__whose', view.whose))

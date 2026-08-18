@@ -2,11 +2,11 @@ import { connect } from './connection.js'
 import type { Connection } from './connection.js'
 import type { DuelEvent, RoomCode } from '@revolution/engine'
 import { actionViews, automaticAction, choiceView } from './input-model.js'
-import { actionsElement, boardElement, choiceElement, cutInElement } from './render.js'
+import { actionsElement, boardElement, choiceElement, overlayElement } from './render.js'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
-import { boardView, cutInViews } from './view-model.js'
-import type { CutInView } from './view-model.js'
+import { boardView, cutInViews, transitionViews } from './view-model.js'
+import type { Overlay } from './view-model.js'
 
 /**
  * クライアントの起動点。
@@ -20,8 +20,8 @@ import type { CutInView } from './view-model.js'
  * 薄く保っている。
  */
 
-/** カットインを出しておく長さ（#104）。演出が押し付けがましくならない程度の初期値。 */
-const CUT_IN_DURATION_MS = 2600
+/** 演出を出しておく長さ（#96・#104）。押し付けがましくならない程度の初期値。 */
+const OVERLAY_DURATION_MS = 2600
 
 export interface MountOptions {
   /** サーバの WebSocket の URL。 */
@@ -60,16 +60,16 @@ function line(className: string, text: string): HTMLElement {
  * 差分を当てずに毎回作り直している。盤面も差分ではなくまるごと届く（`wire.ts`）ので、
  * 追いつかせるものが無い。
  *
- * `cutIns` は盤面の一部ではなく、いま出す分だけを呼ぶ側（`mount` のタイマー）が渡す。
+ * `overlay` は盤面の一部ではなく、いま出す分だけを呼ぶ側（`mount` のタイマー）が渡す。
  * ここで毎回作り直しても、CSS の `animation` を使っていないのでちらつかない
- * （`style.css` の `.cut-in-layer`）。
+ * （`style.css` の `.overlay-layer`）。
  */
 function draw(
   root: HTMLElement,
   session: Session,
   open: boolean,
   connection: Connection,
-  cutIns: readonly CutInView[],
+  overlay: Overlay,
 ): void {
   root.replaceChildren()
 
@@ -99,7 +99,7 @@ function draw(
     }
 
     // 盤面より上に重ねる層なので最後に足す。押せる場所は塞がない（`style.css`）。
-    if (cutIns.length > 0) root.append(cutInElement(cutIns))
+    if (overlay.transitions.length > 0 || overlay.cutIns.length > 0) root.append(overlayElement(overlay))
   }
 
   if (session.refusal !== undefined) root.append(line('refusal', `行えませんでした: ${session.refusal}`))
@@ -115,48 +115,52 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let session = connecting()
   let open = false
 
-  // いま出しているカットインと、後から出す分の待ち行列（#104）。`fresh` は盤面が届くたびに
-  // 新しい配列で届く（`session.ts`）ので、参照を覚えておけば「前回と同じ盤面」を区別できる
-  // ——`選んでほしい` の到着で `draw` をやり直しても、待ち行列を作り直さずに済む。
+  // いま出している演出と、後から出す分の待ち行列（#96・#104）。フェイズ・ターンの切り替わりと
+  // 効果解決のカットインは、出す中身は別だが同じ待ち行列を通る（`view-model.ts` の
+  // `Overlay`）。`fresh` は盤面が届くたびに新しい配列で届く（`session.ts`）ので、参照を
+  // 覚えておけば「前回と同じ盤面」を区別できる——`選んでほしい` の到着で `draw` をやり直しても、
+  // 待ち行列を作り直さずに済む。
   //
   // **すぐに置き換えない。** 行える手が「優先権を放棄する」だけの場面はクライアントが自動で
   // 送る（`automaticAction`）ので、盤面がほぼ間を置かず届き続けることがある。届くたびに
   // 消して作り直すと、画面が描き直される前に次の盤面が届いて、一度も見えないまま消える。
   // **出し切ってから次へ進める**ことで、続けて起きても積み上がらず、かつ 1 つずつは必ず
   // 見える時間を確保する。
-  let cutIns: readonly CutInView[] = []
-  let queue: (readonly CutInView[])[] = []
-  let cutInTimer: ReturnType<typeof setTimeout> | undefined
+  const EMPTY_OVERLAY: Overlay = { transitions: [], cutIns: [] }
+  let overlay: Overlay = EMPTY_OVERLAY
+  let queue: Overlay[] = []
+  let overlayTimer: ReturnType<typeof setTimeout> | undefined
   let lastFresh: readonly DuelEvent[] | undefined
 
-  const redraw = (): void => draw(root, session, open, connection, cutIns)
+  const redraw = (): void => draw(root, session, open, connection, overlay)
 
   /** 待ち行列の先頭を出す。無ければ消える。呼ぶたびにタイマーを 1 つだけ張る。 */
-  function showNextCutIn(): void {
+  function showNextOverlay(): void {
     const [next, ...rest] = queue
     queue = rest
-    cutIns = next ?? []
+    overlay = next ?? EMPTY_OVERLAY
     if (next === undefined) return
 
-    cutInTimer = setTimeout(() => {
-      cutInTimer = undefined
-      showNextCutIn()
+    overlayTimer = setTimeout(() => {
+      overlayTimer = undefined
+      showNextOverlay()
       redraw()
-    }, CUT_IN_DURATION_MS)
+    }, OVERLAY_DURATION_MS)
   }
 
   /** 新しく届いた分を待ち行列に足す。何も出ていなければ、その場で出し始める。 */
-  function enqueueCutIns(): void {
+  function enqueueOverlays(): void {
     const stage = session.stage
     if (stage.kind !== '打っている' || stage.fresh === lastFresh) return
     lastFresh = stage.fresh
     if (stage.board === undefined) return
 
-    const views = cutInViews(stage.board, stage.fresh)
-    if (views.length === 0) return
+    const transitions = transitionViews(stage.previousTurn, stage.board)
+    const cutIns = cutInViews(stage.board, stage.fresh)
+    if (transitions.length === 0 && cutIns.length === 0) return
 
-    queue = [...queue, views]
-    if (cutInTimer === undefined) showNextCutIn()
+    queue = [...queue, { transitions, cutIns }]
+    if (overlayTimer === undefined) showNextOverlay()
   }
 
   const connection: Connection = connect({
@@ -165,7 +169,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     room: options.room,
     onMessage: (message) => {
       session = applyMessage(session, message)
-      enqueueCutIns()
+      enqueueOverlays()
       redraw()
 
       // 放棄しか行えない場面は押させずに送る。**描いてから送る**ので、進む前の盤面が一度は
@@ -182,7 +186,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   redraw()
 
   return () => {
-    if (cutInTimer !== undefined) clearTimeout(cutInTimer)
+    if (overlayTimer !== undefined) clearTimeout(overlayTimer)
     connection.close()
   }
 }
