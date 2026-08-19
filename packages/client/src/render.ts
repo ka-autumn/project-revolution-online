@@ -137,6 +137,20 @@ export function actionsElement(views: readonly ActionView[], onAction: (action: 
   return node
 }
 
+/**
+ * 演出が出ている間、行える手のかわりに出すもの（#115）。
+ *
+ * 待ち行列は実際の盤面より遅れているので、出ている演出のフェイズと、行える手が指すフェイズが
+ * 食い違う。手を出さないことで、**画面が実際と違うことを言っている**状態を作らない。
+ */
+export function waitingForOverlayElement(): HTMLElement {
+  const node = element('section', 'actions')
+  node.append(element('h2', 'actions__title', '行える手'))
+  node.append(element('p', 'actions__none', '演出が終わるまで待ってください'))
+
+  return node
+}
+
 /** 選ぶところで押せる、答える以外のもの。 */
 export interface ChoiceHandlers {
   readonly onAnswer: (answer: ChoiceAnswer) => void
