@@ -28,6 +28,7 @@ export function emptyBoard(viewer: Player): WirePerspective {
   return {
     viewer,
     squares: BATTLE_SPACE.map(() => []),
+    effective: [],
     zones: { 先攻: emptyZones(), 後攻: emptyZones() },
     damage: { 先攻: 0, 後攻: 0 },
     turn: {
@@ -63,6 +64,7 @@ export function unitFace(name: string, values: Partial<WireUnitFace> = {}): Wire
     stars: 0,
     reverseStars: 0,
     attributes: [],
+    text: [],
     bp: 1000,
     sp: 1000,
     moveIcon: ['上'],

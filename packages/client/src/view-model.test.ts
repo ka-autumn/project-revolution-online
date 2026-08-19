@@ -81,6 +81,50 @@ describe('カード 1 枚', () => {
   })
 })
 
+/**
+ * #93。カードに印刷されているテキスト（総合ルール 第2部 第10章）を、詳細に出す。
+ *
+ * 落とす判断はここに無い。テキストが載るのは表側が見えているカードだけである
+ * （`wire.ts` の `WireWrittenCard`）。
+ */
+describe('カードのテキスト', () => {
+  const SQUARE: Square = { row: 0, column: 0 }
+  const TEXT = ['登場した時、敵を１枚まで選び、3000ダメージ！', '根性（リリースして登場！）']
+
+  function unitView(board: WirePerspective): CardView {
+    const found = boardView(board)
+      .squares.flat()
+      .flatMap((square) => square.cards)[0]
+    if (found === undefined) throw new Error('ユニットが無い')
+
+    return found
+  }
+
+  /** 改行ごとに別の能力になる（同 第4部 第1章 3）ので、行の並びのまま渡す。 */
+  it('印刷されたテキストが、行の並びのまま出る', () => {
+    const unit = instance('テキストを持つ1枚', '先攻', { card: unitFace('テスト・テキストあり', { text: TEXT }) })
+    const view = unitView(withSquare(emptyBoard('先攻'), SQUARE, [unit]))
+
+    expect(view.kind === '表' && view.text).toEqual(TEXT)
+  })
+
+  it('テキストを持たないカードは、空のまま出る', () => {
+    const unit = instance('テキストのない1枚', '先攻')
+    const view = unitView(withSquare(emptyBoard('先攻'), SQUARE, [unit]))
+
+    expect(view.kind === '表' && view.text).toEqual([])
+  })
+
+  /** 裏向きのカードは表記そのものが届かないので、テキストも出しようがない。 */
+  it('裏向きのカードには、テキストが無い', () => {
+    const board = withZone(emptyBoard('先攻'), '後攻', '手札', [{ kind: '見えていない', orientation: 'リリース' }])
+    const card = zoneOf(boardView(board), '相手', '手札').cards[0]
+
+    expect(card?.kind).toBe('裏')
+    expect(JSON.stringify(card)).not.toContain('テキスト')
+  })
+})
+
 describe('カードの詳細', () => {
   /** 詳細に出る 1 行を引く。 */
   function detailOf(view: BoardView, label: string): string | undefined {
@@ -117,6 +161,7 @@ describe('カードの詳細', () => {
         name: 'テスト・罠',
         level: 1,
         colors: [],
+        text: [],
         stars: 0,
         reverseStars: 0,
         attributes: [],
@@ -182,6 +227,97 @@ describe('カードの詳細', () => {
     )
 
     expect(zoneOf(view, '相手', '手札').cards[0]).not.toHaveProperty('details')
+  })
+})
+
+/**
+ * #91。継続効果を適用した後のＢＰと属性（総合ルール 第4部 第12章 2）を画面に出す。
+ *
+ * 修整を集めるのは盤面の側（`perspective.ts` の `EffectiveUnitData`）で、ここでするのは
+ * 書かれている値と見比べてどこが変わったかを取り出すことだけである（ADR-0010）。
+ */
+describe('継続効果を適用した後のデータ', () => {
+  const SQUARE: Square = { row: 0, column: 0 }
+  const unit = instance('修整を受ける1枚', '先攻', { card: unitFace('テスト・修整を受ける', { bp: 1000 }) })
+
+  /** そのユニットが、修整を適用した後のデータと一緒に届いた盤面。 */
+  function withEffective(effective: WirePerspective['effective']): WirePerspective {
+    return { ...withSquare(emptyBoard('先攻'), SQUARE, [unit]), effective }
+  }
+
+  /** 画面に出たそのユニット。スクエアは見る人の向きに直っている（`squareViews`）。 */
+  function unitView(board: WirePerspective): CardView {
+    const found = boardView(board)
+      .squares.flat()
+      .flatMap((square) => square.cards)[0]
+    if (found === undefined) throw new Error('ユニットが無い')
+
+    return found
+  }
+
+  it('修整を受けていれば、修整後のＢＰが出る', () => {
+    const view = unitView(withEffective([{ card: unit.id, bp: 3000, attributes: [] }]))
+
+    expect(view.kind === '表' && view.modified?.bp).toBe(3000)
+  })
+
+  /** 印刷された数字を消さない。どちらがカードに書かれている値かも要る。 */
+  it('印刷された数字と、修整後の数字が、どちらも出る', () => {
+    const view = unitView(withEffective([{ card: unit.id, bp: 3000, attributes: [] }]))
+
+    expect(view.kind === '表' && view.summary).toContain('BP1000→3000')
+  })
+
+  it('修整を受けていなければ、修整後のＢＰを出さない', () => {
+    const view = unitView(withEffective([{ card: unit.id, bp: 1000, attributes: [] }]))
+
+    expect(view.kind === '表' && view.modified).toBeUndefined()
+    expect(view.kind === '表' && view.summary).toContain('BP1000 ')
+  })
+
+  /** 加わった属性はカードに書かれていない（総合ルール 第4部 第12章 5-2 の(3)）ので、分けて出す。 */
+  it('加わった属性が、書かれている属性と見分けられる形で出る', () => {
+    const attributed = instance('属性を持つ1枚', '先攻', {
+      card: unitFace('テスト・属性あり', { attributes: ['目印'] }),
+    })
+    const board: WirePerspective = {
+      ...withSquare(emptyBoard('先攻'), SQUARE, [attributed]),
+      effective: [{ card: attributed.id, bp: 1000, attributes: ['目印', '夢'] }],
+    }
+    const view = unitView(board)
+
+    expect(view.kind === '表' && view.modified?.addedAttributes).toEqual(['夢'])
+    expect(view.kind === '表' && view.summary).toContain('《目印・+夢》')
+  })
+
+  /** 詳細でも、印刷された値と修整後の値を別の行にする。 */
+  it('詳細に、修整後のＢＰが別の行として出る', () => {
+    const view = unitView(withEffective([{ card: unit.id, bp: 3000, attributes: [] }]))
+    const details = view.kind === '表' ? view.details : []
+
+    expect(details.find((row) => row.label === 'ＢＰ')?.value).toBe('1000')
+    expect(details.find((row) => row.label === 'ＢＰ（修整後）')?.value).toBe('3000')
+  })
+
+  /** 相手のユニットについても同じように見える（スクエアは公開情報、同 第2部 第23章 1-1）。 */
+  it('相手のユニットでも同じように出る', () => {
+    const enemy = instance('相手の1枚', '後攻', { card: unitFace('テスト・相手', { bp: 1000 }) })
+    const board: WirePerspective = {
+      ...withSquare(emptyBoard('先攻'), SQUARE, [enemy]),
+      effective: [{ card: enemy.id, bp: 2000, attributes: [] }],
+    }
+    const view = unitView(board)
+
+    expect(view.kind === '表' && view.controlledBy).toBe('相手')
+    expect(view.kind === '表' && view.modified?.bp).toBe(2000)
+  })
+
+  /** スクエアの外にいるカードは、修整後のデータを持たない。 */
+  it('ゾーンにあるカードは、修整後のデータを持たない', () => {
+    const board = withZone(emptyBoard('先攻'), '先攻', '手札', [{ kind: '見えている', instance: unit }])
+    const card = zoneOf(boardView(board), '自分', '手札').cards[0]
+
+    expect(card?.kind === '表' && card.modified).toBeUndefined()
   })
 })
 

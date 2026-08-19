@@ -199,6 +199,15 @@ body {
   font-weight: bold;
 }
 
+/*
+ * 継続効果でデータが変わっているユニット（#91）。**色だけに頼らない**——変わったことは
+ * `BP1000→2000`・`+夢` という文字にも出ている（`view-model.ts` の `summaryOf`）。
+ */
+.card--修整あり .card__detail {
+  font-weight: bold;
+  text-decoration: underline;
+}
+
 .card__damage {
   margin-top: auto;
   color: #b00;
@@ -249,6 +258,17 @@ body {
 
 .card__panel-value {
   margin: 0;
+}
+
+/* 印刷されているテキスト（#93）。項目と値の並びではなく、そのまま読ませる文である。 */
+.card__panel-text {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.card__panel-line {
+  margin: 0 0 2px;
 }
 
 /*

@@ -43,6 +43,14 @@ function panelElement(card: CardView & { readonly kind: '表' }): HTMLElement {
   }
   node.append(rows)
 
+  // 印刷されているテキスト（#93）。改行ごとに別の能力になる（総合ルール 第2部 第10章 1、
+  // 第4部 第1章 3）ので、1 行ずつ別の段落にして改行を潰さない。
+  if (card.text.length > 0) {
+    const text = element('div', 'card__panel-text')
+    for (const line of card.text) text.append(element('p', 'card__panel-line', line))
+    node.append(text)
+  }
+
   return node
 }
 
@@ -74,11 +82,14 @@ function cardElement(card: CardView, picking?: BoardPicking): HTMLElement {
     return back
   }
 
-  // 押せるかどうかを色だけで区別させない。押せるカードは `aria-label` にもそう出す。
+  // 継続効果でデータが変わっていることは、文字（`BP1000→2000`・`+夢`）で分かる。色は添えるだけ
+  // で、それだけに頼らない（#91）。
+  const modified = card.modified === undefined ? '' : ' card--修整あり'
+  // 押せるかどうかも色だけで区別させない。押せるカードは `aria-label` にもそう出す（#94）。
   const pickable = picking?.pickable.includes(card.id) ?? false
   const picked = picking?.picked === card.id
   const state = `${pickable ? ' card--押せる' : ''}${picked ? ' card--選択中' : ''}`
-  const node = element('div', `card card--${card.orientation} card--${card.controlledBy}${state}`)
+  const node = element('div', `card card--${card.orientation} card--${card.controlledBy}${modified}${state}`)
   // キーボードでも詳細を出せるようにする。マウスを乗せるだけの形にすると触れない人が出る。
   node.tabIndex = 0
   const how = picked ? '（選択中）' : pickable ? '（押せます）' : ''
