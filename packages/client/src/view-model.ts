@@ -10,6 +10,7 @@ import type {
   Player,
   PlayerZone,
   ResolutionVia,
+  SmashJudgmentStep,
   Square,
   SquareIndex,
   Turn,
@@ -134,6 +135,35 @@ export interface BattleView {
 }
 
 /**
+ * 発生しているスマッシュ判定 1 つ（総合ルール 第3部 第17章）。#102。
+ *
+ * バトル（`BattleView`）と同じ扱いにしている。**進行中であることが画面に出ないと、正しい
+ * 挙動が誤りに見える**——スマッシュゾーンにカードが置かれるのは希望ステップ（同 第19章 1）で、
+ * そこへ進むには優先権のやり取りが要るので、判定が始まったことが分からないと「スマッシュ
+ * したのに増えない」ように見える。
+ */
+export interface SmashJudgmentView {
+  /** 誰のスマッシュ判定か。ダメージを受けたプレイヤーである（総合ルール 第3部 第17章 1）。 */
+  readonly whose: '自分' | '相手'
+  readonly step: SmashJudgmentStep
+  /**
+   * 希望ステップと確定ステップを繰り返す回数（総合ルール 第3部 第17章 3）。回復ステップで
+   * 回復する量もこの回数で決まる（同 第18章 1）。
+   */
+  readonly repeats: number
+  /** いま何回目か（同 3 の「第１希望ステップ」）。回復ステップの間はまだ始まっていない。 */
+  readonly round: number | undefined
+  /**
+   * 希望ステップで、規定によって表向きに置かれているカードの名前（総合ルール 第3部 第19章 1）。
+   * 無ければ `undefined`。
+   *
+   * **これはスマッシュではない**（同 第2部 第21章 7-2）ので、スマッシュゾーンの枚数には
+   * 数えない（`smash.ts` の `smashesOf` と同じ）。
+   */
+  readonly faceUp: string | undefined
+}
+
+/**
  * 操作ログの 1 行（#95）。
  *
  * **落とす判断はここには無い。** 見てはならないカードは、名指しされないまま届く
@@ -223,6 +253,12 @@ export interface BoardView {
   readonly turn: string
   /** 発生しているバトル。無ければ `undefined`。 */
   readonly battle: BattleView | undefined
+  /**
+   * 発生しているスマッシュ判定（#102）。無ければ空。
+   *
+   * 進行中にもう 1 つ発生しうる（総合ルール 第3部 第17章 2-2）ので、1 つではなく並びで持つ。
+   */
+  readonly smashJudgments: readonly SmashJudgmentView[]
   /** バンクで解決を待っている能力（総合ルール 第2部 第21章 11-1）。 */
   readonly bank: readonly AbilityView[]
   /** 誘発したが、まだバンクに置かれていない能力（同 第4部 第3章 3）。 */
@@ -389,12 +425,25 @@ function cardView(card: WireVisibleCard, viewer: Player): CardView {
     : { kind: '裏', orientation: card.orientation }
 }
 
+/**
+ * いま規定によって表向きに置かれているカードの識別子（総合ルール 第3部 第19章 1）。#102。
+ *
+ * 希望ステップの間だけ、スマッシュゾーンに表向きのカードが 1 枚ある。**これはスマッシュでは
+ * ない**（同 第2部 第21章 7-2）ので、枚数から外す。エンジンが数えるところ（`smash.ts` の
+ * `smashesOf`）と同じ数え方にしている。
+ */
+function faceUpInSmashZone(board: WirePerspective): readonly CardId[] {
+  return board.smashJudgments.flatMap((judgment) => (judgment.faceUp === undefined ? [] : [judgment.faceUp]))
+}
+
 function zoneView(board: WirePerspective, owner: Player, zone: PlayerZone): ZoneView {
   const cards = board.zones[owner][zone]
+  const faceUp = zone === 'スマッシュゾーン' ? faceUpInSmashZone(board) : []
+  const counted = cards.filter((card) => !(card.kind === '見えている' && faceUp.includes(card.instance.id)))
 
   return {
     zone,
-    count: cards.length,
+    count: counted.length,
     cards: COUNTED_ZONES.includes(zone) ? [] : cards.map((card) => cardView(card, board.viewer)),
   }
 }
@@ -461,6 +510,26 @@ function battleView(board: WirePerspective, names: ReadonlyMap<CardId, string>):
     attacker: nameOf(names, battle.attacker),
     attacked: nameOf(names, battle.attacked),
   }
+}
+
+/**
+ * 発生しているスマッシュ判定（総合ルール 第3部 第17章）。#102。
+ *
+ * 届いているものをそのまま並べる（`wire.ts` の `smashJudgments`）。通信の形式は変えていない。
+ */
+function smashJudgmentViews(
+  board: WirePerspective,
+  names: ReadonlyMap<CardId, string>,
+): readonly SmashJudgmentView[] {
+  return board.smashJudgments.map((judgment) => ({
+    whose: whoseOf(board, judgment.player),
+    step: judgment.step,
+    repeats: judgment.repeats,
+    // 回復ステップの間は 0 で届く（`smash.ts` の `SmashJudgment.round`）。まだ 1 回目に
+    // 入っていないので、回数として出さない。
+    round: judgment.round === 0 ? undefined : judgment.round,
+    faceUp: judgment.faceUp === undefined ? undefined : nameOf(names, judgment.faceUp),
+  }))
 }
 
 /** 解決を待っている能力の並び。 */
@@ -698,6 +767,7 @@ export function boardView(board: WirePerspective): BoardView {
     seat: board.viewer,
     turn: turnLine(board),
     battle: battleView(board, names),
+    smashJudgments: smashJudgmentViews(board, names),
     bank: abilityViews(board, board.bank, names),
     triggered: abilityViews(board, board.triggered, names),
     opponent: sideView(board, opponent),

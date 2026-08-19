@@ -7,6 +7,7 @@ import type {
   CardView,
   Overlay,
   SideView,
+  SmashJudgmentView,
   SquareView,
   TransitionView,
   ZoneView,
@@ -187,6 +188,23 @@ function battleElement(battle: BattleView): HTMLElement {
   )
 }
 
+/**
+ * スマッシュ判定の様子（総合ルール 第3部 第17章）。#102。
+ *
+ * 希望ステップで表向きに置かれているカードは、**規定によって表向きなのだと分かる形**で出す
+ * （同 第19章 1）。ただ名前が出ているだけだと、スマッシュゾーンの中身が見えているように読める。
+ */
+function smashJudgmentElement(judgment: SmashJudgmentView): HTMLElement {
+  const round = judgment.round === undefined ? '' : `・${judgment.repeats} 回中 ${judgment.round} 回目`
+  const faceUp = judgment.faceUp === undefined ? '' : `・規定により表向き: ${judgment.faceUp}`
+
+  return element(
+    'p',
+    'board__smash-judgment',
+    `スマッシュ判定: ${judgment.whose}のダメージ・${judgment.step}${round}${faceUp}`,
+  )
+}
+
 /** 解決を待っている能力の並び。何をする能力かは出せない（`view-model.ts` の `AbilityView`）。 */
 function abilitiesElement(title: string, abilities: readonly AbilityView[]): HTMLElement {
   const node = element('section', 'bank')
@@ -266,6 +284,7 @@ export function boardElement(view: BoardView): HTMLElement {
   const node = element('div', 'board')
   node.append(element('p', 'board__turn', view.turn))
   if (view.battle !== undefined) node.append(battleElement(view.battle))
+  for (const judgment of view.smashJudgments) node.append(smashJudgmentElement(judgment))
   if (view.result !== undefined) node.append(element('p', 'board__result', view.result))
 
   if (view.bank.length > 0 || view.triggered.length > 0) {

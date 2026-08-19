@@ -407,6 +407,95 @@ describe('バトル', () => {
   })
 })
 
+/**
+ * #102。スマッシュ判定（総合ルール 第3部 第17章）が進行していることを画面に出す。
+ *
+ * 出ていないと、正しい挙動が誤りに見える。スマッシュゾーンにカードが置かれるのは希望ステップ
+ * （同 第19章 1）で、そこへ進むには優先権のやり取りが要るためである。
+ */
+describe('スマッシュ判定', () => {
+  const board = emptyBoard('先攻')
+
+  /** 判定 1 つが進行している盤面。届く形は変えていない（`wire.ts` の `smashJudgments`）。 */
+  function judging(judgment: Partial<WirePerspective['smashJudgments'][number]> = {}): WirePerspective {
+    return {
+      ...board,
+      smashJudgments: [{ player: '後攻', step: '回復ステップ', repeats: 2, round: 0, faceUp: undefined, ...judgment }],
+    }
+  }
+
+  it('発生していなければ、何も出ない', () => {
+    expect(boardView(board).smashJudgments).toEqual([])
+  })
+
+  it('誰のスマッシュ判定かが出る', () => {
+    expect(boardView(judging()).smashJudgments[0]?.whose).toBe('相手')
+  })
+
+  it('見る人が変われば、誰のものかの呼び方も変わる', () => {
+    const opponentView: WirePerspective = { ...judging(), viewer: '後攻' }
+
+    expect(boardView(opponentView).smashJudgments[0]?.whose).toBe('自分')
+  })
+
+  it('いまどのステップかが出る', () => {
+    expect(boardView(judging({ step: '希望ステップ' })).smashJudgments[0]?.step).toBe('希望ステップ')
+  })
+
+  /** 繰り返しの何回目かは「第１希望ステップ」にあたる（総合ルール 第3部 第17章 3）。 */
+  it('繰り返しの何回目かが出る', () => {
+    const view = boardView(judging({ step: '希望ステップ', round: 1 })).smashJudgments[0]
+
+    expect(view?.round).toBe(1)
+    expect(view?.repeats).toBe(2)
+  })
+
+  /** 回復ステップの間はまだ 1 回目に入っていないので、回数として出さない。 */
+  it('回復ステップの間は、何回目かを出さない', () => {
+    expect(boardView(judging()).smashJudgments[0]?.round).toBeUndefined()
+  })
+
+  /**
+   * 希望ステップでは山札の 1 番上を**表向きで**置く（総合ルール 第3部 第19章 1）。届くのは
+   * 識別子なので、名前に直す。
+   */
+  it('表向きに置かれているカードの名前が出る', () => {
+    const card = instance('希望の1枚', '後攻')
+    const withCard = withZone(judging({ step: '希望ステップ', round: 1, faceUp: card.id }), '後攻', 'スマッシュゾーン', [
+      { kind: '見えている', instance: card },
+    ])
+
+    expect(boardView(withCard).smashJudgments[0]?.faceUp).toBe(card.card.name)
+  })
+
+  /**
+   * 表向きに置かれているカードはスマッシュではない（総合ルール 第2部 第21章 7-2、第3部
+   * 第19章 1）。エンジンが数えるところ（`smash.ts` の `smashesOf`）と同じ数え方にする。
+   */
+  it('表向きのカードは、スマッシュの枚数に数えられない', () => {
+    const faceUp = instance('希望の1枚', '後攻')
+    const withCards = withZone(judging({ step: '希望ステップ', round: 1, faceUp: faceUp.id }), '後攻', 'スマッシュゾーン', [
+      { kind: '見えていない', orientation: 'リリース' },
+      { kind: '見えている', instance: faceUp },
+    ])
+
+    const zone = zoneOf(boardView(withCards), '相手', 'スマッシュゾーン')
+    expect(zone.count).toBe(1)
+    // 数えないだけで、置かれていることは見える。
+    expect(zone.cards).toHaveLength(2)
+  })
+
+  /** 確定ステップで裏返れば、そのカードはスマッシュになる（同 第20章 1）。 */
+  it('表向きのカードが無ければ、そのまま数える', () => {
+    const withCards = withZone(judging({ step: '確定ステップ', round: 1 }), '後攻', 'スマッシュゾーン', [
+      { kind: '見えていない', orientation: 'リリース' },
+      { kind: '見えていない', orientation: 'リリース' },
+    ])
+
+    expect(zoneOf(boardView(withCards), '相手', 'スマッシュゾーン').count).toBe(2)
+  })
+})
+
 // 総合ルール 第2部 第21章 11。バンクに何が積まれているか。
 describe('解決を待っている能力', () => {
   /** バンクに 2 つ、誘発した能力が 1 つある盤面。 */
