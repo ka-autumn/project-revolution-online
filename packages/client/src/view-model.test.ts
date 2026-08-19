@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { indexOfSquare } from '@revolution/engine'
 import type { DuelEvent, Player, PlayerZone, Square, Turn, WireCardInstance, WirePerspective } from '@revolution/engine'
 import { emptyBoard, instance, unitFace, withZone } from './test-support.js'
-import { boardView, cutInViews, logLines, transitionViews } from './view-model.js'
+import { boardView, cutInViews, logLines, overlayDurationMs, showsOverlay, transitionViews } from './view-model.js'
 import type { BoardView, CardView, SideView } from './view-model.js'
 
 /**
@@ -841,5 +841,60 @@ describe('カードのテキスト', () => {
 
     expect(card?.kind).toBe('裏')
     expect(JSON.stringify(card)).not.toContain('テキスト')
+  })
+})
+
+/**
+ * #115。演出は待ち行列に溜まる（`index.ts`）。演出が出ている間は打てないので、出しておく
+ * 長さはそのまま待ち時間になる。
+ */
+describe('演出を出しておく長さ', () => {
+  /** 溜まった分を順に出し切るまでの合計。1 件出すたびに待っている件数が 1 つ減る。 */
+  function totalMsFor(count: number): number {
+    return Array.from({ length: count }, (_, shown) => overlayDurationMs(count - 1 - shown)).reduce(
+      (sum, each) => sum + each,
+      0,
+    )
+  }
+
+  it('後ろに何も待っていなければ、通常の長さで出る', () => {
+    expect(overlayDurationMs(0)).toBe(2000)
+  })
+
+  it('後ろに待っているほど短くなる', () => {
+    expect(overlayDurationMs(3)).toBeLessThan(overlayDurationMs(1))
+    expect(overlayDurationMs(9)).toBeLessThan(overlayDurationMs(3))
+  })
+
+  /** 読む前に消えては出す意味が無いので、いくら溜まっても下限を割らない。 */
+  it('どれだけ溜まっても、短くなりすぎない', () => {
+    expect(overlayDurationMs(1000)).toBe(400)
+  })
+
+  /**
+   * 自動放棄（#14）で何段も一気に進むと、1 回の盤面到着で何件も溜まる。**溜まった時ほど
+   * 1 件あたりを短くする**ので、件数に比例しては伸びない。
+   */
+  it('溜まった時の合計が、件数に比例して伸びない', () => {
+    // 通常の長さのまま 10 件出すと 20 秒かかる。
+    expect(totalMsFor(10)).toBeLessThan(10_000)
+    expect(totalMsFor(3)).toBeLessThan(3 * 2000)
+  })
+})
+
+// #115。演出が出ているかどうかで、行える手を出すかが決まる（`index.ts`）。
+describe('演出が出ているか', () => {
+  it('出すものが無ければ、出ていない', () => {
+    expect(showsOverlay({ transitions: [], cutIns: [] })).toBe(false)
+  })
+
+  it('フェイズ・ターンの切り替わりだけでも、出ている', () => {
+    expect(showsOverlay({ transitions: [{ heading: 'メインフェイズ' }], cutIns: [] })).toBe(true)
+  })
+
+  it('カットインだけでも、出ている', () => {
+    expect(showsOverlay({ transitions: [], cutIns: [{ whose: '自分', heading: '効果、発動！', lines: [] }] })).toBe(
+      true,
+    )
   })
 })
