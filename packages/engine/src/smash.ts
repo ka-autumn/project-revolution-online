@@ -1,7 +1,7 @@
 import { hopeOf } from './card.js'
 import { satisfiesLevel } from './cost.js'
 import { cardsIn, moveToZone, recoverDamage, topOfLibrary } from './duel.js'
-import type { CardId, CardInstance, DuelState } from './duel.js'
+import type { BankedAbility, CardId, CardInstance, DuelState } from './duel.js'
 import { record } from './log.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
@@ -26,12 +26,9 @@ export type SmashJudgmentStep = (typeof SMASH_JUDGMENT_STEPS)[number]
  * プレイヤーが合計 1000 以上のダメージを受けた時に発生する特別な手順であり、バンクを
  * 使用しないルールエフェクトである（同 1、第4部 第14章 4-12）。
  *
- * バトル（`battle.ts` の `Battle`）と違って、待機させたバンクを持たない。スマッシュ判定に
- * よって待機中のバンク（同 第3部 第17章 2）は、いまは必ず空になるためである。プレイヤーに
- * ダメージを与えるのはスマッシュ（同 第9章 1）だけで、それはバンクが空でなければ行えず
- * （`priority.ts` の `activePlayerMayAct`）、フリーズとダメージだけでは誘発イベントも
- * 満たされない。効果がプレイヤーにダメージを与えられるようになったら、バトルと同じように
- * 待機させたバンクを持つ必要が出る。
+ * バトル（`battle.ts` の `Battle`）と同じように、待機させたバンクを持つ（同 第3部 第17章 2）。
+ * **効果がプレイヤーにダメージを与える**（`effect.ts` の `damagePlayer`）ので、判定が発生する
+ * 時点でバンクが空とは限らない。効果はバンクから解決されるためである。
  */
 export interface SmashJudgment {
   /** ダメージを受けたプレイヤー。 */
@@ -59,6 +56,22 @@ export interface SmashJudgment {
    * `undefined` に戻り、そのカードはスマッシュになる（同 第20章 1）。
    */
   readonly faceUp: CardId | undefined
+  /**
+   * スマッシュ判定によって待機中のバンク（総合ルール 第3部 第17章 2）。
+   *
+   * 判定が発生した時にバンクが使用中なら、そのバンクは待機中になり、解決する前にスマッシュ
+   * 判定を開始する。待機中のバンクは判定が終了するまで存在しないものとして扱われ、判定中に
+   * 誘発した能力は別の新しいバンク（`DuelState.bank`）で解決される。判定が終了した後、
+   * 通常のバンクに戻って処理される（同 4）。バトルの `heldBank`（`battle.ts`）と同じ形。
+   */
+  readonly heldBank: readonly BankedAbility[]
+  /**
+   * バンクに入ることが予約されている状態で待機させられた能力（同 第17章 2）。
+   *
+   * 誘発しただけでまだバンクに入っていない能力（`DuelState.triggered`）も、判定が発生した
+   * 時点で待機中のバンクと同じ扱いになる。バトルの `heldTriggered` と同じ。
+   */
+  readonly heldTriggered: readonly BankedAbility[]
 }
 
 /**
@@ -107,9 +120,14 @@ export function startSmashJudgmentIfAny(state: DuelState): DuelState {
     repeats: Math.floor(state.damage[damaged] / SMASH_JUDGMENT_DAMAGE),
     round: 0,
     faceUp: undefined,
+    // バンクとバンクに入ることが予約されている能力を、判定が終わるまで待機させる
+    // （総合ルール 第3部 第17章 2）。この後で誘発する能力は新しいバンクに入る。
+    heldBank: state.bank,
+    heldTriggered: state.triggered,
   }
+  const started = { ...state, smashJudgments: [...state.smashJudgments, judgment], bank: [], triggered: [] }
   // 回復ステップの処理には選択が要らないので、ここは `chooser` を持たずに始められる。
-  return beginRecoveryStep({ ...state, smashJudgments: [...state.smashJudgments, judgment] }, judgment)
+  return beginRecoveryStep(started, judgment)
 }
 
 /**
@@ -131,13 +149,31 @@ export function advanceSmashJudgment(
   chooser: Chooser,
 ): DuelState {
   const next = nextStep(judgment)
-  if (next === undefined) {
-    return { ...state, smashJudgments: state.smashJudgments.slice(0, -1) }
-  }
+  if (next === undefined) return endSmashJudgment(state, judgment)
 
   // 希望ステップに入るたびに 1 回繰り返したことになる（総合ルール 第3部 第17章 3）。
   const round = next === '希望ステップ' ? judgment.round + 1 : judgment.round
   return beginStep(state, { ...judgment, step: next, round }, chooser)
+}
+
+/**
+ * スマッシュ判定を終了する（総合ルール 第3部 第17章 3・4）。
+ *
+ * 待機していたバンク（及びバンクに乗ることが予約されている能力）は、通常のバンクに戻って
+ * 処理される（同 4、第17章 2）。判定中のバンクはこの時点で空である（空でなければ連続した
+ * 放棄にならず、ここへは来ない）。バトルの `endBattle`（`battle.ts`）と同じ形。
+ *
+ * **終わらせるのは並びの最後の判定である。** 判定中にもう 1 つ発生した場合（同 2-2）、
+ * 後から発生したほうが先に終わり、待機していた前の判定が残りの手順を続ける。それぞれが
+ * 自分の待機中のバンクを持っているので、戻す先を取り違えることはない。
+ */
+function endSmashJudgment(state: DuelState, judgment: SmashJudgment): DuelState {
+  return {
+    ...state,
+    smashJudgments: state.smashJudgments.slice(0, -1),
+    bank: [...state.bank, ...judgment.heldBank],
+    triggered: [...state.triggered, ...judgment.heldTriggered],
+  }
 }
 
 /** 次に進むステップ。そのスマッシュ判定が終わるなら `undefined`。 */

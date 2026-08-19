@@ -812,7 +812,20 @@ describe('スマッシュ判定', () => {
   function judging(judgment: Partial<WirePerspective['smashJudgments'][number]> = {}): WirePerspective {
     return {
       ...board,
-      smashJudgments: [{ player: '後攻', step: '回復ステップ', repeats: 2, round: 0, faceUp: undefined, ...judgment }],
+      smashJudgments: [
+        {
+          player: '後攻',
+          step: '回復ステップ',
+          repeats: 2,
+          round: 0,
+          faceUp: undefined,
+          // 待機中のバンク（総合ルール 第3部 第17章 2）は画面に出さない。判定が終わるまで
+          // 存在しないものとして扱われる。
+          heldBank: [],
+          heldTriggered: [],
+          ...judgment,
+        },
+      ],
     }
   }
 

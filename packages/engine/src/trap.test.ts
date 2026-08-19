@@ -140,6 +140,8 @@ const judgmentInProgress: SmashJudgment = {
   repeats: 1,
   round: 0,
   faceUp: undefined,
+  heldBank: [],
+  heldTriggered: [],
 }
 
 // 総合ルール 第2部 第20章 3-8 ただし書き、第3部 第11章 5・第17章 4（ADR-0006）

@@ -7,6 +7,7 @@ import {
   cardsIn,
   cardsOn,
   choose,
+  damagePlayer,
   defineUnit,
   destroy,
   emptyDuelState,
@@ -16,6 +17,7 @@ import {
   putOnSquare,
   smash,
   smashesOf,
+  triggeredAbility,
 } from './index.js'
 import type {
   ActionOutcome,
@@ -448,5 +450,114 @@ describe('スマッシュ判定中のスマッシュ判定', () => {
     // 待機中の判定が希望ステップで表向きに置いた 1 枚が、裏返らないまま残っている。
     expect(cardsIn(state, '後攻', 'スマッシュゾーン')).toHaveLength(1)
     expect(smashesOf(state, '後攻')).toEqual([])
+  })
+})
+
+/**
+ * 効果がプレイヤーにダメージを与えた場合（#103）。
+ *
+ * 効果はバンクから解決される（総合ルール 第2部 第21章 11-3）ので、**ダメージが入る時点で
+ * バンクは空ではない。** スマッシュが与える場合（同 第3部 第9章 1）と違って、判定が発生した
+ * 時にバンクが使用中でありうる。
+ */
+describe('効果によるダメージからのスマッシュ判定', () => {
+  /** 「後攻に 1000 のダメージを与える」誘発型能力を持つユニット。 */
+  const damaging = defineUnit({
+    name: 'テスト・ダメージを与える',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* () {
+        yield* damagePlayer('後攻', 1000)
+      }),
+    ],
+  })
+
+  /** 何もしない誘発型能力を持つユニット。バンクに残る能力として使う。 */
+  const quiet = defineUnit({
+    name: 'テスト・何もしない',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [triggeredAbility('登場した時', function* () {})],
+  })
+
+  /** そのカードの、1 つ目の誘発型能力をバンクに積む形。 */
+  function banked(id: string, card: UnitCard, square: Square) {
+    const [ability] = card.abilities
+    if (ability?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
+
+    return { ability, source: id, controller: '先攻' as const, self: { id, square, card, controller: '先攻' as const } }
+  }
+
+  /**
+   * ダメージを与える能力と、そうでない能力が、この順にバンクで解決を待っている盤面。
+   *
+   * **2 つ積むのが要点である。** 1 つ目を解決するとダメージが入ってスマッシュ判定が発生する
+   * が、その時バンクには 2 つ目が残っている。
+   */
+  function bothInBank(): DuelState {
+    const placed = putOnSquare(
+      putOnSquare(stockedDuelState([]), centerSquare, instantiate({ id: 'ダメージ役', card: damaging, owner: '先攻' })),
+      anotherCenterSquare,
+      instantiate({ id: '静かな役', card: quiet, owner: '先攻' }),
+    )
+    return {
+      ...placed,
+      bank: [banked('ダメージ役', damaging, centerSquare), banked('静かな役', quiet, anotherCenterSquare)],
+    }
+  }
+
+  /** バンクの 1 つ目を解決して、スマッシュ判定が発生したところ。 */
+  function afterResolving(): DuelState {
+    return pass(pass(bothInBank()))
+  }
+
+  // 総合ルール 第4部 第14章 4-12: 合計 1000 以上のダメージを受けた時、スマッシュ判定が発生する。
+  it('効果がダメージを与えても、スマッシュ判定が発生する', () => {
+    expect(afterResolving().smashJudgments).toHaveLength(1)
+  })
+
+  // 総合ルール 第3部 第17章 2: スマッシュ判定が発生した時にバンクが使用中なら、そのバンクは
+  // 待機中となり、解決する前にスマッシュ判定を開始する。
+  it('発生した時に使用中だったバンクは、待機中になる', () => {
+    const state = afterResolving()
+
+    expect(state.bank).toEqual([])
+    expect(state.smashJudgments.at(-1)?.heldBank.map((each) => each.source)).toEqual(['静かな役'])
+  })
+
+  /**
+   * 待機させないと、判定のステップが進むかわりに残っていたバンクが解決されてしまう。
+   * **判定が数手ぶん遅れて進む**のがこの Issue の症状である。
+   *
+   * 連続した放棄 1 回（総合ルール 第3部 第4章 4）で、進行中のステップが終了する。
+   */
+  it('待機中のバンクは、判定のステップの進行を止めない', () => {
+    expect(stepOf(pass(pass(afterResolving())))).toBe('希望ステップ')
+  })
+
+  // 総合ルール 第3部 第17章 4: 待機中のバンクは、スマッシュ判定が終了した後、通常のバンクに
+  // 戻って処理される。
+  it('判定が終わると、待機していたバンクが戻る', () => {
+    let current = afterResolving()
+    while (current.smashJudgments.length > 0 && current.result === undefined) current = endStep(current)
+
+    expect(current.bank.map((each) => each.source)).toEqual(['静かな役'])
+  })
+
+  /**
+   * 判定中に発生した誘発型能力は、待機中のバンクとは別の新しいバンクで解決される
+   * （総合ルール 第3部 第17章 2）。戻す先を取り違えないことをここで見る。
+   */
+  it('判定中に積まれた能力は、待機していた分と混ざらない', () => {
+    const during = afterResolving()
+    const withNew = { ...during, bank: [banked('静かな役', quiet, anotherCenterSquare)] }
+
+    expect(withNew.smashJudgments.at(-1)?.heldBank).toHaveLength(1)
+    expect(withNew.bank).toHaveLength(1)
   })
 })

@@ -10,10 +10,10 @@ import type {
   VisibleBattle,
   VisibleCard,
   VisibleCreatedAbility,
+  VisibleSmashJudgment,
 } from './perspective.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
-import type { SmashJudgment } from './smash.js'
 import type { Turn } from './turn.js'
 import { PLAYER_ZONES } from './zone.js'
 import type { PlayerZone } from './zone.js'
@@ -135,7 +135,7 @@ export interface WirePerspective {
   readonly trapConditionsMet: readonly WireTrapConditionMet[]
   readonly courageConditionsMet: readonly WireCourageConditionMet[]
   readonly battle: VisibleBattle | undefined
-  readonly smashJudgments: readonly SmashJudgment[]
+  readonly smashJudgments: readonly VisibleSmashJudgment[]
   readonly result: DuelResult | undefined
   /**
    * ここまでに起きたできごと（#95）。射影が落とした後のものがそのまま載る。

@@ -96,7 +96,9 @@ describe('視点ごとの盤面の射影', () => {
     if (faceUp === undefined) throw new Error('スマッシュゾーンにカードを置いたはずだった')
     const judging: DuelState = {
       ...state,
-      smashJudgments: [{ player: '後攻', step: '希望ステップ', repeats: 1, round: 1, faceUp: faceUp.id }],
+      smashJudgments: [
+        { player: '後攻', step: '希望ステップ', repeats: 1, round: 1, faceUp: faceUp.id, heldBank: [], heldTriggered: [] },
+      ],
     }
 
     expect(seen(perspectiveOf(judging, '先攻'), '後攻', 'スマッシュゾーン')?.kind).toBe('見えている')
