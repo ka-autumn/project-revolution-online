@@ -122,8 +122,19 @@ export function automaticAction(session: Session): LegalAction | undefined {
  *
  * 能力は、どのカードから出たかで指す。何をする能力かは出せない（効果は関数なので通信に
  * 載らない）。発生源を持たない能力（作成された誘発型能力）もあるので、その時は位置だけになる。
+ *
+ * スクエアが候補になる場面（効果が置き先を選ばせる場合）は、**そのスクエアの呼び名**を出す。
+ * 呼び名は見る人によって入れ替わる（総合ルール 第2部 第22章 4・6）。選択は選ぶプレイヤーに
+ * だけ届く（ADR-0008）ので、受け取った側から見た呼び名がそのまま答えになる。選ぶのは能力の
+ * 支配者であり（同 第4部 第8章 2-3）、カードや能力が指すエリア・ラインもその支配者から見て
+ * 決まる（同 第2部 第22章 4-1・6-1）ためである。
  */
-function candidateLabel(candidate: WireCandidate, index: number, names: ReadonlyMap<CardId, string>): string {
+function candidateLabel(
+  candidate: WireCandidate,
+  index: number,
+  viewer: Player,
+  names: ReadonlyMap<CardId, string>,
+): string {
   const position = `${index + 1} 番目`
   switch (candidate.kind) {
     case '見えている':
@@ -132,6 +143,8 @@ function candidateLabel(candidate: WireCandidate, index: number, names: Readonly
       return candidate.source === undefined
         ? `${position}（発生源のない能力）`
         : `${position}: ${nameOf(names, candidate.source)} の能力`
+    case 'スクエア':
+      return `${position}: ${squareLabel(viewer, candidate.square)}`
     case '見えていない':
       return `${position}（裏向き）`
   }
@@ -175,7 +188,7 @@ export function choiceView(board: WirePerspective, choice: WireChoice): ChoiceVi
     mayRewind: choice.answered > 0,
     candidates: choice.candidates.map((candidate, index) => ({
       index,
-      label: candidateLabel(candidate, index, names),
+      label: candidateLabel(candidate, index, board.viewer, names),
     })),
   }
 }
