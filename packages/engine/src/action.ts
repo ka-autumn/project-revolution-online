@@ -165,6 +165,22 @@ function turnUpForPlan(state: DuelState, player: Player, chooser: Chooser): Duel
 }
 
 /**
+ * 選ばせる時の、プランのめくりの置換効果 1 つ。
+ *
+ * 能力そのものではなく、**どのユニットが生み出しているか**と組にして渡す。常在型能力は
+ * カードに書かれたものがそのまま働くので（総合ルール 第4部 第4章 1）、能力の側は自分が
+ * どのカードから出たかを覚えていない。選ぶ側には「どのユニットの能力か」が要る（#110）。
+ *
+ * `source` という名前で持つのは、解決を待っている能力（`duel.ts` の `TriggeredInstance`）と
+ * 揃えるためである。**選ばせる時に見せる形は、能力の並ぶ場面すべてで同じになる**
+ * （`protocol.ts` の `sourceOf`）。
+ */
+interface PlanReplacementCandidate {
+  readonly ability: PlanReplacingAbility
+  readonly source: CardId
+}
+
+/**
  * そのプレイヤーが適用することを選んだ、プランのめくりの置換効果。選ばなければ `undefined`。
  *
  * 置換効果を生み出しているのは、そのプレイヤーが支配するスクエアにあるユニットの常在型能力
@@ -176,17 +192,17 @@ function chosenPlanReplacement(
   player: Player,
   chooser: Chooser,
 ): PlanReplacingAbility | undefined {
-  const candidates = unitsOnSquares(state)
+  const candidates: readonly PlanReplacementCandidate[] = unitsOnSquares(state)
     .filter((unit) => unit.controller === player)
-    .flatMap((unit) => planReplacingAbilitiesOf(unit.card))
+    .flatMap((unit) => planReplacingAbilitiesOf(unit.card).map((ability) => ({ ability, source: unit.id })))
   if (candidates.length === 0) return undefined
 
   // 「かわりに〜してよい」なので、選ばないことを選べる。
   const chosen = chooser(candidates, player, 'プランの置き換え', true)
   if (chosen === undefined) return undefined
-  if (!candidates.includes(chosen as PlanReplacingAbility)) throw new Error('候補にない置換効果が選ばれた')
+  if (!candidates.includes(chosen as PlanReplacementCandidate)) throw new Error('候補にない置換効果が選ばれた')
 
-  return chosen as PlanReplacingAbility
+  return (chosen as PlanReplacementCandidate).ability
 }
 
 /**

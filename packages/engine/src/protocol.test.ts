@@ -194,17 +194,18 @@ describe('1 つの行動で 2 回選ぶ', () => {
   })
 
   /**
-   * 候補は能力であってカードではない。
+   * 候補は能力であってカードではない。#110。
    *
-   * 置換効果は常在型能力なので、発生源のカードを覚えていない（`action.ts` の
-   * `chosenPlanReplacement` は能力だけを集める）。裏向きのカードと同じ扱いにはせず、
-   * 能力として並べる。
+   * 置換効果は常在型能力なので、能力の側は自分がどのカードから出たかを覚えていない。それでも
+   * **どのユニットが生み出しているかは盤面から分かる**（総合ルール 第4部 第4章 1）ので、
+   * `chosenPlanReplacement`（`action.ts`）がそのユニットと組にして選ばせる。発生源を持たない
+   * 能力として並べると、選ぶ側に「どのユニットの能力か」が伝わらない。
    */
-  it('置換効果の候補は、発生源のない能力として並ぶ', () => {
+  it('置換効果の候補には、生み出しているユニットが出る', () => {
     const progress = applyWithAnswers(withReplacement(), PLANNING, [0])
 
     expectChoice(progress)
-    expect(progress.choice.candidates).toEqual([{ kind: '能力', source: undefined }])
+    expect(progress.choice.candidates).toEqual([{ kind: '能力', source: '置換するユニット' }])
   })
 
   it('2 回目に選ばないと答えると、行動が終わる', () => {

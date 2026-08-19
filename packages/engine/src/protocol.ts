@@ -138,8 +138,11 @@ function isChoiceNeeded(thrown: unknown): thrown is ChoiceNeeded {
  * その候補が能力であるとき、その発生源のカードの識別子。持たなければ `undefined`。
  *
  * 解決を待っている能力は発生源を覚えている（`duel.ts` の `TriggeredInstance.source`）。
+ * プランのめくりの置換効果は、生み出しているユニットと組にして選ばせる（`action.ts` の
+ * `PlanReplacementCandidate`）ので、同じ形で読める。
+ *
  * 作成された誘発型能力は発生源のカードを持たない（同 `CreatedAbilityInstance.source`）ので、
- * その場合も `undefined` になる。
+ * その場合は `undefined` になる。
  */
 function sourceOf(candidate: unknown): CardId | undefined {
   if (typeof candidate !== 'object' || candidate === null) return undefined
