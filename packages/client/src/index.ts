@@ -2,10 +2,10 @@ import { connect } from './connection.js'
 import type { Connection } from './connection.js'
 import type { DuelEvent, RoomCode } from '@revolution/engine'
 import { actionViews, automaticAction, choiceView } from './input-model.js'
-import { actionsElement, boardElement, choiceElement, overlayElement } from './render.js'
+import { actionsElement, boardElement, choiceElement, overlayElement, waitingForOverlayElement } from './render.js'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
-import { boardView, cutInViews, transitionViews } from './view-model.js'
+import { boardView, cutInViews, overlayDurationMs, showsOverlay, transitionViews } from './view-model.js'
 import type { Overlay } from './view-model.js'
 
 /**
@@ -19,9 +19,6 @@ import type { Overlay } from './view-model.js'
  * この 3 つを繋ぐところ（ここ）である。テストがあるのは前の 2 つまでで、DOM を触る層は
  * 薄く保っている。
  */
-
-/** 演出を出しておく長さ（#96・#104）。押し付けがましくならない程度の初期値。 */
-const OVERLAY_DURATION_MS = 2600
 
 export interface MountOptions {
   /** サーバの WebSocket の URL。 */
@@ -90,6 +87,14 @@ function draw(
           onCancel: () => connection.send({ kind: '取り消す' }),
         }),
       )
+    } else if (showsOverlay(overlay)) {
+      // 演出が出ている間は行える手を出さない（#115）。**待ち行列は実際の盤面より遅れている**
+      // ので、出ている演出のフェイズと、行える手が指すフェイズが食い違う。押せなくするだけ
+      // では食い違いが画面に残るので、手そのものを出さない。
+      //
+      // 選んでいる途中（`stage.choice`）は止めない。あれはすでに始まっている行動の中の選択
+      // であって、待ち行列の遅れとは関係が無い。止めると、演出が消えるまで解決が進まなくなる。
+      root.append(waitingForOverlayElement())
     } else {
       root.append(
         actionsElement(actionViews(board, stage.actions), (action) =>
@@ -99,7 +104,7 @@ function draw(
     }
 
     // 盤面より上に重ねる層なので最後に足す。押せる場所は塞がない（`style.css`）。
-    if (overlay.transitions.length > 0 || overlay.cutIns.length > 0) root.append(overlayElement(overlay))
+    if (showsOverlay(overlay)) root.append(overlayElement(overlay))
   }
 
   if (session.refusal !== undefined) root.append(line('refusal', `行えませんでした: ${session.refusal}`))
@@ -134,7 +139,12 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   const redraw = (): void => draw(root, session, open, connection, overlay)
 
-  /** 待ち行列の先頭を出す。無ければ消える。呼ぶたびにタイマーを 1 つだけ張る。 */
+  /**
+   * 待ち行列の先頭を出す。無ければ消える。呼ぶたびにタイマーを 1 つだけ張る。
+   *
+   * 出しておく長さは、後ろで待っている件数で決まる（`view-model.ts` の `overlayDurationMs`）。
+   * 演出の間は打てない（#115）ので、溜まった分をそのままの長さで出すと待ち時間になる。
+   */
   function showNextOverlay(): void {
     const [next, ...rest] = queue
     queue = rest
@@ -145,7 +155,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       overlayTimer = undefined
       showNextOverlay()
       redraw()
-    }, OVERLAY_DURATION_MS)
+    }, overlayDurationMs(queue.length))
   }
 
   /** 新しく届いた分を待ち行列に足す。何も出ていなければ、その場で出し始める。 */

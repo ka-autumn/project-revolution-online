@@ -209,13 +209,41 @@ export interface TransitionView {
 /**
  * いま出す演出ひとまとめ（#96・#104）。
  *
- * フェイズ・ターンの切り替わりと効果解決のカットインは、出す中身は別だが**溜めない・
- * 操作を妨げない**という出し方の決まりは同じである。1 回の盤面到着から作られる分を
- * 1 つの塊として、同じ待ち行列（`index.ts`）で順に出す。
+ * フェイズ・ターンの切り替わりと効果解決のカットインは、出す中身は別だが**溜めない**という
+ * 出し方の決まりは同じである。1 回の盤面到着から作られる分を 1 つの塊として、同じ待ち行列
+ * （`index.ts`）で順に出す。
  */
 export interface Overlay {
   readonly transitions: readonly TransitionView[]
   readonly cutIns: readonly CutInView[]
+}
+
+/** 出すものがあるか。無ければ演出は画面に無い。 */
+export function showsOverlay(overlay: Overlay): boolean {
+  return overlay.transitions.length > 0 || overlay.cutIns.length > 0
+}
+
+/**
+ * 演出 1 件を出しておく長さ（#115）。`waiting` は、その後ろで待っている件数である。
+ *
+ * **待ち行列が長いほど短くする。** 演出が出ている間は打てない（`index.ts`）ので、この長さは
+ * そのまま待ち時間になる。放棄しか行えない場面の自動送信（`input-model.ts` の
+ * `automaticAction`）で何段も一気に進むと、1 回の盤面到着で何件も溜まる。
+ *
+ * 溜まった分を出し切るのに使ってよい合計を決めて、待っている件数で割る。1 件だけなら通常の
+ * 長さで、溜まっているほど短くなる。**読めなくなるほどは短くしない**ので、溜まり方によっては
+ * 合計が予算を超える。予算は上限ではなく、短くする度合いを決めるための目安である。
+ */
+export function overlayDurationMs(waiting: number): number {
+  /** 後ろに何も待っていない時の長さ。押し付けがましくならない程度に。 */
+  const FULL_MS = 2000
+  /** 溜まっている分を出し切るのに使ってよい合計の目安。 */
+  const BUDGET_MS = 4000
+  /** これより短いと読む前に消える。 */
+  const SHORTEST_MS = 400
+
+  const share = Math.floor(BUDGET_MS / (waiting + 1))
+  return Math.min(FULL_MS, Math.max(SHORTEST_MS, share))
 }
 
 /** 画面に出す盤面ひととおり。 */
