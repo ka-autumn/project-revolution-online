@@ -6,6 +6,7 @@ import {
   PLAYERS,
   applyWithAnswers,
   cardsIn,
+  choose,
   defineUnit,
   emptyDuelState,
   instantiate,
@@ -364,6 +365,89 @@ describe('バンクの能力を選ぶ', () => {
 
     expectAdvanced(progress)
     expect(progress.state.bank).toHaveLength(0)
+  })
+})
+
+/**
+ * #113。効果が置き先を選ばせる場面では、候補として並ぶのはカードではなくスクエアである。
+ *
+ * カードの識別子を持たないので、裏向きのカードとして並べると「何番目か」しか出せなくなる。
+ * スクエアは盤面の位置であって隠すものが無い（総合ルール 第2部 第23章 1-1）ので、位置その
+ * ものを載せる。
+ */
+describe('スクエアを選ぶ', () => {
+  const chooser = defineUnit({
+    name: 'テスト・置き先を選ぶユニット',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* () {
+        yield* choose<Square>([
+          { row: 0, column: 0 },
+          { row: 2, column: 2 },
+        ])
+      }),
+    ],
+  })
+
+  /** スクエアを選ばせる能力が、バンクで解決を待っている盤面。 */
+  function waitingToChooseSquare(): DuelState {
+    const square: Square = { row: 0, column: 1 }
+    const placed = putOnSquare(
+      phaseReadyToAct('メインフェイズ'),
+      square,
+      instantiate({ id: '選ばせるユニット', card: chooser, owner: '先攻' }),
+    )
+    const [triggered] = chooser.abilities
+    if (triggered?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
+
+    return {
+      ...placed,
+      bank: [
+        {
+          ability: triggered,
+          source: '選ばせるユニット',
+          controller: '先攻',
+          self: { id: '選ばせるユニット', square, card: chooser, controller: '先攻' },
+        },
+      ],
+    }
+  }
+
+  const PASS: LegalAction = { kind: '優先権を放棄する' }
+
+  it('候補のスクエアが、行と列で並ぶ', () => {
+    const progress = applyWithAnswers(waitingToChooseSquare(), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.candidates).toEqual([
+      { kind: 'スクエア', square: { row: 0, column: 0 } },
+      { kind: 'スクエア', square: { row: 2, column: 2 } },
+    ])
+  })
+
+  /** 裏向きのカードと同じ扱いにすると、どこを選んでいるのか分からなくなる。 */
+  it('見えていないものとしては並ばない', () => {
+    const progress = applyWithAnswers(waitingToChooseSquare(), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.candidates.some((candidate) => candidate.kind === '見えていない')).toBe(false)
+  })
+
+  /** スクエアにいるユニットは自分の位置を `square` として持つので、スクエアとは混ざらない。 */
+  it('スクエアにいるユニットは、カードとして並ぶ', () => {
+    const withHand = putInZone(beforePlanning(), '先攻', '手札', [card('手札の1枚')])
+    const play: LegalAction = {
+      kind: 'カードをプレイする',
+      declaration: { card: '手札の1枚', square: { row: 0, column: 1 } },
+    }
+
+    const progress = applyWithAnswers(withHand, play, [])
+
+    expectChoice(progress)
+    expect(progress.choice.candidates.every((candidate) => candidate.kind !== 'スクエア')).toBe(true)
   })
 })
 

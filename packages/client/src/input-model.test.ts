@@ -180,6 +180,44 @@ describe('選ぶ候補', () => {
     expect(choiceView(board(), choice).candidates[0]?.label).toBe('1 番目（発生源のない能力）')
   })
 
+  /**
+   * #113。効果が置き先を選ばせる場面では、候補として並ぶのはスクエアである。カードではないので
+   * 名前が無く、**どこのスクエアかを呼び名で出す**（総合ルール 第2部 第22章 4・6）。
+   */
+  it('スクエアの候補には、どこのスクエアかが出る', () => {
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: '効果の対象',
+      mayDecline: false,
+      answered: 0,
+      candidates: [
+        { kind: 'スクエア', square: { row: 0, column: 0 } },
+        { kind: 'スクエア', square: { row: 1, column: 1 } },
+      ],
+    }
+
+    expect(choiceView(board(), choice).candidates.map((candidate) => candidate.label)).toEqual([
+      '1 番目: 味方エリアの左ライン',
+      '2 番目: 中央エリアの中央ライン',
+    ])
+  })
+
+  /**
+   * 呼び名は見る人によって入れ替わる（同 4・6）。選択は選ぶプレイヤーにだけ届く（ADR-0008）
+   * ので、受け取った側から見た呼び名になる。
+   */
+  it('同じスクエアでも、選ぶ人が変われば呼び名が変わる', () => {
+    const choice: WireChoice = {
+      player: '後攻',
+      purpose: '効果の対象',
+      mayDecline: false,
+      answered: 0,
+      candidates: [{ kind: 'スクエア', square: { row: 0, column: 0 } }],
+    }
+
+    expect(choiceView({ ...board(), viewer: '後攻' }, choice).candidates[0]?.label).toBe('1 番目: 敵エリアの右ライン')
+  })
+
   it('見えている候補には、どのカードかが出る', () => {
     const choice: WireChoice = {
       player: '先攻',

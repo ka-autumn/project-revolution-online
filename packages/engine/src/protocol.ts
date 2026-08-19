@@ -1,3 +1,5 @@
+import { BATTLE_SPACE } from './board.js'
+import type { Square } from './board.js'
 import type { CardId, DuelState } from './duel.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
@@ -41,6 +43,9 @@ export type ChoiceAnswer = number | '選ばない'
  * 能力そのものを選ぶ場面（バンクにある能力、プランのめくりを置き換える置換効果）では、カード
  * ではなく能力が並ぶ。**どのカードから出た能力かまでは見せられる**ので、裏向きのカードと同じ
  * 扱いにはしない。何をする能力かは見せられない（効果は関数なので通信に載らない）。
+ *
+ * カードが並ばない場面もある。効果が置き先を選ばせる場合（「◯◯に登場させる」）に並ぶのは
+ * スクエアで、**そこに何があるかではなく、盤面のどこかが選ばれている。**
  */
 export type WireCandidate =
   | { readonly kind: '見えている'; readonly card: CardId }
@@ -51,6 +56,13 @@ export type WireCandidate =
    * `duel.ts` の `CreatedAbilityInstance`）なら `undefined` になる。
    */
   | { readonly kind: '能力'; readonly source: CardId | undefined }
+  /**
+   * カードではなく、盤面のスクエアそのもの。
+   *
+   * 行と列で指す（`board.ts` の `Square`）。エリア・ラインの呼び名は見るプレイヤーによって
+   * 入れ替わる（総合ルール 第2部 第22章 4・6）ので、呼び名にするのは受け取った側である。
+   */
+  | { readonly kind: 'スクエア'; readonly square: Square }
   | { readonly kind: '見えていない' }
 
 /** 選んでほしいこと 1 つ。**選ぶプレイヤーにだけ送る**（ADR-0008）。 */
@@ -149,11 +161,29 @@ function sourceOf(candidate: unknown): CardId | undefined {
 }
 
 /**
+ * その候補がスクエアであるとき、そのスクエア。カードなら `undefined`。
+ *
+ * 効果が置き先を選ばせる場合、候補として並ぶのはスクエアそのものである（`board.ts` の
+ * `Square`）。行と列で持つのはスクエアだけで、スクエアにいるユニットは自分の位置を
+ * `square` として持つ（`board.ts` の `UnitOnSquare`）ので、取り違えることはない。
+ *
+ * 行と列が 0・1・2 のいずれかであること（同 `SquareIndex`）は、同じ位置がバトルスペースに
+ * あることで確かめる。
+ */
+function squareOf(candidate: unknown): Square | undefined {
+  if (typeof candidate !== 'object' || candidate === null) return undefined
+
+  const { row, column } = candidate as { readonly row?: unknown; readonly column?: unknown }
+  return BATTLE_SPACE.find((square) => square.row === row && square.column === column)
+}
+
+/**
  * 候補 1 つを、送れる形にする。
  *
  * **候補の型は選ばせる場面ごとに違う。** `Chooser` が候補を `unknown` として受け取るのはその
  * ためで、候補そのものからは何であるか尋ねられない。何が来るかを知っているのは呼んだ側なので、
- * **何のための選択か**（`ChoicePurpose`）から読み方を決める。
+ * **何のための選択か**（`ChoicePurpose`）から読み方を決める。効果が選ばせている場面
+ * （`効果の対象`）だけは、カードとスクエアのどちらも来るので、候補の形で見分ける。
  */
 function describeCandidate(candidate: unknown, purpose: ChoicePurpose, visible: ReadonlySet<CardId>): WireCandidate {
   // 能力が並ぶ場面。カードではないので、発生源のカードで指す。
@@ -163,9 +193,14 @@ function describeCandidate(candidate: unknown, purpose: ChoicePurpose, visible: 
   }
 
   const id = cardIdOf(candidate)
-  if (id === undefined || !visible.has(id)) return { kind: '見えていない' }
+  if (id !== undefined) return visible.has(id) ? { kind: '見えている', card: id } : { kind: '見えていない' }
 
-  return { kind: '見えている', card: id }
+  // スクエアは盤面の位置なので、隠すものが無い。誰がどこを選べるかは、候補として並んだ時点で
+  // 決まっている。
+  const square = squareOf(candidate)
+  if (square !== undefined) return { kind: 'スクエア', square }
+
+  return { kind: '見えていない' }
 }
 
 /**
