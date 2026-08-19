@@ -251,6 +251,49 @@ body {
   margin: 0;
 }
 
+/*
+ * 盤面をクリックして操作する（#94）。
+ *
+ * **色だけに頼らない**——押せるカードと置き先は `aria-label` にもそう出ている
+ * （`render.ts` の `cardElement` / `squareElement`）。
+ */
+.card--押せる {
+  cursor: pointer;
+  outline: 2px solid var(--own);
+  outline-offset: -1px;
+}
+
+.card--選択中 {
+  outline: 3px solid var(--own);
+  outline-offset: 1px;
+}
+
+.square--置き先 {
+  cursor: pointer;
+  border-style: dashed;
+  border-width: 3px;
+  border-color: var(--own);
+}
+
+/* 操作のしかたの切り替え（#94）。 */
+.mode {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  margin: var(--gap) 0;
+}
+
+.mode__label {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.choice__button--選択中 {
+  font-weight: bold;
+  outline: 2px solid var(--own);
+}
+
 /* 行える手と選ぶ候補。並べるのは届いたものだけ（ADR-0010）。 */
 .actions,
 .choice {

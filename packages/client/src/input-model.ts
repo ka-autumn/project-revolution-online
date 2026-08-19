@@ -3,6 +3,7 @@ import type {
   ChoicePurpose,
   LegalAction,
   Player,
+  Square,
   WireCandidate,
   WireChoice,
   WirePerspective,
@@ -177,4 +178,126 @@ export function choiceView(board: WirePerspective, choice: WireChoice): ChoiceVi
       label: candidateLabel(candidate, index, names),
     })),
   }
+}
+
+/**
+ * 盤面をクリックして操作する（#94）。
+ *
+ * **ルールの判断は増やさない**（ADR-0010）。どのカードを押せるか、どこを光らせるかは、
+ * サーバから届いた手が指しているところだけで決まる。「ここに置けるはず」をここで計算しない。
+ *
+ * 通信の形式は変わらない。`LegalAction` はカードを識別子で、スクエアを行と列で指している
+ * （`legal-action.ts`）ので、届いた手を「どのカードの話か」で振り分けるだけで足りる。
+ */
+
+/** その手が指しているカード。カードに紐づかない手なら `undefined`。 */
+export function targetOf(action: LegalAction): CardId | undefined {
+  switch (action.kind) {
+    case '優先権を放棄する':
+    case 'プランする':
+      return undefined
+    case 'エネルギーを置く':
+    case 'トラップを廃棄する':
+    case 'トラップとしてプレイする':
+    case 'トラップを発動する':
+    case '「勇気」を起動する':
+      return action.card
+    case 'スマッシュする':
+    case 'ユニットを移動する':
+    case '起動型能力を起動する':
+      return action.unit
+    case 'カードをプレイする':
+      return action.declaration.card
+  }
+}
+
+/** その手が置き先として指しているスクエア。置き先を持たない手なら `undefined`。 */
+export function destinationOf(action: LegalAction): Square | undefined {
+  switch (action.kind) {
+    case 'カードをプレイする':
+      return action.declaration.square
+    case 'ユニットを移動する':
+      return action.destination
+    default:
+      return undefined
+  }
+}
+
+/** 光らせるスクエア 1 つと、そこを押した時に送る手。 */
+export interface DestinationView {
+  readonly square: Square
+  readonly action: LegalAction
+  readonly label: string
+}
+
+/** クリックで操作する時に、画面に出すもの。 */
+export interface PickView {
+  /**
+   * 押せるカード。**選んでいる間は、その 1 枚だけになる。** 選びかけの最中に別のカードが
+   * 押せるままだと、どこまで絞れているかが画面から分からない。
+   */
+  readonly pickable: readonly CardId[]
+  /** いま選んでいるカード。選んでいなければ `undefined`。 */
+  readonly picked: CardId | undefined
+  /**
+   * 選んだカードで行える手のうち、置き先を持たないもの。ボタンとして出す。
+   *
+   * 置き先を持つ手でも、同じスクエアを指す手が 2 つ以上あるならここに入る。押した場所だけ
+   * では、どちらの手かが決まらないためである。
+   */
+  readonly direct: readonly ActionView[]
+  /** 光らせるスクエア。選んだカードの手が指しているところだけ。 */
+  readonly destinations: readonly DestinationView[]
+  /** カードに紐づかない手（優先権の放棄・プラン）。いつでも押せる。 */
+  readonly untargeted: readonly ActionView[]
+}
+
+/**
+ * クリックで操作する時の画面。`picked` が選んでいるカード（`undefined` なら選んでいない）。
+ *
+ * 段は 2 つである。カードを選ぶまでは押せるカードを示すだけで、選んだ後にその 1 枚で行える手
+ * だけを出す。**置き先を選ぶ手は盤面の上で示す**ので、そこは押すところが 2 か所（カード →
+ * スクエア）になる。
+ */
+export function pickView(
+  board: WirePerspective,
+  actions: readonly LegalAction[],
+  picked: CardId | undefined,
+): PickView {
+  const names = namesIn(board)
+  const view = (action: LegalAction): ActionView => ({ action, label: labelOf(action, board.viewer, names) })
+
+  const targeted = actions.filter((action) => targetOf(action) !== undefined)
+  const untargeted = actions.filter((action) => targetOf(action) === undefined).map(view)
+  const pickable = [...new Set(targeted.flatMap((action) => targetOf(action) ?? []))]
+  // 届いていないカードは選べない。選んだ後に手が届かなくなることは起こる（盤面が入れ替わる）
+  // ので、その時は選んでいない状態と同じ扱いになる。
+  if (picked === undefined || !pickable.includes(picked)) {
+    return { pickable, picked: undefined, direct: [], destinations: [], untargeted }
+  }
+
+  const mine = targeted.filter((action) => targetOf(action) === picked)
+  const placing = mine.filter((action) => destinationOf(action) !== undefined)
+  // 同じスクエアを指す手が 2 つ以上あるなら、押した場所だけでは決まらない。
+  const ambiguous = (square: Square): boolean =>
+    placing.filter((action) => sameSquare(destinationOf(action), square)).length > 1
+
+  const destinations = placing.flatMap((action): readonly DestinationView[] => {
+    const square = destinationOf(action)
+    if (square === undefined || ambiguous(square)) return []
+    return [{ square, action, label: view(action).label }]
+  })
+  const decided = destinations.map((each) => each.action)
+
+  return {
+    pickable: [picked],
+    picked,
+    direct: mine.filter((action) => !decided.includes(action)).map(view),
+    destinations,
+    untargeted,
+  }
+}
+
+function sameSquare(square: Square | undefined, other: Square): boolean {
+  return square !== undefined && square.row === other.row && square.column === other.column
 }

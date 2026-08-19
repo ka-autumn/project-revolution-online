@@ -1,8 +1,15 @@
 import { connect } from './connection.js'
 import type { Connection } from './connection.js'
-import type { DuelEvent, RoomCode } from '@revolution/engine'
-import { actionViews, automaticAction, choiceView } from './input-model.js'
-import { actionsElement, boardElement, choiceElement, overlayElement, waitingForOverlayElement } from './render.js'
+import type { CardId, DuelEvent, RoomCode } from '@revolution/engine'
+import { actionViews, automaticAction, choiceView, pickView } from './input-model.js'
+import {
+  actionsElement,
+  boardElement,
+  choiceElement,
+  overlayElement,
+  pickElement,
+  waitingForOverlayElement,
+} from './render.js'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
 import { boardView, cutInViews, overlayDurationMs, showsOverlay, transitionViews } from './view-model.js'
@@ -43,6 +50,42 @@ function statusOf(session: Session, open: boolean): string | undefined {
   }
 }
 
+/**
+ * 操作のしかた（#94）。
+ *
+ * ボタンの並びは一覧性があり、それはそれで分かりやすい。クリックは盤面と手を目で往復せずに
+ * 済む。**どちらがよいかは場面によるので、切り替えられるようにしている。**
+ */
+type PickMode = 'クリック' | 'ボタン'
+
+/** いま盤面をどう操作しているか。`card` は選びかけのカード。 */
+interface Picking {
+  readonly mode: PickMode
+  readonly card: CardId | undefined
+  readonly onCard: (card: CardId) => void
+  /** 選びかけをやめる。 */
+  readonly onCancel: () => void
+  readonly onMode: (mode: PickMode) => void
+}
+
+/** 操作のしかたを切り替えるところ。 */
+function modeElement(picking: Picking): HTMLElement {
+  const node = document.createElement('div')
+  node.className = 'mode'
+  node.append(line('mode__label', '操作のしかた'))
+
+  for (const mode of ['クリック', 'ボタン'] as const) {
+    const button = document.createElement('button')
+    button.className = `choice__button${picking.mode === mode ? ' choice__button--選択中' : ''}`
+    button.textContent = mode
+    button.setAttribute('aria-pressed', String(picking.mode === mode))
+    button.addEventListener('click', () => picking.onMode(mode))
+    node.append(button)
+  }
+
+  return node
+}
+
 function line(className: string, text: string): HTMLElement {
   const node = document.createElement('p')
   node.className = className
@@ -67,6 +110,7 @@ function draw(
   open: boolean,
   connection: Connection,
   overlay: Overlay,
+  picking: Picking,
 ): void {
   root.replaceChildren()
 
@@ -76,7 +120,28 @@ function draw(
   const stage = session.stage
   if (stage.kind === '打っている' && stage.board !== undefined) {
     const board = stage.board
-    root.append(boardElement(boardView(board)))
+    // 演出が出ている間は手を送れない（#115）ので、盤面の上でも押せなくする。
+    const clicking = picking.mode === 'クリック' && stage.choice === undefined && !showsOverlay(overlay)
+    const view = clicking ? pickView(board, stage.actions, picking.card) : undefined
+    root.append(
+      boardElement(
+        boardView(board),
+        view === undefined
+          ? undefined
+          : {
+              pickable: view.pickable,
+              picked: view.picked,
+              destinations: view.destinations,
+              onCard: (card) => picking.onCard(card),
+              onDestination: (destination) => {
+                picking.onCancel()
+                connection.send({ kind: '行動する', action: destination.action })
+              },
+            },
+      ),
+    )
+
+    root.append(modeElement(picking))
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (stage.choice !== undefined) {
@@ -95,6 +160,17 @@ function draw(
       // 選んでいる途中（`stage.choice`）は止めない。あれはすでに始まっている行動の中の選択
       // であって、待ち行列の遅れとは関係が無い。止めると、演出が消えるまで解決が進まなくなる。
       root.append(waitingForOverlayElement())
+    } else if (view !== undefined) {
+      // クリックで操作する（#94）。盤面の上で示せない手だけをここに出す。
+      root.append(
+        pickElement(view, {
+          onAction: (action) => {
+            picking.onCancel()
+            connection.send({ kind: '行動する', action })
+          },
+          onCancel: () => picking.onCancel(),
+        }),
+      )
     } else {
       root.append(
         actionsElement(actionViews(board, stage.actions), (action) =>
@@ -120,6 +196,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let session = connecting()
   let open = false
 
+  // 盤面をクリックして操作する（#94）。選びかけているカードは**盤面が届くたびに捨てる**。
+  // 届いた手は入れ替わっており、選びかけの手がまだ行えるとは限らないためである。
+  let mode: PickMode = 'クリック'
+  let pickedCard: CardId | undefined
+
   // いま出している演出と、後から出す分の待ち行列（#96・#104）。フェイズ・ターンの切り替わりと
   // 効果解決のカットインは、出す中身は別だが同じ待ち行列を通る（`view-model.ts` の
   // `Overlay`）。`fresh` は盤面が届くたびに新しい配列で届く（`session.ts`）ので、参照を
@@ -137,7 +218,25 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let overlayTimer: ReturnType<typeof setTimeout> | undefined
   let lastFresh: readonly DuelEvent[] | undefined
 
-  const redraw = (): void => draw(root, session, open, connection, overlay)
+  const picking = (): Picking => ({
+    mode,
+    card: pickedCard,
+    onCard: (card) => {
+      // 同じカードをもう一度押したら、選ぶのをやめる。
+      pickedCard = pickedCard === card ? undefined : card
+      redraw()
+    },
+    onCancel: () => {
+      pickedCard = undefined
+    },
+    onMode: (next) => {
+      mode = next
+      pickedCard = undefined
+      redraw()
+    },
+  })
+
+  const redraw = (): void => draw(root, session, open, connection, overlay, picking())
 
   /**
    * 待ち行列の先頭を出す。無ければ消える。呼ぶたびにタイマーを 1 つだけ張る。
@@ -179,6 +278,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     room: options.room,
     onMessage: (message) => {
       session = applyMessage(session, message)
+      // 盤面が入れ替わったら、選びかけは捨てる（#94）。
+      pickedCard = undefined
       enqueueOverlays()
       redraw()
 
