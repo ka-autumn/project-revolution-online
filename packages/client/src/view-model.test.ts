@@ -81,6 +81,50 @@ describe('カード 1 枚', () => {
   })
 })
 
+/**
+ * #93。カードに印刷されているテキスト（総合ルール 第2部 第10章）を、詳細に出す。
+ *
+ * 落とす判断はここに無い。テキストが載るのは表側が見えているカードだけである
+ * （`wire.ts` の `WireWrittenCard`）。
+ */
+describe('カードのテキスト', () => {
+  const SQUARE: Square = { row: 0, column: 0 }
+  const TEXT = ['登場した時、敵を１枚まで選び、3000ダメージ！', '根性（リリースして登場！）']
+
+  function unitView(board: WirePerspective): CardView {
+    const found = boardView(board)
+      .squares.flat()
+      .flatMap((square) => square.cards)[0]
+    if (found === undefined) throw new Error('ユニットが無い')
+
+    return found
+  }
+
+  /** 改行ごとに別の能力になる（同 第4部 第1章 3）ので、行の並びのまま渡す。 */
+  it('印刷されたテキストが、行の並びのまま出る', () => {
+    const unit = instance('テキストを持つ1枚', '先攻', { card: unitFace('テスト・テキストあり', { text: TEXT }) })
+    const view = unitView(withSquare(emptyBoard('先攻'), SQUARE, [unit]))
+
+    expect(view.kind === '表' && view.text).toEqual(TEXT)
+  })
+
+  it('テキストを持たないカードは、空のまま出る', () => {
+    const unit = instance('テキストのない1枚', '先攻')
+    const view = unitView(withSquare(emptyBoard('先攻'), SQUARE, [unit]))
+
+    expect(view.kind === '表' && view.text).toEqual([])
+  })
+
+  /** 裏向きのカードは表記そのものが届かないので、テキストも出しようがない。 */
+  it('裏向きのカードには、テキストが無い', () => {
+    const board = withZone(emptyBoard('先攻'), '後攻', '手札', [{ kind: '見えていない', orientation: 'リリース' }])
+    const card = zoneOf(boardView(board), '相手', '手札').cards[0]
+
+    expect(card?.kind).toBe('裏')
+    expect(JSON.stringify(card)).not.toContain('テキスト')
+  })
+})
+
 describe('カードの詳細', () => {
   /** 詳細に出る 1 行を引く。 */
   function detailOf(view: BoardView, label: string): string | undefined {
@@ -797,50 +841,6 @@ describe('フェイズ・ターンの切り替わり', () => {
       { heading: '第 2 ターン：相手のターン' },
       { heading: 'リリースフェイズ' },
     ])
-  })
-})
-
-/**
- * #93。カードに印刷されているテキスト（総合ルール 第2部 第10章）を、詳細に出す。
- *
- * 落とす判断はここに無い。テキストが載るのは表側が見えているカードだけである
- * （`wire.ts` の `WireWrittenCard`）。
- */
-describe('カードのテキスト', () => {
-  const SQUARE: Square = { row: 0, column: 0 }
-  const TEXT = ['登場した時、敵を１枚まで選び、3000ダメージ！', '根性（リリースして登場！）']
-
-  function unitView(board: WirePerspective): CardView {
-    const found = boardView(board)
-      .squares.flat()
-      .flatMap((square) => square.cards)[0]
-    if (found === undefined) throw new Error('ユニットが無い')
-
-    return found
-  }
-
-  /** 改行ごとに別の能力になる（同 第4部 第1章 3）ので、行の並びのまま渡す。 */
-  it('印刷されたテキストが、行の並びのまま出る', () => {
-    const unit = instance('テキストを持つ1枚', '先攻', { card: unitFace('テスト・テキストあり', { text: TEXT }) })
-    const view = unitView(withSquare(emptyBoard('先攻'), SQUARE, [unit]))
-
-    expect(view.kind === '表' && view.text).toEqual(TEXT)
-  })
-
-  it('テキストを持たないカードは、空のまま出る', () => {
-    const unit = instance('テキストのない1枚', '先攻')
-    const view = unitView(withSquare(emptyBoard('先攻'), SQUARE, [unit]))
-
-    expect(view.kind === '表' && view.text).toEqual([])
-  })
-
-  /** 裏向きのカードは表記そのものが届かないので、テキストも出しようがない。 */
-  it('裏向きのカードには、テキストが無い', () => {
-    const board = withZone(emptyBoard('先攻'), '後攻', '手札', [{ kind: '見えていない', orientation: 'リリース' }])
-    const card = zoneOf(boardView(board), '相手', '手札').cards[0]
-
-    expect(card?.kind).toBe('裏')
-    expect(JSON.stringify(card)).not.toContain('テキスト')
   })
 })
 
