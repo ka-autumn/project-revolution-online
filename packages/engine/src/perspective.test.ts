@@ -2,7 +2,18 @@ import { describe, expect, it } from 'vitest'
 // ゾーンを組み立てるためだけに `putInZone` を使う。engine の中からゾーンを差し替えるための
 // 関数であり、公開する API ではない（`smash.test.ts` と同じ）。
 import { putInZone } from './duel.js'
-import { defineUnit, emptyDuelState, instantiate, perspectiveOf, putOnSquare, triggeredAbility } from './index.js'
+import {
+  alsoTreatedAs,
+  attributeAdding,
+  bpModifying,
+  bpPlus,
+  defineUnit,
+  emptyDuelState,
+  instantiate,
+  perspectiveOf,
+  putOnSquare,
+  triggeredAbility,
+} from './index.js'
 import type { DuelPerspective, DuelState, Player, PlayerZone, Square, UnitOnSquare, VisibleCard } from './index.js'
 
 // 検証したいのは「どのゾーンにあるか」だけなので、カードは名前しか違わない架空のもので足りる
@@ -232,5 +243,81 @@ describe('射影が渡さないもの', () => {
 
     expect(perspectiveOf(met, '先攻').courageConditionsMet).toEqual([])
     expect(perspectiveOf(met, '後攻').courageConditionsMet).toHaveLength(1)
+  })
+})
+
+/**
+ * #91。継続効果を適用した後のデータ（総合ルール 第4部 第12章 2）を、盤面と一緒に送る。
+ *
+ * 盤面（`DuelState`）が持つのはカードに書かれているデータ（同 第2部 第2章 2）で、修整は
+ * 書き込まれていない。修整を集められるのは完全な盤面を持つ射影の側だけである。
+ */
+describe('継続効果を適用した後のデータ', () => {
+  /** 「すべての味方のＢＰを＋2000」を持つユニット。自分自身も味方に含まれる。 */
+  const boosting = defineUnit({
+    name: 'テスト・味方強化',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [bpModifying((duel) => duel.allies().map((ally) => bpPlus(ally, 2000)))],
+  })
+
+  /** 「すべての味方に「テスト属性」を加える」ユニット。 */
+  const granting = defineUnit({
+    name: 'テスト・属性付与',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [attributeAdding((duel) => duel.allies().map((ally) => alsoTreatedAs(ally, 'テスト属性')))],
+  })
+
+  /** 修整を生む側と、受ける側が、どちらもスクエアにいる盤面。 */
+  function withModifier(source: ReturnType<typeof defineUnit>): DuelState {
+    const placed = putOnSquare(
+      emptyDuelState(),
+      { row: 0, column: 0 },
+      instantiate({ id: '発生源', card: source, owner: '先攻' }),
+    )
+    return putOnSquare(placed, { row: 0, column: 1 }, instantiate({ id: '受ける側', card: testCard('受ける側'), owner: '先攻' }))
+  }
+
+  function effectiveOf(perspective: DuelPerspective, card: string) {
+    return perspective.effective.find((each) => each.card === card)
+  }
+
+  it('修整を適用した後のＢＰが載る', () => {
+    const perspective = perspectiveOf(withModifier(boosting), '先攻')
+
+    expect(effectiveOf(perspective, '受ける側')?.bp).toBe(3000)
+  })
+
+  /** 加わった属性も、書かれている属性と一緒に載る（総合ルール 第4部 第12章 5-2 の(3)）。 */
+  it('加わった属性が載る', () => {
+    const perspective = perspectiveOf(withModifier(granting), '先攻')
+
+    expect(effectiveOf(perspective, '受ける側')?.attributes).toEqual(['テスト属性'])
+  })
+
+  /** スクエアにあるカードは公開情報である（総合ルール 第2部 第23章 1-1）。 */
+  it('相手にも同じものが届く', () => {
+    const state = withModifier(boosting)
+
+    expect(perspectiveOf(state, '後攻').effective).toEqual(perspectiveOf(state, '先攻').effective)
+  })
+
+  /** 継続効果がデータを変えるのはスクエアにいるユニットである（`view.ts` の `unitsOnSquares`）。 */
+  it('スクエアにいないカードは載らない', () => {
+    const perspective = perspectiveOf(filledState(), '先攻')
+
+    expect(perspective.effective.map((each) => each.card)).toEqual([INVADER.id])
+  })
+
+  /** 修整を受けていないユニットも、書かれているとおりの値で載る。読む側で場合分けが要らない。 */
+  it('修整を受けていなくても、そのユニットの分は載る', () => {
+    const perspective = perspectiveOf(filledState(), '先攻')
+
+    expect(perspective.effective[0]).toEqual({ card: INVADER.id, bp: 1000, attributes: [] })
   })
 })

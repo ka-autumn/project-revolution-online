@@ -1,4 +1,6 @@
 import type { Battle } from './battle.js'
+import type { Attribute } from './card.js'
+import { continuousData } from './continuous.js'
 import { cardsIn } from './duel.js'
 import type {
   BankedAbility,
@@ -15,8 +17,26 @@ import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
 import type { SmashJudgment } from './smash.js'
 import type { Turn } from './turn.js'
+import { unitsOnSquares } from './view.js'
 import { PLAYER_ZONES } from './zone.js'
 import type { PlayerZone } from './zone.js'
+
+/**
+ * 継続効果を適用した後の、スクエアにいるユニット 1 体のデータ（総合ルール 第4部 第12章 2）。#91
+ *
+ * **どちらのプレイヤーにも同じものを送る。** スクエアにあるカードは公開情報であり（同 第2部
+ * 第23章 1-1）、継続効果が変えた後のデータもそれを見れば分かるものだからである。
+ *
+ * 対象はスクエアにいるユニットだけでよい。継続効果がデータを変えるのはそこにいるユニットで
+ * ある（`view.ts` の `unitsOnSquares`）。
+ */
+export interface EffectiveUnitData {
+  readonly card: CardId
+  /** 修整を適用した後のＢＰ（総合ルール 第4部 第12章 5-2 の(5)）。 */
+  readonly bp: number
+  /** 加わったものを含む属性（同 5-2 の(3)）。 */
+  readonly attributes: readonly Attribute[]
+}
 
 /**
  * ある視点から見た 1 枚のカード（ADR-0004）。
@@ -100,6 +120,15 @@ export interface DuelPerspective {
   /** この盤面を見ているプレイヤー。 */
   readonly viewer: Player
   readonly squares: readonly (readonly CardInstance[])[]
+  /**
+   * 継続効果を適用した後の、スクエアにいるユニットのデータ（#91）。
+   *
+   * `squares` に載っている `CardInstance.card` は**カードに書かれている**データを持つ
+   * （総合ルール 第2部 第2章 2）。継続効果による修整（同 第4部 第12章）は盤面に書き込まれて
+   * いないので、そのまま写すと画面に出るのは印刷された数字になる。修整を集められるのは完全な
+   * 盤面を持つここだけなので、**書かれている値とは別のものとして**添える。
+   */
+  readonly effective: readonly EffectiveUnitData[]
   readonly zones: Readonly<Record<Player, Readonly<Record<PlayerZone, readonly VisibleCard[]>>>>
   readonly damage: Readonly<Record<Player, number>>
   readonly turn: Turn
@@ -288,11 +317,27 @@ export function perspectiveOf(state: DuelState, viewer: Player): DuelPerspective
   return { ...board, log: state.log.map((event) => projectEvent(event, visibleIds(board))) }
 }
 
+/**
+ * 継続効果を適用した後の、スクエアにいるユニットのデータ（#91）。
+ *
+ * 適用するのは `continuous.ts` である。ここでするのは、それをスクエアにいるユニットの分だけ
+ * 呼んで並べることだけで、**修整の集め方をここに書き直さない**。
+ */
+function effectiveUnitData(state: DuelState): readonly EffectiveUnitData[] {
+  const data = continuousData(state)
+
+  return unitsOnSquares(state).map((unit) => {
+    const applied = data(unit.id, unit.card)
+    return { card: unit.id, bp: applied.bp, attributes: applied.attributes }
+  })
+}
+
 /** ログ以外の射影。 */
 function projectBoard(state: DuelState, viewer: Player): DuelPerspective {
   return {
     viewer,
     squares: state.squares,
+    effective: effectiveUnitData(state),
     zones: projectZones(state, viewer),
     damage: state.damage,
     turn: state.turn,

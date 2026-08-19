@@ -53,7 +53,10 @@ function cardElement(card: CardView): HTMLElement {
     return back
   }
 
-  const node = element('div', `card card--${card.orientation} card--${card.controlledBy}`)
+  // 継続効果でデータが変わっていることは、文字（`BP1000→2000`・`+夢`）で分かる。色は添えるだけ
+  // で、それだけに頼らない（#91）。
+  const modified = card.modified === undefined ? '' : ' card--修整あり'
+  const node = element('div', `card card--${card.orientation} card--${card.controlledBy}${modified}`)
   // キーボードでも詳細を出せるようにする。マウスを乗せるだけの形にすると触れない人が出る。
   node.tabIndex = 0
   node.setAttribute('aria-label', `${card.controlledBy}の${card.name}`)
