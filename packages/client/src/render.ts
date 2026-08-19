@@ -43,6 +43,14 @@ function panelElement(card: CardView & { readonly kind: '表' }): HTMLElement {
   }
   node.append(rows)
 
+  // 印刷されているテキスト（#93）。改行ごとに別の能力になる（総合ルール 第2部 第10章 1、
+  // 第4部 第1章 3）ので、1 行ずつ別の段落にして改行を潰さない。
+  if (card.text.length > 0) {
+    const text = element('div', 'card__panel-text')
+    for (const line of card.text) text.append(element('p', 'card__panel-line', line))
+    node.append(text)
+  }
+
   return node
 }
 

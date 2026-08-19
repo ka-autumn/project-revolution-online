@@ -56,8 +56,16 @@ export type CardView =
       readonly controlledBy: '自分' | '相手'
       /** 小さいカードに添える 1 行。「Lv1 赤 BP1000 SP1000」のような形。 */
       readonly summary: string
-      /** 詳しく見たときに出す全部。**能力テキストは持たない**（通信に載っていない、#93）。 */
+      /** 詳しく見たときに出す全部。行と値の組で書けるものだけがここに入る。 */
       readonly details: readonly DetailRow[]
+      /**
+       * カードに印刷されているテキスト（#93）。改行ごとに 1 行（総合ルール 第2部 第10章 1、
+       * 第4部 第1章 3）。書かれていなければ空。
+       *
+       * `details` に入れていないのは、これが「項目と値」ではなく**そのまま読ませる文**だから
+       * である。行の並びのまま渡して、改行を潰さずに出す。
+       */
+      readonly text: readonly string[]
       readonly orientation: Orientation
       /** 乗っているダメージ（総合ルール 第2部 第16章）。 */
       readonly damage: number
@@ -350,6 +358,8 @@ function faceUpView(instance: WireCardInstance, viewer: Player): CardView {
     controlledBy: whoseLabel(viewer, instance.controller),
     summary: summaryOf(instance.card),
     details: detailsOf(instance, viewer),
+    // 見えていないカードのテキストは、そもそも届かない（`wire.ts` の `WireWrittenCard`）。
+    text: instance.card.text,
     orientation: instance.orientation,
     damage: instance.damage,
   }

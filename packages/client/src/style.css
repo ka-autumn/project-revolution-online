@@ -251,6 +251,17 @@ body {
   margin: 0;
 }
 
+/* 印刷されているテキスト（#93）。項目と値の並びではなく、そのまま読ませる文である。 */
+.card__panel-text {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.card__panel-line {
+  margin: 0 0 2px;
+}
+
 /* 行える手と選ぶ候補。並べるのは届いたものだけ（ADR-0010）。 */
 .actions,
 .choice {
