@@ -6,6 +6,7 @@ import type { DuelEvent } from './log.js'
 import type { Orientation } from './orientation.js'
 import type {
   DuelPerspective,
+  EffectiveUnitData,
   VisibleAbility,
   VisibleBattle,
   VisibleCard,
@@ -22,8 +23,8 @@ import type { PlayerZone } from './zone.js'
  * どの種別のカードにも書かれていることのうち、通信に載せる分（総合ルール 第2部 第2章 1）。
  *
  * 載せるのは**カードに印刷されている値そのもの**であって、継続効果を適用した後の姿ではない。
- * 修整を適用するのは `view.ts` の仕事で、それには完全な盤面が要る。ＢＰの修整や加わった属性を
- * 見せたくなったら、カードの表記とは別の項目として盤面の側に足す。
+ * 修整を適用するのは `view.ts` の仕事で、それには完全な盤面が要る。修整を適用した後のＢＰと
+ * 属性は、カードの表記とは別の項目として盤面の側に載っている（`WirePerspective.effective`、#91）。
  */
 interface WireWrittenCard {
   readonly name: string
@@ -124,6 +125,13 @@ export interface WireCourageConditionMet {
 export interface WirePerspective {
   readonly viewer: Player
   readonly squares: readonly (readonly WireCardInstance[])[]
+  /**
+   * 継続効果を適用した後の、スクエアにいるユニットのデータ（#91）。
+   *
+   * 射影がすでに集めた形（`perspective.ts` の `EffectiveUnitData`）がそのまま載る。数値と
+   * 属性の並びだけなので、書き出す必要が無い。
+   */
+  readonly effective: readonly EffectiveUnitData[]
   readonly zones: Readonly<Record<Player, Readonly<Record<PlayerZone, readonly WireVisibleCard[]>>>>
   readonly damage: Readonly<Record<Player, number>>
   readonly turn: Turn
@@ -221,6 +229,7 @@ export function toWire(perspective: DuelPerspective): WirePerspective {
   return {
     ...perspective,
     squares: perspective.squares.map((square) => square.map(instanceToWire)),
+    effective: perspective.effective,
     zones: Object.fromEntries(PLAYERS.map((owner) => [owner, zonesOf(owner)])) as WirePerspective['zones'],
     resolveZone: perspective.resolveZone.map(instanceToWire),
     trapConditionsMet: perspective.trapConditionsMet.map((met) => ({

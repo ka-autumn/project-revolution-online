@@ -1,8 +1,10 @@
 import { areaOf, indexOfSquare, lineOf, squareFromView } from '@revolution/engine'
 import type {
   Area,
+  Attribute,
   BattleStep,
   CardId,
+  EffectiveUnitData,
   DuelEvent,
   DuelResult,
   LoggedInstruction,
@@ -37,6 +39,20 @@ export interface DetailRow {
   readonly value: string
 }
 
+/**
+ * 継続効果によって、カードに書かれているのとは違うデータになっているところ（#91）。
+ *
+ * **書かれている値を置き換えない。** 画面には印刷された数字も残す。バトルで比べられるのは
+ * 修整後の数字（総合ルール 第4部 第12章、`card.ts` の `bpOf`）なので、打つ人が見る数字が
+ * 印刷のままだと判断材料が嘘をつくが、**どちらがカードに書かれている値かも要る**。
+ */
+export interface ModifiedData {
+  /** 修整後のＢＰ。書かれている数字と同じなら `undefined`。 */
+  readonly bp: number | undefined
+  /** 継続効果によって加わった属性だけ。加わっていなければ空。 */
+  readonly addedAttributes: readonly Attribute[]
+}
+
 /** 画面に出す 1 枚。 */
 export type CardView =
   | {
@@ -57,6 +73,14 @@ export type CardView =
       readonly controlledBy: '自分' | '相手'
       /** 小さいカードに添える 1 行。「Lv1 赤 BP1000 SP1000」のような形。 */
       readonly summary: string
+      /**
+       * 継続効果を適用した後のＢＰと属性（#91）。修整を受けていなければ `undefined`。
+       *
+       * **持つのはスクエアにいるユニットだけである。** 継続効果がデータを変えるのはそこに
+       * いるユニットで（総合ルール 第4部 第12章）、盤面もその分だけを送ってくる
+       * （`perspective.ts` の `EffectiveUnitData`）。
+       */
+      readonly modified: ModifiedData | undefined
       /** 詳しく見たときに出す全部。**能力テキストは持たない**（通信に載っていない、#93）。 */
       readonly details: readonly DetailRow[]
       readonly orientation: Orientation
@@ -361,12 +385,31 @@ function colorsOf(face: WireCardFace): string {
   return face.colors.length === 0 ? COLORLESS : face.colors.join('・')
 }
 
-/** カードに書かれていることを 1 行にする。 */
-function summaryOf(face: WireCardFace): string {
-  const body = face.type === 'ユニット' ? `BP${face.bp} SP${face.sp}` : face.type
-  const attributes = face.attributes.length === 0 ? '' : ` 《${face.attributes.join('・')}》`
+/**
+ * 属性の並び。継続効果によって加わった分（#91）は `+` を付けて区別する。
+ *
+ * 加わった属性はカードに書かれていない（総合ルール 第4部 第12章 5-2 の(3)）。並べて出すだけ
+ * だと、どれが印刷されている属性かが分からなくなる。
+ */
+function attributesLabel(face: WireCardFace, modified: ModifiedData | undefined): string {
+  const added = (modified?.addedAttributes ?? []).map((attribute) => `+${attribute}`)
+  const all = [...face.attributes, ...added]
 
-  return `Lv${face.level} ${colorsOf(face)} ${body}${attributes}`
+  return all.length === 0 ? '' : ` 《${all.join('・')}》`
+}
+
+/**
+ * カードに書かれていることを 1 行にする。
+ *
+ * 継続効果を適用した後のＢＰ（#91）は、印刷された数字を消さずに `BP1000→2000` と続けて出す。
+ * バトルで比べられるのは後ろの数字（`card.ts` の `bpOf`）だが、**どちらがカードに書かれて
+ * いる値かも要る**。
+ */
+function summaryOf(face: WireCardFace, modified: ModifiedData | undefined = undefined): string {
+  const bp = modified?.bp === undefined ? '' : `→${modified.bp}`
+  const body = face.type === 'ユニット' ? `BP${face.bp}${bp} SP${face.sp}` : face.type
+
+  return `Lv${face.level} ${colorsOf(face)} ${body}${attributesLabel(face, modified)}`
 }
 
 /**
@@ -375,7 +418,11 @@ function summaryOf(face: WireCardFace): string {
  * 持っていない項目は行ごと出さない（スターを持たないカードに「スター 0」と書かない）。
  * **能力テキストはここに無い。** 通信に載っていないためで、載せるのは #93。
  */
-function detailsOf(instance: WireCardInstance, viewer: Player): readonly DetailRow[] {
+function detailsOf(
+  instance: WireCardInstance,
+  viewer: Player,
+  modified: ModifiedData | undefined,
+): readonly DetailRow[] {
   const face = instance.card
   const rows: DetailRow[] = [
     { label: '種別', value: face.type },
@@ -390,7 +437,10 @@ function detailsOf(instance: WireCardInstance, viewer: Player): readonly DetailR
   }
 
   if (face.type === 'ユニット') {
-    rows.push({ label: 'ＢＰ', value: String(face.bp) }, { label: 'ＳＰ', value: String(face.sp) })
+    rows.push({ label: 'ＢＰ', value: String(face.bp) })
+    // 印刷された数字の次に置く。同じ「ＢＰ」でも別のものなので、行を分けて両方出す（#91）。
+    if (modified?.bp !== undefined) rows.push({ label: 'ＢＰ（修整後）', value: String(modified.bp) })
+    rows.push({ label: 'ＳＰ', value: String(face.sp) })
     if (face.moveIcon.length > 0) rows.push({ label: 'ムーブアイコン', value: face.moveIcon.join('・') })
   }
   if (face.type === 'トラップ' && face.triggerIcon.length > 0) {
@@ -399,6 +449,10 @@ function detailsOf(instance: WireCardInstance, viewer: Player): readonly DetailR
   if (face.stars > 0) rows.push({ label: 'スター', value: String(face.stars) })
   if (face.reverseStars > 0) rows.push({ label: 'リバーススター', value: String(face.reverseStars) })
   if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join('・') })
+  // 加わった属性もカードには書かれていない（総合ルール 第4部 第12章 5-2 の(3)）ので分ける。
+  if (modified !== undefined && modified.addedAttributes.length > 0) {
+    rows.push({ label: '加わった属性', value: modified.addedAttributes.join('・') })
+  }
 
   rows.push({ label: '向き', value: instance.orientation })
   if (instance.damage > 0) rows.push({ label: 'ダメージ', value: String(instance.damage) })
@@ -406,14 +460,46 @@ function detailsOf(instance: WireCardInstance, viewer: Player): readonly DetailR
   return rows
 }
 
-function faceUpView(instance: WireCardInstance, viewer: Player): CardView {
+/**
+ * 継続効果によって、カードに書かれているのとは違うデータになっているところ（#91）。
+ * 違いが無ければ `undefined`。
+ *
+ * 適用した後の値を送ってくるのは盤面の側（`perspective.ts` の `EffectiveUnitData`）である。
+ * ここでするのは、書かれている値と見比べて**どこが変わったか**を取り出すことだけで、
+ * **修整を計算しない**（ADR-0010）。
+ */
+function modifiedDataOf(
+  instance: WireCardInstance,
+  effective: readonly EffectiveUnitData[],
+): ModifiedData | undefined {
+  const applied = effective.find((each) => each.card === instance.id)
+  if (applied === undefined) return undefined
+
+  const face = instance.card
+  const bp = face.type === 'ユニット' && applied.bp !== face.bp ? applied.bp : undefined
+  const addedAttributes = [...new Set(applied.attributes)].filter(
+    (attribute) => !face.attributes.includes(attribute),
+  )
+  if (bp === undefined && addedAttributes.length === 0) return undefined
+
+  return { bp, addedAttributes }
+}
+
+function faceUpView(
+  instance: WireCardInstance,
+  viewer: Player,
+  effective: readonly EffectiveUnitData[] = [],
+): CardView {
+  const modified = modifiedDataOf(instance, effective)
+
   return {
     kind: '表',
     id: instance.id,
     name: instance.card.name,
     controlledBy: whoseLabel(viewer, instance.controller),
-    summary: summaryOf(instance.card),
-    details: detailsOf(instance, viewer),
+    summary: summaryOf(instance.card, modified),
+    modified,
+    details: detailsOf(instance, viewer, modified),
     orientation: instance.orientation,
     damage: instance.damage,
   }
@@ -484,7 +570,8 @@ function squareViews(board: WirePerspective): readonly (readonly SquareView[])[]
       return {
         square,
         area: areaOf(board.viewer, square),
-        cards: board.squares[indexOfSquare(square)]?.map((card) => faceUpView(card, board.viewer)) ?? [],
+        // 継続効果を適用した後のデータを持つのは、スクエアにいるユニットだけである（#91）。
+        cards: board.squares[indexOfSquare(square)]?.map((card) => faceUpView(card, board.viewer, board.effective)) ?? [],
       }
     }),
   )

@@ -159,6 +159,7 @@ export type { Orientation } from './orientation.js'
 export { perspectiveOf } from './perspective.js'
 export type {
   DuelPerspective,
+  EffectiveUnitData,
   VisibleAbility,
   VisibleBattle,
   VisibleCard,
