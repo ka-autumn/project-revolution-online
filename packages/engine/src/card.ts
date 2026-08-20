@@ -96,6 +96,23 @@ interface WrittenCard {
   readonly attributes: readonly Attribute[]
   /** テキストが定義する能力（総合ルール 第2部 第10章 1）。改行ごとに別の能力になる（同 第4部 第1章 3）。 */
   readonly abilities: readonly Ability[]
+  /**
+   * カードに印刷されているテキスト（総合ルール 第2部 第10章）。#93
+   *
+   * **エンジンはこれを読まない。** ルールの判断に使う能力は関数として `abilities`（と
+   * ストラテジー・トラップの `effect`）が持っており、こちらは画面に出すためだけのデータ
+   * である。読まないものを持たせているのは、テキストも**カードに印刷されている表記**
+   * （同 第2章 2）だからで、表記を engine が自分で書き出せる形にしておくのは他の項目と
+   * 同じ扱いである（ADR-0010）。
+   *
+   * 改行ごとに別の能力になる（同 第4部 第1章 3）ので、1 本の文字列ではなく行の並びで持つ。
+   * **`abilities` との対応は持たせていない。** ストラテジー・トラップの効果テキスト
+   * （同 第2部 第10章 3-1・3-2）は `abilities` ではなく `effect` にあり、まだ実装していない
+   * 行には対応する `Ability` がそもそも無い。行と `abilities` は数からして揃わず、並び順で
+   * 対にすると別の行に結び付く。対応づけが要る場面（どの能力の選択かを見出しに出す、など）
+   * が出てきた時に決める。
+   */
+  readonly text: readonly string[]
 }
 
 /** スクエアに置いて使うカード（総合ルール 第2部 第20章 1）。 */
@@ -185,6 +202,13 @@ interface CardSpec {
   readonly reverseStars?: number
   /** 省略した場合は属性を持たない。 */
   readonly attributes?: readonly Attribute[]
+  /**
+   * 省略した場合はテキストを持たない（#93）。
+   *
+   * エンジンのテストで使う架空のテストカード（ADR-0002）には要らない。**engine はテキストを
+   * 読まない**ので、書かなくてもルールの検証には何の影響も無い。
+   */
+  readonly text?: readonly string[]
 }
 
 interface UnitSpec extends CardSpec {
@@ -220,6 +244,7 @@ function written<T extends CardType>(type: T, spec: CardSpec) {
     stars: spec.stars ?? 0,
     reverseStars: spec.reverseStars ?? 0,
     attributes: spec.attributes ?? [],
+    text: spec.text ?? [],
   }
 }
 

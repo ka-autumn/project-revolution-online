@@ -18,6 +18,10 @@ import type {
  *
  * **ここに判断を置かない。** 何を出すかはビューモデルがすでに決めていて、ここは要素を作って
  * 並べるだけである。テストがあるのはビューモデルまでで、この層は薄く保つ（#14）。
+ *
+ * 例外は詳細の札を右に出すか左に出すか（`panelSide`）だけである。これは画面の幅と、カードが
+ * いまどこにあるかで決まるもので、ビューモデルには測りようがない。**それでも判断そのものは
+ * 数値だけの関数に出してあり**、DOM から測る部分（`placePanel`）と分けてある。
  */
 
 function element(tag: string, className: string, text?: string): HTMLElement {
@@ -26,6 +30,46 @@ function element(tag: string, className: string, text?: string): HTMLElement {
   if (text !== undefined) node.textContent = text
 
   return node
+}
+
+/** 詳細の札を出す側。 */
+export type PanelSide = '右' | '左'
+
+/**
+ * 詳細の札を右と左のどちらに出すか。単位は px で、どれも `placePanel` が測ったものである。
+ *
+ * 既定は右。**入りきらない側には出さない**——札のぶんだけ画面が横に伸びると、盤面の位置が
+ * 動いてしまう。両側とも足りないときは、広いほうに出す（どちらでもはみ出すが、隠れる量が
+ * 少ない）。
+ */
+export function panelSide(room: {
+  /** カードの右端から画面の右端まで。 */
+  readonly right: number
+  /** 画面の左端からカードの左端まで。 */
+  readonly left: number
+  /** 札を出すのに要る幅。札の幅と、カードから離すぶんの合計。 */
+  readonly needed: number
+}): PanelSide {
+  if (room.right >= room.needed) return '右'
+
+  return room.left > room.right ? '左' : '右'
+}
+
+/**
+ * 詳細の札を出す側を決めて、印を付ける（`style.css` の `.card__panel--左`）。
+ *
+ * **ここだけは実際の寸法を見る。** 出す直前に測るのは、画面の幅も盤面の並びも変わるためで、
+ * 作る時に決めてしまうと横に伸ばした後で合わなくなる。
+ */
+function placePanel(card: HTMLElement, panel: HTMLElement): void {
+  const box = card.getBoundingClientRect()
+  const side = panelSide({
+    right: document.documentElement.clientWidth - box.right,
+    left: box.left,
+    // カードから離すぶんは、フリーズがはみ出す量に合わせてある（`style.css` の `.card__panel`）。
+    needed: Number.parseFloat(getComputedStyle(panel).width) + box.width / 4,
+  })
+  panel.classList.toggle('card__panel--左', side === '左')
 }
 
 /**
@@ -44,13 +88,32 @@ function panelElement(card: CardView & { readonly kind: '表' }): HTMLElement {
   }
   node.append(rows)
 
+  // 印刷されているテキスト（#93）。改行ごとに別の能力になる（総合ルール 第2部 第10章 1、
+  // 第4部 第1章 3）ので、1 行ずつ別の段落にして改行を潰さない。
+  if (card.text.length > 0) {
+    const text = element('div', 'card__panel-text')
+    for (const line of card.text) text.append(element('p', 'card__panel-line', line))
+    node.append(text)
+  }
+
   return node
+}
+
+/**
+ * カードの見える面。**詳細の札はこの外側に置く**（`cardElement`）。
+ *
+ * フリーズを横倒しにする（総合ルール 第2部 第24章）のはこの要素で、外枠の `card` は回らない。
+ * 札まで一緒に回ってしまうと、横倒しのカードだけ詳細が寝て出る（#93）。
+ */
+function faceElement(): HTMLElement {
+  return element('div', 'card__face')
 }
 
 function cardElement(card: CardView): HTMLElement {
   if (card.kind === '裏') {
     const back = element('div', `card card--back card--${card.orientation}`)
     back.setAttribute('aria-label', `裏向きのカード（${card.orientation}）`)
+    back.append(faceElement())
     return back
   }
 
@@ -61,11 +124,20 @@ function cardElement(card: CardView): HTMLElement {
   // キーボードでも詳細を出せるようにする。マウスを乗せるだけの形にすると触れない人が出る。
   node.tabIndex = 0
   node.setAttribute('aria-label', `${card.controlledBy}の${card.name}`)
+
+  const face = faceElement()
   // 色だけで区別させない。色を見分けられない人にも分かるように、文字でも出す。
-  node.append(element('span', 'card__whose', card.controlledBy))
-  node.append(element('span', 'card__name', card.name), element('span', 'card__detail', card.summary))
-  if (card.damage > 0) node.append(element('span', 'card__damage', `ダメージ ${card.damage}`))
-  node.append(panelElement(card))
+  face.append(element('span', 'card__whose', card.controlledBy))
+  face.append(element('span', 'card__name', card.name), element('span', 'card__detail', card.summary))
+  if (card.damage > 0) face.append(element('span', 'card__damage', `ダメージ ${card.damage}`))
+  node.append(face)
+
+  const panel = panelElement(card)
+  node.append(panel)
+  // 出す側は、出る直前に決める。マウスでもキーボードでも同じところに出す。
+  const place = (): void => placePanel(node, panel)
+  node.addEventListener('mouseenter', place)
+  node.addEventListener('focusin', place)
 
   return node
 }

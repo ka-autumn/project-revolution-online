@@ -138,13 +138,24 @@ body {
   gap: 2px;
 }
 
-/* 実物と同じ縦 3 : 横 2 の比率にする。 */
+/*
+ * カードが場所を取る枠。**回らない**——回るのは中の `card__face` だけで、詳細の札はこの枠を
+ * 基準に置く（`render.ts` の `placePanel`）。
+ */
 .card {
   position: relative;
-  display: flex;
-  flex-direction: column;
+  box-sizing: border-box;
   width: var(--card-width);
   aspect-ratio: 2 / 3;
+}
+
+/* カードの見える面。実物と同じ縦 3 : 横 2 の比率にする。 */
+.card__face {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
   padding: 3px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -158,13 +169,18 @@ body {
  *
  * 回しても場所の取り方は変わらないので、はみ出すぶんを左右に空ける。縦 3 : 横 2 なので、
  * 片側にカードの幅の 1/4 ずつはみ出す。
+ *
+ * **回すのは見える面だけである。** 枠ごと回すと、その中にある詳細の札まで寝てしまう（#93）。
  */
 .card--フリーズ {
   margin: 0 calc(var(--card-width) / 4);
+}
+
+.card--フリーズ .card__face {
   transform: rotate(90deg);
 }
 
-.card--back {
+.card--back .card__face {
   background: repeating-linear-gradient(45deg, #6663, #6663 4px, transparent 4px, transparent 8px);
 }
 
@@ -174,12 +190,12 @@ body {
  * スクエアはどちらのユニットも同じ枠に並ぶので、色が無いと見分けが付かない。**色だけに
  * 頼らない**ため、`card__whose` で文字も出している。
  */
-.card--自分 {
+.card--自分 .card__face {
   border-color: var(--own);
   border-left-width: 4px;
 }
 
-.card--相手 {
+.card--相手 .card__face {
   border-color: var(--opponent);
   border-left-width: 4px;
 }
@@ -219,12 +235,21 @@ body {
   color: #b00;
 }
 
-/* 詳細。マウスを乗せるかフォーカスすると出る（`render.ts` の `panelElement`）。 */
+/*
+ * 詳細。マウスを乗せるかフォーカスすると出る（`render.ts` の `panelElement`）。
+ *
+ * カードの枠から `--card-width / 4` 離す。フリーズが横にはみ出す量と同じにしてあるので、
+ * **リリースでもフリーズでも同じところに出る**（#93）。
+ *
+ * 幅は `placePanel` が読んで、右に出すか左に出すかを決める。枠・余白まで含んだ幅で測れる
+ * ように `border-box` にしてある。
+ */
 .card__panel {
   position: absolute;
   top: 0;
-  left: 100%;
+  left: calc(100% + var(--card-width) / 4);
   z-index: 10;
+  box-sizing: border-box;
   display: none;
   width: 12rem;
   padding: 6px 8px;
@@ -235,15 +260,15 @@ body {
   font-size: 0.72rem;
 }
 
+/* 右に入りきらないときは左に出す（`render.ts` の `panelSide`）。 */
+.card__panel--左 {
+  right: calc(100% + var(--card-width) / 4);
+  left: auto;
+}
+
 .card:hover .card__panel,
 .card:focus-within .card__panel {
   display: block;
-}
-
-/* 詳細だけは、カードの枠に切り取られては読めない。 */
-.card:hover,
-.card:focus-within {
-  overflow: visible;
 }
 
 .card__panel-name {
@@ -264,6 +289,17 @@ body {
 
 .card__panel-value {
   margin: 0;
+}
+
+/* 印刷されているテキスト（#93）。項目と値の並びではなく、そのまま読ませる文である。 */
+.card__panel-text {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.card__panel-line {
+  margin: 0 0 2px;
 }
 
 /* 行える手と選ぶ候補。並べるのは届いたものだけ（ADR-0010）。 */
