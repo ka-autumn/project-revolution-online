@@ -301,14 +301,20 @@ body {
  *
  * **色だけに頼らない**——押せるカードと置き先は `aria-label` にもそう出ている
  * （`render.ts` の `cardElement` / `squareElement`）。
+ *
+ * 枠線を付けるのは見える面（`card__face`）である。回るのは面だけなので、外枠に付けると
+ * フリーズしたカードだけ枠線が寝たカードとずれる（#93）。押す対象は外枠のままでよい。
  */
 .card--押せる {
   cursor: pointer;
+}
+
+.card--押せる .card__face {
   outline: 2px solid var(--own);
   outline-offset: -1px;
 }
 
-.card--選択中 {
+.card--選択中 .card__face {
   outline: 3px solid var(--own);
   outline-offset: 1px;
 }
