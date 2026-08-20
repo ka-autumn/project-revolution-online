@@ -1,7 +1,7 @@
 import { connect } from './connection.js'
 import type { Connection } from './connection.js'
 import type { CardId, DuelEvent, RoomCode } from '@revolution/engine'
-import { actionViews, automaticAction, choiceView, pickView } from './input-model.js'
+import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import {
   actionsElement,
   boardElement,
@@ -121,14 +121,16 @@ function draw(
   if (stage.kind === '打っている' && stage.board !== undefined) {
     const board = stage.board
     // 演出が出ている間は手を送れない（#115）ので、盤面の上でも押せなくする。
-    const clicking = picking.mode === 'クリック' && stage.choice === undefined && !showsOverlay(overlay)
-    const view = clicking ? pickView(board, stage.actions, picking.card) : undefined
+    const clicking = picking.mode === 'クリック' && !showsOverlay(overlay)
+    const view = clicking && stage.choice === undefined ? pickView(board, stage.actions, picking.card) : undefined
+    // 選ぶのを待たれている間は、見えている候補を盤面から押せるようにする（#94）。答えるのは
+    // 番号のままで、押したカードがどの番号かは `choicePicking` が持っている。
+    const answering = clicking && stage.choice !== undefined ? choicePicking(stage.choice) : undefined
     root.append(
       boardElement(
         boardView(board),
-        view === undefined
-          ? undefined
-          : {
+        view !== undefined
+          ? {
               pickable: view.pickable,
               picked: view.picked,
               destinations: view.destinations,
@@ -137,7 +139,17 @@ function draw(
                 picking.onCancel()
                 connection.send({ kind: '行動する', action: destination.action })
               },
-            },
+            }
+          : answering !== undefined
+            ? {
+                pickable: answering.pickable,
+                picked: undefined,
+                onCard: (card) => {
+                  const answer = answering.answerOf(card)
+                  if (answer !== undefined) connection.send({ kind: '選ぶ', answer })
+                },
+              }
+            : undefined,
       ),
     )
 

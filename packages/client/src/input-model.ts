@@ -318,3 +318,31 @@ function sameSquare(square: Square | undefined, other: Square): boolean {
   return square !== undefined && square.row === other.row && square.column === other.column
 }
 
+/** 選ぶのを待たれている間に、盤面から押せるカード（#94）。 */
+export interface ChoicePicking {
+  readonly pickable: readonly CardId[]
+  /** そのカードを押した時に答える番号（ADR-0008）。押せないカードなら `undefined`。 */
+  readonly answerOf: (card: CardId) => number | undefined
+}
+
+/**
+ * 選ぶ候補のうち、盤面のカードとして押せるものを結び付ける。
+ *
+ * 候補を番号のボタンで並べる（`choiceView`）だけだと、エネルギーゾーンに見えているカードを
+ * 選ぶのに、盤面ではなく番号の並びを見ることになる。**見えている候補は、盤面のそのカードを
+ * 押しても答えられる**ようにする。答えるのは番号のままなので、通信は変わらない。
+ *
+ * **押せるのは見えている候補だけである。** 裏向きのスマッシュも候補になる（プランのコスト、
+ * 総合ルール 第2部 第21章 7-5）が、通信に載るのは見えていないということだけで
+ * （`protocol.ts` の `WireCandidate`）、盤面のどの札のことかを結び付けられない。能力と
+ * スクエアの候補も、押す先のカードが無い。**それらはボタンのまま**である。
+ */
+export function choicePicking(choice: WireChoice): ChoicePicking {
+  const answers = new Map<CardId, number>()
+  choice.candidates.forEach((candidate, index) => {
+    // 同じカードが 2 度並ぶことは無いが、並んだとしても先に出たほうを答えにする。
+    if (candidate.kind === '見えている' && !answers.has(candidate.card)) answers.set(candidate.card, index)
+  })
+
+  return { pickable: [...answers.keys()], answerOf: (card) => answers.get(card) }
+}

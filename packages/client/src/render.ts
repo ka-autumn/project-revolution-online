@@ -107,14 +107,18 @@ function panelElement(card: CardView & { readonly kind: '表' }): HTMLElement {
 export interface BoardPicking {
   readonly pickable: readonly CardId[]
   readonly picked: CardId | undefined
-  readonly destinations: readonly DestinationView[]
+  /**
+   * 光らせるスクエア。**押す先がカードだけの場面では無い**——選ぶのを待たれている間は、
+   * 候補のカードを押すだけで答えになる（`input-model.ts` の `choicePicking`）。
+   */
+  readonly destinations?: readonly DestinationView[]
   readonly onCard: (card: CardId) => void
-  readonly onDestination: (destination: DestinationView) => void
+  readonly onDestination?: (destination: DestinationView) => void
 }
 
 /** そのスクエアを指している置き先。無ければ `undefined`。 */
 function destinationAt(picking: BoardPicking | undefined, square: Square): DestinationView | undefined {
-  return picking?.destinations.find(
+  return picking?.destinations?.find(
     (each) => each.square.row === square.row && each.square.column === square.column,
   )
 }
@@ -199,9 +203,10 @@ function squareElement(square: SquareView, picking?: BoardPicking): HTMLElement 
   // 置き先であることを色だけで区別させない。読み上げにも出す。
   const where = destination === undefined ? '' : `（${destination.label}）`
   node.setAttribute('aria-label', `${square.area} ${square.square.row}-${square.square.column}${where}`)
-  if (destination !== undefined && picking !== undefined) {
+  const onDestination = picking?.onDestination
+  if (destination !== undefined && onDestination !== undefined) {
     node.tabIndex = 0
-    node.addEventListener('click', () => picking.onDestination(destination))
+    node.addEventListener('click', () => onDestination(destination))
   }
   for (const card of square.cards) node.append(cardElement(card, picking))
 

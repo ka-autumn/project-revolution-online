@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CHOICE_PURPOSES, indexOfSquare } from '@revolution/engine'
 import type { LegalAction, Player, WireChoice, WirePerspective } from '@revolution/engine'
-import { actionViews, automaticAction, choiceView, pickView } from './input-model.js'
+import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
 import { emptyBoard, instance, unitFace, withZone } from './test-support.js'
@@ -468,3 +468,66 @@ describe('クリックで操作する', () => {
   })
 })
 
+/**
+ * 選ぶのを待たれている間、盤面のカードを押して答える（#94）。
+ *
+ * **答えるのは番号のまま**（ADR-0008）で、押したカードがどの番号かを結び付けるだけである。
+ */
+describe('候補を盤面から押す', () => {
+  const choice = (candidates: WireChoice['candidates']): WireChoice => ({
+    player: '先攻',
+    purpose: 'プレイのコスト',
+    mayDecline: false,
+    answered: 0,
+    candidates,
+  })
+
+  it('見えている候補のカードが押せる', () => {
+    const picking = choicePicking(
+      choice([
+        { kind: '見えている', card: 'てふだの1枚' },
+        { kind: '見えている', card: 'スクエアの1枚' },
+      ]),
+    )
+
+    expect(picking.pickable).toEqual(['てふだの1枚', 'スクエアの1枚'])
+  })
+
+  it('押したカードは、その候補の番号で答える', () => {
+    const picking = choicePicking(
+      choice([{ kind: '見えていない' }, { kind: '見えている', card: 'スクエアの1枚' }]),
+    )
+
+    expect(picking.answerOf('スクエアの1枚')).toBe(1)
+  })
+
+  it('候補になっていないカードは押せない', () => {
+    const picking = choicePicking(choice([{ kind: '見えている', card: 'スクエアの1枚' }]))
+
+    expect(picking.pickable).not.toContain('てふだの1枚')
+    expect(picking.answerOf('てふだの1枚')).toBeUndefined()
+  })
+
+  /**
+   * 裏向きのスマッシュも候補になる（プランのコスト、総合ルール 第2部 第21章 7-5）が、通信に
+   * 載るのは見えていないということだけ（`protocol.ts` の `WireCandidate`）で、盤面のどの札の
+   * ことかを結び付けられない。**ボタンのままにする。**
+   */
+  it('見えていない候補は、盤面からは押せない', () => {
+    const picking = choicePicking(choice([{ kind: '見えていない' }, { kind: '見えていない' }]))
+
+    expect(picking.pickable).toEqual([])
+  })
+
+  /** 能力とスクエアの候補も、押す先のカードが無い。 */
+  it('カードでない候補は、盤面からは押せない', () => {
+    const picking = choicePicking(
+      choice([
+        { kind: '能力', source: 'スクエアの1枚' },
+        { kind: 'スクエア', square: { row: 0, column: 0 } },
+      ]),
+    )
+
+    expect(picking.pickable).toEqual([])
+  })
+})
