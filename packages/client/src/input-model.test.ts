@@ -401,7 +401,16 @@ describe('クリックで操作する', () => {
 
     expect(view.picked).toBe('てふだの1枚')
     expect(view.direct.map((each) => each.action)).toEqual([PLACE])
-    expect(view.pickable).toEqual(['てふだの1枚'])
+  })
+
+  /**
+   * 選び直すのに、いま選んでいるカードをもう一度押して外させない。押したカードがそのまま
+   * 次の選択になる。
+   */
+  it('カードを選んでいる間も、ほかのカードは押せる', () => {
+    const view = pick([PLACE, SMASH], 'てふだの1枚')
+
+    expect(view.pickable).toEqual(['てふだの1枚', 'スクエアの1枚'])
   })
 
   it('置き先を選ぶ手は、置ける先が盤面の上に出る', () => {
@@ -458,3 +467,4 @@ describe('クリックで操作する', () => {
     expect(view.untargeted.map((each) => each.action)).toEqual([PASS])
   })
 })
+

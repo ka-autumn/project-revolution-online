@@ -246,8 +246,11 @@ export interface DestinationView {
 /** クリックで操作する時に、画面に出すもの。 */
 export interface PickView {
   /**
-   * 押せるカード。**選んでいる間は、その 1 枚だけになる。** 選びかけの最中に別のカードが
-   * 押せるままだと、どこまで絞れているかが画面から分からない。
+   * 押せるカード。**選んでいる間も、ほかのカードは押せるままにする。**
+   *
+   * 選び直すたびに、いま選んでいるカードをもう一度押して外させると、1 枚選ぶのに 2 回押す
+   * ことになる。押したカードがそのまま次の選択になるほうが手数が少ない。どこまで絞れて
+   * いるかは `picked` で示す（`style.css` の `.card--選択中`）。
    */
   readonly pickable: readonly CardId[]
   /** いま選んでいるカード。選んでいなければ `undefined`。 */
@@ -303,7 +306,7 @@ export function pickView(
   const decided = destinations.map((each) => each.action)
 
   return {
-    pickable: [picked],
+    pickable,
     picked,
     direct: mine.filter((action) => !decided.includes(action)).map(view),
     destinations,
@@ -314,3 +317,4 @@ export function pickView(
 function sameSquare(square: Square | undefined, other: Square): boolean {
   return square !== undefined && square.row === other.row && square.column === other.column
 }
+
