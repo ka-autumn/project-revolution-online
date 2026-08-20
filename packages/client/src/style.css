@@ -309,14 +309,24 @@ body {
   cursor: pointer;
 }
 
+/*
+ * 枠線だけでは、カード 1 枚が小さいぶん埋もれる。**地の色も変える**——枠線は 1px の枠と
+ * 重なって見分けにくいが、面ごと色が変わればカードの並びの中で浮く。
+ *
+ * 地の色は `background-color` で置く。裏向きのカードの地模様（`.card--back`）は
+ * `background-image` なので、上に重なって残る。
+ */
 .card--押せる .card__face {
-  outline: 2px solid var(--own);
+  outline: 3px solid var(--own);
   outline-offset: -1px;
+  background-color: color-mix(in srgb, var(--own) 22%, Canvas);
 }
 
+/* 選んでいる 1 枚は、押せるだけのカードより濃くする。 */
 .card--選択中 .card__face {
   outline: 3px solid var(--own);
-  outline-offset: 1px;
+  outline-offset: 2px;
+  background-color: color-mix(in srgb, var(--own) 45%, Canvas);
 }
 
 .square--置き先 {
