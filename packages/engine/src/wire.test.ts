@@ -26,6 +26,8 @@ const CARDS = {
     moveIcon: ['上'],
     stars: 1,
     attributes: ['テスト属性'],
+    // 印刷されているテキスト（#93）。engine は読まないが、表記として載る。
+    text: ['夢（プランゾーンからプレイできる）'],
     // 能力は関数を持つ。表記に混ざって送られてしまわないことを、下の「JSON にできる」で見る。
     abilities: [dream],
   }),
@@ -101,6 +103,8 @@ describe('通信に載せる形', () => {
       stars: 1,
       reverseStars: 0,
       attributes: ['テスト属性'],
+      // テキストは engine が読まないデータだが、印刷されている表記として載る（#93）。
+      text: ['夢（プランゾーンからプレイできる）'],
       bp: 1000,
       sp: 1000,
       moveIcon: ['上'],
@@ -119,6 +123,8 @@ describe('通信に載せる形', () => {
       stars: 0,
       reverseStars: 0,
       attributes: [],
+      // テキストを書いていないカードは、空のまま載る。
+      text: [],
       triggerIcon: [{ row: 1, column: 1 }],
     })
   })

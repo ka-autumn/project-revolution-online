@@ -33,6 +33,17 @@ interface WireWrittenCard {
   readonly stars: number
   readonly reverseStars: number
   readonly attributes: readonly Attribute[]
+  /**
+   * カードに印刷されているテキスト（総合ルール 第2部 第10章）。#93
+   *
+   * 改行ごとに別の能力になる（同 第4部 第1章 3）ので、行の並びで載せる。engine が読まない
+   * 表示のためだけのデータ（`card.ts` の `WrittenCard.text`）だが、**印刷されている表記で
+   * ある**以上、載せるところは他の項目と同じである。
+   *
+   * **見えていないカードには載らない。** 表記が載るのは表側が見えているカードだけで
+   * （`perspective.ts` の `VisibleCard`）、テキストもその中の 1 項目だからである。
+   */
+  readonly text: readonly string[]
 }
 
 /** 通信に載せる `UnitCard` の表記。 */
@@ -166,6 +177,7 @@ function written(card: Card): WireWrittenCard & { readonly type: CardType } {
     stars: card.stars,
     reverseStars: card.reverseStars,
     attributes: card.attributes,
+    text: card.text,
   }
 }
 
