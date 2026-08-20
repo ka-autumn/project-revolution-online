@@ -86,9 +86,12 @@ body {
   gap: var(--gap);
 }
 
+/* カードは枠の真ん中に置く。1 枚のときに左へ寄っていると、スクエアの当たりが読みにくい。 */
 .square {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
+  align-content: center;
   gap: 2px;
   min-height: 5rem;
   padding: 2px;
