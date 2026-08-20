@@ -8,6 +8,7 @@ import type {
   WireChoice,
   WirePerspective,
 } from '@revolution/engine'
+import { indexOfSquare } from '@revolution/engine'
 import type { Session } from './session.js'
 import { nameOf, namesIn, squareLabel } from './view-model.js'
 
@@ -236,11 +237,20 @@ export function destinationOf(action: LegalAction): Square | undefined {
   }
 }
 
-/** 光らせるスクエア 1 つと、そこを押した時に送る手。 */
-export interface DestinationView {
+/**
+ * 盤面の上で押せるスクエア 1 つ。
+ *
+ * **押した時に何を送るかはここに無い。** 置き先なら手を送り（`DestinationView`）、効果が
+ * 選ばせているなら候補の番号で答える（`ChoicePicking`）。描く側はどちらでも同じ形で扱える。
+ */
+export interface PickableSquare {
   readonly square: Square
-  readonly action: LegalAction
   readonly label: string
+}
+
+/** 光らせるスクエア 1 つと、そこを押した時に送る手。 */
+export interface DestinationView extends PickableSquare {
+  readonly action: LegalAction
 }
 
 /** クリックで操作する時に、画面に出すもの。 */
@@ -318,31 +328,52 @@ function sameSquare(square: Square | undefined, other: Square): boolean {
   return square !== undefined && square.row === other.row && square.column === other.column
 }
 
-/** 選ぶのを待たれている間に、盤面から押せるカード（#94）。 */
+/** 選ぶのを待たれている間に、盤面から押せるもの（#94）。 */
 export interface ChoicePicking {
   readonly pickable: readonly CardId[]
   /** そのカードを押した時に答える番号（ADR-0008）。押せないカードなら `undefined`。 */
   readonly answerOf: (card: CardId) => number | undefined
+  /** 押せるスクエア。効果がスクエアを選ばせている場面（#113）だけ並ぶ。 */
+  readonly squares: readonly PickableSquare[]
+  /** そのスクエアを押した時に答える番号。押せないスクエアなら `undefined`。 */
+  readonly answerOfSquare: (square: Square) => number | undefined
 }
 
 /**
- * 選ぶ候補のうち、盤面のカードとして押せるものを結び付ける。
+ * 選ぶ候補のうち、盤面の上で押せるものを結び付ける。
  *
- * 候補を番号のボタンで並べる（`choiceView`）だけだと、エネルギーゾーンに見えているカードを
- * 選ぶのに、盤面ではなく番号の並びを見ることになる。**見えている候補は、盤面のそのカードを
- * 押しても答えられる**ようにする。答えるのは番号のままなので、通信は変わらない。
+ * 候補を番号のボタンで並べる（`choiceView`）だけだと、エネルギーゾーンに見えているカードや、
+ * 効果が置き先に選ばせているスクエアを選ぶのに、盤面ではなく番号の並びを見ることになる。
+ * **盤面に出ている候補は、盤面のそこを押しても答えられる**ようにする。答えるのは番号のまま
+ * なので、通信は変わらない。
  *
- * **押せるのは見えている候補だけである。** 裏向きのスマッシュも候補になる（プランのコスト、
- * 総合ルール 第2部 第21章 7-5）が、通信に載るのは見えていないということだけで
- * （`protocol.ts` の `WireCandidate`）、盤面のどの札のことかを結び付けられない。能力と
- * スクエアの候補も、押す先のカードが無い。**それらはボタンのまま**である。
+ * 押せるのは、見えているカード（`見えている`）と、スクエア（#113）である。**裏向きの
+ * スマッシュは押せない。** 候補になる（プランのコスト、総合ルール 第2部 第21章 7-5）が、
+ * 通信に載るのは見えていないということだけで（`protocol.ts` の `WireCandidate`）、盤面の
+ * どの札のことかを結び付けられない（#127）。能力の候補も、押す先が盤面に無い。**それらは
+ * ボタンのまま**である。
  */
-export function choicePicking(choice: WireChoice): ChoicePicking {
+export function choicePicking(board: WirePerspective, choice: WireChoice): ChoicePicking {
   const answers = new Map<CardId, number>()
+  // スクエアは行と列の組なので、そのままでは鍵にできない。盤面の並びの番号に直して引く。
+  const bySquare = new Map<number, { readonly view: PickableSquare; readonly answer: number }>()
   choice.candidates.forEach((candidate, index) => {
-    // 同じカードが 2 度並ぶことは無いが、並んだとしても先に出たほうを答えにする。
+    // 同じものが 2 度並ぶことは無いが、並んだとしても先に出たほうを答えにする。
     if (candidate.kind === '見えている' && !answers.has(candidate.card)) answers.set(candidate.card, index)
+    if (candidate.kind === 'スクエア') {
+      const key = indexOfSquare(candidate.square)
+      if (bySquare.has(key)) return
+      // 呼び名は見る人によって入れ替わる（総合ルール 第2部 第22章 4・6）ので、受け取った
+      // 側から見た呼び名にする（`choiceView` の候補と同じ）。
+      const label = `${squareLabel(board.viewer, candidate.square)}を選ぶ`
+      bySquare.set(key, { view: { square: candidate.square, label }, answer: index })
+    }
   })
 
-  return { pickable: [...answers.keys()], answerOf: (card) => answers.get(card) }
+  return {
+    pickable: [...answers.keys()],
+    answerOf: (card) => answers.get(card),
+    squares: [...bySquare.values()].map((each) => each.view),
+    answerOfSquare: (square) => bySquare.get(indexOfSquare(square))?.answer,
+  }
 }

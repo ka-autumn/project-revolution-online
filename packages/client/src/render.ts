@@ -104,23 +104,28 @@ function panelElement(card: CardView & { readonly kind: '表' }): HTMLElement {
  * **どれを押せるかはここで決めない。** 届いた手が指しているところを `input-model.ts` が
  * すでに並べていて（`pickView`）、ここはそれを描くだけである。
  */
+/**
+ * 押せるスクエア 1 つ。**押した時に何を送るかはここに無い。** 置き先なら手を送り
+ * （`input-model.ts` の `DestinationView`）、効果が選ばせているなら候補の番号で答える
+ * （同 `ChoiceSquareView`）。どちらかは渡す側が知っている。
+ */
+export interface PickableSquare {
+  readonly square: Square
+  readonly label: string
+}
+
 export interface BoardPicking {
   readonly pickable: readonly CardId[]
   readonly picked: CardId | undefined
-  /**
-   * 光らせるスクエア。**押す先がカードだけの場面では無い**——選ぶのを待たれている間は、
-   * 候補のカードを押すだけで答えになる（`input-model.ts` の `choicePicking`）。
-   */
-  readonly destinations?: readonly DestinationView[]
+  /** 光らせるスクエア。押す先がカードだけの場面では空か、渡されない。 */
+  readonly squares?: readonly PickableSquare[]
   readonly onCard: (card: CardId) => void
-  readonly onDestination?: (destination: DestinationView) => void
+  readonly onSquare?: (square: Square) => void
 }
 
-/** そのスクエアを指している置き先。無ければ `undefined`。 */
-function destinationAt(picking: BoardPicking | undefined, square: Square): DestinationView | undefined {
-  return picking?.destinations?.find(
-    (each) => each.square.row === square.row && each.square.column === square.column,
-  )
+/** そのスクエアが押せるなら、その 1 つ。押せなければ `undefined`。 */
+function pickableAt(picking: BoardPicking | undefined, square: Square): PickableSquare | undefined {
+  return picking?.squares?.find((each) => each.square.row === square.row && each.square.column === square.column)
 }
 
 /**
@@ -198,15 +203,16 @@ function sideElement(side: SideView, picking?: BoardPicking): HTMLElement {
 }
 
 function squareElement(square: SquareView, picking?: BoardPicking): HTMLElement {
-  const destination = destinationAt(picking, square.square)
-  const node = element('div', `square square--${square.area}${destination === undefined ? '' : ' square--置き先'}`)
-  // 置き先であることを色だけで区別させない。読み上げにも出す。
-  const where = destination === undefined ? '' : `（${destination.label}）`
+  const pickable = pickableAt(picking, square.square)
+  const node = element('div', `square square--${square.area}${pickable === undefined ? '' : ' square--置き先'}`)
+  // 押せることを色だけで区別させない。読み上げにも出す。
+  const where = pickable === undefined ? '' : `（${pickable.label}）`
   node.setAttribute('aria-label', `${square.area} ${square.square.row}-${square.square.column}${where}`)
-  const onDestination = picking?.onDestination
-  if (destination !== undefined && onDestination !== undefined) {
+  const onSquare = picking?.onSquare
+  if (pickable !== undefined && onSquare !== undefined) {
+    const picked = pickable.square
     node.tabIndex = 0
-    node.addEventListener('click', () => onDestination(destination))
+    node.addEventListener('click', () => onSquare(picked))
   }
   for (const card of square.cards) node.append(cardElement(card, picking))
 

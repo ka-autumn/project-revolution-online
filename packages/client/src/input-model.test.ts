@@ -484,6 +484,7 @@ describe('候補を盤面から押す', () => {
 
   it('見えている候補のカードが押せる', () => {
     const picking = choicePicking(
+      board(),
       choice([
         { kind: '見えている', card: 'てふだの1枚' },
         { kind: '見えている', card: 'スクエアの1枚' },
@@ -495,6 +496,7 @@ describe('候補を盤面から押す', () => {
 
   it('押したカードは、その候補の番号で答える', () => {
     const picking = choicePicking(
+      board(),
       choice([{ kind: '見えていない' }, { kind: '見えている', card: 'スクエアの1枚' }]),
     )
 
@@ -502,7 +504,7 @@ describe('候補を盤面から押す', () => {
   })
 
   it('候補になっていないカードは押せない', () => {
-    const picking = choicePicking(choice([{ kind: '見えている', card: 'スクエアの1枚' }]))
+    const picking = choicePicking(board(), choice([{ kind: '見えている', card: 'スクエアの1枚' }]))
 
     expect(picking.pickable).not.toContain('てふだの1枚')
     expect(picking.answerOf('てふだの1枚')).toBeUndefined()
@@ -514,20 +516,62 @@ describe('候補を盤面から押す', () => {
    * ことかを結び付けられない。**ボタンのままにする。**
    */
   it('見えていない候補は、盤面からは押せない', () => {
-    const picking = choicePicking(choice([{ kind: '見えていない' }, { kind: '見えていない' }]))
+    const picking = choicePicking(board(), choice([{ kind: '見えていない' }, { kind: '見えていない' }]))
 
     expect(picking.pickable).toEqual([])
   })
 
-  /** 能力とスクエアの候補も、押す先のカードが無い。 */
-  it('カードでない候補は、盤面からは押せない', () => {
+  /** 能力の候補は、押す先が盤面に無い。 */
+  it('能力の候補は、盤面からは押せない', () => {
+    const picking = choicePicking(board(), choice([{ kind: '能力', source: 'スクエアの1枚' }]))
+
+    expect(picking.pickable).toEqual([])
+    expect(picking.squares).toEqual([])
+  })
+
+  /**
+   * #113。効果が置き先を選ばせている場面では、候補として並ぶのはスクエアである。カードを
+   * 置く時（`pickView` の `destinations`）と同じように、盤面のそこを押して答えられる。
+   */
+  it('スクエアの候補は、盤面のそこが押せる', () => {
     const picking = choicePicking(
+      board(),
       choice([
-        { kind: '能力', source: 'スクエアの1枚' },
         { kind: 'スクエア', square: { row: 0, column: 0 } },
+        { kind: 'スクエア', square: { row: 1, column: 1 } },
       ]),
     )
 
-    expect(picking.pickable).toEqual([])
+    expect(picking.squares.map((each) => each.square)).toEqual([
+      { row: 0, column: 0 },
+      { row: 1, column: 1 },
+    ])
+  })
+
+  it('押したスクエアは、その候補の番号で答える', () => {
+    const picking = choicePicking(
+      board(),
+      choice([{ kind: '見えていない' }, { kind: 'スクエア', square: { row: 1, column: 1 } }]),
+    )
+
+    expect(picking.answerOfSquare({ row: 1, column: 1 })).toBe(1)
+  })
+
+  it('候補になっていないスクエアは押せない', () => {
+    const picking = choicePicking(board(), choice([{ kind: 'スクエア', square: { row: 1, column: 1 } }]))
+
+    expect(picking.answerOfSquare({ row: 0, column: 0 })).toBeUndefined()
+  })
+
+  /** 呼び名は見る人によって入れ替わる（総合ルール 第2部 第22章 4・6）。 */
+  it('スクエアの見出しは、選ぶ人から見た呼び名になる', () => {
+    const forFirst = choicePicking(board(), choice([{ kind: 'スクエア', square: { row: 0, column: 0 } }]))
+    const forSecond = choicePicking(
+      { ...board(), viewer: '後攻' },
+      choice([{ kind: 'スクエア', square: { row: 0, column: 0 } }]),
+    )
+
+    expect(forFirst.squares[0]?.label).toBe('味方エリアの左ラインを選ぶ')
+    expect(forSecond.squares[0]?.label).toBe('敵エリアの右ラインを選ぶ')
   })
 })
