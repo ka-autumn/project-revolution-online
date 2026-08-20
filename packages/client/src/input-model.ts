@@ -3,10 +3,12 @@ import type {
   ChoicePurpose,
   LegalAction,
   Player,
+  Square,
   WireCandidate,
   WireChoice,
   WirePerspective,
 } from '@revolution/engine'
+import { indexOfSquare } from '@revolution/engine'
 import type { Session } from './session.js'
 import { nameOf, namesIn, squareLabel } from './view-model.js'
 
@@ -189,5 +191,189 @@ export function choiceView(board: WirePerspective, choice: WireChoice): ChoiceVi
       index,
       label: candidateLabel(candidate, index, board.viewer, names),
     })),
+  }
+}
+
+/**
+ * 盤面をクリックして操作する（#94）。
+ *
+ * **ルールの判断は増やさない**（ADR-0010）。どのカードを押せるか、どこを光らせるかは、
+ * サーバから届いた手が指しているところだけで決まる。「ここに置けるはず」をここで計算しない。
+ *
+ * 通信の形式は変わらない。`LegalAction` はカードを識別子で、スクエアを行と列で指している
+ * （`legal-action.ts`）ので、届いた手を「どのカードの話か」で振り分けるだけで足りる。
+ */
+
+/** その手が指しているカード。カードに紐づかない手なら `undefined`。 */
+export function targetOf(action: LegalAction): CardId | undefined {
+  switch (action.kind) {
+    case '優先権を放棄する':
+    case 'プランする':
+      return undefined
+    case 'エネルギーを置く':
+    case 'トラップを廃棄する':
+    case 'トラップとしてプレイする':
+    case 'トラップを発動する':
+    case '「勇気」を起動する':
+      return action.card
+    case 'スマッシュする':
+    case 'ユニットを移動する':
+    case '起動型能力を起動する':
+      return action.unit
+    case 'カードをプレイする':
+      return action.declaration.card
+  }
+}
+
+/** その手が置き先として指しているスクエア。置き先を持たない手なら `undefined`。 */
+export function destinationOf(action: LegalAction): Square | undefined {
+  switch (action.kind) {
+    case 'カードをプレイする':
+      return action.declaration.square
+    case 'ユニットを移動する':
+      return action.destination
+    default:
+      return undefined
+  }
+}
+
+/**
+ * 盤面の上で押せるスクエア 1 つ。
+ *
+ * **押した時に何を送るかはここに無い。** 置き先なら手を送り（`DestinationView`）、効果が
+ * 選ばせているなら候補の番号で答える（`ChoicePicking`）。描く側はどちらでも同じ形で扱える。
+ */
+export interface PickableSquare {
+  readonly square: Square
+  readonly label: string
+}
+
+/** 光らせるスクエア 1 つと、そこを押した時に送る手。 */
+export interface DestinationView extends PickableSquare {
+  readonly action: LegalAction
+}
+
+/** クリックで操作する時に、画面に出すもの。 */
+export interface PickView {
+  /**
+   * 押せるカード。**選んでいる間も、ほかのカードは押せるままにする。**
+   *
+   * 選び直すたびに、いま選んでいるカードをもう一度押して外させると、1 枚選ぶのに 2 回押す
+   * ことになる。押したカードがそのまま次の選択になるほうが手数が少ない。どこまで絞れて
+   * いるかは `picked` で示す（`style.css` の `.card--選択中`）。
+   */
+  readonly pickable: readonly CardId[]
+  /** いま選んでいるカード。選んでいなければ `undefined`。 */
+  readonly picked: CardId | undefined
+  /**
+   * 選んだカードで行える手のうち、置き先を持たないもの。ボタンとして出す。
+   *
+   * 置き先を持つ手でも、同じスクエアを指す手が 2 つ以上あるならここに入る。押した場所だけ
+   * では、どちらの手かが決まらないためである。
+   */
+  readonly direct: readonly ActionView[]
+  /** 光らせるスクエア。選んだカードの手が指しているところだけ。 */
+  readonly destinations: readonly DestinationView[]
+  /** カードに紐づかない手（優先権の放棄・プラン）。いつでも押せる。 */
+  readonly untargeted: readonly ActionView[]
+}
+
+/**
+ * クリックで操作する時の画面。`picked` が選んでいるカード（`undefined` なら選んでいない）。
+ *
+ * 段は 2 つである。カードを選ぶまでは押せるカードを示すだけで、選んだ後にその 1 枚で行える手
+ * だけを出す。**置き先を選ぶ手は盤面の上で示す**ので、そこは押すところが 2 か所（カード →
+ * スクエア）になる。
+ */
+export function pickView(
+  board: WirePerspective,
+  actions: readonly LegalAction[],
+  picked: CardId | undefined,
+): PickView {
+  const names = namesIn(board)
+  const view = (action: LegalAction): ActionView => ({ action, label: labelOf(action, board.viewer, names) })
+
+  const targeted = actions.filter((action) => targetOf(action) !== undefined)
+  const untargeted = actions.filter((action) => targetOf(action) === undefined).map(view)
+  const pickable = [...new Set(targeted.flatMap((action) => targetOf(action) ?? []))]
+  // 届いていないカードは選べない。選んだ後に手が届かなくなることは起こる（盤面が入れ替わる）
+  // ので、その時は選んでいない状態と同じ扱いになる。
+  if (picked === undefined || !pickable.includes(picked)) {
+    return { pickable, picked: undefined, direct: [], destinations: [], untargeted }
+  }
+
+  const mine = targeted.filter((action) => targetOf(action) === picked)
+  const placing = mine.filter((action) => destinationOf(action) !== undefined)
+  // 同じスクエアを指す手が 2 つ以上あるなら、押した場所だけでは決まらない。
+  const ambiguous = (square: Square): boolean =>
+    placing.filter((action) => sameSquare(destinationOf(action), square)).length > 1
+
+  const destinations = placing.flatMap((action): readonly DestinationView[] => {
+    const square = destinationOf(action)
+    if (square === undefined || ambiguous(square)) return []
+    return [{ square, action, label: view(action).label }]
+  })
+  const decided = destinations.map((each) => each.action)
+
+  return {
+    pickable,
+    picked,
+    direct: mine.filter((action) => !decided.includes(action)).map(view),
+    destinations,
+    untargeted,
+  }
+}
+
+function sameSquare(square: Square | undefined, other: Square): boolean {
+  return square !== undefined && square.row === other.row && square.column === other.column
+}
+
+/** 選ぶのを待たれている間に、盤面から押せるもの（#94）。 */
+export interface ChoicePicking {
+  readonly pickable: readonly CardId[]
+  /** そのカードを押した時に答える番号（ADR-0008）。押せないカードなら `undefined`。 */
+  readonly answerOf: (card: CardId) => number | undefined
+  /** 押せるスクエア。効果がスクエアを選ばせている場面（#113）だけ並ぶ。 */
+  readonly squares: readonly PickableSquare[]
+  /** そのスクエアを押した時に答える番号。押せないスクエアなら `undefined`。 */
+  readonly answerOfSquare: (square: Square) => number | undefined
+}
+
+/**
+ * 選ぶ候補のうち、盤面の上で押せるものを結び付ける。
+ *
+ * 候補を番号のボタンで並べる（`choiceView`）だけだと、エネルギーゾーンに見えているカードや、
+ * 効果が置き先に選ばせているスクエアを選ぶのに、盤面ではなく番号の並びを見ることになる。
+ * **盤面に出ている候補は、盤面のそこを押しても答えられる**ようにする。答えるのは番号のまま
+ * なので、通信は変わらない。
+ *
+ * 押せるのは、見えているカード（`見えている`）と、スクエア（#113）である。**裏向きの
+ * スマッシュは押せない。** 候補になる（プランのコスト、総合ルール 第2部 第21章 7-5）が、
+ * 通信に載るのは見えていないということだけで（`protocol.ts` の `WireCandidate`）、盤面の
+ * どの札のことかを結び付けられない（#127）。能力の候補も、押す先が盤面に無い。**それらは
+ * ボタンのまま**である。
+ */
+export function choicePicking(board: WirePerspective, choice: WireChoice): ChoicePicking {
+  const answers = new Map<CardId, number>()
+  // スクエアは行と列の組なので、そのままでは鍵にできない。盤面の並びの番号に直して引く。
+  const bySquare = new Map<number, { readonly view: PickableSquare; readonly answer: number }>()
+  choice.candidates.forEach((candidate, index) => {
+    // 同じものが 2 度並ぶことは無いが、並んだとしても先に出たほうを答えにする。
+    if (candidate.kind === '見えている' && !answers.has(candidate.card)) answers.set(candidate.card, index)
+    if (candidate.kind === 'スクエア') {
+      const key = indexOfSquare(candidate.square)
+      if (bySquare.has(key)) return
+      // 呼び名は見る人によって入れ替わる（総合ルール 第2部 第22章 4・6）ので、受け取った
+      // 側から見た呼び名にする（`choiceView` の候補と同じ）。
+      const label = `${squareLabel(board.viewer, candidate.square)}を選ぶ`
+      bySquare.set(key, { view: { square: candidate.square, label }, answer: index })
+    }
+  })
+
+  return {
+    pickable: [...answers.keys()],
+    answerOf: (card) => answers.get(card),
+    squares: [...bySquare.values()].map((each) => each.view),
+    answerOfSquare: (square) => bySquare.get(indexOfSquare(square))?.answer,
   }
 }

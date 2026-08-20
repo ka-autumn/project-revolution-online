@@ -92,9 +92,12 @@ body {
   gap: var(--gap);
 }
 
+/* カードは枠の真ん中に置く。1 枚のときに左へ寄っていると、スクエアの当たりが読みにくい。 */
 .square {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
+  align-content: center;
   gap: 2px;
   min-height: 5rem;
   padding: 2px;
@@ -300,6 +303,65 @@ body {
 
 .card__panel-line {
   margin: 0 0 2px;
+}
+
+/*
+ * 盤面をクリックして操作する（#94）。
+ *
+ * **色だけに頼らない**——押せるカードと置き先は `aria-label` にもそう出ている
+ * （`render.ts` の `cardElement` / `squareElement`）。
+ *
+ * 枠線を付けるのは見える面（`card__face`）である。回るのは面だけなので、外枠に付けると
+ * フリーズしたカードだけ枠線が寝たカードとずれる（#93）。押す対象は外枠のままでよい。
+ */
+.card--押せる {
+  cursor: pointer;
+}
+
+/*
+ * 枠線だけでは、カード 1 枚が小さいぶん埋もれる。**地の色も変える**——枠線は 1px の枠と
+ * 重なって見分けにくいが、面ごと色が変わればカードの並びの中で浮く。
+ *
+ * 地の色は `background-color` で置く。裏向きのカードの地模様（`.card--back`）は
+ * `background-image` なので、上に重なって残る。
+ */
+.card--押せる .card__face {
+  outline: 3px solid var(--own);
+  outline-offset: -1px;
+  background-color: color-mix(in srgb, var(--own) 22%, Canvas);
+}
+
+/* 選んでいる 1 枚は、押せるだけのカードより濃くする。 */
+.card--選択中 .card__face {
+  outline: 3px solid var(--own);
+  outline-offset: 2px;
+  background-color: color-mix(in srgb, var(--own) 45%, Canvas);
+}
+
+.square--置き先 {
+  cursor: pointer;
+  border-style: dashed;
+  border-width: 3px;
+  border-color: var(--own);
+}
+
+/* 操作のしかたの切り替え（#94）。 */
+.mode {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  margin: var(--gap) 0;
+}
+
+.mode__label {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.choice__button--選択中 {
+  font-weight: bold;
+  outline: 2px solid var(--own);
 }
 
 /* 行える手と選ぶ候補。並べるのは届いたものだけ（ADR-0010）。 */

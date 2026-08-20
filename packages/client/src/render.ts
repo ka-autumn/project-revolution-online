@@ -1,5 +1,5 @@
-import type { ChoiceAnswer, LegalAction } from '@revolution/engine'
-import type { ActionView, ChoiceView } from './input-model.js'
+import type { CardId, ChoiceAnswer, LegalAction, Square } from '@revolution/engine'
+import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import type {
   AbilityView,
   BattleView,
@@ -100,6 +100,36 @@ function panelElement(card: CardView & { readonly kind: '表' }): HTMLElement {
 }
 
 /**
+ * 盤面をクリックして操作するための手がかり（#94）。押していない時は `undefined`。
+ *
+ * **どれを押せるかはここで決めない。** 届いた手が指しているところを `input-model.ts` が
+ * すでに並べていて（`pickView`）、ここはそれを描くだけである。
+ */
+/**
+ * 押せるスクエア 1 つ。**押した時に何を送るかはここに無い。** 置き先なら手を送り
+ * （`input-model.ts` の `DestinationView`）、効果が選ばせているなら候補の番号で答える
+ * （同 `ChoiceSquareView`）。どちらかは渡す側が知っている。
+ */
+export interface PickableSquare {
+  readonly square: Square
+  readonly label: string
+}
+
+export interface BoardPicking {
+  readonly pickable: readonly CardId[]
+  readonly picked: CardId | undefined
+  /** 光らせるスクエア。押す先がカードだけの場面では空か、渡されない。 */
+  readonly squares?: readonly PickableSquare[]
+  readonly onCard: (card: CardId) => void
+  readonly onSquare?: (square: Square) => void
+}
+
+/** そのスクエアが押せるなら、その 1 つ。押せなければ `undefined`。 */
+function pickableAt(picking: BoardPicking | undefined, square: Square): PickableSquare | undefined {
+  return picking?.squares?.find((each) => each.square.row === square.row && each.square.column === square.column)
+}
+
+/**
  * カードの見える面。**詳細の札はこの外側に置く**（`cardElement`）。
  *
  * フリーズを横倒しにする（総合ルール 第2部 第24章）のはこの要素で、外枠の `card` は回らない。
@@ -109,7 +139,7 @@ function faceElement(): HTMLElement {
   return element('div', 'card__face')
 }
 
-function cardElement(card: CardView): HTMLElement {
+function cardElement(card: CardView, picking?: BoardPicking): HTMLElement {
   if (card.kind === '裏') {
     const back = element('div', `card card--back card--${card.orientation}`)
     back.setAttribute('aria-label', `裏向きのカード（${card.orientation}）`)
@@ -120,10 +150,19 @@ function cardElement(card: CardView): HTMLElement {
   // 継続効果でデータが変わっていることは、文字（`BP1000→2000`・`+夢`）で分かる。色は添えるだけ
   // で、それだけに頼らない（#91）。
   const modified = card.modified === undefined ? '' : ' card--修整あり'
-  const node = element('div', `card card--${card.orientation} card--${card.controlledBy}${modified}`)
+  // 押せるかどうかも色だけで区別させない。押せるカードは `aria-label` にもそう出す（#94）。
+  const pickable = picking?.pickable.includes(card.id) ?? false
+  const picked = picking?.picked === card.id
+  const state = `${pickable ? ' card--押せる' : ''}${picked ? ' card--選択中' : ''}`
+  const node = element('div', `card card--${card.orientation} card--${card.controlledBy}${modified}${state}`)
   // キーボードでも詳細を出せるようにする。マウスを乗せるだけの形にすると触れない人が出る。
   node.tabIndex = 0
-  node.setAttribute('aria-label', `${card.controlledBy}の${card.name}`)
+  const how = picked ? '（選択中）' : pickable ? '（押せます）' : ''
+  node.setAttribute('aria-label', `${card.controlledBy}の${card.name}${how}`)
+  if (pickable && picking !== undefined) {
+    const id = card.id
+    node.addEventListener('click', () => picking.onCard(id))
+  }
 
   const face = faceElement()
   // 色だけで区別させない。色を見分けられない人にも分かるように、文字でも出す。
@@ -142,41 +181,50 @@ function cardElement(card: CardView): HTMLElement {
   return node
 }
 
-function zoneElement(zone: ZoneView): HTMLElement {
+function zoneElement(zone: ZoneView, picking?: BoardPicking): HTMLElement {
   const node = element('section', `zone zone--${zone.zone}`)
   node.append(element('h3', 'zone__title', `${zone.zone}（${zone.count}）`))
 
   const cards = element('div', 'zone__cards')
-  for (const card of zone.cards) cards.append(cardElement(card))
+  for (const card of zone.cards) cards.append(cardElement(card, picking))
   node.append(cards)
 
   return node
 }
 
-function sideElement(side: SideView): HTMLElement {
+function sideElement(side: SideView, picking?: BoardPicking): HTMLElement {
   const node = element('section', `side side--${side.whose}`)
   node.append(element('h2', 'side__title', `${side.whose}（${side.player}）・ダメージ ${side.damage}`))
 
   const zones = element('div', 'side__zones')
-  for (const zone of side.zones) zones.append(zoneElement(zone))
+  for (const zone of side.zones) zones.append(zoneElement(zone, picking))
   node.append(zones)
 
   return node
 }
 
-function squareElement(square: SquareView): HTMLElement {
-  const node = element('div', `square square--${square.area}`)
-  node.setAttribute('aria-label', `${square.area} ${square.square.row}-${square.square.column}`)
-  for (const card of square.cards) node.append(cardElement(card))
+function squareElement(square: SquareView, picking?: BoardPicking): HTMLElement {
+  const pickable = pickableAt(picking, square.square)
+  const node = element('div', `square square--${square.area}${pickable === undefined ? '' : ' square--置き先'}`)
+  // 押せることを色だけで区別させない。読み上げにも出す。
+  const where = pickable === undefined ? '' : `（${pickable.label}）`
+  node.setAttribute('aria-label', `${square.area} ${square.square.row}-${square.square.column}${where}`)
+  const onSquare = picking?.onSquare
+  if (pickable !== undefined && onSquare !== undefined) {
+    const picked = pickable.square
+    node.tabIndex = 0
+    node.addEventListener('click', () => onSquare(picked))
+  }
+  for (const card of square.cards) node.append(cardElement(card, picking))
 
   return node
 }
 
-function squaresElement(rows: BoardView['squares']): HTMLElement {
+function squaresElement(rows: BoardView['squares'], picking?: BoardPicking): HTMLElement {
   const node = element('div', 'battle-space')
   for (const row of rows) {
     const line = element('div', 'battle-space__row')
-    for (const square of row) line.append(squareElement(square))
+    for (const square of row) line.append(squareElement(square, picking))
     node.append(line)
   }
 
@@ -206,6 +254,48 @@ export function actionsElement(views: readonly ActionView[], onAction: (action: 
   const list = element('div', 'actions__list')
   for (const view of views) list.append(button(view.label, () => onAction(view.action)))
   node.append(list)
+
+  return node
+}
+
+/** クリックで操作する時に、行える手のところへ出すもの（#94）。 */
+export interface PickHandlers {
+  readonly onAction: (action: LegalAction) => void
+  /** 選びかけをやめる。 */
+  readonly onCancel: () => void
+}
+
+/**
+ * クリックで操作する時の、行える手のところ（#94）。
+ *
+ * 盤面の上で示せない手だけをここに出す。**カードを選ぶ前は、対象を持たない手だけ**が並び、
+ * カードを選んだ後はその 1 枚の手が並ぶ。置き先を選ぶ手は盤面の上にあるので、ここには出ない。
+ */
+export function pickElement(view: PickView, handlers: PickHandlers): HTMLElement {
+  const node = element('section', 'actions')
+  node.append(element('h2', 'actions__title', '行える手'))
+
+  const guide =
+    view.picked === undefined
+      ? view.pickable.length > 0
+        ? 'カードを押すと、そのカードで行える手が出ます'
+        : '押せるカードがありません'
+      : view.destinations.length > 0
+        ? '光っているスクエアを押すと、そこへ置きます'
+        : 'このカードで行える手を選んでください'
+  node.append(element('p', 'actions__none', guide))
+
+  const list = element('div', 'actions__list')
+  for (const view_ of [...view.direct, ...view.untargeted]) {
+    list.append(button(view_.label, () => handlers.onAction(view_.action)))
+  }
+  node.append(list)
+
+  if (view.picked !== undefined) {
+    const back = element('div', 'choice__back')
+    back.append(button('選ぶのをやめる', handlers.onCancel))
+    node.append(back)
+  }
 
   return node
 }
@@ -354,8 +444,13 @@ export function overlayElement(overlay: Overlay): HTMLElement {
   return node
 }
 
-/** 盤面ひととおりを組み立てる。 */
-export function boardElement(view: BoardView): HTMLElement {
+/**
+ * 盤面ひととおりを組み立てる。
+ *
+ * `picking` を渡すと、押せるカードと置き先が盤面の上で分かるようになる（#94）。渡さなければ
+ * これまで通り、盤面はただ見るだけのものになる。
+ */
+export function boardElement(view: BoardView, picking?: BoardPicking): HTMLElement {
   const node = element('div', 'board')
   node.append(element('p', 'board__turn', view.turn))
   if (view.battle !== undefined) node.append(battleElement(view.battle))
@@ -369,7 +464,11 @@ export function boardElement(view: BoardView): HTMLElement {
     node.append(waiting)
   }
 
-  node.append(sideElement(view.opponent), squaresElement(view.squares), sideElement(view.own))
+  node.append(
+    sideElement(view.opponent, picking),
+    squaresElement(view.squares, picking),
+    sideElement(view.own, picking),
+  )
   node.append(logElement(view.log))
 
   return node
