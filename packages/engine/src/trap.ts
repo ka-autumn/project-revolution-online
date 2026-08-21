@@ -77,9 +77,9 @@ export function checkIntrusion(state: DuelState, invader: UnitOnSquare): DuelSta
  * `deferringRights` に置いてある。
  *
  * 発動条件のうち実装しているのは侵入だけで（`checkIntrusion`）、その侵入を起こす登場と移動は
- * バトル中には行えず（`priority.ts` の `activePlayerMayAct`）、スマッシュ判定が発生する
- * スマッシュフェイズにはどちらも行えない。効果でユニットをスクエアに置けるようになったら、
- * どちらの読み方を採るかを決める必要が出る。
+ * バトルやスマッシュ判定の進行中には行えない（ADR-0012、`priority.ts` の
+ * `activePlayerMayAct`）。効果でユニットをスクエアに置く場合は進行中でも起こりうるので、
+ * その時にどちらの読み方を採るかを決める必要が出る。
  */
 export function trapRightOf(state: DuelState, id: CardId): IntrusionOccasion | undefined {
   if (deferringRights(state)) return undefined

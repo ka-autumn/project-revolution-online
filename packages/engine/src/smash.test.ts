@@ -105,6 +105,16 @@ function stockedDuelState(library: readonly Card[]): DuelState {
   )
 }
 
+/** 後攻のエネルギーゾーンにカードを置く。「希望」の条件（総合ルール 第3部 第19章 1）を満たす。 */
+function withEnergy(state: DuelState, cards: readonly Card[]): DuelState {
+  return putInZone(
+    state,
+    '後攻',
+    'エネルギーゾーン',
+    cards.map((card, index) => instantiate({ id: `後攻のエネ${index}`, card, owner: '後攻' })),
+  )
+}
+
 type Placement = readonly [Square, string, UnitCard]
 
 /**
@@ -336,16 +346,6 @@ describe('希望ステップ', () => {
 
     expect(idsOf(cardsOn(endStep(state), centerSquare))).toEqual(['スマッシュ役'])
   })
-
-  /** 後攻のエネルギーゾーンにカードを置く。「希望」の条件を満たすために使う。 */
-  function withEnergy(state: DuelState, cards: readonly Card[]): DuelState {
-    return putInZone(
-      state,
-      '後攻',
-      'エネルギーゾーン',
-      cards.map((card, index) => instantiate({ id: `後攻のエネ${index}`, card, owner: '後攻' })),
-    )
-  }
 })
 
 // 総合ルール 第3部 第20章 1（ADR-0006）
@@ -405,28 +405,76 @@ describe('確定ステップ', () => {
   }
 })
 
-// 総合ルール 第3部 第17章 2-2（ADR-0006）
-describe('スマッシュ判定中のスマッシュ判定', () => {
-  /**
-   * スマッシュ判定の希望ステップで、アクティブプレイヤーがもう 1 度スマッシュした盤面。
-   *
-   * スマッシュには「バトル中以外」のような制限が無い（総合ルール 第3部 第9章 1）ので、
-   * スマッシュ判定の最中でも、バンクが空で優先権を持っていれば行える。
-   */
-  function judgmentInJudgment(): DuelState {
+// 総合ルール 第2部 第20章 1-1・第3部 第9章 1（ADR-0006、ADR-0012）
+describe('スマッシュ判定中の行動', () => {
+  /** 判定が発生した後、アクティブプレイヤーに優先権が戻ったところの盤面。 */
+  function duringJudgment(): DuelState {
     const state = smashPhase([
       [centerSquare, '1 枚目', sp1000],
       [anotherCenterSquare, '2 枚目', sp1000],
     ])
-    const first = endStep(stateOf(smash(state, '1 枚目')))
+    return pass(stateOf(smash(state, '1 枚目')))
+  }
 
-    return stateOf(smash(pass(first), '2 枚目'))
+  /**
+   * 総合ルール 第3部 第9章 1 には「バトル中以外」のような断りが無いが、バトル中に行えない
+   * のと同じ理由で、スマッシュ判定の進行中にも行えない（ADR-0012）。
+   */
+  it('アクティブプレイヤーは、判定が進行中なら優先権を持っていてもスマッシュできない', () => {
+    const during = duringJudgment()
+
+    expect(during.smashJudgments).toHaveLength(1)
+    expect(during.turn.phase).toBe('スマッシュフェイズ')
+    expect(during.turn.priority).toBe('先攻')
+    expect(during.bank).toEqual([])
+    expect(smash(during, '2 枚目')).toEqual({ kind: '行えない', violation: '行える時ではない' })
+  })
+
+  it('判定が終われば、同じフェイズでスマッシュできるようになる', () => {
+    let current = duringJudgment()
+    while (current.smashJudgments.length > 0) current = pass(current)
+    const ready = pass(current)
+
+    expect(ready.turn.phase).toBe('スマッシュフェイズ')
+    // 行えたことは、そのダメージで新しい判定が始まることで分かる。ダメージそのものは
+    // その判定の回復ステップで 1000 回復している（総合ルール 第3部 第18章 1）。
+    expect(stateOf(smash(ready, '2 枚目')).smashJudgments).toHaveLength(1)
+  })
+})
+
+// 総合ルール 第3部 第17章 2-2、第20章 1 の【例】（ADR-0006）
+describe('スマッシュ判定中のスマッシュ判定', () => {
+  /** 「希望」で先攻に 1000 のダメージを与える、レベル 1 の赤いカード。 */
+  const damagingHope = defineUnit({
+    name: 'テスト・希望ダメージ',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      hope(function* () {
+        yield* damagePlayer('先攻', 1000)
+      }),
+    ],
+  })
+
+  /**
+   * 後攻のスマッシュ判定の希望ステップでめくれた「希望」が、先攻に 1000 のダメージを与えて
+   * 2 つ目の判定を起こした盤面。
+   *
+   * 総合ルール 第3部 第20章 1 の【例】（希望ステップで「相手に1000ダメージ！」の希望が解決
+   * され、新しいスマッシュ判定が発生して先の判定が待機中になる）と同じ形である。判定の最中に
+   * スマッシュはできない（ADR-0012）ので、入れ子の判定は判定の中で解決される効果から起こる。
+   */
+  function judgmentInJudgment(): DuelState {
+    return endStep(withEnergy(smashedFromCenter(sp1000, [damagingHope]), [vanilla]))
   }
 
   it('後から発生したスマッシュ判定を先に処理する', () => {
     const state = judgmentInJudgment()
 
     expect(state.smashJudgments).toHaveLength(2)
+    expect(state.smashJudgments.map((judgment) => judgment.player)).toEqual(['後攻', '先攻'])
     expect(stepOf(state)).toBe('回復ステップ')
   })
 
@@ -437,10 +485,11 @@ describe('スマッシュ判定中のスマッシュ判定', () => {
     while (current.smashJudgments.length > 1) current = endStep(current)
 
     expect(current.smashJudgments).toHaveLength(1)
+    expect(current.smashJudgments[0]?.player).toBe('後攻')
     // 待機させたのは希望ステップの途中なので、そのステップから続く。終わっていない
     // ステップをやり直すわけではないので、山札はもうめくられない。
     expect(stepOf(current)).toBe('希望ステップ')
-    expect(cardsIn(current, '後攻', 'スマッシュゾーン')).toHaveLength(2)
+    expect(cardsIn(current, '後攻', 'スマッシュゾーン')).toHaveLength(1)
     expect(stepOf(endStep(current))).toBe('確定ステップ')
   })
 
