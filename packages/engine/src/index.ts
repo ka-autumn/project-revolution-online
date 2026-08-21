@@ -164,6 +164,7 @@ export type {
   VisibleBattle,
   VisibleCard,
   VisibleCreatedAbility,
+  VisibleSmashJudgment,
 } from './perspective.js'
 export { activateTrap, playAsTrap, playCard } from './play.js'
 export { applyWithAnswers } from './protocol.js'

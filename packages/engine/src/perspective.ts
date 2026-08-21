@@ -94,6 +94,18 @@ export type VisibleBattle = Omit<Battle, 'heldBank' | 'heldTriggered'> & {
 }
 
 /**
+ * ある視点から見たスマッシュ判定。バトルと同じく、待機中のバンクだけが形を変える（#103）。
+ *
+ * 判定が持つそれ以外のもの（誰の判定か・ステップ・繰り返しの回数・表向きに置かれたカード）は
+ * 公開情報である。表向きに置かれるカードは、規定によって表向きである（総合ルール 第3部
+ * 第19章 1）。
+ */
+export type VisibleSmashJudgment = Omit<SmashJudgment, 'heldBank' | 'heldTriggered'> & {
+  readonly heldBank: readonly VisibleAbility[]
+  readonly heldTriggered: readonly VisibleAbility[]
+}
+
+/**
  * 完全な盤面から導いた、あるプレイヤーが見てよい盤面（ADR-0004）。
  *
  * サーバだけが完全な盤面（`DuelState`）を持ち、クライアントにはこれを送る。全体を送れば
@@ -107,9 +119,9 @@ export type VisibleBattle = Omit<Battle, 'heldBank' | 'heldTriggered'> & {
  *   非公開のカードを名指しするうえ、相手の権利は視点のプレイヤーが行える行動を左右しない
  * - `squares` と `resolveZone` は `CardInstance` のまま。スクエアにあるカードは公開情報であり
  *   （同 第23章 1-1）、リゾルブゾーンにあるカードは表向きで置かれる（同 第21章 12-2）
- * - `bank`・`triggered`・`createdAbilities`、そしてバトルが持つ待機中のバンクは、効果を落とした
+ * - `bank`・`triggered`・`createdAbilities`、そしてバトルとスマッシュ判定が持つ待機中のバンクは、効果を落とした
  *   `VisibleAbility` になる。効果は関数なので渡す手立てが無く、落としても困らない（同型の doc）
- * - `turn`・`damage`・`smashJudgments`・`result` はそのまま。どれもカードの位置ではなく、どちらの
+ * - `turn`・`damage`・`result` はそのまま。どれもカードの位置ではなく、どちらの
  *   プレイヤーにも見せてよい（`DuelState.turn` の doc）
  *
  * **これは通信の形式そのものではない。** 残っている `CardInstance.card` も効果を関数として持つ
@@ -142,7 +154,7 @@ export interface DuelPerspective {
   /** 視点のプレイヤーの、「勇気」の起動条件が満たされていること。 */
   readonly courageConditionsMet: readonly CourageConditionMet[]
   readonly battle: VisibleBattle | undefined
-  readonly smashJudgments: readonly SmashJudgment[]
+  readonly smashJudgments: readonly VisibleSmashJudgment[]
   readonly result: DuelResult | undefined
   /**
    * ここまでに起きたできごと（ADR-0011）。**見てはならないカードは名指ししない。**
@@ -224,6 +236,15 @@ function visibleBattle(battle: Battle): VisibleBattle {
     ...battle,
     heldBank: battle.heldBank.map(visibleAbility),
     heldTriggered: battle.heldTriggered.map(visibleAbility),
+  }
+}
+
+/** バトルと同じく、待機中のバンクから効果を落とす（#103）。 */
+function visibleSmashJudgment(judgment: SmashJudgment): VisibleSmashJudgment {
+  return {
+    ...judgment,
+    heldBank: judgment.heldBank.map(visibleAbility),
+    heldTriggered: judgment.heldTriggered.map(visibleAbility),
   }
 }
 
@@ -349,7 +370,7 @@ function projectBoard(state: DuelState, viewer: Player): DuelPerspective {
     trapConditionsMet: state.trapConditionsMet.filter((met) => ownsTrap(state, viewer, met)),
     courageConditionsMet: state.courageConditionsMet.filter((met) => met.player === viewer),
     battle: state.battle === undefined ? undefined : visibleBattle(state.battle),
-    smashJudgments: state.smashJudgments,
+    smashJudgments: state.smashJudgments.map(visibleSmashJudgment),
     result: state.result,
     log: [],
   }
