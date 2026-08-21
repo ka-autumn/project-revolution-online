@@ -133,6 +133,8 @@ const redTrap = defineTrap({
 
 /** 先攻から見た味方エリア・中央エリア・敵エリアのスクエア（`areaOf` の決めた向き）。 */
 const homeSquare: Square = { row: 0, column: 1 }
+/** 味方エリアのもう 1 つのスクエア。2 枚目を置く先として使う。 */
+const otherHomeSquare: Square = { row: 0, column: 0 }
 const centerSquare: Square = { row: 1, column: 1 }
 const enemySquare: Square = { row: 2, column: 1 }
 
@@ -1083,5 +1085,51 @@ describe('「気合」', () => {
   // 総合ルール 第5部 第9章 2。ダメージを受けるのは「あなた」＝能力の支配者。
   it('スマッシュ判定を受けるのは能力の支配者であって、相手ではない', () => {
     expect(afterResolved().smashJudgments[0]?.player).toBe('先攻')
+  })
+
+  /**
+   * 「気合」で発生したスマッシュ判定の最中に、アクティブプレイヤーへ優先権が戻ったところ。
+   *
+   * **メインフェイズの最中にスマッシュ判定が進む唯一の経路がここである。** 判定が発生する
+   * のはスマッシュフェイズだけではない（総合ルール 第5部 第9章 3）。
+   */
+  function duringJudgment(): DuelState {
+    const state = readyToPlay(
+      [
+        instantiate({ id: '気合ユニット', card: spiritedUnit, owner: '先攻' }),
+        instantiate({ id: '別のユニット', card: redUnit, owner: '先攻' }),
+      ],
+      [energy('赤エネ', '赤'), energy('赤エネ2', '赤'), energy('青エネ', '青')],
+    )
+    const played = stateOf(play(state, { card: '気合ユニット', square: homeSquare }))
+    // 2 回の放棄で能力が解決され、そのダメージで判定が始まる。もう 1 回で優先権が戻る。
+    return passPriority(passPriority(passPriority(played, chooseFirst), chooseFirst), chooseFirst)
+  }
+
+  /**
+   * 総合ルール 第3部 第8章 2、第2部 第20章 1-1（ADR-0012）。
+   *
+   * 条文が「バトル中以外」と断るのはバトルだけだが、スマッシュ判定の進行中もフェイズの
+   * 行動は行えない。読み方の根拠は ADR-0012 に書いた。
+   */
+  it('判定が進行中なら、自分のメインフェイズで優先権を持っていてもプレイできない', () => {
+    const during = duringJudgment()
+
+    expect(during.smashJudgments).toHaveLength(1)
+    expect(during.turn.phase).toBe('メインフェイズ')
+    expect(during.turn.priority).toBe('先攻')
+    expect(during.bank).toEqual([])
+    expect(violationOf(play(during, { card: '別のユニット', square: otherHomeSquare }))).toBe('行える時ではない')
+  })
+
+  it('判定が終われば、同じメインフェイズでプレイできるようになる', () => {
+    let current = duringJudgment()
+    while (current.smashJudgments.length > 0) current = passPriority(current, chooseFirst)
+    const ready = passPriority(current, chooseFirst)
+
+    expect(ready.turn.phase).toBe('メインフェイズ')
+    expect(idsOf(cardsOn(stateOf(play(ready, { card: '別のユニット', square: otherHomeSquare })), otherHomeSquare))).toEqual([
+      '別のユニット',
+    ])
   })
 })

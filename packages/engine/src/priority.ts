@@ -77,6 +77,21 @@ export function grantPriorityToInactive(state: DuelState): DuelState {
 }
 
 /**
+ * バトルまたはスマッシュ判定という特別な手順が進行中か（総合ルール 第3部 第4章 2）。
+ *
+ * どちらも複数のステップで構成され、進行中は連続した優先権の放棄がフェイズではなくステップを
+ * 終わらせる（同 第4章 4）。フェイズの進行はその間止まっていて、優先権のやりとりはステップが
+ * 受け持つ。
+ *
+ * この間はフェイズの行動を行えず（`activePlayerMayAct`）、トラップと「勇気」の権利も発生
+ * しない（`deferringRights`）。条文の書き方は別々だが、止まる理由は同じ 1 つの状態なので、
+ * 判定もここ 1 か所に置く。
+ */
+function inSpecialProcedure(state: DuelState): boolean {
+  return state.battle !== undefined || state.smashJudgments.length > 0
+}
+
+/**
  * バトルまたはスマッシュ判定が進行中で、優先権を得ることで発生するはずの権利が遅れているか。
  *
  * 条件が満たされた後、優先権を得る時にバトルまたはスマッシュ判定が発生した場合、それが終了
@@ -93,7 +108,7 @@ export function grantPriorityToInactive(state: DuelState): DuelState {
  * `trapRightOf`）。
  */
 export function deferringRights(state: DuelState): boolean {
-  return state.battle !== undefined || state.smashJudgments.length > 0
+  return inSpecialProcedure(state)
 }
 
 /** 優先権を非アクティブプレイヤーに移すだけ。盤面の片づけは行わない。 */
@@ -109,17 +124,18 @@ function toInactive(state: DuelState): DuelState {
  * 「バトル中以外の自分のそのフェイズの間、バンクが空で優先権を持っている時」に行える
  * （総合ルール 第3部 第7章 1・第8章 2、第2部 第20章 1-1・2-1・3-1）。
  *
- * バトル中は、優先権を持っていても行えない（同 第2部 第20章 1-1・3-1「バトル中以外の
- * 自分のメインフェイズの間」）。バトル中に行える行動はここを通らない。トラップの発動は
- * 自分のメインフェイズであることもバンクが空であることも要らない（同 3-8）ため、
- * `play.ts` の `activateTrap` がこの判定を使っていない。バトル中にトラップを発動できない
- * のは、発動する権利がそもそも発生していない（同 3-8 ただし書き、`trap.ts` の
- * `trapRightOf`）ためであって、行動そのものが禁じられているからではない。
+ * **バトルとスマッシュ判定は、どちらも進行中は行えない（ADR-0012）。** 条文が「バトル中
+ * 以外」と断るのはメインフェイズの条項だけだが、エネルギーフェイズ（同 第3部 第7章 1）にも
+ * スマッシュフェイズ（同 第9章 1）にもその断りは無く、それでもバトル中に行えないことは
+ * 変わらない。行動を止めているのは条文の文言ではなく、フェイズの進行として発生した優先権を
+ * 持っていないことである（同 第4部 第5章 2、第3部 第4章 4）。読み方の根拠は ADR-0012 に
+ * 書いた。
  *
- * スマッシュ判定中は見ない。スマッシュ（同 第3部 第9章 1）には「バトル中以外」にあたる
- * 制限が書かれておらず、スマッシュ判定の最中も行えるためである（`action.ts` の `smash`）。
- * スマッシュ判定はスマッシュフェイズにしか発生しないので、他のフェイズの行動はフェイズの
- * 判定で弾かれる。
+ * トラップの発動と「勇気」の起動はここを通らない。自分のメインフェイズであることもバンクが
+ * 空であることも要らない（同 第2部 第20章 3-8）ためで、`play.ts` の `activateTrap` が
+ * この判定を使っていない。進行中に発動できないのは、発動する権利がそもそも発生していない
+ * （同 3-8 ただし書き、`trap.ts` の `trapRightOf`）ためであって、行動そのものが禁じられて
+ * いるからではない。
  *
  * 勝敗が決まったデュエルでは何も行えない。デュエルは即座に終了する（同 第3章 3）。
  */
@@ -127,7 +143,7 @@ export function activePlayerMayAct(state: DuelState, phase: Phase): boolean {
   const { turn } = state
   return (
     !hasEnded(state) &&
-    state.battle === undefined &&
+    !inSpecialProcedure(state) &&
     turn.phase === phase &&
     turn.priority === turn.active &&
     state.bank.length === 0
