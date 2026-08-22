@@ -4,7 +4,7 @@ import type { Square } from './board.js'
 import { bpOf, hasPep } from './card.js'
 import { bpModification } from './continuous.js'
 import type { UnitCard } from './card.js'
-import { discardFromSquares } from './discard.js'
+import { discardFromSquares, discardedFromSquares } from './discard.js'
 import { cardsOn, dealDamage } from './duel.js'
 import type { BankedAbility, CardId, CardInstance, DuelState } from './duel.js'
 import { record } from './log.js'
@@ -310,12 +310,17 @@ function resolveEndOfBattle(state: DuelState, battle: Battle): DuelState {
     unitInBattle(state, battle, battle.attacked) !== undefined
 
   // 2 つのルールエフェクトは同時に発生するので、どれを捨札に置くかを先にまとめて決める。
-  const discarded = [...(bothRemain ? [battle.attacker] : []), ...state.playedIntoCenter]
+  // 攻撃側のユニットが中央エリアを指定してプレイされたユニットでもあることがあるため、
+  // 実際に置かれるものを `discardedFromSquares` に決めさせてから記録する。
+  const discarded = discardedFromSquares(state, [
+    ...(bothRemain ? [battle.attacker] : []),
+    ...state.playedIntoCenter,
+  ])
   const moved = discardFromSquares(state, discarded)
   const resolved =
     discarded.length === 0 ? moved : record(moved, { kind: 'ルールで捨札に置かれた', cards: discarded })
 
-  const triggered = trigger({ ...resolved, playedIntoCenter: [] }, 'バトルの終わりに')
+  const triggered = trigger(resolved, 'バトルの終わりに')
   return withBattle(triggered, { ...battle, endOfBattleTriggered: true })
 }
 

@@ -2,7 +2,7 @@ import { pendingBattle } from './battle.js'
 import { bpOf } from './card.js'
 import { bpModification } from './continuous.js'
 import type { BpModification } from './continuous.js'
-import { discardFromSquares } from './discard.js'
+import { discardFromSquares, discardedFromSquares } from './discard.js'
 import { hasEnded, librarySize } from './duel.js'
 import type { CardId, CardInstance, DuelResult, DuelState } from './duel.js'
 import { record } from './log.js'
@@ -56,17 +56,18 @@ export function checkRuleEffects(state: DuelState): DuelState {
   // 第4部 第14章 2）ので、どのユニットを捨札に置くかは 1 つの盤面から決まらなければ
   // ならない。1 枚の写しを全ユニットで使い回すことが、それを構造として保証する。
   const modification = bpModification(state)
-  const fromCenter = discardedFromCenter(state)
-  const discarded = [...state.squares.flatMap((cards) => discardedFrom(cards, modification)), ...fromCenter]
+  const discarded = discardedFromSquares(state, [
+    ...state.squares.flatMap((cards) => discardedFrom(cards, modification)),
+    ...discardedFromCenter(state),
+  ])
   if (discarded.length === 0) return state
 
   // すべてのルールエフェクトが同時に発生する（総合ルール 第4部 第14章 2）ので、
   // 1 枚ずつ捨札に置いていっても、途中の盤面でどれを捨札に置くかを決め直さない。
-  const resolved = record(discardFromSquares(state, discarded), {
+  return record(discardFromSquares(state, discarded), {
     kind: 'ルールで捨札に置かれた',
     cards: discarded,
   })
-  return fromCenter.length === 0 ? resolved : { ...resolved, playedIntoCenter: [] }
 }
 
 /**

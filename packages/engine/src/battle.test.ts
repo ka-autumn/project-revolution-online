@@ -38,6 +38,9 @@ const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['
 /** ＢＰが小さいユニット。バトルダメージで先に捨札に置かれる側になる。 */
 const weak = defineUnit({ name: 'テスト・小ＢＰ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
 
+/** ＢＰが大きいユニット。バトルダメージでは捨札に置かれない側になる。 */
+const strong = defineUnit({ name: 'テスト・大ＢＰ', level: 1, colors: ['赤'], bp: 5000, sp: 1000 })
+
 /** 「元気」を持つ、ＢＰが小さいユニット（総合ルール 第5部 第8章）。 */
 const pepWeak = defineUnit({
   name: 'テスト・元気',
@@ -217,6 +220,11 @@ function banked(state: DuelState): readonly string[] {
 }
 
 const idsOf = (cards: readonly CardInstance[]) => cards.map((card) => card.id)
+
+/** ルールエフェクトで捨札に置かれたことの記録を、積まれた順に並べたもの。 */
+function discardedByRule(state: DuelState): readonly (readonly string[])[] {
+  return state.log.flatMap((event) => (event.kind === 'ルールで捨札に置かれた' ? [event.cards] : []))
+}
 
 /** そのユニットが受けているダメージ。スクエアになければ `undefined`。 */
 function damageOn(state: DuelState, square: Square, id: string): number | undefined {
@@ -573,6 +581,28 @@ describe('中央エリアを指定してプレイされたユニット', () => {
     expect(idsOf(cardsIn(ended, '先攻', '捨札'))).toEqual(['攻撃した'])
   })
 
+  // 総合ルール 第4部 第14章 4-6・4-10（ADR-0006）
+  it('バトルに負けて先に捨札へ置かれたなら、バトル終了時にもう一度は記録されない', () => {
+    const ended = afterBattle(battleByPlaying(centerSquare, weak))
+
+    // バトルダメージで捨札に置かれる（同 4-6）のは 1 度きりで、その後のバトル終了時に
+    // 中央エリア指定（同 4-10）で置き直されることはない。もう一度置かれるものは無いので、
+    // できごとも積まれない。
+    expect(idsOf(cardsIn(ended, '先攻', '捨札'))).toEqual(['攻撃した'])
+    expect(discardedByRule(ended)).toEqual([['攻撃した']])
+  })
+
+  // 総合ルール 第4部 第14章 4-6・4-10（ADR-0006）
+  it('バトルに勝ったなら、負けた相手とは別に、バトル終了時に捨札へ置かれる', () => {
+    const ended = afterBattle(battleByPlaying(centerSquare, strong))
+
+    // 2 回積まれるが、別のカードである。負けた相手（同 4-6）と、中央エリアを指定して
+    // プレイされたユニット（同 4-10）が、それぞれ捨札に置かれる。
+    expect(idsOf(cardsIn(ended, '後攻', '捨札'))).toEqual(['攻撃された'])
+    expect(idsOf(cardsIn(ended, '先攻', '捨札'))).toEqual(['攻撃した'])
+    expect(discardedByRule(ended)).toEqual([['攻撃された'], ['攻撃した']])
+  })
+
   // 総合ルール 第4部 第7章 6、第14章 4-10・4-11（ADR-0006）
   it(
     '攻撃側と中央エリア指定の両方に該当しても、1 回の捨札への移動につき能力は 1 回だけ誘発する',
@@ -588,6 +618,8 @@ describe('中央エリアを指定してプレイされたユニット', () => {
       expect(banked(resolved)).toEqual([
         '見届け役／あなたのユニットがスクエアから捨札に置かれた時',
       ])
+      // 移動が 1 回なら、記録も 1 回である。
+      expect(discardedByRule(resolved)).toEqual([['攻撃した']])
     },
   )
 })
