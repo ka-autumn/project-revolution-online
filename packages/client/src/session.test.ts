@@ -30,7 +30,7 @@ const CHOICE: WireChoice = {
   mayDecline: false,
   answered: 0,
   mayGoBack: true,
-  candidates: [{ kind: '見えていない' }, { kind: '見えている', card: 'あるカード' }],
+  candidates: [{ kind: '見えていない', at: undefined }, { kind: '見えている', card: 'あるカード' }],
 }
 
 /** 届いたものを順に畳む。 */

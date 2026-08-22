@@ -175,6 +175,7 @@ export type {
   RoomCode,
   ToClient,
   WireCandidate,
+  WireCardPosition,
   WireChoice,
 } from './protocol.js'
 export type { PlayDeclaration } from './play.js'

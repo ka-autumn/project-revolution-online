@@ -168,8 +168,11 @@ function draw(
               pickable: answering.pickable,
               picked: undefined,
               squares: answering.squares,
+              // 裏向きのカードは識別子を持たないので、置き場所で押す（#127）。
+              hidden: answering.hidden,
               onCard: (card) => answer(answering.answerOf(card)),
               onSquare: (square) => answer(answering.answerOfSquare(square)),
+              onHidden: (at) => answer(answering.answerOfHidden(at)),
             }
           : undefined,
     )

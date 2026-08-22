@@ -18,6 +18,7 @@ import type {
   Turn,
   WireCardFace,
   WireCardInstance,
+  WireCardPosition,
   WirePerspective,
   WireVisibleCard,
 } from '@revolution/engine'
@@ -105,6 +106,17 @@ export type CardView =
        */
       readonly kind: '裏'
       readonly orientation: Orientation
+      /**
+       * 盤面での置き場所（#127）。
+       *
+       * **識別子の代わりに押すところを指す。** 裏向きのカードも候補になる（プランのコストの
+       * スマッシュ、総合ルール 第2部 第21章 7-5）が、識別子が無いので盤面のどの札のことかを
+       * 結び付けられなかった。ゾーンと何番目かなら、見えないままで結び付けられる。
+       *
+       * 持つのはゾーンに並ぶカードだけである。スクエアにあるカードは公開情報（同 第23章 1-1）
+       * なので、裏で並ぶことがない。
+       */
+      readonly at: WireCardPosition
     }
 
 /** 画面に出すスクエア 1 つ。 */
@@ -383,6 +395,17 @@ export function nameOf(names: ReadonlyMap<CardId, string>, id: CardId): string {
   return names.get(id) ?? '見えていないカード'
 }
 
+/**
+ * 置き場所を 1 つの鍵に直す（#127）。
+ *
+ * 置き場所は組（`protocol.ts` の `WireCardPosition`）なので、そのままでは `Map` の鍵にできず、
+ * 見比べるのにも項目を 3 つ突き合わせることになる。スクエアを盤面の並びの番号で引く
+ * （`indexOfSquare`）のと同じ扱いである。**画面に出すものではない。**
+ */
+export function keyOfPosition(at: WireCardPosition): string {
+  return `${at.player}/${at.zone}/${at.index}`
+}
+
 /** 見る人から見たスクエアの呼び方（総合ルール 第2部 第22章 4・6）。 */
 export function squareLabel(viewer: Player, square: Square): string {
   return `${areaOf(viewer, square)}の${lineOf(viewer, square)}`
@@ -527,10 +550,16 @@ function faceUpView(
   }
 }
 
-function cardView(card: WireVisibleCard, viewer: Player): CardView {
+/**
+ * ゾーンに並ぶ 1 枚。
+ *
+ * 裏向きのカードには置き場所を持たせる（#127）。届いた並びの何番目かがそのまま位置になる
+ * （`protocol.ts` の `WireCardPosition`）ので、数え直さない。
+ */
+function cardView(card: WireVisibleCard, viewer: Player, at: WireCardPosition): CardView {
   return card.kind === '見えている'
     ? faceUpView(card.instance, viewer)
-    : { kind: '裏', orientation: card.orientation }
+    : { kind: '裏', orientation: card.orientation, at }
 }
 
 /**
@@ -552,7 +581,9 @@ function zoneView(board: WirePerspective, owner: Player, zone: PlayerZone): Zone
   return {
     zone,
     count: counted.length,
-    cards: COUNTED_ZONES.includes(zone) ? [] : cards.map((card) => cardView(card, board.viewer)),
+    cards: COUNTED_ZONES.includes(zone)
+      ? []
+      : cards.map((card, index) => cardView(card, board.viewer, { player: owner, zone, index })),
   }
 }
 

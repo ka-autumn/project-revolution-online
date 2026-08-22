@@ -89,6 +89,8 @@ describe('答えの並びで行動を適用する', () => {
    * プランのコストは自分の裏向きのスマッシュでも支払える（総合ルール 第2部 第21章 7-5）が、
    * スマッシュはどちらのプレイヤーにも見えない（同 7-3）。**番号で答えるからこそ、見えないまま
    * 選べる。**
+   *
+   * 見えないまま盤面から押せるように、置き場所は添える（#127）。**中身は載らない。**
    */
   it('見えないカードは、見えないまま候補になる', () => {
     const progress = applyWithAnswers(beforePlanning(), PLANNING, [])
@@ -97,7 +99,7 @@ describe('答えの並びで行動を適用する', () => {
     expect(progress.choice.candidates).toEqual([
       { kind: '見えている', card: 'エネ1' },
       { kind: '見えている', card: 'エネ2' },
-      { kind: '見えていない' },
+      { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 0 } },
     ])
   })
 
@@ -231,6 +233,108 @@ describe('1 つの行動で 2 回選ぶ', () => {
     expectChoice(second)
     expect(first.choice.purpose).toBe('プランのコスト')
     expect(second.choice.purpose).toBe('プランの置き換え')
+  })
+})
+
+/**
+ * #127。見えていない候補は、**盤面のどこにあるか**を持つ。
+ *
+ * 識別子を出さずに、盤面の裏向きの札と候補の番号を結び付けるためである。**見えないままである
+ * ことは崩れない**——ゾーンごとの枚数・並び・向きは今も届いている（`wire.ts` の
+ * `WireVisibleCard`）ので、位置はその言い直しにしかならない。
+ */
+describe('見えていない候補の置き場所', () => {
+  const secret = defineUnit({
+    name: 'テスト・見えていないスマッシュ',
+    level: 2,
+    colors: ['黒'],
+    bp: 3000,
+    sp: 1500,
+  })
+
+  /** プランのコストを、エネルギー 1 枚と裏向きのスマッシュ 2 枚から支払える盤面。 */
+  function withSmashes(): DuelState {
+    const withEnergy = putInZone(phaseReadyToAct('メインフェイズ'), '先攻', 'エネルギーゾーン', [card('エネ1')])
+    return putInZone(withEnergy, '先攻', 'スマッシュゾーン', [
+      instantiate({ id: '裏のスマッシュ1', card: secret, owner: '先攻' }),
+      instantiate({ id: '裏のスマッシュ2', card: secret, owner: '先攻' }),
+    ])
+  }
+
+  it('ゾーンと、そのゾーンの何番目かが載る', () => {
+    const progress = applyWithAnswers(withSmashes(), PLANNING, [])
+
+    expectChoice(progress)
+    expect(progress.choice.candidates).toEqual([
+      { kind: '見えている', card: 'エネ1' },
+      { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 0 } },
+      { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 1 } },
+    ])
+  })
+
+  /**
+   * `wire.test.ts` の「通信内容に現れないもの」と同じ確かめ方。位置を足しても、**カードの
+   * 中身も識別子も現れない。**
+   */
+  it('カードの中身も識別子も現れない', () => {
+    const progress = applyWithAnswers(withSmashes(), PLANNING, [])
+
+    expectChoice(progress)
+    const sent = JSON.stringify(progress.choice)
+    expect(sent).toContain('スマッシュゾーン')
+    expect(sent).not.toContain('テスト・見えていないスマッシュ')
+    expect(sent).not.toContain('裏のスマッシュ')
+  })
+
+  /**
+   * 山札の中は持ち主であっても見てはならない（総合ルール 第2部 第21章 2-2）。1 枚ずつ並べる
+   * 場所も画面に無いので、**位置も出さない。** 深さだけが分かると、そこだけ新しく読み取れる
+   * ものが増える。
+   */
+  it('山札にあるカードは置き場所を持たない', () => {
+    const inLibrary = [
+      instantiate({ id: '山札の1枚', card: secret, owner: '先攻' }),
+      instantiate({ id: '山札の2枚目', card: secret, owner: '先攻' }),
+    ]
+    const picker = defineUnit({
+      name: 'テスト・山札から選ぶ',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [
+        triggeredAbility('登場した時', function* () {
+          yield* choose(inLibrary)
+        }),
+      ],
+    })
+    const square: Square = { row: 0, column: 1 }
+    const placed = putOnSquare(
+      putInZone(phaseReadyToAct('メインフェイズ'), '先攻', '山札', inLibrary),
+      square,
+      instantiate({ id: '選ばせるユニット', card: picker, owner: '先攻' }),
+    )
+    const [triggered] = picker.abilities
+    if (triggered?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
+    const waiting: DuelState = {
+      ...placed,
+      bank: [
+        {
+          ability: triggered,
+          source: '選ばせるユニット',
+          controller: '先攻',
+          self: { id: '選ばせるユニット', square, card: picker, controller: '先攻' },
+        },
+      ],
+    }
+
+    const progress = applyWithAnswers(waiting, { kind: '優先権を放棄する' }, [])
+
+    expectChoice(progress)
+    expect(progress.choice.candidates).toEqual([
+      { kind: '見えていない', at: undefined },
+      { kind: '見えていない', at: undefined },
+    ])
   })
 })
 

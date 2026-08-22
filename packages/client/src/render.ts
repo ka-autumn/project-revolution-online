@@ -1,4 +1,4 @@
-import type { CardId, ChoiceAnswer, LegalAction, Square } from '@revolution/engine'
+import type { CardId, ChoiceAnswer, LegalAction, Square, WireCardPosition } from '@revolution/engine'
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import type {
   AbilityView,
@@ -12,6 +12,7 @@ import type {
   TransitionView,
   ZoneView,
 } from './view-model.js'
+import { keyOfPosition } from './view-model.js'
 
 /**
  * 画面に出す値（`view-model.ts`）を DOM にする。
@@ -120,13 +121,27 @@ export interface BoardPicking {
   readonly picked: CardId | undefined
   /** 光らせるスクエア。押す先がカードだけの場面では空か、渡されない。 */
   readonly squares?: readonly PickableSquare[]
+  /**
+   * 押せる裏向きのカードの置き場所（#127）。行える手を選ぶ場面では渡されない。
+   *
+   * 裏向きのカードは識別子を持たない（`view-model.ts` の `CardView`）ので、押せるかどうかも
+   * 置き場所で引く。**どれが押せるかはここで決めない**のは、表向きのカードと同じである。
+   */
+  readonly hidden?: readonly WireCardPosition[]
   readonly onCard: (card: CardId) => void
   readonly onSquare?: (square: Square) => void
+  readonly onHidden?: (at: WireCardPosition) => void
 }
 
 /** そのスクエアが押せるなら、その 1 つ。押せなければ `undefined`。 */
 function pickableAt(picking: BoardPicking | undefined, square: Square): PickableSquare | undefined {
   return picking?.squares?.find((each) => each.square.row === square.row && each.square.column === square.column)
+}
+
+/** その置き場所の裏向きのカードが押せるか。 */
+function picksHidden(picking: BoardPicking | undefined, at: WireCardPosition): boolean {
+  const key = keyOfPosition(at)
+  return picking?.hidden?.some((each) => keyOfPosition(each) === key) ?? false
 }
 
 /**
@@ -141,8 +156,17 @@ function faceElement(): HTMLElement {
 
 function cardElement(card: CardView, picking?: BoardPicking): HTMLElement {
   if (card.kind === '裏') {
-    const back = element('div', `card card--back card--${card.orientation}`)
-    back.setAttribute('aria-label', `裏向きのカード（${card.orientation}）`)
+    // 裏向きのカードも候補になる（プランのコストのスマッシュ、#127）。押せるかどうかは
+    // 置き場所で引く。識別子は届いていない。
+    const pickable = picksHidden(picking, card.at)
+    const back = element('div', `card card--back card--${card.orientation}${pickable ? ' card--押せる' : ''}`)
+    // 押せることを色だけで区別させないのは、表向きのカードと同じである（#94）。
+    back.setAttribute('aria-label', `裏向きのカード（${card.orientation}）${pickable ? '（押せます）' : ''}`)
+    if (pickable && picking?.onHidden !== undefined) {
+      const at = card.at
+      const onHidden = picking.onHidden
+      back.addEventListener('click', () => onHidden(at))
+    }
     back.append(faceElement())
     return back
   }

@@ -6,12 +6,13 @@ import type {
   Player,
   Square,
   WireCandidate,
+  WireCardPosition,
   WireChoice,
   WirePerspective,
 } from '@revolution/engine'
 import { indexOfSquare } from '@revolution/engine'
 import type { Session } from './session.js'
-import { nameOf, namesIn, squareLabel } from './view-model.js'
+import { keyOfPosition, nameOf, namesIn, squareLabel } from './view-model.js'
 
 /**
  * 行える手と選ぶ候補から、画面に出す値を作る（#14）。
@@ -398,6 +399,10 @@ export interface ChoicePicking {
   readonly squares: readonly PickableSquare[]
   /** そのスクエアを押した時に答える番号。押せないスクエアなら `undefined`。 */
   readonly answerOfSquare: (square: Square) => number | undefined
+  /** 押せる裏向きのカードの置き場所（#127）。裏向きの候補が並ばない場面では空になる。 */
+  readonly hidden: readonly WireCardPosition[]
+  /** その置き場所の札を押した時に答える番号。押せない置き場所なら `undefined`。 */
+  readonly answerOfHidden: (at: WireCardPosition) => number | undefined
 }
 
 /**
@@ -408,19 +413,24 @@ export interface ChoicePicking {
  * **盤面に出ている候補は、盤面のそこを押しても答えられる**ようにする。答えるのは番号のまま
  * なので、通信は変わらない。
  *
- * 押せるのは、見えているカード（`見えている`）と、スクエア（#113）である。**裏向きの
- * スマッシュは押せない。** 候補になる（プランのコスト、総合ルール 第2部 第21章 7-5）が、
- * 通信に載るのは見えていないということだけで（`protocol.ts` の `WireCandidate`）、盤面の
- * どの札のことかを結び付けられない（#127）。能力の候補も、押す先が盤面に無い。**それらは
- * ボタンのまま**である。
+ * 押せるのは、見えているカード（`見えている`）、スクエア（#113）、そして**盤面のどこにあるかが
+ * 分かっている裏向きのカード**（#127）である。裏向きのカードも候補になる（プランのコスト、
+ * 総合ルール 第2部 第21章 7-5）が、識別子は届かない。かわりに置き場所（`protocol.ts` の
+ * `WireCardPosition`）で結び付ける。**能力の候補だけはボタンのまま**で、押す先が盤面に無い。
  */
 export function choicePicking(board: WirePerspective, choice: WireChoice): ChoicePicking {
   const answers = new Map<CardId, number>()
   // スクエアは行と列の組なので、そのままでは鍵にできない。盤面の並びの番号に直して引く。
   const bySquare = new Map<number, { readonly view: PickableSquare; readonly answer: number }>()
+  // 置き場所も組なので、同じように 1 つの鍵に直して引く。
+  const byPosition = new Map<string, { readonly at: WireCardPosition; readonly answer: number }>()
   choice.candidates.forEach((candidate, index) => {
     // 同じものが 2 度並ぶことは無いが、並んだとしても先に出たほうを答えにする。
     if (candidate.kind === '見えている' && !answers.has(candidate.card)) answers.set(candidate.card, index)
+    if (candidate.kind === '見えていない' && candidate.at !== undefined) {
+      const key = keyOfPosition(candidate.at)
+      if (!byPosition.has(key)) byPosition.set(key, { at: candidate.at, answer: index })
+    }
     if (candidate.kind === 'スクエア') {
       const key = indexOfSquare(candidate.square)
       if (bySquare.has(key)) return
@@ -436,5 +446,7 @@ export function choicePicking(board: WirePerspective, choice: WireChoice): Choic
     answerOf: (card) => answers.get(card),
     squares: [...bySquare.values()].map((each) => each.view),
     answerOfSquare: (square) => bySquare.get(indexOfSquare(square))?.answer,
+    hidden: [...byPosition.values()].map((each) => each.at),
+    answerOfHidden: (at) => byPosition.get(keyOfPosition(at))?.answer,
   }
 }
