@@ -96,6 +96,20 @@ function line(className: string, text: string): HTMLElement {
 }
 
 /**
+ * 操作するところをひとまとめにする器（#128）。
+ *
+ * 盤面より上に置き、スクロールしても見えたままにする（`style.css` の `.controls`）。**中身は
+ * 場面で入れ替わるが、置き場所は変わらない。** 盤面は 2 人ぶんのゾーンとスクエアで縦に長く、
+ * 手が下にあると打つたびに往復することになる。見て確かめるのが盤面で、打つのがここである。
+ */
+function controls(): HTMLElement {
+  const node = document.createElement('div')
+  node.className = 'controls'
+
+  return node
+}
+
+/**
  * いまの状態を丸ごと描き直す。
  *
  * 差分を当てずに毎回作り直している。盤面も差分ではなくまるごと届く（`wire.ts`）ので、
@@ -130,39 +144,38 @@ function draw(
     const answer = (found: number | undefined): void => {
       if (found !== undefined) connection.send({ kind: '選ぶ', answer: found })
     }
-    root.append(
-      boardElement(
-        boardView(board),
-        view !== undefined
+    const boardNode = boardElement(
+      boardView(board),
+      view !== undefined
+        ? {
+            pickable: view.pickable,
+            picked: view.picked,
+            squares: view.destinations,
+            onCard: (card) => picking.onCard(card),
+            onSquare: (square) => {
+              const destination = view.destinations.find((each) => indexOfSquare(each.square) === indexOfSquare(square))
+              if (destination === undefined) return
+              picking.onCancel()
+              connection.send({ kind: '行動する', action: destination.action })
+            },
+          }
+        : answering !== undefined
           ? {
-              pickable: view.pickable,
-              picked: view.picked,
-              squares: view.destinations,
-              onCard: (card) => picking.onCard(card),
-              onSquare: (square) => {
-                const destination = view.destinations.find((each) => indexOfSquare(each.square) === indexOfSquare(square))
-                if (destination === undefined) return
-                picking.onCancel()
-                connection.send({ kind: '行動する', action: destination.action })
-              },
+              pickable: answering.pickable,
+              picked: undefined,
+              squares: answering.squares,
+              onCard: (card) => answer(answering.answerOf(card)),
+              onSquare: (square) => answer(answering.answerOfSquare(square)),
             }
-          : answering !== undefined
-            ? {
-                pickable: answering.pickable,
-                picked: undefined,
-                squares: answering.squares,
-                onCard: (card) => answer(answering.answerOf(card)),
-                onSquare: (square) => answer(answering.answerOfSquare(square)),
-              }
-            : undefined,
-      ),
+          : undefined,
     )
 
-    root.append(modeElement(picking))
+    const controlArea = controls()
+    controlArea.append(modeElement(picking))
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (stage.choice !== undefined) {
-      root.append(
+      controlArea.append(
         choiceElement(choiceView(board, stage.choice), {
           onAnswer: (answer) => connection.send({ kind: '選ぶ', answer }),
           onRewind: () => connection.send({ kind: 'ひとつ戻る' }),
@@ -176,10 +189,10 @@ function draw(
       //
       // 選んでいる途中（`stage.choice`）は止めない。あれはすでに始まっている行動の中の選択
       // であって、待ち行列の遅れとは関係が無い。止めると、演出が消えるまで解決が進まなくなる。
-      root.append(waitingForOverlayElement())
+      controlArea.append(waitingForOverlayElement())
     } else if (view !== undefined) {
       // クリックで操作する（#94）。盤面の上で示せない手だけをここに出す。
-      root.append(
+      controlArea.append(
         pickElement(view, {
           onAction: (action) => {
             picking.onCancel()
@@ -189,12 +202,17 @@ function draw(
         }),
       )
     } else {
-      root.append(
+      controlArea.append(
         actionsElement(actionViews(board, stage.actions), (action) =>
           connection.send({ kind: '行動する', action }),
         ),
       )
     }
+
+    // 操作するところを盤面より上に置く（#128）。盤面は縦に長いので、下にあると打つたびに
+    // 往復することになる。
+    root.append(controlArea)
+    root.append(boardNode)
 
     // 盤面より上に重ねる層なので最後に足す。押せる場所は塞がない（`style.css`）。
     if (showsOverlay(overlay)) root.append(overlayElement(overlay))
