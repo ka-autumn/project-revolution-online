@@ -383,6 +383,10 @@ function rewind(rooms: Rooms, participant: ParticipantId, how: Rewind): RoomOutc
  *
  * 進んだなら両方に新しい盤面を送る。まだ選ぶことがあるなら、**選ぶプレイヤーにだけ**候補を送る。
  * 候補にはそのプレイヤーだけが見てよいものが含まれる（総合ルール 第2部 第23章 3）。
+ *
+ * **止まった時は、両方に盤面も送り直す**（#141）。選んでいる間は誰も何も行えない（`act` が
+ * 断り、`boards` が `actions` を空にする）ので、選ばないほうのプレイヤーに 1 つ前の盤面と
+ * 一緒に届いた手が並んだままになってはならない。
  */
 function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAction): RoomOutcome {
   const progress = applyWithAnswers(duel.state, pending.action, pending.answers)
@@ -391,7 +395,16 @@ function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAct
     const waiting: DuelInRoom = { ...duel, pending: { ...pending, player: choice.player } }
     return {
       rooms: withRoom(rooms, { ...room, duel: waiting }),
-      deliveries: [{ to: waiting.seats[choice.player], message: { kind: '選んでほしい', choice } }],
+      deliveries: [
+        // 答えを受け取っている間 `duel.state` は動かない（ADR-0008）ので、選択が続く限り
+        // 同じ盤面を送り直すことになる。**それでも毎回送る。** 送る回数を減らす条件を書くと、
+        // 止まった最初の一度かどうかで場合分けが増え、そこは選択が 2 つ以上ある行動でしか
+        // 通らない。盤面を毎回まるごと送るのは元からの形である（ADR-0011）
+        ...boards(waiting),
+        // **盤面より後に送る。** 受け取った側は盤面が届くと選択を畳む（`session.ts`）ので、
+        // 先に送ると選んでほしいことが消える。`rejoin` も同じ順で送っている。
+        { to: waiting.seats[choice.player], message: { kind: '選んでほしい', choice } },
+      ],
     }
   }
 
