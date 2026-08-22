@@ -329,6 +329,18 @@ const COUNTED_ZONES: readonly PlayerZone[] = ['山札']
 
 const SQUARE_INDEXES: readonly SquareIndex[] = [0, 1, 2]
 
+/**
+ * 名前を出してよいカードすべて。盤面に載っているものと、ログが名指ししているものの両方。
+ *
+ * **2 つある理由は、名前が要る時と見えている時がずれるためである**（#139）。ログの名指しは
+ * そのできごとの時に見えていたかで残る（#129）ので、山札に戻ったカードのように、名指しは
+ * 残っているのに盤面から引けないことがある。届く側で足りないぶんを補うのではなく、
+ * **引ける先をサーバが揃えて送ってくる**（`wire.ts` の `namedInLog`）。
+ */
+function namableInstances(board: WirePerspective): readonly WireCardInstance[] {
+  return [...visibleInstances(board), ...board.namedInLog]
+}
+
 /** 表側が見えているカードすべて。盤面のどこかに載っているものだけである。 */
 function visibleInstances(board: WirePerspective): readonly WireCardInstance[] {
   return [
@@ -343,23 +355,23 @@ function visibleInstances(board: WirePerspective): readonly WireCardInstance[] {
 }
 
 /**
- * 表側が見えているカードを、識別子で名前が引ける表にする。
+ * 名前を出してよいカードを、識別子で名前が引ける表にする。
  *
- * 行える手（`input-model.ts`）もバトルもバンクも、カードを識別子で指してくる。名前に直せるのは
- * 盤面に載っているものだけである。
+ * 行える手（`input-model.ts`）もバトルもバンクもログも、カードを識別子で指してくる。名前に
+ * 直せるのは、届いているもの（`namableInstances`）だけである。
  */
 export function namesIn(board: WirePerspective): ReadonlyMap<CardId, string> {
-  return new Map(visibleInstances(board).map((instance) => [instance.id, instance.card.name]))
+  return new Map(namableInstances(board).map((instance) => [instance.id, instance.card.name]))
 }
 
 /**
- * 表側が見えているカード 1 枚。見えていなければ `undefined`。
+ * 名前を出してよいカード 1 枚。届いていなければ `undefined`。
  *
  * バトルの勝敗（#111）を「自分」「相手」の名前とカード名の両方で言うのに使う。名前も支配者も
- * 同じ 1 枚から引くので、見えているかどうかの判断が 1 回で済む。
+ * 同じ 1 枚から引くので、届いているかどうかの判断が 1 回で済む。
  */
-function visibleInstanceOf(board: WirePerspective, id: CardId): WireCardInstance | undefined {
-  return visibleInstances(board).find((instance) => instance.id === id)
+function namableInstanceOf(board: WirePerspective, id: CardId): WireCardInstance | undefined {
+  return namableInstances(board).find((instance) => instance.id === id)
 }
 
 /**
@@ -687,7 +699,7 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         return { whose: undefined, text: about(named(event.to), 'に', `バトルダメージ ${event.amount}`) }
       case 'バトルが終わった': {
         if (event.winner === undefined) return { whose: undefined, text: 'バトル終了：引き分け' }
-        const winner = visibleInstanceOf(board, event.winner)
+        const winner = namableInstanceOf(board, event.winner)
         const text = winner === undefined ? 'バトル終了' : `バトル終了：${whose(winner.controller)}の${winner.card.name}の勝ち`
         return { whose: undefined, text }
       }

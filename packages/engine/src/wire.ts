@@ -161,10 +161,18 @@ export interface WirePerspective {
    *
    * **形を変えずに済むのは、できごとがカードを識別子でしか指していないためである**
    * （`log.ts` の `DuelEvent`）。カードそのものを持っていないので、表記に書き出す必要が無い。
-   * 名前を出したければ、受け取った側が同じ盤面から引ける。名指しされているカードは、そこに
-   * 見えているカードだけである（`perspective.ts` の `visibleIds`）。
+   * 名前を出したければ、受け取った側が引き直す。引く先は、盤面に載っているカードと
+   * `namedInLog` の 2 つである。
    */
   readonly log: readonly DuelEvent[]
+  /**
+   * `log` が名指ししているカードのうち、盤面に載っていないもの（#139）。
+   *
+   * 射影がすでに選んだもの（`perspective.ts` の `DuelPerspective.namedInLog`）を、盤面の
+   * カードと同じ形に書き出して載せる。**ここで新しく見せているものは無い。** 載るのは射影を
+   * 通ったログに名指しが残っている識別子だけで、その時点で見てよいことは決まっている。
+   */
+  readonly namedInLog: readonly WireCardInstance[]
 }
 
 /** 種別によらず書かれていることを写す。**能力と効果は写さない。** */
@@ -241,6 +249,7 @@ export function toWire(perspective: DuelPerspective): WirePerspective {
   return {
     ...perspective,
     squares: perspective.squares.map((square) => square.map(instanceToWire)),
+    namedInLog: perspective.namedInLog.map(instanceToWire),
     effective: perspective.effective,
     zones: Object.fromEntries(PLAYERS.map((owner) => [owner, zonesOf(owner)])) as WirePerspective['zones'],
     resolveZone: perspective.resolveZone.map(instanceToWire),

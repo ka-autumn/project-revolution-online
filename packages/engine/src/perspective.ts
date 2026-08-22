@@ -1,7 +1,7 @@
 import type { Battle } from './battle.js'
 import type { Attribute } from './card.js'
 import { continuousData } from './continuous.js'
-import { cardsIn } from './duel.js'
+import { cardsIn, findAnywhere } from './duel.js'
 import type {
   BankedAbility,
   CardId,
@@ -168,6 +168,21 @@ export interface DuelPerspective {
    * になる（#129）。**ログは過去の記録であって、いまの見え方ではない。**
    */
   readonly log: readonly DuelEvent[]
+  /**
+   * `log` が名指ししているカードのうち、**盤面に載っていないもの**（#139）。
+   *
+   * ログはカードを識別子でしか指さない（ADR-0011）ので、名前を出す側は同じ盤面から引く。
+   * ところが、名指しが残るのは**その時**見えていたかで決まる（`log.ts` の `RecordedEvent`）
+   * のに対して、盤面に載っているのは**いま**見えているカードだけである。山札に戻ったカードの
+   * ように、名指しは残っているのに引く先が無い、というずれがここで埋まる。
+   *
+   * **落とす判断はここでは増えない。** 載せるのは射影を通った後の `log` に残っている識別子
+   * だけであり、そこに残っている時点で、このプレイヤーが見てよいことは決まっている。
+   *
+   * 盤面に載っているカードは含めない。二度送らずに済むからで、名前を引く側は盤面とここの
+   * 両方から引く（`view-model.ts` の `namesIn`）。
+   */
+  readonly namedInLog: readonly CardInstance[]
 }
 
 /**
@@ -366,9 +381,9 @@ function mapEventCards(event: DuelEvent, map: CardMapping): DuelEvent {
   }
 }
 
-/** 名指しが残ったならその 1 枚、落ちたなら空。並びに `map` を通すのに使う。 */
-function mapped(card: CardId | undefined): readonly CardId[] {
-  return card === undefined ? [] : [card]
+/** 有るならその 1 つ、無いなら空。有無で伸び縮みする並びを `flatMap` でつなぐのに使う。 */
+function mapped<T>(value: T | undefined): readonly T[] {
+  return value === undefined ? [] : [value]
 }
 
 /**
@@ -394,7 +409,26 @@ function ownsTrap(state: DuelState, viewer: Player, met: TrapConditionMet): bool
  * サーバだけである。
  */
 export function perspectiveOf(state: DuelState, viewer: Player): DuelPerspective {
-  return { ...projectBoard(state, viewer), log: state.log.map((recorded) => projectEvent(recorded, viewer)) }
+  const board = projectBoard(state, viewer)
+  const log = state.log.map((recorded) => projectEvent(recorded, viewer))
+  return { ...board, log, namedInLog: namedInLogOf(state, board, log) }
+}
+
+/**
+ * 射影したログが名指ししているカードのうち、盤面に載っていないもの
+ * （`DuelPerspective.namedInLog`）。
+ *
+ * 渡すログは**射影を通った後のもの**でなければならない。落とす判断はそこで済んでおり、ここは
+ * 残った識別子を引き直すだけである。完全なログから作ると、そのまま漏れる。
+ */
+function namedInLogOf(
+  state: DuelState,
+  board: Pick<DuelPerspective, 'zones' | 'squares' | 'resolveZone'>,
+  log: readonly DuelEvent[],
+): readonly CardInstance[] {
+  const onBoard = visibleIds(board)
+  const named = new Set(log.flatMap(cardsNamedBy))
+  return [...named].flatMap((id) => (onBoard.has(id) ? [] : mapped(findAnywhere(state, id))))
 }
 
 /**
@@ -431,6 +465,9 @@ function projectBoard(state: DuelState, viewer: Player): DuelPerspective {
     battle: state.battle === undefined ? undefined : visibleBattle(state.battle),
     smashJudgments: state.smashJudgments.map(visibleSmashJudgment),
     result: state.result,
+    // ログと、それが名指しするカードは `perspectiveOf` が足す。ログを落とすのに、落とし
+    // 終えた盤面が要る（`namedInLogOf`）ので、盤面を先に組み立てる。
     log: [],
+    namedInLog: [],
   }
 }

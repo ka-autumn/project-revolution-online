@@ -829,6 +829,49 @@ describe('操作ログ', () => {
   })
 
   /**
+   * #139。盤面から居なくなったカードの名前は、`namedInLog` から引く。
+   *
+   * ログの名指しは**そのできごとの時に**見えていたかで残る（#129）のに対して、盤面に載って
+   * いるのは**いま**見えているカードだけである。山札に戻ったカードのように、名指しは残って
+   * いるのに盤面から引けないものがあるので、引く先をサーバが揃えて送ってくる。
+   */
+  describe('盤面から居なくなったカード', () => {
+    /** そのできごとと、盤面に載っていない 1 枚の名前が届いた盤面。 */
+    function withNamedInLog(event: DuelEvent, ...named: readonly WireCardInstance[]): WirePerspective {
+      return { ...withLog(event), namedInLog: named }
+    }
+
+    it('名前が届いていれば、その名前が出る', () => {
+      const board = withNamedInLog(
+        { kind: '行動した', player: '先攻', action: 'カードをプレイする', card: '戻された', square: undefined },
+        instance('戻された', '先攻'),
+      )
+
+      expect(texts(board)).toEqual(['カードをプレイする：テスト・戻された'])
+    })
+
+    /** 届いていないものは、今までどおり補わない（#95）。 */
+    it('名前が届いていなければ、見えていないカードのままになる', () => {
+      const board = withLog({
+        kind: '行動した',
+        player: '先攻',
+        action: 'カードをプレイする',
+        card: '届いていない',
+        square: undefined,
+      })
+
+      expect(texts(board)).toEqual(['カードをプレイする：見えていないカード'])
+    })
+
+    // #111。勝者は名前だけでなく支配者も引くので、そちらも同じところから引けている。
+    it('バトルの勝者も、届いた名前と支配者で出る', () => {
+      const board = withNamedInLog({ kind: 'バトルが終わった', winner: '勝った' }, instance('勝った', '後攻'))
+
+      expect(texts(board)).toEqual(['バトル終了：相手のテスト・勝ったの勝ち'])
+    })
+  })
+
+  /**
    * 裏返された後は盤面のどこにも見えなくなる（`namesIn` が名前を引けない）ので、盤面から
    * 引き直さず、できごとが持つ名前をそのまま出すことを見る。
    */
