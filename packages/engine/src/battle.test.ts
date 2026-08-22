@@ -10,6 +10,7 @@ import {
   defineUnit,
   emptyDuelState,
   instantiate,
+  passOutcome,
   passPriority,
   pep,
   playAsTrap,
@@ -567,6 +568,19 @@ describe('バトルによって待機中のバンク', () => {
 
     // 「バトルの終わりに」はバトル中の新しいバンクに入り、待機中の「登場した時」はまだ入らない。
     expect(banked(end)).toEqual(['見届け役／バトルの終わりに'])
+  })
+})
+
+/**
+ * #130。バトルの最中に終わるのはフェイズではなくステップである（総合ルール 第3部 第4章 4）。
+ * 押す前に何が起きるかを言う側も、そこを取り違えない。
+ */
+describe('バトル中に放棄したら何が起きるか', () => {
+  it('進むのはステップだと言う', () => {
+    const battle = pass(battling(vanilla, vanilla))
+
+    expect(battle.battle).toBeDefined()
+    expect(passOutcome(battle)).toEqual({ kind: 'ステップが進む' })
   })
 })
 

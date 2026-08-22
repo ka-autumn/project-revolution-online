@@ -11,7 +11,27 @@ import { loseCourageRightOnPass } from './courage.js'
 import { loseTrapRightOnPass } from './trap.js'
 import { trigger } from './trigger.js'
 import { PHASES, beginPhase } from './turn.js'
-import type { Turn } from './turn.js'
+import type { Phase, Turn } from './turn.js'
+
+/**
+ * 優先権を放棄した時に起きること（#130）。
+ *
+ * **数え上げられる。** `passPriority` が振り分ける先がそのまま並ぶので、述語ではなく値で
+ * 持つ。画面はこれを言葉にするだけで、どれになるかを自分で決めない（ADR-0010）。
+ */
+export type PassOutcome =
+  /** もう一方のプレイヤーに優先権が移るだけ（総合ルール 第3部 第4章 4）。連続した放棄の 1 回目。 */
+  | { readonly kind: '相手に渡る' }
+  /** バンクにある能力が 1 つ解決される（同、第4部 第5章 2）。フェイズは終わらない。 */
+  | { readonly kind: 'バンクを解決する' }
+  /** 進行中のバトルかスマッシュ判定のステップが進む（同 第3部 第4章 4）。 */
+  | { readonly kind: 'ステップが進む' }
+  /** リカバリーフェイズで「ターンの終わり」の能力が誘発する（同 第10章 3）。フェイズは終わらない。 */
+  | { readonly kind: 'ターンの終わりの能力が誘発する' }
+  /** そのターンの次のフェイズが始まる。とばされるフェイズは飛ばした後の名前が入る（同 第4章 5）。 */
+  | { readonly kind: 'フェイズが変わる'; readonly next: Phase }
+  /** ターンが終わり、相手のターンになる。 */
+  | { readonly kind: 'ターンが終わる' }
 
 /**
  * 優先権を持っているプレイヤーが、それを放棄する。
@@ -70,6 +90,34 @@ export function passPriority(state: DuelState, chooser: Chooser): DuelState {
 }
 
 /**
+ * いま優先権を放棄したら何が起きるか（#130）。放棄しても何も起きないなら `undefined`。
+ *
+ * **ルールの判断には使わない。** 押す前に「このボタンが何をするのか」を伝えるためだけに持つ
+ * （`resolve.ts` の `ChoicePurpose` と同じ考え方）。`優先権を放棄する` は総合ルールの語
+ * （第3部 第4章 4）そのままで、打っている側から見ると何が起きるのか分かりにくい。
+ *
+ * **`passPriority` のすぐ隣に置き、同じ順で振り分ける。** 画面がこれを言い当てるには
+ * 分岐表とフェイズの並びが要るが、それをクライアントへ写すと進行の規則が 2 か所になる
+ * （ADR-0010）。ここで 1 度だけ決めて、値として渡す。
+ */
+export function passOutcome(state: DuelState): PassOutcome | undefined {
+  if (hasEnded(state)) return undefined
+
+  const { turn } = state
+  if (turn.passedBy === undefined) return { kind: '相手に渡る' }
+  if (state.bank.length > 0) return { kind: 'バンクを解決する' }
+  if (state.smashJudgments.length > 0 || state.battle !== undefined) return { kind: 'ステップが進む' }
+  if (turn.phase === 'リカバリーフェイズ' && !turn.endOfTurnTriggered) {
+    return { kind: 'ターンの終わりの能力が誘発する' }
+  }
+
+  const after = turnAfter(turn)
+  return after.number === turn.number
+    ? { kind: 'フェイズが変わる', next: after.phase }
+    : { kind: 'ターンが終わる' }
+}
+
+/**
  * リカバリーフェイズで「ターンの終わり」に誘発する能力を誘発させる
  * （総合ルール 第3部 第10章 3）。
  *
@@ -100,21 +148,32 @@ function endTurnAbilities(state: DuelState): DuelState {
  * ターンに移る（総合ルール 第3部 第4章 6）。
  */
 function beginNextPhase(state: DuelState): DuelState {
-  const { turn } = state
+  return beginCurrentPhase({ ...state, turn: turnAfter(state.turn) })
+}
+
+/**
+ * 次に始まるフェイズ。とばされるフェイズは存在しないものとして飛ばす（総合ルール 第3部
+ * 第4章 5）。最後のフェイズの次はターンの境目で、相手のターンの最初のフェイズになる。
+ *
+ * **どのフェイズが次に来るかを決めるのはここだけである。** 実際に始める側（`beginNextPhase`）
+ * と、押す前に何が起きるかを言う側（`passOutcome`）が同じところを通る。片方だけ直すと、
+ * 画面が言うことと実際の進み方がずれる。
+ */
+function turnAfter(turn: Turn): Turn {
   const next = PHASES[PHASES.indexOf(turn.phase) + 1]
   const begun =
     next === undefined
       ? beginPhase(turn.number + 1, opponentOf(turn.active), PHASES[0])
       : beginPhase(turn.number, turn.active, next)
 
-  return beginCurrentPhase({ ...state, turn: begun })
+  return isSkipped(begun) ? turnAfter(begun) : begun
 }
 
 /**
  * 始まったフェイズの、始めの処理を行う。
  *
- * とばされるフェイズなら、そのフェイズは存在しないものとして次のフェイズに進む
- * （総合ルール 第3部 第4章 5）。
+ * とばされるフェイズはここへ来ない。飛ばすのは次のフェイズを決めるところ（`turnAfter`）の
+ * 仕事である（総合ルール 第3部 第4章 5）。
  *
  * どのフェイズも、始めの特別な行動を行い、次に「～の始め」に誘発する能力をバンクに入れ、
  * その後に非アクティブプレイヤーに優先権が発生する、という順で始まる（同 第5章 1・
@@ -126,8 +185,6 @@ function beginNextPhase(state: DuelState): DuelState {
  * 空で優先権を持っている時に行うものであって、フェイズの始めの処理ではない。
  */
 function beginCurrentPhase(state: DuelState): DuelState {
-  if (isSkipped(state.turn)) return beginNextPhase(state)
-
   return settleBeforePriority(triggerBeginning(takeBeginningAction(state)))
 }
 

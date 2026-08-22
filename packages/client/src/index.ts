@@ -137,7 +137,10 @@ function draw(
     const board = stage.board
     // 演出が出ている間は手を送れない（#115）ので、盤面の上でも押せなくする。
     const clicking = picking.mode === 'クリック' && !showsOverlay(overlay)
-    const view = clicking && stage.choice === undefined ? pickView(board, stage.actions, picking.card) : undefined
+    const view =
+      clicking && stage.choice === undefined
+        ? pickView(board, stage.actions, picking.card, stage.passOutcome)
+        : undefined
     // 選ぶのを待たれている間は、盤面に出ている候補を盤面から押せるようにする（#94）。答えるのは
     // 番号のままで、押したところがどの番号かは `choicePicking` が持っている。
     const answering = clicking && stage.choice !== undefined ? choicePicking(board, stage.choice) : undefined
@@ -217,7 +220,7 @@ function draw(
     } else {
       controlArea.append(
         actionsElement(
-          actionViews(board, stage.actions),
+          actionViews(board, stage.actions, stage.passOutcome),
           (action) => connection.send({ kind: '行動する', action }),
           mode,
         ),

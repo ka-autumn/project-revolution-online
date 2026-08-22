@@ -2,6 +2,7 @@ import {
   applyWithAnswers,
   hasEnded,
   legalActions,
+  passOutcome,
   perspectiveOf,
   prepareDuel,
   toWire,
@@ -331,6 +332,9 @@ function boards(duel: DuelInRoom, showing: DuelState = duel.state): readonly Del
       kind: '盤面',
       perspective: toWire(perspectiveOf(showing, player)),
       actions: player === duel.state.turn.priority ? actions : [],
+      // 放棄したら何が起きるかは、進行中の盤面ではなく確定した盤面から決まる。押すのは
+      // これから（`duel.state` に対して）だからである（#130）。
+      passOutcome: passOutcome(duel.state),
     },
   }))
 }

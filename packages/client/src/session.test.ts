@@ -62,6 +62,7 @@ describe('届いたものを畳む', () => {
       kind: '盤面',
       perspective: board(1),
       actions: [{ kind: '優先権を放棄する' }],
+      passOutcome: undefined,
     }).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
@@ -74,7 +75,7 @@ describe('届いたものを畳む', () => {
    * 持っていないほうには空で届く（`server` の `room.ts` の `boards`）。
    */
   it('行える手が空なら、行えることは無い', () => {
-    const stage = fold(SEATED, { kind: '盤面', perspective: board(1), actions: [] }).stage
+    const stage = fold(SEATED, { kind: '盤面', perspective: board(1), actions: [], passOutcome: undefined }).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
     expect(stage.actions).toEqual([])
@@ -96,6 +97,7 @@ describe('届いたものを畳む', () => {
       kind: '盤面',
       perspective: board(1),
       actions: [{ kind: '優先権を放棄する' }],
+      passOutcome: undefined,
     })
 
     const stage = applyMessage(acting, { kind: '選んでほしい', choice: CHOICE }).stage
@@ -110,6 +112,7 @@ describe('届いたものを畳む', () => {
       kind: '盤面',
       perspective: board(2),
       actions: [],
+      passOutcome: undefined,
     }).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
@@ -117,7 +120,7 @@ describe('届いたものを畳む', () => {
   })
 
   it('入り直して席についたら、前の盤面は残らない', () => {
-    const played = fold(SEATED, { kind: '盤面', perspective: board(1), actions: [] })
+    const played = fold(SEATED, { kind: '盤面', perspective: board(1), actions: [], passOutcome: undefined })
     const stage = applyMessage(played, SEATED).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
@@ -131,7 +134,7 @@ describe('届いたものを畳む', () => {
  */
 describe('この盤面で新しく届いたできごと', () => {
   it('最初の盤面では、まだ何も新しくない', () => {
-    const stage = fold(SEATED, { kind: '盤面', perspective: boardWithLog(1, 2), actions: [] }).stage
+    const stage = fold(SEATED, { kind: '盤面', perspective: boardWithLog(1, 2), actions: [], passOutcome: undefined }).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
     expect(stage.fresh).toEqual([])
@@ -140,8 +143,8 @@ describe('この盤面で新しく届いたできごと', () => {
   it('増えた分だけが新しく届いたことになる', () => {
     const stage = fold(
       SEATED,
-      { kind: '盤面', perspective: boardWithLog(1, 2), actions: [] },
-      { kind: '盤面', perspective: boardWithLog(2, 5), actions: [] },
+      { kind: '盤面', perspective: boardWithLog(1, 2), actions: [], passOutcome: undefined },
+      { kind: '盤面', perspective: boardWithLog(2, 5), actions: [], passOutcome: undefined },
     ).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
@@ -150,7 +153,7 @@ describe('この盤面で新しく届いたできごと', () => {
 
   // ADR-0009。入り直しても最初の盤面から届くので、それまでの履歴を演出し直してはならない。
   it('入り直して席についたら、空に戻る', () => {
-    const played = fold(SEATED, { kind: '盤面', perspective: boardWithLog(1, 3), actions: [] })
+    const played = fold(SEATED, { kind: '盤面', perspective: boardWithLog(1, 3), actions: [], passOutcome: undefined })
     const stage = applyMessage(played, SEATED).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
@@ -161,8 +164,8 @@ describe('この盤面で新しく届いたできごと', () => {
   it('ログが短くなっていたら、新しく届いた分は無い', () => {
     const stage = fold(
       SEATED,
-      { kind: '盤面', perspective: boardWithLog(1, 5), actions: [] },
-      { kind: '盤面', perspective: boardWithLog(2, 2), actions: [] },
+      { kind: '盤面', perspective: boardWithLog(1, 5), actions: [], passOutcome: undefined },
+      { kind: '盤面', perspective: boardWithLog(2, 2), actions: [], passOutcome: undefined },
     ).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
@@ -172,7 +175,7 @@ describe('この盤面で新しく届いたできごと', () => {
   // 選んでいる間に新しいできごとが増えることは無い（盤面が動いていないため）。参照が変わら
   // なければ、同じカットインを出し直すことも無い。
   it('選んでほしいが届いても、新しく届いた分は変わらない', () => {
-    const acting = fold(SEATED, { kind: '盤面', perspective: boardWithLog(1, 2), actions: [] })
+    const acting = fold(SEATED, { kind: '盤面', perspective: boardWithLog(1, 2), actions: [], passOutcome: undefined })
     const before = acting.stage.kind === '打っている' ? acting.stage.fresh : undefined
 
     const stage = applyMessage(acting, {
@@ -191,7 +194,7 @@ describe('この盤面で新しく届いたできごと', () => {
  */
 describe('1 つ前の盤面でのターン', () => {
   it('最初の盤面には、比べる相手がいない', () => {
-    const stage = fold(SEATED, { kind: '盤面', perspective: board(1), actions: [] }).stage
+    const stage = fold(SEATED, { kind: '盤面', perspective: board(1), actions: [], passOutcome: undefined }).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
     expect(stage.previousTurn).toBeUndefined()
@@ -200,8 +203,8 @@ describe('1 つ前の盤面でのターン', () => {
   it('次の盤面が届いたら、1 つ前の盤面のターンを覚える', () => {
     const stage = fold(
       SEATED,
-      { kind: '盤面', perspective: board(1), actions: [] },
-      { kind: '盤面', perspective: board(2), actions: [] },
+      { kind: '盤面', perspective: board(1), actions: [], passOutcome: undefined },
+      { kind: '盤面', perspective: board(2), actions: [], passOutcome: undefined },
     ).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
@@ -212,8 +215,8 @@ describe('1 つ前の盤面でのターン', () => {
   it('入り直して席についたら、比べる相手は無くなる', () => {
     const played = fold(
       SEATED,
-      { kind: '盤面', perspective: board(1), actions: [] },
-      { kind: '盤面', perspective: board(2), actions: [] },
+      { kind: '盤面', perspective: board(1), actions: [], passOutcome: undefined },
+      { kind: '盤面', perspective: board(2), actions: [], passOutcome: undefined },
     )
     const stage = applyMessage(played, SEATED).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
@@ -224,8 +227,8 @@ describe('1 つ前の盤面でのターン', () => {
   it('選んでほしいが届いても、比べる相手は変わらない', () => {
     const acting = fold(
       SEATED,
-      { kind: '盤面', perspective: board(1), actions: [] },
-      { kind: '盤面', perspective: board(2), actions: [] },
+      { kind: '盤面', perspective: board(1), actions: [], passOutcome: undefined },
+      { kind: '盤面', perspective: board(2), actions: [], passOutcome: undefined },
     )
 
     const stage = applyMessage(acting, {
@@ -254,7 +257,7 @@ describe('断られたこと', () => {
   it('盤面が動いたら消える', () => {
     const refused = fold(SEATED, { kind: '行えなかった', reason: '行えない行動' })
 
-    const advanced = applyMessage(refused, { kind: '盤面', perspective: board(2), actions: [] })
+    const advanced = applyMessage(refused, { kind: '盤面', perspective: board(2), actions: [], passOutcome: undefined })
 
     expect(advanced.refusal).toBeUndefined()
   })

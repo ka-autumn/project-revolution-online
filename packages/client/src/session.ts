@@ -1,4 +1,13 @@
-import type { DuelEvent, LegalAction, Player, ToClient, Turn, WireChoice, WirePerspective } from '@revolution/engine'
+import type {
+  DuelEvent,
+  LegalAction,
+  PassOutcome,
+  Player,
+  ToClient,
+  Turn,
+  WireChoice,
+  WirePerspective,
+} from '@revolution/engine'
 
 /**
  * クライアントがいまどこにいるか。
@@ -23,6 +32,13 @@ export type Stage =
       readonly board: WirePerspective | undefined
       /** いま行える手。優先権を持っていなければ空（`server` の `room.ts` の `boards`）。 */
       readonly actions: readonly LegalAction[]
+      /**
+       * いま優先権を放棄したら何が起きるか（#130）。
+       *
+       * 決めているのはサーバである（`progress.ts` の `passOutcome`、ADR-0010）。放棄の見出しを
+       * 場面で変えるのに使う（`input-model.ts` の `labelOf`）。
+       */
+      readonly passOutcome: PassOutcome | undefined
       /** 答えを待たれている選択。待たれていなければ `undefined`。 */
       readonly choice: WireChoice | undefined
       /**
@@ -89,6 +105,7 @@ export function applyMessage(session: Session, message: ToClient): Session {
           seat: message.seat,
           board: undefined,
           actions: [],
+          passOutcome: undefined,
           choice: undefined,
           fresh: [],
           previousTurn: undefined,
@@ -106,6 +123,7 @@ export function applyMessage(session: Session, message: ToClient): Session {
           ...stage,
           board: message.perspective,
           actions: message.actions,
+          passOutcome: message.passOutcome,
           choice: undefined,
           fresh,
           previousTurn: stage.board?.turn,
@@ -118,7 +136,7 @@ export function applyMessage(session: Session, message: ToClient): Session {
 
       // 選んでいる間は行えることが無い。サーバも `選ぶのを待っている` として断る（`room.ts` の
       // `act`）ので、1 つ前の盤面と一緒に届いた手をそのまま並べ続けてはならない。
-      return { stage: { ...stage, actions: [], choice: message.choice }, refusal: undefined }
+      return { stage: { ...stage, actions: [], passOutcome: undefined, choice: message.choice }, refusal: undefined }
     case '行えなかった':
       return { ...session, refusal: message.reason }
   }
