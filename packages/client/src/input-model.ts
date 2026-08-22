@@ -207,10 +207,16 @@ function candidateLabel(
  * **engine が持つのは種類だけ**（`resolve.ts` の `ChoicePurpose`）で、言葉にするのはこちらの
  * 仕事である。engine は表示を持たない（ADR-0001）。
  *
- * 効果が選ばせている場合は「効果の対象」までしか言えない。何のための対象かはカードのテキストが
- * 決めることで、テキストは通信に載っていない（#93）。
+ * 効果が選ばせている場合は、**どのカードの効果かまでを言う**（#122）。何のための対象かは
+ * カードのテキストが決めることで、行と能力の対応づけは通信に載っていない（#93）が、発生源が
+ * 分かれば場面は絞れる。
+ *
+ * `source` は、発生源のカードの名前が引ける時だけ渡ってくる。**名前を作り出さない**（#95）
+ * ので、引けない時は種類だけの言い回しに戻る。engine が発生源を落とす場合（選ぶ人から
+ * 見えていない、`protocol.ts` の `WireChoice.source`）と、識別子は届いたが盤面にもログの
+ * 名指しにも無い場合（`view-model.ts` の `namesIn`）の両方がここに来る。
  */
-function askingFor(purpose: ChoicePurpose): string {
+function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
   switch (purpose) {
     case 'プレイのコスト':
       return 'プレイのコストとしてフリーズするエネルギーを選んでください'
@@ -225,7 +231,7 @@ function askingFor(purpose: ChoicePurpose): string {
     case 'プランの置き換え':
       return 'プランのめくりを置き換える能力を選んでください'
     case '効果の対象':
-      return '効果の対象を選んでください'
+      return source === undefined ? '効果の対象を選んでください' : `${source} の効果の対象を選んでください`
   }
 }
 
@@ -234,7 +240,7 @@ export function choiceView(board: WirePerspective, choice: WireChoice): ChoiceVi
   const names = namesIn(board)
 
   return {
-    asking: askingFor(choice.purpose),
+    asking: askingFor(choice.purpose, choice.source === undefined ? undefined : names.get(choice.source)),
     mayDecline: choice.mayDecline,
     mayRewind: choice.mayGoBack && choice.answered > 0,
     mayCancel: choice.mayGoBack,

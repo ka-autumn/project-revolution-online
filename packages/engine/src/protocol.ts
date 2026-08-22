@@ -76,6 +76,17 @@ export interface WireChoice {
    * 聞かれているかが分からないまま選ばせない**ために載せる。
    */
   readonly purpose: ChoicePurpose
+  /**
+   * 選ばせている当のカード（#122）。無い場面と、見えていない場面では載らない。
+   *
+   * `purpose` だけでは、効果が選ばせる場面がどれも `効果の対象` になってしまう。どのカードの
+   * 効果かが分かれば、何を聞かれているのかは絞れる。**engine は表示を持たない**（ADR-0001）
+   * ので、載せるのは識別子だけであって、名前も文言もここには無い。
+   *
+   * **選ぶ人から見えていないカードなら落とす。** 見えていないものの名前を作らない（#95）のと
+   * 同じ理由で、識別子も渡さない。判定は候補と同じ盤面・同じ射影を通る（`describeChoice`）。
+   */
+  readonly source?: CardId
   /** 選ばないことを選べるか。 */
   readonly mayDecline: boolean
   readonly candidates: readonly WireCandidate[]
@@ -252,6 +263,9 @@ function describeCandidate(candidate: unknown, purpose: ChoicePurpose, visible: 
  * 戻れるかどうかも、そこと行動を始める前の盤面（`started`）を見比べて決める。**新しく見えた
  * ものが 1 枚でもあれば戻せない。** 見てから取り消せると、山札の 1 番上を覗く手立てになる。
  * 見えるようになったかを決めるのは射影ひとつ（`perspective.ts` の `visibleIdsOf`）である。
+ *
+ * 発生源（`source`）も同じ盤面から見る。**見えていなければ落とす**（#122）。見えていない
+ * カードの識別子を渡さないのは候補と同じ扱いである。
  */
 function describeChoice(
   board: DuelState,
@@ -261,12 +275,14 @@ function describeChoice(
   purpose: ChoicePurpose,
   mayDecline: boolean,
   answered: number,
+  source: CardId | undefined,
 ): WireChoice {
   const visible = visibleIdsOf(board, player)
   const before = visibleIdsOf(started, player)
   return {
     player,
     purpose,
+    ...(source !== undefined && visible.has(source) ? { source } : {}),
     mayDecline,
     answered,
     mayGoBack: [...visible].every((card) => before.has(card)),
@@ -290,7 +306,7 @@ export function applyWithAnswers(
   answers: readonly ChoiceAnswer[],
 ): ActionProgress {
   let remaining = answers
-  const chooser: Chooser = (candidates, player, purpose, board, mayDecline = false) => {
+  const chooser: Chooser = (candidates, player, purpose, board, mayDecline = false, source) => {
     // 選ぶ余地が無いなら聞かない。候補が 1 つで、選ばないことも選べないなら、答えは 1 通りしか
     // 無く、押させても盤面は同じところへ進む。**答えとして数えない**ので、`ひとつ戻る`
     // （ADR-0008）はこの手前の選択まで戻る。
@@ -300,7 +316,7 @@ export function applyWithAnswers(
     const [answer, ...rest] = remaining
     if (answer === undefined) {
       // 答えが尽きたところで止まるので、ここまでに答えた数は渡された答えの数そのものである。
-      const choice = describeChoice(board, state, candidates, player, purpose, mayDecline, answers.length)
+      const choice = describeChoice(board, state, candidates, player, purpose, mayDecline, answers.length, source)
       throw { kind: CHOICE_NEEDED, choice, board } satisfies ChoiceNeeded
     }
 

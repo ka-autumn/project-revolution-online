@@ -75,6 +75,14 @@ export type ChoicePurpose = (typeof CHOICE_PURPOSES)[number]
  * ので、選ぶ人に見せてよいのはこれであって、行動を始める前の盤面ではない（#142）。戻れるか
  * どうかもここから決まる——行動を始めてから新しく見えたものがあれば、見たうえで取り消せて
  * しまうので戻せない（`protocol.ts` の `describeChoice`）。
+ *
+ * `source` は**選ばせている当のカード**である（#122）。`purpose` は種類しか言えず、効果が
+ * 選ばせる場面はどれも `効果の対象` になる（何のための対象かはカードのテキストが決めることで、
+ * テキストは engine に無い）。どのカードの効果かが分かれば場面は絞れるので、それだけを渡す。
+ * `purpose` と同じく**返す答えを左右しない。**
+ *
+ * 渡すのは効果が選ばせる場面だけである。作成された誘発型能力は発生源を持たない
+ * （`EffectContext.source`）ので、その時は渡らない。
  */
 export type Chooser = (
   candidates: readonly unknown[],
@@ -82,6 +90,7 @@ export type Chooser = (
   purpose: ChoicePurpose,
   board: DuelState,
   mayDecline?: boolean,
+  source?: CardId,
 ) => unknown
 
 export interface EffectContext {
@@ -218,6 +227,7 @@ function apply(
         '効果の対象',
         state,
         instruction.mayDecline,
+        context.source,
       )
       // 選ばないことが認められている場面でだけ、候補にないもの（`undefined`）を受け取れる。
       if (instruction.mayDecline && chosen === undefined) return { state, value: undefined }
