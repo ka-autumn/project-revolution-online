@@ -221,9 +221,14 @@ function banked(state: DuelState): readonly string[] {
 
 const idsOf = (cards: readonly CardInstance[]) => cards.map((card) => card.id)
 
-/** ルールエフェクトで捨札に置かれたことの記録を、積まれた順に並べたもの。 */
+/**
+ * ルールエフェクトで捨札に置かれたことの記録を、積まれた順に並べたもの。
+ *
+ * ログはできごとと、その時の見え方の組で積まれている（`log.ts` の `RecordedEvent`）。
+ * ここで見たいのは起きたことだけなので、できごとの側だけを取り出す。
+ */
 function discardedByRule(state: DuelState): readonly (readonly string[])[] {
-  return state.log.flatMap((event) => (event.kind === 'ルールで捨札に置かれた' ? [event.cards] : []))
+  return state.log.flatMap(({ event }) => (event.kind === 'ルールで捨札に置かれた' ? [event.cards] : []))
 }
 
 /** そのユニットが受けているダメージ。スクエアになければ `undefined`。 */
