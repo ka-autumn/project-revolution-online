@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 // 山札やゾーンを組み立てるためだけに `putInZone` を使う。engine の中からゾーンを差し替える
 // ための関数であり、公開する API ではない（`rule-effect.test.ts` と同じ）。
 import { putInZone } from './duel.js'
+// できごとを積む `record` も engine の内部にある。積む時に見え方が決まる（#129）ので、
+// 落とし方を見るテストはログを直接差し替えずにここを通す。
+import { record } from './log.js'
 import { activateCourage, checkCourageCondition } from './courage.js'
 import {
   PLAYERS,
@@ -10,6 +13,7 @@ import {
   activateTrap,
   applyLegalAction,
   applyWithAnswers,
+  cardsIn,
   choose,
   courage,
   defineStrategy,
@@ -23,6 +27,7 @@ import {
   instantiate,
   passPriority,
   perspectiveOf,
+  placeInZone,
   playCard,
   putOnSquare,
   resolveEffect,
@@ -32,6 +37,7 @@ import {
 import type {
   ActionOutcome,
   Card,
+  CardId,
   CardInstance,
   Chooser,
   DuelEvent,
@@ -63,6 +69,17 @@ const chooseAndDestroy = defineStrategy({
   effect: function* (duel) {
     const enemy = yield* choose(duel.enemies())
     if (enemy !== undefined) yield* destroy(enemy)
+  },
+})
+
+/** 敵を 1 枚選んで山札の 1 番上に戻す。公開されているゾーンから非公開のゾーンへ動かす（#129）。 */
+const chooseAndReturn = defineStrategy({
+  name: 'テスト・選んで山札へ',
+  level: 0,
+  colors: ['赤'],
+  effect: function* (duel) {
+    const enemy = yield* choose(duel.enemies())
+    if (enemy !== undefined) yield* placeInZone(enemy, '山札', 'リリース')
   },
 })
 
@@ -163,9 +180,14 @@ function enemy(id: string): CardInstance {
   return instantiate({ id, card: vanilla, owner: '後攻' })
 }
 
+/** 積まれたできごとだけを、見えていたかを外して順に取り出す（`log.ts` の `RecordedEvent`）。 */
+function events(state: DuelState): readonly DuelEvent[] {
+  return state.log.map((recorded) => recorded.event)
+}
+
 /** その種類のできごとだけを取り出す。ほかのできごとが増えても、見たいところがぶれないように。 */
 function only<K extends DuelEvent['kind']>(state: DuelState, kind: K): readonly Extract<DuelEvent, { kind: K }>[] {
-  return state.log.filter((event): event is Extract<DuelEvent, { kind: K }> => event.kind === kind)
+  return events(state).filter((event): event is Extract<DuelEvent, { kind: K }> => event.kind === kind)
 }
 
 /** 実行された命令だけを、順に取り出す。 */
@@ -252,7 +274,7 @@ describe('効果の記録', () => {
 
     const resolved = resolveBank(readyToAct('エネルギーフェイズ', placed))
 
-    expect(resolved.log.filter((event) => event.kind !== '行動した')).toEqual([
+    expect(events(resolved).filter((event) => event.kind !== '行動した')).toEqual([
       { kind: '能力を解決した', controller: '先攻', via: '誘発', source: drawer.id },
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: 'カードを引く', player: '先攻', count: 1 } },
     ])
@@ -658,10 +680,15 @@ describe('視点ごとの落とし方', () => {
   const hidden = instantiate({ id: '相手の手札', card: vanilla, owner: '後攻' })
   const shown = instantiate({ id: '捨札のカード', card: vanilla, owner: '後攻' })
 
-  /** できごとを直接置いた盤面。落とし方だけを見たいので、どう起きたかは問わない。 */
+  /**
+   * できごとを直接積んだ盤面。落とし方だけを見たいので、どう起きたかは問わない。
+   *
+   * 積むところを通す。見え方が決まるのは積む時（`log.ts` の `record`）なので、ログを直接
+   * 差し替えると何も見えていない盤面になる。
+   */
   function logged(...events: readonly DuelEvent[]): DuelState {
     const board = inZone(inZone(stocked(), '後攻', '手札', hidden), '後攻', '捨札', shown)
-    return { ...board, log: events }
+    return events.reduce((state, event) => record(state, event), board)
   }
 
   function played(card: string): DuelEvent {
@@ -752,6 +779,67 @@ describe('視点ごとの落とし方', () => {
     const state = logged(event)
 
     expect(perspectiveOf(state, '先攻').log).toEqual([event])
+  })
+})
+
+/**
+ * #129。**ログは過去の記録であって、いまの見え方ではない。** 名指しを落とすかどうかは、
+ * そのできごとが積まれた時の見え方で決まる（`log.ts` の `RecordedEvent`）。
+ *
+ * 見え方の決まりそのものは射影ひとつ（`perspective.ts` の `seesFace`）のままなので、
+ * 一度も見えていないカードが漏れることはない。
+ */
+describe('その時の見え方で落とす', () => {
+  const hidden = instantiate({ id: '相手の手札', card: vanilla, owner: '後攻' })
+
+  /** 何かを行ったこと。名指しが残るかどうかだけを見るので、行動そのものは問わない。 */
+  function played(card: CardId): DuelEvent {
+    return { kind: '行動した', player: '後攻', action: 'カードをプレイする', card, square: undefined }
+  }
+
+  /** 先攻から見たログの、名指しされているカード。落ちていれば `undefined` が並ぶ。 */
+  function namedTo(state: DuelState, viewer: Player): readonly (CardId | undefined)[] {
+    return perspectiveOf(state, viewer).log.map((event) => (event.kind === '行動した' ? event.card : undefined))
+  }
+
+  // 総合ルール 第2部 第21章 2-2: 持ち主であっても山札の中身を見てはならない。
+  it('公開されているゾーンから山札へ戻したできごとが、戻した後も名前つきで残る', () => {
+    const target = enemy('戻される')
+    const board = putOnSquare(stocked(), enemySquare, target)
+
+    const resolved = resolveEffect(board, chooseAndReturn.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+    // 戻した後の盤面から見れば、このカードはもう見えない。それでも、戻したできごとには
+    // 名前が残る。誰の何が戻ったのかが後から読めなくなってはならない。
+    expect(cardsIn(resolved, '後攻', '山札').map((card) => card.id)).toContain(target.id)
+    expect(perspectiveOf(resolved, '先攻').log.flatMap((event) => (event.kind === '命令を実行した' ? [event.instruction] : []))).toEqual([
+      { kind: '選ぶ', card: target.id },
+      { kind: 'ゾーンへ置く', card: target.id, to: '山札' },
+    ])
+  })
+
+  // 総合ルール 第2部 第21章 4-3: 相手の手札は見られず、枚数だけを数えられる。
+  it('相手の手札にあり続けたカードの名前は現れない', () => {
+    const board = inZone(stocked(), '後攻', '手札', hidden)
+
+    const state = record(record(board, played(hidden.id)), played(hidden.id))
+
+    expect(namedTo(state, '先攻')).toEqual([undefined, undefined])
+    expect(namedTo(state, '後攻')).toEqual([hidden.id, hidden.id])
+  })
+
+  /**
+   * 見えていた間のできごとにだけ名前が出る。前は見えず、後も見えない。総合ルール 第2部
+   * 第21章 5-2（捨札はいつでも見られる）と 4-3（相手の手札は見られない）の境目にあたる。
+   */
+  it('公開ゾーンへ出て手札に戻ったカードは、公開されていた間のできごとにだけ名指しされる', () => {
+    const inHand = inZone(stocked(), '後攻', '手札', hidden)
+    const before = record(inHand, played(hidden.id))
+    // 手札から捨札へ出て、また手札に戻る。
+    const shown = record(inZone(putInZone(before, '後攻', '手札', []), '後攻', '捨札', hidden), played(hidden.id))
+    const after = record(inZone(putInZone(shown, '後攻', '捨札', []), '後攻', '手札', hidden), played(hidden.id))
+
+    expect(namedTo(after, '先攻')).toEqual([undefined, hidden.id, undefined])
   })
 })
 

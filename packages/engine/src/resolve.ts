@@ -170,11 +170,17 @@ interface Outcome {
 function recorded(before: DuelState, outcome: Outcome, instruction: Instruction, controller: Player): DuelState {
   if (outcome.state === before && outcome.subject === undefined) return outcome.state
 
-  return record(outcome.state, {
-    kind: '命令を実行した',
-    controller,
-    instruction: loggedInstruction(instruction, outcome.subject),
-  })
+  // 命令が動かしたカードは、動いた先が非公開のゾーンだと後の盤面から見えない。名指しを
+  // 残せるよう、動く前の盤面もあわせて渡す（`log.ts` の `record`、#129）。
+  return record(
+    outcome.state,
+    {
+      kind: '命令を実行した',
+      controller,
+      instruction: loggedInstruction(instruction, outcome.subject),
+    },
+    before,
+  )
 }
 
 /**

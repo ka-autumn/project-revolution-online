@@ -11,7 +11,7 @@ import type {
   DuelState,
   TrapConditionMet,
 } from './duel.js'
-import type { DuelEvent, LoggedInstruction } from './log.js'
+import type { DuelEvent, LoggedInstruction, RecordedEvent, SeenBy } from './log.js'
 import type { Orientation } from './orientation.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
@@ -159,13 +159,13 @@ export interface DuelPerspective {
   /**
    * ここまでに起きたできごと（ADR-0011）。**見てはならないカードは名指ししない。**
    *
-   * 落とすかどうかは、射影したこの盤面から表側が見えるかどうかで決まる（`visibleIds`）。
-   * **見え方の決まりを二度書かないための形である。** ログのために `seesFace` を読み直すと、
-   * 片方だけ直した時に漏れる。
+   * 落とすかどうかは、**そのできごとが積まれた時にこのプレイヤーから見えていたか**で決まる
+   * （`log.ts` の `RecordedEvent.seenBy`）。見え方の決まりそのものは射影ひとつ（`seesFace`）の
+   * ままで、それを読むのが「いま」ではなく「その時」になる。
    *
-   * 見えなくなったカードは、そのできごとの時に見えていても落ちる。落とすのは「いま」の
-   * 見え方で決まるためで、**少なく見せる側に倒している**（`protocol.ts` の `describeChoice`
-   * と同じ）。
+   * 一度も見えていないカードは、後から見えるようになっても過去の行に現れない。逆に、公開
+   * されているゾーンから山札や手札へ移ったカードは、移った後も過去の行では名指しされたまま
+   * になる（#129）。**ログは過去の記録であって、いまの見え方ではない。**
    */
   readonly log: readonly DuelEvent[]
 }
@@ -251,11 +251,13 @@ function visibleSmashJudgment(judgment: SmashJudgment): VisibleSmashJudgment {
 /**
  * その射影から表側が見えているカードの識別子すべて。
  *
- * 見え方の決まり（`seesFace`）を二度書かずに済むよう、**射影した結果から取り出す。** ログを
- * 落とすのにも（`projectEvent`）、選ぶ時の候補を落とすのにも（`protocol.ts` の
- * `describeChoice`）、同じここを通す。
+ * 見え方の決まり（`seesFace`）を二度書かずに済むよう、**射影した結果から取り出す。** 選ぶ時の
+ * 候補を落とすのにも（`protocol.ts` の `describeChoice`）、できごとを積む時に見え方を凍らせる
+ * のにも（`visibleIdsOf`）、同じここを通す。
  */
-export function visibleIds(perspective: DuelPerspective): ReadonlySet<CardId> {
+export function visibleIds(
+  perspective: Pick<DuelPerspective, 'zones' | 'squares' | 'resolveZone'>,
+): ReadonlySet<CardId> {
   return new Set([
     ...Object.values(perspective.zones).flatMap((zones) =>
       Object.values(zones).flatMap((cards) =>
@@ -267,41 +269,96 @@ export function visibleIds(perspective: DuelPerspective): ReadonlySet<CardId> {
   ])
 }
 
-/** 見えているならその識別子、見えていなければ `undefined`。 */
-function seen(card: CardId | undefined, visible: ReadonlySet<CardId>): CardId | undefined {
-  return card !== undefined && visible.has(card) ? card : undefined
+/**
+ * そのプレイヤーから表側が見えているカードの識別子すべて（#129）。
+ *
+ * 射影した盤面から取り出すので、見え方の決まり（`seesFace`）はここでも二度書かれない。
+ * できごとを積む時に見え方を凍らせるのに使う（`log.ts` の `record`）。
+ *
+ * 盤面をまるごと射影するかわりに、見え方が変わりうるところ（`zones`）だけを射影する。
+ * できごとを積むたびに通るので、継続効果の計算（`effectiveUnitData`）まで走らせない。
+ */
+export function visibleIdsOf(state: DuelState, viewer: Player): ReadonlySet<CardId> {
+  const { squares, resolveZone } = state
+  return visibleIds({ zones: projectZones(state, viewer), squares, resolveZone })
 }
 
 /**
- * できごと 1 つから、見えていないカードの名指しを落とす。
+ * そのできごとが名指しするカードのうち、そのできごとの前後どちらかでそのプレイヤーから
+ * 見えていたもの（`log.ts` の `SeenBy`）。
+ *
+ * ここだけが「そのできごとが起きた時にどう見えていたか」を決める。後から盤面を読み直す
+ * 手立ては無い——見えなくなったカードがどこから来たのかは、いまの盤面には残らない。
+ */
+export function seenByOf(state: DuelState, before: DuelState, event: DuelEvent): SeenBy {
+  const named = cardsNamedBy(event)
+  const seenBy = PLAYERS.map((viewer): readonly [Player, readonly CardId[]] => {
+    if (named.length === 0) return [viewer, []]
+
+    const after = visibleIdsOf(state, viewer)
+    const visible = before === state ? after : new Set([...visibleIdsOf(before, viewer), ...after])
+    return [viewer, named.filter((card) => visible.has(card))]
+  })
+  return Object.fromEntries(seenBy) as SeenBy
+}
+
+/** そのできごとが名指ししているカード。落とせるところだけを数える（`mapEventCards`）。 */
+function cardsNamedBy(event: DuelEvent): readonly CardId[] {
+  const named: CardId[] = []
+  mapEventCards(event, (card) => {
+    if (card !== undefined) named.push(card)
+    return card
+  })
+  return named
+}
+
+/**
+ * できごと 1 つから、見えていなかったカードの名指しを落とす。
+ *
+ * 落とすかどうかは、**積まれた時の見え方**（`log.ts` の `RecordedEvent.seenBy`）で決まる。
+ * いまの盤面からは決めない。ログは過去の記録であって、いまの見え方ではない（#129）。
  *
  * 落とした結果は「そのできごとがカードを指していない」場合と同じ形になる。読む側から見れば
  * どちらも「名指しできるカードが無い」ことであり、区別する必要は無い。
  */
-function projectEvent(event: DuelEvent, visible: ReadonlySet<CardId>): DuelEvent {
+function projectEvent(recorded: RecordedEvent, viewer: Player): DuelEvent {
+  const seen = new Set(recorded.seenBy[viewer])
+  return mapEventCards(recorded.event, (card) => (card !== undefined && seen.has(card) ? card : undefined))
+}
+
+/** できごとが名指しするカードに手を入れる関数。`undefined` を返すと、その名指しが落ちる。 */
+type CardMapping = (card: CardId | undefined) => CardId | undefined
+
+/**
+ * できごと 1 つが名指ししているカードすべてに、同じ手当てをする。
+ *
+ * **どのできごとがどこでカードを名指ししているかを知っているのはここだけである。** 名指しを
+ * 落とすのにも（`projectEvent`）、見え方を凍らせるのに数えるのにも（`cardsNamedBy`）同じ
+ * ここを通す。二度書くと、片方だけ直した時に漏れる。
+ *
+ * `希望ステップでめくった` だけはカードを渡さない。一度表向きに置かれたことは取り消せない
+ * 事実なので、裏返された後もそのまま残る（`log.ts` の `希望ステップでめくった`）。
+ */
+function mapEventCards(event: DuelEvent, map: CardMapping): DuelEvent {
   switch (event.kind) {
     case '行動した':
-      return { ...event, card: seen(event.card, visible) }
+      return { ...event, card: map(event.card) }
     case '能力を解決した':
-      return { ...event, source: seen(event.source, visible) }
+      return { ...event, source: map(event.source) }
     case '命令を実行した':
-      return { ...event, instruction: projectInstruction(event.instruction, visible) }
+      return { ...event, instruction: mapInstructionCard(event.instruction, map) }
     case 'バトルが始まった':
-      return { ...event, attacker: seen(event.attacker, visible), attacked: seen(event.attacked, visible) }
+      return { ...event, attacker: map(event.attacker), attacked: map(event.attacked) }
     case 'バトルダメージを与えた':
-      return { ...event, from: seen(event.from, visible), to: seen(event.to, visible) }
-    // 捨札はすべてのカードをいつでも見られる（総合ルール 第2部 第21章 5-2）ので、置かれた
-    // カードは普通そのまま残る。後から捨札を離れて見えなくなったものだけが落ちる。
+      return { ...event, from: map(event.from), to: map(event.to) }
     case 'ルールで捨札に置かれた':
-      return { ...event, cards: event.cards.filter((card) => visible.has(card)) }
+      return { ...event, cards: event.cards.flatMap((card) => mapped(map(card))) }
     case 'バトルが終わった':
-      return { ...event, winner: seen(event.winner, visible) }
+      return { ...event, winner: map(event.winner) }
     case 'コストを支払った':
-      return { ...event, card: seen(event.card, visible) }
+      return { ...event, card: map(event.card) }
     case 'プランをめくった':
-      return { ...event, card: seen(event.card, visible), discarded: seen(event.discarded, visible) }
-    // 一度表向きに置かれたことは取り消せない事実なので、裏返された後もそのまま残す
-    // （`log.ts` の `希望ステップでめくった`）。ここだけ「いま」の見え方から名指しを落とさない。
+      return { ...event, card: map(event.card), discarded: map(event.discarded) }
     case '希望ステップでめくった':
     case 'ダメージを受けた':
     case '決着した':
@@ -309,14 +366,19 @@ function projectEvent(event: DuelEvent, visible: ReadonlySet<CardId>): DuelEvent
   }
 }
 
+/** 名指しが残ったならその 1 枚、落ちたなら空。並びに `map` を通すのに使う。 */
+function mapped(card: CardId | undefined): readonly CardId[] {
+  return card === undefined ? [] : [card]
+}
+
 /**
- * 命令 1 つから、見えていないカードの名指しを落とす。
+ * 命令 1 つが名指ししているカードに、同じ手当てをする。
  *
  * カードを指すところの名前が `card` に揃えてある（`log.ts` の `LoggedInstruction`）ので、
  * 命令の種類ごとに書き分ける必要が無い。
  */
-function projectInstruction(instruction: LoggedInstruction, visible: ReadonlySet<CardId>): LoggedInstruction {
-  return 'card' in instruction ? { ...instruction, card: seen(instruction.card, visible) } : instruction
+function mapInstructionCard(instruction: LoggedInstruction, map: CardMapping): LoggedInstruction {
+  return 'card' in instruction ? { ...instruction, card: map(instruction.card) } : instruction
 }
 
 /** そのトラップが視点のプレイヤーのトラップゾーンにあるか。 */
@@ -332,10 +394,7 @@ function ownsTrap(state: DuelState, viewer: Player, met: TrapConditionMet): bool
  * サーバだけである。
  */
 export function perspectiveOf(state: DuelState, viewer: Player): DuelPerspective {
-  const board = projectBoard(state, viewer)
-  // ログを落とすのに、落とし終えた盤面が要る（`DuelPerspective.log`）。同じ射影を二度
-  // 作らずに済むよう、盤面を先に組み立ててからログを足す。
-  return { ...board, log: state.log.map((event) => projectEvent(event, visibleIds(board))) }
+  return { ...projectBoard(state, viewer), log: state.log.map((recorded) => projectEvent(recorded, viewer)) }
 }
 
 /**

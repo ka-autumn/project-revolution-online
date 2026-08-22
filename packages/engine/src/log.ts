@@ -3,6 +3,7 @@ import type { CardId, DuelResult, DuelState } from './duel.js'
 import type { Instruction } from './effect.js'
 import type { LegalAction } from './legal-action.js'
 import type { Orientation } from './orientation.js'
+import { seenByOf } from './perspective.js'
 import type { Player } from './player.js'
 import type { ChoicePurpose } from './resolve.js'
 import type { PlayerZone } from './zone.js'
@@ -177,9 +178,38 @@ export type LoggedInstruction =
   | { readonly kind: 'プランを裏返す'; readonly player: Player }
   | { readonly kind: 'カードを引く'; readonly player: Player; readonly count: number }
 
-/** できごとを 1 つ積む。 */
-export function record(state: DuelState, event: DuelEvent): DuelState {
-  return { ...state, log: [...state.log, event] }
+/**
+ * そのできごとが名指しするカードのうち、そのプレイヤーから表側が見えていたもの（#129）。
+ *
+ * 見えていた「時」は、そのできごとが起きた時である。**ログは過去の記録であって、いまの
+ * 見え方ではない。** 公開されているゾーンから山札へ戻ったカードは、戻った後も、戻る前の
+ * 行では名指しされたままでなければならない。
+ */
+export type SeenBy = Readonly<Record<Player, readonly CardId[]>>
+
+/**
+ * 積まれたできごと 1 つ。起きたことと、その時どちらのプレイヤーに何が見えていたかの組。
+ *
+ * **見え方をできごとと一緒に凍らせる。** 名指しを落とすのは射影（`perspective.ts` の
+ * `projectEvent`）のままだが、落とすかどうかを決めるのは「いま」ではなくここに残した
+ * 見え方である。盤面から後で読み直すと、その後に見えなくなったカードが過去の行からも
+ * 消えてしまう（#129）。
+ */
+export interface RecordedEvent {
+  readonly event: DuelEvent
+  readonly seenBy: SeenBy
+}
+
+/**
+ * できごとを 1 つ積む。
+ *
+ * `before` は、そのできごとが起こる前の盤面。名指しを残すかどうかは、**そのできごとの前後の
+ * どちらかで見えていたか**で決まる。カードを見えないところへ動かしたできごと（山札へ戻す）は
+ * 動く前に見えており、めくって見えるようになったできごと（プランをめくる）は動いた後に
+ * 見えているためで、片側だけでは足りない。盤面を動かさないできごとでは同じものになる。
+ */
+export function record(state: DuelState, event: DuelEvent, before: DuelState = state): DuelState {
+  return { ...state, log: [...state.log, { event, seenBy: seenByOf(state, before, event) }] }
 }
 
 /**

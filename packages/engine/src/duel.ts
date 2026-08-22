@@ -4,7 +4,7 @@ import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
 import type { UnitOnSquare } from './effect.js'
-import type { DuelEvent } from './log.js'
+import type { RecordedEvent } from './log.js'
 import type { Orientation } from './orientation.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
@@ -212,8 +212,12 @@ export interface DuelState {
    * **盤面の一部として持つ。** できごとを外へ知らせる口をエンジンに生やすことはできない
    * （ADR-0001）ので、積んでおいて盤面と同じ道で届ける。**ルールの判断には使わない。**
    * 読むのは射影（`perspective.ts`）だけで、ここを見て盤面が変わることは無い。
+   *
+   * できごとと一緒に、その時どちらのプレイヤーに何が見えていたかを持つ（`RecordedEvent`）。
+   * 名指しを落とすのは射影のままだが、落とすかどうかは後から盤面を読み直しても分からない
+   * （#129）。
    */
-  readonly log: readonly DuelEvent[]
+  readonly log: readonly RecordedEvent[]
 }
 
 /**
