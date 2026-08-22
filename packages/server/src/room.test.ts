@@ -428,9 +428,41 @@ function ended(): RoomOutcome {
 describe('選ぶ', () => {
   it('選ぶ人にだけ、選んでほしいことが届く', () => {
     const { outcome, acting } = planning()
+    const other = acting === 'あ' ? 'い' : 'あ'
 
-    expect(outcome.deliveries.map((delivery) => delivery.to)).toEqual([acting])
-    expect(to(outcome.deliveries, acting).map((message) => message.kind)).toEqual(['選んでほしい'])
+    expect(to(outcome.deliveries, acting).map((message) => message.kind)).toEqual(['盤面', '選んでほしい'])
+    expect(to(outcome.deliveries, other).map((message) => message.kind)).toEqual(['盤面'])
+  })
+
+  /**
+   * #141。選んでいる間は誰も何も行えない（`act` が `選ぶのを待っている` として断る）。
+   *
+   * **選ばないほうにも盤面を送る。** そちらには「選んでほしい」が届かないので、送らないと
+   * 1 つ前の盤面と一緒に届いた手が並んだままになり、押しても断られるボタンが残る。
+   */
+  it('選び始めると、両方の行える手が空になる', () => {
+    const { outcome, acting } = planning()
+    const other = acting === 'あ' ? 'い' : 'あ'
+
+    // 行動したほうは優先権を持っている。空になるのは、選ぶのを待っているからである。
+    expect(actionsOf(outcome.deliveries, acting)).toEqual([])
+    expect(actionsOf(outcome.deliveries, other)).toEqual([])
+  })
+
+  /**
+   * 答え終わって行動が進めば、行える手も戻る。
+   *
+   * 手が戻るのは行動したほうではない。行動するとその時点で非アクティブプレイヤーが優先権を
+   * 得る（総合ルール 第3部 第4章 3）ので、次に行えるのは相手である。
+   */
+  it('答え終わると、行える手が戻る', () => {
+    const { outcome, acting } = planning()
+    const other = acting === 'あ' ? 'い' : 'あ'
+
+    const answered = send(outcome.rooms, acting, { kind: '選ぶ', answer: 0 })
+
+    expect(answered.deliveries.map((delivery) => delivery.message.kind)).toEqual(['盤面', '盤面'])
+    expect(actionsOf(answered.deliveries, other)).not.toEqual([])
   })
 
   it('選ぶ人でなければ答えられない', () => {
@@ -501,7 +533,7 @@ describe('選ぶのをやめる', () => {
 
     const again = send(cancelled.rooms, acting, { kind: '行動する', action: { kind: 'プランする' } })
 
-    expect(to(again.deliveries, acting).map((message) => message.kind)).toEqual(['選んでほしい'])
+    expect(to(again.deliveries, acting).map((message) => message.kind)).toEqual(['盤面', '選んでほしい'])
   })
 
   /** まだ 1 つも答えていなければ、戻る先が無いので行動そのものを取り消す。 */
@@ -618,8 +650,7 @@ describe('入り直す', () => {
    */
   it('選択の途中で入り直すと、同じ選択が送り直される', () => {
     const { outcome, acting } = planning()
-    const asked = to(outcome.deliveries, acting)[0]
-    if (asked?.kind !== '選んでほしい') throw new Error('選んでほしいが届いたはずだった')
+    const asked = choiceOf(outcome.deliveries, acting)
 
     const again = send(outcome.rooms, acting, { kind: '部屋に入る', room: CODE })
 
@@ -628,7 +659,7 @@ describe('入り直す', () => {
       '盤面',
       '選んでほしい',
     ])
-    expect(to(again.deliveries, acting).find((message) => message.kind === '選んでほしい')).toEqual(asked)
+    expect(choiceOf(again.deliveries, acting)).toEqual(asked)
   })
 
   /**
