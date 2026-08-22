@@ -818,6 +818,16 @@ describe('その時の見え方で落とす', () => {
     ])
   })
 
+  // #139。名指しが残っていても、名前を引く先が無ければ画面には出せない。
+  it('山札へ戻したカードの名前を、引けるように添える', () => {
+    const target = enemy('戻される')
+    const board = putOnSquare(stocked(), enemySquare, target)
+
+    const resolved = resolveEffect(board, chooseAndReturn.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+    expect(perspectiveOf(resolved, '先攻').namedInLog.map((instance) => instance.id)).toEqual([target.id])
+  })
+
   // 総合ルール 第2部 第21章 4-3: 相手の手札は見られず、枚数だけを数えられる。
   it('相手の手札にあり続けたカードの名前は現れない', () => {
     const board = inZone(stocked(), '後攻', '手札', hidden)

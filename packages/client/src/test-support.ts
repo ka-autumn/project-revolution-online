@@ -51,6 +51,7 @@ export function emptyBoard(viewer: Player): WirePerspective {
     smashJudgments: [],
     result: undefined,
     log: [],
+    namedInLog: [],
   }
 }
 

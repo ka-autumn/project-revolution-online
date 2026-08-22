@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 // ゾーンを組み立てるためだけに `putInZone` を使う。engine の中からゾーンを差し替えるための
 // 関数であり、公開する API ではない（`smash.test.ts` と同じ）。
-import { putInZone } from './duel.js'
+import { moveToZone, putInZone } from './duel.js'
+// できごとを積む `record` も engine の内部にある。積む時に見え方が決まる（#129）。
+import { record } from './log.js'
 import {
   defineStrategy,
   defineTrap,
@@ -13,7 +15,7 @@ import {
   putOnSquare,
   toWire,
 } from './index.js'
-import type { Card, DuelState, Player, PlayerZone } from './index.js'
+import type { Card, DuelEvent, DuelState, Player, PlayerZone } from './index.js'
 
 /** 盤面に並べるカード。engine のテストは架空のカードで書く（ADR-0002）。 */
 const CARDS = {
@@ -170,5 +172,56 @@ describe('通信内容に現れないもの', () => {
     ['識別子', '後攻-手札'],
   ])('相手の手札と山札にしかないカードの%sは現れない', (_, leaked) => {
     expect(sent).not.toContain(leaked)
+  })
+})
+
+/**
+ * #139。ログが名指ししているカードは、盤面から居なくなっていても名前を引けるように載る
+ * （`perspective.ts` の `DuelPerspective.namedInLog`）。
+ *
+ * **ここで新しく見せるものは無い。** 載るのは射影を通ったログに名指しが残っている識別子
+ * だけなので、一度も見えていないカードは今までどおり現れない。
+ */
+describe('ログが名指ししているカード', () => {
+  /** 何かを行ったことにする。名指しが残るかどうかだけを見るので、行動そのものは問わない。 */
+  function played(player: Player, card: string): DuelEvent {
+    return { kind: '行動した', player, action: 'カードをプレイする', card, square: undefined }
+  }
+
+  /**
+   * 先攻のスクエアにいたユニットが山札に戻り、後攻の手札にあるカードも名指しされた盤面。
+   *
+   * 前者は先攻から見えていた（積む時に見えているので名指しが残る）が、いまは盤面のどこにも
+   * 載っていない。後者は先攻から一度も見えていない。
+   */
+  function withLog(): DuelState {
+    const board = filledState()
+    const acted = record(record(board, played('先攻', '先攻-スクエア')), played('後攻', '後攻-手札'))
+    return moveToZone(acted, '先攻-スクエア', '山札')
+  }
+
+  const sentWithLog = JSON.stringify(toWire(perspectiveOf(withLog(), '先攻')))
+
+  it('盤面から居なくなったカードも、名前を引けるように載る', () => {
+    const named = toWire(perspectiveOf(withLog(), '先攻')).namedInLog
+
+    expect(named.map((instance) => [instance.id, instance.card.name])).toEqual([
+      ['先攻-スクエア', 'テスト・スクエアのユニット'],
+    ])
+    expect(sentWithLog).toContain('テスト・スクエアのユニット')
+  })
+
+  it.each([
+    ['カード名', 'テスト・隠されるカード'],
+    ['識別子', '後攻-手札'],
+  ])('一度も見えていないカードの%sは、ログで名指しされても現れない', (_, leaked) => {
+    expect(sentWithLog).not.toContain(leaked)
+  })
+
+  it('盤面に載っているカードは、二度は載らない', () => {
+    // 名指しされているが、まだスクエアにいる。名前は盤面から引けるので、ここには載らない。
+    const stillOnSquare = record(filledState(), played('先攻', '先攻-スクエア'))
+
+    expect(toWire(perspectiveOf(stillOnSquare, '先攻')).namedInLog).toEqual([])
   })
 })

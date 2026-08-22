@@ -495,6 +495,31 @@ export function cardsInResolveZone(state: DuelState): readonly CardInstance[] {
 }
 
 /**
+ * そのカードが盤面のどこにあっても、その 1 枚。どこにも無ければ `undefined`。
+ *
+ * カードが同時に 2 か所にあることはないので、見つかったところで返してよい。**どこにあるかは
+ * 返さない。** 場所まで要るのは取り除く時（`detach`）だけで、そちらは自分で探す。
+ *
+ * **これが見つけたカードを、そのまま誰かに見せてはならない。** 見えてよいかを決めるのは射影
+ * （`perspective.ts`）ひとつである（ADR-0004）。
+ */
+export function findAnywhere(state: DuelState, id: CardId): CardInstance | undefined {
+  const onSquare = findOnSquares(state, id)
+  if (onSquare !== undefined) return onSquare
+
+  const resolving = state.resolveZone.find((card) => card.id === id)
+  if (resolving !== undefined) return resolving
+
+  for (const player of PLAYERS) {
+    for (const zone of PLAYER_ZONES) {
+      const found = findInZone(state, player, zone, id)
+      if (found !== undefined) return found
+    }
+  }
+  return undefined
+}
+
+/**
  * スクエアにあるカードを、そのカードの持ち主のゾーンの一番上に移す。スクエアになければ
  * 盤面はそのまま。
  *
