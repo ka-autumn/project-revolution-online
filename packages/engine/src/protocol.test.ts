@@ -478,6 +478,97 @@ describe('何のための選択か', () => {
 })
 
 /**
+ * #122。効果が選ばせている場面は、種類（`ChoicePurpose`）だけではどれも `効果の対象` になる。
+ * どのカードの効果かが分かれば場面は絞れるので、発生源のカードを載せる。
+ *
+ * **載せるのは識別子だけである。** 名前も文言も engine は持たない（ADR-0001）。
+ */
+describe('選ばせているカード', () => {
+  const SOURCE = '選ばせるユニット'
+  const square: Square = { row: 0, column: 1 }
+  const PASS: LegalAction = { kind: '優先権を放棄する' }
+
+  const picker = defineUnit({
+    name: 'テスト・敵を選ぶユニット',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* (duel) {
+        yield* choose(duel.enemies())
+      }),
+    ],
+  })
+
+  /**
+   * その能力がバンクで解決を待ち、選ぶ余地があるように敵が 2 枚いる盤面。
+   *
+   * 発生源のカードをどこに置くかは呼ぶ側が決める。バンクにある能力はカードとは別に存在し、
+   * 支配者も誘発した時の発生源から決まっている（総合ルール 第2部 第1章 5-1）ので、置き場所を
+   * 変えても解決はそのまま起きる。
+   */
+  function waitingToPick(place: (state: DuelState, unit: CardInstance) => DuelState): DuelState {
+    const enemies: readonly (readonly [string, Square])[] = [
+      ['敵A', { row: 2, column: 0 }],
+      ['敵B', { row: 2, column: 2 }],
+    ]
+    const withEnemies = enemies.reduce(
+      (state, [id, at]) => putOnSquare(state, at, instantiate({ id, card: testCard, owner: '後攻' })),
+      phaseReadyToAct('メインフェイズ'),
+    )
+    const placed = place(withEnemies, instantiate({ id: SOURCE, card: picker, owner: '先攻' }))
+    const [triggered] = picker.abilities
+    if (triggered?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
+
+    return {
+      ...placed,
+      bank: [
+        {
+          ability: triggered,
+          source: SOURCE,
+          controller: '先攻',
+          self: { id: SOURCE, square, card: picker, controller: '先攻' },
+        },
+      ],
+    }
+  }
+
+  const onSquare = (state: DuelState, unit: CardInstance): DuelState => putOnSquare(state, square, unit)
+
+  /** 山札の中は非公開情報である（総合ルール 第2部 第23章 2-1）ので、支配者からも見えない。 */
+  const inLibrary = (state: DuelState, unit: CardInstance): DuelState =>
+    putInZone(state, '先攻', '山札', [...cardsIn(state, '先攻', '山札'), unit])
+
+  it('効果が選ばせているなら、どのカードの効果かが載る', () => {
+    const progress = applyWithAnswers(waitingToPick(onSquare), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.source).toBe(SOURCE)
+  })
+
+  /**
+   * **見えていない発生源は落とす。** 見えていないものの名前を作らない（#95）のと同じ理由で、
+   * 識別子も渡さない。バンクにある能力はカードとは別に存在する（総合ルール 第2部 第1章 5-1）
+   * ので、選ばせている当のカードが場を離れて見えなくなる場面は起こりうる。
+   */
+  it('選ぶ人から見えていない発生源は載らない', () => {
+    const progress = applyWithAnswers(waitingToPick(inLibrary), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.source).toBeUndefined()
+  })
+
+  /** コストの支払いは効果が選ばせているのではない。発生源という言い方が当たらないので載せない。 */
+  it('コストの支払いには載らない', () => {
+    const progress = applyWithAnswers(beforePlanning(), PLANNING, [])
+
+    expectChoice(progress)
+    expect(progress.choice.source).toBeUndefined()
+  })
+})
+
+/**
  * #142。選ぶ人が見るのは**その選択が起きている盤面**であり、そこで新しく見えたものがあれば
  * その行動は戻せない。見てから取り消して別の手を打てると、山札の 1 番上を覗く手立てになる。
  */

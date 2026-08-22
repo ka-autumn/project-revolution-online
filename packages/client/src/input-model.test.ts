@@ -273,6 +273,61 @@ describe('選ぶ候補', () => {
     expect(choiceView(board(), choice).candidates[0]?.label).toBe('1 番目: テスト・手札の戦士')
   })
 
+  /**
+   * #122。効果が選ばせている場面は種類だけでは「効果の対象」にしかならない。**どのカードの
+   * 効果かが分かれば場面は絞れる**ので、発生源を見出しに出す。
+   */
+  it('効果が選ばせているなら、どのカードの効果かが見出しに出る', () => {
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: '効果の対象',
+      source: 'スクエアの1枚',
+      mayDecline: false,
+      answered: 0,
+      mayGoBack: true,
+      candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
+    }
+
+    expect(choiceView(board(), choice).asking).toBe('テスト・盤上の戦士 の効果の対象を選んでください')
+  })
+
+  /**
+   * 見えていない発生源は engine が落とす（`protocol.ts` の `WireChoice.source`）。届かなければ
+   * 種類だけの見出しに戻る。**名前を作り出さない**（#95）。
+   */
+  it('発生源が届いていなければ、種類だけの見出しになる', () => {
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: '効果の対象',
+      source: undefined,
+      mayDecline: false,
+      answered: 0,
+      mayGoBack: true,
+      candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
+    }
+
+    expect(choiceView(board(), choice).asking).toBe('効果の対象を選んでください')
+  })
+
+  /**
+   * 識別子が届いても、盤面にもログの名指しにも無ければ名前は引けない（`view-model.ts` の
+   * `namesIn`）。**「見えていないカード」とは書かない。** 何を聞かれているかを言うのが見出しで
+   * あって、そこに見えていないものの居場所を作らない。
+   */
+  it('名前を引けない発生源なら、見出しに現れない', () => {
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: '効果の対象',
+      source: 'とどいていない1枚',
+      mayDecline: false,
+      answered: 0,
+      mayGoBack: true,
+      candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
+    }
+
+    expect(choiceView(board(), choice).asking).toBe('効果の対象を選んでください')
+  })
+
   /** 「◯枚まで選び」のように、選ばないことを選べる場面がある（`resolve.ts` の `Chooser`）。 */
   it('選ばないことを選べるかが伝わる', () => {
     const choice: WireChoice = {
