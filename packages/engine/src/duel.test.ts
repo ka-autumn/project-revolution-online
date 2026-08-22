@@ -201,3 +201,38 @@ describe('作成された誘発型能力の消滅', () => {
     expect(moved.createdAbilities).toHaveLength(1)
   })
 })
+
+/**
+ * 総合ルール 第4部 第14章 4-9・4-10、第3部 第16章 2-2（ADR-0006）。
+ *
+ * 中央エリアを指定してプレイされたユニットが捨札に置かれるのは「いずれかのスクエアに
+ * 置かれていれば」なので、スクエアを離れたユニットはもう対象ではない。盤面がそれを
+ * 覚え続けると、置くものが無いのにルールエフェクトが発生したことになる（#131）。
+ */
+describe('中央エリアを指定してプレイされたユニットの記憶', () => {
+  /** そのユニットがスクエアにいて、中央エリアを指定してプレイされたと覚えている盤面。 */
+  function playedIntoCenter(): DuelState {
+    const unit = instantiate({ id: '中央のユニット', card: testUnit, owner: '先攻' })
+    return { ...putOnSquare(emptyDuelState(), someSquare, unit), playedIntoCenter: ['中央のユニット'] }
+  }
+
+  it('スクエアからゾーンへ動くと忘れる', () => {
+    expect(moveToZone(playedIntoCenter(), '中央のユニット', '手札').playedIntoCenter).toEqual([])
+  })
+
+  it('スクエアからスクエアへ動いても覚えている', () => {
+    const moved = moveToSquare(playedIntoCenter(), '中央のユニット', anotherSquare, {
+      controller: '先攻',
+      orientation: 'リリース',
+    })
+
+    expect(moved.playedIntoCenter).toEqual(['中央のユニット'])
+  })
+
+  it('よそのカードが動いても忘れない', () => {
+    const other = instantiate({ id: 'よそのカード', card: testUnit, owner: '先攻' })
+    const state = putOnSquare(playedIntoCenter(), anotherSquare, other)
+
+    expect(moveToZone(state, 'よそのカード', '捨札').playedIntoCenter).toEqual(['中央のユニット'])
+  })
+})

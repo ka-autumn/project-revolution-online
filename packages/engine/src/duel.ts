@@ -135,7 +135,12 @@ export interface DuelState {
    *
    * 中央エリアに置かれたことではなく「中央エリアを指定してプレイされた」ことが条件なので、
    * 効果によって中央エリアに置かれたユニットと区別できるように、プレイした側が覚えておく
-   * 必要がある。次にルールエフェクトがチェックされる時に捨札に置かれ、この並びも空になる。
+   * 必要がある。
+   *
+   * **ここにあるのは、いずれかのスクエアにあるユニットだけである。** 対象になるのは
+   * 「いずれかのスクエアに置かれていれば」（同 第3部 第16章 2-2）なので、スクエアを
+   * 離れてゾーンへ動いた時点でここから落ちる（`moveToZone`）。スクエアからスクエアへ
+   * 動いただけなら残る。読む側は、まだスクエアにあるかどうかを確かめ直さなくてよい。
    */
   readonly playedIntoCenter: readonly CardId[]
   /**
@@ -535,7 +540,7 @@ export function moveToZone(
 
   const { card } = detached
   // 行き先がスクエアではないので、これは必ず「スクエアからスクエア」以外のゾーン移動である。
-  const vanished = withoutCreatedAbilitiesAffecting(detached.state, id)
+  const vanished = withoutPlayedIntoCenter(withoutCreatedAbilitiesAffecting(detached.state, id), id)
   const flipped = zone === '山札' && position === '1番上' ? faceDownPlan(vanished, card.owner) : vanished
 
   const moved: CardInstance = { ...card, controller: card.owner, orientation, damage: 0 }
@@ -667,6 +672,20 @@ function detach(state: DuelState, id: CardId): { readonly state: DuelState; read
 function withoutCreatedAbilitiesAffecting(state: DuelState, id: CardId): DuelState {
   if (!state.createdAbilities.some((created) => created.affecting === id)) return state
   return { ...state, createdAbilities: state.createdAbilities.filter((created) => created.affecting !== id) }
+}
+
+/**
+ * `playedIntoCenter` からそのカードを取り除く。無ければ盤面はそのまま。
+ *
+ * 呼ぶのは、そのカードがスクエアを離れてゾーンへ動く時だけである。中央エリア指定の
+ * ルールエフェクトが見るのは「いずれかのスクエアに置かれていれば」（総合ルール 第3部
+ * 第16章 2-2）なので、スクエアからスクエアへ動いたユニットは対象のままでなければ
+ * ならない。`withoutCreatedAbilitiesAffecting` と同じく `detach` の中に置けないのは
+ * このためである。
+ */
+function withoutPlayedIntoCenter(state: DuelState, id: CardId): DuelState {
+  if (!state.playedIntoCenter.includes(id)) return state
+  return { ...state, playedIntoCenter: state.playedIntoCenter.filter((each) => each !== id) }
 }
 
 /** `trapConditionsMet` からそのカードのぶんを取り除く。無ければ盤面はそのまま。 */
