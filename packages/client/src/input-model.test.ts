@@ -161,7 +161,11 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
-      candidates: [{ kind: '見えていない' }, { kind: '見えている', card: 'スクエアの1枚' }, { kind: '見えていない' }],
+      candidates: [
+        { kind: '見えていない', at: undefined },
+        { kind: '見えている', card: 'スクエアの1枚' },
+        { kind: '見えていない', at: undefined },
+      ],
     }
 
     expect(choiceView(board(), choice).candidates.map((candidate) => candidate.index)).toEqual([0, 1, 2])
@@ -179,7 +183,11 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
-      candidates: [{ kind: '見えていない' }, { kind: '見えていない' }, { kind: '見えていない' }],
+      candidates: [
+        { kind: '見えていない', at: undefined },
+        { kind: '見えていない', at: undefined },
+        { kind: '見えていない', at: undefined },
+      ],
     }
 
     expect(choiceView(board(), choice).candidates.map((candidate) => candidate.label)).toEqual([
@@ -336,7 +344,7 @@ describe('選ぶ候補', () => {
       mayDecline: true,
       answered: 0,
       mayGoBack: true,
-      candidates: [{ kind: '見えていない' }],
+      candidates: [{ kind: '見えていない', at: undefined }],
     }
 
     expect(choiceView(board(), choice).mayDecline).toBe(true)
@@ -357,7 +365,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered,
       mayGoBack: true,
-      candidates: [{ kind: '見えていない' }],
+      candidates: [{ kind: '見えていない', at: undefined }],
     }
 
     expect(choiceView(board(), choice).mayRewind).toBe(expected)
@@ -377,7 +385,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack,
-      candidates: [{ kind: '見えていない' }],
+      candidates: [{ kind: '見えていない', at: undefined }],
     }
 
     expect(choiceView(board(), choice).mayCancel).toBe(expected)
@@ -390,7 +398,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 1,
       mayGoBack: false,
-      candidates: [{ kind: '見えていない' }],
+      candidates: [{ kind: '見えていない', at: undefined }],
     }
 
     expect(choiceView(board(), choice).mayRewind).toBe(false)
@@ -417,7 +425,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
-      candidates: [{ kind: '見えていない' }],
+      candidates: [{ kind: '見えていない', at: undefined }],
     }
 
     expect(choiceView(board(), choice).asking).toBe(expected)
@@ -489,7 +497,7 @@ describe('自動で送る手', () => {
         mayDecline: false,
         answered: 0,
         mayGoBack: true,
-        candidates: [{ kind: '見えていない' }],
+        candidates: [{ kind: '見えていない', at: undefined }],
       },
     })
 
@@ -640,7 +648,7 @@ describe('候補を盤面から押す', () => {
   it('押したカードは、その候補の番号で答える', () => {
     const picking = choicePicking(
       board(),
-      choice([{ kind: '見えていない' }, { kind: '見えている', card: 'スクエアの1枚' }]),
+      choice([{ kind: '見えていない', at: undefined }, { kind: '見えている', card: 'スクエアの1枚' }]),
     )
 
     expect(picking.answerOf('スクエアの1枚')).toBe(1)
@@ -654,14 +662,64 @@ describe('候補を盤面から押す', () => {
   })
 
   /**
-   * 裏向きのスマッシュも候補になる（プランのコスト、総合ルール 第2部 第21章 7-5）が、通信に
-   * 載るのは見えていないということだけ（`protocol.ts` の `WireCandidate`）で、盤面のどの札の
-   * ことかを結び付けられない。**ボタンのままにする。**
+   * #127。裏向きのスマッシュも候補になる（プランのコスト、総合ルール 第2部 第21章 7-5）。
+   * 識別子は届かないので、**置き場所**で盤面の札と結び付ける。
    */
-  it('見えていない候補は、盤面からは押せない', () => {
-    const picking = choicePicking(board(), choice([{ kind: '見えていない' }, { kind: '見えていない' }]))
+  it('見えていない候補は、置き場所で押せる', () => {
+    const picking = choicePicking(
+      board(),
+      choice([
+        { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 0 } },
+        { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 1 } },
+      ]),
+    )
+
+    expect(picking.hidden).toEqual([
+      { player: '先攻', zone: 'スマッシュゾーン', index: 0 },
+      { player: '先攻', zone: 'スマッシュゾーン', index: 1 },
+    ])
+  })
+
+  /** 押した札と答えた番号が一致していること。ずれると別の札をフリーズすることになる。 */
+  it('押した裏向きの札は、その候補の番号で答える', () => {
+    const picking = choicePicking(
+      board(),
+      choice([
+        { kind: '見えている', card: 'てふだの1枚' },
+        { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 0 } },
+        { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 1 } },
+      ]),
+    )
+
+    expect(picking.answerOfHidden({ player: '先攻', zone: 'スマッシュゾーン', index: 1 })).toBe(2)
+  })
+
+  /** 同じゾーンの、候補になっていない札は押せない。番号の並びに無いものには答えられない。 */
+  it('候補になっていない置き場所は押せない', () => {
+    const picking = choicePicking(
+      board(),
+      choice([{ kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 0 } }]),
+    )
+
+    expect(picking.answerOfHidden({ player: '先攻', zone: 'スマッシュゾーン', index: 1 })).toBeUndefined()
+    expect(picking.answerOfHidden({ player: '後攻', zone: 'スマッシュゾーン', index: 0 })).toBeUndefined()
+  })
+
+  /**
+   * 置き場所が届かない候補もある（山札の中、`protocol.ts` の `positionOf`）。押す先が盤面に
+   * 無いので、**ボタンのまま**である。
+   */
+  it('置き場所を持たない候補は、盤面からは押せない', () => {
+    const picking = choicePicking(
+      board(),
+      choice([
+        { kind: '見えていない', at: undefined },
+        { kind: '見えていない', at: undefined },
+      ]),
+    )
 
     expect(picking.pickable).toEqual([])
+    expect(picking.hidden).toEqual([])
   })
 
   /** 能力の候補は、押す先が盤面に無い。 */
@@ -670,6 +728,7 @@ describe('候補を盤面から押す', () => {
 
     expect(picking.pickable).toEqual([])
     expect(picking.squares).toEqual([])
+    expect(picking.hidden).toEqual([])
   })
 
   /**
@@ -694,7 +753,7 @@ describe('候補を盤面から押す', () => {
   it('押したスクエアは、その候補の番号で答える', () => {
     const picking = choicePicking(
       board(),
-      choice([{ kind: '見えていない' }, { kind: 'スクエア', square: { row: 1, column: 1 } }]),
+      choice([{ kind: '見えていない', at: undefined }, { kind: 'スクエア', square: { row: 1, column: 1 } }]),
     )
 
     expect(picking.answerOfSquare({ row: 1, column: 1 })).toBe(1)

@@ -56,12 +56,15 @@ describe('カード 1 枚', () => {
     })
   })
 
-  it('見えていないカードは、向きだけが出る', () => {
+  /** 出るのは向きと置き場所だけである。置き場所は盤面の枠を指すもので、中身を何も言わない（#127）。 */
+  it('見えていないカードは、向きと置き場所が出る', () => {
     const view = boardView(
       withZone(emptyBoard('先攻'), '後攻', '手札', [{ kind: '見えていない', orientation: 'リリース' }]),
     )
 
-    expect(zoneOf(view, '相手', '手札').cards).toEqual([{ kind: '裏', orientation: 'リリース' }])
+    expect(zoneOf(view, '相手', '手札').cards).toEqual([
+      { kind: '裏', orientation: 'リリース', at: { player: '後攻', zone: '手札', index: 0 } },
+    ])
   })
 
   it('乗っているダメージも出る', () => {

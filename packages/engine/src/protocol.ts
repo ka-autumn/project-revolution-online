@@ -1,14 +1,18 @@
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
+import { cardsIn } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
 import { cardIdOf } from './log.js'
 import { visibleIdsOf } from './perspective.js'
 import type { PassOutcome } from './progress.js'
+import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
 import type { ChoicePurpose, Chooser } from './resolve.js'
 import type { WirePerspective } from './wire.js'
+import { PLAYER_ZONES } from './zone.js'
+import type { PlayerZone } from './zone.js'
 
 /**
  * サーバとクライアントがやりとりする値（ADR-0008）。
@@ -32,6 +36,22 @@ export type RoomCode = string
  * 値の無いものが消えて「答えていない」と見分けが付かなくなるためである。
  */
 export type ChoiceAnswer = number | '選ばない'
+
+/**
+ * 盤面での置き場所（#127）。ゾーンと、そのゾーンの何番目か。
+ *
+ * 並び順は届く盤面（`wire.ts` の `WirePerspective.zones`）と同じである。射影はゾーンの中身を
+ * 並べ替えも間引きもしない（`perspective.ts` の `project`）ので、同じ番号が同じ札を指す。
+ *
+ * **識別子の代わりではない。** 指しているのは盤面の枠であって、そこにあるカードが何であるかは
+ * 何も言っていない。**画面上の並びでもない。** どこに描くかを決めるのは受け取った側である
+ * （ADR-0001）。
+ */
+export interface WireCardPosition {
+  readonly player: Player
+  readonly zone: PlayerZone
+  readonly index: number
+}
 
 /**
  * 選ぶ時に見せる候補 1 つ。
@@ -64,7 +84,22 @@ export type WireCandidate =
    * 入れ替わる（総合ルール 第2部 第22章 4・6）ので、呼び名にするのは受け取った側である。
    */
   | { readonly kind: 'スクエア'; readonly square: Square }
-  | { readonly kind: '見えていない' }
+  /**
+   * 表側が見えていないカード。**盤面のどこにあるかだけを持つ**（#127）。
+   *
+   * 位置があると、番号のボタンだけでなく盤面のその札を押しても答えられる。**見えないままで
+   * あることは崩れない**——どのゾーンの何番目かは、ゾーンごとの枚数・並び・向きとして今も
+   * 届いている（`wire.ts` の `WireVisibleCard`）ものの言い直しである。いま見えていない候補が
+   * 並ぶのはコストの支払いだけ（`cost.ts` の `chooseAndFreeze`）で、絞り込むのは向き
+   * （公開情報、総合ルール 第2部 第23章 1-1）だけなので、どれが候補かは位置が無くても数えられる。
+   *
+   * **候補の絞り込みが非公開の中身を見るようになったら、ここを見直すこと。** その時は、位置を
+   * 出すことで「どの札がその条件を満たしているか」が新しく読み取れるようになる。
+   *
+   * 山札にあるカードは位置を持たない。中身を見てはならないゾーンであり（総合ルール 第2部
+   * 第21章 2-2）、1 枚ずつ並べる場所も画面に無いので、押す先が無い。
+   */
+  | { readonly kind: '見えていない'; readonly at: WireCardPosition | undefined }
 
 /** 選んでほしいこと 1 つ。**選ぶプレイヤーにだけ送る**（ADR-0008）。 */
 export interface WireChoice {
@@ -229,6 +264,27 @@ function squareOf(candidate: unknown): Square | undefined {
 }
 
 /**
+ * 見えていないカードが盤面のどこにあるか（#127）。ゾーンに無ければ `undefined`。
+ *
+ * スクエアとリゾルブゾーンは見ない。どちらも表向きのカードしか置かれない（総合ルール 第2部
+ * 第23章 1-1・第21章 12-2）ので、見えていないカードがそこに居ることは無い。
+ *
+ * **山札だけは位置も出さない。** 持ち主であっても中身を見てはならないゾーンであり（同 第21章
+ * 2-2）、画面にも 1 枚ずつは並ばない（`view-model.ts` の `COUNTED_ZONES`）。押す先が無いのに
+ * 深さだけが分かると、そこだけ新しく読み取れるものが増える。
+ */
+function positionOf(board: DuelState, id: CardId): WireCardPosition | undefined {
+  const found = PLAYERS.flatMap((player) =>
+    PLAYER_ZONES.filter((zone) => zone !== '山札').flatMap((zone): readonly WireCardPosition[] => {
+      const index = cardsIn(board, player, zone).findIndex((card) => card.id === id)
+      return index === -1 ? [] : [{ player, zone, index }]
+    }),
+  )
+
+  return found[0]
+}
+
+/**
  * 候補 1 つを、送れる形にする。
  *
  * **候補の型は選ばせる場面ごとに違う。** `Chooser` が候補を `unknown` として受け取るのはその
@@ -236,7 +292,12 @@ function squareOf(candidate: unknown): Square | undefined {
  * **何のための選択か**（`ChoicePurpose`）から読み方を決める。効果が選ばせている場面
  * （`効果の対象`）だけは、カードとスクエアのどちらも来るので、候補の形で見分ける。
  */
-function describeCandidate(candidate: unknown, purpose: ChoicePurpose, visible: ReadonlySet<CardId>): WireCandidate {
+function describeCandidate(
+  candidate: unknown,
+  purpose: ChoicePurpose,
+  visible: ReadonlySet<CardId>,
+  board: DuelState,
+): WireCandidate {
   // 能力が並ぶ場面。カードではないので、発生源のカードで指す。
   if (purpose === '解決する能力' || purpose === 'プランの置き換え') {
     const source = sourceOf(candidate)
@@ -244,14 +305,16 @@ function describeCandidate(candidate: unknown, purpose: ChoicePurpose, visible: 
   }
 
   const id = cardIdOf(candidate)
-  if (id !== undefined) return visible.has(id) ? { kind: '見えている', card: id } : { kind: '見えていない' }
+  if (id !== undefined) {
+    return visible.has(id) ? { kind: '見えている', card: id } : { kind: '見えていない', at: positionOf(board, id) }
+  }
 
   // スクエアは盤面の位置なので、隠すものが無い。誰がどこを選べるかは、候補として並んだ時点で
   // 決まっている。
   const square = squareOf(candidate)
   if (square !== undefined) return { kind: 'スクエア', square }
 
-  return { kind: '見えていない' }
+  return { kind: '見えていない', at: undefined }
 }
 
 /**
@@ -286,7 +349,7 @@ function describeChoice(
     mayDecline,
     answered,
     mayGoBack: [...visible].every((card) => before.has(card)),
-    candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, visible)),
+    candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, visible, board)),
   }
 }
 
