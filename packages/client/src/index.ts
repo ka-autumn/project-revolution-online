@@ -144,8 +144,9 @@ function draw(
     const answer = (found: number | undefined): void => {
       if (found !== undefined) connection.send({ kind: '選ぶ', answer: found })
     }
+    const boardData = boardView(board)
     const boardNode = boardElement(
-      boardView(board),
+      boardData,
       view !== undefined
         ? {
             pickable: view.pickable,
@@ -171,16 +172,24 @@ function draw(
     )
 
     const controlArea = controls()
-    controlArea.append(modeElement(picking))
+    // どのフェイズの誰の優先権かは、打つ前に見るものなので操作するところの一番上に置く。
+    controlArea.append(line('controls__turn', boardData.turn))
+
+    // 操作のしかたの切り替えは、行える手の見出しに添える（`render.ts` の `titleRow`）。
+    const mode = modeElement(picking)
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (stage.choice !== undefined) {
       controlArea.append(
-        choiceElement(choiceView(board, stage.choice), {
-          onAnswer: (answer) => connection.send({ kind: '選ぶ', answer }),
-          onRewind: () => connection.send({ kind: 'ひとつ戻る' }),
-          onCancel: () => connection.send({ kind: '取り消す' }),
-        }),
+        choiceElement(
+          choiceView(board, stage.choice),
+          {
+            onAnswer: (answer) => connection.send({ kind: '選ぶ', answer }),
+            onRewind: () => connection.send({ kind: 'ひとつ戻る' }),
+            onCancel: () => connection.send({ kind: '取り消す' }),
+          },
+          mode,
+        ),
       )
     } else if (showsOverlay(overlay)) {
       // 演出が出ている間は行える手を出さない（#115）。**待ち行列は実際の盤面より遅れている**
@@ -189,22 +198,28 @@ function draw(
       //
       // 選んでいる途中（`stage.choice`）は止めない。あれはすでに始まっている行動の中の選択
       // であって、待ち行列の遅れとは関係が無い。止めると、演出が消えるまで解決が進まなくなる。
-      controlArea.append(waitingForOverlayElement())
+      controlArea.append(waitingForOverlayElement(mode))
     } else if (view !== undefined) {
       // クリックで操作する（#94）。盤面の上で示せない手だけをここに出す。
       controlArea.append(
-        pickElement(view, {
-          onAction: (action) => {
-            picking.onCancel()
-            connection.send({ kind: '行動する', action })
+        pickElement(
+          view,
+          {
+            onAction: (action) => {
+              picking.onCancel()
+              connection.send({ kind: '行動する', action })
+            },
+            onCancel: () => picking.onCancel(),
           },
-          onCancel: () => picking.onCancel(),
-        }),
+          mode,
+        ),
       )
     } else {
       controlArea.append(
-        actionsElement(actionViews(board, stage.actions), (action) =>
-          connection.send({ kind: '行動する', action }),
+        actionsElement(
+          actionViews(board, stage.actions),
+          (action) => connection.send({ kind: '行動する', action }),
+          mode,
         ),
       )
     }

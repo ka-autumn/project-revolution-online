@@ -243,9 +243,28 @@ function button(label: string, onPress: () => void): HTMLElement {
  *
  * 並べるのは届いたものだけである。**押せない手は画面に出ない**（ADR-0010）。
  */
-export function actionsElement(views: readonly ActionView[], onAction: (action: LegalAction) => void): HTMLElement {
+/**
+ * 見出しの行（#128）。
+ *
+ * `aside` を渡すと、見出しと同じ行の右端に置く。操作するところは器ひとつにまとめてあり
+ * （`index.ts` の `controls`）、その高さは決め打ちなので、**行を増やさずに済ませたい**。
+ * 操作のしかたの切り替え（#94）は行える手に添えるものなので、ここに入る。
+ */
+function titleRow(className: string, text: string, aside: HTMLElement | undefined): HTMLElement {
+  const row = element('div', 'panel__head')
+  row.append(element('h2', className, text))
+  if (aside !== undefined) row.append(aside)
+
+  return row
+}
+
+export function actionsElement(
+  views: readonly ActionView[],
+  onAction: (action: LegalAction) => void,
+  aside?: HTMLElement,
+): HTMLElement {
   const node = element('section', 'actions')
-  node.append(element('h2', 'actions__title', '行える手'))
+  node.append(titleRow('actions__title', '行える手', aside))
   if (views.length === 0) {
     node.append(element('p', 'actions__none', 'いまは行えることがありません'))
     return node
@@ -271,9 +290,9 @@ export interface PickHandlers {
  * 盤面の上で示せない手だけをここに出す。**カードを選ぶ前は、対象を持たない手だけ**が並び、
  * カードを選んだ後はその 1 枚の手が並ぶ。置き先を選ぶ手は盤面の上にあるので、ここには出ない。
  */
-export function pickElement(view: PickView, handlers: PickHandlers): HTMLElement {
+export function pickElement(view: PickView, handlers: PickHandlers, aside?: HTMLElement): HTMLElement {
   const node = element('section', 'actions')
-  node.append(element('h2', 'actions__title', '行える手'))
+  node.append(titleRow('actions__title', '行える手', aside))
 
   const guide =
     view.picked === undefined
@@ -306,9 +325,9 @@ export function pickElement(view: PickView, handlers: PickHandlers): HTMLElement
  * 待ち行列は実際の盤面より遅れているので、出ている演出のフェイズと、行える手が指すフェイズが
  * 食い違う。手を出さないことで、**画面が実際と違うことを言っている**状態を作らない。
  */
-export function waitingForOverlayElement(): HTMLElement {
+export function waitingForOverlayElement(aside?: HTMLElement): HTMLElement {
   const node = element('section', 'actions')
-  node.append(element('h2', 'actions__title', '行える手'))
+  node.append(titleRow('actions__title', '行える手', aside))
   node.append(element('p', 'actions__none', '演出が終わるまで待ってください'))
 
   return node
@@ -324,9 +343,9 @@ export interface ChoiceHandlers {
 }
 
 /** 選ぶ候補を並べる。答えるのは番号である（ADR-0008）。 */
-export function choiceElement(view: ChoiceView, handlers: ChoiceHandlers): HTMLElement {
+export function choiceElement(view: ChoiceView, handlers: ChoiceHandlers, aside?: HTMLElement): HTMLElement {
   const node = element('section', 'choice')
-  node.append(element('h2', 'choice__title', view.asking))
+  node.append(titleRow('choice__title', view.asking, aside))
 
   const list = element('div', 'choice__list')
   for (const candidate of view.candidates) {
@@ -454,7 +473,6 @@ export function overlayElement(overlay: Overlay): HTMLElement {
  */
 export function boardElement(view: BoardView, picking?: BoardPicking): HTMLElement {
   const node = element('div', 'board')
-  node.append(element('p', 'board__turn', view.turn))
   if (view.battle !== undefined) node.append(battleElement(view.battle))
   for (const judgment of view.smashJudgments) node.append(smashJudgmentElement(judgment))
   if (view.result !== undefined) node.append(element('p', 'board__result', view.result))
