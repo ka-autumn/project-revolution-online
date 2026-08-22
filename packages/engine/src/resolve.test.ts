@@ -314,7 +314,7 @@ describe('「1 枚まで選び」', () => {
 
   it('選ばないことが認められているかどうかが、選ぶ側に渡る', () => {
     const asked: (boolean | undefined)[] = []
-    const record: Chooser = (candidates, _player, _purpose, mayDecline) => {
+    const record: Chooser = (candidates, _player, _purpose, _board, mayDecline) => {
       asked.push(mayDecline)
       return candidates[0]
     }

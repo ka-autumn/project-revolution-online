@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { CONSTRUCTED_DECK_MINIMUM, choose, defineStrategy, defineUnit, drawCards } from '@revolution/engine'
+import {
+  CONSTRUCTED_DECK_MINIMUM,
+  choose,
+  defineStrategy,
+  defineUnit,
+  drawCards,
+  placeTopOfLibrary,
+} from '@revolution/engine'
 import type { Card, Deck, FromClient, LegalAction, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
 import { emptyRooms, receive } from './room.js'
 import type { Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
@@ -69,6 +76,32 @@ function buildEndingDeck(): Deck {
 }
 
 const ENDING_SETUP: RoomSetup = { decks: [buildEndingDeck(), buildEndingDeck()], seed: 20260816 }
+
+/**
+ * 山札の 1 番上を捨札へ置いてから選ばせるストラテジー（#142）。
+ *
+ * 捨札はいつでも見られる（総合ルール 第2部 第21章 5-2）ので、選ばせる前に、それまで誰にも
+ * 見えていなかったカードが 1 枚見えるようになる。**見てから取り消せてはならない**場面を作る。
+ */
+const REVEALING_NAME = 'テスト・部屋のめくるストラテジー'
+
+const REVEALING: Card = defineStrategy({
+  name: REVEALING_NAME,
+  level: 0,
+  effect: function* () {
+    yield* placeTopOfLibrary('捨札', 'リリース')
+    yield* choose(['ア', 'イ'])
+  },
+})
+
+/** 2 度選ばせるストラテジーを、めくってから選ばせるものに差し替えたデッキ。ほかは同じ。 */
+function buildRevealingDeck(): Deck {
+  return Object.entries(CARDS).flatMap(([id, card]) =>
+    Array.from({ length: 4 }, () => (id === 'TEST-S' ? REVEALING : card)),
+  )
+}
+
+const REVEALING_SETUP: RoomSetup = { decks: [buildRevealingDeck(), buildRevealingDeck()], seed: 20260816 }
 
 const CODE = 'あいことば'
 
@@ -369,16 +402,34 @@ function placeEnergy(outcome: RoomOutcome): RoomOutcome {
  * 決め打ちにせず、持っているほうを探す。
  */
 function choosingTwice(): { readonly outcome: RoomOutcome; readonly acting: ParticipantId } {
-  let current = readyToAct(passUntil(started(), 'メインフェイズ'))
+  return playingStrategy(SETUP, STRATEGY_NAME)
+}
+
+/** めくってから選ばせる行動を始めたところまで進める（#142）。 */
+function revealingThenChoosing(): { readonly outcome: RoomOutcome; readonly acting: ParticipantId } {
+  return playingStrategy(REVEALING_SETUP, REVEALING_NAME)
+}
+
+/**
+ * そのストラテジーをプレイしたところまで進める。
+ *
+ * 手札に持っているほうが自分のメインフェイズにプレイできるまで、放棄で進める。どちらが先に
+ * 引くかはシードで決まるので、席を決め打ちにせず、持っているほうを探す。
+ */
+function playingStrategy(
+  setup: RoomSetup,
+  name: string,
+): { readonly outcome: RoomOutcome; readonly acting: ParticipantId } {
+  let current = readyToAct(passUntil(started(setup), 'メインフェイズ'))
   for (let steps = 0; steps < 300; steps += 1) {
     const board = boardOf(current.deliveries, 'あ')
     const acting = participantAt(board.turn.priority, board.viewer)
-    const play = playFromHand(current, acting, STRATEGY_NAME)
+    const play = playFromHand(current, acting, name)
     if (play !== undefined) return { outcome: send(current.rooms, acting, { kind: '行動する', action: play }), acting }
 
     current = readyToAct(answerAll(send(current.rooms, acting, PASS)))
   }
-  throw new Error('2 度選ばせる行動に届かなかった')
+  throw new Error(`${name} をプレイできるところに届かなかった`)
 }
 
 /** その参加者が、その名前のカードを手札からプレイする手。行えなければ `undefined`。 */
@@ -773,5 +824,74 @@ describe('別の部屋に移る', () => {
 
     expect(to(refused.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '部屋がいっぱい' }])
     expect(refused.rooms).toEqual(full.rooms)
+  })
+})
+
+/**
+ * #142。**選ぶ人が見るのは、その選択が起きている盤面である。**
+ *
+ * 行動が終わるまで `duel.state` は動かない（ADR-0008）ので、そのまま送ると、選ぶ人が見るのは
+ * 行動を始める前の姿になる。何を見て選べばよいのか分からない。
+ */
+describe('選んでいる間に見せる盤面', () => {
+  it('その行動が始まったことが、届く盤面に出ている', () => {
+    const { outcome, acting } = planning()
+
+    const started = boardOf(outcome.deliveries, acting).log
+    expect(started.some((event) => event.kind === '行動した' && event.action === 'プランする')).toBe(true)
+  })
+
+  it('選ばせる前にめくれたカードが、選んでいる間に見える', () => {
+    const { outcome, acting } = revealingThenChoosing()
+
+    const turned = boardOf(outcome.deliveries, acting).log.flatMap((event) =>
+      event.kind === '命令を実行した' && event.instruction.kind === '山札の1番上をゾーンへ置く'
+        ? [event.instruction.card]
+        : [],
+    )
+    expect(turned).toHaveLength(1)
+    expect(turned[0]).not.toBeUndefined()
+  })
+
+  /** 見せるのは送るものだけである。やり直しの起点は動かない（ADR-0008）。 */
+  it('取り消せば、めくる前の盤面に戻る', () => {
+    const { outcome, acting } = choosingTwice()
+
+    const cancelled = send(outcome.rooms, acting, { kind: '取り消す' })
+
+    const back = boardOf(cancelled.deliveries, acting).log
+    expect(back.some((event) => event.kind === '行動した' && event.action === 'カードをプレイする')).toBe(false)
+  })
+})
+
+/**
+ * #142。行動を始めてから新しく見えたものがあれば、その行動は戻せない。見てから取り消して
+ * 別の手を打てると、山札の 1 番上を覗く手立てになる。
+ */
+describe('見てしまったら戻れない', () => {
+  it('新しく見えたものがあれば、戻れないと届く', () => {
+    const { outcome, acting } = revealingThenChoosing()
+
+    expect(choiceOf(outcome.deliveries, acting).mayGoBack).toBe(false)
+  })
+
+  it('新しく見えたものが無ければ、これまでどおり戻れる', () => {
+    const { outcome, acting } = planning()
+
+    expect(choiceOf(outcome.deliveries, acting).mayGoBack).toBe(true)
+  })
+
+  // 断るのはサーバである（ADR-0010）。画面がボタンを出さないことに頼らない。
+  it.each([
+    ['取り消す'],
+    ['ひとつ戻る'],
+  ] as const)('%s を断る', (kind) => {
+    const { outcome, acting } = revealingThenChoosing()
+
+    const refused = send(outcome.rooms, acting, { kind })
+
+    expect(to(refused.deliveries, acting)).toEqual([
+      { kind: '行えなかった', reason: '見てしまったので戻れない' },
+    ])
   })
 })

@@ -336,9 +336,11 @@ export function choiceElement(view: ChoiceView, handlers: ChoiceHandlers): HTMLE
   node.append(list)
 
   // 戻る側は、答える側と並べない。押し間違えると選びかけたものが消える。
+  //
+  // 戻れない場面ではどちらも出さない（#142）。押せば断られるボタンを並べない。
   const back = element('div', 'choice__back')
   if (view.mayRewind) back.append(button('ひとつ戻る', handlers.onRewind))
-  back.append(button('この行動をやめる', handlers.onCancel))
+  if (view.mayCancel) back.append(button('この行動をやめる', handlers.onCancel))
   node.append(back)
 
   return node

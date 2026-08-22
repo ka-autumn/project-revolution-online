@@ -171,6 +171,7 @@ function chooseAndFreeze(
     candidates.map(({ card }) => card),
     player,
     purpose,
+    state,
   )
   const found = candidates.find(({ card }) => card === chosen)
   if (found === undefined) throw new Error('候補にないカードが選ばれた')

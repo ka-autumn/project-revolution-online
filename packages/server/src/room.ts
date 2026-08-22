@@ -7,6 +7,7 @@ import {
   toWire,
 } from '@revolution/engine'
 import type {
+  ActionProgress,
   ChoiceAnswer,
   Deck,
   DuelState,
@@ -212,25 +213,51 @@ function rejoin(rooms: Rooms, room: Room, participant: ParticipantId): RoomOutco
   const seat = seatOf(duel, participant)
   if (seat === undefined) return refuse(rooms, participant, '席に着いていない')
 
+  // 選ぶのを待っているなら、行動を始める前の盤面ではなく、その選択が起きている盤面を
+  // 送り直す（#142）。入り直す前に見えていたものと同じものが届く。
   return {
     rooms,
     deliveries: [
       { to: participant, message: { kind: '席についた', seat } },
-      ...boards(duel).filter((delivery) => delivery.to === participant),
+      ...boards(duel, pendingProgress(duel)?.board).filter((delivery) => delivery.to === participant),
       ...pendingChoice(duel, seat),
     ],
   }
 }
 
-/** その席のプレイヤーが答えを待たれているなら、その「選んでほしい」を作り直す。 */
-function pendingChoice(duel: DuelInRoom, seat: Player): readonly Delivery[] {
+/**
+ * 選ぶのを待っているなら、いまその選択がどうなっているか。待っていなければ `undefined`。
+ *
+ * **覚えておく必要が無い。** 貯めた答えの並びで適用をやり直せば同じところへ進む（ADR-0008）
+ * ので、送った候補も、見せた盤面も、尋ねるたびにここで作り直せる。
+ */
+function pendingProgress(duel: DuelInRoom): Extract<ActionProgress, { kind: '選んでほしい' }> | undefined {
   const pending = duel.pending
-  if (pending === undefined || pending.player !== seat) return []
+  if (pending === undefined) return undefined
 
   const progress = applyWithAnswers(duel.state, pending.action, pending.answers)
-  if (progress.kind !== '選んでほしい') return []
+  return progress.kind === '選んでほしい' ? progress : undefined
+}
+
+/** その席のプレイヤーが答えを待たれているなら、その「選んでほしい」を作り直す。 */
+function pendingChoice(duel: DuelInRoom, seat: Player): readonly Delivery[] {
+  const progress = duel.pending?.player === seat ? pendingProgress(duel) : undefined
+  if (progress === undefined) return []
 
   return [{ to: duel.seats[seat], message: { kind: '選んでほしい', choice: progress.choice } }]
+}
+
+/**
+ * 選びかけている行動を戻せるか（#142）。
+ *
+ * 決めるのはエンジンである（`protocol.ts` の `describeChoice`）。**サーバはそれを尋ねるだけで、
+ * 同じ判断を書かない。** 画面に載せる値（`WireChoice.mayGoBack`）と、ここで断るかどうかが
+ * 食い違わないための形である。
+ *
+ * 選択がもう要らないところまで進んでいれば、戻る話にならないので戻れることにする。
+ */
+function mayGoBack(duel: DuelInRoom): boolean {
+  return pendingProgress(duel)?.choice.mayGoBack ?? true
 }
 
 /**
@@ -289,15 +316,20 @@ function seats(duel: DuelInRoom): readonly (readonly [Player, ParticipantId])[] 
  * 選ぶのを待っている間も空で届く。行動の途中であり、次に受け取るのは答えだけだからである
  * （`act` が `選ぶのを待っている` として断る）。**打てない手を並べさせないために、断る側と
  * 送る側で同じ判断をしている。**
+ *
+ * `showing` は、送る盤面を差し替えるためにある。選ぶのを待っている間は**その選択が起きている
+ * 盤面**を送る（#142）。行動が終わるまで `duel.state` は動かない（ADR-0008）ので、そのまま
+ * 送ると、選ぶ人が見るのは行動を始める前の姿になってしまう。**差し替えるのは送るものだけで、
+ * `duel.state` は動かさない。** やり直しの起点がそこにある。
  */
-function boards(duel: DuelInRoom): readonly Delivery[] {
+function boards(duel: DuelInRoom, showing: DuelState = duel.state): readonly Delivery[] {
   const actions = duel.pending === undefined ? legalActions(duel.state) : []
 
   return seats(duel).map(([player, to]) => ({
     to,
     message: {
       kind: '盤面',
-      perspective: toWire(perspectiveOf(duel.state, player)),
+      perspective: toWire(perspectiveOf(showing, player)),
       actions: player === duel.state.turn.priority ? actions : [],
     },
   }))
@@ -369,6 +401,7 @@ function rewind(rooms: Rooms, participant: ParticipantId, how: Rewind): RoomOutc
   const pending = duel.pending
   if (pending === undefined) return refuse(rooms, participant, '選ぶところではない')
   if (seatOf(duel, participant) !== pending.player) return refuse(rooms, participant, '選ぶ人ではない')
+  if (!mayGoBack(duel)) return refuse(rooms, participant, '見てしまったので戻れない')
 
   if (how === 'すべて' || pending.answers.length === 0) {
     const cleared: DuelInRoom = { ...duel, pending: undefined }
@@ -396,11 +429,10 @@ function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAct
     return {
       rooms: withRoom(rooms, { ...room, duel: waiting }),
       deliveries: [
-        // 答えを受け取っている間 `duel.state` は動かない（ADR-0008）ので、選択が続く限り
-        // 同じ盤面を送り直すことになる。**それでも毎回送る。** 送る回数を減らす条件を書くと、
-        // 止まった最初の一度かどうかで場合分けが増え、そこは選択が 2 つ以上ある行動でしか
-        // 通らない。盤面を毎回まるごと送るのは元からの形である（ADR-0011）
-        ...boards(waiting),
+        // 送るのは**その選択が起きている盤面**である（#142）。答えを受け取っている間
+        // `duel.state` は動かない（ADR-0008）ので、そのままだと選ぶ人が見るのは行動を
+        // 始める前の姿になる。答えが増えれば進む先も変わるので、毎回送り直す
+        ...boards(waiting, progress.board),
         // **盤面より後に送る。** 受け取った側は盤面が届くと選択を畳む（`session.ts`）ので、
         // 先に送ると選んでほしいことが消える。`rejoin` も同じ順で送っている。
         { to: waiting.seats[choice.player], message: { kind: '選んでほしい', choice } },

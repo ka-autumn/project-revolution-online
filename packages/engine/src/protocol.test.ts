@@ -12,6 +12,7 @@ import {
   instantiate,
   passPriority,
   planReplacing,
+  placeTopOfLibrary,
   putOnSquare,
   triggeredAbility,
 } from './index.js'
@@ -473,5 +474,76 @@ describe('何のための選択か', () => {
 
     expectChoice(progress)
     expect(progress.choice.purpose).toBe('プレイのコスト')
+  })
+})
+
+/**
+ * #142。選ぶ人が見るのは**その選択が起きている盤面**であり、そこで新しく見えたものがあれば
+ * その行動は戻せない。見てから取り消して別の手を打てると、山札の 1 番上を覗く手立てになる。
+ */
+describe('戻れるかどうか', () => {
+  const PASS: LegalAction = { kind: '優先権を放棄する' }
+
+  /**
+   * 自分の山札の 1 番上を捨札へ置いてから、敵を 1 枚選ぶ能力。
+   *
+   * 捨札はいつでも見られる（総合ルール 第2部 第21章 5-2）ので、選ばせる前に、それまで誰にも
+   * 見えていなかったカードが 1 枚見えるようになる。
+   */
+  const revealer = defineUnit({
+    name: 'テスト・めくってから選ぶ',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* (duel) {
+        yield* placeTopOfLibrary('捨札', 'リリース')
+        yield* choose(duel.enemies())
+      }),
+    ],
+  })
+
+  /** その能力がバンクで解決を待ち、選ぶ余地があるように敵が 2 枚いる盤面。 */
+  function waitingToReveal(): DuelState {
+    const enemies: readonly (readonly [string, Square])[] = [
+      ['敵A', { row: 2, column: 0 }],
+      ['敵B', { row: 2, column: 2 }],
+    ]
+    const withEnemies = enemies.reduce(
+      (state, [id, square]) => putOnSquare(state, square, instantiate({ id, card: testCard, owner: '後攻' })),
+      phaseReadyToAct('メインフェイズ'),
+    )
+    const square: Square = { row: 0, column: 1 }
+    const self = { id: 'めくる役', square, card: revealer, controller: '先攻' as const }
+    const placed = putOnSquare(withEnemies, square, instantiate({ id: self.id, card: revealer, owner: '先攻' }))
+    const [triggered] = revealer.abilities
+    if (triggered?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
+
+    return { ...placed, bank: [{ ability: triggered, source: self.id, controller: '先攻', self }] }
+  }
+
+  it('新しく見えたものが無ければ戻れる', () => {
+    const progress = applyWithAnswers(beforePlanning(), PLANNING, [])
+
+    expectChoice(progress)
+    expect(progress.choice.mayGoBack).toBe(true)
+  })
+
+  it('山札の 1 番上が見えるようになったら戻れない', () => {
+    const progress = applyWithAnswers(waitingToReveal(), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.mayGoBack).toBe(false)
+  })
+
+  /** 選ぶ人に見せるのは、行動を始める前の盤面ではなく、いま止まっているところの盤面である。 */
+  it('その選択が起きている盤面が返る', () => {
+    const started = waitingToReveal()
+    const progress = applyWithAnswers(started, PASS, [])
+
+    expectChoice(progress)
+    expect(cardsIn(started, '先攻', '捨札')).toEqual([])
+    expect(cardsIn(progress.board, '先攻', '捨札').map((each) => each.id)).toEqual(['先攻の山札0'])
   })
 })

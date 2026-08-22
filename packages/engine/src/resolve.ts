@@ -70,11 +70,17 @@ export type ChoicePurpose = (typeof CHOICE_PURPOSES)[number]
  *
  * `purpose` は選ぶ人に見せるためのもので、返す答えを左右しない。答えを自動で決める実装
  * （`legal-action.ts` の `chooseFirst`、`self-play.ts` の `randomChooser`）は受け取らなくてよい。
+ *
+ * `board` は**その選択が起きている盤面**である。行動が終わるまで盤面は確定しない（ADR-0008）
+ * ので、選ぶ人に見せてよいのはこれであって、行動を始める前の盤面ではない（#142）。戻れるか
+ * どうかもここから決まる——行動を始めてから新しく見えたものがあれば、見たうえで取り消せて
+ * しまうので戻せない（`protocol.ts` の `describeChoice`）。
  */
 export type Chooser = (
   candidates: readonly unknown[],
   player: Player,
   purpose: ChoicePurpose,
+  board: DuelState,
   mayDecline?: boolean,
 ) => unknown
 
@@ -210,6 +216,7 @@ function apply(
         instruction.candidates,
         context.controller,
         '効果の対象',
+        state,
         instruction.mayDecline,
       )
       // 選ばないことが認められている場面でだけ、候補にないもの（`undefined`）を受け取れる。

@@ -43,10 +43,17 @@ export interface ChoiceView {
   /**
    * 直前に答えたものを取り消せるか。
    *
-   * まだ 1 つも答えていなければ戻る先が無い。その場合でも行動そのものは取り消せる
-   * （盤面はまだ動いていない、ADR-0008）ので、やめる側はいつでも押せる。
+   * まだ 1 つも答えていなければ戻る先が無い。
    */
   readonly mayRewind: boolean
+  /**
+   * 行動そのものをやめられるか（#142）。
+   *
+   * **行動を始めてから新しく見えたものがあれば、やめられない。** 見てから取り消して別の手を
+   * 打てることになるためで、決めるのはサーバである（`protocol.ts` の `WireChoice.mayGoBack`、
+   * ADR-0010）。ここでは届いた答えをそのまま使い、**同じ判断を書かない。**
+   */
+  readonly mayCancel: boolean
   readonly candidates: readonly CandidateView[]
 }
 
@@ -186,7 +193,8 @@ export function choiceView(board: WirePerspective, choice: WireChoice): ChoiceVi
   return {
     asking: askingFor(choice.purpose),
     mayDecline: choice.mayDecline,
-    mayRewind: choice.answered > 0,
+    mayRewind: choice.mayGoBack && choice.answered > 0,
+    mayCancel: choice.mayGoBack,
     candidates: choice.candidates.map((candidate, index) => ({
       index,
       label: candidateLabel(candidate, index, board.viewer, names),

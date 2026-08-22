@@ -221,7 +221,7 @@ describe('プランによるめくりの置換', () => {
   const replace: Chooser = (candidates) => candidates[0]
 
   /** 置換効果を適用しないことを選ぶ。「〜してよい」なので選ばないことを選べる。 */
-  const doNotReplace: Chooser = (candidates, _player, _purpose, mayDecline) =>
+  const doNotReplace: Chooser = (candidates, _player, _purpose, _board, mayDecline) =>
     mayDecline === true ? undefined : candidates[0]
 
   /**
