@@ -2,6 +2,7 @@ import type {
   CardId,
   ChoicePurpose,
   LegalAction,
+  PassOutcome,
   Player,
   Square,
   WireCandidate,
@@ -57,9 +58,47 @@ export interface ChoiceView {
   readonly candidates: readonly CandidateView[]
 }
 
-function labelOf(action: LegalAction, viewer: Player, names: ReadonlyMap<CardId, string>): string {
+/**
+ * 優先権を放棄する手の見出し（#130）。
+ *
+ * `優先権を放棄する` は総合ルールの語（第3部 第4章 4）そのままで、打っている側から見ると
+ * **何が起きるのか分かりにくい。** デュエル中いちばん多く押すボタンでもある。
+ *
+ * 押すと何が起きるかは、サーバが数え上げて送ってくる（`progress.ts` の `passOutcome`、
+ * ADR-0010）。**ここはそれを言葉にするだけで、どれになるかを決めない。** 振り分けは進行の
+ * 規則そのものなので、写せば 2 か所になる。
+ *
+ * 何かが進行している間（バンク・バトル・スマッシュ判定・「ターンの終わり」の前）は、総合
+ * ルールの語のままにする。終わるのがフェイズではないので、言い換えると嘘になる。
+ */
+function passLabel(outcome: PassOutcome | undefined): string {
+  if (outcome === undefined) return '優先権を放棄する'
+
+  switch (outcome.kind) {
+    // 相手のターンに優先権を得るのは自分（非アクティブプレイヤー）なので、そこで放棄しても
+    // 1 回目にしかならない。フェイズは終わらず、相手に返るだけである。
+    case '相手に渡る':
+      return 'パス'
+    case 'フェイズが変わる':
+      return `${outcome.next}に進む`
+    case 'ターンが終わる':
+      return 'ターンを終える'
+    case 'バンクを解決する':
+    case 'ステップが進む':
+    case 'ターンの終わりの能力が誘発する':
+      return '優先権を放棄する'
+  }
+}
+
+function labelOf(
+  action: LegalAction,
+  viewer: Player,
+  names: ReadonlyMap<CardId, string>,
+  passOutcome: PassOutcome | undefined,
+): string {
   switch (action.kind) {
     case '優先権を放棄する':
+      return passLabel(passOutcome)
     case 'プランする':
       return action.kind
     case 'エネルギーを置く':
@@ -88,10 +127,14 @@ function labelOf(action: LegalAction, viewer: Player, names: ReadonlyMap<CardId,
  * 届いた並びのまま並べる。**間引かない。** どれを行えるかを決めているのはサーバで、ここが
  * 減らせば行える手が画面から消える（ADR-0010）。
  */
-export function actionViews(board: WirePerspective, actions: readonly LegalAction[]): readonly ActionView[] {
+export function actionViews(
+  board: WirePerspective,
+  actions: readonly LegalAction[],
+  passOutcome: PassOutcome | undefined,
+): readonly ActionView[] {
   const names = namesIn(board)
 
-  return actions.map((action) => ({ action, label: labelOf(action, board.viewer, names) }))
+  return actions.map((action) => ({ action, label: labelOf(action, board.viewer, names, passOutcome) }))
 }
 
 /**
@@ -297,9 +340,13 @@ export function pickView(
   board: WirePerspective,
   actions: readonly LegalAction[],
   picked: CardId | undefined,
+  passOutcome: PassOutcome | undefined,
 ): PickView {
   const names = namesIn(board)
-  const view = (action: LegalAction): ActionView => ({ action, label: labelOf(action, board.viewer, names) })
+  const view = (action: LegalAction): ActionView => ({
+    action,
+    label: labelOf(action, board.viewer, names, passOutcome),
+  })
 
   const targeted = actions.filter((action) => targetOf(action) !== undefined)
   const untargeted = actions.filter((action) => targetOf(action) === undefined).map(view)

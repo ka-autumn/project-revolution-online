@@ -5,6 +5,7 @@ import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
 import { cardIdOf } from './log.js'
 import { visibleIdsOf } from './perspective.js'
+import type { PassOutcome } from './progress.js'
 import type { Player } from './player.js'
 import type { ChoicePurpose, Chooser } from './resolve.js'
 import type { WirePerspective } from './wire.js'
@@ -140,6 +141,15 @@ export type ToClient =
        * 第3章 1）で、相手が何を行えるかはその人が知る筋合いの無いことである。
        */
       readonly actions: readonly LegalAction[]
+      /**
+       * いま優先権を放棄したら何が起きるか（`progress.ts` の `passOutcome`、#130）。放棄が
+       * 行えない場面では意味を持たない。
+       *
+       * `actions` と同じ理由でここにある。**進行の規則を知っているのはサーバだけ**なので
+       * （ADR-0010）、「このボタンを押すと何が起きるか」も数え上げて送る。押すものは
+       * `優先権を放棄する` のまま変わらない。
+       */
+      readonly passOutcome: PassOutcome | undefined
     }
   | { readonly kind: '選んでほしい'; readonly choice: WireChoice }
   | { readonly kind: '行えなかった'; readonly reason: string }

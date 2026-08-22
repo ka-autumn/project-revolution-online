@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CHOICE_PURPOSES, indexOfSquare } from '@revolution/engine'
-import type { LegalAction, Player, WireChoice, WirePerspective } from '@revolution/engine'
+import type { LegalAction, PassOutcome, Player, WireChoice, WirePerspective } from '@revolution/engine'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
@@ -28,9 +28,9 @@ function board(viewer: Player = '先攻'): WirePerspective {
   }
 }
 
-/** その手の見出し。 */
-function labelOf(action: LegalAction, viewer: Player = '先攻'): string {
-  const [view] = actionViews(board(viewer), [action])
+/** その手の見出し。放棄の見出しは場面で変わる（#130）ので、何が起きるかも渡せるようにする。 */
+function labelOf(action: LegalAction, viewer: Player = '先攻', passOutcome?: PassOutcome): string {
+  const [view] = actionViews(board(viewer), [action], passOutcome)
   if (view === undefined) throw new Error('1 つ返るはずだった')
 
   return view.label
@@ -49,18 +49,18 @@ describe('行える手', () => {
       { kind: 'エネルギーを置く', card: 'てふだの1枚' },
     ]
 
-    expect(actionViews(board(), actions)).toHaveLength(3)
+    expect(actionViews(board(), actions, undefined)).toHaveLength(3)
   })
 
   /** 押したときに送るのは、届いたものそのままである。作り変えるとサーバに断られる。 */
   it('押したときに送る手は、届いたものそのまま', () => {
     const action: LegalAction = { kind: 'スマッシュする', unit: 'スクエアの1枚' }
 
-    expect(actionViews(board(), [action])[0]?.action).toBe(action)
+    expect(actionViews(board(), [action], undefined)[0]?.action).toBe(action)
   })
 
   it('何も届かなければ、何も並ばない', () => {
-    expect(actionViews(board(), [])).toEqual([])
+    expect(actionViews(board(), [], undefined)).toEqual([])
   })
 
   it.each([
@@ -113,6 +113,42 @@ describe('行える手', () => {
   /** 名前を作り出さない。見えないカードが指されたら、見えないままにする。 */
   it('見えていないカードが指されたら、名前を作らない', () => {
     expect(labelOf({ kind: 'エネルギーを置く', card: 'しらない1枚' })).toBe('エネルギーを置く: 見えていないカード')
+  })
+
+  /**
+   * #130。`優先権を放棄する` は総合ルールの語（第3部 第4章 4）そのままで、打っている側から
+   * 見ると何が起きるのか分かりにくい。
+   *
+   * **どれになるかを決めているのはサーバである**（`progress.ts` の `passOutcome`、ADR-0010）。
+   * ここは届いた答えを言葉にするだけなので、見るのもその対応づけだけである。
+   */
+  describe('放棄の見出し', () => {
+    const PASS: LegalAction = { kind: '優先権を放棄する' }
+
+    it.each([
+      ['相手に渡るだけなら、パス', { kind: '相手に渡る' }, 'パス'],
+      ['フェイズが変わるなら、その名前', { kind: 'フェイズが変わる', next: 'メインフェイズ' }, 'メインフェイズに進む'],
+      ['ターンが終わるなら、そう出す', { kind: 'ターンが終わる' }, 'ターンを終える'],
+    ] as const)('%s', (_, outcome, expected) => {
+      expect(labelOf(PASS, '先攻', outcome)).toBe(expected)
+    })
+
+    /**
+     * 何かが進行している間は、総合ルールの語のままにする。終わるのがフェイズではないので、
+     * 「◯◯フェイズに進む」と言うと嘘になる。
+     */
+    it.each([
+      ['バンクを解決する'],
+      ['ステップが進む'],
+      ['ターンの終わりの能力が誘発する'],
+    ] as const)('%s 場面では、言い換えない', (kind) => {
+      expect(labelOf(PASS, '先攻', { kind })).toBe('優先権を放棄する')
+    })
+
+    /** 届いていなければ作らない。放棄が行えない場面ではそもそもボタンが出ない。 */
+    it('何が起きるか届いていなければ、総合ルールの語のまま', () => {
+      expect(labelOf(PASS)).toBe('優先権を放棄する')
+    })
   })
 })
 
@@ -360,7 +396,7 @@ describe('自動で送る手', () => {
   /** 席についたうえで、その手が届いた状態。 */
   function receiving(actions: readonly LegalAction[]): Session {
     const seated = applyMessage(connecting(), { kind: '席についた', seat: '先攻' })
-    return applyMessage(seated, { kind: '盤面', perspective: board(), actions })
+    return applyMessage(seated, { kind: '盤面', perspective: board(), actions, passOutcome: undefined })
   }
 
   /** 放棄しか行えないなら、選ぶ余地が無い。 */
@@ -430,7 +466,7 @@ describe('クリックで操作する', () => {
   }
   const SMASH: LegalAction = { kind: 'スマッシュする', unit: 'スクエアの1枚' }
 
-  const pick = (actions: readonly LegalAction[], picked?: string) => pickView(board(), actions, picked)
+  const pick = (actions: readonly LegalAction[], picked?: string) => pickView(board(), actions, picked, undefined)
 
   it('手が紐づいているカードだけが押せる', () => {
     expect(pick([PASS, PLACE, PLAY_LEFT]).pickable).toEqual(['てふだの1枚'])

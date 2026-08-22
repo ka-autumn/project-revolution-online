@@ -7,6 +7,7 @@ import {
   cardsOn,
   defineUnit,
   instantiate,
+  passOutcome,
   passPriority,
   placeInZone,
   prepareDuel,
@@ -466,5 +467,85 @@ describe('優先権の放棄と「勇気」の起動条件', () => {
 
   it('相手が優先権をパスしても、自分の起動条件は残る', () => {
     expect(pass(withCourageCondition('先攻')).courageConditionsMet).toHaveLength(1)
+  })
+})
+
+/**
+ * #130。**押す前に何が起きるかを言う。**
+ *
+ * `優先権を放棄する` は総合ルールの語（第3部 第4章 4）そのままで、打っている側から見ると
+ * 何が起きるのか分かりにくい。振り分けは `passPriority` と同じなので、**言うことと実際が
+ * 食い違わないこと**をここで見る。
+ */
+describe('放棄したら何が起きるか', () => {
+  /** そのフェイズが始まったところまで、何もせずに進めた盤面。 */
+  function atPhase(phase: Phase): DuelState {
+    let current = startedDuel()
+    for (let steps = 0; steps < 40; steps += 1) {
+      if (current.turn.phase === phase) return current
+      current = endPhase(current)
+    }
+    throw new Error(`${phase} に届かなかった`)
+  }
+
+  // 総合ルール 第3部 第4章 4。フェイズが終わるのは連続した放棄の 2 回目である。
+  it('1 回目の放棄では、相手に渡るだけ', () => {
+    expect(passOutcome(startedDuel())).toEqual({ kind: '相手に渡る' })
+  })
+
+  /**
+   * 総合ルール 第3部 第2章 2・第4章 5。先攻の第 1 ターンはドローフェイズがとばされるので、
+   * リリースフェイズの次に始まるのはエネルギーフェイズである。**とばされるフェイズの名前を
+   * 言わない。**
+   */
+  it('2 回目の放棄では、次に始まるフェイズの名前が出る', () => {
+    expect(passOutcome(pass(startedDuel()))).toEqual({ kind: 'フェイズが変わる', next: 'エネルギーフェイズ' })
+  })
+
+  // 総合ルール 第3部 第10章 3。リカバリーフェイズは連続放棄を 2 度必要とする。
+  it('リカバリーフェイズの 1 度目は、「ターンの終わり」の能力が誘発する', () => {
+    const recovery = atPhase('リカバリーフェイズ')
+
+    expect(passOutcome(pass(recovery))).toEqual({ kind: 'ターンの終わりの能力が誘発する' })
+  })
+
+  it('リカバリーフェイズの 2 度目で、ターンが終わる', () => {
+    const triggered = pass(pass(atPhase('リカバリーフェイズ')))
+
+    expect(passOutcome(pass(triggered))).toEqual({ kind: 'ターンが終わる' })
+  })
+
+  /** 勝敗が決まったデュエルでは何も起こらない（総合ルール 第3部 第3章 3）。 */
+  it('終わったデュエルでは、何も起きない', () => {
+    const ended: DuelState = { ...startedDuel(), result: { kind: '引き分け' } }
+
+    expect(passOutcome(ended)).toBeUndefined()
+  })
+
+  /**
+   * **言うことと実際が食い違わない。** 振り分けを 2 か所に書かないための形（ADR-0010）なので、
+   * 片方だけずれていないことを実際に打って確かめる。
+   */
+  it('言ったとおりのことが起きる', () => {
+    let current = startedDuel()
+    for (let steps = 0; steps < 120; steps += 1) {
+      const said = passOutcome(current)
+      if (said === undefined) break
+
+      const next = pass(current)
+      const sameTurn = next.turn.number === current.turn.number
+      const phaseChanged = !sameTurn || next.turn.phase !== current.turn.phase
+      switch (said.kind) {
+        case 'フェイズが変わる':
+          expect({ phase: next.turn.phase, sameTurn }).toEqual({ phase: said.next, sameTurn: true })
+          break
+        case 'ターンが終わる':
+          expect(next.turn.number).toBe(current.turn.number + 1)
+          break
+        default:
+          expect(phaseChanged).toBe(false)
+      }
+      current = next
+    }
   })
 })
