@@ -124,6 +124,7 @@ describe('選ぶ候補', () => {
       purpose: '効果の対象',
       mayDecline: false,
       answered: 0,
+      mayGoBack: true,
       candidates: [{ kind: '見えていない' }, { kind: '見えている', card: 'スクエアの1枚' }, { kind: '見えていない' }],
     }
 
@@ -141,6 +142,7 @@ describe('選ぶ候補', () => {
       purpose: '効果の対象',
       mayDecline: false,
       answered: 0,
+      mayGoBack: true,
       candidates: [{ kind: '見えていない' }, { kind: '見えていない' }, { kind: '見えていない' }],
     }
 
@@ -161,6 +163,7 @@ describe('選ぶ候補', () => {
       purpose: '解決する能力',
       mayDecline: false,
       answered: 0,
+      mayGoBack: true,
       candidates: [{ kind: '能力', source: 'スクエアの1枚' }],
     }
 
@@ -174,6 +177,7 @@ describe('選ぶ候補', () => {
       purpose: '解決する能力',
       mayDecline: false,
       answered: 0,
+      mayGoBack: true,
       candidates: [{ kind: '能力', source: undefined }],
     }
 
@@ -190,6 +194,7 @@ describe('選ぶ候補', () => {
       purpose: '効果の対象',
       mayDecline: false,
       answered: 0,
+      mayGoBack: true,
       candidates: [
         { kind: 'スクエア', square: { row: 0, column: 0 } },
         { kind: 'スクエア', square: { row: 1, column: 1 } },
@@ -212,6 +217,7 @@ describe('選ぶ候補', () => {
       purpose: '効果の対象',
       mayDecline: false,
       answered: 0,
+      mayGoBack: true,
       candidates: [{ kind: 'スクエア', square: { row: 0, column: 0 } }],
     }
 
@@ -224,6 +230,7 @@ describe('選ぶ候補', () => {
       purpose: '効果の対象',
       mayDecline: false,
       answered: 0,
+      mayGoBack: true,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
@@ -237,6 +244,7 @@ describe('選ぶ候補', () => {
       purpose: '効果の対象',
       mayDecline: true,
       answered: 0,
+      mayGoBack: true,
       candidates: [{ kind: '見えていない' }],
     }
 
@@ -257,10 +265,44 @@ describe('選ぶ候補', () => {
       purpose: '効果の対象',
       mayDecline: false,
       answered,
+      mayGoBack: true,
       candidates: [{ kind: '見えていない' }],
     }
 
     expect(choiceView(board(), choice).mayRewind).toBe(expected)
+  })
+
+  /**
+   * #142。行動を始めてから新しく見えたものがあれば、その行動は戻せない。決めるのはサーバで
+   * （`WireChoice.mayGoBack`）、ここは届いた答えをそのまま使う（ADR-0010）。
+   */
+  it.each([
+    ['戻れるなら、やめる側はいつでも押せる', true, true],
+    ['戻れないなら、やめる側も出さない', false, false],
+  ] as const)('%s', (_, mayGoBack, expected) => {
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: '効果の対象',
+      mayDecline: false,
+      answered: 0,
+      mayGoBack,
+      candidates: [{ kind: '見えていない' }],
+    }
+
+    expect(choiceView(board(), choice).mayCancel).toBe(expected)
+  })
+
+  it('戻れないなら、答えを 1 つ済ませていても「ひとつ戻る」を出さない', () => {
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: '効果の対象',
+      mayDecline: false,
+      answered: 1,
+      mayGoBack: false,
+      candidates: [{ kind: '見えていない' }],
+    }
+
+    expect(choiceView(board(), choice).mayRewind).toBe(false)
   })
 
   /**
@@ -283,6 +325,7 @@ describe('選ぶ候補', () => {
       purpose,
       mayDecline: false,
       answered: 0,
+      mayGoBack: true,
       candidates: [{ kind: '見えていない' }],
     }
 
@@ -292,7 +335,14 @@ describe('選ぶ候補', () => {
   /** 種類を足したら言い回しも足す。足し忘れると型検査で落ちる（`askingFor` の `switch`）。 */
   it('どの種類にも言い回しがある', () => {
     const asked = CHOICE_PURPOSES.map((purpose) => {
-      const choice: WireChoice = { player: '先攻', purpose, mayDecline: false, answered: 0, candidates: [] }
+      const choice: WireChoice = {
+        player: '先攻',
+        purpose,
+        mayDecline: false,
+        answered: 0,
+        mayGoBack: true,
+        candidates: [],
+      }
       return choiceView(board(), choice).asking
     })
 
@@ -347,6 +397,7 @@ describe('自動で送る手', () => {
         purpose: '効果の対象',
         mayDecline: false,
         answered: 0,
+        mayGoBack: true,
         candidates: [{ kind: '見えていない' }],
       },
     })
@@ -479,6 +530,7 @@ describe('候補を盤面から押す', () => {
     purpose: 'プレイのコスト',
     mayDecline: false,
     answered: 0,
+    mayGoBack: true,
     candidates,
   })
 

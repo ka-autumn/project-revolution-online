@@ -198,7 +198,7 @@ function chosenPlanReplacement(
   if (candidates.length === 0) return undefined
 
   // 「かわりに〜してよい」なので、選ばないことを選べる。
-  const chosen = chooser(candidates, player, 'プランの置き換え', true)
+  const chosen = chooser(candidates, player, 'プランの置き換え', state, true)
   if (chosen === undefined) return undefined
   if (!candidates.includes(chosen as PlanReplacementCandidate)) throw new Error('候補にない置換効果が選ばれた')
 

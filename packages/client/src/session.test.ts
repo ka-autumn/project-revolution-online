@@ -29,6 +29,7 @@ const CHOICE: WireChoice = {
   purpose: '効果の対象',
   mayDecline: false,
   answered: 0,
+  mayGoBack: true,
   candidates: [{ kind: '見えていない' }, { kind: '見えている', card: 'あるカード' }],
 }
 
@@ -176,7 +177,7 @@ describe('この盤面で新しく届いたできごと', () => {
 
     const stage = applyMessage(acting, {
       kind: '選んでほしい',
-      choice: { player: '先攻', purpose: '効果の対象', mayDecline: false, answered: 0, candidates: [] },
+      choice: { player: '先攻', purpose: '効果の対象', mayDecline: false, answered: 0, mayGoBack: true, candidates: [] },
     }).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
@@ -229,7 +230,7 @@ describe('1 つ前の盤面でのターン', () => {
 
     const stage = applyMessage(acting, {
       kind: '選んでほしい',
-      choice: { player: '先攻', purpose: '効果の対象', mayDecline: false, answered: 0, candidates: [] },
+      choice: { player: '先攻', purpose: '効果の対象', mayDecline: false, answered: 0, mayGoBack: true, candidates: [] },
     }).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 

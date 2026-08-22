@@ -4,7 +4,7 @@ import type { CardId, DuelState } from './duel.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
 import { cardIdOf } from './log.js'
-import { perspectiveOf, visibleIds } from './perspective.js'
+import { visibleIdsOf } from './perspective.js'
 import type { Player } from './player.js'
 import type { ChoicePurpose, Chooser } from './resolve.js'
 import type { WirePerspective } from './wire.js'
@@ -81,11 +81,25 @@ export interface WireChoice {
   /**
    * この行動でここまでに答えた数。
    *
-   * 戻れるかどうかがここで決まる。0 なら戻る先が無く、取り消せるのは行動そのものだけである。
+   * どこまで戻れるかがここで決まる。0 なら戻る先が無く、取り消せるのは行動そのものだけである。
    * 数えるのはサーバであって、クライアントが覚えておくのではない。**切れて入り直しても
    * 同じ数が届く**（`room.ts` の `pendingChoice`）ため。
    */
   readonly answered: number
+  /**
+   * この行動を戻せるか。`ひとつ戻る` と `取り消す` の両方にかかる（#142）。
+   *
+   * **行動を始めてから新しく見えたものがあれば戻せない。** 見てから取り消して別の手を打てる
+   * ことになり、山札の 1 番上を覗く手立てになってしまう。盤面そのものは答えを捨てて適用し
+   * 直せば戻る（ADR-0008）ので、戻せないのは知ってしまったことだけである。
+   *
+   * 答えが 1 つ以上あっても閉じる。手前の選択が「めくるかどうか」を左右していた場合、そこまで
+   * 戻れば見たうえでめくらずに済ませられるためである。
+   *
+   * **これは画面のためだけの値ではない。** 断るのはサーバである（ADR-0010、`room.ts` の
+   * `rewind`）。ここに載せるのは、押せないボタンを出させないためである。
+   */
+  readonly mayGoBack: boolean
 }
 
 /** クライアントからサーバへ送るもの。 */
@@ -133,13 +147,26 @@ export type ToClient =
 /** 行動を適用しようとした結果（ADR-0008）。 */
 export type ActionProgress =
   | { readonly kind: '進んだ'; readonly state: DuelState }
-  | { readonly kind: '選んでほしい'; readonly choice: WireChoice }
+  | {
+      readonly kind: '選んでほしい'
+      readonly choice: WireChoice
+      /**
+       * その選択が起きている盤面（#142）。
+       *
+       * **確定した盤面ではない。** 答えが揃うまで行動は終わっておらず、これは適用を途中で
+       * 止めたところの姿である。答えを 1 つ足して呼び直せば作り直せる（ADR-0008）ので、
+       * 呼んだ側はこれを覚え込まず、**選ぶ人に見せるためだけに使う。** ここから次の盤面を
+       * 進めてはならない。
+       */
+      readonly board: DuelState
+    }
 
 const CHOICE_NEEDED = '選択が要る'
 
 interface ChoiceNeeded {
   readonly kind: typeof CHOICE_NEEDED
   readonly choice: WireChoice
+  readonly board: DuelState
 }
 
 function isChoiceNeeded(thrown: unknown): thrown is ChoiceNeeded {
@@ -209,25 +236,30 @@ function describeCandidate(candidate: unknown, purpose: ChoicePurpose, visible: 
 /**
  * 選んでほしいことを、送れる形にする。
  *
- * 見えているかどうかは**行動を始める前の盤面**で判定する。選択が起こるのは行動の途中の盤面に
- * 対してだが、`Chooser` は候補しか受け取らないのでその盤面を持っていない。食い違うのは、解決の
- * 途中でカードが見えるゾーンへ動いた場合だけで、その時は見えているものを `見えていない` として
- * 送る。**少なく見せる側に倒しているので、漏れることはない。**
+ * 見えているかどうかは**その選択が起きている盤面**（`board`）で判定する。選ぶ人が見るのも
+ * その盤面である（#142）ので、候補の説明と食い違わない。
+ *
+ * 戻れるかどうかも、そこと行動を始める前の盤面（`started`）を見比べて決める。**新しく見えた
+ * ものが 1 枚でもあれば戻せない。** 見てから取り消せると、山札の 1 番上を覗く手立てになる。
+ * 見えるようになったかを決めるのは射影ひとつ（`perspective.ts` の `visibleIdsOf`）である。
  */
 function describeChoice(
-  state: DuelState,
+  board: DuelState,
+  started: DuelState,
   candidates: readonly unknown[],
   player: Player,
   purpose: ChoicePurpose,
   mayDecline: boolean,
   answered: number,
 ): WireChoice {
-  const visible = visibleIds(perspectiveOf(state, player))
+  const visible = visibleIdsOf(board, player)
+  const before = visibleIdsOf(started, player)
   return {
     player,
     purpose,
     mayDecline,
     answered,
+    mayGoBack: [...visible].every((card) => before.has(card)),
     candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, visible)),
   }
 }
@@ -248,7 +280,7 @@ export function applyWithAnswers(
   answers: readonly ChoiceAnswer[],
 ): ActionProgress {
   let remaining = answers
-  const chooser: Chooser = (candidates, player, purpose, mayDecline = false) => {
+  const chooser: Chooser = (candidates, player, purpose, board, mayDecline = false) => {
     // 選ぶ余地が無いなら聞かない。候補が 1 つで、選ばないことも選べないなら、答えは 1 通りしか
     // 無く、押させても盤面は同じところへ進む。**答えとして数えない**ので、`ひとつ戻る`
     // （ADR-0008）はこの手前の選択まで戻る。
@@ -258,8 +290,8 @@ export function applyWithAnswers(
     const [answer, ...rest] = remaining
     if (answer === undefined) {
       // 答えが尽きたところで止まるので、ここまでに答えた数は渡された答えの数そのものである。
-      const choice = describeChoice(state, candidates, player, purpose, mayDecline, answers.length)
-      throw { kind: CHOICE_NEEDED, choice } satisfies ChoiceNeeded
+      const choice = describeChoice(board, state, candidates, player, purpose, mayDecline, answers.length)
+      throw { kind: CHOICE_NEEDED, choice, board } satisfies ChoiceNeeded
     }
 
     remaining = rest
@@ -274,7 +306,7 @@ export function applyWithAnswers(
   try {
     return { kind: '進んだ', state: applyLegalAction(state, action, chooser) }
   } catch (thrown) {
-    if (isChoiceNeeded(thrown)) return { kind: '選んでほしい', choice: thrown.choice }
+    if (isChoiceNeeded(thrown)) return { kind: '選んでほしい', choice: thrown.choice, board: thrown.board }
 
     throw thrown
   }
