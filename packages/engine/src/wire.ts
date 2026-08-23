@@ -2,7 +2,7 @@ import type { MoveDirection, Square } from './board.js'
 import type { Attribute, Card, CardType, Color, UnitCard } from './card.js'
 import type { CardId, CardInstance, DuelResult } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
-import type { DuelEvent } from './log.js'
+import type { LoggedEvent } from './log.js'
 import type { Orientation } from './orientation.js'
 import type {
   DuelPerspective,
@@ -163,8 +163,11 @@ export interface WirePerspective {
    * （`log.ts` の `DuelEvent`）。カードそのものを持っていないので、表記に書き出す必要が無い。
    * 名前を出したければ、受け取った側が引き直す。引く先は、盤面に載っているカードと
    * `namedInLog` の 2 つである。
+   *
+   * どの手順の中で起きたかも組にして載る（`log.ts` の `LoggedEvent`、#133）。字下げに
+   * 直すのは受け取った側（`view-model.ts` の `logLines`）である。
    */
-  readonly log: readonly DuelEvent[]
+  readonly log: readonly LoggedEvent[]
   /**
    * `log` が名指ししているカードのうち、盤面に載っていないもの（#139）。
    *

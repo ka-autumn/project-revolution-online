@@ -1,7 +1,7 @@
 import { connect } from './connection.js'
 import type { Connection } from './connection.js'
 import { indexOfSquare } from '@revolution/engine'
-import type { CardId, DuelEvent, RoomCode } from '@revolution/engine'
+import type { CardId, LoggedEvent, RoomCode } from '@revolution/engine'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import {
   actionsElement,
@@ -293,7 +293,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let overlay: Overlay = EMPTY_OVERLAY
   let queue: Overlay[] = []
   let overlayTimer: ReturnType<typeof setTimeout> | undefined
-  let lastFresh: readonly DuelEvent[] | undefined
+  let lastFresh: readonly LoggedEvent[] | undefined
 
   const picking = (): Picking => ({
     mode,

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DuelEvent, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
-import { emptyBoard } from './test-support.js'
+import { emptyBoard, logged } from './test-support.js'
 
 /**
  * 届いたものを畳むところ（ADR-0010）。
@@ -20,8 +20,8 @@ function board(turn: number): WirePerspective {
 
 /** ログを積んだ盤面。中身は問わないので、同じできごとを繰り返して使う。 */
 function boardWithLog(turn: number, count: number): WirePerspective {
-  const event: DuelEvent = { kind: 'バトルが終わった', winner: undefined }
-  return { ...board(turn), log: Array.from({ length: count }, () => event) }
+  const event: DuelEvent = { kind: 'バトルが終わった' }
+  return { ...board(turn), log: logged(Array.from({ length: count }, () => event)) }
 }
 
 const CHOICE: WireChoice = {

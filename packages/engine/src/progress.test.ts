@@ -19,6 +19,7 @@ import type {
   CourageConditionMet,
   CreatedAbility,
   Deck,
+  DuelEvent,
   DuelState,
   Phase,
   Player,
@@ -152,6 +153,88 @@ describe('フェイズの進行', () => {
 
     expect(second.turn.active).toBe('後攻')
     expect(third.turn.active).toBe('先攻')
+  })
+})
+
+/**
+ * 進行の移り変わりの記録（#133）。
+ *
+ * **フェイズが変わったことは盤面に残らない。** 盤面が持つのはいまどこにいるかだけで、
+ * どこから来たかは積んでおかなければ後から読めない（ADR-0011）。
+ */
+describe('進行が変わったことの記録', () => {
+  /** 積まれた「進行が変わった」だけを、起きた順に取り出す。 */
+  function transitions(state: DuelState): readonly Extract<DuelEvent, { kind: '進行が変わった' }>[] {
+    return state.log
+      .map(({ event }) => event)
+      .filter((event): event is Extract<DuelEvent, { kind: '進行が変わった' }> => event.kind === '進行が変わった')
+  }
+
+  /** その盤面から先で新しく積まれた分だけ。デュエルの開始そのものを数に入れないため。 */
+  function since(before: DuelState, after: DuelState): readonly Extract<DuelEvent, { kind: '進行が変わった' }>[] {
+    return transitions(after).slice(transitions(before).length)
+  }
+
+  /**
+   * 総合ルール 第3部 第4章 1: デュエルは先攻のプレイヤーの第 1 ターンから始まる。
+   *
+   * **最初のターンは `progress.ts` を通らない。** 移ってくる元が無いので `from` は
+   * `undefined` になる（`setup.ts` の `recordOpening`）。積まなければ、誰の何ターン目から
+   * 始まったのかがログのどこにも残らない。
+   */
+  it('デュエルが始まったことが、最初のターンとして積まれる', () => {
+    const started = startedDuel()
+
+    expect(transitions(started)).toEqual([
+      {
+        kind: '進行が変わった',
+        from: undefined,
+        to: { turn: 1, active: '先攻', phase: 'リリースフェイズ' },
+      },
+    ])
+  })
+
+  // 総合ルール 第3部 第4章 4・6
+  it('フェイズが変わると、移り変わりが 1 件だけ積まれる', () => {
+    const started = startedDuel()
+
+    expect(since(started, endPhase(started))).toHaveLength(1)
+  })
+
+  /**
+   * 総合ルール 第3部 第4章 5: とばされたフェイズは存在しないものとして扱う。
+   *
+   * 行き先には**行き着いた先**が入る。先攻の第 1 ターンはドローフェイズをとばす
+   * （同 第2章 2、第6章 1-2）ので、リリースフェイズの次はエネルギーフェイズになる。
+   */
+  it('とばされたフェイズは行き先に現れない', () => {
+    const started = startedDuel()
+
+    expect(since(started, endPhase(started))).toEqual([
+      {
+        kind: '進行が変わった',
+        from: { turn: 1, active: started.turn.active, phase: 'リリースフェイズ' },
+        to: { turn: 1, active: started.turn.active, phase: 'エネルギーフェイズ' },
+      },
+    ])
+  })
+
+  /**
+   * 総合ルール 第3部 第4章 6: すべてのフェイズが終了すると、アクティブプレイヤーが交代して
+   * 次のターンに移る。
+   *
+   * **ターンの境目も 1 件である。** エンジンにとっては 1 つの遷移でしかない
+   * （`progress.ts` の `turnAfter`）ので、2 件に割らない。
+   */
+  it('ターンの境目も 1 件で、ターン数とアクティブプレイヤーが一緒に変わる', () => {
+    const started = startedDuel()
+    const second = turnNumbered(started, 2)
+
+    expect(transitions(second).at(-1)).toEqual({
+      kind: '進行が変わった',
+      from: { turn: 1, active: started.turn.active, phase: 'リカバリーフェイズ' },
+      to: { turn: 2, active: second.turn.active, phase: 'リリースフェイズ' },
+    })
   })
 })
 

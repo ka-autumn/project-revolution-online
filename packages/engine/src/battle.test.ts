@@ -354,6 +354,43 @@ describe('バトルのステップ', () => {
     expect(battle.turn.priority).toBe('後攻')
     expect(endStep(battle).turn.priority).toBe('後攻')
   })
+
+  /**
+   * 総合ルール 第3部 第11章 3: それぞれのステップは、何も起こらない場合でも存在する。
+   *
+   * #133。**始まりだけを積む。** ステップは一直線に置き換わるので、次の始まりが前の終わりを
+   * 兼ねる。どのステップのダメージだったのかは、この区切りが無いとログから読めない。
+   */
+  it('ステップの区切りが、通った順にログへ積まれる', () => {
+    const ended = afterBattle(battling(vanilla, vanilla))
+    const steps = ended.log
+      .map(({ event }) => event)
+      .flatMap((event) => (event.kind === 'バトルのステップが変わった' ? [event.step] : []))
+
+    expect(steps).toEqual([
+      '第１バトルステップ',
+      '第１ダメージステップ',
+      '第２バトルステップ',
+      '第２ダメージステップ',
+      'バトル終了ステップ',
+    ])
+  })
+
+  /**
+   * #133。手順の見出しは、その手順の外側に立つ（`log.ts` の `LoggedEvent.during`）。
+   * バトルの始まりと終わりが同じ深さに並び、その間のできごとが 1 つ深くなる。
+   */
+  it('バトルの始まりと終わりは、その中のできごとより浅いところに積まれる', () => {
+    const ended = afterBattle(battling(vanilla, vanilla))
+    const depths = new Map(
+      ended.log.map(({ event, during }): readonly [string, number] => [event.kind, during.length]),
+    )
+
+    expect(depths.get('バトルが始まった')).toBe(0)
+    expect(depths.get('バトルが終わった')).toBe(0)
+    expect(depths.get('バトルのステップが変わった')).toBe(1)
+    expect(depths.get('バトルダメージを与えた')).toBe(1)
+  })
 })
 
 // 総合ルール 第3部 第12章 1（ADR-0006）
@@ -620,6 +657,30 @@ describe('中央エリアを指定してプレイされたユニット', () => {
     expect(idsOf(cardsIn(ended, '後攻', '捨札'))).toEqual(['攻撃された'])
     expect(idsOf(cardsIn(ended, '先攻', '捨札'))).toEqual(['攻撃した'])
     expect(discardedByRule(ended)).toEqual([['攻撃された'], ['攻撃した']])
+  })
+
+  /**
+   * #160。勝敗はバトル終了ステップの**開始時**に判定される（総合ルール 第3部 第16章 1-1）。
+   * 中央エリアを指定してプレイされたユニットが捨札に置かれるのはその後（同 2-2）なので、
+   * **勝った結果として置かれた**ことが並びから読める。
+   */
+  it('勝敗が決まった行は、中央エリア指定で捨札に置かれた行より前に出る', () => {
+    const ended = afterBattle(battleByPlaying(centerSquare, strong))
+    const kinds = ended.log
+      .map(({ event }) => event.kind)
+      .filter(
+        (kind) =>
+          kind === 'バトルの勝敗が決まった' || kind === 'ルールで捨札に置かれた' || kind === 'バトルが終わった',
+      )
+
+    expect(kinds).toEqual([
+      // バトルダメージで負けた相手（同 第4部 第14章 4-6）。ダメージステップで置かれる。
+      'ルールで捨札に置かれた',
+      'バトルの勝敗が決まった',
+      // 中央エリアを指定してプレイされたユニット（同 4-10）。
+      'ルールで捨札に置かれた',
+      'バトルが終わった',
+    ])
   })
 
   // 総合ルール 第4部 第7章 6、第14章 4-10・4-11（ADR-0006）

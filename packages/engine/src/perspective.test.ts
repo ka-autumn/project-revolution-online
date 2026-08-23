@@ -172,8 +172,7 @@ describe('解決を待っている能力', () => {
         step: '第１バトルステップ',
         dealtDamage: [],
         endOfBattleTriggered: false,
-        result: undefined,
-        heldBank: [{ ability, source: INVADER.id, controller: '先攻', self: INVADER }],
+              heldBank: [{ ability, source: INVADER.id, controller: '先攻', self: INVADER }],
         heldTriggered: [],
       },
     }

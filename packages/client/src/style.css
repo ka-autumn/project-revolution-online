@@ -491,6 +491,14 @@ body {
   font-size: 0.75rem;
 }
 
+/*
+ * 入れ子になった手順の中を字下げする（#133）。手順が 1 つ進行しているだけなら進行の本筋
+ * なので字下げしない（`view-model.ts` の `depthOf`）。
+ */
+.log__item {
+  padding-inline-start: calc(var(--log-depth, 0) * 1em);
+}
+
 .log__item--自分 {
   color: var(--own);
 }

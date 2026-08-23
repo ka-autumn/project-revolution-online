@@ -152,7 +152,16 @@ export { cardIdsOf, checkBoardInvariants } from './invariant.js'
 export type { InvariantViolation } from './invariant.js'
 export { applyLegalAction, legalActions } from './legal-action.js'
 export type { LegalAction } from './legal-action.js'
-export type { DuelEvent, LoggedInstruction, RecordedEvent, ResolutionVia, SeenBy } from './log.js'
+export type {
+  DuelEvent,
+  LoggedEvent,
+  LoggedInstruction,
+  Procedure,
+  Progress,
+  RecordedEvent,
+  ResolutionVia,
+  SeenBy,
+} from './log.js'
 export { moveUnit } from './move.js'
 export { ORIENTATIONS } from './orientation.js'
 export type { Orientation } from './orientation.js'
