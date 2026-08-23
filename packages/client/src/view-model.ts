@@ -1055,8 +1055,12 @@ function instructionLine(
   whose: (player: Player) => '自分' | '相手',
 ): string {
   switch (instruction.kind) {
-    case '選ぶ':
-      return about(named(instruction.card), 'を', '選んだ')
+    case '選ぶ': {
+      // 選ばれたのはカードかスクエアのどちらかである（`log.ts` の `選ぶ`）。スクエアは
+      // 見る人から見た呼び名で言う（総合ルール 第2部 第22章 6）。
+      const where = instruction.square === undefined ? undefined : squareLabel(board.viewer, instruction.square)
+      return about(named(instruction.card) ?? where, 'を', '選んだ')
+    }
     case '破壊する':
       return about(named(instruction.card), 'を', '破壊した')
     case 'プレイヤーにダメージを与える':

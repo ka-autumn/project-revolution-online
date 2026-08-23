@@ -1,4 +1,5 @@
 import type { BattleStep } from './battle.js'
+import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
 import type { CardId, DuelResult, DuelState } from './duel.js'
 import type { Instruction } from './effect.js'
@@ -266,7 +267,15 @@ export type DuelEvent =
  * のが 1 か所で済む（`perspective.ts` の `projectInstruction`）ようにするためである。
  */
 export type LoggedInstruction =
-  | { readonly kind: '選ぶ'; readonly card: CardId | undefined }
+  /**
+   * 効果が候補から 1 つ選んだ（総合ルール 第4部 第1章 1）。
+   *
+   * **選ばれるのはカードとは限らない。** 効果が置き先を選ばせる場合、候補として並ぶのは
+   * スクエアそのものである（`protocol.ts` の `describeCandidate`）。どちらか一方だけが
+   * 埋まり、両方が埋まることはない。スクエアは落とさない——盤面の位置であって、そこに何が
+   * あるかを言っていないためで、スクエアにあるカードは公開情報でもある（同 第2部 第23章 1-1）。
+   */
+  | { readonly kind: '選ぶ'; readonly card: CardId | undefined; readonly square: Square | undefined }
   | { readonly kind: '破壊する'; readonly card: CardId | undefined }
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
   | { readonly kind: 'ユニットにダメージを与える'; readonly card: CardId | undefined; readonly amount: number }
@@ -366,6 +375,26 @@ export function cardIdOf(candidate: unknown): CardId | undefined {
 }
 
 /**
+ * 候補や、選ばれたものがスクエアであるとき、そのスクエア。カードなら `undefined`。
+ *
+ * 効果が置き先を選ばせる場合、候補として並ぶのはスクエアそのものである（`board.ts` の
+ * `Square`）。行と列で持つのはスクエアだけで、スクエアにいるユニットは自分の位置を
+ * `square` として持つ（同 `UnitOnSquare`）ので、取り違えることはない。
+ *
+ * 行と列が 0・1・2 のいずれかであること（同 `SquareIndex`）は、同じ位置がバトルスペースに
+ * あることで確かめる。
+ *
+ * `cardIdOf` と同じく、記録する側（`loggedInstruction`）と通信に載せる側（`protocol.ts` の
+ * `describeCandidate`）の両方から通る。**候補の読み方を二度書かない。**
+ */
+export function squareOf(candidate: unknown): Square | undefined {
+  if (typeof candidate !== 'object' || candidate === null) return undefined
+
+  const { row, column } = candidate as { readonly row?: unknown; readonly column?: unknown }
+  return BATTLE_SPACE.find((square) => square.row === row && square.column === column)
+}
+
+/**
  * 実行した命令を、ログに残す形にする。
  *
  * 対象を持つ命令は、実行された時点で `resolve.ts` が engine の見せたカードであることを
@@ -377,7 +406,7 @@ export function cardIdOf(candidate: unknown): CardId | undefined {
 export function loggedInstruction(instruction: Instruction, subject: unknown): LoggedInstruction {
   switch (instruction.kind) {
     case '選ぶ':
-      return { kind: '選ぶ', card: cardIdOf(subject) }
+      return { kind: '選ぶ', card: cardIdOf(subject), square: squareOf(subject) }
     case '破壊する':
       return { kind: '破壊する', card: instruction.target.id }
     case 'プレイヤーにダメージを与える':
