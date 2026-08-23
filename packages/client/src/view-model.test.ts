@@ -887,7 +887,7 @@ describe('操作ログ', () => {
     it('バトルの勝者も、届いた名前と支配者で出る', () => {
       const board = withNamedInLog({ kind: 'バトルが終わった', winner: '勝った' }, instance('勝った', '後攻'))
 
-      expect(texts(board)).toEqual(['バトル終了：相手のテスト・勝ったの勝ち'])
+      expect(texts(board)).toEqual(['=== バトル終了：相手のテスト・勝ったの勝ち ==='])
     })
   })
 
@@ -924,7 +924,7 @@ describe('操作ログ', () => {
     it('勝者が自分なら、カード名を添えて「勝ち」になる', () => {
       const board = withLog({ kind: 'バトルが終わった', winner: '置いてある' })
 
-      expect(texts(board)).toEqual(['バトル終了：自分のテスト・置いてあるの勝ち'])
+      expect(texts(board)).toEqual(['=== バトル終了：自分のテスト・置いてあるの勝ち ==='])
     })
 
     it('勝者が相手なら、カード名を添えて「勝ち」になる', () => {
@@ -933,20 +933,20 @@ describe('操作ログ', () => {
         log: logged([{ kind: 'バトルが終わった', winner: '勝ったユニット' }]),
       }
 
-      expect(texts(board)).toEqual(['バトル終了：相手のテスト・勝ったユニットの勝ち'])
+      expect(texts(board)).toEqual(['=== バトル終了：相手のテスト・勝ったユニットの勝ち ==='])
     })
 
     it('引き分けなら「引き分け」になる', () => {
       const board = withLog({ kind: 'バトルが終わった', winner: undefined })
 
-      expect(texts(board)).toEqual(['バトル終了：引き分け'])
+      expect(texts(board)).toEqual(['=== バトル終了：引き分け ==='])
     })
 
     /** 勝者が名指しされていなければ、勝敗を作り出さない。 */
     it('勝者が見えていなければ勝敗を言わない', () => {
       const board = withLog({ kind: 'バトルが終わった', winner: '見えていないカード' })
 
-      expect(texts(board)).toEqual(['バトル終了'])
+      expect(texts(board)).toEqual(['=== バトル終了 ==='])
     })
   })
 
@@ -1007,33 +1007,42 @@ describe('操作ログ', () => {
       expect(texts(board)).toEqual(['=== 自分の第 1 ターン開始（リリースフェイズ開始） ==='])
     })
 
-    // 総合ルール 第3部 第11章 3。呼び名は条文の語をそのまま使う。
+    /**
+     * 総合ルール 第3部 第11章 3。呼び名は条文の語をそのまま使う。ステップの区切りは
+     * 手順の中にあるが、区切りとして読ませるので字下げしない。
+     */
     it('バトルのステップは、条文の呼び名がそのまま出る', () => {
       const board = withLog({ kind: 'バトルのステップが変わった', step: '第１ダメージステップ' })
 
-      expect(logLines(board)).toEqual([{ whose: undefined, text: '第１ダメージステップ', depth: 0 }])
+      expect(logLines(board)).toEqual([{ whose: undefined, text: '--- 第１ダメージステップ ---', depth: 0 }])
     })
 
+    /** 誰の判定かは文の中で言う。区切りの行は、どちらのプレイヤーのものでもない。 */
     it('スマッシュ判定の始まりは、繰り返す回数とあわせて出る', () => {
       const board = withLog({ kind: 'スマッシュ判定が始まった', player: '後攻', repeats: 2 })
 
-      expect(logLines(board)).toEqual([{ whose: '相手', text: 'スマッシュ判定が始まった（2 回）', depth: 0 }])
+      expect(logLines(board)).toEqual([
+        { whose: undefined, text: '=== 相手のスマッシュ判定開始（2 回） ===', depth: 0 },
+      ])
     })
 
     it('スマッシュ判定の終わりも出る', () => {
       const board = withLog({ kind: 'スマッシュ判定が終わった', player: '先攻' })
 
-      expect(logLines(board)).toEqual([{ whose: '自分', text: 'スマッシュ判定が終わった', depth: 0 }])
+      expect(logLines(board)).toEqual([{ whose: undefined, text: '=== 自分のスマッシュ判定終了 ===', depth: 0 }])
     })
 
     /**
      * 総合ルール 第3部 第17章 3: 繰り返して区別が必要な場合、「第１希望ステップ」のように
      * 表現する。回復ステップは 1 回だけなので数字が付かない。
+     *
+     * 誰の判定のステップかも言う。字下げが無いので、入れ子になった判定を見分けられるのは
+     * これだけになる（同 2-2）。
      */
     it.each([
-      ['回復ステップ', 0, '回復ステップ'],
-      ['希望ステップ', 1, '第１希望ステップ'],
-      ['確定ステップ', 2, '第２確定ステップ'],
+      ['回復ステップ', 0, '--- 自分の回復ステップ ---'],
+      ['希望ステップ', 1, '--- 自分の第１希望ステップ ---'],
+      ['確定ステップ', 2, '--- 自分の第２確定ステップ ---'],
     ] as const)('スマッシュ判定のステップは、何回目かとあわせて出る（%s）', (step, round, expected) => {
       const board = withLog({ kind: 'スマッシュ判定のステップが変わった', player: '先攻', step, round })
 
@@ -1060,9 +1069,9 @@ describe('操作ログ', () => {
       const board: WirePerspective = {
         ...emptyBoard('先攻'),
         log: [
-          { event: { kind: 'スマッシュ判定が始まった', player: '後攻', repeats: 1 }, during: [] },
+          { event: { kind: 'ダメージを受けた', player: '後攻', amount: 1000 }, during: [] },
           {
-            event: { kind: 'スマッシュ判定が始まった', player: '先攻', repeats: 1 },
+            event: { kind: 'ダメージを受けた', player: '先攻', amount: 1000 },
             during: [{ kind: 'スマッシュ判定', player: '後攻' }],
           },
           {
@@ -1076,6 +1085,22 @@ describe('操作ログ', () => {
       }
 
       expect(logLines(board).map((line) => line.depth)).toEqual([2, 1, 0])
+    })
+
+    /** 区切りの行は、手順の中にあっても字下げしない（`view-model.ts` の `separator`）。 */
+    it('区切りの行は、手順の中にあっても字下げされない', () => {
+      const board: WirePerspective = {
+        ...emptyBoard('先攻'),
+        log: [
+          { event: { kind: 'バトルのステップが変わった', step: '第１ダメージステップ' }, during: [{ kind: 'バトル' }] },
+          {
+            event: { kind: 'スマッシュ判定が始まった', player: '先攻', repeats: 1 },
+            during: [{ kind: 'バトル' }],
+          },
+        ],
+      }
+
+      expect(logLines(board).map((line) => line.depth)).toEqual([0, 0])
     })
 
     /** 既存のできごとにも付く。できごとの型を 1 つずつ広げていないことが、ここに出る。 */
