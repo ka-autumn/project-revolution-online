@@ -630,7 +630,7 @@ describe('バトルの記録', () => {
 
     const ended = afterBattle(passPriority(attacking, chooseFirst))
 
-    expect(only(ended, 'バトルが終わった')).toEqual([{ kind: 'バトルが終わった', winner: '攻めた' }])
+    expect(only(ended, 'バトルの勝敗が決まった')).toEqual([{ kind: 'バトルの勝敗が決まった', winner: '攻めた' }])
   })
 
   // 総合ルール 第3部 第16章 1-1。両方とも捨札に置かれれば、引き分けになる。
@@ -641,7 +641,7 @@ describe('バトルの記録', () => {
 
     const ended = afterBattle(passPriority(facing, chooseFirst))
 
-    expect(only(ended, 'バトルが終わった')).toEqual([{ kind: 'バトルが終わった', winner: undefined }])
+    expect(only(ended, 'バトルの勝敗が決まった')).toEqual([{ kind: 'バトルの勝敗が決まった', winner: undefined }])
   })
 })
 
@@ -780,7 +780,7 @@ describe('視点ごとの落とし方', () => {
 
   // #111。バトルの勝者も、見えていなければ名指しされない。
   it('バトルの勝者も落ちる', () => {
-    const event: DuelEvent = { kind: 'バトルが終わった', winner: hidden.id }
+    const event: DuelEvent = { kind: 'バトルの勝敗が決まった', winner: hidden.id }
 
     const state = logged(event)
 

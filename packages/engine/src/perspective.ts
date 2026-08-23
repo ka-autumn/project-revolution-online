@@ -372,7 +372,7 @@ function mapEventCards(event: DuelEvent, map: CardMapping): DuelEvent {
       return { ...event, from: map(event.from), to: map(event.to) }
     case 'ルールで捨札に置かれた':
       return { ...event, cards: event.cards.flatMap((card) => mapped(map(card))) }
-    case 'バトルが終わった':
+    case 'バトルの勝敗が決まった':
       return { ...event, winner: map(event.winner) }
     case 'コストを支払った':
       return { ...event, card: map(event.card) }
@@ -381,6 +381,7 @@ function mapEventCards(event: DuelEvent, map: CardMapping): DuelEvent {
     // 進行そのもののできごと（#133）はカードを名指ししない。フェイズもステップも誰の
     // スマッシュ判定かも公開情報である（総合ルール 第2部 第23章 1-1）。
     case '進行が変わった':
+    case 'バトルが終わった':
     case 'バトルのステップが変わった':
     case 'スマッシュ判定が始まった':
     case 'スマッシュ判定が終わった':

@@ -20,7 +20,7 @@ function board(turn: number): WirePerspective {
 
 /** ログを積んだ盤面。中身は問わないので、同じできごとを繰り返して使う。 */
 function boardWithLog(turn: number, count: number): WirePerspective {
-  const event: DuelEvent = { kind: 'バトルが終わった', winner: undefined }
+  const event: DuelEvent = { kind: 'バトルが終わった' }
   return { ...board(turn), log: logged(Array.from({ length: count }, () => event)) }
 }
 

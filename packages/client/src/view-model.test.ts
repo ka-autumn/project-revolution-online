@@ -538,7 +538,6 @@ describe('バトル', () => {
         step: '第１ダメージステップ',
         dealtDamage: [],
         endOfBattleTriggered: false,
-        result: undefined,
         heldBank: [],
         heldTriggered: [],
       },
@@ -890,9 +889,9 @@ describe('操作ログ', () => {
 
     // #111。勝者は名前だけでなく支配者も引くので、そちらも同じところから引けている。
     it('バトルの勝者も、届いた名前と支配者で出る', () => {
-      const board = withNamedInLog({ kind: 'バトルが終わった', winner: '勝った' }, instance('勝った', '後攻'))
+      const board = withNamedInLog({ kind: 'バトルの勝敗が決まった', winner: '勝った' }, instance('勝った', '後攻'))
 
-      expect(texts(board)).toEqual(['=== バトル終了：相手のテスト・勝ったの勝ち ==='])
+      expect(texts(board)).toEqual(['バトルの勝敗が決まった：相手のテスト・勝ったの勝ち'])
     })
   })
 
@@ -924,34 +923,44 @@ describe('操作ログ', () => {
     })
   })
 
-  // #111。総合ルール 第3部 第16章 1-1。
-  describe('バトルが終わった', () => {
+  /**
+   * #111、#160。総合ルール 第3部 第16章 1-1: バトルの勝敗はバトル終了ステップの開始時に
+   * 判定される。**決まった瞬間の行であって、バトルを閉じる行ではない。**
+   */
+  describe('バトルの勝敗が決まった', () => {
     it('勝者が自分なら、カード名を添えて「勝ち」になる', () => {
-      const board = withLog({ kind: 'バトルが終わった', winner: '置いてある' })
+      const board = withLog({ kind: 'バトルの勝敗が決まった', winner: '置いてある' })
 
-      expect(texts(board)).toEqual(['=== バトル終了：自分のテスト・置いてあるの勝ち ==='])
+      expect(texts(board)).toEqual(['バトルの勝敗が決まった：自分のテスト・置いてあるの勝ち'])
     })
 
     it('勝者が相手なら、カード名を添えて「勝ち」になる', () => {
       const board: WirePerspective = {
         ...withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('勝ったユニット', '後攻')]),
-        log: logged([{ kind: 'バトルが終わった', winner: '勝ったユニット' }]),
+        log: logged([{ kind: 'バトルの勝敗が決まった', winner: '勝ったユニット' }]),
       }
 
-      expect(texts(board)).toEqual(['=== バトル終了：相手のテスト・勝ったユニットの勝ち ==='])
+      expect(texts(board)).toEqual(['バトルの勝敗が決まった：相手のテスト・勝ったユニットの勝ち'])
     })
 
     it('引き分けなら「引き分け」になる', () => {
-      const board = withLog({ kind: 'バトルが終わった', winner: undefined })
+      const board = withLog({ kind: 'バトルの勝敗が決まった', winner: undefined })
 
-      expect(texts(board)).toEqual(['=== バトル終了：引き分け ==='])
+      expect(texts(board)).toEqual(['バトルの勝敗が決まった：引き分け'])
     })
 
     /** 勝者が名指しされていなければ、勝敗を作り出さない。 */
     it('勝者が見えていなければ勝敗を言わない', () => {
-      const board = withLog({ kind: 'バトルが終わった', winner: '見えていないカード' })
+      const board = withLog({ kind: 'バトルの勝敗が決まった', winner: '見えていないカード' })
 
-      expect(texts(board)).toEqual(['=== バトル終了 ==='])
+      expect(texts(board)).toEqual(['バトルの勝敗が決まった'])
+    })
+
+    /** バトルを閉じる行は、勝敗を言わない区切りだけになる（#160）。 */
+    it('バトルが終わった行は、勝敗を持たない区切りになる', () => {
+      const board = withLog({ kind: 'バトルが終わった' })
+
+      expect(logLines(board)).toEqual([{ kind: '区切り', whose: undefined, text: '=== バトル終了 ===', depth: 0 }])
     })
   })
 

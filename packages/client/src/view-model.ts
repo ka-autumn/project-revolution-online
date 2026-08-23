@@ -875,11 +875,17 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
       }
       case 'バトルダメージを与えた':
         return { whose: undefined, text: about(named(event.to), 'に', `バトルダメージ ${event.amount}`) }
-      case 'バトルが終わった': {
-        if (event.winner === undefined) return separator('===', undefined, 'バトル終了：引き分け')
+      case 'バトルが終わった':
+        // 勝敗はここでは言わない。決まったのはバトル終了ステップの始めである（#160）。
+        return separator('===', undefined, 'バトル終了')
+      case 'バトルの勝敗が決まった': {
+        // 勝者の支配者も引くので、名前だけでなく盤面のカードそのものを探す（#111）。
+        const decided = 'バトルの勝敗が決まった'
+        if (event.winner === undefined) return { whose: undefined, text: `${decided}：引き分け` }
         const winner = namableInstanceOf(board, event.winner)
-        const text = winner === undefined ? 'バトル終了' : `バトル終了：${whose(winner.controller)}の${winner.card.name}の勝ち`
-        return separator('===', undefined, text)
+        const text =
+          winner === undefined ? decided : `${decided}：${whose(winner.controller)}の${winner.card.name}の勝ち`
+        return { whose: undefined, text }
       }
       case 'ルールで捨札に置かれた': {
         const cards = event.cards.map((card) => nameOf(names, card))
