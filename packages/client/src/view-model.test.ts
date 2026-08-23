@@ -4,6 +4,7 @@ import type {
   DuelEvent,
   Player,
   PlayerZone,
+  Procedure,
   Progress,
   Square,
   Turn,
@@ -739,8 +740,8 @@ describe('操作ログ', () => {
     )
 
     expect(logLines(board)).toEqual([
-      { whose: '相手', text: 'プランする', depth: 0 },
-      { whose: '自分', text: 'エネルギーを置く', depth: 0 },
+      { kind: 'できごと', whose: '相手', text: 'プランする', depth: 0 },
+      { kind: 'できごと', whose: '自分', text: 'エネルギーを置く', depth: 0 },
     ])
   })
 
@@ -796,14 +797,18 @@ describe('操作ログ', () => {
       instruction: { kind: 'ユニットにダメージを与える', card: '置いてある', amount: 500 },
     })
 
-    expect(logLines(board)).toEqual([{ whose: '相手', text: 'テスト・置いてあるにダメージ 500', depth: 0 }])
+    expect(logLines(board)).toEqual([
+      { kind: 'できごと', whose: '相手', text: 'テスト・置いてあるにダメージ 500', depth: 0 },
+    ])
   })
 
   /** ルールエフェクトはどちらのプレイヤーにも支配されない（総合ルール 第4部 第14章 1）。 */
   it('ルールが起こしたことは、誰のものにもならない', () => {
     const board = withLog({ kind: 'ルールで捨札に置かれた', cards: ['置いてある'] })
 
-    expect(logLines(board)).toEqual([{ whose: undefined, text: 'ルールで捨札：テスト・置いてある', depth: 0 }])
+    expect(logLines(board)).toEqual([
+      { kind: 'できごと', whose: undefined, text: 'ルールで捨札：テスト・置いてある', depth: 0 },
+    ])
   })
 
   it('決着は、見る人から見た言い方で出る', () => {
@@ -972,7 +977,14 @@ describe('操作ログ', () => {
         to: at(2, '先攻', 'スマッシュフェイズ'),
       })
 
-      expect(texts(board)).toEqual(['=== メインフェイズ終了／スマッシュフェイズ開始 ==='])
+      expect(logLines(board)).toEqual([
+        {
+          kind: '区切り',
+          whose: '自分',
+          text: '=== 自分のメインフェイズ終了／スマッシュフェイズ開始 ===',
+          depth: 0,
+        },
+      ])
     })
 
     /**
@@ -986,10 +998,10 @@ describe('操作ログ', () => {
         to: at(3, '後攻', 'リリースフェイズ'),
       })
 
-      // 新しいものが先頭に出る（#111）ので、始まりが上に来る。
+      // 新しいものが先頭に出る（#111）ので、始まりが上に来る。持ち主も入れ替わる。
       expect(logLines(board)).toEqual([
-        { whose: undefined, text: '=== 相手の第 3 ターン開始（リリースフェイズ開始） ===', depth: 0 },
-        { whose: undefined, text: '=== 自分の第 2 ターン終了（リカバリーフェイズ終了） ===', depth: 0 },
+        { kind: '区切り', whose: '相手', text: '=== 相手の第 3 ターン開始（リリースフェイズ開始） ===', depth: 0 },
+        { kind: '区切り', whose: '自分', text: '=== 自分の第 2 ターン終了（リカバリーフェイズ終了） ===', depth: 0 },
       ])
     })
 
@@ -1014,7 +1026,9 @@ describe('操作ログ', () => {
     it('バトルのステップは、条文の呼び名がそのまま出る', () => {
       const board = withLog({ kind: 'バトルのステップが変わった', step: '第１ダメージステップ' })
 
-      expect(logLines(board)).toEqual([{ whose: undefined, text: '--- 第１ダメージステップ ---', depth: 0 }])
+      expect(logLines(board)).toEqual([
+        { kind: '区切り', whose: undefined, text: '--- 第１ダメージステップ ---', depth: 0 },
+      ])
     })
 
     /** 誰の判定かは文の中で言う。区切りの行は、どちらのプレイヤーのものでもない。 */
@@ -1022,14 +1036,16 @@ describe('操作ログ', () => {
       const board = withLog({ kind: 'スマッシュ判定が始まった', player: '後攻', repeats: 2 })
 
       expect(logLines(board)).toEqual([
-        { whose: undefined, text: '=== 相手のスマッシュ判定開始（2 回） ===', depth: 0 },
+        { kind: '区切り', whose: '相手', text: '=== 相手のスマッシュ判定開始（2 回） ===', depth: 0 },
       ])
     })
 
     it('スマッシュ判定の終わりも出る', () => {
       const board = withLog({ kind: 'スマッシュ判定が終わった', player: '先攻' })
 
-      expect(logLines(board)).toEqual([{ whose: undefined, text: '=== 自分のスマッシュ判定終了 ===', depth: 0 }])
+      expect(logLines(board)).toEqual([
+        { kind: '区切り', whose: '自分', text: '=== 自分のスマッシュ判定終了 ===', depth: 0 },
+      ])
     })
 
     /**
@@ -1061,53 +1077,78 @@ describe('操作ログ', () => {
   })
 
   /**
-   * 手順の中で起きたことは字下げで分かる（#133）。**どの手順かは読み解かない。** 深さは
-   * 届いた並びの長さそのままである（`log.ts` の `LoggedEvent.during`）。
+   * 字下げ（#133）。**字下げが表すのは入れ子だけである。** 手順が 1 つ進行しているだけなら
+   * それは進行の本筋なので、中の行も字下げしない。
    */
-  describe('手順の中で起きたこと', () => {
-    it('入れ子の深さが、そのまま字下げの深さになる', () => {
-      const board: WirePerspective = {
+  describe('字下げ', () => {
+    /** 進行中の手順を並べた盤面。深さだけを見るので、できごとの中身は問わない。 */
+    function withDuring(...during: readonly (readonly Procedure[])[]): WirePerspective {
+      return {
         ...emptyBoard('先攻'),
-        log: [
-          { event: { kind: 'ダメージを受けた', player: '後攻', amount: 1000 }, during: [] },
-          {
-            event: { kind: 'ダメージを受けた', player: '先攻', amount: 1000 },
-            during: [{ kind: 'スマッシュ判定', player: '後攻' }],
-          },
-          {
-            event: { kind: 'ダメージを受けた', player: '先攻', amount: 1000 },
-            during: [
-              { kind: 'スマッシュ判定', player: '後攻' },
-              { kind: 'スマッシュ判定', player: '先攻' },
-            ],
-          },
-        ],
+        log: during.map((each) => ({
+          event: { kind: 'ダメージを受けた', player: '先攻', amount: 1000 },
+          during: each,
+        })),
       }
+    }
 
-      expect(logLines(board).map((line) => line.depth)).toEqual([2, 1, 0])
+    it('手順の外も、手順が 1 つ進行しているだけの中も、字下げしない', () => {
+      const board = withDuring([], [{ kind: 'バトル' }], [{ kind: 'スマッシュ判定', player: '後攻' }])
+
+      expect(logLines(board).map((line) => line.depth)).toEqual([0, 0, 0])
     })
 
-    /** 区切りの行は、手順の中にあっても字下げしない（`view-model.ts` の `separator`）。 */
-    it('区切りの行は、手順の中にあっても字下げされない', () => {
+    /** 総合ルール 第3部 第17章 2-2: スマッシュ判定中にスマッシュ判定が発生する。 */
+    it('手順の中で始まった手順の中は、1 つ深くなる', () => {
+      const board = withDuring([
+        { kind: 'スマッシュ判定', player: '後攻' },
+        { kind: 'スマッシュ判定', player: '先攻' },
+      ])
+
+      expect(logLines(board)[0]?.depth).toBe(1)
+    })
+
+    /**
+     * 手順の始まりと終わりの行は、**その手順自身**の深さに立つ（`view-model.ts` の
+     * `depthOf`）。外側の判定の中で始まった判定は、始まりの行から 1 つ深いところに出る。
+     */
+    it('入れ子になった手順は、始まりの行から深くなる', () => {
+      const outer: readonly Procedure[] = [{ kind: 'スマッシュ判定', player: '後攻' }]
       const board: WirePerspective = {
         ...emptyBoard('先攻'),
         log: [
-          { event: { kind: 'バトルのステップが変わった', step: '第１ダメージステップ' }, during: [{ kind: 'バトル' }] },
+          // 外側の判定が始まり、そのステップが進み、待機して、内側の判定が始まる。
+          { event: { kind: 'スマッシュ判定が始まった', player: '後攻', repeats: 1 }, during: [] },
           {
-            event: { kind: 'スマッシュ判定が始まった', player: '先攻', repeats: 1 },
-            during: [{ kind: 'バトル' }],
+            event: { kind: 'スマッシュ判定のステップが変わった', player: '後攻', step: '希望ステップ', round: 1 },
+            during: outer,
           },
+          { event: { kind: 'スマッシュ判定が待機中になった', player: '後攻' }, during: outer },
+          { event: { kind: 'スマッシュ判定が始まった', player: '先攻', repeats: 1 }, during: outer },
+          {
+            event: { kind: 'スマッシュ判定のステップが変わった', player: '先攻', step: '回復ステップ', round: 0 },
+            during: [...outer, { kind: 'スマッシュ判定', player: '先攻' }],
+          },
+          { event: { kind: 'スマッシュ判定が終わった', player: '先攻' }, during: outer },
+          { event: { kind: 'スマッシュ判定が戻った', player: '後攻' }, during: outer },
+          { event: { kind: 'スマッシュ判定が終わった', player: '後攻' }, during: [] },
         ],
       }
 
-      expect(logLines(board).map((line) => line.depth)).toEqual([0, 0])
+      // 起きた順に戻して見る（`logLines` は新しい順に出す）。
+      expect([...logLines(board)].reverse().map((line) => line.depth)).toEqual([0, 0, 0, 1, 1, 1, 0, 0])
     })
 
     /** 既存のできごとにも付く。できごとの型を 1 つずつ広げていないことが、ここに出る。 */
-    it('もとからあるできごとも、手順の中なら字下げされる', () => {
+    it('もとからあるできごとも、入れ子の中なら字下げされる', () => {
       const board: WirePerspective = {
         ...emptyBoard('先攻'),
-        log: [{ event: { kind: 'ルールで捨札に置かれた', cards: [] }, during: [{ kind: 'バトル' }] }],
+        log: [
+          {
+            event: { kind: 'ルールで捨札に置かれた', cards: [] },
+            during: [{ kind: 'バトル' }, { kind: 'スマッシュ判定', player: '後攻' }],
+          },
+        ],
       }
 
       expect(logLines(board)[0]?.depth).toBe(1)

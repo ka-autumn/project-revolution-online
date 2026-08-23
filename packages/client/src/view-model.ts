@@ -13,6 +13,7 @@ import type {
   Orientation,
   Player,
   PlayerZone,
+  Procedure,
   Progress,
   ResolutionVia,
   SmashJudgmentStep,
@@ -219,22 +220,30 @@ export interface SmashJudgmentView {
  */
 export interface LogLine {
   /**
+   * 起きたことを述べる行か、進行の切れ目を示す行か（#133）。
+   *
+   * 区切りは `===` や `---` で囲まれていて、**誰のものかを文の中で言っている**
+   * （`separator`）。だから「自分」「相手」の見出しを重ねて添えない（`render.ts`）。
+   * 色は `whose` から付くので、囲みの種類で書き分ける必要はここには無い。
+   */
+  readonly kind: 'できごと' | '区切り'
+  /**
    * 誰のできごとか。どちらのものでもなければ `undefined`。
    *
    * ルールエフェクトはどちらのプレイヤーにも支配されない（総合ルール 第4部 第14章 1）ので、
-   * 誰のものでもない行になる。
+   * 誰のものでもない行になる。**バトルもそうである**——攻撃した側とされた側はいるが
+   * （同 第3部 第11章 4）、バトルそのものはどちらのものでもない。スマッシュ判定はダメージを
+   * 受けたプレイヤーのもの（同 第17章 1）、ターンとフェイズはアクティブプレイヤーのもの
+   * （同 第4章 1）である。
    */
   readonly whose: '自分' | '相手' | undefined
   readonly text: string
   /**
    * その行をいくつ字下げするか（#133）。字下げしないなら 0。
    *
-   * **どの手順の中かを言い当てない。** 手順の中で起きたできごとは、届いた並びの長さ
-   * （`log.ts` の `LoggedEvent.during`）をそのまま深さにする。バトルなのかスマッシュ判定
-   * なのかをここで読み解くことはしない。
-   *
-   * 区切りの行（`separator`）だけは、何の中にあっても 0 になる。行の左端に揃っている
-   * ほうが区切りとして読めるためで、手順の中のステップの区切りもここに含まれる。
+   * **字下げが表すのは入れ子だけである**（`depthOf`）。進行中の手順が 1 つあるだけなら
+   * それは進行の本筋なので、中の行も字下げしない。どの手順の中かをここで言い当てることも
+   * しない——深さは届いた並び（`log.ts` の `LoggedEvent.during`）から決まる。
    */
   readonly depth: number
 }
@@ -828,12 +837,7 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
 
   return board.log
     .flatMap(({ event, during }) =>
-      linesOf(event).map((line): LogLine => ({
-        whose: line.whose,
-        text: line.text,
-        // 深さを自分で名乗らなかった行は、その時に進行していた手順の中にいる。
-        depth: line.depth ?? during.length,
-      })),
+      linesOf(event).map((line): LogLine => ({ ...line, kind: line.kind ?? 'できごと', depth: depthOf(event, during) })),
     )
     .reverse()
 
@@ -867,15 +871,15 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
       case 'バトルが始まった': {
         const where = squareLabel(board.viewer, event.square)
         const units = [named(event.attacker), named(event.attacked)].filter((name) => name !== undefined)
-        return separator('===', `バトル開始（${where}）${units.length === 0 ? '' : `：${units.join(' と ')}`}`)
+        return separator('===', undefined, `バトル開始（${where}）${units.length === 0 ? '' : `：${units.join(' と ')}`}`)
       }
       case 'バトルダメージを与えた':
         return { whose: undefined, text: about(named(event.to), 'に', `バトルダメージ ${event.amount}`) }
       case 'バトルが終わった': {
-        if (event.winner === undefined) return separator('===', 'バトル終了：引き分け')
+        if (event.winner === undefined) return separator('===', undefined, 'バトル終了：引き分け')
         const winner = namableInstanceOf(board, event.winner)
         const text = winner === undefined ? 'バトル終了' : `バトル終了：${whose(winner.controller)}の${winner.card.name}の勝ち`
-        return separator('===', text)
+        return separator('===', undefined, text)
       }
       case 'ルールで捨札に置かれた': {
         const cards = event.cards.map((card) => nameOf(names, card))
@@ -907,13 +911,17 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
       // バトルに持ち主はいないが、スマッシュ判定はダメージを受けたプレイヤーのものであり、
       // 入れ子になった判定どうしを見分けるのに要る（総合ルール 第3部 第17章 2-2）。
       case 'バトルのステップが変わった':
-        return separator('---', event.step)
+        return separator('---', undefined, event.step)
       case 'スマッシュ判定が始まった':
-        return separator('===', `${whose(event.player)}のスマッシュ判定開始（${event.repeats} 回）`)
+        return separator('===', whose(event.player), `${whose(event.player)}のスマッシュ判定開始（${event.repeats} 回）`)
       case 'スマッシュ判定が終わった':
-        return separator('===', `${whose(event.player)}のスマッシュ判定終了`)
+        return separator('===', whose(event.player), `${whose(event.player)}のスマッシュ判定終了`)
       case 'スマッシュ判定のステップが変わった':
-        return separator('---', `${whose(event.player)}の${judgmentStepLabel(event.step, event.round)}`)
+        return separator(
+          '---',
+          whose(event.player),
+          `${whose(event.player)}の${judgmentStepLabel(event.step, event.round)}`,
+        )
       // 待機と復帰は区切りではない。手順そのものは続いていて、進む先が入れ替わっただけである。
       case 'スマッシュ判定が待機中になった':
         return { whose: whose(event.player), text: 'スマッシュ判定が待機中になった' }
@@ -924,12 +932,41 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
 }
 
 /**
- * 組み立て途中の 1 行。深さを自分で名乗るか、周りの手順に任せるか（#133）。
+ * 組み立て途中の 1 行（#133）。字下げは後から付く（`depthOf`）ので、ここには無い。
  *
- * 名乗らなかった行は、そのできごとが起きた時に進行していた手順の中に置かれる
- * （`log.ts` の `LoggedEvent.during`）。名乗るのは区切りの行だけである（`separator`）。
+ * 種類を書かなかった行は `できごと` になる。ふつうの行のほうが多く、書き分けたいのは
+ * 区切りの側だけだからである。
  */
-type LinePart = Omit<LogLine, 'depth'> & { readonly depth?: number }
+type LinePart = Omit<LogLine, 'kind' | 'depth'> & { readonly kind?: LogLine['kind'] }
+
+/**
+ * 手順そのものの始まりと終わりを告げるできごと（`log.ts` の `DuelEvent`）。
+ *
+ * この 4 つだけは、**その手順自身の深さに立つ。** 積まれた時点の `during` にはまだ（もう）
+ * 自分が入っていない（`log.ts` の `record`）ので、そのまま長さが深さになる。
+ */
+const PROCEDURE_EDGES = [
+  'バトルが始まった',
+  'バトルが終わった',
+  'スマッシュ判定が始まった',
+  'スマッシュ判定が終わった',
+] as const satisfies readonly DuelEvent['kind'][]
+
+/**
+ * その行を字下げする深さ（#133）。
+ *
+ * **字下げが表すのは入れ子だけである。** バトルやスマッシュ判定が 1 つ進行しているだけなら、
+ * それは進行の本筋であって脇に逸れた話ではないので、字下げしない。手順の中でさらに手順が
+ * 始まった時（総合ルール 第3部 第11章 2-2、第17章 2-2）にだけ 1 つ深くなり、外側の手順が
+ * 待機しているあいだの行がまとめて右へ寄る。
+ *
+ * 手順の始まりと終わりの行は、囲んでいる手順の中ではなく**その手順自身**の深さに立つ
+ * （`PROCEDURE_EDGES`）。それ以外の行は自分を囲む手順の中にいるので、1 つ引く。
+ */
+function depthOf(event: DuelEvent, during: readonly Procedure[]): number {
+  const edge: readonly string[] = PROCEDURE_EDGES
+  return edge.includes(event.kind) ? during.length : Math.max(0, during.length - 1)
+}
 
 /**
  * 区切りの 1 行（#133）。ログは行が並び続けるものなので、どこで切れているのかを目で
@@ -939,14 +976,12 @@ type LinePart = Omit<LogLine, 'depth'> & { readonly depth?: number }
  * 開始と終了。`---` はその中のステップの境目に使う。囲みが 2 種類あることで、手順ごと
  * 終わったのか、手順の中で次のステップに進んだだけなのかが読み分けられる。
  *
- * **区切りは字下げしない。** 何の中にある区切りであっても、行の左端に揃っているほうが
- * 区切りとして読める。だから深さを手順の並びから取らず、ここで 0 を名乗る。
- *
- * **どちらのプレイヤーのものでもない。** 進行させているのはルールである。誰のものかを
- * 言う必要があれば（スマッシュ判定はダメージを受けたプレイヤーのものである）、文の中で言う。
+ * **誰のものかは文の中で言う。** 区切りには「自分」「相手」の見出しを添えない
+ * （`render.ts`）——`=== 自分の第 2 ターン終了 ===` の手前にもう一度「自分」と出ると
+ * 二重になる。色は付くが、**色だけで区別させない**という決まりは文が受け持つ。
  */
-function separator(rule: '===' | '---', text: string): LinePart {
-  return { whose: undefined, text: `${rule} ${text} ${rule}`, depth: 0 }
+function separator(rule: '===' | '---', whose: '自分' | '相手' | undefined, text: string): LinePart {
+  return { kind: '区切り', whose, text: `${rule} ${text} ${rule}` }
 }
 
 /**
@@ -960,20 +995,24 @@ function separator(rule: '===' | '---', text: string): LinePart {
  *
  * `from` が無いのはデュエルが始まった時だけである（`setup.ts` の `prepareDuel`）。
  * 終わったものが無いので、始まりの 1 行だけになる。
+ *
+ * **どの行も、そのターンを持つプレイヤーのものになる**（総合ルール 第3部 第4章 1）。
+ * ターンの境目の 2 行は、終わるほうと始まるほうで持ち主が入れ替わる。フェイズの移り変わりも
+ * そのターンのものなので、同じターンの中なら 6 行とも同じ持ち主が続く。
  */
 function progressLines(
   from: Progress | undefined,
   to: Progress,
   whose: (player: Player) => '自分' | '相手',
 ): readonly LinePart[] {
-  const turnLine = (at: Progress, edge: '開始' | '終了'): string =>
-    `${whose(at.active)}の第 ${at.turn} ターン${edge}（${at.phase}${edge}）`
+  const turnLine = (at: Progress, edge: '開始' | '終了'): LinePart =>
+    separator('===', whose(at.active), `${whose(at.active)}の第 ${at.turn} ターン${edge}（${at.phase}${edge}）`)
 
-  if (from === undefined) return [separator('===', turnLine(to, '開始'))]
+  if (from === undefined) return [turnLine(to, '開始')]
   if (from.turn === to.turn && from.active === to.active) {
-    return [separator('===', `${from.phase}終了／${to.phase}開始`)]
+    return [separator('===', whose(to.active), `${whose(to.active)}の${from.phase}終了／${to.phase}開始`)]
   }
-  return [separator('===', turnLine(from, '終了')), separator('===', turnLine(to, '開始'))]
+  return [turnLine(from, '終了'), turnLine(to, '開始')]
 }
 
 /**

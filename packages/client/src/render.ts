@@ -453,11 +453,14 @@ function logElement(lines: BoardView['log']): HTMLElement {
   list.setAttribute('reversed', '')
   for (const line of lines) {
     const item = element('li', `log__item${line.whose === undefined ? '' : ` log__item--${line.whose}`}`)
-    // 手順の中で起きたできごとを字下げする（#133）。深さに上限が無いので、深さごとの
+    // 入れ子になった手順の中を字下げする（#133）。深さに上限が無いので、深さごとの
     // クラスを並べるかわりに数として渡す（`style.css` の `.log__item`）。
     item.style.setProperty('--log-depth', String(line.depth))
-    // 誰のできごとかを色だけで区別させない。文字でも出す。
-    if (line.whose !== undefined) item.append(element('span', 'log__whose', line.whose))
+    // 誰のできごとかを色だけで区別させない。文字でも出す。区切りの行は文の中で言っている
+    // （`view-model.ts` の `separator`）ので、重ねて添えない。
+    if (line.whose !== undefined && line.kind === 'できごと') {
+      item.append(element('span', 'log__whose', line.whose))
+    }
     item.append(element('span', 'log__text', line.text))
     list.append(item)
   }

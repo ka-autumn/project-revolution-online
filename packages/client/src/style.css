@@ -492,8 +492,8 @@ body {
 }
 
 /*
- * 手順の中で起きたできごとを字下げする（#133）。深さは届いた並びの長さそのままで
- * （`view-model.ts` の `LogLine.depth`）、どの手順の中かは画面では読み解かない。
+ * 入れ子になった手順の中を字下げする（#133）。手順が 1 つ進行しているだけなら進行の本筋
+ * なので字下げしない（`view-model.ts` の `depthOf`）。
  */
 .log__item {
   padding-inline-start: calc(var(--log-depth, 0) * 1em);
