@@ -13,7 +13,14 @@ import {
 } from './render.js'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
-import { boardView, cutInViews, overlayDurationMs, showsOverlay, transitionViews } from './view-model.js'
+import {
+  boardView,
+  cutInViews,
+  overlayDurationMs,
+  priorityReason,
+  showsOverlay,
+  transitionViews,
+} from './view-model.js'
 import type { Overlay } from './view-model.js'
 
 /**
@@ -180,6 +187,17 @@ function draw(
     const controlArea = controls()
     // どのフェイズの誰の優先権かは、打つ前に見るものなので操作するところの一番上に置く。
     controlArea.append(line('controls__turn', boardData.turn))
+
+    // 相手が何をして優先権が回ってきたのかを、打つところに 1 行で出す（#147）。
+    //
+    // **出すのは、人が打つかどうかを決める場面だけである。** 放棄しか行えない場面は自動で送る
+    // （`automaticAction`）ので、出しても読む間が無い。演出中と選択中も、打つ手を決める場面
+    // ではない。
+    const reason =
+      stage.choice === undefined && !showsOverlay(overlay) && automaticAction(session) === undefined
+        ? priorityReason(board, stage.fresh)
+        : undefined
+    if (reason !== undefined) controlArea.append(line('controls__reason', reason))
 
     // 操作のしかたの切り替えは、行える手の見出しに添える（`render.ts` の `titleRow`）。
     const mode = modeElement(picking)

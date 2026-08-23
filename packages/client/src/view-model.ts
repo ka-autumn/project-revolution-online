@@ -7,6 +7,7 @@ import type {
   EffectiveUnitData,
   DuelEvent,
   DuelResult,
+  LegalAction,
   LoggedInstruction,
   Orientation,
   Player,
@@ -720,6 +721,76 @@ function abilityViews(
 /** 決着していれば、その 1 行。 */
 function resultLine(board: WirePerspective): string | undefined {
   return board.result === undefined ? undefined : resultLabel(board.result, board.viewer)
+}
+
+/**
+ * 相手が何をして、いま優先権が回ってきたのか（#147）。読み取れなければ `undefined`。
+ *
+ * **出すのは 1 手だけである。** 相手のユニットが味方エリアに移動してきた、のような**その場で
+ * 割り込むかどうかを決める材料**が要る場面のためのもので、そこまでの経過を並べるものではない。
+ * 経過は操作ログ（#95）にあり、ログは過去の記録である（ADR-0011）。
+ *
+ * 行動の後は非アクティブプレイヤーが優先権を得る（`action.ts` の `grantPriorityToInactive`）
+ * ので、**相手のターンに優先権が来たなら、その直前の 1 手がここに入っている**。バンクの解決や
+ * ステップの進行で優先権が来た場合は行った手が無く、`undefined` になる——効果の解決は
+ * カットイン（#104）が出しているので、ここで言うと二重になる。
+ *
+ * ログとは言い方を変えている。ログは起きたことを短く積む一覧で、こちらは**打つ手を決める前に
+ * 1 度だけ読む文**である。
+ *
+ * **見えていないものの名前を作らない**（#95）。名指しが落ちていれば（`perspective.ts`）、
+ * 名前のところを省いた言い方になる。**相手に伝わる情報は増えない**（#97）。
+ */
+export function priorityReason(board: WirePerspective, fresh: readonly DuelEvent[]): string | undefined {
+  const names = namesIn(board)
+  const taken = fresh.filter((event) => event.kind === '行動した' && event.player !== board.viewer).at(-1)
+  if (taken === undefined || taken.kind !== '行動した') return undefined
+
+  const name = taken.card === undefined ? undefined : names.get(taken.card)
+  const where = taken.square === undefined ? undefined : squareLabel(board.viewer, taken.square)
+  const did = didLine(taken.action, name, where)
+
+  return did === undefined ? undefined : `相手が${did}`
+}
+
+/**
+ * 行った手 1 つを、何をしたのかの文にする（#147）。
+ *
+ * 名前が落ちていれば、名前のところを省いた言い方にする。**「見えていないカード」とは書かない**
+ * （#95）——名指しが落ちたのか、そもそもカードを指していない手なのかは、届いたものからは
+ * 見分けられない。
+ */
+function didLine(
+  action: LegalAction['kind'],
+  name: string | undefined,
+  where: string | undefined,
+): string | undefined {
+  const it = name === undefined ? undefined : `${name}を`
+  switch (action) {
+    // 放棄はログに積まれない（`legal-action.ts` の `applyLegalAction`）ので、ここには来ない。
+    case '優先権を放棄する':
+      return undefined
+    case 'プランする':
+      return 'プランしました'
+    case 'エネルギーを置く':
+      return `${it ?? 'カードを'}エネルギーゾーンに置きました`
+    case 'カードをプレイする':
+      return `${it ?? 'カードを'}${where === undefined ? '' : `${where}に`}プレイしました`
+    case 'ユニットを移動する':
+      return `${it ?? 'ユニットを'}${where === undefined ? '' : `${where}に`}移動させました`
+    case 'スマッシュする':
+      return `${name === undefined ? '' : `${name}で`}スマッシュしました`
+    case 'トラップとしてプレイする':
+      return `${it ?? 'カードを'}トラップとしてプレイしました`
+    case 'トラップを発動する':
+      return `${it ?? 'トラップを'}発動しました`
+    case 'トラップを廃棄する':
+      return `${it ?? 'トラップを'}廃棄しました`
+    case '「勇気」を起動する':
+      return `${name === undefined ? '' : `${name}の`}「勇気」を起動しました`
+    case '起動型能力を起動する':
+      return `${name === undefined ? '' : `${name}の`}能力を起動しました`
+  }
 }
 
 /**
