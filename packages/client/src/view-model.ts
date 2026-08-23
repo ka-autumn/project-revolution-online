@@ -826,11 +826,22 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
     card === undefined ? undefined : nameOf(names, card)
 
   return board.log
-    .map(({ event, during }): LogLine => ({ ...logLineOf(event), depth: during.length }))
+    .flatMap(({ event, during }) => linesOf(event).map((line): LogLine => ({ ...line, depth: during.length })))
     .reverse()
 
-  /** できごと 1 つを、字下げを別にした 1 行にする。 */
-  function logLineOf(event: DuelEvent): Omit<LogLine, 'depth'> {
+  /**
+   * できごと 1 つを、字下げを別にした行にする。
+   *
+   * **1 つのできごとが 2 行になることがある。** 進行はエンジンにとって 1 つの遷移
+   * （`log.ts` の `進行が変わった`）だが、ターンの境目は「終わり」と「始まり」を分けて
+   * 読ませたい。1 件のできごとからまとめて作るので、この 2 行の前後が入れ替わることはない。
+   */
+  function linesOf(event: DuelEvent): readonly Omit<LogLine, 'depth'>[] {
+    return event.kind === '進行が変わった' ? progressLines(event.from, event.to, whose) : [logLineOf(event)]
+  }
+
+  /** 進行以外のできごと 1 つを、字下げを別にした 1 行にする。 */
+  function logLineOf(event: Exclude<DuelEvent, { kind: '進行が変わった' }>): Omit<LogLine, 'depth'> {
     switch (event.kind) {
       case '行動した': {
         const name = named(event.card)
@@ -885,8 +896,6 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         return { whose: whose(event.player), text: `${event.name}を希望ステップでめくった` }
       // 進行そのもの（#133）は、どちらのプレイヤーのできごとでもない。ターンやスマッシュ判定
       // に持ち主はいるが、進行させているのはルールである。
-      case '進行が変わった':
-        return { whose: undefined, text: progressLine(event.from, event.to, whose) }
       case 'バトルのステップが変わった':
         return { whose: undefined, text: event.step }
       case 'スマッシュ判定が始まった':
@@ -904,18 +913,35 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
 }
 
 /**
- * 進行が移り変わった 1 行（#133）。
+ * 進行が移り変わった行（#133）。
  *
- * **同じターンの中なら、フェイズだけを言う。** ターン数もアクティブプレイヤーも変わって
- * いないのに毎回書くと、フェイズが 6 つ並ぶあいだ同じ文字が繰り返される。ターンの境目は
- * 1 件のできごとなので（`log.ts` の `進行が変わった`）、1 行の中で両方を言い切る。
+ * **区切りとして読ませる。** ログは行が並び続けるものなので、進行の切り替わりだけは
+ * `===` で囲んで、どこまでが 1 つのフェイズだったのかが目で追えるようにする。
+ *
+ * 同じターンの中なら 1 行で、終わったフェイズと始まったフェイズを並べる。**ターンの境目は
+ * 2 行に割る。** 終わったのはターンで、始まったのもターンであり、そのどちらもフェイズの
+ * 終わり・始まりを兼ねている——1 行に詰めると、ターンが変わったことがフェイズの名前に
+ * 埋もれる。積まれているできごとは 1 件のまま（`log.ts` の `進行が変わった`）なので、
+ * 並べる順はここで決まりきっていて、新しい順に出しても（#111）2 行の前後は狂わない。
+ *
+ * `from` が無いのはデュエルが始まった時だけである（`setup.ts` の `prepareDuel`）。
+ * 終わったものが無いので、始まりの 1 行だけになる。
  */
-function progressLine(from: Progress, to: Progress, whose: (player: Player) => '自分' | '相手'): string {
-  const within = from.turn === to.turn && from.active === to.active
-  const at = (progress: Progress): string =>
-    within ? progress.phase : `${whose(progress.active)}の第 ${progress.turn} ターン・${progress.phase}`
+function progressLines(
+  from: Progress | undefined,
+  to: Progress,
+  whose: (player: Player) => '自分' | '相手',
+): readonly Omit<LogLine, 'depth'>[] {
+  /** 進行の切り替わりは、どちらのプレイヤーのものでもない。 */
+  const line = (text: string): Omit<LogLine, 'depth'> => ({ whose: undefined, text: `=== ${text} ===` })
+  const turnLine = (at: Progress, edge: '開始' | '終了'): string =>
+    `${whose(at.active)}の第 ${at.turn} ターン${edge}（${at.phase}${edge}）`
 
-  return `${at(from)} → ${at(to)}`
+  if (from === undefined) return [line(turnLine(to, '開始'))]
+  if (from.turn === to.turn && from.active === to.active) {
+    return [line(`${from.phase}終了／${to.phase}開始`)]
+  }
+  return [line(turnLine(from, '終了')), line(turnLine(to, '開始'))]
 }
 
 /**

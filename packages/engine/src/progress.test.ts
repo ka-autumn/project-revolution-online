@@ -170,11 +170,35 @@ describe('進行が変わったことの記録', () => {
       .filter((event): event is Extract<DuelEvent, { kind: '進行が変わった' }> => event.kind === '進行が変わった')
   }
 
+  /** その盤面から先で新しく積まれた分だけ。デュエルの開始そのものを数に入れないため。 */
+  function since(before: DuelState, after: DuelState): readonly Extract<DuelEvent, { kind: '進行が変わった' }>[] {
+    return transitions(after).slice(transitions(before).length)
+  }
+
+  /**
+   * 総合ルール 第3部 第4章 1: デュエルは先攻のプレイヤーの第 1 ターンから始まる。
+   *
+   * **最初のターンは `progress.ts` を通らない。** 移ってくる元が無いので `from` は
+   * `undefined` になる（`setup.ts` の `recordOpening`）。積まなければ、誰の何ターン目から
+   * 始まったのかがログのどこにも残らない。
+   */
+  it('デュエルが始まったことが、最初のターンとして積まれる', () => {
+    const started = startedDuel()
+
+    expect(transitions(started)).toEqual([
+      {
+        kind: '進行が変わった',
+        from: undefined,
+        to: { turn: 1, active: '先攻', phase: 'リリースフェイズ' },
+      },
+    ])
+  })
+
   // 総合ルール 第3部 第4章 4・6
   it('フェイズが変わると、移り変わりが 1 件だけ積まれる', () => {
     const started = startedDuel()
 
-    expect(transitions(endPhase(started))).toHaveLength(1)
+    expect(since(started, endPhase(started))).toHaveLength(1)
   })
 
   /**
@@ -186,7 +210,7 @@ describe('進行が変わったことの記録', () => {
   it('とばされたフェイズは行き先に現れない', () => {
     const started = startedDuel()
 
-    expect(transitions(endPhase(started))).toEqual([
+    expect(since(started, endPhase(started))).toEqual([
       {
         kind: '進行が変わった',
         from: { turn: 1, active: started.turn.active, phase: 'リリースフェイズ' },

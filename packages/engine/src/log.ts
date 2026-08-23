@@ -165,12 +165,17 @@ export type DuelEvent =
    * **ターンの境目も 1 件である。** エンジンにとってターンが変わることは「次のフェイズが
    * 無いのでもう一方のプレイヤーの最初のフェイズへ行く」という 1 つの遷移でしかない
    * （`progress.ts` の `turnAfter`）。2 件に割ると、同時に起きたことの前後関係をログの並びと
-   * して作ることになり、新しい順に出る画面（#111）では逆さに見える。
+   * して作ることになり、新しい順に出る画面（#111）では逆さに見える。**何行で見せるかは
+   * 画面の側で決める**（`view-model.ts` の `logLines`）。ターンの境目を 2 行に割っても、
+   * 1 件のできごとから作られている限り並びは狂わない。
    *
    * `to` は**行き着いた先**をそのまま持つ。とばされるフェイズがある（同 5）ので、`from` の
    * 次に並んでいるフェイズとは限らない。
+   *
+   * `from` は、デュエルが始まって最初のターンに入った時だけ `undefined` になる
+   * （`setup.ts` の `prepareDuel`、総合ルール 第3部 第2章）。そこには「前」が無い。
    */
-  | { readonly kind: '進行が変わった'; readonly from: Progress; readonly to: Progress }
+  | { readonly kind: '進行が変わった'; readonly from: Progress | undefined; readonly to: Progress }
   /** バトルが発生した（総合ルール 第3部 第11章 1）。 */
   | {
       readonly kind: 'バトルが始まった'

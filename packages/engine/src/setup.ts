@@ -3,6 +3,7 @@ import { checkConstructedDeck } from './deck.js'
 import type { Deck, DeckViolation } from './deck.js'
 import { emptyDuelState, instantiate, putInZone } from './duel.js'
 import type { CardInstance, DuelState } from './duel.js'
+import { record } from './log.js'
 import type { Player } from './player.js'
 import { nextInt, randomFromSeed, shuffle } from './random.js'
 import type { Random } from './random.js'
@@ -85,7 +86,26 @@ export function prepareDuel(setup: DuelSetup): DuelPreparation {
     state = deal(state, player, library(shuffled[seat], player))
   }
 
-  return { kind: '準備完了', state, first, random: decided.random }
+  return { kind: '準備完了', state: recordOpening(state), first, random: decided.random }
+}
+
+/**
+ * 最初のターンに入ったことをログに積む（#133）。
+ *
+ * 進行の移り変わりを積むのは `progress.ts` だが、**最初のターンだけはそこを通らない。**
+ * デュエルは先攻のプレイヤーの第 1 ターンから始まる（総合ルール 第3部 第4章 1）ので、
+ * どこかから移ってくるわけではない。積まなければ、誰の何ターン目から始まったのかがログの
+ * どこにも残らない。
+ *
+ * 移ってくる元が無いので `from` は `undefined` になる（`log.ts` の `進行が変わった`）。
+ */
+function recordOpening(state: DuelState): DuelState {
+  const { turn } = state
+  return record(state, {
+    kind: '進行が変わった',
+    from: undefined,
+    to: { turn: turn.number, active: turn.active, phase: turn.phase },
+  })
 }
 
 /** シャッフルしても変わらない番号をカードに振る。 */
