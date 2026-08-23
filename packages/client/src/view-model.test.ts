@@ -801,6 +801,43 @@ describe('操作ログ', () => {
     ])
   })
 
+  /**
+   * #159。効果が置き先を選ばせる場合、選ばれるのはスクエアそのものである（`log.ts` の
+   * `選ぶ`）。見る人から見た呼び名で出す（総合ルール 第2部 第22章 6）。
+   */
+  describe('効果が選んだもの', () => {
+    it('カードを選んだなら、そのカードの名前が出る', () => {
+      const board = withLog({
+        kind: '命令を実行した',
+        controller: '先攻',
+        instruction: { kind: '選ぶ', card: '置いてある', square: undefined },
+      })
+
+      expect(texts(board)).toEqual(['テスト・置いてあるを選んだ'])
+    })
+
+    it('スクエアを選んだなら、どこを選んだのかが出る', () => {
+      const board = withLog({
+        kind: '命令を実行した',
+        controller: '先攻',
+        instruction: { kind: '選ぶ', card: undefined, square: ON_SQUARE },
+      })
+
+      expect(texts(board)).toEqual(['中央エリアの中央ラインを選んだ'])
+    })
+
+    /** どちらも指していなければ、名前もスクエアも作り出さない（#95）。 */
+    it('どちらも指していなければ、選んだことだけが出る', () => {
+      const board = withLog({
+        kind: '命令を実行した',
+        controller: '先攻',
+        instruction: { kind: '選ぶ', card: undefined, square: undefined },
+      })
+
+      expect(texts(board)).toEqual(['選んだ'])
+    })
+  })
+
   /** ルールエフェクトはどちらのプレイヤーにも支配されない（総合ルール 第4部 第14章 1）。 */
   it('ルールが起こしたことは、誰のものにもならない', () => {
     const board = withLog({ kind: 'ルールで捨札に置かれた', cards: ['置いてある'] })
@@ -1198,7 +1235,7 @@ describe('カットイン', () => {
   it('本文は命令 1 つにつき 1 行になる', () => {
     const fresh: readonly DuelEvent[] = [
       { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
-      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: '置いてある' } },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: '置いてある', square: undefined } },
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
     ]
 
@@ -1209,7 +1246,7 @@ describe('カットイン', () => {
   it('次の別種のできごとが来ると切れる', () => {
     const fresh: readonly DuelEvent[] = [
       { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
-      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: '置いてある' } },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: '置いてある', square: undefined } },
       { kind: '行動した', player: '先攻', action: '優先権を放棄する', card: undefined, square: undefined },
       { kind: '能力を解決した', controller: '先攻', via: '起動', source: '置いてある' },
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
@@ -1225,7 +1262,7 @@ describe('カットイン', () => {
   it('「能力を解決した」で始まらない並びからは何も出ない', () => {
     const fresh: readonly DuelEvent[] = [
       { kind: '行動した', player: '先攻', action: '優先権を放棄する', card: undefined, square: undefined },
-      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: '置いてある' } },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: '置いてある', square: undefined } },
     ]
 
     expect(cutInViews(board, logged(fresh))).toEqual([])

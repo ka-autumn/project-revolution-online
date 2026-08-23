@@ -1,10 +1,9 @@
-import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
 import { cardsIn } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
-import { cardIdOf } from './log.js'
+import { cardIdOf, squareOf } from './log.js'
 import { visibleIdsOf } from './perspective.js'
 import type { PassOutcome } from './progress.js'
 import { PLAYERS } from './player.js'
@@ -244,23 +243,6 @@ function sourceOf(candidate: unknown): CardId | undefined {
 
   const { source } = candidate as { readonly source?: unknown }
   return typeof source === 'string' ? source : undefined
-}
-
-/**
- * その候補がスクエアであるとき、そのスクエア。カードなら `undefined`。
- *
- * 効果が置き先を選ばせる場合、候補として並ぶのはスクエアそのものである（`board.ts` の
- * `Square`）。行と列で持つのはスクエアだけで、スクエアにいるユニットは自分の位置を
- * `square` として持つ（`board.ts` の `UnitOnSquare`）ので、取り違えることはない。
- *
- * 行と列が 0・1・2 のいずれかであること（同 `SquareIndex`）は、同じ位置がバトルスペースに
- * あることで確かめる。
- */
-function squareOf(candidate: unknown): Square | undefined {
-  if (typeof candidate !== 'object' || candidate === null) return undefined
-
-  const { row, column } = candidate as { readonly row?: unknown; readonly column?: unknown }
-  return BATTLE_SPACE.find((square) => square.row === row && square.column === column)
 }
 
 /**

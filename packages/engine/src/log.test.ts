@@ -83,6 +83,21 @@ const chooseAndReturn = defineStrategy({
   },
 })
 
+/**
+ * スクエアを 1 つ選ぶ（#159）。選ばれるのがカードではない場面。
+ *
+ * 効果が置き先を選ばせる場合、候補として並ぶのはスクエアそのものである（`board.ts` の
+ * `Square`）。
+ */
+const chooseSquare = defineStrategy({
+  name: 'テスト・スクエアを選ぶ',
+  level: 0,
+  colors: ['赤'],
+  effect: function* () {
+    yield* choose([centerSquare])
+  },
+})
+
 /** すでにフリーズ状態のユニットをフリーズしようとする。実行できない行動になる。 */
 const freezeEnemies = defineStrategy({
   name: 'テスト・敵をフリーズ',
@@ -250,9 +265,28 @@ describe('効果の記録', () => {
     const resolved = resolveEffect(board, chooseAndDestroy.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(instructions(resolved)).toEqual([
-      { kind: '選ぶ', card: '敵' },
+      { kind: '選ぶ', card: '敵', square: undefined },
       { kind: '破壊する', card: '敵' },
     ])
+  })
+
+  /**
+   * #159。**選ばれるのはカードとは限らない。** スクエアが選ばれたなら、どのスクエアかが残る。
+   *
+   * スクエアは盤面の位置であって、そこに何があるかを言っていない。落とすものは無い
+   * （スクエアにあるカードは公開情報である、総合ルール 第2部 第23章 1-1）。
+   */
+  it('スクエアを選んだなら、どのスクエアかが残る', () => {
+    const resolved = resolveEffect(board, chooseSquare.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+    expect(instructions(resolved)).toEqual([{ kind: '選ぶ', card: undefined, square: centerSquare }])
+  })
+
+  /** カードが選ばれたなら、スクエアのほうは空のままである。どちらか一方だけが埋まる。 */
+  it('カードを選んだなら、スクエアは空のままになる', () => {
+    const resolved = resolveEffect(board, chooseAndDestroy.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+    expect(instructions(resolved)[0]).toEqual({ kind: '選ぶ', card: '敵', square: undefined })
   })
 
   /** 実行できない行動は実行されない（総合ルール 第1部 第1章 3）ので、何も起きていない。 */
@@ -856,7 +890,7 @@ describe('その時の見え方で落とす', () => {
     // 名前が残る。誰の何が戻ったのかが後から読めなくなってはならない。
     expect(cardsIn(resolved, '後攻', '山札').map((card) => card.id)).toContain(target.id)
     expect(perspectiveOf(resolved, '先攻').log.flatMap(({ event }) => (event.kind === '命令を実行した' ? [event.instruction] : []))).toEqual([
-      { kind: '選ぶ', card: target.id },
+      { kind: '選ぶ', card: target.id, square: undefined },
       { kind: 'ゾーンへ置く', card: target.id, to: '山札' },
     ])
   })
@@ -932,7 +966,7 @@ describe('やり直しても二重にならない', () => {
 
     if (progress.kind !== '進んだ') throw new Error('進んだはずだった')
     expect(instructions(progress.state)).toEqual([
-      { kind: '選ぶ', card: '敵' },
+      { kind: '選ぶ', card: '敵', square: undefined },
       { kind: '破壊する', card: '敵' },
     ])
   })
