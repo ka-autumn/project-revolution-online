@@ -274,7 +274,10 @@ describe('効果の記録', () => {
 
     const resolved = resolveBank(readyToAct('エネルギーフェイズ', placed))
 
-    expect(events(resolved).filter((event) => event.kind !== '行動した')).toEqual([
+    const resolution = events(resolved).filter(
+      (event) => event.kind === '能力を解決した' || event.kind === '命令を実行した',
+    )
+    expect(resolution).toEqual([
       { kind: '能力を解決した', controller: '先攻', via: '誘発', source: drawer.id },
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: 'カードを引く', player: '先攻', count: 1 } },
     ])
@@ -602,7 +605,7 @@ describe('コストの支払いの記録', () => {
 
     const planned = applyLegalAction(state, { kind: 'プランする' }, chooseFirst)
 
-    expect(perspectiveOf(planned, '先攻').log.filter((event) => event.kind === 'コストを支払った')).toEqual([
+    expect(perspectiveOf(planned, '先攻').log.map(({ event }) => event).filter((event) => event.kind === 'コストを支払った')).toEqual([
       { kind: 'コストを支払った', player: '先攻', zone: 'スマッシュゾーン', card: undefined, purpose: 'プランのコスト' },
     ])
   })
@@ -673,6 +676,41 @@ describe('希望ステップの記録', () => {
 })
 
 /**
+ * どの手順の中で起きたかの記録（#133）。
+ *
+ * **できごとの型を 1 つずつ広げない。** 手順は盤面が知っている（`log.ts` の `record`）ので、
+ * 積むところを通ったできごとには、種類を問わずそのまま付く。
+ */
+describe('手順の中で起きたこと', () => {
+  it('手順の外で起きたできごとには、何も付かない', () => {
+    const energy = instantiate({ id: '置くカード', card: vanilla, owner: '先攻' })
+    const board = inZone(stocked(), '先攻', '手札', energy)
+
+    const placed = applyLegalAction(readyToAct('エネルギーフェイズ', board), { kind: 'エネルギーを置く', card: '置くカード' }, chooseFirst)
+
+    expect(placed.log.map(({ during }) => during)).toEqual(placed.log.map(() => []))
+  })
+
+  /**
+   * 射影と通信を通っても落ちない（`perspective.ts` の `DuelPerspective.log`）。進行中の
+   * フェイズもステップも、誰のスマッシュ判定かも公開情報である（総合ルール 第2部 第23章 1-1）。
+   */
+  it('射影を通っても、どの手順の中かは残る', () => {
+    const defended = instantiate({ id: '守った', card: vanilla, owner: '後攻' })
+    const attacker = instantiate({ id: '攻めた', card: vanilla, owner: '先攻' })
+    const attacking = putOnSquare(putOnSquare(stocked(), mySquare, defended), mySquare, attacker)
+
+    const battling = passPriority(attacking, chooseFirst)
+    const projected = perspectiveOf(battling, '後攻').log
+
+    expect(projected.find(({ event }) => event.kind === 'バトルが始まった')?.during).toEqual([])
+    expect(projected.find(({ event }) => event.kind === 'バトルのステップが変わった')?.during).toEqual([
+      { kind: 'バトル' },
+    ])
+  })
+})
+
+/**
  * ADR-0004。**見え方の決まりは射影ひとつしか無い**（`perspective.ts` の `seesFace`）ので、
  * ログもそこから落ちる。
  */
@@ -695,30 +733,35 @@ describe('視点ごとの落とし方', () => {
     return { kind: '行動した', player: '後攻', action: 'カードをプレイする', card, square: undefined }
   }
 
+  /** 射影を通ったログの、できごとだけ。どの手順の中かはここでは見ない（`log.ts` の `LoggedEvent`）。 */
+  function seen(state: DuelState, viewer: Player): readonly DuelEvent[] {
+    return perspectiveOf(state, viewer).log.map(({ event }) => event)
+  }
+
   it('相手の手札にあるカードは名指しされない', () => {
     const state = logged(played(hidden.id))
 
-    expect(perspectiveOf(state, '先攻').log).toEqual([{ ...played(hidden.id), card: undefined }])
+    expect(seen(state, '先攻')).toEqual([{ ...played(hidden.id), card: undefined }])
   })
 
   it('持ち主からは名指しされる', () => {
     const state = logged(played(hidden.id))
 
-    expect(perspectiveOf(state, '後攻').log).toEqual([played(hidden.id)])
+    expect(seen(state, '後攻')).toEqual([played(hidden.id)])
   })
 
   // 捨札はすべてのカードをいつでも見られる（総合ルール 第2部 第21章 5-2）。
   it('捨札にあるカードは、どちらからも名指しされる', () => {
     const state = logged(played(shown.id))
 
-    expect(perspectiveOf(state, '先攻').log).toEqual([played(shown.id)])
+    expect(seen(state, '先攻')).toEqual([played(shown.id)])
   })
 
   /** 名指しは落ちても、できごとそのものは残る。何かを行ったことは相手にも見えている。 */
   it('名指しが落ちても、できごとは残る', () => {
     const state = logged(played(hidden.id))
 
-    expect(perspectiveOf(state, '先攻').log).toHaveLength(1)
+    expect(seen(state, '先攻')).toHaveLength(1)
   })
 
   it('命令の中のカードも落ちる', () => {
@@ -730,7 +773,7 @@ describe('視点ごとの落とし方', () => {
 
     const state = logged(event)
 
-    expect(perspectiveOf(state, '先攻').log).toEqual([
+    expect(seen(state, '先攻')).toEqual([
       { ...event, instruction: { kind: 'ゾーンへ置く', card: undefined, to: '手札' } },
     ])
   })
@@ -741,7 +784,7 @@ describe('視点ごとの落とし方', () => {
 
     const state = logged(event)
 
-    expect(perspectiveOf(state, '先攻').log).toEqual([{ ...event, winner: undefined }])
+    expect(seen(state, '先攻')).toEqual([{ ...event, winner: undefined }])
   })
 
   // #111。プランをめくって手札に加える置換効果などで、めくったカードが手札に渡ることがある。
@@ -750,7 +793,7 @@ describe('視点ごとの落とし方', () => {
 
     const state = logged(event)
 
-    expect(perspectiveOf(state, '先攻').log).toEqual([{ ...event, card: undefined }])
+    expect(seen(state, '先攻')).toEqual([{ ...event, card: undefined }])
   })
 
   // #111。フリーズして支払ったカードも落ちうる（見えなくなった後の状態から判断するため）。
@@ -765,7 +808,7 @@ describe('視点ごとの落とし方', () => {
 
     const state = logged(event)
 
-    expect(perspectiveOf(state, '先攻').log).toEqual([{ ...event, card: undefined }])
+    expect(seen(state, '先攻')).toEqual([{ ...event, card: undefined }])
   })
 
   /**
@@ -778,7 +821,7 @@ describe('視点ごとの落とし方', () => {
 
     const state = logged(event)
 
-    expect(perspectiveOf(state, '先攻').log).toEqual([event])
+    expect(seen(state, '先攻')).toEqual([event])
   })
 })
 
@@ -799,7 +842,7 @@ describe('その時の見え方で落とす', () => {
 
   /** 先攻から見たログの、名指しされているカード。落ちていれば `undefined` が並ぶ。 */
   function namedTo(state: DuelState, viewer: Player): readonly (CardId | undefined)[] {
-    return perspectiveOf(state, viewer).log.map((event) => (event.kind === '行動した' ? event.card : undefined))
+    return perspectiveOf(state, viewer).log.map(({ event }) => (event.kind === '行動した' ? event.card : undefined))
   }
 
   // 総合ルール 第2部 第21章 2-2: 持ち主であっても山札の中身を見てはならない。
@@ -812,7 +855,7 @@ describe('その時の見え方で落とす', () => {
     // 戻した後の盤面から見れば、このカードはもう見えない。それでも、戻したできごとには
     // 名前が残る。誰の何が戻ったのかが後から読めなくなってはならない。
     expect(cardsIn(resolved, '後攻', '山札').map((card) => card.id)).toContain(target.id)
-    expect(perspectiveOf(resolved, '先攻').log.flatMap((event) => (event.kind === '命令を実行した' ? [event.instruction] : []))).toEqual([
+    expect(perspectiveOf(resolved, '先攻').log.flatMap(({ event }) => (event.kind === '命令を実行した' ? [event.instruction] : []))).toEqual([
       { kind: '選ぶ', card: target.id },
       { kind: 'ゾーンへ置く', card: target.id, to: '山札' },
     ])

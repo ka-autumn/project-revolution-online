@@ -838,13 +838,13 @@ describe('選んでいる間に見せる盤面', () => {
     const { outcome, acting } = planning()
 
     const started = boardOf(outcome.deliveries, acting).log
-    expect(started.some((event) => event.kind === '行動した' && event.action === 'プランする')).toBe(true)
+    expect(started.some(({ event }) => event.kind === '行動した' && event.action === 'プランする')).toBe(true)
   })
 
   it('選ばせる前にめくれたカードが、選んでいる間に見える', () => {
     const { outcome, acting } = revealingThenChoosing()
 
-    const turned = boardOf(outcome.deliveries, acting).log.flatMap((event) =>
+    const turned = boardOf(outcome.deliveries, acting).log.flatMap(({ event }) =>
       event.kind === '命令を実行した' && event.instruction.kind === '山札の1番上をゾーンへ置く'
         ? [event.instruction.card]
         : [],
@@ -860,7 +860,7 @@ describe('選んでいる間に見せる盤面', () => {
     const cancelled = send(outcome.rooms, acting, { kind: '取り消す' })
 
     const back = boardOf(cancelled.deliveries, acting).log
-    expect(back.some((event) => event.kind === '行動した' && event.action === 'カードをプレイする')).toBe(false)
+    expect(back.some(({ event }) => event.kind === '行動した' && event.action === 'カードをプレイする')).toBe(false)
   })
 })
 

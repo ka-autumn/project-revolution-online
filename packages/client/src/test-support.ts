@@ -1,5 +1,7 @@
 import { BATTLE_SPACE, PLAYER_ZONES } from '@revolution/engine'
 import type {
+  DuelEvent,
+  LoggedEvent,
   Player,
   PlayerZone,
   WireCardInstance,
@@ -84,6 +86,17 @@ export function instance(id: string, owner: Player, values: Partial<WireCardInst
     damage: 0,
     ...values,
   }
+}
+
+/**
+ * できごとの並びを、どの手順の中でもないものとしてログの形にする（#133）。
+ *
+ * 通信に載るログは、できごとと「どの手順の中で起きたか」の組である（`log.ts` の
+ * `LoggedEvent`）。**字下げを見ないテストは `during` に用が無い**ので、ここでまとめて空に
+ * しておく。手順の中を組みたいテストは、自分で `during` を書く。
+ */
+export function logged(events: readonly DuelEvent[]): readonly LoggedEvent[] {
+  return events.map((event) => ({ event, during: [] }))
 }
 
 /** そのプレイヤーのそのゾーンを差し替える。 */

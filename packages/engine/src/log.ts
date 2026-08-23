@@ -1,3 +1,4 @@
+import type { BattleStep } from './battle.js'
 import type { Square } from './board.js'
 import type { CardId, DuelResult, DuelState } from './duel.js'
 import type { Instruction } from './effect.js'
@@ -6,6 +7,8 @@ import type { Orientation } from './orientation.js'
 import { seenByOf } from './perspective.js'
 import type { Player } from './player.js'
 import type { ChoicePurpose } from './resolve.js'
+import type { SmashJudgmentStep } from './smash.js'
+import type { Phase } from './turn.js'
 import type { PlayerZone } from './zone.js'
 
 /**
@@ -26,6 +29,34 @@ export type ResolutionVia =
   | 'プレイ'
   /** 「希望」がバンクを使用せずただちに解決された（同 第5部 第3章 1）。 */
   | '希望'
+
+/**
+ * 進行がどこまで来ているか——何ターン目の、誰の、どのフェイズか（#133）。
+ *
+ * `Turn`（`turn.ts`）をそのまま持たない。優先権や連続放棄の途中経過は「いまどこを進んで
+ * いるか」ではなく、ログに凍らせても読む相手がいないためである。
+ */
+export interface Progress {
+  /** 通算のターン数（`turn.ts` の `Turn.number`）。 */
+  readonly turn: number
+  /** そのターンを持つプレイヤー。 */
+  readonly active: Player
+  readonly phase: Phase
+}
+
+/**
+ * できごとが起きた時に進行していた特別な手順 1 つ（総合ルール 第3部 第4章 2、#133）。
+ *
+ * バトルもスマッシュ判定も、フェイズの中で始まって終わる手順であり、その間に起きたことは
+ * 「その手順の中で起きたこと」である。**できごとの型を 1 つずつ広げない。** どの手順の中に
+ * いるかは盤面が知っている（`proceduresOf`）ので、`record` が押せば、バトルダメージや
+ * ルールでの捨札のような既存のできごとにもそのまま付く。
+ */
+export type Procedure =
+  /** バトル（総合ルール 第3部 第11章 1）。 */
+  | { readonly kind: 'バトル' }
+  /** スマッシュ判定（同 第17章 1）。誰の判定かで、入れ子になった判定どうしを見分けられる。 */
+  | { readonly kind: 'スマッシュ判定'; readonly player: Player }
 
 /**
  * 盤面に起きたできごとの記録（ADR-0011、#95）。
@@ -128,6 +159,18 @@ export type DuelEvent =
    * 指す。
    */
   | { readonly kind: '希望ステップでめくった'; readonly player: Player; readonly card: CardId; readonly name: string }
+  /**
+   * 進行が次のフェイズへ移った（総合ルール 第3部 第4章 4・6、#133）。
+   *
+   * **ターンの境目も 1 件である。** エンジンにとってターンが変わることは「次のフェイズが
+   * 無いのでもう一方のプレイヤーの最初のフェイズへ行く」という 1 つの遷移でしかない
+   * （`progress.ts` の `turnAfter`）。2 件に割ると、同時に起きたことの前後関係をログの並びと
+   * して作ることになり、新しい順に出る画面（#111）では逆さに見える。
+   *
+   * `to` は**行き着いた先**をそのまま持つ。とばされるフェイズがある（同 5）ので、`from` の
+   * 次に並んでいるフェイズとは限らない。
+   */
+  | { readonly kind: '進行が変わった'; readonly from: Progress; readonly to: Progress }
   /** バトルが発生した（総合ルール 第3部 第11章 1）。 */
   | {
       readonly kind: 'バトルが始まった'
@@ -135,6 +178,13 @@ export type DuelEvent =
       readonly attacker: CardId | undefined
       readonly attacked: CardId | undefined
     }
+  /**
+   * バトルのステップが始まった（総合ルール 第3部 第11章 3）。
+   *
+   * **始まりだけを積む。** ステップは一直線に置き換わるので、次の始まりが前の終わりを
+   * 兼ねる。最後のステップの終わりは `バトルが終わった` が閉じる。
+   */
+  | { readonly kind: 'バトルのステップが変わった'; readonly step: BattleStep }
   /** バトルダメージ（総合ルール 第3部 第13章 1・第15章 1）。 */
   | {
       readonly kind: 'バトルダメージを与えた'
@@ -150,6 +200,41 @@ export type DuelEvent =
    * ルールエフェクト（同 2-1・2-2）でユニットがスクエアを離れても、ここに残る結果は変わらない。
    */
   | { readonly kind: 'バトルが終わった'; readonly winner: CardId | undefined }
+  /**
+   * スマッシュ判定が発生した（総合ルール 第3部 第17章 1）。
+   *
+   * `repeats` は、繰り返される希望ステップと確定ステップの回数（同 3）。**始まりと終わりの
+   * 両方を積む。** 判定はフェイズの中で始まって終わり、終わってもそのフェイズが続くので、
+   * 終わりが無いと区切りが閉じない。終わりはステップの並びからも読めない——最後が第何確定
+   * ステップかは `repeats` と突き合わせないと決まらないためである。
+   */
+  | { readonly kind: 'スマッシュ判定が始まった'; readonly player: Player; readonly repeats: number }
+  /** スマッシュ判定が終了した（総合ルール 第3部 第17章 3・4）。 */
+  | { readonly kind: 'スマッシュ判定が終わった'; readonly player: Player }
+  /**
+   * スマッシュ判定のステップが始まった（総合ルール 第3部 第17章 3）。
+   *
+   * `round` は、希望ステップと確定ステップが何回目かである（同 3 の「第１希望ステップ」）。
+   * 回復ステップは 1 回だけなので 0。バトルのステップと同じく始まりだけを積み、判定の
+   * 終わりは `スマッシュ判定が終わった` が閉じる。
+   */
+  | {
+      readonly kind: 'スマッシュ判定のステップが変わった'
+      readonly player: Player
+      readonly step: SmashJudgmentStep
+      readonly round: number
+    }
+  /**
+   * 処理中のスマッシュ判定が待機中になった（総合ルール 第3部 第17章 2-2）。
+   *
+   * スマッシュ判定中にスマッシュ判定が発生した場合、先に発生したほうが待機中になり、後から
+   * 発生したほうが先に処理される。**待機は盤面に残らない。** 待機中かどうかは並び
+   * （`DuelState.smashJudgments`）の位置でしかなく、後から盤面を見ても、どの時点でどちらが
+   * 動いていたかは読めない。積んでおかなければ復元できない（ADR-0011）。
+   */
+  | { readonly kind: 'スマッシュ判定が待機中になった'; readonly player: Player }
+  /** 待機していたスマッシュ判定が、通常のスマッシュ判定に戻った（同 2-2）。 */
+  | { readonly kind: 'スマッシュ判定が戻った'; readonly player: Player }
   /** ルールエフェクトによって捨札に置かれた（総合ルール 第4部 第14章 4）。 */
   | { readonly kind: 'ルールで捨札に置かれた'; readonly cards: readonly CardId[] }
   /** 勝敗が決まった（総合ルール 第3部 第3章）。 */
@@ -188,6 +273,25 @@ export type LoggedInstruction =
 export type SeenBy = Readonly<Record<Player, readonly CardId[]>>
 
 /**
+ * 起きたことと、それがどの手順の中で起きたかの組（#133）。
+ *
+ * **射影（`perspective.ts`）と通信（`wire.ts`）を通るのはこの形である。** `during` から
+ * 落とすものは無い——進行中のフェイズもステップも、誰のスマッシュ判定かも公開情報である
+ * （総合ルール 第2部 第23章 1-1）。
+ */
+export interface LoggedEvent {
+  readonly event: DuelEvent
+  /**
+   * そのできごとが起きた時に進行していた手順。外側から順に並ぶ。手順の外なら空。
+   *
+   * **手順の始まりと終わりの行は、その手順の外側に立つ。** 「バトルが始まった」は
+   * `during` が空、その中のできごとが 1 つ深い、という形にすることで、画面は長さを
+   * そのまま字下げに使える。
+   */
+  readonly during: readonly Procedure[]
+}
+
+/**
  * 積まれたできごと 1 つ。起きたことと、その時どちらのプレイヤーに何が見えていたかの組。
  *
  * **見え方をできごとと一緒に凍らせる。** 名指しを落とすのは射影（`perspective.ts` の
@@ -195,8 +299,7 @@ export type SeenBy = Readonly<Record<Player, readonly CardId[]>>
  * 見え方である。盤面から後で読み直すと、その後に見えなくなったカードが過去の行からも
  * 消えてしまう（#129）。
  */
-export interface RecordedEvent {
-  readonly event: DuelEvent
+export interface RecordedEvent extends LoggedEvent {
   readonly seenBy: SeenBy
 }
 
@@ -207,9 +310,29 @@ export interface RecordedEvent {
  * どちらかで見えていたか**で決まる。カードを見えないところへ動かしたできごと（山札へ戻す）は
  * 動く前に見えており、めくって見えるようになったできごと（プランをめくる）は動いた後に
  * 見えているためで、片側だけでは足りない。盤面を動かさないできごとでは同じものになる。
+ *
+ * どの手順の中で起きたかは `state` から押す（`proceduresOf`）。**押す側に選ばせない。**
+ * 手順の始まりと終わりの行を外側に立たせるのは、盤面へ手順を足す前・外した後に積むという
+ * 呼ぶ順序であって、ここでの例外ではない（`battle.ts` の `startBattleIfAny`、`smash.ts` の
+ * `startSmashJudgmentIfAny`）。
  */
 export function record(state: DuelState, event: DuelEvent, before: DuelState = state): DuelState {
-  return { ...state, log: [...state.log, { event, seenBy: seenByOf(state, before, event) }] }
+  const recorded = { event, seenBy: seenByOf(state, before, event), during: proceduresOf(state) }
+  return { ...state, log: [...state.log, recorded] }
+}
+
+/**
+ * その盤面で進行している特別な手順を、外側から順に並べたもの（総合ルール 第3部 第4章 2）。
+ *
+ * スマッシュ判定は並びで入れ子を持つ（同 第17章 2-2、`DuelState.smashJudgments`）ので、
+ * そのまま写す。バトルは 1 つしか持てない（`DuelState.battle`）ため、常にいちばん外側に
+ * 置いている。**スマッシュ判定中に始まったバトルは、この並びでは正しい位置に来ない。**
+ * バトルが「いつ」始まったかを盤面が覚えていないためで、判定を待機させるはずの同 第17章 2-1
+ * をエンジンがまだ実装していないこととあわせて、入れ子のバトルを扱う時に直す。
+ */
+function proceduresOf(state: DuelState): readonly Procedure[] {
+  const battle: readonly Procedure[] = state.battle === undefined ? [] : [{ kind: 'バトル' }]
+  return [...battle, ...state.smashJudgments.map(({ player }): Procedure => ({ kind: 'スマッシュ判定', player }))]
 }
 
 /**

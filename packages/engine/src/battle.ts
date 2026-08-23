@@ -148,15 +148,16 @@ export function startBattleIfAny(state: DuelState): DuelState {
     heldBank: state.bank,
     heldTriggered: state.triggered,
   }
-  const started = { ...state, battle, bank: [], triggered: [] }
-  const begun = record(started, {
+  // バトルを盤面に載せる**前に**積む。そうすると、この行は自分自身のバトルの中には入らず、
+  // 手順の見出しとして外側に立つ（`log.ts` の `LoggedEvent.during`、#133）。
+  const begun = record(state, {
     kind: 'バトルが始まった',
     square: battle.square,
     attacker: battle.attacker,
     attacked: battle.attacked,
   })
 
-  return beginStep(begun, battle)
+  return beginStep({ ...begun, battle, bank: [], triggered: [] }, battle)
 }
 
 /**
@@ -188,9 +189,13 @@ export function advanceBattle(state: DuelState, battle: Battle): DuelState {
  * ダメージステップはバトルダメージの応酬を解決し（同 第13章 1・第15章 1）、バトル終了
  * ステップは勝敗を判定する（同 第16章 1）。フェイズにおける `progress.ts` の
  * `beginCurrentPhase` と同じ位置づけ。
+ *
+ * **ステップが始まったことをログに積むのはここだけである**（#133）。バトルが始まった時の
+ * 第１バトルステップも、進んだ先のステップも同じくここを通る。始めの処理より前に積むので、
+ * そのステップで起きたことが後ろに並ぶ。
  */
 function beginStep(state: DuelState, battle: Battle): DuelState {
-  const begun = withBattle(state, battle)
+  const begun = record(withBattle(state, battle), { kind: 'バトルのステップが変わった', step: battle.step })
   switch (battle.step) {
     case '第１バトルステップ': {
       // バトルが始まったことによる誘発（同 第12章 1）。「攻撃した時」「攻撃された時」は

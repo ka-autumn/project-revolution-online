@@ -125,9 +125,27 @@ export function startSmashJudgmentIfAny(state: DuelState): DuelState {
     heldBank: state.bank,
     heldTriggered: state.triggered,
   }
-  const started = { ...state, smashJudgments: [...state.smashJudgments, judgment], bank: [], triggered: [] }
+
+  // 判定を盤面に載せる**前に**積む。そうすると、この行は自分自身の判定の中には入らず、手順の
+  // 見出しとして外側に立つ（`log.ts` の `LoggedEvent.during`、#133）。処理中の判定があれば、
+  // それはこの判定が終わるまで待機中になる（総合ルール 第3部 第17章 2-2）。
+  const held = state.smashJudgments.at(-1)
+  const waiting =
+    held === undefined ? state : record(state, { kind: 'スマッシュ判定が待機中になった', player: held.player })
+  const announced = record(waiting, {
+    kind: 'スマッシュ判定が始まった',
+    player: damaged,
+    repeats: judgment.repeats,
+  })
+
+  const started = {
+    ...announced,
+    smashJudgments: [...announced.smashJudgments, judgment],
+    bank: [],
+    triggered: [],
+  }
   // 回復ステップの処理には選択が要らないので、ここは `chooser` を持たずに始められる。
-  return beginRecoveryStep(started, judgment)
+  return beginRecoveryStep(recordStep(started, judgment), judgment)
 }
 
 /**
@@ -168,12 +186,18 @@ export function advanceSmashJudgment(
  * 自分の待機中のバンクを持っているので、戻す先を取り違えることはない。
  */
 function endSmashJudgment(state: DuelState, judgment: SmashJudgment): DuelState {
-  return {
+  const ended = {
     ...state,
     smashJudgments: state.smashJudgments.slice(0, -1),
     bank: [...state.bank, ...judgment.heldBank],
     triggered: [...state.triggered, ...judgment.heldTriggered],
   }
+  // 並びから外した**後に**積む。見出しは手順の外側に立つ（`log.ts` の `LoggedEvent.during`）。
+  const closed = record(ended, { kind: 'スマッシュ判定が終わった', player: judgment.player })
+  const resumed = closed.smashJudgments.at(-1)
+  return resumed === undefined
+    ? closed
+    : record(closed, { kind: 'スマッシュ判定が戻った', player: resumed.player })
 }
 
 /** 次に進むステップ。そのスマッシュ判定が終わるなら `undefined`。 */
@@ -192,16 +216,33 @@ function nextStep(judgment: SmashJudgment): SmashJudgmentStep | undefined {
  * それを裏返す（同 第20章 1）。バトルにおける `battle.ts` の `beginStep` と同じ位置づけ。
  */
 function beginStep(state: DuelState, judgment: SmashJudgment, chooser: Chooser): DuelState {
+  const begun = recordStep(state, judgment)
   switch (judgment.step) {
     case '回復ステップ':
-      return beginRecoveryStep(state, judgment)
+      return beginRecoveryStep(begun, judgment)
     case '希望ステップ':
-      return beginHopeStep(state, judgment, chooser)
+      return beginHopeStep(begun, judgment, chooser)
     case '確定ステップ':
       // 表向きで置かれているカードを裏返す。裏向きになったカードはスマッシュとして扱われる
       // （総合ルール 第3部 第20章 1）。
-      return withJudgment(state, { ...judgment, faceUp: undefined })
+      return withJudgment(begun, { ...judgment, faceUp: undefined })
   }
+}
+
+/**
+ * ステップが始まったことを積む（総合ルール 第3部 第17章 3、#133）。
+ *
+ * 判定が始まった時の回復ステップ（`startSmashJudgmentIfAny`）と、進んだ先のステップ
+ * （`beginStep`）の両方がここを通る。始めの処理より前に積むので、そのステップで起きたことが
+ * 後ろに並ぶ。
+ */
+function recordStep(state: DuelState, judgment: SmashJudgment): DuelState {
+  return record(state, {
+    kind: 'スマッシュ判定のステップが変わった',
+    player: judgment.player,
+    step: judgment.step,
+    round: judgment.round,
+  })
 }
 
 /**

@@ -24,6 +24,7 @@ import type {
   Card,
   CardInstance,
   Chooser,
+  DuelEvent,
   DuelState,
   SmashJudgmentStep,
   Square,
@@ -255,6 +256,78 @@ describe('スマッシュ判定のステップ', () => {
     expect(current.turn.phase).toBe('スマッシュフェイズ')
     // フェイズの連続放棄で次のフェイズに進む。
     expect(pass(pass(current)).turn.phase).toBe('リカバリーフェイズ')
+  })
+})
+
+/**
+ * スマッシュ判定の記録（#133）。
+ *
+ * **判定が発生したこと自体が盤面に残らない。** 終わってしまえばステップも並びも消えるので、
+ * 積んでおかなければ後から読めない（ADR-0011）。回復ステップの回復も、何も起こらなかった
+ * ステップも同じである——それぞれのステップは、何も起こらない場合でも存在する
+ * （総合ルール 第3部 第17章 3）。
+ */
+describe('スマッシュ判定の記録', () => {
+  /** 判定が全部終わるまで進めた盤面。 */
+  function afterJudgments(state: DuelState): DuelState {
+    let current = state
+    while (current.smashJudgments.length > 0) current = endStep(current)
+    return current
+  }
+
+  /** 積まれたできごとだけを、起きた順に取り出す。 */
+  function events(state: DuelState): readonly DuelEvent[] {
+    return state.log.map(({ event }) => event)
+  }
+
+  // 総合ルール 第3部 第17章 1・3。**終わりが無いと区切りが閉じない。**
+  it('始まりと終わりが残る', () => {
+    const done = afterJudgments(smashedFromCenter(sp1000))
+    const both = events(done).filter(
+      (event) => event.kind === 'スマッシュ判定が始まった' || event.kind === 'スマッシュ判定が終わった',
+    )
+
+    expect(both).toEqual([
+      { kind: 'スマッシュ判定が始まった', player: '後攻', repeats: 1 },
+      { kind: 'スマッシュ判定が終わった', player: '後攻' },
+    ])
+  })
+
+  /**
+   * 総合ルール 第3部 第17章 3: 「希望ステップ」と「確定ステップ」が複数回発生して区別が必要な
+   * 場合、繰り返した回数によって「第１希望ステップ」のように表現する。
+   *
+   * 何回目かは、繰り返しの回数（`repeats`）と突き合わせないと最後かどうかも決まらない。
+   * ステップの名前だけでは足りないので、回数も一緒に積む。
+   */
+  it('ステップが、繰り返しの何回目かとあわせて残る', () => {
+    // 敵エリアのＳＰ1500 のユニットが与えるのは 2000（総合ルール 第3部 第9章 1 の (2) の行動）。
+    const done = afterJudgments(smashedFromEnemyArea(sp1500))
+    const steps = events(done).flatMap((event) =>
+      event.kind === 'スマッシュ判定のステップが変わった' ? [`${event.round}／${event.step}`] : [],
+    )
+
+    expect(steps).toEqual([
+      '0／回復ステップ',
+      '1／希望ステップ',
+      '1／確定ステップ',
+      '2／希望ステップ',
+      '2／確定ステップ',
+    ])
+  })
+
+  /**
+   * #133。手順の見出しは、その手順の外側に立つ（`log.ts` の `LoggedEvent.during`）。
+   * 判定の中で起きたことが 1 つ深くなる。
+   */
+  it('判定の始まりと終わりは、その中のできごとより浅いところに積まれる', () => {
+    const done = afterJudgments(smashedFromCenter(sp1000))
+    const depths = new Map(done.log.map(({ event, during }): readonly [string, number] => [event.kind, during.length]))
+
+    expect(depths.get('スマッシュ判定が始まった')).toBe(0)
+    expect(depths.get('スマッシュ判定が終わった')).toBe(0)
+    expect(depths.get('スマッシュ判定のステップが変わった')).toBe(1)
+    expect(depths.get('希望ステップでめくった')).toBe(1)
   })
 })
 
@@ -499,6 +572,39 @@ describe('スマッシュ判定中のスマッシュ判定', () => {
     // 待機中の判定が希望ステップで表向きに置いた 1 枚が、裏返らないまま残っている。
     expect(cardsIn(state, '後攻', 'スマッシュゾーン')).toHaveLength(1)
     expect(smashesOf(state, '後攻')).toEqual([])
+  })
+
+  /**
+   * #133。**待機は盤面に残らない。** 待機中かどうかは並び（`DuelState.smashJudgments`）の
+   * 位置でしかないので、後から盤面を見ても、どの時点でどちらが動いていたかは読めない。
+   */
+  it('待機中になったことと、戻ったことが残る', () => {
+    let current = judgmentInJudgment()
+    while (current.smashJudgments.length > 0) current = endStep(current)
+
+    const held = current.log
+      .map(({ event }) => event)
+      .filter(
+        (event) => event.kind === 'スマッシュ判定が待機中になった' || event.kind === 'スマッシュ判定が戻った',
+      )
+
+    expect(held).toEqual([
+      { kind: 'スマッシュ判定が待機中になった', player: '後攻' },
+      { kind: 'スマッシュ判定が戻った', player: '後攻' },
+    ])
+  })
+
+  /**
+   * #133。入れ子になった判定は、待機させた判定より 1 つ深いところに積まれる
+   * （`log.ts` の `LoggedEvent.during`）。**深さだけでなく、誰の判定かでも見分けられる。**
+   */
+  it('入れ子になった判定は、外側の判定より 1 つ深いところに積まれる', () => {
+    const nested = judgmentInJudgment()
+    const inner = nested.log.find(
+      ({ event }) => event.kind === 'スマッシュ判定が始まった' && event.player === '先攻',
+    )
+
+    expect(inner?.during).toEqual([{ kind: 'スマッシュ判定', player: '後攻' }])
   })
 })
 

@@ -1,6 +1,6 @@
 import type {
-  DuelEvent,
   LegalAction,
+  LoggedEvent,
   PassOutcome,
   Player,
   ToClient,
@@ -48,7 +48,7 @@ export type Stage =
        * なる。行き先が見えなくなったできごとは後から名指しが落ちる（`perspective.ts`）ので、
        * 中身を見比べてはならない。長さで切る。
        */
-      readonly fresh: readonly DuelEvent[]
+      readonly fresh: readonly LoggedEvent[]
       /**
        * 1 つ前の盤面でのターン（#96）。フェイズ・ターンが変わったことを知らせる演出
        * （`view-model.ts` の `transitionViews`）が、比べる相手として使う。最初の盤面と

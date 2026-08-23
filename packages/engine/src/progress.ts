@@ -3,6 +3,8 @@ import { resolveFromBank } from './bank.js'
 import { advanceBattle } from './battle.js'
 import { draw, hasEnded, releaseAll, removeAllDamage } from './duel.js'
 import type { DuelState } from './duel.js'
+import { record } from './log.js'
+import type { Progress } from './log.js'
 import { opponentOf } from './player.js'
 import { grantPriorityToInactive, settleBeforePriority } from './priority.js'
 import type { Chooser } from './resolve.js'
@@ -146,9 +148,20 @@ function endTurnAbilities(state: DuelState): DuelState {
  *
  * すべてのフェイズが終了したらそのターンは終了し、アクティブプレイヤーが交代して次の
  * ターンに移る（総合ルール 第3部 第4章 6）。
+ *
+ * **移り変わりをログに積むのはここだけである**（#133）。ターンの境目もフェイズの移り変わりも
+ * `turnAfter` が 1 つの遷移として決めるので、積まれるできごとも 1 件になる。フェイズの始めの
+ * 処理（`beginCurrentPhase`）より前に積むことで、そのフェイズで起きたことが後ろに並ぶ。
  */
 function beginNextPhase(state: DuelState): DuelState {
-  return beginCurrentPhase({ ...state, turn: turnAfter(state.turn) })
+  const after = turnAfter(state.turn)
+  const changed = record(state, { kind: '進行が変わった', from: progressOf(state.turn), to: progressOf(after) })
+  return beginCurrentPhase({ ...changed, turn: after })
+}
+
+/** ターンのうち、進行がどこまで来ているかを表すところだけ（`log.ts` の `Progress`）。 */
+function progressOf(turn: Turn): Progress {
+  return { turn: turn.number, active: turn.active, phase: turn.phase }
 }
 
 /**

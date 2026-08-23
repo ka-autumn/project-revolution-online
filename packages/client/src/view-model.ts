@@ -8,10 +8,12 @@ import type {
   DuelEvent,
   DuelResult,
   LegalAction,
+  LoggedEvent,
   LoggedInstruction,
   Orientation,
   Player,
   PlayerZone,
+  Progress,
   ResolutionVia,
   SmashJudgmentStep,
   Square,
@@ -224,6 +226,16 @@ export interface LogLine {
    */
   readonly whose: '自分' | '相手' | undefined
   readonly text: string
+  /**
+   * その行が、いくつの手順の中で起きたか（`log.ts` の `LoggedEvent.during`、#133）。手順の
+   * 外なら 0。
+   *
+   * **どの手順の中かを言い当てない。** 深さは届いた並びの長さそのままで、バトルなのか
+   * スマッシュ判定なのかをここで読み解くことはしない。手順の始まりと終わりの行は、その手順
+   * より 1 つ浅いところに立つ（エンジンがそう積んでいる）ので、字下げがそのまま入れ子に
+   * なる。
+   */
+  readonly depth: number
 }
 
 /**
@@ -741,9 +753,12 @@ function resultLine(board: WirePerspective): string | undefined {
  * **見えていないものの名前を作らない**（#95）。名指しが落ちていれば（`perspective.ts`）、
  * 名前のところを省いた言い方になる。**相手に伝わる情報は増えない**（#97）。
  */
-export function priorityReason(board: WirePerspective, fresh: readonly DuelEvent[]): string | undefined {
+export function priorityReason(board: WirePerspective, fresh: readonly LoggedEvent[]): string | undefined {
   const names = namesIn(board)
-  const taken = fresh.filter((event) => event.kind === '行動した' && event.player !== board.viewer).at(-1)
+  const taken = fresh
+    .map(({ event }) => event)
+    .filter((event) => event.kind === '行動した' && event.player !== board.viewer)
+    .at(-1)
   if (taken === undefined || taken.kind !== '行動した') return undefined
 
   const name = taken.card === undefined ? undefined : names.get(taken.card)
@@ -810,7 +825,12 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
   const named = (card: CardId | undefined): string | undefined =>
     card === undefined ? undefined : nameOf(names, card)
 
-  return board.log.map((event): LogLine => {
+  return board.log
+    .map(({ event, during }): LogLine => ({ ...logLineOf(event), depth: during.length }))
+    .reverse()
+
+  /** できごと 1 つを、字下げを別にした 1 行にする。 */
+  function logLineOf(event: DuelEvent): Omit<LogLine, 'depth'> {
     switch (event.kind) {
       case '行動した': {
         const name = named(event.card)
@@ -863,8 +883,56 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
       // 裏返された後も名前を持ち続ける（`log.ts` の `DuelEvent`）ので、盤面から引き直さない。
       case '希望ステップでめくった':
         return { whose: whose(event.player), text: `${event.name}を希望ステップでめくった` }
+      // 進行そのもの（#133）は、どちらのプレイヤーのできごとでもない。ターンやスマッシュ判定
+      // に持ち主はいるが、進行させているのはルールである。
+      case '進行が変わった':
+        return { whose: undefined, text: progressLine(event.from, event.to, whose) }
+      case 'バトルのステップが変わった':
+        return { whose: undefined, text: event.step }
+      case 'スマッシュ判定が始まった':
+        return { whose: whose(event.player), text: `スマッシュ判定が始まった（${event.repeats} 回）` }
+      case 'スマッシュ判定が終わった':
+        return { whose: whose(event.player), text: 'スマッシュ判定が終わった' }
+      case 'スマッシュ判定のステップが変わった':
+        return { whose: whose(event.player), text: judgmentStepLabel(event.step, event.round) }
+      case 'スマッシュ判定が待機中になった':
+        return { whose: whose(event.player), text: 'スマッシュ判定が待機中になった' }
+      case 'スマッシュ判定が戻った':
+        return { whose: whose(event.player), text: 'スマッシュ判定が戻った' }
     }
-  }).reverse()
+  }
+}
+
+/**
+ * 進行が移り変わった 1 行（#133）。
+ *
+ * **同じターンの中なら、フェイズだけを言う。** ターン数もアクティブプレイヤーも変わって
+ * いないのに毎回書くと、フェイズが 6 つ並ぶあいだ同じ文字が繰り返される。ターンの境目は
+ * 1 件のできごとなので（`log.ts` の `進行が変わった`）、1 行の中で両方を言い切る。
+ */
+function progressLine(from: Progress, to: Progress, whose: (player: Player) => '自分' | '相手'): string {
+  const within = from.turn === to.turn && from.active === to.active
+  const at = (progress: Progress): string =>
+    within ? progress.phase : `${whose(progress.active)}の第 ${progress.turn} ターン・${progress.phase}`
+
+  return `${at(from)} → ${at(to)}`
+}
+
+/**
+ * スマッシュ判定のステップの呼び名（総合ルール 第3部 第17章 3）。
+ *
+ * 繰り返して区別が必要な希望ステップと確定ステップは「第１希望ステップ」のように表現する
+ * （同）。**条文の見た目に揃えて全角の数字を使う。** バトルのステップ（`battle.ts` の
+ * `BATTLE_STEPS`）が条文の呼び名をそのまま値として持っているので、並べた時にそちらだけ
+ * 全角になっていると別のものに見える。回復ステップは 1 回だけなので数字が付かない。
+ */
+function judgmentStepLabel(step: SmashJudgmentStep, round: number): string {
+  return round === 0 ? step : `第${fullWidthDigits(round)}${step}`
+}
+
+/** 数字を全角にする。 */
+function fullWidthDigits(value: number): string {
+  return String(value).replace(/[0-9]/g, (digit) => '０１２３４５６７８９'[Number(digit)] ?? digit)
 }
 
 /**
@@ -944,7 +1012,7 @@ function headingOf(via: ResolutionVia, name: string | undefined): string {
  *
  * 本文は既存の `instructionLine` をそのまま使い回す。**新しい言い換えを二度書かない。**
  */
-export function cutInViews(board: WirePerspective, fresh: readonly DuelEvent[]): readonly CutInView[] {
+export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]): readonly CutInView[] {
   const names = namesIn(board)
   const whose = (player: Player): '自分' | '相手' => whoseOf(board, player)
   const named = (card: CardId | undefined): string | undefined =>
@@ -953,7 +1021,7 @@ export function cutInViews(board: WirePerspective, fresh: readonly DuelEvent[]):
   const views: { whose: '自分' | '相手'; heading: string; lines: string[] }[] = []
   let open: (typeof views)[number] | undefined
 
-  for (const event of fresh) {
+  for (const { event } of fresh) {
     if (event.kind === '能力を解決した') {
       open = { whose: whose(event.controller), heading: headingOf(event.via, named(event.source)), lines: [] }
       views.push(open)

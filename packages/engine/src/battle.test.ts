@@ -354,6 +354,43 @@ describe('バトルのステップ', () => {
     expect(battle.turn.priority).toBe('後攻')
     expect(endStep(battle).turn.priority).toBe('後攻')
   })
+
+  /**
+   * 総合ルール 第3部 第11章 3: それぞれのステップは、何も起こらない場合でも存在する。
+   *
+   * #133。**始まりだけを積む。** ステップは一直線に置き換わるので、次の始まりが前の終わりを
+   * 兼ねる。どのステップのダメージだったのかは、この区切りが無いとログから読めない。
+   */
+  it('ステップの区切りが、通った順にログへ積まれる', () => {
+    const ended = afterBattle(battling(vanilla, vanilla))
+    const steps = ended.log
+      .map(({ event }) => event)
+      .flatMap((event) => (event.kind === 'バトルのステップが変わった' ? [event.step] : []))
+
+    expect(steps).toEqual([
+      '第１バトルステップ',
+      '第１ダメージステップ',
+      '第２バトルステップ',
+      '第２ダメージステップ',
+      'バトル終了ステップ',
+    ])
+  })
+
+  /**
+   * #133。手順の見出しは、その手順の外側に立つ（`log.ts` の `LoggedEvent.during`）。
+   * バトルの始まりと終わりが同じ深さに並び、その間のできごとが 1 つ深くなる。
+   */
+  it('バトルの始まりと終わりは、その中のできごとより浅いところに積まれる', () => {
+    const ended = afterBattle(battling(vanilla, vanilla))
+    const depths = new Map(
+      ended.log.map(({ event, during }): readonly [string, number] => [event.kind, during.length]),
+    )
+
+    expect(depths.get('バトルが始まった')).toBe(0)
+    expect(depths.get('バトルが終わった')).toBe(0)
+    expect(depths.get('バトルのステップが変わった')).toBe(1)
+    expect(depths.get('バトルダメージを与えた')).toBe(1)
+  })
 })
 
 // 総合ルール 第3部 第12章 1（ADR-0006）

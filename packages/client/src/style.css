@@ -491,6 +491,14 @@ body {
   font-size: 0.75rem;
 }
 
+/*
+ * 手順の中で起きたできごとを字下げする（#133）。深さは届いた並びの長さそのままで
+ * （`view-model.ts` の `LogLine.depth`）、どの手順の中かは画面では読み解かない。
+ */
+.log__item {
+  padding-inline-start: calc(var(--log-depth, 0) * 1em);
+}
+
 .log__item--自分 {
   color: var(--own);
 }

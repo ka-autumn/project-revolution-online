@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { indexOfSquare } from '@revolution/engine'
-import type { DuelEvent, Player, PlayerZone, Square, Turn, WireCardInstance, WirePerspective } from '@revolution/engine'
-import { emptyBoard, instance, unitFace, withZone } from './test-support.js'
+import type {
+  DuelEvent,
+  Player,
+  PlayerZone,
+  Progress,
+  Square,
+  Turn,
+  WireCardInstance,
+  WirePerspective,
+} from '@revolution/engine'
+import { emptyBoard, instance, logged, unitFace, withZone } from './test-support.js'
 import {
   boardView,
   cutInViews,
@@ -712,9 +721,9 @@ describe('操作ログ', () => {
   const ON_SQUARE: Square = { row: 1, column: 1 }
 
   /** そのできごとだけを持つ盤面。スクエアに 1 枚置いて、名前を引けるようにしておく。 */
-  function withLog(...log: WirePerspective['log']): WirePerspective {
+  function withLog(...events: readonly DuelEvent[]): WirePerspective {
     const board = withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('置いてある', '先攻')])
-    return { ...board, log }
+    return { ...board, log: logged(events) }
   }
 
   /** 出た行の文だけ。 */
@@ -730,8 +739,8 @@ describe('操作ログ', () => {
     )
 
     expect(logLines(board)).toEqual([
-      { whose: '相手', text: 'プランする' },
-      { whose: '自分', text: 'エネルギーを置く' },
+      { whose: '相手', text: 'プランする', depth: 0 },
+      { whose: '自分', text: 'エネルギーを置く', depth: 0 },
     ])
   })
 
@@ -787,14 +796,14 @@ describe('操作ログ', () => {
       instruction: { kind: 'ユニットにダメージを与える', card: '置いてある', amount: 500 },
     })
 
-    expect(logLines(board)).toEqual([{ whose: '相手', text: 'テスト・置いてあるにダメージ 500' }])
+    expect(logLines(board)).toEqual([{ whose: '相手', text: 'テスト・置いてあるにダメージ 500', depth: 0 }])
   })
 
   /** ルールエフェクトはどちらのプレイヤーにも支配されない（総合ルール 第4部 第14章 1）。 */
   it('ルールが起こしたことは、誰のものにもならない', () => {
     const board = withLog({ kind: 'ルールで捨札に置かれた', cards: ['置いてある'] })
 
-    expect(logLines(board)).toEqual([{ whose: undefined, text: 'ルールで捨札：テスト・置いてある' }])
+    expect(logLines(board)).toEqual([{ whose: undefined, text: 'ルールで捨札：テスト・置いてある', depth: 0 }])
   })
 
   it('決着は、見る人から見た言い方で出る', () => {
@@ -903,7 +912,7 @@ describe('操作ログ', () => {
     it('置き換えられた古いプランが捨札に置かれたことも出る', () => {
       const board: WirePerspective = {
         ...withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('新しいプラン', '先攻'), instance('古いプラン', '先攻')]),
-        log: [{ kind: 'プランをめくった', player: '先攻', card: '新しいプラン', discarded: '古いプラン' }],
+        log: logged([{ kind: 'プランをめくった', player: '先攻', card: '新しいプラン', discarded: '古いプラン' }]),
       }
 
       expect(texts(board)).toEqual(['プランをめくった：テスト・新しいプラン（テスト・古いプランを捨札へ）'])
@@ -921,7 +930,7 @@ describe('操作ログ', () => {
     it('勝者が相手なら、カード名を添えて「勝ち」になる', () => {
       const board: WirePerspective = {
         ...withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('勝ったユニット', '後攻')]),
-        log: [{ kind: 'バトルが終わった', winner: '勝ったユニット' }],
+        log: logged([{ kind: 'バトルが終わった', winner: '勝ったユニット' }]),
       }
 
       expect(texts(board)).toEqual(['バトル終了：相手のテスト・勝ったユニットの勝ち'])
@@ -943,6 +952,126 @@ describe('操作ログ', () => {
 
   it('何も起きていなければ空', () => {
     expect(logLines(emptyBoard('先攻'))).toEqual([])
+  })
+
+  /**
+   * 進行そのもの（#133）。**進行はどちらのプレイヤーのものでもない。** ターンにも判定にも
+   * 持ち主はいるが、進行させているのはルールである。
+   */
+  describe('進行', () => {
+    /** 何ターン目の、誰の、どのフェイズか（`log.ts` の `Progress`）。 */
+    function at(turn: number, active: Player, phase: Progress['phase']): Progress {
+      return { turn, active, phase }
+    }
+
+    /** 同じターンの中で進むだけなら、フェイズだけを言えば足りる。 */
+    it('同じターンの中では、フェイズだけが出る', () => {
+      const board = withLog({
+        kind: '進行が変わった',
+        from: at(2, '先攻', 'メインフェイズ'),
+        to: at(2, '先攻', 'スマッシュフェイズ'),
+      })
+
+      expect(texts(board)).toEqual(['メインフェイズ → スマッシュフェイズ'])
+    })
+
+    /** ターンの境目は 1 件のできごと（`log.ts` の `進行が変わった`）なので、1 行で言い切る。 */
+    it('ターンの境目では、ターン数とアクティブプレイヤーも一緒に出る', () => {
+      const board = withLog({
+        kind: '進行が変わった',
+        from: at(2, '先攻', 'リカバリーフェイズ'),
+        to: at(3, '後攻', 'リリースフェイズ'),
+      })
+
+      expect(logLines(board)).toEqual([
+        {
+          whose: undefined,
+          text: '自分の第 2 ターン・リカバリーフェイズ → 相手の第 3 ターン・リリースフェイズ',
+          depth: 0,
+        },
+      ])
+    })
+
+    // 総合ルール 第3部 第11章 3。呼び名は条文の語をそのまま使う。
+    it('バトルのステップは、条文の呼び名がそのまま出る', () => {
+      const board = withLog({ kind: 'バトルのステップが変わった', step: '第１ダメージステップ' })
+
+      expect(logLines(board)).toEqual([{ whose: undefined, text: '第１ダメージステップ', depth: 0 }])
+    })
+
+    it('スマッシュ判定の始まりは、繰り返す回数とあわせて出る', () => {
+      const board = withLog({ kind: 'スマッシュ判定が始まった', player: '後攻', repeats: 2 })
+
+      expect(logLines(board)).toEqual([{ whose: '相手', text: 'スマッシュ判定が始まった（2 回）', depth: 0 }])
+    })
+
+    it('スマッシュ判定の終わりも出る', () => {
+      const board = withLog({ kind: 'スマッシュ判定が終わった', player: '先攻' })
+
+      expect(logLines(board)).toEqual([{ whose: '自分', text: 'スマッシュ判定が終わった', depth: 0 }])
+    })
+
+    /**
+     * 総合ルール 第3部 第17章 3: 繰り返して区別が必要な場合、「第１希望ステップ」のように
+     * 表現する。回復ステップは 1 回だけなので数字が付かない。
+     */
+    it.each([
+      ['回復ステップ', 0, '回復ステップ'],
+      ['希望ステップ', 1, '第１希望ステップ'],
+      ['確定ステップ', 2, '第２確定ステップ'],
+    ] as const)('スマッシュ判定のステップは、何回目かとあわせて出る（%s）', (step, round, expected) => {
+      const board = withLog({ kind: 'スマッシュ判定のステップが変わった', player: '先攻', step, round })
+
+      expect(texts(board)).toEqual([expected])
+    })
+
+    it('待機中になったことと、戻ったことが出る', () => {
+      const board = withLog(
+        { kind: 'スマッシュ判定が待機中になった', player: '先攻' },
+        { kind: 'スマッシュ判定が戻った', player: '先攻' },
+      )
+
+      // 新しいものが先頭に出る（#111）。
+      expect(texts(board)).toEqual(['スマッシュ判定が戻った', 'スマッシュ判定が待機中になった'])
+    })
+  })
+
+  /**
+   * 手順の中で起きたことは字下げで分かる（#133）。**どの手順かは読み解かない。** 深さは
+   * 届いた並びの長さそのままである（`log.ts` の `LoggedEvent.during`）。
+   */
+  describe('手順の中で起きたこと', () => {
+    it('入れ子の深さが、そのまま字下げの深さになる', () => {
+      const board: WirePerspective = {
+        ...emptyBoard('先攻'),
+        log: [
+          { event: { kind: 'スマッシュ判定が始まった', player: '後攻', repeats: 1 }, during: [] },
+          {
+            event: { kind: 'スマッシュ判定が始まった', player: '先攻', repeats: 1 },
+            during: [{ kind: 'スマッシュ判定', player: '後攻' }],
+          },
+          {
+            event: { kind: 'ダメージを受けた', player: '先攻', amount: 1000 },
+            during: [
+              { kind: 'スマッシュ判定', player: '後攻' },
+              { kind: 'スマッシュ判定', player: '先攻' },
+            ],
+          },
+        ],
+      }
+
+      expect(logLines(board).map((line) => line.depth)).toEqual([2, 1, 0])
+    })
+
+    /** 既存のできごとにも付く。できごとの型を 1 つずつ広げていないことが、ここに出る。 */
+    it('もとからあるできごとも、手順の中なら字下げされる', () => {
+      const board: WirePerspective = {
+        ...emptyBoard('先攻'),
+        log: [{ event: { kind: 'ルールで捨札に置かれた', cards: [] }, during: [{ kind: 'バトル' }] }],
+      }
+
+      expect(logLines(board)[0]?.depth).toBe(1)
+    })
   })
 })
 
@@ -967,13 +1096,13 @@ describe('カットイン', () => {
   ] as const)('見出しは経路ごとに変わる（%s）', (via, heading) => {
     const fresh: readonly DuelEvent[] = [{ kind: '能力を解決した', controller: '先攻', via, source: '置いてある' }]
 
-    expect(cutInViews(board, fresh).map((view) => view.heading)).toEqual([heading])
+    expect(cutInViews(board, logged(fresh)).map((view) => view.heading)).toEqual([heading])
   })
 
   it('発生源が名指しされていなければ、経路だけの見出しになる', () => {
     const fresh: readonly DuelEvent[] = [{ kind: '能力を解決した', controller: '先攻', via: '発動', source: undefined }]
 
-    expect(cutInViews(board, fresh)[0]?.heading).toBe('トラップを発動！')
+    expect(cutInViews(board, logged(fresh))[0]?.heading).toBe('トラップを発動！')
   })
 
   it('本文は命令 1 つにつき 1 行になる', () => {
@@ -983,7 +1112,7 @@ describe('カットイン', () => {
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
     ]
 
-    expect(cutInViews(board, fresh)[0]?.lines).toEqual([`${NAME}を選んだ`, `${NAME}を破壊した`])
+    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を選んだ`, `${NAME}を破壊した`])
   })
 
   /** 解決 → 命令 → 行動 → 解決 → 命令、で 2 つのカットインに切れる。 */
@@ -996,7 +1125,7 @@ describe('カットイン', () => {
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
     ]
 
-    const views = cutInViews(board, fresh)
+    const views = cutInViews(board, logged(fresh))
 
     expect(views).toHaveLength(2)
     expect(views[0]?.lines).toEqual([`${NAME}を選んだ`])
@@ -1009,13 +1138,13 @@ describe('カットイン', () => {
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: '置いてある' } },
     ]
 
-    expect(cutInViews(board, fresh)).toEqual([])
+    expect(cutInViews(board, logged(fresh))).toEqual([])
   })
 
   it('誰のできごとかが出る', () => {
     const fresh: readonly DuelEvent[] = [{ kind: '能力を解決した', controller: '後攻', via: '誘発', source: undefined }]
 
-    expect(cutInViews(board, fresh)[0]?.whose).toBe('相手')
+    expect(cutInViews(board, logged(fresh))[0]?.whose).toBe('相手')
   })
 
   /** 見えないカードの名前は、画面のどこにも出ない（`view-model.test.ts` の他の描画と同じ）。 */
@@ -1029,7 +1158,7 @@ describe('カットイン', () => {
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: undefined } },
     ]
 
-    expect(JSON.stringify(cutInViews(secretBoard, fresh))).not.toContain(secret.name)
+    expect(JSON.stringify(cutInViews(secretBoard, logged(fresh)))).not.toContain(secret.name)
   })
 
   it('新しく届いた分が空なら、カットインも空', () => {
@@ -1173,7 +1302,7 @@ describe('優先権が回ってきた理由', () => {
 
   /** 移動してきた先が分かることが、割り込むかどうかの判断に効く。 */
   it('相手が行った手が、何をしたのかの文で出る', () => {
-    expect(priorityReason(board(), [moved])).toBe('相手がテスト・あいてのカードを中央エリアの中央ラインに移動させました')
+    expect(priorityReason(board(), logged([moved]))).toBe('相手がテスト・あいてのカードを中央エリアの中央ラインに移動させました')
   })
 
   it.each([
@@ -1185,14 +1314,14 @@ describe('優先権が回ってきた理由', () => {
   ] as const)('%s も文になる', (action, card, square, expected) => {
     const event: DuelEvent = { kind: '行動した', player: '後攻', action, card, square }
 
-    expect(priorityReason(board(), [event])).toBe(expected)
+    expect(priorityReason(board(), logged([event]))).toBe(expected)
   })
 
   /** 自分が打った手で優先権が動いたなら、読ませるものは無い。自分が何をしたかは知っている。 */
   it('自分が行った手では、何も出ない', () => {
     const mine: DuelEvent = { kind: '行動した', player: '先攻', action: 'プランする', card: undefined, square: undefined }
 
-    expect(priorityReason(board(), [mine])).toBeUndefined()
+    expect(priorityReason(board(), logged([mine]))).toBeUndefined()
   })
 
   /**
@@ -1202,8 +1331,8 @@ describe('優先権が回ってきた理由', () => {
   it('行われた手が無ければ、何も出ない', () => {
     const resolved: DuelEvent = { kind: '能力を解決した', controller: '後攻', source: 'あいてのカード', via: '誘発' }
 
-    expect(priorityReason(board(), [resolved])).toBeUndefined()
-    expect(priorityReason(board(), [])).toBeUndefined()
+    expect(priorityReason(board(), logged([resolved]))).toBeUndefined()
+    expect(priorityReason(board(), logged([]))).toBeUndefined()
   })
 
   /** 1 回の盤面に手が複数あっても、優先権を渡してきたのは最後の 1 手である。 */
@@ -1216,7 +1345,7 @@ describe('優先権が回ってきた理由', () => {
       square: undefined,
     }
 
-    expect(priorityReason(board(), [planned, moved])).toBe(
+    expect(priorityReason(board(), logged([planned, moved]))).toBe(
       '相手がテスト・あいてのカードを中央エリアの中央ラインに移動させました',
     )
   })
@@ -1234,6 +1363,6 @@ describe('優先権が回ってきた理由', () => {
       square: undefined,
     }
 
-    expect(priorityReason(board(), [hidden])).toBe('相手がカードをトラップとしてプレイしました')
+    expect(priorityReason(board(), logged([hidden]))).toBe('相手がカードをトラップとしてプレイしました')
   })
 })

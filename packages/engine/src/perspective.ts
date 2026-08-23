@@ -11,7 +11,7 @@ import type {
   DuelState,
   TrapConditionMet,
 } from './duel.js'
-import type { DuelEvent, LoggedInstruction, RecordedEvent, SeenBy } from './log.js'
+import type { DuelEvent, LoggedEvent, LoggedInstruction, RecordedEvent, SeenBy } from './log.js'
 import type { Orientation } from './orientation.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
@@ -166,8 +166,12 @@ export interface DuelPerspective {
    * 一度も見えていないカードは、後から見えるようになっても過去の行に現れない。逆に、公開
    * されているゾーンから山札や手札へ移ったカードは、移った後も過去の行では名指しされたまま
    * になる（#129）。**ログは過去の記録であって、いまの見え方ではない。**
+   *
+   * どの手順の中で起きたかは落とさずに載る（`log.ts` の `LoggedEvent.during`、#133）。
+   * 進行中のフェイズもステップも、誰のスマッシュ判定かも公開情報である（総合ルール
+   * 第2部 第23章 1-1）。
    */
-  readonly log: readonly DuelEvent[]
+  readonly log: readonly LoggedEvent[]
   /**
    * `log` が名指ししているカードのうち、**盤面に載っていないもの**（#139）。
    *
@@ -374,6 +378,15 @@ function mapEventCards(event: DuelEvent, map: CardMapping): DuelEvent {
       return { ...event, card: map(event.card) }
     case 'プランをめくった':
       return { ...event, card: map(event.card), discarded: map(event.discarded) }
+    // 進行そのもののできごと（#133）はカードを名指ししない。フェイズもステップも誰の
+    // スマッシュ判定かも公開情報である（総合ルール 第2部 第23章 1-1）。
+    case '進行が変わった':
+    case 'バトルのステップが変わった':
+    case 'スマッシュ判定が始まった':
+    case 'スマッシュ判定が終わった':
+    case 'スマッシュ判定のステップが変わった':
+    case 'スマッシュ判定が待機中になった':
+    case 'スマッシュ判定が戻った':
     case '希望ステップでめくった':
     case 'ダメージを受けた':
     case '決着した':
@@ -410,7 +423,12 @@ function ownsTrap(state: DuelState, viewer: Player, met: TrapConditionMet): bool
  */
 export function perspectiveOf(state: DuelState, viewer: Player): DuelPerspective {
   const board = projectBoard(state, viewer)
-  const log = state.log.map((recorded) => projectEvent(recorded, viewer))
+  // `during` はそのまま写す。落とすものが無い（`DuelPerspective.log`）ので、射影を通す先は
+  // できごとの側だけである。
+  const log = state.log.map((recorded): LoggedEvent => ({
+    event: projectEvent(recorded, viewer),
+    during: recorded.during,
+  }))
   return { ...board, log, namedInLog: namedInLogOf(state, board, log) }
 }
 
@@ -424,10 +442,10 @@ export function perspectiveOf(state: DuelState, viewer: Player): DuelPerspective
 function namedInLogOf(
   state: DuelState,
   board: Pick<DuelPerspective, 'zones' | 'squares' | 'resolveZone'>,
-  log: readonly DuelEvent[],
+  log: readonly LoggedEvent[],
 ): readonly CardInstance[] {
   const onBoard = visibleIds(board)
-  const named = new Set(log.flatMap(cardsNamedBy))
+  const named = new Set(log.flatMap(({ event }) => cardsNamedBy(event)))
   return [...named].flatMap((id) => (onBoard.has(id) ? [] : mapped(findAnywhere(state, id))))
 }
 
