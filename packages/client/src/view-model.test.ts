@@ -891,7 +891,7 @@ describe('操作ログ', () => {
     it('バトルの勝者も、届いた名前と支配者で出る', () => {
       const board = withNamedInLog({ kind: 'バトルの勝敗が決まった', winner: '勝った' }, instance('勝った', '後攻'))
 
-      expect(texts(board)).toEqual(['バトルの勝敗が決まった：相手のテスト・勝ったの勝ち'])
+      expect(texts(board)).toEqual(['バトル結果：相手のテスト・勝ったの勝ち'])
     })
   })
 
@@ -931,7 +931,7 @@ describe('操作ログ', () => {
     it('勝者が自分なら、カード名を添えて「勝ち」になる', () => {
       const board = withLog({ kind: 'バトルの勝敗が決まった', winner: '置いてある' })
 
-      expect(texts(board)).toEqual(['バトルの勝敗が決まった：自分のテスト・置いてあるの勝ち'])
+      expect(texts(board)).toEqual(['バトル結果：自分のテスト・置いてあるの勝ち'])
     })
 
     it('勝者が相手なら、カード名を添えて「勝ち」になる', () => {
@@ -940,20 +940,20 @@ describe('操作ログ', () => {
         log: logged([{ kind: 'バトルの勝敗が決まった', winner: '勝ったユニット' }]),
       }
 
-      expect(texts(board)).toEqual(['バトルの勝敗が決まった：相手のテスト・勝ったユニットの勝ち'])
+      expect(texts(board)).toEqual(['バトル結果：相手のテスト・勝ったユニットの勝ち'])
     })
 
     it('引き分けなら「引き分け」になる', () => {
       const board = withLog({ kind: 'バトルの勝敗が決まった', winner: undefined })
 
-      expect(texts(board)).toEqual(['バトルの勝敗が決まった：引き分け'])
+      expect(texts(board)).toEqual(['バトル結果：引き分け'])
     })
 
     /** 勝者が名指しされていなければ、勝敗を作り出さない。 */
     it('勝者が見えていなければ勝敗を言わない', () => {
       const board = withLog({ kind: 'バトルの勝敗が決まった', winner: '見えていないカード' })
 
-      expect(texts(board)).toEqual(['バトルの勝敗が決まった'])
+      expect(texts(board)).toEqual(['バトル結果'])
     })
 
     /** バトルを閉じる行は、勝敗を言わない区切りだけになる（#160）。 */

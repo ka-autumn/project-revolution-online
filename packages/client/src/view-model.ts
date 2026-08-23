@@ -880,11 +880,11 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         return separator('===', undefined, 'バトル終了')
       case 'バトルの勝敗が決まった': {
         // 勝者の支配者も引くので、名前だけでなく盤面のカードそのものを探す（#111）。
-        const decided = 'バトルの勝敗が決まった'
-        if (event.winner === undefined) return { whose: undefined, text: `${decided}：引き分け` }
+        const result = 'バトル結果'
+        if (event.winner === undefined) return { whose: undefined, text: `${result}：引き分け` }
         const winner = namableInstanceOf(board, event.winner)
         const text =
-          winner === undefined ? decided : `${decided}：${whose(winner.controller)}の${winner.card.name}の勝ち`
+          winner === undefined ? result : `${result}：${whose(winner.controller)}の${winner.card.name}の勝ち`
         return { whose: undefined, text }
       }
       case 'ルールで捨札に置かれた': {
