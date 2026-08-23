@@ -633,6 +633,18 @@ describe('候補を盤面から押す', () => {
     candidates,
   })
 
+  /**
+   * 裏向きの札が 2 枚並んだスマッシュゾーン。
+   *
+   * 置き場所で押せるのは**盤面が実際に描いている札だけ**である（#150）ので、押せることを
+   * 確かめるには、そこに札が並んでいる盤面が要る。
+   */
+  const withSmashes = (): WirePerspective =>
+    withZone(board(), '先攻', 'スマッシュゾーン', [
+      { kind: '見えていない', orientation: 'リリース' },
+      { kind: '見えていない', orientation: 'リリース' },
+    ])
+
   it('見えている候補のカードが押せる', () => {
     const picking = choicePicking(
       board(),
@@ -667,7 +679,7 @@ describe('候補を盤面から押す', () => {
    */
   it('見えていない候補は、置き場所で押せる', () => {
     const picking = choicePicking(
-      board(),
+      withSmashes(),
       choice([
         { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 0 } },
         { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 1 } },
@@ -683,7 +695,7 @@ describe('候補を盤面から押す', () => {
   /** 押した札と答えた番号が一致していること。ずれると別の札をフリーズすることになる。 */
   it('押した裏向きの札は、その候補の番号で答える', () => {
     const picking = choicePicking(
-      board(),
+      withSmashes(),
       choice([
         { kind: '見えている', card: 'てふだの1枚' },
         { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 0 } },
@@ -697,12 +709,42 @@ describe('候補を盤面から押す', () => {
   /** 同じゾーンの、候補になっていない札は押せない。番号の並びに無いものには答えられない。 */
   it('候補になっていない置き場所は押せない', () => {
     const picking = choicePicking(
-      board(),
+      withSmashes(),
       choice([{ kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 0 } }]),
     )
 
     expect(picking.answerOfHidden({ player: '先攻', zone: 'スマッシュゾーン', index: 1 })).toBeUndefined()
     expect(picking.answerOfHidden({ player: '後攻', zone: 'スマッシュゾーン', index: 0 })).toBeUndefined()
+  })
+
+  /**
+   * #150。候補は届いたものから作るので、**見えてはいるが盤面には描かれない**カードが混じり
+   * うる。リゾルブゾーンは名前を引くためだけに見ている（`view-model.ts` の `visibleInstances`）
+   * ところで、盤面に置き場所が無い。押せる扱いにすると、光る先が無いままボタンだけが消える。
+   */
+  it('盤面に描かれないカードは、押せない', () => {
+    const inResolveZone = instance('リゾルブの1枚', '先攻', { card: unitFace('テスト・解決中の1枚') })
+    const picking = choicePicking(
+      { ...board(), resolveZone: [inResolveZone] },
+      choice([{ kind: '見えている', card: 'リゾルブの1枚' }]),
+    )
+
+    expect(picking.pickable).toEqual([])
+    expect(picking.answerOf('リゾルブの1枚')).toBeUndefined()
+  })
+
+  /**
+   * 山札は枚数しか出さない（`view-model.ts` の `COUNTED_ZONES`、総合ルール 第2部 第21章 2-2）。
+   * 置き場所が届いたとしても、押す先が画面に無い。
+   */
+  it('中身を並べないゾーンの置き場所は、押せない', () => {
+    const picking = choicePicking(
+      board(),
+      choice([{ kind: '見えていない', at: { player: '先攻', zone: '山札', index: 0 } }]),
+    )
+
+    expect(picking.hidden).toEqual([])
+    expect(picking.answerOfHidden({ player: '先攻', zone: '山札', index: 0 })).toBeUndefined()
   })
 
   /**
@@ -775,5 +817,101 @@ describe('候補を盤面から押す', () => {
 
     expect(forFirst.squares[0]?.label).toBe('味方エリアの左ラインを選ぶ')
     expect(forSecond.squares[0]?.label).toBe('敵エリアの右ラインを選ぶ')
+  })
+})
+
+/**
+ * #150。クリックで操作している間、盤面から押せる候補は操作パネルに出さない。行える手のほうは
+ * すでにそうなっている（`pickView`、盤面の上で示せない手だけがパネルに出る）。
+ *
+ * **押せるかどうかを決めるのは `choicePicking` である。** ここで確かめるのは、その結果どおりに
+ * ボタンが消えることと、**番号が元のまま**であること（ADR-0008）である。
+ */
+describe('盤面から押せる候補は、ボタンに出さない', () => {
+  const choice = (candidates: WireChoice['candidates']): WireChoice => ({
+    player: '先攻',
+    purpose: 'プレイのコスト',
+    mayDecline: false,
+    answered: 0,
+    mayGoBack: true,
+    candidates,
+  })
+
+  const viewWithPicking = (board_: WirePerspective, choice_: WireChoice): ReturnType<typeof choiceView> =>
+    choiceView(board_, choice_, choicePicking(board_, choice_))
+
+  it('盤面に出ている候補は、ボタンにならない', () => {
+    const asked = choice([
+      { kind: '見えている', card: 'てふだの1枚' },
+      { kind: '見えている', card: 'スクエアの1枚' },
+    ])
+
+    expect(viewWithPicking(board(), asked).candidates).toEqual([])
+  })
+
+  /** 押す先が盤面に無い候補は残る。バンクの能力はカードではない（総合ルール 第2部 第21章 11-3）。 */
+  it('盤面から押せない候補は、ボタンとして残る', () => {
+    const asked = choice([
+      { kind: '見えている', card: 'スクエアの1枚' },
+      { kind: '能力', source: 'スクエアの1枚' },
+    ])
+
+    expect(viewWithPicking(board(), asked).candidates.map((candidate) => candidate.label)).toEqual([
+      '2 番目: テスト・盤上の戦士 の能力',
+    ])
+  })
+
+  /** 答えるのは候補の番号（ADR-0008）なので、**外した分は飛び番になる**。詰め直さない。 */
+  it('残ったボタンの番号は、外す前と変わらない', () => {
+    const asked = choice([
+      { kind: '能力', source: undefined },
+      { kind: '見えている', card: 'スクエアの1枚' },
+      { kind: '見えていない', at: undefined },
+    ])
+
+    expect(viewWithPicking(board(), asked).candidates.map((candidate) => candidate.index)).toEqual([0, 2])
+  })
+
+  /**
+   * ボタンで操作している間と、演出が出ている間（`index.ts` の `clicking`）は盤面から押せない。
+   * その時は `choicePicking` が渡らないので、今までどおり全部並ぶ。
+   */
+  it('盤面から押せない場面では、候補が全部並ぶ', () => {
+    const asked = choice([
+      { kind: '見えている', card: 'てふだの1枚' },
+      { kind: '見えている', card: 'スクエアの1枚' },
+    ])
+
+    expect(choiceView(board(), asked).candidates.map((candidate) => candidate.index)).toEqual([0, 1])
+    expect(choiceView(board(), asked).guide).toBeUndefined()
+  })
+
+  /** ボタンが 1 つも残らないと、押すところが無いように見える。どこを押すのかを 1 行で言う。 */
+  it('ボタンが残らなければ、盤面を押すよう案内する', () => {
+    const asked = choice([{ kind: '見えている', card: 'スクエアの1枚' }])
+
+    expect(viewWithPicking(board(), asked).guide).toBe('盤面の光っているところを押して選んでください')
+  })
+
+  it('ボタンが残っていれば、案内は出さない', () => {
+    const asked = choice([
+      { kind: '見えている', card: 'スクエアの1枚' },
+      { kind: '能力', source: undefined },
+    ])
+
+    expect(viewWithPicking(board(), asked).guide).toBeUndefined()
+  })
+
+  /**
+   * 見出しと戻る側は残る。何を聞かれているか（#122）と、やめる手立て（#142）は候補の数と
+   * 関わりが無い。
+   */
+  it('見出しと戻る側は、候補が消えても残る', () => {
+    const asked = { ...choice([{ kind: '見えている', card: 'スクエアの1枚' }] as const), answered: 1 }
+    const view = viewWithPicking(board(), asked)
+
+    expect(view.asking).toBe('プレイのコストとしてフリーズするエネルギーを選んでください')
+    expect(view.mayRewind).toBe(true)
+    expect(view.mayCancel).toBe(true)
   })
 })

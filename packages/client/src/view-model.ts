@@ -1,4 +1,4 @@
-import { areaOf, indexOfSquare, lineOf, squareFromView } from '@revolution/engine'
+import { areaOf, indexOfSquare, lineOf, PLAYERS, squareFromView } from '@revolution/engine'
 import type {
   Area,
   Attribute,
@@ -364,6 +364,39 @@ function visibleInstances(board: WirePerspective): readonly WireCardInstance[] {
       ),
     ),
   ]
+}
+
+/** 盤面が実際に描いているもの（#150）。 */
+export interface DrawnOnBoard {
+  /** 表側が見えていて、押すところが盤面にあるカード。 */
+  readonly ids: ReadonlySet<CardId>
+  /** 裏向きのまま並んでいる札の置き場所（`keyOfPosition` の鍵）。 */
+  readonly positions: ReadonlySet<string>
+}
+
+/**
+ * 盤面のどこに描かれているかが分かるカードすべて（#150）。
+ *
+ * **`visibleInstances` とは別物である。** あちらは名前を引くためのもので、盤面に描かれない
+ * リゾルブゾーンまで見ている。押せるかどうかをそこから決めると、**画面のどこにも無いカードが
+ * 押せる扱いになる。** 数えるのは実際に描いているところ——スクエア（`squareViews`）と、中身を
+ * 並べるゾーン（`zoneView`）——だけである。山札は枚数しか出さない（`COUNTED_ZONES`）ので入らない。
+ */
+export function drawnOnBoard(board: WirePerspective): DrawnOnBoard {
+  const ids = new Set<CardId>(board.squares.flat().map((instance) => instance.id))
+  const positions = new Set<string>()
+
+  for (const player of PLAYERS) {
+    for (const zone of ZONE_ORDER) {
+      if (COUNTED_ZONES.includes(zone)) continue
+      board.zones[player][zone].forEach((card, index) => {
+        if (card.kind === '見えている') ids.add(card.instance.id)
+        else positions.add(keyOfPosition({ player, zone, index }))
+      })
+    }
+  }
+
+  return { ids, positions }
 }
 
 /**

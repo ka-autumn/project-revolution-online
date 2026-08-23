@@ -12,7 +12,7 @@ import type {
 } from '@revolution/engine'
 import { indexOfSquare } from '@revolution/engine'
 import type { Session } from './session.js'
-import { keyOfPosition, nameOf, namesIn, squareLabel } from './view-model.js'
+import { drawnOnBoard, keyOfPosition, nameOf, namesIn, squareLabel } from './view-model.js'
 
 /**
  * 行える手と選ぶ候補から、画面に出す値を作る（#14）。
@@ -57,6 +57,13 @@ export interface ChoiceView {
    */
   readonly mayCancel: boolean
   readonly candidates: readonly CandidateView[]
+  /**
+   * 候補の並びに添える 1 行。要らなければ `undefined`（#150）。
+   *
+   * 盤面から押せる候補をボタンから外した結果、**ボタンが 1 つも残らない場面**で出す。
+   * 何も出ないと、選ぶのを待たれているのに押すところが無いように見える。
+   */
+  readonly guide: string | undefined
 }
 
 /**
@@ -236,19 +243,42 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
   }
 }
 
-/** 選んでほしいと言われたことを、画面に出す形にする。 */
-export function choiceView(board: WirePerspective, choice: WireChoice): ChoiceView {
+/**
+ * 選んでほしいと言われたことを、画面に出す形にする。
+ *
+ * `picking` を渡すと、**盤面から押して答えられる候補はボタンにしない**（#150）。クリックで
+ * 操作している間、同じ候補が盤面と操作パネルの 2 か所に出ているのをやめるためである。行える手
+ * のほうは既にそうなっている（`pickView`、盤面の上で示せない手だけが操作パネルに出る）。
+ *
+ * **どれを外すかは `choicePicking` が決めたものをそのまま使う。** 押せるかどうかの判断をここに
+ * 書き写すと、盤面が光る条件とボタンが消える条件が別々にずれていく。渡されない場面
+ * （ボタンモード、演出が出ている間、`index.ts` の `clicking`）は今までどおり全部並ぶ。
+ *
+ * **番号は元のまま**である（ADR-0008）。答えるのは候補の番号なので、外した分は飛び番になる。
+ *
+ * **これでクリックモードにキーボードの経路が無くなる。** 盤面のカードはクリックでしか押せない
+ * （表向きのカードの `tabIndex` は詳細を出すためのもの）ので、クリックモードで唯一キーボードで
+ * たどれるのが候補のボタンだった。行える手（#94）が同じ取引を呑んでおり、**操作のしかたの
+ * 切り替えは残る**ので、キーボードで打つ人はボタンモードを選ぶことになる。
+ */
+export function choiceView(board: WirePerspective, choice: WireChoice, picking?: ChoicePicking): ChoiceView {
   const names = namesIn(board)
+  const candidates = choice.candidates.flatMap((candidate, index): readonly CandidateView[] =>
+    picking !== undefined && picking.onBoard.includes(index)
+      ? []
+      : [{ index, label: candidateLabel(candidate, index, board.viewer, names) }],
+  )
 
   return {
     asking: askingFor(choice.purpose, choice.source === undefined ? undefined : names.get(choice.source)),
     mayDecline: choice.mayDecline,
     mayRewind: choice.mayGoBack && choice.answered > 0,
     mayCancel: choice.mayGoBack,
-    candidates: choice.candidates.map((candidate, index) => ({
-      index,
-      label: candidateLabel(candidate, index, board.viewer, names),
-    })),
+    candidates,
+    guide:
+      picking !== undefined && candidates.length === 0 && choice.candidates.length > 0
+        ? '盤面の光っているところを押して選んでください'
+        : undefined,
   }
 }
 
@@ -403,6 +433,13 @@ export interface ChoicePicking {
   readonly hidden: readonly WireCardPosition[]
   /** その置き場所の札を押した時に答える番号。押せない置き場所なら `undefined`。 */
   readonly answerOfHidden: (at: WireCardPosition) => number | undefined
+  /**
+   * 盤面から押して答えられる候補の番号（#150）。
+   *
+   * ボタンを二重に出さないために `choiceView` が読む。**押せるかどうかを 2 か所で決めない**
+   * ようにするための言い直しで、上の 3 つと同じものを番号の並びとして見せているだけである。
+   */
+  readonly onBoard: readonly number[]
 }
 
 /**
@@ -417,8 +454,14 @@ export interface ChoicePicking {
  * 分かっている裏向きのカード**（#127）である。裏向きのカードも候補になる（プランのコスト、
  * 総合ルール 第2部 第21章 7-5）が、識別子は届かない。かわりに置き場所（`protocol.ts` の
  * `WireCardPosition`）で結び付ける。**能力の候補だけはボタンのまま**で、押す先が盤面に無い。
+ *
+ * **押せるのは、盤面が実際に描いているものだけである**（`view-model.ts` の `drawnOnBoard`、
+ * #150）。候補は届いたものから作るので、リゾルブゾーンにあるカードのように**見えてはいるが
+ * 盤面には描かれない**ものが混じりうる。それを押せる扱いにすると、光る先が画面のどこにも無い
+ * まま、ボタンだけが消えることになる。
  */
 export function choicePicking(board: WirePerspective, choice: WireChoice): ChoicePicking {
+  const drawn = drawnOnBoard(board)
   const answers = new Map<CardId, number>()
   // スクエアは行と列の組なので、そのままでは鍵にできない。盤面の並びの番号に直して引く。
   const bySquare = new Map<number, { readonly view: PickableSquare; readonly answer: number }>()
@@ -426,10 +469,12 @@ export function choicePicking(board: WirePerspective, choice: WireChoice): Choic
   const byPosition = new Map<string, { readonly at: WireCardPosition; readonly answer: number }>()
   choice.candidates.forEach((candidate, index) => {
     // 同じものが 2 度並ぶことは無いが、並んだとしても先に出たほうを答えにする。
-    if (candidate.kind === '見えている' && !answers.has(candidate.card)) answers.set(candidate.card, index)
+    if (candidate.kind === '見えている' && drawn.ids.has(candidate.card) && !answers.has(candidate.card)) {
+      answers.set(candidate.card, index)
+    }
     if (candidate.kind === '見えていない' && candidate.at !== undefined) {
       const key = keyOfPosition(candidate.at)
-      if (!byPosition.has(key)) byPosition.set(key, { at: candidate.at, answer: index })
+      if (drawn.positions.has(key) && !byPosition.has(key)) byPosition.set(key, { at: candidate.at, answer: index })
     }
     if (candidate.kind === 'スクエア') {
       const key = indexOfSquare(candidate.square)
@@ -448,5 +493,10 @@ export function choicePicking(board: WirePerspective, choice: WireChoice): Choic
     answerOfSquare: (square) => bySquare.get(indexOfSquare(square))?.answer,
     hidden: [...byPosition.values()].map((each) => each.at),
     answerOfHidden: (at) => byPosition.get(keyOfPosition(at))?.answer,
+    onBoard: [
+      ...answers.values(),
+      ...[...bySquare.values()].map((each) => each.answer),
+      ...[...byPosition.values()].map((each) => each.answer),
+    ].sort((a, b) => a - b),
   }
 }
