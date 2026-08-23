@@ -188,7 +188,10 @@ function draw(
     if (stage.choice !== undefined) {
       controlArea.append(
         choiceElement(
-          choiceView(board, stage.choice),
+          // 盤面から押せる候補は、ここに二重に出さない（#150）。押せるかどうかを決めているのは
+          // `answering` そのものなので、演出が出ている間（`clicking` が false）は渡らず、
+          // 候補は全部ボタンとして並ぶ。
+          choiceView(board, stage.choice, answering),
           {
             onAnswer: (answer) => connection.send({ kind: '選ぶ', answer }),
             onRewind: () => connection.send({ kind: 'ひとつ戻る' }),

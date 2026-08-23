@@ -420,7 +420,8 @@ body {
   font-size: 1rem;
 }
 
-.actions__none {
+.actions__none,
+.choice__none {
   margin: 0;
   color: #666;
 }

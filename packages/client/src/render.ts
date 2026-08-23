@@ -366,10 +366,17 @@ export interface ChoiceHandlers {
   readonly onCancel: () => void
 }
 
-/** 選ぶ候補を並べる。答えるのは番号である（ADR-0008）。 */
+/**
+ * 選ぶ候補を並べる。答えるのは番号である（ADR-0008）。
+ *
+ * クリックで操作している間、盤面から押せる候補はここに出ない（#150、`input-model.ts` の
+ * `choiceView`）。**どれを出すかはすでに決まっている**ので、ここでは残ったものを並べるだけで
+ * ある（#14）。
+ */
 export function choiceElement(view: ChoiceView, handlers: ChoiceHandlers, aside?: HTMLElement): HTMLElement {
   const node = element('section', 'choice')
   node.append(titleRow('choice__title', view.asking, aside))
+  if (view.guide !== undefined) node.append(element('p', 'choice__none', view.guide))
 
   const list = element('div', 'choice__list')
   for (const candidate of view.candidates) {
