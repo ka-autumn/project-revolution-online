@@ -406,6 +406,11 @@ body {
   outline: 2px solid var(--own);
 }
 
+/* 相手が何をして優先権が回ってきたのか（#147）。打つところの、進行の 1 行のすぐ下に置く。 */
+.controls__reason {
+  margin: 0 0 var(--gap);
+}
+
 /* 行える手と選ぶ候補。並べるのは届いたものだけ（ADR-0010）。 */
 .actions,
 .choice {

@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { indexOfSquare } from '@revolution/engine'
 import type { DuelEvent, Player, PlayerZone, Square, Turn, WireCardInstance, WirePerspective } from '@revolution/engine'
 import { emptyBoard, instance, unitFace, withZone } from './test-support.js'
-import { boardView, cutInViews, logLines, overlayDurationMs, showsOverlay, transitionViews } from './view-model.js'
+import {
+  boardView,
+  cutInViews,
+  logLines,
+  overlayDurationMs,
+  priorityReason,
+  showsOverlay,
+  transitionViews,
+} from './view-model.js'
 import type { BoardView, CardView, SideView } from './view-model.js'
 
 /**
@@ -1135,5 +1143,97 @@ describe('演出が出ているか', () => {
     expect(showsOverlay({ transitions: [], cutIns: [{ whose: '自分', heading: '効果、発動！', lines: [] }] })).toBe(
       true,
     )
+  })
+})
+
+/**
+ * 相手が何をして、いま優先権が回ってきたのか（#147）。
+ *
+ * 相手のユニットが味方エリアに移動してきた、のような**その場で割り込むかどうかを決める材料**を
+ * 打つところで読めるようにする。行える手を盤面の上に移した（#128）ので、確かめるのに操作ログ
+ * まで目を往復させない。
+ *
+ * **出すのは直前の 1 手だけである。** そこまでの経過はログ（#95）にある。
+ */
+describe('優先権が回ってきた理由', () => {
+  const ON_SQUARE: Square = { row: 1, column: 1 }
+
+  /** 相手のカードが 1 枚スクエアにある盤面。名前はそこから引ける。 */
+  function board(): WirePerspective {
+    return withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('あいてのカード', '後攻')])
+  }
+
+  const moved: DuelEvent = {
+    kind: '行動した',
+    player: '後攻',
+    action: 'ユニットを移動する',
+    card: 'あいてのカード',
+    square: ON_SQUARE,
+  }
+
+  /** 移動してきた先が分かることが、割り込むかどうかの判断に効く。 */
+  it('相手が行った手が、何をしたのかの文で出る', () => {
+    expect(priorityReason(board(), [moved])).toBe('相手がテスト・あいてのカードを中央エリアの中央ラインに移動させました')
+  })
+
+  it.each([
+    ['プランする', undefined, undefined, '相手がプランしました'],
+    ['エネルギーを置く', 'あいてのカード', undefined, '相手がテスト・あいてのカードをエネルギーゾーンに置きました'],
+    ['スマッシュする', 'あいてのカード', undefined, '相手がテスト・あいてのカードでスマッシュしました'],
+    ['トラップを発動する', 'あいてのカード', undefined, '相手がテスト・あいてのカードを発動しました'],
+    ['起動型能力を起動する', 'あいてのカード', undefined, '相手がテスト・あいてのカードの能力を起動しました'],
+  ] as const)('%s も文になる', (action, card, square, expected) => {
+    const event: DuelEvent = { kind: '行動した', player: '後攻', action, card, square }
+
+    expect(priorityReason(board(), [event])).toBe(expected)
+  })
+
+  /** 自分が打った手で優先権が動いたなら、読ませるものは無い。自分が何をしたかは知っている。 */
+  it('自分が行った手では、何も出ない', () => {
+    const mine: DuelEvent = { kind: '行動した', player: '先攻', action: 'プランする', card: undefined, square: undefined }
+
+    expect(priorityReason(board(), [mine])).toBeUndefined()
+  })
+
+  /**
+   * バンクの解決やステップの進行で優先権が来た場合、行われた手は無い。効果の解決はカットイン
+   * （#104）が出しているので、ここで言うと二重になる。
+   */
+  it('行われた手が無ければ、何も出ない', () => {
+    const resolved: DuelEvent = { kind: '能力を解決した', controller: '後攻', source: 'あいてのカード', via: '誘発' }
+
+    expect(priorityReason(board(), [resolved])).toBeUndefined()
+    expect(priorityReason(board(), [])).toBeUndefined()
+  })
+
+  /** 1 回の盤面に手が複数あっても、優先権を渡してきたのは最後の 1 手である。 */
+  it('手が複数あれば、直前の 1 手だけが出る', () => {
+    const planned: DuelEvent = {
+      kind: '行動した',
+      player: '後攻',
+      action: 'プランする',
+      card: undefined,
+      square: undefined,
+    }
+
+    expect(priorityReason(board(), [planned, moved])).toBe(
+      '相手がテスト・あいてのカードを中央エリアの中央ラインに移動させました',
+    )
+  })
+
+  /**
+   * 名指しは射影で落ちる（#129・#139）。相手の手札から出たカードのように、その時見えて
+   * いなかったものは名前が出ない。**見えていないものの名前を作らない**（#95）。
+   */
+  it('名指しされていないカードは、名前を作り出さない', () => {
+    const hidden: DuelEvent = {
+      kind: '行動した',
+      player: '後攻',
+      action: 'トラップとしてプレイする',
+      card: undefined,
+      square: undefined,
+    }
+
+    expect(priorityReason(board(), [hidden])).toBe('相手がカードをトラップとしてプレイしました')
   })
 })
