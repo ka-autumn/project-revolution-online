@@ -1103,6 +1103,9 @@ function instructionLine(
  * **名前が落ちても枚数は言う。** 名指しできないカードは射影が落としているが、何枚だったか
  * は落ちていない（`log.ts` の `リリースした`）ので、そこを黙ると届いているものより少なく
  * 見せることになる。名前が 1 つも分からなければ枚数だけで言う。
+ *
+ * 区切りに `・` を使わない。**カード名そのものが `・` を含む**（「ラムダ・ドライバ」）ため、
+ * どこまでが 1 枚なのかが読めなくなる。
  */
 function cardsLabel(
   count: number,
@@ -1116,7 +1119,7 @@ function cardsLabel(
   const hidden = count - names.length
   if (names.length === 0) return `${hidden} 枚`
 
-  return hidden <= 0 ? names.join('・') : `${names.join('・')} ほか ${hidden} 枚`
+  return hidden <= 0 ? names.join('、') : `${names.join('、')} ほか ${hidden} 枚`
 }
 
 /**
