@@ -16,12 +16,30 @@ import { next } from '@vercel/functions'
 
 export const config = { runtime: 'nodejs' }
 
+/**
+ * `Authorization` で名乗られた `名前:合言葉`。名乗っていない・読めない場合は `undefined`。
+ *
+ * **バイト列に戻してから UTF-8 として読む。** ブラウザは合言葉を UTF-8 のバイト列にしてから
+ * base64 に直す（`charset="UTF-8"` を返しているため）ので、1 文字 1 バイトのまま繋ぐと
+ * 日本語の合言葉が壊れる。逆向き（こちらの値を base64 にして比べる）にすると、
+ * ASCII でない文字でその場で落ちる。
+ */
+function credentials(header: string | null): string | undefined {
+  if (header === null || !header.startsWith('Basic ')) return undefined
+
+  try {
+    const bytes = Uint8Array.from(atob(header.slice('Basic '.length)), (letter) => letter.charCodeAt(0))
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return undefined
+  }
+}
+
 export default function proxy(request: Request): Response {
   const expected = process.env.BASIC_AUTH
   if (expected === undefined || expected === '') return next()
 
-  const given = request.headers.get('authorization')
-  if (given === `Basic ${btoa(expected)}`) return next()
+  if (credentials(request.headers.get('authorization')) === expected) return next()
 
   return new Response('合言葉が要ります', {
     status: 401,

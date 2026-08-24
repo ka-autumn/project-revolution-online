@@ -4,5 +4,5 @@
     "lib": ["ES2022", "DOM"],
     "types": ["node"]
   },
-  "include": ["proxy.ts"]
+  "include": ["proxy.ts", "proxy.test.ts"]
 }
