@@ -676,15 +676,36 @@ describe('自動で行われる処理の記録', () => {
       return putInZone(putOnSquare(state, someSquare, onSquare), '先攻', 'エネルギーゾーン', [energy])
     }
 
-    it('リリースされたカードが積まれる', () => {
+    /**
+     * リリースされたカードが、**ゾーンごとに分かれて**積まれる（#157）。
+     *
+     * 並びは総合ルール 第3部 第5章 1 が列挙する順（スクエア・トラップゾーン・エネルギー
+     * ゾーン・スマッシュゾーン、`orientation.ts` の `ORIENTED_ZONES`）。リリースするものが
+     * 無いゾーンは並びに現れない。
+     */
+    it('リリースされたカードが、ゾーンごとに積まれる', () => {
       // 先攻の第 1 ターンにフリーズ状態で置き、先攻の次のターン（第 3 ターン）の
       // リリースフェイズまで進める。
       const frozen = withFrozen(startedDuel())
       const turn3 = turnNumbered(frozen, 3)
 
       expect(since(frozen, turn3, 'リリースした')).toEqual([
-        { kind: 'リリースした', player: '先攻', count: 2, cards: ['先攻のエネルギー', '先攻のスクエア'] },
+        {
+          kind: 'リリースした',
+          player: '先攻',
+          released: [
+            { zone: 'スクエア', count: 1, cards: ['先攻のスクエア'] },
+            { zone: 'エネルギーゾーン', count: 1, cards: ['先攻のエネルギー'] },
+          ],
+        },
       ])
+    })
+
+    /** 同時に起きたことを何件にも割らない。何行で見せるかは画面の側が決める（#133）。 */
+    it('ゾーンをまたいでも、積まれるのは 1 件である', () => {
+      const frozen = withFrozen(startedDuel())
+
+      expect(since(frozen, turnNumbered(frozen, 3), 'リリースした')).toHaveLength(1)
     })
 
     it('リリースするカードが無ければ、何も積まれない', () => {

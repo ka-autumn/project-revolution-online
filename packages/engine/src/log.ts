@@ -4,7 +4,7 @@ import type { Square } from './board.js'
 import type { CardId, DuelResult, DuelState } from './duel.js'
 import type { Instruction } from './effect.js'
 import type { LegalAction } from './legal-action.js'
-import type { Orientation } from './orientation.js'
+import type { Orientation, OrientedZone } from './orientation.js'
 import { seenByOf } from './perspective.js'
 import type { Player } from './player.js'
 import type { ChoicePurpose } from './resolve.js'
@@ -181,23 +181,20 @@ export type DuelEvent =
    * リリースフェイズの始めに、フリーズ状態のカードをすべてリリースした（総合ルール 第3部
    * 第5章 1、#157）。
    *
-   * **枚数と名指しを別に持つ。** 何枚リリースされたかは向きから読める公開情報（同 第2部
-   * 第23章 1-1）だが、どのカードかはそうではない——スマッシュゾーンのカードは裏向きで
-   * 持ち主からも見られない（同 第21章 7-3）。射影が減らすのは `cards` だけで、`count` は
-   * そのまま残る（`perspective.ts` の `mapEventCards`）。
+   * **ゾーンごとに分けて持つ**（`ReleasedFromZone`）。リリースするものが無いゾーンは
+   * `released` に現れず、どこにも無いフェイズでは積まない。行われなかった処理を「行われ
+   * なかった」と書く場所ではないためで、フェイズがあったこと自体は `進行が変わった` が
+   * 言っている。
    *
-   * 並びに `undefined` を混ぜて長さで枚数を表すことはできない。**通信は JSON を通る**
-   * （`wire.ts`）ので、並びの中の `undefined` は `null` に変わってしまう。落ちうるものは
-   * 並びから外して数えるほうに持つ。
-   *
-   * リリースするものが無いフェイズでは積まない。行われなかった処理を「行われなかった」と
-   * 書く場所ではないためで、フェイズがあったこと自体は `進行が変わった` が言っている。
+   * **1 件のままにしておく。** リリースは 1 つの特別な行動で、4 つのゾーンから同時に
+   * 起こる（同）。ゾーンの数だけできごとに割ると、同時に起きたことの前後関係をログの
+   * 並びとして作ってしまう。何行で見せるかは画面の側で決める（`view-model.ts` の
+   * `logLines`）——`進行が変わった` でターンの境目を 2 行に割っているのと同じ形である。
    */
   | {
       readonly kind: 'リリースした'
       readonly player: Player
-      readonly count: number
-      readonly cards: readonly CardId[]
+      readonly released: readonly ReleasedFromZone[]
     }
   /**
    * ドローフェイズの始めに、カードを 1 枚引いた（総合ルール 第3部 第6章 1-1、#157）。
@@ -300,6 +297,25 @@ export type DuelEvent =
   | { readonly kind: 'ルールで捨札に置かれた'; readonly cards: readonly CardId[] }
   /** 勝敗が決まった（総合ルール 第3部 第3章）。 */
   | { readonly kind: '決着した'; readonly result: DuelResult }
+
+/**
+ * 1 つのゾーンからリリースされたカード（`DuelEvent` の `リリースした`、#157）。
+ *
+ * **枚数と名指しを別に持つ。** 何枚リリースされたかは向きから読める公開情報（総合ルール
+ * 第2部 第23章 1-1）だが、どのカードかはそうではない——スマッシュゾーンのカードは裏向きで
+ * 持ち主からも見られない（同 第21章 7-3）ので、そのゾーンの `cards` は誰から見ても空に
+ * なる。射影が減らすのは `cards` だけで、`count` はそのまま残る（`perspective.ts` の
+ * `mapEventCards`）。
+ *
+ * 並びに `undefined` を混ぜて長さで枚数を表すことはできない。**通信は JSON を通る**
+ * （`wire.ts`）ので、並びの中の `undefined` は `null` に変わってしまう。落ちうるものは
+ * 並びから外して数えるほうに持つ。
+ */
+export interface ReleasedFromZone {
+  readonly zone: OrientedZone
+  readonly count: number
+  readonly cards: readonly CardId[]
+}
 
 /**
  * ログに残す形にした命令 1 つ。

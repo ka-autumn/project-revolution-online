@@ -844,16 +844,28 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
   /**
    * できごと 1 つを、字下げを別にした行にする。
    *
-   * **1 つのできごとが 2 行になることがある。** 進行はエンジンにとって 1 つの遷移
+   * **1 つのできごとが何行かになることがある。** 進行はエンジンにとって 1 つの遷移
    * （`log.ts` の `進行が変わった`）だが、ターンの境目は「終わり」と「始まり」を分けて
-   * 読ませたい。1 件のできごとからまとめて作るので、この 2 行の前後が入れ替わることはない。
+   * 読ませたい。リリース（同 `リリースした`）も 1 つの特別な行動だが、ゾーンごとに分けて
+   * 読ませたい。どちらも 1 件のできごとからまとめて作るので、行の前後が入れ替わることは
+   * ない。**何行で見せるかを決めるのはここである。**
    */
   function linesOf(event: DuelEvent): readonly LinePart[] {
-    return event.kind === '進行が変わった' ? progressLines(event.from, event.to, whose) : [logLineOf(event)]
+    switch (event.kind) {
+      case '進行が変わった':
+        return progressLines(event.from, event.to, whose)
+      case 'リリースした':
+        return event.released.map((from) => ({
+          whose: whose(event.player),
+          text: `リリース（${from.zone}）：${cardsLabel(from.count, from.cards, named)}`,
+        }))
+      default:
+        return [logLineOf(event)]
+    }
   }
 
-  /** 進行以外のできごと 1 つを、字下げを別にした 1 行にする。 */
-  function logLineOf(event: Exclude<DuelEvent, { kind: '進行が変わった' }>): LinePart {
+  /** 1 行にしかならないできごと 1 つを、字下げを別にした 1 行にする。 */
+  function logLineOf(event: Exclude<DuelEvent, { kind: '進行が変わった' | 'リリースした' }>): LinePart {
     switch (event.kind) {
       case '行動した': {
         const name = named(event.card)
@@ -870,8 +882,7 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         return { whose: whose(event.player), text: `ダメージ ${event.amount} を受けた` }
       // フェイズやステップの始めに自動で行われる処理（#157）。**行われた時しか届かない**
       // ので、「行われなかった」を言い分ける必要はここに無い（`log.ts` の `リリースした`）。
-      case 'リリースした':
-        return { whose: whose(event.player), text: `リリース：${cardsLabel(event.count, event.cards, named)}` }
+      // リリースだけはゾーンごとに分けて何行かになるので、`linesOf` の側にある。
       case 'カードを引いた': {
         const name = named(event.card)
         return { whose: whose(event.player), text: `カードを引いた${name === undefined ? '' : `：${name}`}` }

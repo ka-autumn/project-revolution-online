@@ -877,13 +877,43 @@ describe('視点ごとの落とし方', () => {
    * #157。まとめて指すできごとでは、**名指しだけが減って枚数は残る。** 何枚だったかは
    * 公開情報（総合ルール 第2部 第23章 1-1）なので、名前と一緒に落としてはいけない。
    */
-  it('リリースは、名指しが落ちても枚数が残る', () => {
-    const event: DuelEvent = { kind: 'リリースした', player: '後攻', count: 2, cards: [hidden.id, shown.id] }
+  it('リリースは、名指しが落ちても枚数とゾーンが残る', () => {
+    const event: DuelEvent = {
+      kind: 'リリースした',
+      player: '後攻',
+      released: [{ zone: 'エネルギーゾーン', count: 2, cards: [hidden.id, shown.id] }],
+    }
 
     const state = logged(event)
 
-    expect(seen(state, '先攻')).toEqual([{ ...event, count: 2, cards: [shown.id] }])
+    expect(seen(state, '先攻')).toEqual([
+      { ...event, released: [{ zone: 'エネルギーゾーン', count: 2, cards: [shown.id] }] },
+    ])
     expect(seen(state, '後攻')).toEqual([event])
+  })
+
+  /** ゾーンごとに分かれているので、片方の名指しが落ちてももう片方には響かない（#157）。 */
+  it('リリースは、ゾーンごとに分かれたまま落ちる', () => {
+    const event: DuelEvent = {
+      kind: 'リリースした',
+      player: '後攻',
+      released: [
+        { zone: 'エネルギーゾーン', count: 1, cards: [shown.id] },
+        { zone: 'スマッシュゾーン', count: 2, cards: [hidden.id] },
+      ],
+    }
+
+    const state = logged(event)
+
+    expect(seen(state, '先攻')).toEqual([
+      {
+        ...event,
+        released: [
+          { zone: 'エネルギーゾーン', count: 1, cards: [shown.id] },
+          { zone: 'スマッシュゾーン', count: 2, cards: [] },
+        ],
+      },
+    ])
   })
 
   it('効果で引いたカードも、名指しが落ちても枚数が残る', () => {

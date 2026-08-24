@@ -224,15 +224,16 @@ function takeBeginningAction(state: DuelState): DuelState {
 /**
  * リリースフェイズのリリース（総合ルール 第3部 第5章 1）。
  *
- * リリースするカードは、盤面を変える前に数え上げる（`frozenCardsOf`）。向きが変わるだけ
- * なので、後から見比べても「どれが変わったか」は読めないためである。
+ * リリースするカードは、盤面を変える前にゾーンごとに数え上げる（`frozenCardsOf`）。向きが
+ * 変わるだけなので、後から見比べても「どれが変わったか」は読めないためである。
  */
 function release(state: DuelState): DuelState {
   const player = state.turn.active
-  const cards = frozenCardsOf(state, player)
-  if (cards.length === 0) return state
+  const frozen = frozenCardsOf(state, player)
+  if (frozen.length === 0) return state
 
-  return record(releaseAll(state, player), { kind: 'リリースした', player, count: cards.length, cards }, state)
+  const released = frozen.map(({ zone, cards }) => ({ zone, count: cards.length, cards }))
+  return record(releaseAll(state, player), { kind: 'リリースした', player, released }, state)
 }
 
 /**

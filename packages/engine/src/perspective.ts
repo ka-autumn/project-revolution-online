@@ -378,9 +378,16 @@ function mapEventCards(event: DuelEvent, map: CardMapping): DuelEvent {
       return { ...event, card: map(event.card) }
     case 'プランをめくった':
       return { ...event, card: map(event.card), discarded: map(event.discarded) }
-    // 落とすのは名指しだけで、枚数（`count`）はそのまま残る（`log.ts` の `リリースした`）。
+    // 落とすのは名指しだけで、枚数（`count`）もゾーンもそのまま残る（`log.ts` の
+    // `ReleasedFromZone`）。どのゾーンから何枚リリースされたかは公開情報である。
     case 'リリースした':
-      return { ...event, cards: event.cards.flatMap((card) => mapped(map(card))) }
+      return {
+        ...event,
+        released: event.released.map((from) => ({
+          ...from,
+          cards: from.cards.flatMap((card) => mapped(map(card))),
+        })),
+      }
     case 'カードを引いた':
       return { ...event, card: map(event.card) }
     // 進行そのもののできごと（#133）はカードを名指ししない。フェイズもステップも誰の
