@@ -9,14 +9,28 @@ import { mount } from './index.js'
  *
  *     /?participant=わたし&room=あいことば
  *
- * サーバの場所は既定で同じホストの 8787 番。`?server=` で変えられる。
+ * サーバの場所は 3 つの順で決まる。手元では何も要らず、離れた場所に置いた画面では
+ * 毎回打たなくてよいようにするため。
  */
 
 const DEFAULT_SERVER_PORT = 8787
 
+/**
+ * 繋ぎに行く先。
+ *
+ * 1. `?server=` — その場で差し替えたい時。ビルドし直さずに向き先を変えられる
+ * 2. ビルド時に渡された `VITE_SERVER_URL` — 画面とサーバを別々の場所に置いた時
+ * 3. 同じホストの 8787 番 — 手元で両方立てている時
+ *
+ * **画面とサーバは同じ場所に無くてよい**（ADR-0013）。WebSocket 1 本を直に張るだけで
+ * （ADR-0009）、画面はただの静的なファイルだからである。
+ */
 function serverUrl(params: URLSearchParams): string {
   const named = params.get('server')
   if (named !== null && named !== '') return named
+
+  const built = import.meta.env.VITE_SERVER_URL
+  if (built !== undefined && built !== '') return built
 
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${scheme}//${location.hostname}:${DEFAULT_SERVER_PORT}`

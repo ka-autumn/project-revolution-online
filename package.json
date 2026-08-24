@@ -8,13 +8,14 @@
   },
   "scripts": {
     "serve": "node tools/serve.mjs",
-    "typecheck": "pnpm -r --stream typecheck",
+    "typecheck": "pnpm -r --stream typecheck && tsc -p tsconfig.deploy.json",
     "test": "vitest run",
     "verify:engine": "node tools/verify-engine.mjs",
     "verify": "pnpm typecheck && pnpm test && pnpm verify:engine"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
+    "@vercel/functions": "^3.9.5",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
     "vitest": "catalog:"
