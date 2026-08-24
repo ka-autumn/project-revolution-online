@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "pnpm install --no-frozen-lockfile",
+  "buildCommand": "pnpm --filter @revolution/client build",
+  "outputDirectory": "packages/client/dist",
+  "proxy": {
+    "entrypoint": "proxy.ts"
+  }
+}
