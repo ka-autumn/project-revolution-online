@@ -9,6 +9,7 @@ import {
   instantiate,
   passOutcome,
   passPriority,
+  perspectiveOf,
   placeInZone,
   prepareDuel,
   putOnSquare,
@@ -728,6 +729,43 @@ describe('自動で行われる処理の記録', () => {
       expect(since(turn2, drawPhase, 'カードを引いた')).toEqual([
         { kind: 'カードを引いた', player: '後攻', card: top?.id },
       ])
+    })
+
+    /** その視点から見えるログに残っている、`カードを引いた` の名指し。 */
+    function drawnAs(state: DuelState, viewer: Player): readonly (string | undefined)[] {
+      return perspectiveOf(state, viewer)
+        .log.map(({ event }) => event)
+        .flatMap((event) => (event.kind === 'カードを引いた' ? [event.card] : []))
+    }
+
+    it('相手が引いたカードは、こちらのログでは名指しされない', () => {
+      const turn2 = turnNumbered(startedDuel(), 2)
+      const top = cardsIn(turn2, '後攻', '山札')[0]
+      const drawPhase = phaseOf(turn2, 'ドローフェイズ')
+
+      expect(drawnAs(drawPhase, '後攻')).toEqual([top?.id])
+      expect(drawnAs(drawPhase, '先攻')).toEqual([undefined])
+    })
+
+    /**
+     * プランを引いた時だけは、相手のログにも名前が残る。
+     *
+     * 山札の 1 番上が表向きになっているものがプランであり（総合ルール 第2部 第21章 3-1）、
+     * それを引くと（同 3-3）手札という見えないゾーンへ移る。それでも**引かれる前に両者が
+     * 見ていた**ので、名指しは落ちない（`log.ts` の `record` が前後どちらかの見え方で
+     * 決める、#129）。**ログは過去の記録であって、いまの見え方ではない。**
+     */
+    it('相手のプランを引いた場合は、こちらのログにも名前が残る', () => {
+      const turn2 = turnNumbered(startedDuel(), 2)
+      const planned = putInZone(turn2, '後攻', 'プランゾーン', [
+        instantiate({ id: '後攻のプラン', card: testUnit, owner: '後攻' }),
+      ])
+
+      const drawPhase = phaseOf(planned, 'ドローフェイズ')
+
+      // プランが山札の 1 番上なので、それが引かれる（総合ルール 第2部 第21章 3-1）。
+      expect(cardsIn(drawPhase, '後攻', '手札').map((card) => card.id)).toContain('後攻のプラン')
+      expect(drawnAs(drawPhase, '先攻')).toEqual(['後攻のプラン'])
     })
 
     /**
