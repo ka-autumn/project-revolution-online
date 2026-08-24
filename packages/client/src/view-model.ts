@@ -11,6 +11,7 @@ import type {
   LoggedEvent,
   LoggedInstruction,
   Orientation,
+  OrientedZone,
   Player,
   PlayerZone,
   Procedure,
@@ -857,7 +858,7 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
       case 'リリースした':
         return event.released.map((from) => ({
           whose: whose(event.player),
-          text: `リリース（${from.zone}）：${cardsLabel(from.count, from.cards, named)}`,
+          text: `リリース（${orientedZoneLabel(from.zone)}）：${cardsLabel(from.count, from.cards, named)}`,
         }))
       default:
         return [logLineOf(event)]
@@ -1106,6 +1107,24 @@ function instructionLine(
     case 'カードを引く':
       return `${whose(instruction.player)}が引いた：${cardsLabel(instruction.count, instruction.cards, named)}`
   }
+}
+
+/**
+ * 向きを持つ場所の呼び名（#157）。
+ *
+ * **スクエアだけは「バトルスペース」と呼ぶ。** 総合ルール 第2部 第21章 1-1 は「スクエアは
+ * それぞれが単独のゾーンです」と定めているので、まとめてリリースされた分に「スクエア」と
+ * 単数のゾーン名を貼ると、9 つの別々のゾーンを 1 つのように見せることになる。その 9 つを
+ * まとめてとらえた場所の呼び名が「バトルスペース」である（同 第22章 1・2）。向きを持つ
+ * 4 つを列挙する条文自身も「バトルスペースのスクエア」と書いている（同 第24章 1）。
+ *
+ * ゾーンでない呼び名を出すのは、ここが初めてではない。スクエア 1 つを指す時も「中央エリアの
+ * 中央ライン」（`squareLabel`）と、エリアとラインで呼んでいる。どちらも同 第21章 1-1 が
+ * ゾーンではないと名指ししている呼び方である。**engine が持つ値は `スクエア` のままにする。**
+ * あちらは 12 種のゾーンの 1 つ（同 第21章 1）を指しており、呼び替えるのは画面の仕事である。
+ */
+function orientedZoneLabel(zone: OrientedZone): string {
+  return zone === 'スクエア' ? 'バトルスペース' : zone
 }
 
 /**
