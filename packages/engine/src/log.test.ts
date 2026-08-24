@@ -313,7 +313,12 @@ describe('効果の記録', () => {
     )
     expect(resolution).toEqual([
       { kind: '能力を解決した', controller: '先攻', via: '誘発', source: drawer.id },
-      { kind: '命令を実行した', controller: '先攻', instruction: { kind: 'カードを引く', player: '先攻', count: 1 } },
+      {
+        kind: '命令を実行した',
+        controller: '先攻',
+        // 引いたカードを識別子で持つ（#157）。誰から見えるかを決めるのは射影である。
+        instruction: { kind: 'カードを引く', player: '先攻', count: 1, cards: ['先攻の山札0'] },
+      },
     ])
   })
 })
@@ -856,6 +861,80 @@ describe('視点ごとの落とし方', () => {
     const state = logged(event)
 
     expect(seen(state, '先攻')).toEqual([event])
+  })
+
+  // #157。ドローフェイズで引いたカードは、引いた本人からは見えるが相手からは見えない。
+  it('ドローフェイズで引いたカードも落ちる', () => {
+    const event: DuelEvent = { kind: 'カードを引いた', player: '後攻', card: hidden.id }
+
+    const state = logged(event)
+
+    expect(seen(state, '先攻')).toEqual([{ ...event, card: undefined }])
+    expect(seen(state, '後攻')).toEqual([event])
+  })
+
+  /**
+   * #157。まとめて指すできごとでは、**名指しだけが減って枚数は残る。** 何枚だったかは
+   * 公開情報（総合ルール 第2部 第23章 1-1）なので、名前と一緒に落としてはいけない。
+   */
+  it('リリースは、名指しが落ちても枚数とゾーンが残る', () => {
+    const event: DuelEvent = {
+      kind: 'リリースした',
+      player: '後攻',
+      released: [{ zone: 'エネルギーゾーン', count: 2, cards: [hidden.id, shown.id] }],
+    }
+
+    const state = logged(event)
+
+    expect(seen(state, '先攻')).toEqual([
+      { ...event, released: [{ zone: 'エネルギーゾーン', count: 2, cards: [shown.id] }] },
+    ])
+    expect(seen(state, '後攻')).toEqual([event])
+  })
+
+  /** ゾーンごとに分かれているので、片方の名指しが落ちてももう片方には響かない（#157）。 */
+  it('リリースは、ゾーンごとに分かれたまま落ちる', () => {
+    const event: DuelEvent = {
+      kind: 'リリースした',
+      player: '後攻',
+      released: [
+        { zone: 'エネルギーゾーン', count: 1, cards: [shown.id] },
+        { zone: 'スマッシュゾーン', count: 2, cards: [hidden.id] },
+      ],
+    }
+
+    const state = logged(event)
+
+    expect(seen(state, '先攻')).toEqual([
+      {
+        ...event,
+        released: [
+          { zone: 'エネルギーゾーン', count: 1, cards: [shown.id] },
+          { zone: 'スマッシュゾーン', count: 2, cards: [] },
+        ],
+      },
+    ])
+  })
+
+  it('効果で引いたカードも、名指しが落ちても枚数が残る', () => {
+    const event: DuelEvent = {
+      kind: '命令を実行した',
+      controller: '後攻',
+      instruction: { kind: 'カードを引く', player: '後攻', count: 2, cards: [hidden.id, shown.id] },
+    }
+
+    const state = logged(event)
+
+    expect(seen(state, '先攻')).toEqual([
+      { ...event, instruction: { kind: 'カードを引く', player: '後攻', count: 2, cards: [shown.id] } },
+    ])
+  })
+
+  /** #157。自動で行われる処理のうち、ダメージの除去と回復は落とすものを持たない。 */
+  it('ダメージの除去と回復は、どちらからも同じに見える', () => {
+    const state = logged({ kind: 'ダメージが取り除かれた' }, { kind: 'ダメージを回復した', player: '後攻', amount: 1000 })
+
+    expect(seen(state, '先攻')).toEqual(seen(state, '後攻'))
   })
 })
 

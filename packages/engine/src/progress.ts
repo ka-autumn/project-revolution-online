@@ -1,7 +1,7 @@
 import { phaseBeginning } from './ability.js'
 import { resolveFromBank } from './bank.js'
 import { advanceBattle } from './battle.js'
-import { draw, hasEnded, releaseAll, removeAllDamage } from './duel.js'
+import { draw, frozenCardsOf, hasEnded, releaseAll, removeAllDamage, topOfLibrary } from './duel.js'
 import type { DuelState } from './duel.js'
 import { record } from './log.js'
 import type { Progress } from './log.js'
@@ -209,12 +209,61 @@ function beginCurrentPhase(state: DuelState): DuelState {
  * 第6章 1-1）と、リカバリーフェイズのダメージの除去（同 第10章 1）である。ダメージと
  * 同時に終了する「ターンの終わりまで」「このターンの間」の効果（同）は、継続効果を盤面が
  * 持つようになってから足す。
+ *
+ * **どれも積む（#157）。** 自動で行われる処理は、盤面だけを見ても何が起きたのか読めない。
+ * ただし**行われなかった処理は積まない**——リリースするカードが無いフェイズに「リリース
+ * した」とは書かない。フェイズがあったこと自体は `進行が変わった` が言っている。
  */
 function takeBeginningAction(state: DuelState): DuelState {
-  if (state.turn.phase === 'リリースフェイズ') return releaseAll(state, state.turn.active)
-  if (state.turn.phase === 'ドローフェイズ') return draw(state, state.turn.active)
-  if (state.turn.phase === 'リカバリーフェイズ') return removeAllDamage(state)
+  if (state.turn.phase === 'リリースフェイズ') return release(state)
+  if (state.turn.phase === 'ドローフェイズ') return drawOne(state)
+  if (state.turn.phase === 'リカバリーフェイズ') return removeDamage(state)
   return state
+}
+
+/**
+ * リリースフェイズのリリース（総合ルール 第3部 第5章 1）。
+ *
+ * リリースするカードは、盤面を変える前にゾーンごとに数え上げる（`frozenCardsOf`）。向きが
+ * 変わるだけなので、後から見比べても「どれが変わったか」は読めないためである。
+ */
+function release(state: DuelState): DuelState {
+  const player = state.turn.active
+  const frozen = frozenCardsOf(state, player)
+  if (frozen.length === 0) return state
+
+  const released = frozen.map(({ zone, cards }) => ({ zone, count: cards.length, cards }))
+  return record(releaseAll(state, player), { kind: 'リリースした', player, released }, state)
+}
+
+/**
+ * ドローフェイズのドロー（総合ルール 第3部 第6章 1-1）。
+ *
+ * 山札が空なら引けず、何も積まない。山札が 0 枚になったプレイヤーが敗北すること（同
+ * 第3章 2）は別のルールエフェクトである（`rule-effect.ts`）。
+ *
+ * 引いたカードは識別子で持つ。誰から見えるかを決めるのは射影であって、ここではない
+ * （ADR-0011、`perspective.ts`）。
+ */
+function drawOne(state: DuelState): DuelState {
+  const player = state.turn.active
+  const top = topOfLibrary(state, player)
+  if (top === undefined) return state
+
+  return record(draw(state, player), { kind: 'カードを引いた', player, card: top.id }, state)
+}
+
+/**
+ * リカバリーフェイズのダメージの除去（総合ルール 第3部 第10章 1）。
+ *
+ * どこにもダメージが無ければ盤面は変わらない（`removeAllDamage`）ので、そのまま返して
+ * 何も積まない。
+ */
+function removeDamage(state: DuelState): DuelState {
+  const removed = removeAllDamage(state)
+  if (removed === state) return state
+
+  return record(removed, { kind: 'ダメージが取り除かれた' }, state)
 }
 
 /**

@@ -11,6 +11,7 @@ import type {
   LoggedEvent,
   LoggedInstruction,
   Orientation,
+  OrientedZone,
   Player,
   PlayerZone,
   Procedure,
@@ -844,16 +845,28 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
   /**
    * できごと 1 つを、字下げを別にした行にする。
    *
-   * **1 つのできごとが 2 行になることがある。** 進行はエンジンにとって 1 つの遷移
+   * **1 つのできごとが何行かになることがある。** 進行はエンジンにとって 1 つの遷移
    * （`log.ts` の `進行が変わった`）だが、ターンの境目は「終わり」と「始まり」を分けて
-   * 読ませたい。1 件のできごとからまとめて作るので、この 2 行の前後が入れ替わることはない。
+   * 読ませたい。リリース（同 `リリースした`）も 1 つの特別な行動だが、ゾーンごとに分けて
+   * 読ませたい。どちらも 1 件のできごとからまとめて作るので、行の前後が入れ替わることは
+   * ない。**何行で見せるかを決めるのはここである。**
    */
   function linesOf(event: DuelEvent): readonly LinePart[] {
-    return event.kind === '進行が変わった' ? progressLines(event.from, event.to, whose) : [logLineOf(event)]
+    switch (event.kind) {
+      case '進行が変わった':
+        return progressLines(event.from, event.to, whose)
+      case 'リリースした':
+        return event.released.map((from) => ({
+          whose: whose(event.player),
+          text: `リリース（${orientedZoneLabel(from.zone)}）：${cardsLabel(from.count, from.cards, named)}`,
+        }))
+      default:
+        return [logLineOf(event)]
+    }
   }
 
-  /** 進行以外のできごと 1 つを、字下げを別にした 1 行にする。 */
-  function logLineOf(event: Exclude<DuelEvent, { kind: '進行が変わった' }>): LinePart {
+  /** 1 行にしかならないできごと 1 つを、字下げを別にした 1 行にする。 */
+  function logLineOf(event: Exclude<DuelEvent, { kind: '進行が変わった' | 'リリースした' }>): LinePart {
     switch (event.kind) {
       case '行動した': {
         const name = named(event.card)
@@ -868,6 +881,18 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         return { whose: whose(event.controller), text: instructionLine(event.instruction, board, named, whose) }
       case 'ダメージを受けた':
         return { whose: whose(event.player), text: `ダメージ ${event.amount} を受けた` }
+      // フェイズやステップの始めに自動で行われる処理（#157）。**行われた時しか届かない**
+      // ので、「行われなかった」を言い分ける必要はここに無い（`log.ts` の `リリースした`）。
+      // リリースだけはゾーンごとに分けて何行かになるので、`linesOf` の側にある。
+      case 'カードを引いた': {
+        const name = named(event.card)
+        return { whose: whose(event.player), text: `カードを引いた${name === undefined ? '' : `：${name}`}` }
+      }
+      // 両者のカードとプレイヤーからまとめて取り除かれるので、誰のものでもない。
+      case 'ダメージが取り除かれた':
+        return { whose: undefined, text: 'ダメージが取り除かれた' }
+      case 'ダメージを回復した':
+        return { whose: whose(event.player), text: `ダメージ ${event.amount} を回復した` }
       case 'バトルが始まった': {
         const where = squareLabel(board.viewer, event.square)
         const units = [named(event.attacker), named(event.attacked)].filter((name) => name !== undefined)
@@ -1080,8 +1105,51 @@ function instructionLine(
     case 'プランを裏返す':
       return `${whose(instruction.player)}のプランを裏返した`
     case 'カードを引く':
-      return `${whose(instruction.player)}が ${instruction.count} 枚引いた`
+      return `${whose(instruction.player)}が引いた：${cardsLabel(instruction.count, instruction.cards, named)}`
   }
+}
+
+/**
+ * 向きを持つ場所の呼び名（#157）。
+ *
+ * **スクエアだけは「バトルスペース」と呼ぶ。** 総合ルール 第2部 第21章 1-1 は「スクエアは
+ * それぞれが単独のゾーンです」と定めているので、まとめてリリースされた分に「スクエア」と
+ * 単数のゾーン名を貼ると、9 つの別々のゾーンを 1 つのように見せることになる。その 9 つを
+ * まとめてとらえた場所の呼び名が「バトルスペース」である（同 第22章 1・2）。向きを持つ
+ * 4 つを列挙する条文自身も「バトルスペースのスクエア」と書いている（同 第24章 1）。
+ *
+ * ゾーンでない呼び名を出すのは、ここが初めてではない。スクエア 1 つを指す時も「中央エリアの
+ * 中央ライン」（`squareLabel`）と、エリアとラインで呼んでいる。どちらも同 第21章 1-1 が
+ * ゾーンではないと名指ししている呼び方である。**engine が持つ値は `スクエア` のままにする。**
+ * あちらは 12 種のゾーンの 1 つ（同 第21章 1）を指しており、呼び替えるのは画面の仕事である。
+ */
+function orientedZoneLabel(zone: OrientedZone): string {
+  return zone === 'スクエア' ? 'バトルスペース' : zone
+}
+
+/**
+ * 何枚かのカードをまとめて指す文言（#157）。
+ *
+ * **名前が落ちても枚数は言う。** 名指しできないカードは射影が落としているが、何枚だったか
+ * は落ちていない（`log.ts` の `リリースした`）ので、そこを黙ると届いているものより少なく
+ * 見せることになる。名前が 1 つも分からなければ枚数だけで言う。
+ *
+ * 区切りに `・` を使わない。**カード名そのものが `・` を含む**（「ラムダ・ドライバ」）ため、
+ * どこまでが 1 枚なのかが読めなくなる。
+ */
+function cardsLabel(
+  count: number,
+  cards: readonly CardId[],
+  named: (card: CardId | undefined) => string | undefined,
+): string {
+  const names = cards.flatMap((card) => {
+    const name = named(card)
+    return name === undefined ? [] : [name]
+  })
+  const hidden = count - names.length
+  if (names.length === 0) return `${hidden} 枚`
+
+  return hidden <= 0 ? names.join('、') : `${names.join('、')} ほか ${hidden} 枚`
 }
 
 /**

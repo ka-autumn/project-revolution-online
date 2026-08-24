@@ -882,6 +882,158 @@ describe('操作ログ', () => {
     expect(texts(board)).toEqual(['コストとしてスマッシュをフリーズした'])
   })
 
+  /**
+   * フェイズやステップの始めに自動で行われる処理（#157）。
+   *
+   * **枚数と名指しは別に届く**（`log.ts` の `リリースした`）。名指しが落ちても何枚だったか
+   * は落ちていないので、名前が出せない分は枚数で言う。行が出るのは行われた時だけなので、
+   * 「行われなかった」を言い分ける必要はここに無い。
+   */
+  describe('自動で行われる処理', () => {
+    const ANOTHER_SQUARE: Square = { row: 0, column: 0 }
+
+    /** そのできごとと、名前を引ける 2 枚が届いた盤面。 */
+    function withTwoNamed(...events: readonly DuelEvent[]): WirePerspective {
+      const board = withSquare(withLog(...events), ANOTHER_SQUARE, [instance('もう 1 枚', '先攻')])
+      return board
+    }
+
+    // 総合ルール 第3部 第5章 1
+    it('リリースされたカードの名前が、ゾーンとあわせて出る', () => {
+      const board = withTwoNamed({
+        kind: 'リリースした',
+        player: '先攻',
+        released: [{ zone: 'エネルギーゾーン', count: 2, cards: ['置いてある', 'もう 1 枚'] }],
+      })
+
+      // 区切りは `、` である。カード名そのものが `・` を含む（「テスト・置いてある」）ので、
+      // `・` で繋ぐとどこまでが 1 枚なのか読めなくなる。
+      expect(logLines(board)).toEqual([
+        {
+          kind: 'できごと',
+          whose: '自分',
+          text: 'リリース（エネルギーゾーン）：テスト・置いてある、テスト・もう 1 枚',
+          depth: 0,
+        },
+      ])
+    })
+
+    /**
+     * 1 件のできごとが、ゾーンの数だけの行になる（`view-model.ts` の `linesOf`）。
+     *
+     * **並びは届いたとおりのままである。** 1 件から作っているので、リリースした順と行の
+     * 前後が入れ替わることはない（`log.ts` の `リリースした`）。
+     */
+    it('ゾーンをまたいだリリースは、ゾーンごとの行になる', () => {
+      const board = withTwoNamed({
+        kind: 'リリースした',
+        player: '先攻',
+        released: [
+          { zone: 'スクエア', count: 1, cards: ['置いてある'] },
+          { zone: 'エネルギーゾーン', count: 1, cards: ['もう 1 枚'] },
+        ],
+      })
+
+      // 画面は新しい順に出す（#111）ので、届いた並びとは逆に出る。
+      expect(texts(board)).toEqual([
+        'リリース（エネルギーゾーン）：テスト・もう 1 枚',
+        'リリース（バトルスペース）：テスト・置いてある',
+      ])
+    })
+
+    /**
+     * スクエアだけは「バトルスペース」と呼ぶ（`orientedZoneLabel`）。
+     *
+     * 総合ルール 第2部 第21章 1-1: スクエアはそれぞれが単独のゾーンである。まとめて
+     * リリースされた分に単数のゾーン名を貼ると、9 つの別々のゾーンを 1 つのように見せる
+     * ことになる。**呼び替えるのは画面だけで、届くできごとは `スクエア` のままである。**
+     */
+    it('スクエアからのリリースは、バトルスペースと出る', () => {
+      const event: DuelEvent = {
+        kind: 'リリースした',
+        player: '先攻',
+        released: [{ zone: 'スクエア', count: 1, cards: ['置いてある'] }],
+      }
+      const board = withLog(event)
+
+      expect(texts(board)).toEqual(['リリース（バトルスペース）：テスト・置いてある'])
+      // 届いたできごとは呼び替えられていない。
+      expect(board.log[0]?.event).toEqual(event)
+    })
+
+    /**
+     * スマッシュゾーンのカードは裏向きで、持ち主からも見られない（総合ルール 第2部
+     * 第21章 7-3）。名前が出せない分を黙ると、届いているより少なく見せることになる。
+     * **ゾーンで分かれているので、名前の出ない分がどこの何枚だったのかが読める。**
+     */
+    it('名指しされていない分は、そのゾーンの枚数で出る', () => {
+      const board = withLog({
+        kind: 'リリースした',
+        player: '先攻',
+        released: [
+          { zone: 'エネルギーゾーン', count: 3, cards: ['置いてある'] },
+          { zone: 'スマッシュゾーン', count: 2, cards: [] },
+        ],
+      })
+
+      expect(texts(board)).toEqual([
+        'リリース（スマッシュゾーン）：2 枚',
+        'リリース（エネルギーゾーン）：テスト・置いてある ほか 2 枚',
+      ])
+    })
+
+    // 総合ルール 第3部 第6章 1-1
+    it('ドローフェイズで引いたカードの名前が出る', () => {
+      const board = withLog({ kind: 'カードを引いた', player: '先攻', card: '置いてある' })
+
+      expect(texts(board)).toEqual(['カードを引いた：テスト・置いてある'])
+    })
+
+    /** 名指しが落ちていれば、名前のところは出ない。**「見えていないカード」とも書かない。** */
+    it('名指しされていなければ、引いたことだけが出る', () => {
+      const board = withLog({ kind: 'カードを引いた', player: '後攻', card: undefined })
+
+      expect(logLines(board)).toEqual([{ kind: 'できごと', whose: '相手', text: 'カードを引いた', depth: 0 }])
+    })
+
+    /** 総合ルール 第3部 第10章 1: 取り除かれるのは両者のカードとプレイヤーのダメージである。 */
+    it('ダメージの除去は、誰のものにもならない', () => {
+      const board = withLog({ kind: 'ダメージが取り除かれた' })
+
+      expect(logLines(board)).toEqual([
+        { kind: 'できごと', whose: undefined, text: 'ダメージが取り除かれた', depth: 0 },
+      ])
+    })
+
+    // 総合ルール 第3部 第18章 1
+    it('回復ステップで回復した量が出る', () => {
+      const board = withLog({ kind: 'ダメージを回復した', player: '後攻', amount: 2000 })
+
+      expect(logLines(board)).toEqual([{ kind: 'できごと', whose: '相手', text: 'ダメージ 2000 を回復した', depth: 0 }])
+    })
+
+    /** 効果によるドロー（総合ルール 第2部 第21章 1-5）も、枚数と名指しの出し方は同じ。 */
+    it('効果で引いたカードも、名前と枚数で出る', () => {
+      const board = withLog({
+        kind: '命令を実行した',
+        controller: '後攻',
+        instruction: { kind: 'カードを引く', player: '後攻', count: 2, cards: ['置いてある'] },
+      })
+
+      expect(texts(board)).toEqual(['相手が引いた：テスト・置いてある ほか 1 枚'])
+    })
+
+    it('効果で引いたカードが 1 枚も名指しされていなければ、枚数だけが出る', () => {
+      const board = withLog({
+        kind: '命令を実行した',
+        controller: '後攻',
+        instruction: { kind: 'カードを引く', player: '後攻', count: 2, cards: [] },
+      })
+
+      expect(texts(board)).toEqual(['相手が引いた：2 枚'])
+    })
+  })
+
   // 総合ルール 第3部 第19章 1。表向きなのはそこだけなので、この時にしか名指しできない。
   it('希望ステップで表向きに置いたカードが出る', () => {
     const board = withLog({ kind: '希望ステップでめくった', player: '後攻', card: '置いてある', name: 'テスト・置いてある' })

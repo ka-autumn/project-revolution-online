@@ -350,6 +350,48 @@ describe('回復ステップ', () => {
     expect(twice.smashJudgments[0]?.repeats).toBe(2)
     expect(twice.damage['後攻']).toBe(500)
   })
+
+  /**
+   * 回復したことが積まれる（#157）。
+   *
+   * 回復は盤面の数値を書き換えるだけなので、後から見比べても何が起きたのかは読めない。
+   * **積むのは実際に減った量である**——回数から決まる回復量ではない。
+   */
+  describe('記録', () => {
+    /** 積まれた「ダメージを回復した」だけを、起きた順に取り出す。 */
+    function recoveries(state: DuelState): readonly Extract<DuelEvent, { kind: 'ダメージを回復した' }>[] {
+      return state.log
+        .map(({ event }) => event)
+        .filter((event): event is Extract<DuelEvent, { kind: 'ダメージを回復した' }> =>
+          event.kind === 'ダメージを回復した',
+        )
+    }
+
+    it('回復した量が積まれる', () => {
+      expect(recoveries(smashedFromCenter(sp1000))).toEqual([
+        { kind: 'ダメージを回復した', player: '後攻', amount: 1000 },
+      ])
+    })
+
+    it('繰り返しの回数だけ回復したことが、1 件にまとまって積まれる', () => {
+      // 敵エリアのＳＰ1500 が与えるのは 2000。希望ステップは 2 回で、回復も 2000 である。
+      expect(recoveries(smashedFromEnemyArea(sp1500))).toEqual([
+        { kind: 'ダメージを回復した', player: '後攻', amount: 2000 },
+      ])
+    })
+
+    it('1000 の倍数に満たない分は、回復した量に数えない', () => {
+      // 敵エリアのＳＰ0 で 500、続けて敵エリアのＳＰ1500 で 2000 の、合計 2500。
+      const first = smashPhase([
+        [enemySquare, '1 枚目', sp0],
+        [{ row: 2, column: 0 }, '2 枚目', sp1500],
+      ])
+      const once = pass(stateOf(smash(first, '1 枚目')))
+      const twice = stateOf(smash(once, '2 枚目'))
+
+      expect(recoveries(twice)).toEqual([{ kind: 'ダメージを回復した', player: '後攻', amount: 2000 }])
+    })
+  })
 })
 
 // 総合ルール 第3部 第19章 1（ADR-0006）

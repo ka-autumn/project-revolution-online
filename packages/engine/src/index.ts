@@ -159,12 +159,13 @@ export type {
   Procedure,
   Progress,
   RecordedEvent,
+  ReleasedFromZone,
   ResolutionVia,
   SeenBy,
 } from './log.js'
 export { moveUnit } from './move.js'
-export { ORIENTATIONS } from './orientation.js'
-export type { Orientation } from './orientation.js'
+export { ORIENTATIONS, ORIENTED_ZONES } from './orientation.js'
+export type { Orientation, OrientedZone } from './orientation.js'
 export { perspectiveOf } from './perspective.js'
 export type {
   DuelPerspective,

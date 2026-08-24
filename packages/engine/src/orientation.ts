@@ -9,3 +9,14 @@
 export const ORIENTATIONS = ['リリース', 'フリーズ'] as const
 
 export type Orientation = (typeof ORIENTATIONS)[number]
+
+/**
+ * 向きを持つカードが置かれるゾーン（総合ルール 第2部 第24章 1）。
+ *
+ * 並びは、リリースフェイズのリリースが列挙する順（同 第3部 第5章 1）のまま。原文と
+ * 突き合わせられるように並べ替えない。**リリースをゾーンごとに分けて読ませる**（#157）
+ * ときの並びもこれである。
+ */
+export const ORIENTED_ZONES = ['スクエア', 'トラップゾーン', 'エネルギーゾーン', 'スマッシュゾーン'] as const
+
+export type OrientedZone = (typeof ORIENTED_ZONES)[number]

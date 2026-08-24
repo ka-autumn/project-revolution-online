@@ -9,6 +9,7 @@ import {
   instantiate,
   passOutcome,
   passPriority,
+  perspectiveOf,
   placeInZone,
   prepareDuel,
   putOnSquare,
@@ -630,5 +631,174 @@ describe('放棄したら何が起きるか', () => {
       }
       current = next
     }
+  })
+})
+
+/**
+ * フェイズの始めに自動で行われる処理が積まれること（#157）。
+ *
+ * 盤面は変わっているのに、何が起きて変わったのかがログのどこにも無い、という状態を
+ * 直したもの。**行われた時だけ積む**——リリースするカードが無いフェイズに「リリースした」
+ * とは書かない。フェイズがあったこと自体は `進行が変わった`（#133）が言っている。
+ */
+describe('自動で行われる処理の記録', () => {
+  const someSquare: Square = { row: 2, column: 1 }
+  const testUnit = defineUnit({ name: 'テスト・自動処理', level: 1, bp: 1000, sp: 1000 })
+
+  /** その盤面に積まれた、その種類のできごとだけを起きた順に取り出す。 */
+  function eventsOf<K extends DuelEvent['kind']>(state: DuelState, kind: K): readonly Extract<DuelEvent, { kind: K }>[] {
+    return state.log
+      .map(({ event }) => event)
+      .filter((event): event is Extract<DuelEvent, { kind: K }> => event.kind === kind)
+  }
+
+  /** その盤面から先で新しく積まれた分だけ。それ以前のターンで積まれた分を数に入れないため。 */
+  function since<K extends DuelEvent['kind']>(
+    before: DuelState,
+    after: DuelState,
+    kind: K,
+  ): readonly Extract<DuelEvent, { kind: K }>[] {
+    return eventsOf(after, kind).slice(eventsOf(before, kind).length)
+  }
+
+  /** そのフェイズが始まったところまで進めた盤面。 */
+  function phaseOf(state: DuelState, phase: Phase): DuelState {
+    let current = state
+    while (current.turn.phase !== phase) current = endPhase(current)
+    return current
+  }
+
+  // 総合ルール 第3部 第5章 1
+  describe('リリースフェイズのリリース', () => {
+    /** 先攻が支配する、スクエアとエネルギーゾーンのフリーズ状態のカードを置いた盤面。 */
+    function withFrozen(state: DuelState): DuelState {
+      const onSquare = instantiate({ id: '先攻のスクエア', card: testUnit, owner: '先攻', orientation: 'フリーズ' })
+      const energy = instantiate({ id: '先攻のエネルギー', card: testUnit, owner: '先攻', orientation: 'フリーズ' })
+      return putInZone(putOnSquare(state, someSquare, onSquare), '先攻', 'エネルギーゾーン', [energy])
+    }
+
+    /**
+     * リリースされたカードが、**ゾーンごとに分かれて**積まれる（#157）。
+     *
+     * 並びは総合ルール 第3部 第5章 1 が列挙する順（スクエア・トラップゾーン・エネルギー
+     * ゾーン・スマッシュゾーン、`orientation.ts` の `ORIENTED_ZONES`）。リリースするものが
+     * 無いゾーンは並びに現れない。
+     */
+    it('リリースされたカードが、ゾーンごとに積まれる', () => {
+      // 先攻の第 1 ターンにフリーズ状態で置き、先攻の次のターン（第 3 ターン）の
+      // リリースフェイズまで進める。
+      const frozen = withFrozen(startedDuel())
+      const turn3 = turnNumbered(frozen, 3)
+
+      expect(since(frozen, turn3, 'リリースした')).toEqual([
+        {
+          kind: 'リリースした',
+          player: '先攻',
+          released: [
+            { zone: 'スクエア', count: 1, cards: ['先攻のスクエア'] },
+            { zone: 'エネルギーゾーン', count: 1, cards: ['先攻のエネルギー'] },
+          ],
+        },
+      ])
+    })
+
+    /** 同時に起きたことを何件にも割らない。何行で見せるかは画面の側が決める（#133）。 */
+    it('ゾーンをまたいでも、積まれるのは 1 件である', () => {
+      const frozen = withFrozen(startedDuel())
+
+      expect(since(frozen, turnNumbered(frozen, 3), 'リリースした')).toHaveLength(1)
+    })
+
+    it('リリースするカードが無ければ、何も積まれない', () => {
+      const started = startedDuel()
+
+      // 開始直後の盤面にはフリーズ状態のカードが 1 枚も無い。
+      expect(eventsOf(turnNumbered(started, 3), 'リリースした')).toEqual([])
+    })
+  })
+
+  // 総合ルール 第3部 第6章 1-1
+  describe('ドローフェイズのドロー', () => {
+    it('引いたカードが積まれる', () => {
+      // 先攻の第 1 ターンはドローフェイズをとばす（総合ルール 第3部 第6章 1-2）ので、
+      // 後攻の第 2 ターンで見る。
+      const turn2 = turnNumbered(startedDuel(), 2)
+      const top = cardsIn(turn2, '後攻', '山札')[0]
+      const drawPhase = phaseOf(turn2, 'ドローフェイズ')
+
+      expect(since(turn2, drawPhase, 'カードを引いた')).toEqual([
+        { kind: 'カードを引いた', player: '後攻', card: top?.id },
+      ])
+    })
+
+    /** その視点から見えるログに残っている、`カードを引いた` の名指し。 */
+    function drawnAs(state: DuelState, viewer: Player): readonly (string | undefined)[] {
+      return perspectiveOf(state, viewer)
+        .log.map(({ event }) => event)
+        .flatMap((event) => (event.kind === 'カードを引いた' ? [event.card] : []))
+    }
+
+    it('相手が引いたカードは、こちらのログでは名指しされない', () => {
+      const turn2 = turnNumbered(startedDuel(), 2)
+      const top = cardsIn(turn2, '後攻', '山札')[0]
+      const drawPhase = phaseOf(turn2, 'ドローフェイズ')
+
+      expect(drawnAs(drawPhase, '後攻')).toEqual([top?.id])
+      expect(drawnAs(drawPhase, '先攻')).toEqual([undefined])
+    })
+
+    /**
+     * プランを引いた時だけは、相手のログにも名前が残る。
+     *
+     * 山札の 1 番上が表向きになっているものがプランであり（総合ルール 第2部 第21章 3-1）、
+     * それを引くと（同 3-3）手札という見えないゾーンへ移る。それでも**引かれる前に両者が
+     * 見ていた**ので、名指しは落ちない（`log.ts` の `record` が前後どちらかの見え方で
+     * 決める、#129）。**ログは過去の記録であって、いまの見え方ではない。**
+     */
+    it('相手のプランを引いた場合は、こちらのログにも名前が残る', () => {
+      const turn2 = turnNumbered(startedDuel(), 2)
+      const planned = putInZone(turn2, '後攻', 'プランゾーン', [
+        instantiate({ id: '後攻のプラン', card: testUnit, owner: '後攻' }),
+      ])
+
+      const drawPhase = phaseOf(planned, 'ドローフェイズ')
+
+      // プランが山札の 1 番上なので、それが引かれる（総合ルール 第2部 第21章 3-1）。
+      expect(cardsIn(drawPhase, '後攻', '手札').map((card) => card.id)).toContain('後攻のプラン')
+      expect(drawnAs(drawPhase, '先攻')).toEqual(['後攻のプラン'])
+    })
+
+    /**
+     * とばされたフェイズでは引かないので、何も積まれない（総合ルール 第3部 第6章 1-2）。
+     *
+     * 山札が空で引けない場合もここへは来ない。山札が 0 枚になったプレイヤーは次に優先権が
+     * 発生した時に敗北する（同 第3章 2）ので、そのドローフェイズより前に決着している。
+     */
+    it('とばされたドローフェイズでは、何も積まれない', () => {
+      const turn1 = startedDuel()
+
+      // 先攻の第 1 ターンはドローフェイズをとばす。最後のフェイズまで来ても引いていない。
+      expect(since(turn1, phaseOf(turn1, 'リカバリーフェイズ'), 'カードを引いた')).toEqual([])
+    })
+  })
+
+  // 総合ルール 第3部 第10章 1
+  describe('リカバリーフェイズのダメージの除去', () => {
+    it('ダメージが取り除かれたことが積まれる', () => {
+      // ＢＰ1000 のユニットにＢＰ未満のダメージを与える。ＢＰと同じかそれ以上のダメージを
+      // 受けたユニットは、その前に捨札に置かれてしまう（総合ルール 第4部 第14章 4-6）。
+      const unit = instantiate({ id: '傷ついたユニット', card: testUnit, owner: '先攻' })
+      const damaged = dealDamage(putOnSquare(startedDuel(), someSquare, unit), '傷ついたユニット', 999)
+
+      expect(since(damaged, phaseOf(damaged, 'リカバリーフェイズ'), 'ダメージが取り除かれた')).toEqual([
+        { kind: 'ダメージが取り除かれた' },
+      ])
+    })
+
+    it('どこにもダメージが無ければ、何も積まれない', () => {
+      const started = startedDuel()
+
+      expect(eventsOf(phaseOf(started, 'リカバリーフェイズ'), 'ダメージが取り除かれた')).toEqual([])
+    })
   })
 })
