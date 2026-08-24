@@ -12,7 +12,7 @@ import {
   setOrientationOnSquare,
   topOfLibrary,
 } from './duel.js'
-import type { CardId, DuelState } from './duel.js'
+import type { CardId, CardInstance, DuelState } from './duel.js'
 import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import { loggedInstruction, record } from './log.js'
 import type { ResolutionVia } from './log.js'
@@ -345,9 +345,19 @@ function apply(
     }
     case 'カードを引く': {
       // 引けない場合は何も起こらないだけで、効果は続く（総合ルール 第1部 第1章 3）。
+      // 引けた分だけを積むので（`log.ts` の `カードを引く`）、引く前に 1 番上を控える。
       let current = state
-      for (let drawn = 0; drawn < instruction.count; drawn += 1) current = draw(current, instruction.player)
-      return { state: current, value: undefined }
+      const drawn: CardInstance[] = []
+      for (let count = 0; count < instruction.count; count += 1) {
+        const top = topOfLibrary(current, instruction.player)
+        if (top === undefined) break
+
+        current = draw(current, instruction.player)
+        drawn.push(top)
+      }
+      // 1 枚も引けなければ何も触れていない。空の並びを渡すと「0 枚引いた」が積まれる
+      // （`recorded`）ので、触れなかったことを `undefined` で言う。
+      return { state: current, value: undefined, subject: drawn.length === 0 ? undefined : drawn }
     }
   }
 }

@@ -249,10 +249,23 @@ function recordStep(state: DuelState, judgment: SmashJudgment): DuelState {
  * 回復ステップの始めの処理（総合ルール 第3部 第18章 1）。
  *
  * 受けたダメージを、この時に発生した希望ステップの回数 1 回につき 1000 回復する。
+ *
+ * **積むのは実際に減った量である（#157）。** 受けているダメージより多く回復することは
+ * ないので、回数から決まる回復量をそのまま積むと、減っていない分まで数えてしまう。
+ *
+ * 1 も減らなければ何も積まない。いまのところそこへは来ない——判定はダメージが 1000 以上
+ * ある時にしか発生せず、回数はそのダメージを 1000 で割った数（`startSmashJudgmentIfAny`）
+ * なので、回復量が 0 になることも、受けている量を超えることもない。回復ステップがあった
+ * こと自体は `スマッシュ判定のステップが変わった` が言っている。
  */
 function beginRecoveryStep(state: DuelState, judgment: SmashJudgment): DuelState {
-  const recovered = recoverDamage(state, judgment.player, judgment.repeats * SMASH_JUDGMENT_DAMAGE)
-  return withJudgment(recovered, judgment)
+  const { player } = judgment
+  const recovered = recoverDamage(state, player, judgment.repeats * SMASH_JUDGMENT_DAMAGE)
+  const amount = state.damage[player] - recovered.damage[player]
+  const applied = withJudgment(recovered, judgment)
+  if (amount === 0) return applied
+
+  return record(applied, { kind: 'ダメージを回復した', player, amount }, state)
 }
 
 /**

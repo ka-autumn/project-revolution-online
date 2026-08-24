@@ -378,6 +378,11 @@ function mapEventCards(event: DuelEvent, map: CardMapping): DuelEvent {
       return { ...event, card: map(event.card) }
     case 'プランをめくった':
       return { ...event, card: map(event.card), discarded: map(event.discarded) }
+    // 落とすのは名指しだけで、枚数（`count`）はそのまま残る（`log.ts` の `リリースした`）。
+    case 'リリースした':
+      return { ...event, cards: event.cards.flatMap((card) => mapped(map(card))) }
+    case 'カードを引いた':
+      return { ...event, card: map(event.card) }
     // 進行そのもののできごと（#133）はカードを名指ししない。フェイズもステップも誰の
     // スマッシュ判定かも公開情報である（総合ルール 第2部 第23章 1-1）。
     case '進行が変わった':
@@ -390,6 +395,10 @@ function mapEventCards(event: DuelEvent, map: CardMapping): DuelEvent {
     case 'スマッシュ判定が戻った':
     case '希望ステップでめくった':
     case 'ダメージを受けた':
+    // リリース以外の自動で行われる処理（#157）はカードを名指ししない。ダメージの除去も
+    // 回復も、量が公開情報である（総合ルール 第2部 第23章 1-1）だけである。
+    case 'ダメージが取り除かれた':
+    case 'ダメージを回復した':
     case '決着した':
       return event
   }
@@ -404,9 +413,13 @@ function mapped<T>(value: T | undefined): readonly T[] {
  * 命令 1 つが名指ししているカードに、同じ手当てをする。
  *
  * カードを指すところの名前が `card` に揃えてある（`log.ts` の `LoggedInstruction`）ので、
- * 命令の種類ごとに書き分ける必要が無い。
+ * 命令の種類ごとに書き分ける必要が無い。何枚かをまとめて指すものだけが `cards` を持ち、
+ * そちらは名指しだけが減って枚数（`count`）は残る（同 `カードを引く`）。
  */
 function mapInstructionCard(instruction: LoggedInstruction, map: CardMapping): LoggedInstruction {
+  if ('cards' in instruction) {
+    return { ...instruction, cards: instruction.cards.flatMap((card) => mapped(map(card))) }
+  }
   return 'card' in instruction ? { ...instruction, card: map(instruction.card) } : instruction
 }
 

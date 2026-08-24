@@ -632,3 +632,114 @@ describe('放棄したら何が起きるか', () => {
     }
   })
 })
+
+/**
+ * フェイズの始めに自動で行われる処理が積まれること（#157）。
+ *
+ * 盤面は変わっているのに、何が起きて変わったのかがログのどこにも無い、という状態を
+ * 直したもの。**行われた時だけ積む**——リリースするカードが無いフェイズに「リリースした」
+ * とは書かない。フェイズがあったこと自体は `進行が変わった`（#133）が言っている。
+ */
+describe('自動で行われる処理の記録', () => {
+  const someSquare: Square = { row: 2, column: 1 }
+  const testUnit = defineUnit({ name: 'テスト・自動処理', level: 1, bp: 1000, sp: 1000 })
+
+  /** その盤面に積まれた、その種類のできごとだけを起きた順に取り出す。 */
+  function eventsOf<K extends DuelEvent['kind']>(state: DuelState, kind: K): readonly Extract<DuelEvent, { kind: K }>[] {
+    return state.log
+      .map(({ event }) => event)
+      .filter((event): event is Extract<DuelEvent, { kind: K }> => event.kind === kind)
+  }
+
+  /** その盤面から先で新しく積まれた分だけ。それ以前のターンで積まれた分を数に入れないため。 */
+  function since<K extends DuelEvent['kind']>(
+    before: DuelState,
+    after: DuelState,
+    kind: K,
+  ): readonly Extract<DuelEvent, { kind: K }>[] {
+    return eventsOf(after, kind).slice(eventsOf(before, kind).length)
+  }
+
+  /** そのフェイズが始まったところまで進めた盤面。 */
+  function phaseOf(state: DuelState, phase: Phase): DuelState {
+    let current = state
+    while (current.turn.phase !== phase) current = endPhase(current)
+    return current
+  }
+
+  // 総合ルール 第3部 第5章 1
+  describe('リリースフェイズのリリース', () => {
+    /** 先攻が支配する、スクエアとエネルギーゾーンのフリーズ状態のカードを置いた盤面。 */
+    function withFrozen(state: DuelState): DuelState {
+      const onSquare = instantiate({ id: '先攻のスクエア', card: testUnit, owner: '先攻', orientation: 'フリーズ' })
+      const energy = instantiate({ id: '先攻のエネルギー', card: testUnit, owner: '先攻', orientation: 'フリーズ' })
+      return putInZone(putOnSquare(state, someSquare, onSquare), '先攻', 'エネルギーゾーン', [energy])
+    }
+
+    it('リリースされたカードが積まれる', () => {
+      // 先攻の第 1 ターンにフリーズ状態で置き、先攻の次のターン（第 3 ターン）の
+      // リリースフェイズまで進める。
+      const frozen = withFrozen(startedDuel())
+      const turn3 = turnNumbered(frozen, 3)
+
+      expect(since(frozen, turn3, 'リリースした')).toEqual([
+        { kind: 'リリースした', player: '先攻', count: 2, cards: ['先攻のエネルギー', '先攻のスクエア'] },
+      ])
+    })
+
+    it('リリースするカードが無ければ、何も積まれない', () => {
+      const started = startedDuel()
+
+      // 開始直後の盤面にはフリーズ状態のカードが 1 枚も無い。
+      expect(eventsOf(turnNumbered(started, 3), 'リリースした')).toEqual([])
+    })
+  })
+
+  // 総合ルール 第3部 第6章 1-1
+  describe('ドローフェイズのドロー', () => {
+    it('引いたカードが積まれる', () => {
+      // 先攻の第 1 ターンはドローフェイズをとばす（総合ルール 第3部 第6章 1-2）ので、
+      // 後攻の第 2 ターンで見る。
+      const turn2 = turnNumbered(startedDuel(), 2)
+      const top = cardsIn(turn2, '後攻', '山札')[0]
+      const drawPhase = phaseOf(turn2, 'ドローフェイズ')
+
+      expect(since(turn2, drawPhase, 'カードを引いた')).toEqual([
+        { kind: 'カードを引いた', player: '後攻', card: top?.id },
+      ])
+    })
+
+    /**
+     * とばされたフェイズでは引かないので、何も積まれない（総合ルール 第3部 第6章 1-2）。
+     *
+     * 山札が空で引けない場合もここへは来ない。山札が 0 枚になったプレイヤーは次に優先権が
+     * 発生した時に敗北する（同 第3章 2）ので、そのドローフェイズより前に決着している。
+     */
+    it('とばされたドローフェイズでは、何も積まれない', () => {
+      const turn1 = startedDuel()
+
+      // 先攻の第 1 ターンはドローフェイズをとばす。最後のフェイズまで来ても引いていない。
+      expect(since(turn1, phaseOf(turn1, 'リカバリーフェイズ'), 'カードを引いた')).toEqual([])
+    })
+  })
+
+  // 総合ルール 第3部 第10章 1
+  describe('リカバリーフェイズのダメージの除去', () => {
+    it('ダメージが取り除かれたことが積まれる', () => {
+      // ＢＰ1000 のユニットにＢＰ未満のダメージを与える。ＢＰと同じかそれ以上のダメージを
+      // 受けたユニットは、その前に捨札に置かれてしまう（総合ルール 第4部 第14章 4-6）。
+      const unit = instantiate({ id: '傷ついたユニット', card: testUnit, owner: '先攻' })
+      const damaged = dealDamage(putOnSquare(startedDuel(), someSquare, unit), '傷ついたユニット', 999)
+
+      expect(since(damaged, phaseOf(damaged, 'リカバリーフェイズ'), 'ダメージが取り除かれた')).toEqual([
+        { kind: 'ダメージが取り除かれた' },
+      ])
+    })
+
+    it('どこにもダメージが無ければ、何も積まれない', () => {
+      const started = startedDuel()
+
+      expect(eventsOf(phaseOf(started, 'リカバリーフェイズ'), 'ダメージが取り除かれた')).toEqual([])
+    })
+  })
+})

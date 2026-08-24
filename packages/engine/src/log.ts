@@ -177,6 +177,51 @@ export type DuelEvent =
    * （`setup.ts` の `prepareDuel`、総合ルール 第3部 第2章）。そこには「前」が無い。
    */
   | { readonly kind: '進行が変わった'; readonly from: Progress | undefined; readonly to: Progress }
+  /**
+   * リリースフェイズの始めに、フリーズ状態のカードをすべてリリースした（総合ルール 第3部
+   * 第5章 1、#157）。
+   *
+   * **枚数と名指しを別に持つ。** 何枚リリースされたかは向きから読める公開情報（同 第2部
+   * 第23章 1-1）だが、どのカードかはそうではない——スマッシュゾーンのカードは裏向きで
+   * 持ち主からも見られない（同 第21章 7-3）。射影が減らすのは `cards` だけで、`count` は
+   * そのまま残る（`perspective.ts` の `mapEventCards`）。
+   *
+   * 並びに `undefined` を混ぜて長さで枚数を表すことはできない。**通信は JSON を通る**
+   * （`wire.ts`）ので、並びの中の `undefined` は `null` に変わってしまう。落ちうるものは
+   * 並びから外して数えるほうに持つ。
+   *
+   * リリースするものが無いフェイズでは積まない。行われなかった処理を「行われなかった」と
+   * 書く場所ではないためで、フェイズがあったこと自体は `進行が変わった` が言っている。
+   */
+  | {
+      readonly kind: 'リリースした'
+      readonly player: Player
+      readonly count: number
+      readonly cards: readonly CardId[]
+    }
+  /**
+   * ドローフェイズの始めに、カードを 1 枚引いた（総合ルール 第3部 第6章 1-1、#157）。
+   *
+   * `card` が `undefined` なのは、引いたカードが**そのプレイヤーから見えていなかった**時
+   * だけである。山札が空で引けなかった時はこのできごと自体が積まれない。
+   */
+  | { readonly kind: 'カードを引いた'; readonly player: Player; readonly card: CardId | undefined }
+  /**
+   * リカバリーフェイズの始めに、すべてのカードとすべてのプレイヤーからダメージが取り除かれた
+   * （総合ルール 第3部 第10章 1、#157）。
+   *
+   * **誰のできごとでもない。** 両者のカードとプレイヤーからまとめて取り除かれるので、
+   * プレイヤーを持たない。どこにもダメージが無ければ積まない。
+   */
+  | { readonly kind: 'ダメージが取り除かれた' }
+  /**
+   * 回復ステップで、プレイヤーが受けたダメージを回復した（総合ルール 第3部 第18章 1、#157）。
+   *
+   * `amount` は**実際に減った量**である。回復量は希望ステップの回数から決まる（同）が、
+   * 受けているダメージより多く回復することはないので、そのまま持つと減っていない分まで
+   * 数えてしまう。0 になるなら積まない。
+   */
+  | { readonly kind: 'ダメージを回復した'; readonly player: Player; readonly amount: number }
   /** バトルが発生した（総合ルール 第3部 第11章 1）。 */
   | {
       readonly kind: 'バトルが始まった'
@@ -285,7 +330,22 @@ export type LoggedInstruction =
   | { readonly kind: 'スクエアへ置く'; readonly card: CardId | undefined; readonly square: Square }
   | { readonly kind: '誘発型能力を作る'; readonly card: CardId | undefined }
   | { readonly kind: 'プランを裏返す'; readonly player: Player }
-  | { readonly kind: 'カードを引く'; readonly player: Player; readonly count: number }
+  /**
+   * 効果がカードを引かせた（総合ルール 第2部 第21章 1-5）。
+   *
+   * **命令に書かれた枚数ではなく、実際に引けたカードを持つ。** 山札が足りなければ引ける分
+   * だけ引いて効果は続く（同 第1部 第1章 3）ので、書かれた枚数では起きたことと食い違う。
+   *
+   * 名前を落とすかどうかは射影に任せるが、枚数は落とさない。手札の枚数は公開情報である
+   * （同 第2部 第23章 1-1）ため、枚数と名指しを別に持つ（`DuelEvent` の `リリースした` と
+   * 同じ形）。
+   */
+  | {
+      readonly kind: 'カードを引く'
+      readonly player: Player
+      readonly count: number
+      readonly cards: readonly CardId[]
+    }
 
 /**
  * そのできごとが名指しするカードのうち、そのプレイヤーから表側が見えていたもの（#129）。
@@ -375,6 +435,25 @@ export function cardIdOf(candidate: unknown): CardId | undefined {
 }
 
 /**
+ * 実際に触れたものが何枚かのカードだったとき、その識別子。カードでなければ空。
+ *
+ * `cardIdOf` の複数版である。**枚数を数えるのには使えない。** 積んだ後で名指しが落ちる
+ * （`perspective.ts`）ため、枚数は別に持たなければならない（`LoggedInstruction` の
+ * `カードを引く`）。
+ *
+ * 盤面にあるカードを数え上げる `invariant.ts` の `cardIdsOf` とは別物なので、名前を
+ * 分けている。こちらが見るのは、命令 1 つが触れたものだけである。
+ */
+function subjectCardIds(subject: unknown): readonly CardId[] {
+  if (!Array.isArray(subject)) return []
+
+  return subject.flatMap((one) => {
+    const id = cardIdOf(one)
+    return id === undefined ? [] : [id]
+  })
+}
+
+/**
  * 候補や、選ばれたものがスクエアであるとき、そのスクエア。カードなら `undefined`。
  *
  * 効果が置き先を選ばせる場合、候補として並ぶのはスクエアそのものである（`board.ts` の
@@ -426,7 +505,11 @@ export function loggedInstruction(instruction: Instruction, subject: unknown): L
       return { kind: '誘発型能力を作る', card: instruction.affecting.id }
     case 'プランを裏返す':
       return { kind: 'プランを裏返す', player: instruction.player }
-    case 'カードを引く':
-      return { kind: 'カードを引く', player: instruction.player, count: instruction.count }
+    case 'カードを引く': {
+      // どのカードが引かれたかは命令に書かれていない（枚数で指定されている）。積む時点では
+      // まだ何も落ちていないので、引けた枚数はここで数えられる。
+      const cards = subjectCardIds(subject)
+      return { kind: 'カードを引く', player: instruction.player, count: cards.length, cards }
+    }
   }
 }

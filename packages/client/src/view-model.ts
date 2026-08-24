@@ -868,6 +868,19 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         return { whose: whose(event.controller), text: instructionLine(event.instruction, board, named, whose) }
       case 'ダメージを受けた':
         return { whose: whose(event.player), text: `ダメージ ${event.amount} を受けた` }
+      // フェイズやステップの始めに自動で行われる処理（#157）。**行われた時しか届かない**
+      // ので、「行われなかった」を言い分ける必要はここに無い（`log.ts` の `リリースした`）。
+      case 'リリースした':
+        return { whose: whose(event.player), text: `リリース：${cardsLabel(event.count, event.cards, named)}` }
+      case 'カードを引いた': {
+        const name = named(event.card)
+        return { whose: whose(event.player), text: `カードを引いた${name === undefined ? '' : `：${name}`}` }
+      }
+      // 両者のカードとプレイヤーからまとめて取り除かれるので、誰のものでもない。
+      case 'ダメージが取り除かれた':
+        return { whose: undefined, text: 'ダメージが取り除かれた' }
+      case 'ダメージを回復した':
+        return { whose: whose(event.player), text: `ダメージ ${event.amount} を回復した` }
       case 'バトルが始まった': {
         const where = squareLabel(board.viewer, event.square)
         const units = [named(event.attacker), named(event.attacked)].filter((name) => name !== undefined)
@@ -1080,8 +1093,30 @@ function instructionLine(
     case 'プランを裏返す':
       return `${whose(instruction.player)}のプランを裏返した`
     case 'カードを引く':
-      return `${whose(instruction.player)}が ${instruction.count} 枚引いた`
+      return `${whose(instruction.player)}が引いた：${cardsLabel(instruction.count, instruction.cards, named)}`
   }
+}
+
+/**
+ * 何枚かのカードをまとめて指す文言（#157）。
+ *
+ * **名前が落ちても枚数は言う。** 名指しできないカードは射影が落としているが、何枚だったか
+ * は落ちていない（`log.ts` の `リリースした`）ので、そこを黙ると届いているものより少なく
+ * 見せることになる。名前が 1 つも分からなければ枚数だけで言う。
+ */
+function cardsLabel(
+  count: number,
+  cards: readonly CardId[],
+  named: (card: CardId | undefined) => string | undefined,
+): string {
+  const names = cards.flatMap((card) => {
+    const name = named(card)
+    return name === undefined ? [] : [name]
+  })
+  const hidden = count - names.length
+  if (names.length === 0) return `${hidden} 枚`
+
+  return hidden <= 0 ? names.join('・') : `${names.join('・')} ほか ${hidden} 枚`
 }
 
 /**

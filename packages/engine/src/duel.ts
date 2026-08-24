@@ -874,11 +874,29 @@ export function setOrientationOnSquare(state: DuelState, id: CardId, orientation
  * 支配者を持ち主へ戻すため）。スクエアは両者のカードが混在するので、支配者で選ぶ。
  */
 export function releaseAll(state: DuelState, player: Player): DuelState {
-  const released = (['エネルギーゾーン', 'スマッシュゾーン', 'トラップゾーン'] as const).reduce(
-    (current, zone) => releaseZone(current, player, zone),
-    state,
-  )
+  const released = RELEASABLE_ZONES.reduce((current, zone) => releaseZone(current, player, zone), state)
   return releaseSquares(released, player)
+}
+
+/** 向きを持つカードが置かれる、プレイヤーごとのゾーン（総合ルール 第2部 第24章 1）。 */
+const RELEASABLE_ZONES = ['エネルギーゾーン', 'スマッシュゾーン', 'トラップゾーン'] as const
+
+/**
+ * `releaseAll` がリリースすることになるカード。リリースするものが無ければ空。
+ *
+ * **リリースしたことをログに残す側（`progress.ts`）のために分けてある。** リリースは向きを
+ * 変えるだけなので、盤面を後から見比べても「どれが変わったか」は読めない。かといって
+ * `releaseAll` に「何を変えたか」を返させると、盤面を返すだけという他の関数と形が揃わなく
+ * なるため、リリースする対象の決め方だけをここに置いて両方から通す。
+ */
+export function frozenCardsOf(state: DuelState, player: Player): readonly CardId[] {
+  const inZones = RELEASABLE_ZONES.flatMap((zone) =>
+    cardsIn(state, player, zone).filter((card) => card.orientation === 'フリーズ'),
+  )
+  const onSquares = state.squares.flatMap((cards) =>
+    cards.filter((card) => card.controller === player && card.orientation === 'フリーズ'),
+  )
+  return [...inZones, ...onSquares].map((card) => card.id)
 }
 
 /** そのプレイヤーのそのゾーンにあるフリーズ状態のカードをすべてリリースする。 */
