@@ -4,7 +4,6 @@ import type {
   PassOutcome,
   Player,
   ToClient,
-  Turn,
   WireChoice,
   WirePerspective,
 } from '@revolution/engine'
@@ -49,12 +48,6 @@ export type Stage =
        * 中身を見比べてはならない。長さで切る。
        */
       readonly fresh: readonly LoggedEvent[]
-      /**
-       * 1 つ前の盤面でのターン（#96）。フェイズ・ターンが変わったことを知らせる演出
-       * （`view-model.ts` の `transitionViews`）が、比べる相手として使う。最初の盤面と
-       * 入り直しでは `undefined`——比べる相手が無いので、何も変わったことにしない。
-       */
-      readonly previousTurn: Turn | undefined
     }
 
 /**
@@ -108,7 +101,6 @@ export function applyMessage(session: Session, message: ToClient): Session {
           passOutcome: undefined,
           choice: undefined,
           fresh: [],
-          previousTurn: undefined,
         },
         refusal: undefined,
       }
@@ -126,7 +118,6 @@ export function applyMessage(session: Session, message: ToClient): Session {
           passOutcome: message.passOutcome,
           choice: undefined,
           fresh,
-          previousTurn: stage.board?.turn,
         },
         refusal: undefined,
       }
