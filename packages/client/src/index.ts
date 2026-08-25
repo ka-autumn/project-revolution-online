@@ -341,7 +341,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     lastFresh = stage.fresh
     if (stage.board === undefined) return
 
-    const transitions = transitionViews(stage.previousTurn, stage.board)
+    const transitions = transitionViews(stage.fresh, stage.board)
     const cutIns = cutInViews(stage.board, stage.fresh)
     if (transitions.length === 0 && cutIns.length === 0) return
 

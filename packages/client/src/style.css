@@ -517,6 +517,11 @@ body {
  * 上に重ねて出す。**押せる場所は塞がない**（`pointer-events: none`）。`index.ts` が毎回
  * 作り直すので、`animation` も `transition` プロパティもここには置かない。無関係な再描画
  * （`選んでほしい` の到着など）で走り直してちらつく。
+ *
+ * **画面の真ん中に出す。** 上端に出していた頃は、操作するところ（`.controls`）に重なる位置で、
+ * 手札を見ている間は視線の外だった。覆われていたわけではない（この層が一番上に立っている）が、
+ * 見落とされる。出ている時間は短い（`view-model.ts` の `overlayDurationMs`）ので、見る場所を
+ * 探させない。
  */
 .overlay-layer {
   position: fixed;
@@ -525,8 +530,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: var(--gap);
-  padding-top: calc(var(--gap) * 4);
   pointer-events: none;
 }
 

@@ -20,7 +20,6 @@ import type {
   SmashJudgmentStep,
   Square,
   SquareIndex,
-  Turn,
   WireCardFace,
   WireCardInstance,
   WireCardPosition,
@@ -1213,26 +1212,39 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
 }
 
 /**
- * 前後のターンを比べて、フェイズ・ターンが変わったことを知らせる演出を作る（#96）。
+ * フェイズ・ターンが変わったことを知らせる演出を作る（#96、#155）。
  *
- * **通信の形式は変えない。** `turn.phase`・`turn.number`・`turn.active`（`WirePerspective.turn`）
- * を比べるだけで分かる。`previousTurn` は比べる相手が無ければ `undefined`（最初の盤面・
- * 入り直し、`session.ts`）で、その時は何も変わったことにしない。
+ * **変わり目を数えるのはエンジンである。** 積まれた `進行が変わった`（`log.ts`、#133）を
+ * そのまま材料にする。前後の盤面を比べ直すと、同じことを 2 通りに数えることになり、片方だけ
+ * 直せば食い違う。
+ *
+ * **変わり目 1 つにつき出す。** 自動で進むフェイズ（#157）がまとまって届いた場合、その数だけ
+ * 見出しが並ぶ。差し引きの結果ではなく、起きた変わり目をそのまま見せる。
  *
  * **ターンが変わる時は必ずフェイズも最初のフェイズに変わる**（`turn.ts` の `beginPhase`）。
- * 両方変わっていれば両方を出す——ターンの案内だけでは、どのフェイズから始まったかが
- * 分からない。
+ * 両方変わっていれば 1 つの変わり目から 2 枚作る——ターンの案内だけでは、どのフェイズから
+ * 始まったかが分からない。できごと 1 件を 2 行に割るログ（`logLines` の `progressLines`）と
+ * 同じ形である。**何枚で見せるかを決めるのはここである。**
+ *
+ * デュエルが始まって最初のターンに入った時は `from` が `undefined` で（`setup.ts`）、そこには
+ * 「前」が無いので何も出さない。もっとも、最初の盤面と入り直しでは `fresh` が空になる
+ * （`session.ts`、ADR-0009）ので、そこへ届くことは普通は無い。
  */
-export function transitionViews(previousTurn: Turn | undefined, board: WirePerspective): readonly TransitionView[] {
-  if (previousTurn === undefined) return []
-  const turn = board.turn
-
+export function transitionViews(fresh: readonly LoggedEvent[], board: WirePerspective): readonly TransitionView[] {
   const views: TransitionView[] = []
-  if (previousTurn.number !== turn.number || previousTurn.active !== turn.active) {
-    views.push({ heading: `第 ${turn.number} ターン：${whoseOf(board, turn.active)}のターン` })
-  }
-  if (previousTurn.phase !== turn.phase) {
-    views.push({ heading: turn.phase })
+
+  for (const { event } of fresh) {
+    if (event.kind !== '進行が変わった') continue
+
+    const { from, to } = event
+    if (from === undefined) continue
+
+    if (from.turn !== to.turn || from.active !== to.active) {
+      views.push({ heading: `第 ${to.turn} ターン：${whoseOf(board, to.active)}のターン` })
+    }
+    if (from.phase !== to.phase) {
+      views.push({ heading: to.phase })
+    }
   }
 
   return views

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { indexOfSquare } from '@revolution/engine'
 import type {
   DuelEvent,
+  LoggedEvent,
   Player,
   PlayerZone,
   Procedure,
@@ -1446,56 +1447,81 @@ describe('カットイン', () => {
 })
 
 /**
- * フェイズ・ターンの切り替わり（#96）。
+ * フェイズ・ターンの切り替わり（#96、#155）。
  *
- * 通信の形式は変えず、前後の盤面で `turn` を比べるだけで作れることを見る。ターンが変わる
- * 時は必ずフェイズも変わる（`turn.ts` の `beginPhase`）ので、両方出ることも確かめる。
+ * **材料は積まれた `進行が変わった` である。** 前後の盤面を比べ直さない——変わり目を数えるのは
+ * エンジンで、ここはそれを何枚の見出しにするかだけを決める。ターンが変わる時は必ずフェイズも
+ * 変わる（`turn.ts` の `beginPhase`）ので、1 件から 2 枚出ることも確かめる。
  */
 describe('フェイズ・ターンの切り替わり', () => {
   const board = emptyBoard('先攻')
+  const start: Progress = { turn: 1, active: '先攻', phase: 'ドローフェイズ' }
 
-  it('比べる相手がいなければ、何も出ない', () => {
-    expect(transitionViews(undefined, board)).toEqual([])
+  /** 変わり目 1 つ分のできごと。 */
+  function moved(from: Progress | undefined, to: Progress): readonly LoggedEvent[] {
+    return logged([{ kind: '進行が変わった', from, to }])
+  }
+
+  it('新しく届いたできごとが無ければ、何も出ない', () => {
+    expect(transitionViews([], board)).toEqual([])
   })
 
-  it('ターンもフェイズも変わっていなければ、何も出ない', () => {
-    expect(transitionViews(board.turn, board)).toEqual([])
+  it('進行が変わっていなければ、何も出ない', () => {
+    expect(transitionViews(logged([{ kind: 'カードを引いた', player: '先攻', card: undefined }]), board)).toEqual([])
   })
 
   it('フェイズだけ変わっていれば、フェイズの見出しだけ出る', () => {
-    const changed: WirePerspective = { ...board, turn: { ...board.turn, phase: 'スマッシュフェイズ' } }
+    const views = transitionViews(moved(start, { ...start, phase: 'スマッシュフェイズ' }), board)
 
-    expect(transitionViews(board.turn, changed)).toEqual([{ heading: 'スマッシュフェイズ' }])
+    expect(views).toEqual([{ heading: 'スマッシュフェイズ' }])
   })
 
   it('ターン数だけ変わっていれば、ターンの見出しだけ出る', () => {
-    const changed: WirePerspective = { ...board, turn: { ...board.turn, number: 2 } }
-
-    expect(transitionViews(board.turn, changed)).toEqual([{ heading: '第 2 ターン：自分のターン' }])
+    expect(transitionViews(moved(start, { ...start, turn: 2 }), board)).toEqual([
+      { heading: '第 2 ターン：自分のターン' },
+    ])
   })
 
   it('手番が変わっていれば、ターン数が同じでもターンの見出しが出る', () => {
-    const changed: WirePerspective = { ...board, turn: { ...board.turn, active: '後攻' } }
-
-    expect(transitionViews(board.turn, changed)).toEqual([{ heading: '第 1 ターン：相手のターン' }])
+    expect(transitionViews(moved(start, { ...start, active: '後攻' }), board)).toEqual([
+      { heading: '第 1 ターン：相手のターン' },
+    ])
   })
 
   it('見る人から見た手番の呼び方になる', () => {
     const opponentView = emptyBoard('後攻')
-    const changed: WirePerspective = { ...opponentView, turn: { ...opponentView.turn, active: '先攻', number: 2 } }
+    const views = transitionViews(moved(start, { ...start, turn: 2, active: '先攻' }), opponentView)
 
-    expect(transitionViews(opponentView.turn, changed)).toEqual([{ heading: '第 2 ターン：相手のターン' }])
+    expect(views).toEqual([{ heading: '第 2 ターン：相手のターン' }])
   })
 
   /** 新しいターンは必ず最初のフェイズから始まる（`turn.ts` の `beginPhase`）。 */
-  it('ターンが変わる時は、フェイズの見出しも一緒に出る', () => {
-    const nextTurn: Turn = { ...board.turn, number: 2, active: '後攻', phase: 'リリースフェイズ' }
-    const changed: WirePerspective = { ...board, turn: nextTurn }
+  it('ターンが変わる時は、1 件のできごとからフェイズの見出しも一緒に出る', () => {
+    const views = transitionViews(moved(start, { turn: 2, active: '後攻', phase: 'リリースフェイズ' }), board)
 
-    expect(transitionViews(board.turn, changed)).toEqual([
-      { heading: '第 2 ターン：相手のターン' },
-      { heading: 'リリースフェイズ' },
-    ])
+    expect(views).toEqual([{ heading: '第 2 ターン：相手のターン' }, { heading: 'リリースフェイズ' }])
+  })
+
+  /**
+   * 自動で進むフェイズ（#157）は、1 回の行動でまとめて届く。**差し引きの結果ではなく、起きた
+   * 変わり目をそのまま出す。**
+   */
+  it('変わり目がいくつも届けば、その数だけ出る', () => {
+    const views = transitionViews(
+      logged([
+        { kind: '進行が変わった', from: start, to: { ...start, phase: 'エネルギーフェイズ' } },
+        { kind: 'カードを引いた', player: '先攻', card: undefined },
+        { kind: '進行が変わった', from: { ...start, phase: 'エネルギーフェイズ' }, to: { ...start, phase: 'メインフェイズ' } },
+      ]),
+      board,
+    )
+
+    expect(views).toEqual([{ heading: 'エネルギーフェイズ' }, { heading: 'メインフェイズ' }])
+  })
+
+  /** デュエルの始まりには「前」が無い（`setup.ts` の `prepareDuel`）。 */
+  it('移ってくる元が無ければ、何も出ない', () => {
+    expect(transitionViews(moved(undefined, start), board)).toEqual([])
   })
 })
 

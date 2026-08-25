@@ -188,59 +188,6 @@ describe('この盤面で新しく届いたできごと', () => {
   })
 })
 
-/**
- * 1 つ前の盤面でのターン（#96）。フェイズ・ターンが変わったことを知らせる演出
- * （`view-model.ts` の `transitionViews`）が比べる相手にする。
- */
-describe('1 つ前の盤面でのターン', () => {
-  it('最初の盤面には、比べる相手がいない', () => {
-    const stage = fold(SEATED, { kind: '盤面', perspective: board(1), actions: [], passOutcome: undefined }).stage
-    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
-
-    expect(stage.previousTurn).toBeUndefined()
-  })
-
-  it('次の盤面が届いたら、1 つ前の盤面のターンを覚える', () => {
-    const stage = fold(
-      SEATED,
-      { kind: '盤面', perspective: board(1), actions: [], passOutcome: undefined },
-      { kind: '盤面', perspective: board(2), actions: [], passOutcome: undefined },
-    ).stage
-    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
-
-    expect(stage.previousTurn).toEqual(board(1).turn)
-  })
-
-  // ADR-0009。入り直しても最初の盤面から届くので、それまでのターンを比べ相手にしてはならない。
-  it('入り直して席についたら、比べる相手は無くなる', () => {
-    const played = fold(
-      SEATED,
-      { kind: '盤面', perspective: board(1), actions: [], passOutcome: undefined },
-      { kind: '盤面', perspective: board(2), actions: [], passOutcome: undefined },
-    )
-    const stage = applyMessage(played, SEATED).stage
-    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
-
-    expect(stage.previousTurn).toBeUndefined()
-  })
-
-  it('選んでほしいが届いても、比べる相手は変わらない', () => {
-    const acting = fold(
-      SEATED,
-      { kind: '盤面', perspective: board(1), actions: [], passOutcome: undefined },
-      { kind: '盤面', perspective: board(2), actions: [], passOutcome: undefined },
-    )
-
-    const stage = applyMessage(acting, {
-      kind: '選んでほしい',
-      choice: { player: '先攻', purpose: '効果の対象', mayDecline: false, answered: 0, mayGoBack: true, candidates: [] },
-    }).stage
-    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
-
-    expect(stage.previousTurn).toEqual(board(1).turn)
-  })
-})
-
 describe('断られたこと', () => {
   it('断られた理由を覚える', () => {
     expect(fold(SEATED, { kind: '行えなかった', reason: '優先権が無い' }).refusal).toBe('優先権が無い')
