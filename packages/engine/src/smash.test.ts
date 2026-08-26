@@ -14,6 +14,7 @@ import {
   hope,
   instantiate,
   passPriority,
+  placeOnSquare,
   putOnSquare,
   smash,
   smashesOf,
@@ -645,6 +646,96 @@ describe('スマッシュ判定中のスマッシュ判定', () => {
     const inner = nested.log.find(
       ({ event }) => event.kind === 'スマッシュ判定が始まった' && event.player === '先攻',
     )
+
+    expect(inner?.during).toEqual([{ kind: 'スマッシュ判定', player: '後攻' }])
+  })
+})
+
+// 総合ルール 第3部 第17章 2-1（#167、ADR-0006）
+describe('スマッシュ判定中のバトル', () => {
+  /** 「希望」で、捨札にあるユニットを 1 枚選び、指定したスクエアに置く、レベル 1 の赤いカード。 */
+  const battlingHope = defineUnit({
+    name: 'テスト・希望バトル',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      hope(function* (duel) {
+        const [card] = duel.discardPile()
+        if (card !== undefined) yield* placeOnSquare(card, anotherCenterSquare, 'リリース')
+      }),
+    ],
+  })
+
+  /**
+   * 後攻のスマッシュ判定の希望ステップでめくれた「希望」が、後攻の捨札にあったユニットを、
+   * 先攻のユニットがすでにいるスクエアへ置いて、判定中に新しいバトルを起こした盤面。
+   *
+   * 総合ルール 第3部 第17章 2-1 の形——スマッシュ判定中にバトルが発生し、判定は待機中に
+   * なって、バトルを先に処理する——である。判定の最中にスマッシュはできない（ADR-0012）
+   * ので、`スマッシュ判定中のスマッシュ判定` と同じく、判定の中で解決される効果（今回は
+   * ダメージではなくスクエアへの配置）から起こる。
+   */
+  function battleInJudgment(): DuelState {
+    const smashed = withEnergy(smashedFromCenter(sp1000, [battlingHope]), [vanilla])
+    const withDiscard = putInZone(smashed, '後攻', '捨札', [
+      instantiate({ id: '捨札のユニット', card: vanilla, owner: '後攻' }),
+    ])
+    const withEnemy = putOnSquare(
+      withDiscard,
+      anotherCenterSquare,
+      instantiate({ id: '先に置かれた敵', card: vanilla, owner: '先攻' }),
+    )
+    return endStep(withEnemy)
+  }
+
+  /** バトルの、進行中のステップが終わるまで、両方が優先権を放棄し続けた盤面。 */
+  function endBattleStep(state: DuelState): DuelState {
+    const before = state.battles.at(-1)?.step
+    let current = state
+    while (current.battles.at(-1)?.step === before) current = pass(current)
+    return current
+  }
+
+  it('バトルが発生し、判定は待機中のまま残る', () => {
+    const state = battleInJudgment()
+
+    expect(state.battles).toHaveLength(1)
+    expect(state.battles[0]?.square).toEqual(anotherCenterSquare)
+    expect(state.battles[0]?.step).toBe('第１バトルステップ')
+    expect(state.smashJudgments).toHaveLength(1)
+    expect(state.smashJudgments[0]?.step).toBe('希望ステップ')
+  })
+
+  // 総合ルール 第3部 第17章 2-1: 待機中のスマッシュ判定を解決する前に、バトルを処理する。
+  it('待機中の判定ではなく、バトルのステップが進む', () => {
+    const state = battleInJudgment()
+
+    const next = endBattleStep(state)
+
+    expect(next.battles[0]?.step).toBe('第１ダメージステップ')
+    // 判定は待機中のまま、希望ステップから進んでいない。
+    expect(next.smashJudgments[0]?.step).toBe('希望ステップ')
+  })
+
+  it('バトルが終わると、待機中だった判定が残りの手順を処理する', () => {
+    let current = battleInJudgment()
+    while (current.battles.length > 0) current = endBattleStep(current)
+
+    expect(current.smashJudgments).toHaveLength(1)
+    expect(stepOf(current)).toBe('希望ステップ')
+    expect(stepOf(endStep(current))).toBe('確定ステップ')
+  })
+
+  /**
+   * #133。入れ子になったバトルは、待機させた判定より 1 つ深いところに積まれる
+   * （`log.ts` の `LoggedEvent.during`）。`入れ子になった判定は、外側の判定より 1 つ深い
+   * ところに積まれる`（スマッシュ判定中のスマッシュ判定）と同じ形。
+   */
+  it('入れ子になったバトルは、外側の判定より 1 つ深いところに積まれる', () => {
+    const nested = battleInJudgment()
+    const inner = nested.log.find(({ event }) => event.kind === 'バトルが始まった')
 
     expect(inner?.during).toEqual([{ kind: 'スマッシュ判定', player: '後攻' }])
   })

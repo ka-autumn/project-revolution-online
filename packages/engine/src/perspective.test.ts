@@ -108,7 +108,16 @@ describe('視点ごとの盤面の射影', () => {
     const judging: DuelState = {
       ...state,
       smashJudgments: [
-        { player: '後攻', step: '希望ステップ', repeats: 1, round: 1, faceUp: faceUp.id, heldBank: [], heldTriggered: [] },
+        {
+          player: '後攻',
+          step: '希望ステップ',
+          repeats: 1,
+          round: 1,
+          faceUp: faceUp.id,
+          heldBank: [],
+          heldTriggered: [],
+          startedAt: 0,
+        },
       ],
     }
 
@@ -165,19 +174,22 @@ describe('解決を待っている能力', () => {
   it('バトルの待機中のバンクも同じ形になる', () => {
     const state: DuelState = {
       ...filledState(),
-      battle: {
-        square: INVADED,
-        attacker: INVADER.id,
-        attacked: INVADER.id,
-        step: '第１バトルステップ',
-        dealtDamage: [],
-        endOfBattleTriggered: false,
-              heldBank: [{ ability, source: INVADER.id, controller: '先攻', self: INVADER }],
-        heldTriggered: [],
-      },
+      battles: [
+        {
+          square: INVADED,
+          attacker: INVADER.id,
+          attacked: INVADER.id,
+          step: '第１バトルステップ',
+          dealtDamage: [],
+          endOfBattleTriggered: false,
+          heldBank: [{ ability, source: INVADER.id, controller: '先攻', self: INVADER }],
+          heldTriggered: [],
+          startedAt: 0,
+        },
+      ],
     }
 
-    expect(perspectiveOf(state, '先攻').battle?.heldBank).toEqual([{ controller: '先攻', source: INVADER.id }])
+    expect(perspectiveOf(state, '先攻').battles.at(-1)?.heldBank).toEqual([{ controller: '先攻', source: INVADER.id }])
   })
 })
 

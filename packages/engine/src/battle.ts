@@ -1,5 +1,5 @@
 import { triggerAttack, triggerBattleWin } from './bank.js'
-import { BATTLE_SPACE } from './board.js'
+import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
 import { bpOf, hasPep } from './card.js'
 import { bpModification } from './continuous.js'
@@ -76,6 +76,14 @@ export interface Battle {
    * 発生した時点で待機中のバンクと同じ扱いになる。同 2 の【例】がこれにあたる。
    */
   readonly heldTriggered: readonly BankedAbility[]
+  /**
+   * このバトルが始まった時点の `DuelState.log` の長さ。
+   *
+   * バトルとスマッシュ判定のどちらが後から始まったか（どちらを先に処理すべきか、総合ルール
+   * 第3部 第11章 2-2・第17章 2-1）を比べるためだけに持つ。ログは単調に伸びる
+   * （`log.ts` の `record`）ので、値が大きいほうが後から始まっている。
+   */
+  readonly startedAt: number
 }
 
 /** これから発生するバトルの、スクエアとそこで重なっている 2 つのユニット。 */
@@ -91,12 +99,17 @@ interface PendingBattle {
  * 支配者の異なる 2 つのユニットが重なっていて、バトルが発生するスクエアとそのユニット。
  * 重なっていなければ `undefined`（総合ルール 第4部 第14章 4-4）。
  *
- * すでにバトルが発生しているかどうかは見ない。中央エリアを指定してプレイされたユニットが
- * 捨札に置かれるのが今なのかバトル終了時なのか（同 4-9・4-10）を決めるのに、
- * `rule-effect.ts` もこれを使う。
+ * すでにそのスクエアでバトルが処理中なら見ない——バトルが終わるまで両方のユニットが
+ * そのスクエアに残り続ける（第3部 第11章 1-2）ので、見てしまうと同じ重なりを何度も
+ * 新しいバトルとして検出してしまう。処理中でない別のスクエアの重なりは、バトル中の
+ * バトル（同 2-1）として見る。
+ *
+ * 中央エリアを指定してプレイされたユニットが捨札に置かれるのが今なのかバトル終了時なのか
+ * （同 4-9・4-10）を決めるのに、`rule-effect.ts` もこれを使う。
  */
 export function pendingBattle(state: DuelState): PendingBattle | undefined {
   for (const square of BATTLE_SPACE) {
+    if (state.battles.some((battle) => indexOfSquare(battle.square) === indexOfSquare(square))) continue
     const units = opposingUnits(state, square)
     if (units !== undefined) return { square, ...units }
   }
@@ -113,15 +126,15 @@ export function pendingBattle(state: DuelState): PendingBattle | undefined {
  * 離れていれば、その時点でもう重なっていないので、ここでバトルは発生しない（同 4-4-2、
  * 第3部 第11章 1-1）。
  *
- * すでにバトルが進行中なら何もしない。バトル中に発生するバトル（同 第11章 2-1）は、
- * 効果でユニットをスクエアに置けるようになるまで起こらない（`duel.ts` の `battle`）。
+ * すでに処理中のバトルがあれば、それは「待機中のバトル」になる（同 2-1）。新しいバトルの
+ * バンクとバンクに入ることが予約されている能力を、このバトルが終わるまで待機させる。
+ * この後で誘発する能力は新しいバンクに入る。`smash.ts` の `startSmashJudgmentIfAny` と
+ * 同じ形。
  *
  * 優先権をここでは動かさない。ステップの始めに非アクティブプレイヤーが優先権を獲得する
  * （同 第12章 1）のは呼ぶ側の仕事である。
  */
 export function startBattleIfAny(state: DuelState): DuelState {
-  if (state.battle !== undefined) return state
-
   const pending = pendingBattle(state)
   if (pending === undefined) return state
 
@@ -132,21 +145,25 @@ export function startBattleIfAny(state: DuelState): DuelState {
     step: '第１バトルステップ',
     dealtDamage: [],
     endOfBattleTriggered: false,
-    // バンクとバンクに入ることが予約されている能力を、バトルが終わるまで待機させる
-    // （総合ルール 第3部 第11章 2）。この後で誘発する能力は新しいバンクに入る。
     heldBank: state.bank,
     heldTriggered: state.triggered,
+    startedAt: state.log.length,
   }
-  // バトルを盤面に載せる**前に**積む。そうすると、この行は自分自身のバトルの中には入らず、
-  // 手順の見出しとして外側に立つ（`log.ts` の `LoggedEvent.during`、#133）。
-  const begun = record(state, {
+
+  // バトルを並びに載せる**前に**積む。そうすると、この行は自分自身のバトルの中には入らず、
+  // 手順の見出しとして外側に立つ（`log.ts` の `LoggedEvent.during`、#133）。処理中のバトルが
+  // あれば、それはこのバトルが終わるまで待機中になる（同 2-1）。
+  const held = state.battles.at(-1)
+  const waiting = held === undefined ? state : record(state, { kind: 'バトルが待機中になった', square: held.square })
+  const announced = record(waiting, {
     kind: 'バトルが始まった',
     square: battle.square,
     attacker: battle.attacker,
     attacked: battle.attacked,
   })
 
-  return beginStep({ ...begun, battle, bank: [], triggered: [] }, battle)
+  const started = { ...announced, battles: [...announced.battles, battle], bank: [], triggered: [] }
+  return beginStep(started, battle)
 }
 
 /**
@@ -329,19 +346,24 @@ function resolveEndOfBattle(state: DuelState, battle: Battle): DuelState {
  *
  * 「バトルの終わりまで」の効果と「このバトルの間」の効果の終了（同 第16章 3）は、継続効果を
  * まだ盤面が持たないため何もすることがない。
+ *
+ * **終わらせるのは並びの最後のバトルである。** バトル中にもう 1 つ発生した場合（同 2-1）、
+ * 後から発生したほうが先に終わり、待機していた前のバトルが残りの手順を続ける。`smash.ts` の
+ * `endSmashJudgment` と同じ形。
  */
 function endBattle(state: DuelState, battle: Battle): DuelState {
-  return record(
-    {
-      ...state,
-      battle: undefined,
-      bank: [...state.bank, ...battle.heldBank],
-      triggered: [...state.triggered, ...battle.heldTriggered],
-    },
-    // 勝敗はバトル終了ステップの始めに積んである（`beginEndStep`）。ここが閉じるのは
-    // バトルという手順そのものである。
-    { kind: 'バトルが終わった' },
-  )
+  const ended = {
+    ...state,
+    battles: state.battles.slice(0, -1),
+    bank: [...state.bank, ...battle.heldBank],
+    triggered: [...state.triggered, ...battle.heldTriggered],
+  }
+  // 並びから外した**後に**積む。見出しは手順の外側に立つ（`log.ts` の `LoggedEvent.during`）。
+  // 勝敗はバトル終了ステップの始めに積んである（`beginEndStep`）。ここが閉じるのは
+  // バトルという手順そのものである。
+  const closed = record(ended, { kind: 'バトルが終わった' })
+  const resumed = closed.battles.at(-1)
+  return resumed === undefined ? closed : record(closed, { kind: 'バトルが戻った', square: resumed.square })
 }
 
 /** 効果から見えるかたちではなく、盤面が持っているままのユニット。 */
@@ -386,7 +408,7 @@ function isUnit(instance: CardInstance): instance is UnitInstance {
   return instance.card.type === 'ユニット'
 }
 
-/** 進行中のバトルを差し替える。 */
+/** 処理中のバトル（並びの最後）を差し替える。 */
 function withBattle(state: DuelState, battle: Battle): DuelState {
-  return { ...state, battle }
+  return { ...state, battles: [...state.battles.slice(0, -1), battle] }
 }

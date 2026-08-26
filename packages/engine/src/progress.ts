@@ -75,15 +75,20 @@ export function passPriority(state: DuelState, chooser: Chooser): DuelState {
   // 優先権を獲得する（同 第12章 1・第13章 1・第14章 1・第15章 1・第16章 1、
   // 第18章 1・第19章 1・第20章 1）。
   //
-  // 処理中のスマッシュ判定は並びの最後にある（`duel.ts` の `smashJudgments`）。バトルより
-  // 先に見るのは、バトル中にスマッシュ判定が発生したならスマッシュ判定を先に処理する
-  // （同 第11章 2-2）ためである。
+  // 処理中のバトルは並びの最後（`duel.ts` の `battles`）、処理中のスマッシュ判定も並びの
+  // 最後（同 `smashJudgments`）。どちらも進行中なら、後から始まったほうを先に進める——
+  // バトル中にスマッシュ判定が発生したなら判定を先に処理し（同 第11章 2-2）、スマッシュ
+  // 判定中にバトルが発生したならバトルを先に処理する（同 第17章 2-1）。`startedAt` は
+  // 生成時の `state.log.length` なので、大きいほうが後から始まっている。
   const judgment = cleared.smashJudgments.at(-1)
-  if (judgment !== undefined) {
+  const battle = cleared.battles.at(-1)
+  const judgmentIsNewer =
+    judgment !== undefined && (battle === undefined || judgment.startedAt > battle.startedAt)
+  if (judgmentIsNewer) {
     return grantPriorityToInactive(advanceSmashJudgment(cleared, judgment, chooser))
   }
-  if (cleared.battle !== undefined) {
-    return grantPriorityToInactive(advanceBattle(cleared, cleared.battle))
+  if (battle !== undefined) {
+    return grantPriorityToInactive(advanceBattle(cleared, battle))
   }
   if (turn.phase === 'リカバリーフェイズ' && !turn.endOfTurnTriggered) {
     return endTurnAbilities(cleared)
@@ -108,7 +113,7 @@ export function passOutcome(state: DuelState): PassOutcome | undefined {
   const { turn } = state
   if (turn.passedBy === undefined) return { kind: '相手に渡る' }
   if (state.bank.length > 0) return { kind: 'バンクを解決する' }
-  if (state.smashJudgments.length > 0 || state.battle !== undefined) return { kind: 'ステップが進む' }
+  if (state.smashJudgments.length > 0 || state.battles.length > 0) return { kind: 'ステップが進む' }
   if (turn.phase === 'リカバリーフェイズ' && !turn.endOfTurnTriggered) {
     return { kind: 'ターンの終わりの能力が誘発する' }
   }

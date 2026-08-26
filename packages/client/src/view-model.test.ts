@@ -532,16 +532,19 @@ describe('バトル', () => {
 
     return {
       ...withSquare(emptyBoard(viewer), square, [attacker, attacked]),
-      battle: {
-        square,
-        attacker: 'せめた1枚',
-        attacked: 'うけた1枚',
-        step: '第１ダメージステップ',
-        dealtDamage: [],
-        endOfBattleTriggered: false,
-        heldBank: [],
-        heldTriggered: [],
-      },
+      battles: [
+        {
+          square,
+          attacker: 'せめた1枚',
+          attacked: 'うけた1枚',
+          step: '第１ダメージステップ',
+          dealtDamage: [],
+          endOfBattleTriggered: false,
+          heldBank: [],
+          heldTriggered: [],
+          startedAt: 0,
+        },
+      ],
     }
   }
 
@@ -588,6 +591,7 @@ describe('スマッシュ判定', () => {
           // 存在しないものとして扱われる。
           heldBank: [],
           heldTriggered: [],
+          startedAt: 0,
           ...judgment,
         },
       ],

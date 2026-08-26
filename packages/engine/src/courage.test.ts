@@ -273,6 +273,7 @@ const battleInProgress: Battle = {
   endOfBattleTriggered: false,
   heldBank: [],
   heldTriggered: [],
+  startedAt: 0,
 }
 
 /** 進行中のスマッシュ判定。同じく最小限の値で作る。 */
@@ -284,6 +285,7 @@ const judgmentInProgress: SmashJudgment = {
   faceUp: undefined,
   heldBank: [],
   heldTriggered: [],
+  startedAt: 0,
 }
 
 // 総合ルール 第5部 第2章 2 ただし書き、第3部 第11章 5・第17章 4（ADR-0006）
@@ -305,7 +307,7 @@ describe('バトル・スマッシュ判定中は権利が発生しない', () =
   })
 
   it('バトルが進行中の間は、起動条件が満たされていても権利が発生しない', () => {
-    expect(courageRightsOf({ ...rightHeld(), battle: battleInProgress }, '先攻')).toEqual([])
+    expect(courageRightsOf({ ...rightHeld(), battles: [battleInProgress] }, '先攻')).toEqual([])
   })
 
   it('スマッシュ判定が進行中の間は、起動条件が満たされていても権利が発生しない', () => {
@@ -315,7 +317,7 @@ describe('バトル・スマッシュ判定中は権利が発生しない', () =
   // 権利の発生が遅れている間は、優先権をパスしても失わない。失っていたら、終了まで遅らせる
   // 意味が無くなる（`trap.ts` の `loseTrapRightOnPass` と同じ読み方）。
   it('バトルが進行中の間は、優先権をパスしても権利を失わない', () => {
-    const inBattle: DuelState = { ...rightHeld(), battle: battleInProgress }
+    const inBattle: DuelState = { ...rightHeld(), battles: [battleInProgress] }
 
     expect(playersMet(loseCourageRightOnPass(inBattle, '先攻'))).toEqual(['先攻'])
   })
@@ -386,7 +388,7 @@ describe('「勇気」の起動', () => {
 
   // 権利がまだ発生していないのであって、行動そのものが禁じられているわけではない。
   it('バトルが進行中の間は起動できない', () => {
-    const inBattle: DuelState = { ...readyToActivate(), battle: battleInProgress }
+    const inBattle: DuelState = { ...readyToActivate(), battles: [battleInProgress] }
 
     expect(violationOf(activateCourage(inBattle, 'テスト・勇気', chooseFirst))).toBe('起動する権利がない')
   })

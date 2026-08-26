@@ -904,7 +904,7 @@ describe('侵入と同時にバトルが発生した場合の権利', () => {
   /** バトルが終了するまで、両方のプレイヤーが優先権を放棄し続けた盤面。 */
   function passUntilBattleEnds(state: DuelState): DuelState {
     let current = state
-    while (current.battle !== undefined) current = passPriority(current, chooseFirst)
+    while (current.battles.length > 0) current = passPriority(current, chooseFirst)
     return current
   }
 
@@ -912,7 +912,7 @@ describe('侵入と同時にバトルが発生した場合の権利', () => {
     const played = stateOf(play(readyToIntrudeIntoBattle(), { card: 'ユニット', square: centerSquare }))
 
     expect(trapsMet(played)).toEqual(['トラップ'])
-    expect(played.battle).not.toBeUndefined()
+    expect(played.battles).not.toEqual([])
   })
 
   it('バトル中は、発動条件が満たされていても発動できない', () => {
@@ -929,7 +929,7 @@ describe('侵入と同時にバトルが発生した場合の権利', () => {
     // バトル中の放棄では権利を失わない。失うなら、バトルの終了まで遅らせる意味が無くなる。
     const ended = passUntilBattleEnds(played)
 
-    expect(ended.battle).toBeUndefined()
+    expect(ended.battles).toEqual([])
     expect(ended.turn.priority).toBe('後攻')
     expect(cardsIn(stateOf(activateTrap(ended, 'トラップ', chooseFirst)), '後攻', 'トラップゾーン')).toEqual([])
   })

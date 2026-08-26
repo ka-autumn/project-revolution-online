@@ -88,7 +88,7 @@ export function grantPriorityToInactive(state: DuelState): DuelState {
  * 判定もここ 1 か所に置く。
  */
 function inSpecialProcedure(state: DuelState): boolean {
-  return state.battle !== undefined || state.smashJudgments.length > 0
+  return state.battles.length > 0 || state.smashJudgments.length > 0
 }
 
 /**

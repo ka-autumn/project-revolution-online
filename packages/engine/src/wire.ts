@@ -153,7 +153,7 @@ export interface WirePerspective {
   readonly playedIntoCenter: readonly CardId[]
   readonly trapConditionsMet: readonly WireTrapConditionMet[]
   readonly courageConditionsMet: readonly WireCourageConditionMet[]
-  readonly battle: VisibleBattle | undefined
+  readonly battles: readonly VisibleBattle[]
   readonly smashJudgments: readonly VisibleSmashJudgment[]
   readonly result: DuelResult | undefined
   /**

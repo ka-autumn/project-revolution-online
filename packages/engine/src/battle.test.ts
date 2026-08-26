@@ -162,9 +162,14 @@ function battling(attacked: UnitCard, attacker: UnitCard, square: Square = homeS
   return pass(facing(attacked, attacker, square))
 }
 
+/** 処理中のバトル（並びの最後）。無ければ `undefined`。 */
+function currentBattle(state: DuelState): Battle | undefined {
+  return state.battles.at(-1)
+}
+
 /** 進行中のステップ。バトルが終わっていれば `undefined`。 */
 function stepOf(state: DuelState): BattleStep | undefined {
-  return state.battle?.step
+  return currentBattle(state)?.step
 }
 
 /**
@@ -174,7 +179,7 @@ function stepOf(state: DuelState): BattleStep | undefined {
  * ので、ステップ名だけでは進んだかどうかが分からない。
  */
 function progressOf(state: DuelState): string {
-  const { battle } = state
+  const battle = currentBattle(state)
   if (battle === undefined) return 'バトルの終了後'
   return `${battle.step}${battle.endOfBattleTriggered ? '（勝敗の決定後）' : ''}`
 }
@@ -189,24 +194,24 @@ function endStep(state: DuelState): DuelState {
 /** そのステップが始まったところまで進めた盤面。 */
 function atStep(state: DuelState, step: BattleStep): DuelState {
   let current = state
-  while (current.battle !== undefined && current.battle.step !== step) current = endStep(current)
+  while (currentBattle(current) !== undefined && currentBattle(current)?.step !== step) current = endStep(current)
   return current
 }
 
 /** バトルが終わるまで進めた盤面。 */
 function afterBattle(state: DuelState): DuelState {
   let current = state
-  while (current.battle !== undefined) current = endStep(current)
+  while (currentBattle(current) !== undefined) current = endStep(current)
   return current
 }
 
 /** バトル終了ステップに直接置いた盤面。実際のステップ進行では作れない盤面の検証に使う。 */
 function atEndStepDirectly(state: DuelState): DuelState {
-  const battle = state.battle
+  const battle = currentBattle(state)
   if (battle === undefined) throw new Error('バトルが発生しているはずだった')
 
   const decided: Battle = { ...battle, step: 'バトル終了ステップ' }
-  return { ...state, battle: decided }
+  return { ...state, battles: [...state.battles.slice(0, -1), decided] }
 }
 
 /** バンクにある能力を、発生源と誘発イベントの組で並べたもの。並びに意味はないので整列する。 */
@@ -271,17 +276,17 @@ function battleByPlaying(square: Square, played: UnitCard = vanilla): DuelState 
 // 総合ルール 第3部 第11章 1、第4部 第14章 4-4（ADR-0006）
 describe('バトルの発生', () => {
   it('支配者の異なる 2 つのユニットが同一のスクエアに置かれると発生する', () => {
-    expect(battling(vanilla, vanilla).battle?.square).toEqual(homeSquare)
+    expect(currentBattle(battling(vanilla, vanilla))?.square).toEqual(homeSquare)
   })
 
   it('カードが置かれた時点ではまだ発生しない', () => {
     // ルールエフェクトが解決されるのは、プレイヤーが優先権を獲得する時である。
-    expect(facing(vanilla, vanilla).battle).toBeUndefined()
+    expect(currentBattle(facing(vanilla, vanilla))).toBeUndefined()
   })
 
   // 総合ルール 第3部 第11章 4
   it('後から置かれたユニットが攻撃したユニット、先に置かれていたユニットが攻撃されたユニットになる', () => {
-    const { battle } = battling(vanilla, vanilla)
+    const battle = currentBattle(battling(vanilla, vanilla))
 
     expect(battle?.attacker).toBe('攻撃した')
     expect(battle?.attacked).toBe('攻撃された')
@@ -291,7 +296,7 @@ describe('バトルの発生', () => {
     const board = putOnSquare(stockedDuelState(), homeSquare, unitOf('先客', vanilla, '先攻'))
     const stacked = putOnSquare(board, homeSquare, unitOf('新入り', vanilla, '先攻'))
 
-    expect(pass(stacked).battle).toBeUndefined()
+    expect(currentBattle(pass(stacked))).toBeUndefined()
   })
 
   // 総合ルール 第3部 第11章 1-1、第4部 第14章 4-4-1・4-4-2
@@ -300,7 +305,7 @@ describe('バトルの発生', () => {
     // それより後に処理されるため、重なりは解消済みになっている。
     const checked = pass(facing(zeroBp, vanilla))
 
-    expect(checked.battle).toBeUndefined()
+    expect(currentBattle(checked)).toBeUndefined()
     expect(idsOf(cardsOn(checked, homeSquare))).toEqual(['攻撃した'])
   })
 })
@@ -310,7 +315,7 @@ describe('バトルのステップ', () => {
   /** バトルが終わるまでに通ったステップを、通った順に並べたもの。 */
   function stepsOf(state: DuelState): readonly BattleStep[] {
     const steps: BattleStep[] = []
-    for (let current = state; current.battle !== undefined; current = endStep(current)) {
+    for (let current = state; currentBattle(current) !== undefined; current = endStep(current)) {
       const step = stepOf(current)
       if (step !== undefined && step !== steps.at(-1)) steps.push(step)
     }
@@ -341,7 +346,7 @@ describe('バトルのステップ', () => {
     const battle = battling(vanilla, vanilla)
     const ended = afterBattle(battle)
 
-    expect(ended.battle).toBeUndefined()
+    expect(currentBattle(ended)).toBeUndefined()
     expect(ended.turn.phase).toBe(battle.turn.phase)
     // フェイズの連続放棄で次のフェイズに進む。
     expect(pass(pass(ended)).turn.phase).not.toBe(battle.turn.phase)
@@ -557,8 +562,8 @@ describe('バトル終了ステップの終わり', () => {
   it('その後の連続放棄でバトル終了ステップが終わり、バトルが終了する', () => {
     const end = atStep(battling(vanilla, vanilla), 'バトル終了ステップ')
 
-    expect(endStep(end).battle?.endOfBattleTriggered).toBe(true)
-    expect(endStep(endStep(end)).battle).toBeUndefined()
+    expect(currentBattle(endStep(end))?.endOfBattleTriggered).toBe(true)
+    expect(currentBattle(endStep(endStep(end)))).toBeUndefined()
   })
 })
 
@@ -568,7 +573,7 @@ describe('バトル中の行動', () => {
     // バトルの始めには非アクティブプレイヤーに優先権が発生するので、放棄させて戻す。
     const inBattle = pass(battleByPlaying(homeSquare))
 
-    expect(inBattle.battle).toBeDefined()
+    expect(currentBattle(inBattle)).toBeDefined()
     expect(inBattle.turn.phase).toBe('メインフェイズ')
     expect(inBattle.turn.priority).toBe('先攻')
     expect(playAsTrap(inBattle, 'トラップ')).toEqual({ kind: '行えない', violation: '行える時ではない' })
@@ -591,7 +596,7 @@ describe('バトルによって待機中のバンク', () => {
 
     // 「登場した時」の能力はバンクに入ることが予約された状態で待機中のバンクになり、
     // バトル中は存在しないものとして扱われる。
-    expect(battle.battle?.heldTriggered.map((each) => each.source)).toEqual(['攻撃した'])
+    expect(currentBattle(battle)?.heldTriggered.map((each) => each.source)).toEqual(['攻撃した'])
     expect(battle.bank).toEqual([])
     expect(battle.triggered).toEqual([])
 
@@ -616,7 +621,7 @@ describe('バトル中に放棄したら何が起きるか', () => {
   it('進むのはステップだと言う', () => {
     const battle = pass(battling(vanilla, vanilla))
 
-    expect(battle.battle).toBeDefined()
+    expect(currentBattle(battle)).toBeDefined()
     expect(passOutcome(battle)).toEqual({ kind: 'ステップが進む' })
   })
 })
@@ -626,7 +631,7 @@ describe('中央エリアを指定してプレイされたユニット', () => {
   it('バトルが発生したなら、バトル中は捨札に置かれない', () => {
     const battle = battleByPlaying(centerSquare)
 
-    expect(battle.battle).toBeDefined()
+    expect(currentBattle(battle)).toBeDefined()
     expect(idsOf(cardsOn(battle, centerSquare))).toEqual(['攻撃された', '攻撃した'])
   })
 
