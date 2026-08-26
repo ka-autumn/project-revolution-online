@@ -411,7 +411,7 @@ describe('バトルダメージ', () => {
     )
 
     let current = pass(board)
-    for (let steps = 0; current.battle !== undefined; steps++) {
+    for (let steps = 0; current.battles.length > 0; steps++) {
       if (steps > 50) throw new Error('バトルが終わらない')
       current = pass(current)
     }

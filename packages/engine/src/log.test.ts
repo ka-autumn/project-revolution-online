@@ -657,7 +657,7 @@ describe('バトルの記録', () => {
   /** バトルが終わるまで、両方が優先権を放棄し続けた盤面。 */
   function afterBattle(state: DuelState): DuelState {
     let current = state
-    while (current.battle !== undefined) current = passPriority(current, chooseFirst)
+    while (current.battles.length > 0) current = passPriority(current, chooseFirst)
     return current
   }
 

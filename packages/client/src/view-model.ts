@@ -695,9 +695,14 @@ function turnLine(board: WirePerspective): string {
   )}の優先権`
 }
 
-/** 発生しているバトル。 */
+/**
+ * 発生しているバトル。
+ *
+ * バトル中のバトル（総合ルール 第3部 第11章 2-1）で複数が同時に進行している場合、並びの
+ * 最後（今処理中のもの）だけを見せる。待機中のバトルも見せるのは #165 のスコープ。
+ */
 function battleView(board: WirePerspective, names: ReadonlyMap<CardId, string>): BattleView | undefined {
-  const battle = board.battle
+  const battle = board.battles.at(-1)
   if (battle === undefined) return undefined
 
   return {
@@ -942,6 +947,11 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
       // 入れ子になった判定どうしを見分けるのに要る（総合ルール 第3部 第17章 2-2）。
       case 'バトルのステップが変わった':
         return separator('---', undefined, event.step)
+      // 待機と復帰は区切りではない。手順そのものは続いていて、進む先が入れ替わっただけである。
+      case 'バトルが待機中になった':
+        return { whose: undefined, text: `バトル（${squareLabel(board.viewer, event.square)}）が待機中になった` }
+      case 'バトルが戻った':
+        return { whose: undefined, text: `バトル（${squareLabel(board.viewer, event.square)}）が戻った` }
       case 'スマッシュ判定が始まった':
         return separator('===', whose(event.player), `${whose(event.player)}のスマッシュ判定開始（${event.repeats} 回）`)
       case 'スマッシュ判定が終わった':

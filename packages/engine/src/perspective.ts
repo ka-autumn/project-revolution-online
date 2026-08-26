@@ -153,7 +153,7 @@ export interface DuelPerspective {
   readonly trapConditionsMet: readonly TrapConditionMet[]
   /** 視点のプレイヤーの、「勇気」の起動条件が満たされていること。 */
   readonly courageConditionsMet: readonly CourageConditionMet[]
-  readonly battle: VisibleBattle | undefined
+  readonly battles: readonly VisibleBattle[]
   readonly smashJudgments: readonly VisibleSmashJudgment[]
   readonly result: DuelResult | undefined
   /**
@@ -395,6 +395,8 @@ function mapEventCards(event: DuelEvent, map: CardMapping): DuelEvent {
     case '進行が変わった':
     case 'バトルが終わった':
     case 'バトルのステップが変わった':
+    case 'バトルが待機中になった':
+    case 'バトルが戻った':
     case 'スマッシュ判定が始まった':
     case 'スマッシュ判定が終わった':
     case 'スマッシュ判定のステップが変わった':
@@ -501,7 +503,7 @@ function projectBoard(state: DuelState, viewer: Player): DuelPerspective {
     playedIntoCenter: state.playedIntoCenter,
     trapConditionsMet: state.trapConditionsMet.filter((met) => ownsTrap(state, viewer, met)),
     courageConditionsMet: state.courageConditionsMet.filter((met) => met.player === viewer),
-    battle: state.battle === undefined ? undefined : visibleBattle(state.battle),
+    battles: state.battles.map(visibleBattle),
     smashJudgments: state.smashJudgments.map(visibleSmashJudgment),
     result: state.result,
     // ログと、それが名指しするカードは `perspectiveOf` が足す。ログを落とすのに、落とし

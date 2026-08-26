@@ -171,17 +171,17 @@ export interface DuelState {
    */
   readonly courageConditionsMet: readonly CourageConditionMet[]
   /**
-   * 進行中のバトル（総合ルール 第3部 第11章）。発生していなければ `undefined`。
+   * 進行しているバトル（総合ルール 第3部 第11章）。発生していなければ空。
    *
    * バトルはルールエフェクトによって発生する特別な手順であり（同 1）、5 つのステップの間、
    * フェイズに代わって優先権のやりとりを受け持つ（同 3、第4章 4）。フェイズと違って
    * 起きていないこともあるので、`turn` とは別にここに持つ。
    *
-   * 1 つしか持てない。複数のスクエアで同時に起こるバトル（同 1-3）も、バトル中に発生する
-   * バトル（同 2-1）も、ユニットがスクエアに置かれるのが 1 枚ずつである今は起こらない。
-   * 効果でユニットをスクエアに置けるようになったら、並びにして持つ必要が出る。
+   * 並びの最後が処理中のバトルで、その前にあるものは「待機中のバトル」である（同 2-1）。
+   * バトル中にバトルが発生した場合、先に発生していたほうが待機中になり、後から発生した
+   * ほうを先に処理する。`smashJudgments` と同じ形（同 第17章 2-2）。
    */
-  readonly battle: Battle | undefined
+  readonly battles: readonly Battle[]
   /**
    * 発生しているスマッシュ判定（総合ルール 第3部 第17章）。発生していなければ空。
    *
@@ -198,6 +198,10 @@ export interface DuelState {
    * バトル中のスマッシュ判定（同 第11章 2-2）とスマッシュ判定中のバトル（同 第17章 2-1）も、
    * 同じく効果から起こりうる。効果はプレイヤーにダメージを与えられ（`effect.ts` の
    * `damagePlayer`）、ユニットをスクエアに置ける（同 `placeOnSquare`）ためである。
+   *
+   * バトルとスマッシュ判定のどちらが今処理中かは、それぞれの並びの最後どうしを
+   * `Battle.startedAt` と `SmashJudgment.startedAt` で比べて決める（`progress.ts` の
+   * `passPriority`）。
    */
   readonly smashJudgments: readonly SmashJudgment[]
   /**
@@ -432,7 +436,7 @@ export function emptyDuelState(): DuelState {
     playedIntoCenter: [],
     trapConditionsMet: [],
     courageConditionsMet: [],
-    battle: undefined,
+    battles: [],
     smashJudgments: [],
     result: undefined,
     log: [],

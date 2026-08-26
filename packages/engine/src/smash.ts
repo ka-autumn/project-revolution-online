@@ -72,6 +72,15 @@ export interface SmashJudgment {
    * 時点で待機中のバンクと同じ扱いになる。バトルの `heldTriggered` と同じ。
    */
   readonly heldTriggered: readonly BankedAbility[]
+  /**
+   * この判定が始まった時点の `DuelState.log` の長さ。
+   *
+   * バトルとスマッシュ判定のどちらが後から始まったか（どちらを先に処理すべきか、総合ルール
+   * 第3部 第11章 2-2・第17章 2-1）を比べるためだけに持つ。ログは単調に伸びる
+   * （`log.ts` の `record`）ので、値が大きいほうが後から始まっている。`battle.ts` の
+   * `Battle.startedAt` と同じ形。
+   */
+  readonly startedAt: number
 }
 
 /**
@@ -124,6 +133,7 @@ export function startSmashJudgmentIfAny(state: DuelState): DuelState {
     // （総合ルール 第3部 第17章 2）。この後で誘発する能力は新しいバンクに入る。
     heldBank: state.bank,
     heldTriggered: state.triggered,
+    startedAt: state.log.length,
   }
 
   // 判定を盤面に載せる**前に**積む。そうすると、この行は自分自身の判定の中には入らず、手順の

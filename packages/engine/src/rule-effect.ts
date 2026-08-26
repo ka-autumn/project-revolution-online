@@ -144,12 +144,13 @@ function discardedFrom(cards: readonly CardInstance[], modification: BpModificat
  * バトルが進行中の間も、ここでは何も返さない。
  *
  * 条件は本来「そのユニットが置かれた時にバトルが発生したか」だが、盤面にバトルがあるか
- * どうかで代用している。バトルは同時に 1 つしか起こらない（`duel.ts` の `battle`）ため
- * 今は同じことになる。複数のバトルを持つようになったら、どのバトルに紐づくユニットなのかを
- * 覚える必要が出る。
+ * どうかで代用している。バトルは入れ子になりうる（`duel.ts` の `battles`）が、`playedIntoCenter`
+ * に複数が並ぶのはどれも今のバトルの手順が終わる前——バトルの最中はプレイという行動が
+ * 行えない（`priority.ts` の `inSpecialProcedure`）ため——なので、どのバトルに紐づくかを
+ * 覚えなくても今のところ同じ結果になる。
  */
 function discardedFromCenter(state: DuelState): readonly CardId[] {
   if (state.playedIntoCenter.length === 0) return []
-  if (state.battle !== undefined || pendingBattle(state) !== undefined) return []
+  if (state.battles.length > 0 || pendingBattle(state) !== undefined) return []
   return state.playedIntoCenter
 }

@@ -130,6 +130,7 @@ const battleInProgress: Battle = {
   endOfBattleTriggered: false,
   heldBank: [],
   heldTriggered: [],
+  startedAt: 0,
 }
 
 /** 進行中のスマッシュ判定。同じく最小限の値で作る。 */
@@ -141,6 +142,7 @@ const judgmentInProgress: SmashJudgment = {
   faceUp: undefined,
   heldBank: [],
   heldTriggered: [],
+  startedAt: 0,
 }
 
 // 総合ルール 第2部 第20章 3-8 ただし書き、第3部 第11章 5・第17章 4（ADR-0006）
@@ -167,7 +169,7 @@ describe('バトル・スマッシュ判定中は権利が発生しない', () =
   })
 
   it('バトルが進行中の間は、発動条件が満たされていても権利が発生しない', () => {
-    expect(trapRightOf({ ...rightHeld(), battle: battleInProgress }, 'トラップ')).toBeUndefined()
+    expect(trapRightOf({ ...rightHeld(), battles: [battleInProgress] }, 'トラップ')).toBeUndefined()
   })
 
   it('スマッシュ判定が進行中の間は、発動条件が満たされていても権利が発生しない', () => {
@@ -175,9 +177,9 @@ describe('バトル・スマッシュ判定中は権利が発生しない', () =
   })
 
   it('バトルが終了すると権利が発生する', () => {
-    const during: DuelState = { ...rightHeld(), battle: battleInProgress }
+    const during: DuelState = { ...rightHeld(), battles: [battleInProgress] }
 
-    expect(trapRightOf({ ...during, battle: undefined }, 'トラップ')).toBeDefined()
+    expect(trapRightOf({ ...during, battles: [] }, 'トラップ')).toBeDefined()
   })
 
   // 権利を得ていないのだから、パスで失うこともない（同 3-8 は「権利を獲得した後...１度でも
@@ -185,7 +187,7 @@ describe('バトル・スマッシュ判定中は権利が発生しない', () =
   // ステップが連続した放棄で進む（同 第3部 第4章 4）ので、ここで失うなら終了まで遅らせる
   // 意味が無くなる。
   it('バトル中に優先権をパスしても、発動条件が満たされた状態は残る', () => {
-    const after = loseTrapRightOnPass({ ...rightHeld(), battle: battleInProgress }, '先攻')
+    const after = loseTrapRightOnPass({ ...rightHeld(), battles: [battleInProgress] }, '先攻')
 
     expect(trapsMet(after)).toEqual(['トラップ'])
   })

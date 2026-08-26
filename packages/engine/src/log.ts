@@ -259,6 +259,17 @@ export type DuelEvent =
    */
   | { readonly kind: 'バトルが終わった' }
   /**
+   * 処理中のバトルが待機中になった（総合ルール 第3部 第11章 2-1）。
+   *
+   * バトル中にバトルが発生した場合、先に発生したほうが待機中になり、後から発生したほうが
+   * 先に処理される。`スマッシュ判定が待機中になった` と同じ形。**待機は盤面に残らない。**
+   * 待機中かどうかは並び（`DuelState.battles`）の位置でしかなく、後から盤面を見ても、
+   * どの時点でどちらが動いていたかは読めない。積んでおかなければ復元できない（ADR-0011）。
+   */
+  | { readonly kind: 'バトルが待機中になった'; readonly square: Square }
+  /** 待機していたバトルが、通常のバトルに戻った（同 2-1）。 */
+  | { readonly kind: 'バトルが戻った'; readonly square: Square }
+  /**
    * スマッシュ判定が発生した（総合ルール 第3部 第17章 1）。
    *
    * `repeats` は、繰り返される希望ステップと確定ステップの回数（同 3）。**始まりと終わりの
@@ -424,15 +435,19 @@ export function record(state: DuelState, event: DuelEvent, before: DuelState = s
 /**
  * その盤面で進行している特別な手順を、外側から順に並べたもの（総合ルール 第3部 第4章 2）。
  *
- * スマッシュ判定は並びで入れ子を持つ（同 第17章 2-2、`DuelState.smashJudgments`）ので、
- * そのまま写す。バトルは 1 つしか持てない（`DuelState.battle`）ため、常にいちばん外側に
- * 置いている。**スマッシュ判定中に始まったバトルは、この並びでは正しい位置に来ない。**
- * バトルが「いつ」始まったかを盤面が覚えていないためで、判定を待機させるはずの同 第17章 2-1
- * をエンジンがまだ実装していないこととあわせて、入れ子のバトルを扱う時に直す。
+ * バトルもスマッシュ判定も、それぞれの並び（`DuelState.battles`・`smashJudgments`）の
+ * 中では既に外側から順になっている（同 第11章 2-1・第17章 2-2）。2 つの並びを混ぜる
+ * 順序は `startedAt` で決まる——先に始まったほうが外側に来る（同 第11章 2-2・第17章 2-1）。
  */
 function proceduresOf(state: DuelState): readonly Procedure[] {
-  const battle: readonly Procedure[] = state.battle === undefined ? [] : [{ kind: 'バトル' }]
-  return [...battle, ...state.smashJudgments.map(({ player }): Procedure => ({ kind: 'スマッシュ判定', player }))]
+  const battles = state.battles.map((battle) => ({ startedAt: battle.startedAt, procedure: { kind: 'バトル' } as const }))
+  const judgments = state.smashJudgments.map((judgment) => ({
+    startedAt: judgment.startedAt,
+    procedure: { kind: 'スマッシュ判定', player: judgment.player } as const,
+  }))
+  return [...battles, ...judgments]
+    .sort((a, b) => a.startedAt - b.startedAt)
+    .map(({ procedure }) => procedure)
 }
 
 /**
