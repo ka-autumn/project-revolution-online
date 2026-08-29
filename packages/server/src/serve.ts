@@ -29,6 +29,8 @@ export interface ServeOptions {
    * どの部屋も同じ山札の並びになる（ADR-0005）。
    */
   readonly setup: () => RoomSetup
+  /** 生きているかを確かめる間隔（ミリ秒）。既定は `HEARTBEAT_MS`。テストで縮めるために開けてある。 */
+  readonly heartbeatMs?: number
 }
 
 export interface RunningServer {
@@ -71,6 +73,18 @@ function parse(data: unknown): FromClient | undefined {
   }
 }
 
+/**
+ * 生きているかを確かめる間隔（ミリ秒）。
+ *
+ * 不安定な回線では、切れたことが TCP から降りてこないまま黙って死ぬ接続ができる。放っておくと
+ * その席は埋まったままになり、繋ぎ直してきた本人が入れなくなる——のではなく、**繋ぎ直した側は
+ * 入れるが、死んだ接続がずっと残る**（ADR-0016）。合わせて、間に置いた中継が黙っている接続を
+ * 切る場合の予防にもなる（ADR-0015）。
+ *
+ * 30 秒にしているのは、よくある中継のアイドル打ち切り（60 秒）の半分だからである。
+ */
+const HEARTBEAT_MS = 30_000
+
 function send(socket: WebSocket | undefined, message: ToClient): void {
   if (socket !== undefined && socket.readyState === socket.OPEN) socket.send(JSON.stringify(message))
 }
@@ -83,9 +97,35 @@ function send(socket: WebSocket | undefined, message: ToClient): void {
 export function serve(options: ServeOptions): Promise<RunningServer> {
   const server = new WebSocketServer({ port: options.port })
   const sockets = new Map<ParticipantId, WebSocket>()
+  /** 前回の確認から返事があった接続。ここに無いものは死んだものとして落とす。 */
+  const answered = new Set<WebSocket>()
   let rooms: Rooms = emptyRooms()
 
+  /**
+   * 生きているかを確かめて、返事の無かった接続を落とす。
+   *
+   * 落とすと `close` が起きるので、表から外すのは今までどおりそちらの仕事である。相手の
+   * 返事（pong）は `ws` が勝手に返すので、**繋いでいる側は何もしなくてよい**。
+   */
+  const heartbeat = setInterval(() => {
+    for (const socket of server.clients) {
+      if (!answered.has(socket)) {
+        socket.terminate()
+        continue
+      }
+      answered.delete(socket)
+      socket.ping()
+    }
+  }, options.heartbeatMs ?? HEARTBEAT_MS)
+  // これ自体はサーバを生かしておく理由にならない。待っているポートのほうが生かす。
+  heartbeat.unref()
+
   server.on('connection', (socket, request) => {
+    answered.add(socket)
+    socket.on('pong', () => answered.add(socket))
+    socket.on('close', () => answered.delete(socket))
+
+
     const participant = participantOf(request.url)
     if (participant === undefined) {
       send(socket, { kind: '行えなかった', reason: '名乗っていない' })
@@ -122,6 +162,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         port: typeof address === 'object' && address !== null ? address.port : options.port,
         close: () =>
           new Promise((done, failed) => {
+            clearInterval(heartbeat)
             server.close((error) => (error === undefined ? done() : failed(error)))
             for (const socket of sockets.values()) socket.terminate()
           }),

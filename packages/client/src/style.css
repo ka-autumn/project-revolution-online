@@ -411,6 +411,12 @@ body {
   margin: 0 0 var(--gap);
 }
 
+/* 繋がっていない間、手のかわりに置く 1 行（ADR-0016）。何が起きているかは一番上に出ている。 */
+.controls__offline {
+  margin: calc(var(--gap) * 2) 0;
+  color: #b00;
+}
+
 /* 行える手と選ぶ候補。並べるのは届いたものだけ（ADR-0010）。 */
 .actions,
 .choice {
