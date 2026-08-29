@@ -1,5 +1,5 @@
-import { connect } from './connection.js'
-import type { Connection } from './connection.js'
+import { MAX_ATTEMPTS, connect, connectingLink } from './connection.js'
+import type { Connection, Link } from './connection.js'
 import { indexOfSquare } from '@revolution/engine'
 import type { CardId, LoggedEvent, RoomCode } from '@revolution/engine'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
@@ -44,9 +44,23 @@ export interface MountOptions {
   readonly room: RoomCode
 }
 
-/** 盤面より前の様子を 1 行で。 */
-function statusOf(session: Session, open: boolean): string | undefined {
-  if (!open) return '繋がっていません'
+/**
+ * 盤面より前の様子を 1 行で。
+ *
+ * 繋がっていない間は、サーバから届いたものより先にそれを出す。**何回目かまで出す**のは、
+ * 止まって見える時間に、待てば戻るのか戻らないのかが分かるようにするためである（ADR-0016）。
+ */
+function statusOf(session: Session, link: Link): string | undefined {
+  switch (link.kind) {
+    case '諦めた':
+      return '繋がりませんでした。ページを再読み込みしてください'
+    case '繋ごうとしている':
+      return link.attempt === 0
+        ? '繋いでいます'
+        : `繋がりが切れました。繋ぎ直しています（${link.attempt}/${MAX_ATTEMPTS} 回目）`
+    case '繋がっている':
+      break
+  }
 
   switch (session.stage.kind) {
     case '繋いでいる':
@@ -129,21 +143,26 @@ function controls(): HTMLElement {
 function draw(
   root: HTMLElement,
   session: Session,
-  open: boolean,
+  link: Link,
   connection: Connection,
   overlay: Overlay,
   picking: Picking,
 ): void {
   root.replaceChildren()
 
-  const status = statusOf(session, open)
+  const status = statusOf(session, link)
   if (status !== undefined) root.append(line('status', status))
+
+  // 繋がっていない間は打てない。送っても捨てられる（`connection.ts`）ので、押せる形で出さない。
+  // **盤面は出したままにする。** 見えているものは切れる前にサーバから届いたもので、読むぶんには
+  // 正しい。繋ぎ直せばいまの盤面が届いて置き換わる（ADR-0016）。
+  const connected = link.kind === '繋がっている'
 
   const stage = session.stage
   if (stage.kind === '打っている' && stage.board !== undefined) {
     const board = stage.board
     // 演出が出ている間は手を送れない（#115）ので、盤面の上でも押せなくする。
-    const clicking = picking.mode === 'クリック' && !showsOverlay(overlay)
+    const clicking = connected && picking.mode === 'クリック' && !showsOverlay(overlay)
     const view =
       clicking && stage.choice === undefined
         ? pickView(board, stage.actions, picking.card, stage.passOutcome)
@@ -203,7 +222,12 @@ function draw(
     const mode = modeElement(picking)
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
-    if (stage.choice !== undefined) {
+    if (!connected) {
+      // 繋がっていない間は手を出さない。**押せなくするだけでは足りない。** 出ている手は切れる
+      // 前の盤面のもので、繋ぎ直した先でまだ行えるとは限らない（ADR-0016）。何が起きているかは
+      // 一番上の 1 行に出ている（`statusOf`）。
+      controlArea.append(line('controls__offline', '繋がるまで打てません'))
+    } else if (stage.choice !== undefined) {
       controlArea.append(
         choiceElement(
           // 盤面から押せる候補は、ここに二重に出さない（#150）。押せるかどうかを決めているのは
@@ -271,7 +295,7 @@ function draw(
  */
 export function mount(root: HTMLElement, options: MountOptions): () => void {
   let session = connecting()
-  let open = false
+  let link: Link = connectingLink()
 
   // 盤面をクリックして操作する（#94）。選びかけているカードは**盤面が届くたびに捨てる**。
   // 届いた手は入れ替わっており、選びかけの手がまだ行えるとは限らないためである。
@@ -313,7 +337,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
   })
 
-  const redraw = (): void => draw(root, session, open, connection, overlay, picking())
+  const redraw = (): void => draw(root, session, link, connection, overlay, picking())
 
   /**
    * 待ち行列の先頭を出す。無ければ消える。呼ぶたびにタイマーを 1 つだけ張る。
@@ -365,8 +389,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       const automatic = automaticAction(session)
       if (automatic !== undefined) connection.send({ kind: '行動する', action: automatic })
     },
-    onOpenChanged: (value) => {
-      open = value
+    onLinkChanged: (value) => {
+      link = value
       redraw()
     },
   })

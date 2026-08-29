@@ -63,6 +63,27 @@ class Client {
     })
   }
 
+  /**
+   * 何も返さなくなる。**閉じるのとは違う。** 回線が黙って死ぬと、切れたことが降りてこないまま
+   * 繋がったままに見える接続が残る。それを作る。
+   */
+  stopsAnswering(): void {
+    this.socket.pause()
+  }
+
+  /** 止めていた読み取りを戻す。落とされていれば、ここで閉じたことが分かる。 */
+  answersAgain(): void {
+    this.socket.resume()
+  }
+
+  /** サーバに落とされるまで待つ。 */
+  closed(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.socket.readyState === WebSocket.CLOSED) return resolve()
+      this.socket.on('close', () => resolve())
+    })
+  }
+
   /** その種類のメッセージが届くまで待って、届いたものを返す。 */
   async waitFor(kind: ToClient['kind']): Promise<ToClient> {
     for (let waited = 0; waited < 200; waited += 1) {
@@ -200,3 +221,48 @@ async function bothJoined(port: number): Promise<{ readonly first: Client; reado
   await second.waitFor('席についた')
   return { first, second }
 }
+
+/**
+ * 黙って死んだ接続を落とす（ADR-0016、#172）。
+ *
+ * 確かめの間隔を縮めて見ている。本番は 30 秒（`serve.ts` の `HEARTBEAT_MS`）で、待っていると
+ * テストが終わらない。
+ */
+describe('生きているかを確かめる', () => {
+  const BEAT_MS = 20
+  let server: RunningServer
+
+  beforeEach(async () => {
+    server = await serve({ port: 0, setup, heartbeatMs: BEAT_MS })
+  })
+
+  afterEach(async () => {
+    await server.close()
+  })
+
+  it('返事が返る間は落とさない', async () => {
+    const client = new Client(server.port, 'あ')
+    await client.opened()
+    client.send({ kind: '部屋に入る', room: CODE })
+    await client.waitFor('相手を待っている')
+
+    await new Promise((resolve) => setTimeout(resolve, BEAT_MS * 5))
+
+    // 何度確かめられても、まだ打てる。返事は `ws` が勝手に返している。
+    client.received.length = 0
+    client.send({ kind: '部屋に入る', room: CODE })
+    expect((await client.waitFor('相手を待っている')).kind).toBe('相手を待っている')
+    await client.close()
+  })
+
+  it('返事の無くなった接続は落とす', async () => {
+    const client = new Client(server.port, 'い')
+    await client.opened()
+    client.stopsAnswering()
+    await new Promise((resolve) => setTimeout(resolve, BEAT_MS * 5))
+
+    // 黙っている間は、落とされたことも降りてこない。読み取りを戻したところで閉じたと分かる。
+    client.answersAgain()
+    await client.closed()
+  })
+})
