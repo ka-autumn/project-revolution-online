@@ -95,6 +95,14 @@ pnpm deploy:server --decks packages/decks/src/index.ts --host <ユーザ>@<ホ�
 置き場に何を用意するかは ADR-0015 にある。**待つポートは `PORT` で決められる**ので、束ね直さずに
 変えられる。
 
+**初めての宛先には、先に鍵を登録しておく。** `deploy:server` は途中で止まらないように
+`BatchMode` で繋ぐので、`known_hosts` に無い宛先は「Host key verification failed」で落ちる。
+名前と IP は別の宛先として扱われるため、**片方で繋いだことがあっても、もう片方は登録し直しになる。**
+
+```sh
+ssh -i <秘密鍵> <ユーザ>@<ホスト>   # 出た指紋を確かめて yes
+```
+
 ### 対戦画面を配る
 
 `vercel.json` にビルドの仕方が書いてある。設定するのは 2 つだけで、どちらも無くてよい。
