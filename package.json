@@ -8,6 +8,8 @@
   },
   "scripts": {
     "serve": "node tools/serve.mjs",
+    "build:server": "node tools/build-server.mjs",
+    "deploy:server": "node tools/deploy-server.mjs",
     "typecheck": "pnpm -r --stream typecheck && tsc -p tsconfig.deploy.json",
     "test": "vitest run",
     "verify:engine": "node tools/verify-engine.mjs",
