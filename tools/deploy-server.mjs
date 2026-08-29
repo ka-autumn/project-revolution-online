@@ -46,13 +46,24 @@ function options(argv) {
   }
 }
 
-/** 失敗したらそこで終わる。**途中まで進んだ状態で先へ行かない。** */
+/**
+ * 失敗したらそこで終わる。**途中まで進んだ状態で先へ行かない。**
+ *
+ * 255 は ssh が繋げなかったときの終了コードで、**初めての宛先は必ずここで落ちる。**
+ * `BatchMode=yes` を渡しているので、鍵を確かめるやり取りを出せないためである。
+ *
+ * **自動では信用させない。** 運ぶのは向こうで実行されるファイルなので、最初に何を信用したかは
+ * 手で確かめたところに残っているべきである。代わりに、何をすればいいかをここで言う。
+ */
 function run(command, args) {
   const { status } = spawnSync(command, args, { stdio: 'inherit' })
-  if (status !== 0) {
-    console.error(`\n${command} が失敗しました（終了コード ${status}）。`)
-    process.exit(status ?? 1)
+  if (status === 0) return
+
+  console.error(`\n${command} が失敗しました（終了コード ${status}）。`)
+  if (status === 255) {
+    console.error('繋がらなかった場合、その宛先が known_hosts に無いことが多い。初めての宛先は先に登録する。')
   }
+  process.exit(status ?? 1)
 }
 
 const { decks, host, key, out, remote, unit } = options(process.argv.slice(2))

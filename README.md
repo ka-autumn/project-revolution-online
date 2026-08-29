@@ -95,6 +95,19 @@ pnpm deploy:server --decks packages/decks/src/index.ts --host <ユーザ>@<ホ�
 置き場に何を用意するかは ADR-0015 にある。**待つポートは `PORT` で決められる**ので、束ね直さずに
 変えられる。
 
+**初めての宛先には、先に鍵を登録しておく。** `deploy:server` は途中で止まらないように
+`BatchMode` で繋ぐので、`known_hosts` に照らせない宛先は「Host key verification failed」で落ちる。
+
+**照らせないのは、宛先ごと無いときだけではない。** ホストは鍵を種類ごとに持っていて、
+`known_hosts` に載るのは**その時に選ばれた 1 種類だけ**である。別のクライアント（Windows 標準の
+OpenSSH と Git 付属のものなど）が違う種類を選ぶと、宛先を知っていても照らせない。名前と IP も
+別の宛先として扱われる。**種類ごと登録しておくのが確実である。**
+
+```sh
+ssh-keyscan <ホスト> | ssh-keygen -lf -    # 指紋を確かめる
+ssh-keyscan <ホスト> >> ~/.ssh/known_hosts # 確かめてから入れる
+```
+
 ### 対戦画面を配る
 
 `vercel.json` にビルドの仕方が書いてある。設定するのは 2 つだけで、どちらも無くてよい。
