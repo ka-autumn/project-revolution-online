@@ -96,11 +96,16 @@ pnpm deploy:server --decks packages/decks/src/index.ts --host <ユーザ>@<ホ�
 変えられる。
 
 **初めての宛先には、先に鍵を登録しておく。** `deploy:server` は途中で止まらないように
-`BatchMode` で繋ぐので、`known_hosts` に無い宛先は「Host key verification failed」で落ちる。
-名前と IP は別の宛先として扱われるため、**片方で繋いだことがあっても、もう片方は登録し直しになる。**
+`BatchMode` で繋ぐので、`known_hosts` に照らせない宛先は「Host key verification failed」で落ちる。
+
+**照らせないのは、宛先ごと無いときだけではない。** ホストは鍵を種類ごとに持っていて、
+`known_hosts` に載るのは**その時に選ばれた 1 種類だけ**である。別のクライアント（Windows 標準の
+OpenSSH と Git 付属のものなど）が違う種類を選ぶと、宛先を知っていても照らせない。名前と IP も
+別の宛先として扱われる。**種類ごと登録しておくのが確実である。**
 
 ```sh
-ssh -i <秘密鍵> <ユーザ>@<ホスト>   # 出た指紋を確かめて yes
+ssh-keyscan <ホスト> | ssh-keygen -lf -    # 指紋を確かめる
+ssh-keyscan <ホスト> >> ~/.ssh/known_hosts # 確かめてから入れる
 ```
 
 ### 対戦画面を配る
