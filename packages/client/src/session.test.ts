@@ -80,6 +80,34 @@ describe('届いたものを畳む', () => {
     expect(stage.opponent).toBe('CPU')
   })
 
+  /** #175。席についた時点では相手も繋がっている。変わったらそう届く。 */
+  it('相手は繋がっているものとして始まる', () => {
+    const stage = fold(SEATED).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.opponentConnected).toBe(true)
+  })
+
+  it('相手の繋がりが切れたら、そう覚える', () => {
+    const stage = fold(SEATED, { kind: '相手の繋がり', connected: false }).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.opponentConnected).toBe(false)
+  })
+
+  /** 盤面が届いても消えない。繋がりは 1 つ前の行動についてのことではない。 */
+  it('相手の繋がりは、盤面が届いても残る', () => {
+    const stage = fold(SEATED, { kind: '相手の繋がり', connected: false }, {
+      kind: '盤面',
+      perspective: board(1),
+      actions: [],
+      passOutcome: undefined,
+    }).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.opponentConnected).toBe(false)
+  })
+
   it('席についたら、盤面が届く前でも席は分かる', () => {
     const stage = fold(SEATED).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')

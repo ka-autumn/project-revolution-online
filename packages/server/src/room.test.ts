@@ -112,10 +112,19 @@ const CODE = 'あいことば'
 /** 優先権を放棄する。部屋を進めるのに何度も送る。 */
 const PASS: FromClient = { kind: '行動する', action: { kind: '優先権を放棄する' } }
 
+/**
+ * ここに出てくる人が全員繋がっている状態（#175）。
+ *
+ * 繋がりで変わるのは、打っている途中に抜けられるかだけ（`canLeave`）である。**それ以外の
+ * テストは、全員が繋がっているものとして書く。** 相手が消えた場合を見るテストだけが、別の
+ * ものを渡す。
+ */
+const ALL_LINKED: ReadonlySet<ParticipantId> = new Set(['あ', 'い', 'う', 'え'])
+
 /** 2 人が入って、デュエルが始まったところ。 */
 function started(setup: RoomSetup = SETUP): RoomOutcome {
-  const first = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, setup)
-  return receive(first.rooms, 'い', { kind: '部屋に入る', room: CODE }, setup)
+  const first = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, setup, ALL_LINKED)
+  return receive(first.rooms, 'い', { kind: '部屋に入る', room: CODE }, setup, ALL_LINKED)
 }
 
 /** その参加者に届いたメッセージ。 */
@@ -170,8 +179,13 @@ function seatOf(deliveries: readonly Delivery[], participant: ParticipantId): st
 }
 
 /** メッセージを 1 つ送る。 */
-function send(rooms: Rooms, participant: ParticipantId, message: FromClient): RoomOutcome {
-  return receive(rooms, participant, message, SETUP)
+function send(
+  rooms: Rooms,
+  participant: ParticipantId,
+  message: FromClient,
+  connected: ReadonlySet<ParticipantId> = ALL_LINKED,
+): RoomOutcome {
+  return receive(rooms, participant, message, SETUP, connected)
 }
 
 /**
@@ -233,7 +247,7 @@ function answerAll(outcome: RoomOutcome): RoomOutcome {
 // #13。ルームコードで 2 人を繋ぐ。
 describe('部屋に入る', () => {
   it('1 人目は相手を待つ', () => {
-    const outcome = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP)
+    const outcome = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP, ALL_LINKED)
 
     expect(outcome.deliveries).toEqual([{ to: 'あ', message: { kind: '相手を待っている', room: CODE } }])
   })
@@ -758,7 +772,7 @@ describe('入り直す', () => {
   })
 
   it('まだ 1 人で待っている間に入り直すと、また待つ', () => {
-    const waiting = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP)
+    const waiting = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP, ALL_LINKED)
 
     const again = send(waiting.rooms, 'あ', { kind: '部屋に入る', room: CODE })
 
@@ -790,7 +804,7 @@ describe('別の部屋に移る', () => {
   })
 
   it('相手を待っているだけの人は、別の部屋に入れる', () => {
-    const waiting = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP)
+    const waiting = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP, ALL_LINKED)
 
     const moved = send(waiting.rooms, 'あ', { kind: '部屋に入る', room: OTHER })
 
@@ -835,8 +849,8 @@ describe('別の部屋に移る', () => {
   /** 入れなかった時に抜けたことにすると、どこにもいない参加者ができてしまう。 */
   it('移れなかったときは、元の部屋にいるまま', () => {
     const over = ended()
-    const opened = receive(over.rooms, 'う', { kind: '部屋に入る', room: OTHER }, SETUP)
-    const full = receive(opened.rooms, 'え', { kind: '部屋に入る', room: OTHER }, SETUP)
+    const opened = receive(over.rooms, 'う', { kind: '部屋に入る', room: OTHER }, SETUP, ALL_LINKED)
+    const full = receive(opened.rooms, 'え', { kind: '部屋に入る', room: OTHER }, SETUP, ALL_LINKED)
 
     const refused = send(full.rooms, 'あ', { kind: '部屋に入る', room: OTHER })
 
@@ -1065,6 +1079,37 @@ describe('ロビーに戻る', () => {
   /** 投げ出す口はまだ無い（#92）。合言葉の打ち間違いと同じく、対戦が消えてはならない。 */
   it('打っている途中は、出られない', () => {
     const outcome = send(started().rooms, 'あ', { kind: 'ロビーに戻る' })
+
+    expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '打っている途中の部屋' }])
+  })
+
+  /**
+   * #175。相手が画面を閉じるとその席には誰も戻ってこない（名乗りは画面が覚えているもので、
+   * 閉じれば消える、ADR-0009）。**残された側が永久に待たされてはならない。**
+   */
+  it('相手が繋がっていないなら、打っている途中でも出られる', () => {
+    const alone: ReadonlySet<ParticipantId> = new Set(['あ'])
+
+    const left = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, alone)
+
+    expect(to(left.deliveries, 'あ')).toEqual([])
+    // 相手はまだ部屋にいる。戻ってくれば終わった盤面を見られる（ADR-0009）。
+    expect(left.rooms.get(CODE)?.participants).toEqual(['い'])
+  })
+
+  /** 2 人とも出れば、その部屋はロビーから消える。 */
+  it('残ったほうも出れば、部屋ごと無くなる', () => {
+    const alone: ReadonlySet<ParticipantId> = new Set(['あ'])
+    const left = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, alone)
+
+    const empty = send(left.rooms, 'い', { kind: 'ロビーに戻る' }, new Set(['い']))
+
+    expect([...empty.rooms.keys()]).toEqual([])
+  })
+
+  /** 回線が切れただけなら相手は戻ってくる（ADR-0016）。繋がっている限り、投げ出す口は開かない。 */
+  it('相手が繋がっているなら、やはり出られない', () => {
+    const outcome = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, new Set(['あ', 'い']))
 
     expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '打っている途中の部屋' }])
   })

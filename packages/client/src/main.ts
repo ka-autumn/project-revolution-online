@@ -42,9 +42,12 @@ const PARTICIPANT_KEY = 'revolution.participant'
 /**
  * この画面の名乗り（ADR-0009、#175）。無ければ作って覚える。
  *
- * **タブごとに別の人にする**（`sessionStorage`）。同じブラウザの 2 つのタブで打ち合えるのは、
- * 手元で試す時に要るからである。読み込み直しでは変わらないので、切れて入り直した時は同じ席に
- * 戻れる（ADR-0016）。
+ * **ブラウザごとに覚える**（`localStorage`）。**閉じても同じ人として戻れる**ようにするためで
+ * ある。名乗りは席に座れる合言葉であり、それを忘れると自分の席に戻る手立てが無くなる——画面が
+ * 作った名乗りは、人が控えることもできない。
+ *
+ * そのぶん、**同じブラウザで開いた 2 つのタブは同じ人になる。** 手元で 2 人ぶん試すときは、
+ * `?participant=` で名乗り分けるか、別のブラウザで開く。
  *
  * 覚えられない場合（保存を断っているブラウザ）は、その場限りのものを使う。読み込み直すと別人に
  * なるが、**打てないよりはよい。** 席に戻りたい人は `?participant=` で名乗れる。
@@ -52,10 +55,10 @@ const PARTICIPANT_KEY = 'revolution.participant'
 function participantId(): string {
   const made = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
   try {
-    const remembered = sessionStorage.getItem(PARTICIPANT_KEY)
+    const remembered = localStorage.getItem(PARTICIPANT_KEY)
     if (remembered !== null && remembered !== '') return remembered
 
-    sessionStorage.setItem(PARTICIPANT_KEY, made)
+    localStorage.setItem(PARTICIPANT_KEY, made)
   } catch {
     return made
   }

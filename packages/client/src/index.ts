@@ -253,6 +253,13 @@ function draw(
     // どのフェイズの誰の優先権かは、打つ前に見るものなので操作するところの一番上に置く。
     controlArea.append(line('controls__turn', boardData.turn))
 
+    // 相手が閉じたまま戻らないと、画面は相手の優先権のまま動かなくなる（#175）。**止まって
+    // いる理由を読めるようにする。** 回線が切れただけなら戻ってくる（ADR-0016）ので、待つか
+    // やめるかは人が決める。
+    if (connected && !stage.opponentConnected) {
+      controlArea.append(line('controls__offline', '相手の繋がりが切れています。戻るのを待つか、やめてロビーに戻れます'))
+    }
+
     // 相手が何をして優先権が回ってきたのかを、打つところに 1 行で出す（#147）。
     //
     // **出すのは、人が打つかどうかを決める場面だけである。** 放棄しか行えない場面は自動で送る
@@ -322,9 +329,10 @@ function draw(
     }
 
     // ロビーに戻る口を出すのは、投げ出せる対戦の間だけである（`server` の `room.ts` の
-    // `canLeave`）。決着した後はどちらの対戦でも戻れて、CPU との対戦は途中でも戻れる。
-    // **断るのはサーバである。** ここで決めているのは、押す口を出すかどうかだけである。
-    if (connected && (stage.opponent === 'CPU' || board.result !== undefined)) {
+    // `canLeave`）。決着した後はどちらの対戦でも戻れて、CPU との対戦と、相手が繋がっていない
+    // 対戦は途中でも戻れる。**断るのはサーバである。** ここで決めているのは、押す口を出すか
+    // どうかだけである。
+    if (connected && (stage.opponent === 'CPU' || !stage.opponentConnected || board.result !== undefined)) {
       controlArea.append(
         leaveElement(board.result === undefined ? 'やめてロビーに戻る' : 'ロビーに戻る', lobby.onLeave),
       )

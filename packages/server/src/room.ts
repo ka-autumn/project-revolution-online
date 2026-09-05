@@ -131,8 +131,9 @@ export function receive(
   participant: ParticipantId,
   message: FromClient,
   setup: RoomSetup,
+  connected: ReadonlySet<ParticipantId>,
 ): RoomOutcome {
-  const outcome = handle(rooms, participant, message, setup)
+  const outcome = handle(rooms, participant, message, setup, connected)
 
   // 相手が CPU なら、そのまま打てるところまで打つ（#175）。**送り主のいる部屋だけを進める。**
   // ほかの部屋の CPU は、その部屋で手が打たれた時に動く。
@@ -143,14 +144,20 @@ export function receive(
   return { ...played, deliveries: played.deliveries.filter((delivery) => !isCpu(delivery.to)) }
 }
 
-function handle(rooms: Rooms, participant: ParticipantId, message: FromClient, setup: RoomSetup): RoomOutcome {
+function handle(
+  rooms: Rooms,
+  participant: ParticipantId,
+  message: FromClient,
+  setup: RoomSetup,
+  connected: ReadonlySet<ParticipantId>,
+): RoomOutcome {
   switch (message.kind) {
     case '部屋に入る':
-      return enter(rooms, participant, message.room, setup)
+      return enter(rooms, participant, message.room, setup, connected)
     case '部屋を作る':
-      return open(rooms, participant, message.name, message.against, setup)
+      return open(rooms, participant, message.name, message.against, setup, connected)
     case 'ロビーに戻る':
-      return leave(rooms, participant)
+      return leave(rooms, participant, connected)
     case '行動する':
       return act(rooms, participant, message.action)
     case '選ぶ':
@@ -221,12 +228,20 @@ function withoutParticipant(rooms: Rooms, room: Room, participant: ParticipantId
  * 部屋は抜けられない。** 合言葉を打ち間違えただけで対戦が消えることになるためである。人を
  * 相手に意図して投げ出す経路は、席をどう扱うかを決めてから別に足す。
  *
- * **CPU との対戦だけは、打っている途中でも抜けられる**（#175）。抜けられなくしているのは
- * 相手の対戦を消さないためであり、CPU の側には消えて困るものが無い。抜けられないままだと、
- * 1 人で始めた対戦を終えるまでロビーに戻れなくなる。
+ * 打っている途中でも抜けられるのは 2 つの場合だけである（#175）。
+ *
+ * - **CPU との対戦。** 抜けられなくしているのは相手の対戦を消さないためであり、CPU の側には
+ *   消えて困るものが無い。1 人で始めた対戦を終えるまでロビーに戻れないのはおかしい。
+ * - **相手が繋がっていない対戦。** 相手が画面を閉じるとその席には誰も戻ってこない（名乗りは
+ *   画面が覚えているもので、閉じれば消える、ADR-0009）。残された側が永久に待たされ、その部屋も
+ *   ロビーに残り続けることになる。**回線が切れただけなら相手は戻ってくる**（ADR-0016）ので、
+ *   抜けるかどうかは人が決める。ここでは口を開けるだけである。
  */
-function canLeave(room: Room): boolean {
-  return room.duel === undefined || hasEnded(room.duel.state) || room.cpu !== undefined
+function canLeave(room: Room, participant: ParticipantId, connected: ReadonlySet<ParticipantId>): boolean {
+  if (room.duel === undefined || hasEnded(room.duel.state)) return true
+  if (room.cpu !== undefined) return true
+
+  return room.participants.every((each) => each === participant || !connected.has(each))
 }
 
 /** その参加者がいる部屋。どこにもいなければ `undefined`（＝ロビーにいる）。 */
@@ -268,9 +283,12 @@ function open(
   name: string,
   against: Opponent,
   setup: RoomSetup,
+  connected: ReadonlySet<ParticipantId>,
 ): RoomOutcome {
   const current = roomOf(rooms, participant)
-  if (current !== undefined && !canLeave(current)) return refuse(rooms, participant, 'ほかの部屋にいる')
+  if (current !== undefined && !canLeave(current, participant, connected)) {
+    return refuse(rooms, participant, 'ほかの部屋にいる')
+  }
   const left = current === undefined ? rooms : withoutParticipant(rooms, current, participant)
 
   const code = unusedCode(left, setup.code)
@@ -297,10 +315,10 @@ function open(
  * 出られる部屋は `canLeave` が決める。**何も送らない。** 部屋から出たことは、ロビーが届くこと
  * そのもので分かる（`serve.ts`）。
  */
-function leave(rooms: Rooms, participant: ParticipantId): RoomOutcome {
+function leave(rooms: Rooms, participant: ParticipantId, connected: ReadonlySet<ParticipantId>): RoomOutcome {
   const room = roomOf(rooms, participant)
   if (room === undefined) return { rooms, deliveries: [] }
-  if (!canLeave(room)) return refuse(rooms, participant, '打っている途中の部屋')
+  if (!canLeave(room, participant, connected)) return refuse(rooms, participant, '打っている途中の部屋')
 
   return { rooms: withoutParticipant(rooms, room, participant), deliveries: [] }
 }
@@ -318,11 +336,17 @@ function leave(rooms: Rooms, participant: ParticipantId): RoomOutcome {
  * いるまま**にする。移れないことが分かった時点で抜けたことにすると、どこにもいない参加者が
  * できてしまう。
  */
-function enter(rooms: Rooms, participant: ParticipantId, code: RoomCode, setup: RoomSetup): RoomOutcome {
+function enter(
+  rooms: Rooms,
+  participant: ParticipantId,
+  code: RoomCode,
+  setup: RoomSetup,
+  connected: ReadonlySet<ParticipantId>,
+): RoomOutcome {
   const current = roomOf(rooms, participant)
   if (current !== undefined) {
     if (current.code === code) return rejoin(rooms, current, participant)
-    if (!canLeave(current)) return refuse(rooms, participant, 'ほかの部屋にいる')
+    if (!canLeave(current, participant, connected)) return refuse(rooms, participant, 'ほかの部屋にいる')
   }
   const left = current === undefined ? rooms : withoutParticipant(rooms, current, participant)
 

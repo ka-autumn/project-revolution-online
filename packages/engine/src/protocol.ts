@@ -257,6 +257,18 @@ export type ToClient =
       readonly passOutcome: PassOutcome | undefined
     }
   | { readonly kind: '選んでほしい'; readonly choice: WireChoice }
+  /**
+   * 相手がいま繋がっているか（#175）。変わるたびに、同じ部屋のもう 1 人に届く。
+   *
+   * **止まっている理由が読めるようにするためにある。** 相手が画面を閉じると、待っている側の
+   * 画面は相手の優先権のまま動かなくなる。回線が切れただけなら戻ってくる（ADR-0016）が、
+   * 待っている側からはどちらか分からない。
+   *
+   * 繋がっていない間は、その対戦を投げ出してロビーに戻れる（`server` の `room.ts` の
+   * `canLeave`）。CPU が相手の部屋には届かない。繋がらないのが当たり前であり、投げ出せるかは
+   * 相手が CPU であることから決まっている。
+   */
+  | { readonly kind: '相手の繋がり'; readonly connected: boolean }
   | { readonly kind: '行えなかった'; readonly reason: string }
 
 /** 行動を適用しようとした結果（ADR-0008）。 */

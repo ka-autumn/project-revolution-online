@@ -207,6 +207,39 @@ describe('WebSocket で繋ぐ', () => {
     await again.close()
   })
 
+  /**
+   * #175。相手が画面を閉じると、待っている側の画面は相手の優先権のまま動かなくなる。
+   * **止まっている理由が読めないままにしない。**
+   */
+  it('相手が閉じると、残った人に伝わって、その対戦から出られる', async () => {
+    const { first, second } = await bothJoined(server.port)
+    first.received.length = 0
+
+    await second.close()
+
+    expect(await first.waitFor('相手の繋がり')).toEqual({ kind: '相手の繋がり', connected: false })
+
+    // 永久に待たされない。投げ出してロビーに戻れる（`room.ts` の `canLeave`）。
+    first.send({ kind: 'ロビーに戻る' })
+    expect((await first.waitFor('ロビー')).kind).toBe('ロビー')
+    await first.close()
+  })
+
+  /** 回線が切れただけなら相手は戻ってくる（ADR-0016）。戻ったことも伝える。 */
+  it('相手が戻ると、繋がったことが伝わる', async () => {
+    const { first, second } = await bothJoined(server.port)
+    await second.close()
+    await first.waitFor('相手の繋がり')
+    first.received.length = 0
+
+    const again = new Client(server.port, 'い')
+    await again.waitFor('席についた')
+
+    expect(await first.waitFor('相手の繋がり')).toEqual({ kind: '相手の繋がり', connected: true })
+    await first.close()
+    await again.close()
+  })
+
   /** #175。CPU は繋がっていないので、席につくのは人だけである。 */
   it('CPU と対戦する部屋は、作った時点で始まっている', async () => {
     const client = new Client(server.port, 'あ')

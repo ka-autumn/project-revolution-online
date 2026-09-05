@@ -45,6 +45,13 @@ export type Stage =
       readonly room: RoomCode
       /** 誰と打っているか。**投げ出せる対戦かがこれで決まる**（#175）。 */
       readonly opponent: Opponent
+      /**
+       * 相手が繋がっているか（#175）。決めているのはサーバである（`server` の `serve.ts`）。
+       *
+       * 繋がっていない間、その対戦は投げ出せる（同 `room.ts` の `canLeave`）。**繋がっていた
+       * ものとして始める。** 席についた時点では相手も繋がっており、変わったらそう届く。
+       */
+      readonly opponentConnected: boolean
       readonly seat: Player
       /** 席についた直後、最初の盤面が届くまでは `undefined`。 */
       readonly board: WirePerspective | undefined
@@ -130,6 +137,7 @@ export function applyMessage(session: Session, message: ToClient): Session {
           kind: '打っている',
           room: message.room,
           opponent: message.opponent,
+          opponentConnected: true,
           seat: message.seat,
           board: undefined,
           actions: [],
@@ -157,6 +165,11 @@ export function applyMessage(session: Session, message: ToClient): Session {
         refusal: undefined,
       }
     }
+    case '相手の繋がり':
+      // 席につく前には届かない（`server` の `serve.ts`）。届いても置く先が無いので捨てる。
+      if (stage.kind !== '打っている') return session
+
+      return { ...session, stage: { ...stage, opponentConnected: message.connected } }
     case '選んでほしい':
       if (stage.kind !== '打っている') return session
 

@@ -3,7 +3,7 @@ import type { WebSocket } from 'ws'
 import type { FromClient, ToClient } from '@revolution/engine'
 import { isCpu } from './cpu.js'
 import { emptyRooms, lobbyOf, receive, roomOf } from './room.js'
-import type { ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
+import type { ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
 
 /**
  * WebSocket で 2 人を繋ぐ（ADR-0009、#83）。
@@ -110,11 +110,35 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   const lobbySent = new Map<ParticipantId, string>()
   let rooms: Rooms = emptyRooms()
 
+  /** いま繋がっている人。部屋はこれを見て、抜けられるかを決める（`room.ts` の `canLeave`）。 */
+  const linked = (): ReadonlySet<ParticipantId> => new Set(sockets.keys())
+
   /** 部屋が返したものを、それぞれの宛先へ送る。ロビーも送り直す。 */
   function deliver(outcome: RoomOutcome): void {
     rooms = outcome.rooms
     for (const delivery of outcome.deliveries) send(sockets.get(delivery.to), delivery.message)
     pushLobby()
+  }
+
+  /**
+   * その部屋にいる人それぞれに、相手が繋がっているかを伝える（#175）。
+   *
+   * **繋がりを知っているのはここだけである。** 部屋は決まりごとしか持たない（`room.ts`）ので、
+   * 誰が繋がっているかは渡す側の仕事になる。相手が閉じたまま戻らない対戦から抜けられるかも、
+   * 同じものから決まる（同 `canLeave`）。
+   *
+   * CPU が相手の部屋には送らない。CPU は繋がらないのが当たり前で、投げ出せるかどうかも相手が
+   * CPU であることから決まっている。
+   */
+  function tellLinks(room: Room | undefined): void {
+    if (room === undefined || room.cpu !== undefined) return
+
+    for (const participant of room.participants) {
+      const others = room.participants.filter((each) => each !== participant)
+      if (others.length === 0) continue
+
+      send(sockets.get(participant), { kind: '相手の繋がり', connected: others.every((each) => sockets.has(each)) })
+    }
   }
 
   /**
@@ -190,7 +214,9 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
      */
     const current = roomOf(rooms, participant)
     if (current === undefined) pushLobby()
-    else deliver(receive(rooms, participant, { kind: '部屋に入る', room: current.code }, options.setup()))
+    else deliver(receive(rooms, participant, { kind: '部屋に入る', room: current.code }, options.setup(), linked()))
+    // 入り直した本人にも、相手にも、繋がりが変わったことを伝える。
+    tellLinks(roomOf(rooms, participant))
 
     socket.on('message', (data) => {
       const message = parse(data)
@@ -199,13 +225,15 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         return
       }
 
-      deliver(receive(rooms, participant, message, options.setup()))
+      deliver(receive(rooms, participant, message, options.setup(), linked()))
     })
 
     // 切れたことは覚えておかない。部屋は残り、同じ合言葉で入り直せば続きから打てる。
     socket.on('close', () => {
       if (sockets.get(participant) === socket) sockets.delete(participant)
       lobbySent.delete(participant)
+      // 待っている相手には伝える。**止まっている理由が読めないままにしない**（#175）。
+      tellLinks(roomOf(rooms, participant))
     })
   })
 
