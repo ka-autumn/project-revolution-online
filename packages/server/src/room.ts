@@ -206,13 +206,23 @@ function withRoom(rooms: Rooms, room: Room): Rooms {
 /**
  * その部屋から 1 人を抜けさせる。誰もいなくなった部屋は取り除く。
  *
- * 席の並び（`duel.seats`）からは抜かない。**抜けられるのは終わったデュエルの部屋だけ**であり、
- * 終わった盤面はもう動かない（総合ルール 第3部 第3章 3）ので、誰がどちらの席にいたかは
- * そのまま残しておいてよい。残ったほうが入り直せば、同じ席で終わった盤面を見られる。
+ * **打っている途中に抜けられたら、部屋ごと取り除く**（#175）。席は 2 つで（ADR-0004）、抜けた
+ * 席に誰かが座り直すことはない（`enter` が断る）ので、**その対戦はもう続けられない。** 残して
+ * おくと、動かない対戦がロビーに「対戦中」として残り、戻ってきた相手は誰も来ない席に座り続ける
+ * ことになる。
+ *
+ * **終わった対戦の部屋は残す。** 終わった盤面はもう動かない（総合ルール 第3部 第3章 3）ので、
+ * 残ったほうが入り直せば、同じ席で終わった盤面を見られる。席の並び（`duel.seats`）から抜かない
+ * のもそのためである。
  */
 function withoutParticipant(rooms: Rooms, room: Room, participant: ParticipantId): Rooms {
-  const remaining = room.participants.filter((each) => each !== participant)
   const next = new Map(rooms)
+  if (room.duel !== undefined && !hasEnded(room.duel.state)) {
+    next.delete(room.code)
+    return next
+  }
+
+  const remaining = room.participants.filter((each) => each !== participant)
   // 残ったのが CPU だけなら、その部屋にはもう誰もいない（#175）。CPU は繋がっておらず、
   // 入り直してくることも無いので、待たせておく先が無い。
   if (remaining.every((each) => isCpu(each))) next.delete(room.code)

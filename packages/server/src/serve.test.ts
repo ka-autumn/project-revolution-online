@@ -173,6 +173,21 @@ describe('WebSocket で繋ぐ', () => {
     await client.close()
   })
 
+  /**
+   * #175。送ったかどうかは名乗りで覚えている（同じことを送り直さないため）。**繋ぎ直した先には
+   * 言い直す。** 覚えたままにすると、切れる前に送ってあるからと黙って、何も届かないままになる。
+   */
+  it('同じ名乗りで繋ぎ直すと、ロビーがもう一度届く', async () => {
+    const client = new Client(server.port, 'あ')
+    await client.waitFor('ロビー')
+
+    const again = new Client(server.port, 'あ')
+
+    expect((await again.waitFor('ロビー')).kind).toBe('ロビー')
+    await client.close()
+    await again.close()
+  })
+
   /** #175。ほかの人が部屋を作ったことが、尋ね直さずに一覧へ出る。 */
   it('誰かが部屋を作ると、ロビーにいる人に届く', async () => {
     const watching = new Client(server.port, 'あ')
@@ -255,7 +270,7 @@ describe('WebSocket で繋ぐ', () => {
    * #175。閉じていた側が、相手がロビーへ戻った後に繋ぎ直してくることはある。**席は残っている
    * ので盤面は見えるが、相手はもう来ない。** 待たされ続けないよう、そこも伝える。
    */
-  it('相手が出ていった後に繋ぎ直すと、繋がっていないと届く', async () => {
+  it('相手が出ていった後に繋ぎ直すと、その対戦はもう無い', async () => {
     const { first, second } = await bothJoined(server.port)
     await second.close()
     await first.waitUntil('相手が切れたと届く', () => {
@@ -267,13 +282,12 @@ describe('WebSocket で繋ぐ', () => {
     await first.waitFor('ロビー')
 
     const again = new Client(server.port, 'い')
-    await again.waitFor('席についた')
 
-    await again.waitUntil('相手が居ないと届く', () => {
-      const link = again.latest('相手の繋がり')
-      return link?.kind === '相手の繋がり' && !link.connected
-    })
-    expect(again.latest('相手の繋がり')).toEqual({ kind: '相手の繋がり', connected: false })
+    // 投げ出された対戦は部屋ごと消える（`room.ts` の `withoutParticipant`）ので、戻る先が無い。
+    const lobby = await again.waitFor('ロビー')
+    if (lobby.kind !== 'ロビー') throw new Error('ロビーのはずだった')
+    expect(lobby.rooms).toEqual([])
+    expect(again.received.some((message) => message.kind === '席についた')).toBe(false)
     await first.close()
     await again.close()
   })

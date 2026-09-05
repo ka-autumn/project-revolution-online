@@ -8,7 +8,7 @@ import {
   placeTopOfLibrary,
 } from '@revolution/engine'
 import type { Card, Deck, FromClient, LegalAction, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
-import { emptyRooms, lobbyOf, partnerOf, receive } from './room.js'
+import { emptyRooms, lobbyOf, partnerOf, receive, roomOf } from './room.js'
 import type { Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
 
 /**
@@ -1093,18 +1093,24 @@ describe('ロビーに戻る', () => {
     const left = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, alone)
 
     expect(to(left.deliveries, 'あ')).toEqual([])
-    // 相手はまだ部屋にいる。戻ってくれば終わった盤面を見られる（ADR-0009）。
-    expect(left.rooms.get(CODE)?.participants).toEqual(['い'])
   })
 
-  /** 2 人とも出れば、その部屋はロビーから消える。 */
-  it('残ったほうも出れば、部屋ごと無くなる', () => {
-    const alone: ReadonlySet<ParticipantId> = new Set(['あ'])
-    const left = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, alone)
+  /**
+   * #175。**投げ出された対戦はもう続けられない。** 席は 2 つで、抜けた席に座り直す人はいない
+   * （`enter` が断る）。残しておくと、動かない対戦がロビーに「対戦中」として残る。
+   */
+  it('打っている途中で出られた部屋は、そのまま無くなる', () => {
+    const left = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, new Set(['あ']))
 
-    const empty = send(left.rooms, 'い', { kind: 'ロビーに戻る' }, new Set(['い']))
+    expect([...left.rooms.keys()]).toEqual([])
+    expect(lobbyOf(left.rooms)).toEqual([])
+  })
 
-    expect([...empty.rooms.keys()]).toEqual([])
+  /** 終わった対戦の部屋は残す。残ったほうが入り直せば、終わった盤面を見られる（ADR-0009）。 */
+  it('決着した部屋は、片方が出ても残る', () => {
+    const left = send(ended().rooms, 'あ', { kind: 'ロビーに戻る' })
+
+    expect(left.rooms.get(CODE)?.participants).toEqual(['い'])
   })
 
   /** 回線が切れただけなら相手は戻ってくる（ADR-0016）。繋がっている限り、投げ出す口は開かない。 */
@@ -1115,39 +1121,32 @@ describe('ロビーに戻る', () => {
   })
 
   /**
-   * #175。閉じていた側が後から戻ってくることはある。**席はそのままなので、戻れば盤面は見える。**
-   * ただし相手はもういない（出た人はその席に戻れない）ので、待っていても進まない。
+   * #175。閉じていた側が後から戻ってくることはある。**戻る先はもう無い。** 投げ出された時点で
+   * その対戦は続けられなくなっており、部屋ごと消えている。
    */
-  it('出ていかれた後に戻ると、席にはつけるが相手はいない', () => {
+  it('出ていかれた後に戻っても、その対戦はもう無い', () => {
     const left = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, new Set(['あ']))
 
-    const back = send(left.rooms, 'い', { kind: '部屋に入る', room: CODE })
+    expect(roomOf(left.rooms, 'い')).toBeUndefined()
+  })
 
-    expect(to(back.deliveries, 'い').map((message) => message.kind)).toEqual(['席についた', '盤面'])
-    const room = back.rooms.get(CODE)
+  /** 決着した部屋に残っている人からは、出ていった相手が席の相手として分かる（`serve.ts` が使う）。 */
+  it('決着した部屋では、出ていった相手も席の相手として分かる', () => {
+    const left = send(ended().rooms, 'あ', { kind: 'ロビーに戻る' })
+
+    const room = left.rooms.get(CODE)
     if (room === undefined) throw new Error('部屋があるはずだった')
-    // 席の相手としては分かるが、その人はもう部屋にいない。
     expect(partnerOf(room, 'い')).toBe('あ')
     expect(room.participants).toEqual(['い'])
   })
 
   /** 出ていった人は、その席に戻れない。**残っている人の対戦を、後から上書きさせない。** */
-  it('出ていった人は、その部屋に戻れない', () => {
-    const left = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, new Set(['あ']))
+  it('決着した部屋を出ていった人は、その部屋に戻れない', () => {
+    const left = send(ended().rooms, 'あ', { kind: 'ロビーに戻る' })
 
     const back = send(left.rooms, 'あ', { kind: '部屋に入る', room: CODE })
 
     expect(to(back.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '対戦が終わっている部屋' }])
-  })
-
-  /** 相手がいなくなった部屋には、残ったほうも留まらなくてよい。 */
-  it('相手がいなくなった部屋からは、残ったほうも出られる', () => {
-    const left = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, new Set(['あ']))
-    const back = send(left.rooms, 'い', { kind: '部屋に入る', room: CODE })
-
-    const empty = send(back.rooms, 'い', { kind: 'ロビーに戻る' }, new Set(['い']))
-
-    expect([...empty.rooms.keys()]).toEqual([])
   })
 
   it('どこにもいないなら、何も起きない', () => {

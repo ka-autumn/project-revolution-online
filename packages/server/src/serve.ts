@@ -225,6 +225,11 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
 
     // 同じ合言葉で繋ぎ直された場合、古い接続は捨てる。部屋の側は入り直しとして扱う。
     sockets.set(participant, socket)
+    // **新しい接続には、覚えていることを言い直す。** 送ったかどうかは名乗りで覚えている
+    // （`lobbySent`・`linkSent`）ので、消しておかないと、同じ名乗りで繋ぎ直した先が
+    // 「もう伝えてある」として黙って何も受け取れないままになる。
+    lobbySent.delete(participant)
+    linkSent.delete(participant)
 
     /**
      * 部屋にいるならその様子を、いないならロビーを送る（#175）。
