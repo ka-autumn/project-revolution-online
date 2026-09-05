@@ -43,6 +43,14 @@ pnpm serve --decks packages/decks/src/index.ts   # 対戦サーバ（既定で 8
 pnpm --filter @revolution/client dev             # 対戦画面（既定で 5173 番）
 ```
 
+**打った対戦は残る**（ADR-0018）。既定では立てたところに `revolution.sqlite` ができ、**サーバを
+落として立て直しても、打っていた対戦はそこから戻る。** 残すのは盤面ではなく、デッキとシードと
+「行動と答えの並び」だけである。置き先は `--store` で変えられ、空文字を渡せば何も残さずに立つ。
+
+```sh
+pnpm serve --decks packages/decks/src/index.ts --store ''   # 何も残さない
+```
+
 `--decks` に渡すのは、デッキ 2 つを `decks` として export するモジュールである。
 **このリポジトリはどのカードを使うかを知らない**（ADR-0002）ので、実行時に受け取る。
 
@@ -105,8 +113,12 @@ pnpm deploy:server --decks packages/decks/src/index.ts --host <ユーザ>@<ホ�
 | `REVOLUTION_DEPLOY_PATH` | 置き場でのパス |
 | `REVOLUTION_DEPLOY_UNIT` | 置き場での常駐単位の名前 |
 
-置き場に何を用意するかは ADR-0015 にある。**待つポートは `PORT` で決められる**ので、束ね直さずに
-変えられる。
+置き場に何を用意するかは ADR-0015 にある。**待つポートは `PORT` で、打った対戦を書く先は `STORE`
+で決められる**ので、どちらも束ね直さずに変えられる。
+
+**書く先は、置き直しても消えないところにすること**（ADR-0018）。運ぶのは束ねた 1 ファイルで、
+それは差し替わる（ADR-0015）ので、同じところに置くと対戦ごと消える。**控えを別のところへ取り、
+取れていることを確かめる手立ても置く。**
 
 **初めての宛先には、先に鍵を登録しておく。** `deploy:server` は途中で止まらないように
 `BatchMode` で繋ぐので、`known_hosts` に照らせない宛先は「Host key verification failed」で落ちる。

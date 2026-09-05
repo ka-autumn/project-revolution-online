@@ -2,8 +2,9 @@ import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import type { FromClient, ToClient } from '@revolution/engine'
 import { isCpu } from './cpu.js'
-import { emptyRooms, lobbyOf, partnerOf, receive, roomOf } from './room.js'
+import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room.js'
 import type { ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
+import type { Store } from './store.js'
 
 /**
  * WebSocket で 2 人を繋ぐ（ADR-0009、#83）。
@@ -32,6 +33,13 @@ export interface ServeOptions {
   readonly setup: () => RoomSetup
   /** 生きているかを確かめる間隔（ミリ秒）。既定は `HEARTBEAT_MS`。テストで縮めるために開けてある。 */
   readonly heartbeatMs?: number
+  /**
+   * 書いたものが残る置き場（ADR-0018、`store.ts`）。
+   *
+   * **渡さなければ何も残らない。** 立て直せば対戦は消える——ADR-0018 より前と同じ振る舞いに
+   * なる。置き場を持つかどうかを決めるのは、サーバを立てる側である（`tools/bundle-server.mjs`）。
+   */
+  readonly store?: Store
 }
 
 export interface RunningServer {
@@ -114,16 +122,45 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    * 切れたら消す。**繋ぎ直してきた人には、変わっていなくてももう一度伝える。**
    */
   const linkSent = new Map<ParticipantId, boolean>()
-  let rooms: Rooms = emptyRooms()
+  /**
+   * 置き場に残っていた対戦から始める（ADR-0018）。
+   *
+   * **立て直しても対戦が消えない。** 作り直すのは記録した入力を打ち直すことで、決着まで打った
+   * 1 本でも 18ms しかかからない（`room.ts` の `restore`）。デッキは立てるときに渡されたものを
+   * 使い、記録と違っていればその対戦は作り直さない。
+   */
+  let rooms: Rooms = options.store === undefined ? emptyRooms() : restore(options.store.openDuels(), options.setup().decks)
 
   /** いま繋がっている人。部屋はこれを見て、抜けられるかを決める（`room.ts` の `canLeave`）。 */
   const linked = (): ReadonlySet<ParticipantId> => new Set(sockets.keys())
 
-  /** 部屋が返したものを、それぞれの宛先へ送る。ロビーも送り直す。 */
+  /**
+   * 部屋が返したものを、それぞれの宛先へ送る。ロビーも送り直す。
+   *
+   * **送る前に書く**（ADR-0018）。書く前に送ると、書けないまま人の画面だけが先に進む。書いてから
+   * 落ちたなら、繋ぎ直した先で同じ盤面が作り直される。
+   */
   function deliver(outcome: RoomOutcome): void {
+    keep(outcome)
     rooms = outcome.rooms
     for (const delivery of outcome.deliveries) send(sockets.get(delivery.to), delivery.message)
     pushLobby()
+  }
+
+  /**
+   * 起きたことを置き場へ書き足す（ADR-0018）。
+   *
+   * **書けなくても対戦は止めない。** 記録が欠けるのは失うものだが、打てなくなるほうが重い。
+   * 黙って落とさずに残すのは、置き場が壊れていることに気付けるようにするためである。
+   */
+  function keep(outcome: RoomOutcome): void {
+    if (options.store === undefined || outcome.records.length === 0) return
+
+    try {
+      options.store.write(outcome.records)
+    } catch (error) {
+      console.error('置き場へ書けませんでした:', error)
+    }
   }
 
   /**

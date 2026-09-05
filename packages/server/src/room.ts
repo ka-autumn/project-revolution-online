@@ -109,14 +109,138 @@ export interface Delivery {
   readonly message: ToClient
 }
 
+/**
+ * 置き場へ書き足すもの 1 つ（ADR-0018）。
+ *
+ * **盤面は入っていない。** 残すのはデッキとシードと「行動と答えの並び」で、そこから同じ盤面を
+ * いつでも作り直せる（ADR-0008）。盤面を残すと 3 桁大きくなる。
+ *
+ * **ここは値を作るだけで、書かない。** 書くのは接続を持つ側である（`serve.ts`）。部屋の
+ * 決まりごとが I/O を持たないのは、送るものについてと同じである。
+ */
+export type DuelRecord =
+  | {
+      readonly kind: '始まった'
+      readonly code: RoomCode
+      readonly name: string
+      readonly seats: Readonly<Record<Player, ParticipantId>>
+      readonly cpu: ParticipantId | undefined
+      readonly seed: number
+      /**
+       * 席の順に並べた、デッキに入っていたカードの名前。
+       *
+       * **カードそのものは残せない**（非公開である、ADR-0002）。名前だけを残し、戻すときに
+       * いま渡されているデッキと突き合わせる（`restore`）。違っていれば作り直せない——
+       * **それは避けられない**（ADR-0018）。
+       */
+      readonly decks: readonly [readonly string[], readonly string[]]
+    }
+  | {
+      readonly kind: '打たれた'
+      readonly code: RoomCode
+      readonly action: LegalAction
+      readonly answers: readonly ChoiceAnswer[]
+    }
+  | {
+      /**
+       * その部屋がもう無い。**記録は消さない**（ADR-0018）が、戻す先が無い。
+       *
+       * 打っている途中に投げ出された対戦も、決着して全員が出た部屋も、ここへ来る（ADR-0017）。
+       */
+      readonly kind: '閉じた'
+      readonly code: RoomCode
+    }
+
+/** 置き場から読み出した対戦 1 つ。立て直したときに、ここから部屋を作り直す。 */
+export interface StoredDuel {
+  readonly code: RoomCode
+  readonly name: string
+  readonly seats: Readonly<Record<Player, ParticipantId>>
+  readonly cpu: ParticipantId | undefined
+  readonly seed: number
+  readonly decks: readonly [readonly string[], readonly string[]]
+  readonly steps: readonly { readonly action: LegalAction; readonly answers: readonly ChoiceAnswer[] }[]
+}
+
 /** メッセージ 1 つを受け取った結果。 */
 export interface RoomOutcome {
   readonly rooms: Rooms
   readonly deliveries: readonly Delivery[]
+  /** 置き場へ書き足すもの。書くのは呼ぶ側である（ADR-0018）。 */
+  readonly records: readonly DuelRecord[]
 }
 
 export function emptyRooms(): Rooms {
   return new Map()
+}
+
+/**
+ * 置き場に残っていた対戦から、部屋を作り直す（ADR-0018）。
+ *
+ * **立て直しても対戦が消えなくなる。** ADR-0009 と ADR-0014 と ADR-0015 が「置き直せばそのとき
+ * 進んでいた対戦は消える」と書いてきたのは、残す先が無かったからである。
+ *
+ * 作り直すのは、記録した入力をもう一度打ち直すことである。エンジンが純粋で、同じ盤面と同じ
+ * 答えの並びからは必ず同じところへ進む（ADR-0001、ADR-0008）ので、**盤面を残しておく必要が無い。**
+ *
+ * **選びかけていたものは戻らない。** 答えは行動が終わるまで確定しないので書いていない
+ * （`advance`）。繋ぎ直した人は、その行動をもう一度選ぶところから始める。**貯めた答えを
+ * 覚えておく仕組みは要らない**（ADR-0008）。
+ *
+ * **作り直せなかった対戦は捨てる。消すのではない。** 記録は置き場に残っており、戻す先の部屋が
+ * できないだけである。デッキが変われば同じところへ進まない——**これは避けられない**（ADR-0018）。
+ */
+export function restore(stored: readonly StoredDuel[], decks: readonly [Deck, Deck]): Rooms {
+  const rooms = new Map<RoomCode, Room>()
+  for (const duel of stored) {
+    const room = replay(duel, decks)
+    if (room !== undefined) rooms.set(room.code, room)
+  }
+
+  return rooms
+}
+
+/** 記録した入力を打ち直して部屋を作る。同じところへ進まなければ `undefined`。 */
+function replay(stored: StoredDuel, decks: readonly [Deck, Deck]): Room | undefined {
+  // **いま渡されているデッキと違えば、そこから先は別の対戦になる。** 名前の並びまで見るのは、
+  // 順番がシャッフルの入力そのものだからである（`prepareDuel`）。
+  if (!sameNames(stored.decks[0], namesOf(decks[0])) || !sameNames(stored.decks[1], namesOf(decks[1]))) {
+    return undefined
+  }
+
+  const prepared = prepareDuel({ decks, seed: stored.seed })
+  if (prepared.kind !== '準備完了') return undefined
+
+  let state = prepared.state
+  for (const step of stored.steps) {
+    const progress = applyWithAnswers(state, step.action, step.answers)
+    // 答えが足りない、または行えない行動になったなら、そこから先は作り直せない。**途中まで
+    // 作った盤面は使わない**——打った人が知らない盤面を席に出すことになる。
+    if (progress.kind !== '進んだ') return undefined
+
+    state = progress.state
+  }
+
+  const seated = [stored.seats.先攻, stored.seats.後攻]
+  return {
+    code: stored.code,
+    name: stored.name,
+    // 入ってきた順は残していない。**席に着いている 2 人であることだけが要る。**
+    participants: seated,
+    duel: {
+      state,
+      seats: stored.seats,
+      pending: undefined,
+      // 準備で使った続きから始める。**CPU がこの先どう打つかは、立て直す前とは変わる**
+      // （選ぶのに使った乱数は記録していない）。打たれた手は変わらない。
+      random: prepared.random,
+    },
+    cpu: stored.cpu,
+  }
+}
+
+function sameNames(one: readonly string[], other: readonly string[]): boolean {
+  return one.length === other.length && one.every((name, at) => name === other[at])
 }
 
 /**
@@ -141,6 +265,7 @@ export function receive(
   const played = code === undefined ? outcome : withCpu(outcome, code)
 
   // CPU は繋がっていないので、宛てたものは届く先が無い（`serve.ts`）。ここで落とす。
+  // **記録は落とさない。** CPU が打った手も、その対戦を作り直すのに要る（ADR-0018）。
   return { ...played, deliveries: played.deliveries.filter((delivery) => !isCpu(delivery.to)) }
 }
 
@@ -196,11 +321,21 @@ function opponentOf(room: Room): Opponent {
 }
 
 function refuse(rooms: Rooms, participant: ParticipantId, reason: string): RoomOutcome {
-  return { rooms, deliveries: [{ to: participant, message: { kind: '行えなかった', reason } }] }
+  return { rooms, deliveries: [{ to: participant, message: { kind: '行えなかった', reason } }], records: [] }
 }
 
 function withRoom(rooms: Rooms, room: Room): Rooms {
   return new Map([...rooms, [room.code, room]])
+}
+
+/**
+ * 先に起きたことを、後から起きたことの前に足す（ADR-0018）。
+ *
+ * 部屋を移るときは、出たことと入ったことが 1 つのメッセージで両方起きる。**書く順は起きた順で
+ * なければならない**——閉じたことを後に書くと、新しく始まった対戦のほうが閉じられる。
+ */
+function after(records: readonly DuelRecord[], outcome: RoomOutcome): RoomOutcome {
+  return records.length === 0 ? outcome : { ...outcome, records: [...records, ...outcome.records] }
 }
 
 /**
@@ -215,20 +350,31 @@ function withRoom(rooms: Rooms, room: Room): Rooms {
  * 残ったほうが入り直せば、同じ席で終わった盤面を見られる。席の並び（`duel.seats`）から抜かない
  * のもそのためである。
  */
-function withoutParticipant(rooms: Rooms, room: Room, participant: ParticipantId): Rooms {
+function withoutParticipant(
+  rooms: Rooms,
+  room: Room,
+  participant: ParticipantId,
+): { readonly rooms: Rooms; readonly records: readonly DuelRecord[] } {
   const next = new Map(rooms)
+  // 部屋が無くなったことは置き場にも伝える（ADR-0018）。**記録そのものは消さない。** 戻す先が
+  // 無くなっただけで、そこで何が打たれたかは残る。
+  const closed: readonly DuelRecord[] = [{ kind: '閉じた', code: room.code }]
+
   if (room.duel !== undefined && !hasEnded(room.duel.state)) {
     next.delete(room.code)
-    return next
+    return { rooms: next, records: closed }
   }
 
   const remaining = room.participants.filter((each) => each !== participant)
   // 残ったのが CPU だけなら、その部屋にはもう誰もいない（#175）。CPU は繋がっておらず、
   // 入り直してくることも無いので、待たせておく先が無い。
-  if (remaining.every((each) => isCpu(each))) next.delete(room.code)
-  else next.set(room.code, { ...room, participants: remaining })
+  if (remaining.every((each) => isCpu(each))) {
+    next.delete(room.code)
+    return { rooms: next, records: closed }
+  }
 
-  return next
+  next.set(room.code, { ...room, participants: remaining })
+  return { rooms: next, records: [] }
 }
 
 /**
@@ -313,7 +459,9 @@ function open(
   if (current !== undefined && !canLeave(current, participant, connected)) {
     return refuse(rooms, participant, 'ほかの部屋にいる')
   }
-  const left = current === undefined ? rooms : withoutParticipant(rooms, current, participant)
+  const leaving = current === undefined ? undefined : withoutParticipant(rooms, current, participant)
+  const left = leaving?.rooms ?? rooms
+  const closed = leaving?.records ?? []
 
   const code = unusedCode(left, setup.code)
   const opened: Room = {
@@ -327,10 +475,11 @@ function open(
     return {
       rooms: withRoom(left, opened),
       deliveries: [{ to: participant, message: { kind: '相手を待っている', room: code } }],
+      records: closed,
     }
   }
 
-  return start(left, opened, participant, opened.cpu, setup)
+  return after(closed, start(left, opened, participant, opened.cpu, setup))
 }
 
 /**
@@ -341,10 +490,11 @@ function open(
  */
 function leave(rooms: Rooms, participant: ParticipantId, connected: ReadonlySet<ParticipantId>): RoomOutcome {
   const room = roomOf(rooms, participant)
-  if (room === undefined) return { rooms, deliveries: [] }
+  if (room === undefined) return { rooms, deliveries: [], records: [] }
   if (!canLeave(room, participant, connected)) return refuse(rooms, participant, '打っている途中の部屋')
 
-  return { rooms: withoutParticipant(rooms, room, participant), deliveries: [] }
+  const left = withoutParticipant(rooms, room, participant)
+  return { rooms: left.rooms, deliveries: [], records: left.records }
 }
 
 /**
@@ -372,7 +522,9 @@ function enter(
     if (current.code === code) return rejoin(rooms, current, participant)
     if (!canLeave(current, participant, connected)) return refuse(rooms, participant, 'ほかの部屋にいる')
   }
-  const left = current === undefined ? rooms : withoutParticipant(rooms, current, participant)
+  const leaving = current === undefined ? undefined : withoutParticipant(rooms, current, participant)
+  const left = leaving?.rooms ?? rooms
+  const closed = leaving?.records ?? []
 
   const room = left.get(code)
   if (room === undefined) {
@@ -381,6 +533,7 @@ function enter(
     return {
       rooms: withRoom(left, opened),
       deliveries: [{ to: participant, message: { kind: '相手を待っている', room: code } }],
+      records: closed,
     }
   }
   const [waiting] = room.participants
@@ -393,7 +546,7 @@ function enter(
     return refuse(rooms, participant, '対戦が終わっている部屋')
   }
 
-  return start(left, room, waiting, participant, setup)
+  return after(closed, start(left, room, waiting, participant, setup))
 }
 
 /**
@@ -408,7 +561,11 @@ function enter(
 function rejoin(rooms: Rooms, room: Room, participant: ParticipantId): RoomOutcome {
   const duel = room.duel
   if (duel === undefined) {
-    return { rooms, deliveries: [{ to: participant, message: { kind: '相手を待っている', room: room.code } }] }
+    return {
+      rooms,
+      deliveries: [{ to: participant, message: { kind: '相手を待っている', room: room.code } }],
+      records: [],
+    }
   }
 
   const seat = seatOf(duel, participant)
@@ -423,6 +580,8 @@ function rejoin(rooms: Rooms, room: Room, participant: ParticipantId): RoomOutco
       ...boards(duel, pendingProgress(duel)?.board).filter((delivery) => delivery.to === participant),
       ...pendingChoice(duel, seat),
     ],
+    // 入り直しは、その人に送り直しているだけである。**新しく起きたことは何も無い。**
+    records: [],
   }
 }
 
@@ -480,6 +639,7 @@ function start(
     return {
       rooms,
       deliveries: [waiting, joining].map((to) => ({ to, message: { kind: '行えなかった', reason } as const })),
+      records: [],
     }
   }
 
@@ -500,7 +660,25 @@ function start(
       })),
       ...boards(duel),
     ],
+    // ここから先の手を書き足していく先ができる（ADR-0018）。**デッキはカードの名前だけ残す**
+    // ——カードそのものは非公開で（ADR-0002）、置き場に持ち込めない。
+    records: [
+      {
+        kind: '始まった',
+        code: room.code,
+        name: seated.name,
+        seats: duel.seats,
+        cpu: seated.cpu,
+        seed: setup.seed,
+        decks: [namesOf(setup.decks[0]), namesOf(setup.decks[1])],
+      },
+    ],
   }
+}
+
+/** デッキに入っているカードの名前を、置かれた順に並べたもの。 */
+function namesOf(deck: Deck): readonly string[] {
+  return deck.map((card) => card.name)
 }
 
 /** 席と、そこにいる参加者の組。 */
@@ -613,7 +791,7 @@ function rewind(rooms: Rooms, participant: ParticipantId, how: Rewind): RoomOutc
 
   if (how === 'すべて' || pending.answers.length === 0) {
     const cleared: DuelInRoom = { ...duel, pending: undefined }
-    return { rooms: withRoom(rooms, { ...room, duel: cleared }), deliveries: boards(cleared) }
+    return { rooms: withRoom(rooms, { ...room, duel: cleared }), deliveries: boards(cleared), records: [] }
   }
 
   return advance(rooms, room, duel, { ...pending, answers: pending.answers.slice(0, -1) })
@@ -645,11 +823,20 @@ function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAct
         // 先に送ると選んでほしいことが消える。`rejoin` も同じ順で送っている。
         { to: waiting.seats[choice.player], message: { kind: '選んでほしい', choice } },
       ],
+      // **まだ書かない。** 答えは戻せる（`rewind`）ので、行動が終わるまでは決まっていない。
+      // 途中の答えを書くと、戻された答えまで記録に残る。
+      records: [],
     }
   }
 
   const advanced: DuelInRoom = { ...duel, state: progress.state, pending: undefined }
-  return { rooms: withRoom(rooms, { ...room, duel: advanced }), deliveries: boards(advanced) }
+  return {
+    rooms: withRoom(rooms, { ...room, duel: advanced }),
+    deliveries: boards(advanced),
+    // **行動が終わったところで、1 手として書く**（ADR-0008、ADR-0018）。ここまでの答えは
+    // もう戻せないので、これが確定した 1 手である。
+    records: [{ kind: '打たれた', code: room.code, action: pending.action, answers: pending.answers }],
+  }
 }
 
 /**
@@ -671,6 +858,7 @@ const CPU_STEP_LIMIT = 200
 function withCpu(outcome: RoomOutcome, code: RoomCode): RoomOutcome {
   let rooms = outcome.rooms
   let deliveries = outcome.deliveries
+  let records = outcome.records
 
   for (let step = 0; step < CPU_STEP_LIMIT; step += 1) {
     const room = rooms.get(code)
@@ -679,9 +867,10 @@ function withCpu(outcome: RoomOutcome, code: RoomCode): RoomOutcome {
 
     rooms = played.rooms
     deliveries = [...deliveries, ...played.deliveries]
+    records = [...records, ...played.records]
   }
 
-  return { rooms, deliveries }
+  return { rooms, deliveries, records }
 }
 
 /**
