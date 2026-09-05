@@ -42,11 +42,17 @@ export function isCpu(participant: ParticipantId): boolean {
  * 置いてしまうと二度と使えない（同 3-6、`play.ts` の `activateTrap`）。実際の対戦でもまず
  * 行われない手なので、対戦相手としては選ばせない。
  *
+ * **伏せてあるトラップを自分から捨てない**（同 3-12）。捨てるのは、置き直すために場所を空ける
+ * 手である（トラップゾーンに置けるのは 1 枚だけ、同 3-1）。いつ空けるべきかを見られない以上、
+ * ランダムに選ばせると、伏せたそばから捨てるだけになる。**そのかわり、一度伏せたトラップは
+ * 発動するまで置き替えられない。** 使いどころを判断できるようになったら、そこで解く。
+ *
  * **合法手そのものを狭めるのではない。** 狭めるのはここで選ぶ候補だけで、`legalActions` は
  * 変えない。ファザは合法手すべてを引き続き引く（ADR-0005）——選ばせない手を作ると、その手が
  * 通る道筋がテストされなくなる。
  */
 function pointless(state: DuelState, action: LegalAction): boolean {
+  if (action.kind === 'トラップを廃棄する') return true
   if (action.kind !== 'トラップとしてプレイする') return false
 
   return findAnywhere(state, action.card)?.card.type !== 'トラップ'

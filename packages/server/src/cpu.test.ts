@@ -65,6 +65,23 @@ function readyToSetTrap(kind: 'ユニット' | 'トラップ'): DuelState {
   return untilTrapMayBeSet(prepared.state)
 }
 
+/** トラップを 1 枚伏せてから、それを廃棄できるところまで進めた盤面。 */
+function readyToDiscardTrap(): DuelState {
+  const { chooser } = randomChooser(randomFromSeed(4))
+  const ready = readyToSetTrap('トラップ')
+  const setting = legalActions(ready).find((action) => action.kind === 'トラップとしてプレイする')
+  if (setting === undefined) throw new Error('トラップとしてプレイできるはずだった')
+
+  // 伏せると相手に優先権が移る（`play.ts`）。廃棄できるのは自分のメインフェイズなので、戻るまで放棄で進める。
+  let current = applyLegalAction(ready, setting, chooser)
+  for (let step = 0; step < 100; step += 1) {
+    if (legalActions(current).some((action) => action.kind === 'トラップを廃棄する')) return current
+
+    current = applyLegalAction(current, PASS, chooser)
+  }
+  throw new Error('トラップを廃棄できるところまで進まなかった')
+}
+
 describe('CPU が選ぶ候補', () => {
   /**
    * トラップ以外のカードもトラップとしてプレイできる（総合ルール 第2部 第20章 3-1）が、
@@ -83,6 +100,17 @@ describe('CPU が選ぶ候補', () => {
     const state = readyToSetTrap('トラップ')
 
     expect(cpuCandidates(state).some((action) => action.kind === 'トラップとしてプレイする')).toBe(true)
+  })
+
+  /**
+   * 捨てるのは置き直すために場所を空ける手である（総合ルール 第2部 第20章 3-12・3-1）。いつ
+   * 空けるべきかを見られない以上、ランダムに選ばせると伏せたそばから捨てるだけになる。
+   */
+  it('伏せてあるトラップを、自分から捨てない', () => {
+    const state = readyToDiscardTrap()
+
+    expect(legalActions(state).some((action) => action.kind === 'トラップを廃棄する')).toBe(true)
+    expect(cpuCandidates(state).some((action) => action.kind === 'トラップを廃棄する')).toBe(false)
   })
 
   /** 放棄は終わっていない限り必ず合法手にある（`legal-action.ts`）ので、候補が尽きることは無い。 */
