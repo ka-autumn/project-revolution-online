@@ -1,4 +1,12 @@
-import type { CardId, ChoiceAnswer, LegalAction, Square, WireCardPosition } from '@revolution/engine'
+import type {
+  CardId,
+  ChoiceAnswer,
+  LegalAction,
+  Opponent,
+  RoomCode,
+  Square,
+  WireCardPosition,
+} from '@revolution/engine'
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import type {
   AbilityView,
@@ -6,6 +14,7 @@ import type {
   BoardView,
   CardView,
   Overlay,
+  RoomView,
   SideView,
   SmashJudgmentView,
   SquareView,
@@ -297,6 +306,88 @@ export function actionsElement(
   const list = element('div', 'actions__list')
   for (const view of views) list.append(button(view.label, () => onAction(view.action)))
   node.append(list)
+
+  return node
+}
+
+/** ロビーで押せるもの（#175）。 */
+export interface LobbyHandlers {
+  /** 部屋を作って入る。名前は空でもよい。 */
+  readonly onCreate: (name: string, against: Opponent) => void
+  /** 相手を待っている部屋に入る。 */
+  readonly onJoin: (code: RoomCode) => void
+  /** 打ち込んだ名前が変わった。**画面は描き直されるので、覚えておくのは呼ぶ側である。** */
+  readonly onName: (name: string) => void
+}
+
+/** 部屋の名前として受け取る長さの上限（`server` の `room.ts` の `NAME_LIMIT` と同じ）。 */
+const NAME_LIMIT = 24
+
+/**
+ * ロビー（#175）。開いている部屋を並べ、作る口と入る口を出す。
+ *
+ * **打つ前に相手と合言葉を決めておく必要が無い**のがここの値である。合言葉を決めるのはサーバ
+ * で（ADR-0009、#175）、画面が出すのは名前と様子だけである。
+ *
+ * `name` は打ち込みかけの部屋の名前。**画面は届いたものが変わるたびに丸ごと描き直される**
+ * （`index.ts` の `draw`）ので、打ち込みかけを消さないために、呼ぶ側が覚えて渡す。
+ */
+export function lobbyElement(
+  views: readonly RoomView[],
+  name: string,
+  handlers: LobbyHandlers,
+  focused = false,
+): HTMLElement {
+  const node = element('section', 'lobby')
+  node.append(element('h2', 'lobby__title', '対戦を始める'))
+
+  const making = element('div', 'lobby__make')
+  const input = document.createElement('input')
+  input.className = 'lobby__name'
+  input.type = 'text'
+  input.maxLength = NAME_LIMIT
+  input.placeholder = '部屋の名前（無くてもかまいません）'
+  input.value = name
+  input.addEventListener('input', () => handlers.onName(input.value))
+  making.append(input)
+  for (const against of ['人間', 'CPU'] as const) {
+    // 押した時の入力欄の中身を読む。**渡された `name` ではない。** あれは描き直した時点の値で、
+    // その後に打ち込まれた分が入っていない（打っている間は描き直さない）。
+    making.append(
+      button(against === 'CPU' ? 'CPU と対戦する' : '人と対戦する', () => handlers.onCreate(input.value, against)),
+    )
+  }
+  node.append(making)
+
+  node.append(element('h2', 'lobby__title', 'いま開いている部屋'))
+  if (views.length === 0) {
+    node.append(element('p', 'lobby__none', 'まだ部屋がありません。作ると、ほかの人からも見えます'))
+  }
+
+  const list = element('div', 'lobby__rooms')
+  for (const view of views) {
+    const row = element('div', 'lobby__room')
+    row.append(element('span', 'lobby__room-name', view.name))
+    row.append(element('span', 'lobby__room-status', view.status))
+    // 入れない部屋には押す口を出さない。断られる手を画面に出さないのは盤面と同じである。
+    if (view.joinable) row.append(button('入る', () => handlers.onJoin(view.code)))
+    list.append(row)
+  }
+  node.append(list)
+
+  // 描き直しで打ち込みかけの場所を見失わないように、打っていた人には返す。
+  if (focused) {
+    input.focus()
+    input.setSelectionRange(input.value.length, input.value.length)
+  }
+
+  return node
+}
+
+/** ロビーに戻る口（#175）。相手を待っている間と、投げ出せる対戦の間に出す。 */
+export function leaveElement(label: string, onLeave: () => void): HTMLElement {
+  const node = element('div', 'leave')
+  node.append(button(label, onLeave))
 
   return node
 }

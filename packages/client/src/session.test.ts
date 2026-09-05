@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DuelEvent, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
-import { applyMessage, connecting } from './session.js'
+import { applyMessage, connecting, roomOf } from './session.js'
 import type { Session } from './session.js'
 import { emptyBoard, logged } from './test-support.js'
 
@@ -38,15 +38,46 @@ function fold(...messages: readonly ToClient[]): Session {
   return messages.reduce(applyMessage, connecting())
 }
 
-const SEATED: ToClient = { kind: '席についた', seat: '先攻' }
+const ROOM = 'あいことば'
+
+const SEATED: ToClient = { kind: '席についた', seat: '先攻', room: ROOM, opponent: '人間' }
 
 describe('届いたものを畳む', () => {
   it('繋いだ直後は、まだ何も届いていない', () => {
     expect(connecting()).toEqual({ stage: { kind: '繋いでいる' }, refusal: undefined })
   })
 
+  /** #175。どの部屋にもいない間は、開いている部屋が届く。 */
+  it('ロビーが届いたら、ロビーにいる', () => {
+    const rooms = [{ code: ROOM, name: 'てすとのへや', status: '相手を待っている', cpu: false }] as const
+
+    expect(fold({ kind: 'ロビー', rooms }).stage).toEqual({ kind: 'ロビー', rooms })
+  })
+
   it('相手を待っていると言われたら、待っている', () => {
-    expect(fold({ kind: '相手を待っている' }).stage).toEqual({ kind: '相手を待っている' })
+    expect(fold({ kind: '相手を待っている', room: ROOM }).stage).toEqual({ kind: '相手を待っている', room: ROOM })
+  })
+
+  /**
+   * #175。**繋ぎ直す時に入り直す先である**（`connection.ts`）。合言葉を決めるのはサーバ
+   * （部屋を作った時）なので、届いたものから覚えるほかに知る手立てが無い。
+   */
+  it('いる部屋の合言葉が分かる', () => {
+    expect(roomOf(fold({ kind: '相手を待っている', room: ROOM }))).toBe(ROOM)
+    expect(roomOf(fold(SEATED))).toBe(ROOM)
+  })
+
+  it('ロビーにいる間は、入り直す先が無い', () => {
+    expect(roomOf(fold({ kind: 'ロビー', rooms: [] }))).toBeUndefined()
+    expect(roomOf(connecting())).toBeUndefined()
+  })
+
+  /** #175。投げ出せる対戦かは、相手が誰かで決まる（`server` の `room.ts` の `canLeave`）。 */
+  it('誰と打っているかが分かる', () => {
+    const stage = fold({ ...SEATED, opponent: 'CPU' }).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.opponent).toBe('CPU')
   })
 
   it('席についたら、盤面が届く前でも席は分かる', () => {

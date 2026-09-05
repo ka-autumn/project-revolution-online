@@ -1,17 +1,20 @@
 import type {
   LegalAction,
   LoggedEvent,
+  Opponent,
   PassOutcome,
   Player,
+  RoomCode,
   ToClient,
   WireChoice,
   WirePerspective,
+  WireRoom,
 } from '@revolution/engine'
 
 /**
  * クライアントがいまどこにいるか。
  *
- * 3 つしか無く、どれになるかはサーバから届いたもので決まる。「盤面が届いているか」のような
+ * 4 つしか無く、どれになるかはサーバから届いたもので決まる。「盤面が届いているか」のような
  * 述語をいくつも並べるかわりに、なりうる形そのものを数え上げている。
  */
 export type Stage =
@@ -20,12 +23,28 @@ export type Stage =
       readonly kind: '繋いでいる'
     }
   | {
+      /** どの部屋にもいない。開いている部屋を見て、作るか入るかを選ぶ（#175）。 */
+      readonly kind: 'ロビー'
+      readonly rooms: readonly WireRoom[]
+    }
+  | {
       /** 部屋に入って、相手が来るのを待っている。 */
       readonly kind: '相手を待っている'
+      /**
+       * いる部屋の合言葉。
+       *
+       * **繋ぎ直す時に入り直す先である**（`connection.ts`）。部屋を作った時の合言葉を決めるのは
+       * サーバなので（ADR-0009、#175）、届いたものをここに持つ。
+       */
+      readonly room: RoomCode
     }
   | {
       /** 席について打っている。 */
       readonly kind: '打っている'
+      /** いる部屋の合言葉。`相手を待っている` と同じ理由で持つ。 */
+      readonly room: RoomCode
+      /** 誰と打っているか。**投げ出せる対戦かがこれで決まる**（#175）。 */
+      readonly opponent: Opponent
       readonly seat: Player
       /** 席についた直後、最初の盤面が届くまでは `undefined`。 */
       readonly board: WirePerspective | undefined
@@ -77,6 +96,18 @@ export function connecting(): Session {
 }
 
 /**
+ * いま入っている部屋の合言葉。どこにもいなければ `undefined`（#175）。
+ *
+ * **繋ぎ直した時に入り直す先である**（`connection.ts`）。部屋にいるかどうかは、いまどこに
+ * いるか（`Stage`）そのものなので、別に覚えない。
+ */
+export function roomOf(session: Session): RoomCode | undefined {
+  const stage = session.stage
+
+  return stage.kind === '相手を待っている' || stage.kind === '打っている' ? stage.room : undefined
+}
+
+/**
  * 届いたメッセージ 1 つを畳み込む。
  *
  * 盤面が届いたら、選択と断られた理由は消える。どちらも 1 つ前の行動についてのことで、盤面が
@@ -89,12 +120,16 @@ export function connecting(): Session {
 export function applyMessage(session: Session, message: ToClient): Session {
   const stage = session.stage
   switch (message.kind) {
+    case 'ロビー':
+      return { stage: { kind: 'ロビー', rooms: message.rooms }, refusal: undefined }
     case '相手を待っている':
-      return { stage: { kind: '相手を待っている' }, refusal: undefined }
+      return { stage: { kind: '相手を待っている', room: message.room }, refusal: undefined }
     case '席についた':
       return {
         stage: {
           kind: '打っている',
+          room: message.room,
+          opponent: message.opponent,
           seat: message.seat,
           board: undefined,
           actions: [],

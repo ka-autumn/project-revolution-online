@@ -16,6 +16,7 @@ import { emptyBoard, instance, logged, unitFace, withZone } from './test-support
 import {
   boardView,
   cutInViews,
+  lobbyView,
   logLines,
   overlayDurationMs,
   priorityReason,
@@ -1673,5 +1674,36 @@ describe('優先権が回ってきた理由', () => {
     }
 
     expect(priorityReason(board(), logged([hidden]))).toBe('相手がカードをトラップとしてプレイしました')
+  })
+})
+
+/** #175。ロビーに並ぶ部屋。 */
+describe('ロビー', () => {
+  const waiting = { code: 'ま', name: 'まっているへや', status: '相手を待っている', cpu: false } as const
+  const playing = { code: 'う', name: 'うっているへや', status: '対戦中', cpu: false } as const
+  const withCpu = { code: 'し', name: 'ひとりのへや', status: '対戦中', cpu: true } as const
+  const over = { code: 'お', name: 'おわったへや', status: '終わった', cpu: false } as const
+
+  /** 一覧を見る人がまずしたいのは、打てる部屋に入ることである。 */
+  it('入れる部屋が先に並ぶ', () => {
+    expect(lobbyView([over, playing, waiting]).map((view) => view.code)).toEqual(['ま', 'う', 'お'])
+  })
+
+  it('入れるのは、相手を待っている部屋だけ', () => {
+    expect(lobbyView([waiting, playing, withCpu, over]).map((view) => view.joinable)).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ])
+  })
+
+  it('CPU との対戦は、そうと分かる', () => {
+    expect(lobbyView([withCpu])[0]?.status).toBe('CPU と対戦中')
+    expect(lobbyView([playing])[0]?.status).toBe('対戦中')
+  })
+
+  it('部屋が無ければ、並ぶものも無い', () => {
+    expect(lobbyView([])).toEqual([])
   })
 })

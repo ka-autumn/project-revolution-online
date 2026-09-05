@@ -417,6 +417,72 @@ body {
   color: #b00;
 }
 
+/* ロビー（#175）。対戦を始めるところ。盤面より前に出るので、幅を読みやすい長さに抑える。 */
+.lobby {
+  max-width: 40rem;
+  margin: calc(var(--gap) * 2) 0;
+}
+
+.lobby__title {
+  margin: calc(var(--gap) * 2) 0 var(--gap);
+  font-size: 1rem;
+}
+
+.lobby__make {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
+.lobby__name {
+  flex: 1 1 12rem;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
+.lobby__none {
+  margin: 0;
+  color: #666;
+}
+
+.lobby__rooms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.lobby__room {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--gap);
+  border: 1px solid var(--line);
+}
+
+.lobby__room-name {
+  flex: 1 1 auto;
+  font-weight: bold;
+  /* 名前は打ち込まれたものなので、長くても行を割らずに収める。 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lobby__room-status {
+  color: #666;
+}
+
+/* 部屋を出る口。押し間違えたくないので、ほかの操作から離して置く。 */
+.leave {
+  display: flex;
+  margin: calc(var(--gap) * 2) 0;
+}
+
+.leave .choice__button {
+  color: #666;
+}
+
 /* 行える手と選ぶ候補。並べるのは届いたものだけ（ADR-0010）。 */
 .actions,
 .choice {

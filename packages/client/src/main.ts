@@ -4,8 +4,8 @@ import { mount } from './index.js'
 /**
  * ブラウザで開いた時の入口。`index.html` が読み込む。
  *
- * 誰であるかと、どの部屋に入るかは URL の `?` で渡す。最初の完走（#17）ではアカウント認証を
- * 作らない（ADR-0009）ので、ここで名乗ったものがそのまま席になる。
+ * **開くだけで始められる**（#175）。誰であるかは画面が用意し、どの部屋に入るかはロビーで選ぶ。
+ * URL に付けて指すこともできる。
  *
  *     /?participant=わたし&room=あいことば
  *
@@ -36,16 +36,43 @@ function serverUrl(params: URLSearchParams): string {
   return `${scheme}//${location.hostname}:${DEFAULT_SERVER_PORT}`
 }
 
+/** 名乗りを覚えておく先の名前。 */
+const PARTICIPANT_KEY = 'revolution.participant'
+
+/**
+ * この画面の名乗り（ADR-0009、#175）。無ければ作って覚える。
+ *
+ * **タブごとに別の人にする**（`sessionStorage`）。同じブラウザの 2 つのタブで打ち合えるのは、
+ * 手元で試す時に要るからである。読み込み直しでは変わらないので、切れて入り直した時は同じ席に
+ * 戻れる（ADR-0016）。
+ *
+ * 覚えられない場合（保存を断っているブラウザ）は、その場限りのものを使う。読み込み直すと別人に
+ * なるが、**打てないよりはよい。** 席に戻りたい人は `?participant=` で名乗れる。
+ */
+function participantId(): string {
+  const made = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  try {
+    const remembered = sessionStorage.getItem(PARTICIPANT_KEY)
+    if (remembered !== null && remembered !== '') return remembered
+
+    sessionStorage.setItem(PARTICIPANT_KEY, made)
+  } catch {
+    return made
+  }
+
+  return made
+}
+
 const params = new URLSearchParams(location.search)
 const root = document.getElementById('board')
 if (root === null) throw new Error('#board が無い')
 
-const participant = params.get('participant') ?? ''
-const room = params.get('room') ?? ''
+const named = params.get('participant')
+const room = params.get('room')
 
-// 名乗らずに繋ぐとサーバに切られる（`serve.ts`）。切られてから気づくより、先に言う。
-if (participant === '' || room === '') {
-  root.textContent = '?participant=（あなたの合言葉）&room=（部屋の合言葉）を付けて開いてください'
-} else {
-  mount(root, { url: serverUrl(params), participant, room })
-}
+mount(root, {
+  url: serverUrl(params),
+  participant: named === null || named === '' ? participantId() : named,
+  // 指していなければロビーから始める。合言葉を知っている相手と待ち合わせる時だけ要る。
+  ...(room === null || room === '' ? {} : { room }),
+})

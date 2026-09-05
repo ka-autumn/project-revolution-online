@@ -8,7 +8,7 @@ import {
   placeTopOfLibrary,
 } from '@revolution/engine'
 import type { Card, Deck, FromClient, LegalAction, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
-import { emptyRooms, receive } from './room.js'
+import { emptyRooms, lobbyOf, receive } from './room.js'
 import type { Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
 
 /**
@@ -50,7 +50,7 @@ function buildDeck(): Deck {
   return Object.values(CARDS).flatMap((card) => Array.from({ length: 4 }, () => card))
 }
 
-const SETUP: RoomSetup = { decks: [buildDeck(), buildDeck()], seed: 20260816 }
+const SETUP: RoomSetup = { decks: [buildDeck(), buildDeck()], seed: 20260816, code: 'あたらしいへや' }
 
 /**
  * 引くだけで山札を空にするストラテジー。**支配者が自分で負ける**（総合ルール 第3部 第3章 2）。
@@ -75,7 +75,7 @@ function buildEndingDeck(): Deck {
   )
 }
 
-const ENDING_SETUP: RoomSetup = { decks: [buildEndingDeck(), buildEndingDeck()], seed: 20260816 }
+const ENDING_SETUP: RoomSetup = { decks: [buildEndingDeck(), buildEndingDeck()], seed: 20260816, code: 'あたらしいへや' }
 
 /**
  * 山札の 1 番上を捨札へ置いてから選ばせるストラテジー（#142）。
@@ -101,7 +101,11 @@ function buildRevealingDeck(): Deck {
   )
 }
 
-const REVEALING_SETUP: RoomSetup = { decks: [buildRevealingDeck(), buildRevealingDeck()], seed: 20260816 }
+const REVEALING_SETUP: RoomSetup = {
+  decks: [buildRevealingDeck(), buildRevealingDeck()],
+  seed: 20260816,
+  code: 'あたらしいへや',
+}
 
 const CODE = 'あいことば'
 
@@ -125,6 +129,20 @@ function boardOf(deliveries: readonly Delivery[], participant: ParticipantId): W
   if (board === undefined) throw new Error('盤面が届いたはずだった')
 
   return board.perspective
+}
+
+/**
+ * その参加者に**最後に**届いた盤面。
+ *
+ * 1 度のやりとりで盤面が何度も届くことがある（CPU が続けて打つ、#175）。いまの盤面が要る時は
+ * こちらを使う。
+ */
+function latestBoard(deliveries: readonly Delivery[], participant: ParticipantId): WirePerspective {
+  const boards = to(deliveries, participant).filter((message) => message.kind === '盤面')
+  const last = boards.at(-1)
+  if (last === undefined) throw new Error('盤面が届いたはずだった')
+
+  return last.perspective
 }
 
 /** その参加者に届いた、選んでほしいこと。 */
@@ -217,7 +235,7 @@ describe('部屋に入る', () => {
   it('1 人目は相手を待つ', () => {
     const outcome = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP)
 
-    expect(outcome.deliveries).toEqual([{ to: 'あ', message: { kind: '相手を待っている' } }])
+    expect(outcome.deliveries).toEqual([{ to: 'あ', message: { kind: '相手を待っている', room: CODE } }])
   })
 
   // 総合ルール 第3部 第1章 4。先攻・後攻はデュエルの準備で決まる。
@@ -244,7 +262,7 @@ describe('部屋に入る', () => {
   it('別のルームコードなら別の部屋になる', () => {
     const outcome = send(started().rooms, 'う', { kind: '部屋に入る', room: 'べつのあいことば' })
 
-    expect(outcome.deliveries).toEqual([{ to: 'う', message: { kind: '相手を待っている' } }])
+    expect(outcome.deliveries).toEqual([{ to: 'う', message: { kind: '相手を待っている', room: 'べつのあいことば' } }])
     expect(outcome.rooms.size).toBe(2)
   })
 })
@@ -744,7 +762,7 @@ describe('入り直す', () => {
 
     const again = send(waiting.rooms, 'あ', { kind: '部屋に入る', room: CODE })
 
-    expect(again.deliveries).toEqual([{ to: 'あ', message: { kind: '相手を待っている' } }])
+    expect(again.deliveries).toEqual([{ to: 'あ', message: { kind: '相手を待っている', room: CODE } }])
   })
 })
 
@@ -760,7 +778,7 @@ describe('別の部屋に移る', () => {
   it('決着した部屋にいた人は、別の部屋に入れる', () => {
     const moved = send(ended().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
 
-    expect(to(moved.deliveries, 'あ')).toEqual([{ kind: '相手を待っている' }])
+    expect(to(moved.deliveries, 'あ')).toEqual([{ kind: '相手を待っている', room: OTHER }])
   })
 
   it('決着した部屋にいた 2 人が移ると、そこでまた始まる', () => {
@@ -776,7 +794,7 @@ describe('別の部屋に移る', () => {
 
     const moved = send(waiting.rooms, 'あ', { kind: '部屋に入る', room: OTHER })
 
-    expect(to(moved.deliveries, 'あ')).toEqual([{ kind: '相手を待っている' }])
+    expect(to(moved.deliveries, 'あ')).toEqual([{ kind: '相手を待っている', room: OTHER }])
     expect([...moved.rooms.keys()]).toEqual([OTHER])
   })
 
@@ -893,5 +911,182 @@ describe('見てしまったら戻れない', () => {
     expect(to(refused.deliveries, acting)).toEqual([
       { kind: '行えなかった', reason: '見てしまったので戻れない' },
     ])
+  })
+})
+
+/**
+ * #175。打つ前に合言葉を決めておかなくても、部屋を作れば入れる。
+ *
+ * 合言葉を決めるのはサーバである。ロビーに並んだものから選んで入るので、**相手と申し合わせて
+ * おく必要が無い。**
+ */
+describe('部屋を作る', () => {
+  const MAKE: FromClient = { kind: '部屋を作る', name: 'てすとのへや', against: '人間' }
+
+  it('サーバが決めた合言葉の部屋に入って、相手を待つ', () => {
+    const outcome = send(emptyRooms(), 'あ', MAKE)
+
+    expect(outcome.deliveries).toEqual([{ to: 'あ', message: { kind: '相手を待っている', room: SETUP.code } }])
+    expect([...outcome.rooms.keys()]).toEqual([SETUP.code])
+  })
+
+  it('付けた名前がロビーに出る', () => {
+    const outcome = send(emptyRooms(), 'あ', MAKE)
+
+    expect(lobbyOf(outcome.rooms)).toEqual([
+      { code: SETUP.code, name: 'てすとのへや', status: '相手を待っている', cpu: false },
+    ])
+  })
+
+  it('名前を付けなければ、合言葉が名前になる', () => {
+    const outcome = send(emptyRooms(), 'あ', { ...MAKE, name: '   ' })
+
+    expect(lobbyOf(outcome.rooms)[0]?.name).toBe(SETUP.code)
+  })
+
+  /** 合言葉は部屋を引く鍵なので、重なると先にある部屋を上書きしてしまう。 */
+  it('合言葉が使われていたら、別のものになる', () => {
+    const first = send(emptyRooms(), 'あ', MAKE)
+
+    const second = send(first.rooms, 'い', MAKE)
+
+    expect([...second.rooms.keys()]).toHaveLength(2)
+    expect(to(second.deliveries, 'い')).toEqual([{ kind: '相手を待っている', room: `${SETUP.code}-2` }])
+  })
+
+  it('作った部屋に、ロビーから入って始められる', () => {
+    const opened = send(emptyRooms(), 'あ', MAKE)
+
+    const joined = send(opened.rooms, 'い', { kind: '部屋に入る', room: SETUP.code })
+
+    expect([seatOf(joined.deliveries, 'あ'), seatOf(joined.deliveries, 'い')].sort()).toEqual(['先攻', '後攻'])
+  })
+
+  it('打っている途中なら作れない', () => {
+    const outcome = send(started().rooms, 'あ', MAKE)
+
+    expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: 'ほかの部屋にいる' }])
+  })
+})
+
+/**
+ * #175。CPU と対戦する。
+ *
+ * CPU は繋がっていないだけの参加者で、部屋から見れば人と変わらない（`cpu.ts`）。**進め方も
+ * 人と同じ道筋を通る。**
+ */
+describe('CPU と対戦する', () => {
+  const AGAINST_CPU: FromClient = { kind: '部屋を作る', name: 'ひとり', against: 'CPU' }
+
+  it('作った時点で始まっている', () => {
+    const outcome = send(emptyRooms(), 'あ', AGAINST_CPU)
+
+    expect(seatOf(outcome.deliveries, 'あ')).toMatch(/先攻|後攻/)
+    expect(boardOf(outcome.deliveries, 'あ').viewer).toBe(seatOf(outcome.deliveries, 'あ'))
+  })
+
+  /** 繋がっていない相手に送っても届く先が無い（`serve.ts`）ので、送るものから落とす。 */
+  it('CPU 宛のメッセージは残らない', () => {
+    const outcome = send(emptyRooms(), 'あ', AGAINST_CPU)
+
+    expect(outcome.deliveries.map((delivery) => delivery.to)).toEqual(['あ', 'あ'])
+  })
+
+  it('ロビーには CPU がいる部屋として出る', () => {
+    const outcome = send(emptyRooms(), 'あ', AGAINST_CPU)
+
+    expect(lobbyOf(outcome.rooms)).toEqual([
+      { code: SETUP.code, name: 'ひとり', status: '対戦中', cpu: true },
+    ])
+  })
+
+  /** 席が空いているように見えても、そこには CPU が座っている。 */
+  it('CPU がいる部屋には入れない', () => {
+    const opened = send(emptyRooms(), 'あ', AGAINST_CPU)
+
+    const outsider = send(opened.rooms, 'い', { kind: '部屋に入る', room: SETUP.code })
+
+    expect(to(outsider.deliveries, 'い')).toEqual([{ kind: '行えなかった', reason: '部屋がいっぱい' }])
+  })
+
+  /**
+   * 人が打ち終わったら、CPU の番が終わって人に優先権が戻るところまで進む。**人は待たされない。**
+   *
+   * 見るのは最後に届いた盤面である。CPU が打つたびに盤面が届く（`withCpu`）ので、途中のものは
+   * まだ CPU の番でありうる。
+   */
+  it('打ち終わると、いつも人に優先権が戻っている', () => {
+    let current = send(emptyRooms(), 'あ', AGAINST_CPU)
+    const seat = seatOf(current.deliveries, 'あ')
+    let cpuActed = false
+
+    for (let steps = 0; steps < 30; steps += 1) {
+      const board = latestBoard(current.deliveries, 'あ')
+      if (board.result !== undefined) break
+
+      expect(board.turn.priority).toBe(seat)
+      cpuActed ||= board.log.some(({ event }) => event.kind === '行動した' && event.player !== seat)
+      current = answerAll(send(current.rooms, 'あ', PASS))
+    }
+
+    expect(cpuActed).toBe(true)
+  })
+
+  /**
+   * 1 人で始めた対戦を、終わるまで投げ出せないと、ロビーに戻れなくなる。人が相手の時と違って
+   * 消えて困る対戦が無い（`canLeave`）。
+   */
+  it('打っている途中でも出られて、部屋ごと無くなる', () => {
+    const opened = send(emptyRooms(), 'あ', AGAINST_CPU)
+
+    const left = send(opened.rooms, 'あ', { kind: 'ロビーに戻る' })
+
+    expect([...left.rooms.keys()]).toEqual([])
+  })
+})
+
+/** #175。部屋を出てロビーに戻る。 */
+describe('ロビーに戻る', () => {
+  it('相手を待っているだけなら、出られる', () => {
+    const waiting = send(emptyRooms(), 'あ', { kind: '部屋を作る', name: '', against: '人間' })
+
+    const left = send(waiting.rooms, 'あ', { kind: 'ロビーに戻る' })
+
+    expect([...left.rooms.keys()]).toEqual([])
+    expect(left.deliveries).toEqual([])
+  })
+
+  it('決着した部屋からも、出られる', () => {
+    const left = send(ended().rooms, 'あ', { kind: 'ロビーに戻る' })
+
+    expect(lobbyOf(left.rooms)).toEqual([{ code: CODE, name: CODE, status: '終わった', cpu: false }])
+  })
+
+  /** 投げ出す口はまだ無い（#92）。合言葉の打ち間違いと同じく、対戦が消えてはならない。 */
+  it('打っている途中は、出られない', () => {
+    const outcome = send(started().rooms, 'あ', { kind: 'ロビーに戻る' })
+
+    expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '打っている途中の部屋' }])
+  })
+
+  it('どこにもいないなら、何も起きない', () => {
+    const outcome = send(emptyRooms(), 'あ', { kind: 'ロビーに戻る' })
+
+    expect(outcome.deliveries).toEqual([])
+  })
+})
+
+/** #175。ロビーには、いま開いている部屋が並ぶ。 */
+describe('ロビー', () => {
+  it('何も無ければ空', () => {
+    expect(lobbyOf(emptyRooms())).toEqual([])
+  })
+
+  it('始まった部屋は対戦中になる', () => {
+    expect(lobbyOf(started().rooms)).toEqual([{ code: CODE, name: CODE, status: '対戦中', cpu: false }])
+  })
+
+  it('決着した部屋は終わったになる', () => {
+    expect(lobbyOf(ended().rooms)).toEqual([{ code: CODE, name: CODE, status: '終わった', cpu: false }])
   })
 })

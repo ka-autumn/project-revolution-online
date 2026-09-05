@@ -85,13 +85,13 @@ interface Started {
   readonly messages: ToClient[]
 }
 
-function start(): Started {
+function start(rejoining: () => string | undefined = () => ROOM): Started {
   const links: Link[] = []
   const messages: ToClient[] = []
   const connection = connect({
     url: 'ws://localhost:8787',
     participant: 'わたし',
-    room: ROOM,
+    rejoining,
     onMessage: (message) => messages.push(message),
     onLinkChanged: (link) => links.push(link),
   })
@@ -122,6 +122,28 @@ describe('サーバとの繋がり', () => {
     expect(latest().url).toContain('participant=')
     latest().connects()
     expect(sentBy(latest())).toEqual([{ kind: '部屋に入る', room: ROOM }])
+  })
+
+  /** #175。ロビーにいる間は入り直す先が無い。サーバがロビーを送ってくる。 */
+  it('どこにもいなければ、部屋に入らない', () => {
+    start(() => undefined)
+
+    latest().connects()
+    expect(sentBy(latest())).toEqual([])
+  })
+
+  /** 入る部屋は打っている間に変わる（ロビーで作る・入る・戻る）ので、繋ぎ直すたびに尋ね直す。 */
+  it('繋ぎ直す時は、その時いる部屋に入り直す', () => {
+    let room: string | undefined = undefined
+    start(() => room)
+    latest().connects()
+
+    room = 'あとから入った部屋'
+    latest().breaks()
+    vi.advanceTimersByTime(delayBeforeAttempt(1))
+    latest().connects()
+
+    expect(sentBy(latest())).toEqual([{ kind: '部屋に入る', room: 'あとから入った部屋' }])
   })
 
   it('まだ一度も繋がっていない間は 0 回目', () => {
@@ -215,11 +237,11 @@ describe('サーバとの繋がり', () => {
   it('届いたものを渡す。読めないものは捨てる', () => {
     const { messages } = start()
     latest().connects()
-    latest().delivers({ kind: '相手を待っている' })
+    latest().delivers({ kind: '相手を待っている', room: ROOM })
     // 読めないもの。落ちずに捨てる。画面が 1 つ前のまま止まっているほうがましである。
     latest().deliversRaw('{')
     latest().deliversRaw('{"種類":"盤面"}')
 
-    expect(messages).toEqual([{ kind: '相手を待っている' }])
+    expect(messages).toEqual([{ kind: '相手を待っている', room: ROOM }])
   })
 })

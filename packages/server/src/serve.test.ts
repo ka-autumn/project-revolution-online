@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
 import { defineStrategy, defineUnit } from '@revolution/engine'
 import type { Card, Deck, FromClient, ToClient } from '@revolution/engine'
+import { CPU_PREFIX } from './cpu.js'
 import type { RoomSetup } from './room.js'
 import { serve } from './serve.js'
 import type { RunningServer } from './serve.js'
@@ -26,7 +27,13 @@ function buildDeck(): Deck {
   return Object.values(CARDS).flatMap((card) => Array.from({ length: 4 }, () => card))
 }
 
-const setup = (): RoomSetup => ({ decks: [buildDeck(), buildDeck()], seed: 20260816 })
+let created = 0
+
+/** 呼ぶたびに違う合言葉を返す。同じものを返すと、2 つめの部屋が作れない。 */
+const setup = (): RoomSetup => {
+  created += 1
+  return { decks: [buildDeck(), buildDeck()], seed: 20260816, code: `あたらしいへや${created}` }
+}
 
 const CODE = 'あいことば'
 
@@ -123,6 +130,92 @@ describe('WebSocket で繋ぐ', () => {
     client.send('こわれている' as unknown as FromClient)
 
     expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: '読めないメッセージ' })
+    await client.close()
+  })
+
+  /**
+   * 名乗りは席に座れる合言葉である（ADR-0009）ので、CPU の名乗りを人に使わせない（#175）。
+   * 使えると、CPU が座っている席に人が座れてしまう。
+   */
+  it('CPU の名乗りでは繋げない', async () => {
+    const client = new Client(server.port, `${CPU_PREFIX}あいことば`)
+
+    expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: '使えない名乗り' })
+    await client.closed()
+  })
+
+  /** #175。尋ねに来るのを待たず、繋いだ時点で送る。最初に見るのがロビーだからである。 */
+  it('繋ぐとロビーが届く', async () => {
+    const client = new Client(server.port, 'あ')
+
+    expect(await client.waitFor('ロビー')).toEqual({ kind: 'ロビー', rooms: [] })
+    await client.close()
+  })
+
+  /** #175。ほかの人が部屋を作ったことが、尋ね直さずに一覧へ出る。 */
+  it('誰かが部屋を作ると、ロビーにいる人に届く', async () => {
+    const watching = new Client(server.port, 'あ')
+    await watching.waitFor('ロビー')
+    watching.received.length = 0
+
+    const making = new Client(server.port, 'い')
+    await making.opened()
+    making.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間' })
+
+    const lobby = await watching.waitFor('ロビー')
+    if (lobby.kind !== 'ロビー') throw new Error('ロビーのはずだった')
+    expect(lobby.rooms.map((room) => ({ name: room.name, status: room.status }))).toEqual([
+      { name: 'てすとのへや', status: '相手を待っている' },
+    ])
+    await watching.close()
+    await making.close()
+  })
+
+  /** #175。部屋にいる人にロビーは要らない。届くのは盤面と、そこで起きたことだけである。 */
+  it('部屋にいる人にはロビーが届かない', async () => {
+    const client = new Client(server.port, 'あ')
+    await client.opened()
+    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU' })
+    await client.waitFor('席についた')
+    client.received.length = 0
+
+    const other = new Client(server.port, 'い')
+    await other.opened()
+    other.send({ kind: '部屋を作る', name: 'もうひとつ', against: '人間' })
+    await other.waitFor('相手を待っている')
+
+    expect(client.received.some((message) => message.kind === 'ロビー')).toBe(false)
+    await client.close()
+    await other.close()
+  })
+
+  /**
+   * #175。画面を読み込み直すと、繋ぐ側は自分がどの部屋にいたかを忘れている（合言葉を決めたのは
+   * サーバなので、URL にも無い）。**入り直しを待っていると、誰も何も送らないまま止まる。**
+   */
+  it('部屋にいる人が繋ぎ直すと、何も送らなくてもその部屋の様子が届く', async () => {
+    const client = new Client(server.port, 'あ')
+    await client.opened()
+    client.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間' })
+    const waiting = await client.waitFor('相手を待っている')
+    if (waiting.kind !== '相手を待っている') throw new Error('相手を待っているのはずだった')
+    await client.close()
+
+    const again = new Client(server.port, 'あ')
+
+    expect(await again.waitFor('相手を待っている')).toEqual({ kind: '相手を待っている', room: waiting.room })
+    await again.close()
+  })
+
+  /** #175。CPU は繋がっていないので、席につくのは人だけである。 */
+  it('CPU と対戦する部屋は、作った時点で始まっている', async () => {
+    const client = new Client(server.port, 'あ')
+    await client.opened()
+
+    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU' })
+
+    expect((await client.waitFor('席についた')).kind).toBe('席についた')
+    expect((await client.waitFor('盤面')).kind).toBe('盤面')
     await client.close()
   })
 
