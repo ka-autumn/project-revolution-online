@@ -2,7 +2,7 @@ import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import type { FromClient, ToClient } from '@revolution/engine'
 import { isCpu } from './cpu.js'
-import { emptyRooms, lobbyOf, receive, roomOf } from './room.js'
+import { emptyRooms, lobbyOf, partnerOf, receive, roomOf } from './room.js'
 import type { ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
 
 /**
@@ -108,6 +108,12 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    * 部屋にいる間は消す。出てきた時に、変わっていなくてももう一度届くようにするためである。
    */
   const lobbySent = new Map<ParticipantId, string>()
+  /**
+   * その人に最後に伝えた「相手が繋がっているか」（#175）。同じことを言い続けないために覚えている。
+   *
+   * 切れたら消す。**繋ぎ直してきた人には、変わっていなくてももう一度伝える。**
+   */
+  const linkSent = new Map<ParticipantId, boolean>()
   let rooms: Rooms = emptyRooms()
 
   /** いま繋がっている人。部屋はこれを見て、抜けられるかを決める（`room.ts` の `canLeave`）。 */
@@ -134,10 +140,26 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     if (room === undefined || room.cpu !== undefined) return
 
     for (const participant of room.participants) {
-      const others = room.participants.filter((each) => each !== participant)
-      if (others.length === 0) continue
+      const partner = partnerOf(room, participant)
+      if (partner === undefined) continue
 
-      send(sockets.get(participant), { kind: '相手の繋がり', connected: others.every((each) => sockets.has(each)) })
+      // 繋がっていない人には送れない。**覚えてもおかない。** 繋ぎ直してきた時に、変わって
+      // いないからと黙ってしまうことになる。
+      const socket = sockets.get(participant)
+      if (socket === undefined) {
+        linkSent.delete(participant)
+        continue
+      }
+
+      // **部屋を出た相手は繋がっていない。** 出た人はその席に戻れない（`enter` が断る）ので、
+      // 繋ぎ直してくるかどうかに関わらず、待っていても相手は来ない。
+      const present = room.participants.includes(partner) && sockets.has(partner)
+      // **変わった時だけ送る。** 同じことを言い続けると、受け取るたびに畳み直す側
+      // （`client` の `index.ts`）が動くことになる。
+      if (linkSent.get(participant) === present) continue
+
+      linkSent.set(participant, present)
+      send(socket, { kind: '相手の繋がり', connected: present })
     }
   }
 
@@ -225,13 +247,19 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         return
       }
 
+      // 部屋を出入りすると、残った人から見た相手が変わる（#175）。出た先と入った先の両方に伝える。
+      const before = roomOf(rooms, participant)?.code
       deliver(receive(rooms, participant, message, options.setup(), linked()))
+      for (const code of new Set([before, roomOf(rooms, participant)?.code])) {
+        if (code !== undefined) tellLinks(rooms.get(code))
+      }
     })
 
     // 切れたことは覚えておかない。部屋は残り、同じ合言葉で入り直せば続きから打てる。
     socket.on('close', () => {
       if (sockets.get(participant) === socket) sockets.delete(participant)
       lobbySent.delete(participant)
+      linkSent.delete(participant)
       // 待っている相手には伝える。**止まっている理由が読めないままにしない**（#175）。
       tellLinks(roomOf(rooms, participant))
     })

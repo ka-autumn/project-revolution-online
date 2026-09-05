@@ -8,7 +8,7 @@ import {
   placeTopOfLibrary,
 } from '@revolution/engine'
 import type { Card, Deck, FromClient, LegalAction, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
-import { emptyRooms, lobbyOf, receive } from './room.js'
+import { emptyRooms, lobbyOf, partnerOf, receive } from './room.js'
 import type { Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
 
 /**
@@ -1112,6 +1112,42 @@ describe('ロビーに戻る', () => {
     const outcome = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, new Set(['あ', 'い']))
 
     expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '打っている途中の部屋' }])
+  })
+
+  /**
+   * #175。閉じていた側が後から戻ってくることはある。**席はそのままなので、戻れば盤面は見える。**
+   * ただし相手はもういない（出た人はその席に戻れない）ので、待っていても進まない。
+   */
+  it('出ていかれた後に戻ると、席にはつけるが相手はいない', () => {
+    const left = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, new Set(['あ']))
+
+    const back = send(left.rooms, 'い', { kind: '部屋に入る', room: CODE })
+
+    expect(to(back.deliveries, 'い').map((message) => message.kind)).toEqual(['席についた', '盤面'])
+    const room = back.rooms.get(CODE)
+    if (room === undefined) throw new Error('部屋があるはずだった')
+    // 席の相手としては分かるが、その人はもう部屋にいない。
+    expect(partnerOf(room, 'い')).toBe('あ')
+    expect(room.participants).toEqual(['い'])
+  })
+
+  /** 出ていった人は、その席に戻れない。**残っている人の対戦を、後から上書きさせない。** */
+  it('出ていった人は、その部屋に戻れない', () => {
+    const left = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, new Set(['あ']))
+
+    const back = send(left.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+
+    expect(to(back.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '対戦が終わっている部屋' }])
+  })
+
+  /** 相手がいなくなった部屋には、残ったほうも留まらなくてよい。 */
+  it('相手がいなくなった部屋からは、残ったほうも出られる', () => {
+    const left = send(started().rooms, 'あ', { kind: 'ロビーに戻る' }, new Set(['あ']))
+    const back = send(left.rooms, 'い', { kind: '部屋に入る', room: CODE })
+
+    const empty = send(back.rooms, 'い', { kind: 'ロビーに戻る' }, new Set(['い']))
+
+    expect([...empty.rooms.keys()]).toEqual([])
   })
 
   it('どこにもいないなら、何も起きない', () => {

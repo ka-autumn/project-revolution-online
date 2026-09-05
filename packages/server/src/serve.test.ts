@@ -91,6 +91,27 @@ class Client {
     })
   }
 
+  /**
+   * その種類で**最後に**届いたもの。まだ届いていなければ `undefined`。
+   *
+   * 同じ種類が何度も届くもの（`相手の繋がり`）は、最初の 1 つを見ても意味が無い。繋がりは
+   * 変わるたびに送られる（`serve.ts` の `tellLinks`）ので、いまどうなっているかは最後に届いた
+   * ものである。
+   */
+  latest(kind: ToClient['kind']): ToClient | undefined {
+    return [...this.received].reverse().find((message) => message.kind === kind)
+  }
+
+  /** その状態になるまで待つ。ならなければ、何が届いたかを添えて投げる。 */
+  async waitUntil(wanted: string, ready: () => boolean): Promise<void> {
+    for (let waited = 0; waited < 200; waited += 1) {
+      if (ready()) return
+
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    throw new Error(`${wanted} にならなかった: ${this.received.map((message) => message.kind).join(', ')}`)
+  }
+
   /** その種類のメッセージが届くまで待って、届いたものを返す。 */
   async waitFor(kind: ToClient['kind']): Promise<ToClient> {
     for (let waited = 0; waited < 200; waited += 1) {
@@ -217,25 +238,81 @@ describe('WebSocket で繋ぐ', () => {
 
     await second.close()
 
-    expect(await first.waitFor('相手の繋がり')).toEqual({ kind: '相手の繋がり', connected: false })
+    await first.waitUntil('相手が切れたと届く', () => {
+      const link = first.latest('相手の繋がり')
+      return link?.kind === '相手の繋がり' && !link.connected
+    })
+    expect(first.latest('相手の繋がり')).toEqual({ kind: '相手の繋がり', connected: false })
 
     // 永久に待たされない。投げ出してロビーに戻れる（`room.ts` の `canLeave`）。
+    first.received.length = 0
     first.send({ kind: 'ロビーに戻る' })
     expect((await first.waitFor('ロビー')).kind).toBe('ロビー')
     await first.close()
+  })
+
+  /**
+   * #175。閉じていた側が、相手がロビーへ戻った後に繋ぎ直してくることはある。**席は残っている
+   * ので盤面は見えるが、相手はもう来ない。** 待たされ続けないよう、そこも伝える。
+   */
+  it('相手が出ていった後に繋ぎ直すと、繋がっていないと届く', async () => {
+    const { first, second } = await bothJoined(server.port)
+    await second.close()
+    await first.waitUntil('相手が切れたと届く', () => {
+      const link = first.latest('相手の繋がり')
+      return link?.kind === '相手の繋がり' && !link.connected
+    })
+    first.received.length = 0
+    first.send({ kind: 'ロビーに戻る' })
+    await first.waitFor('ロビー')
+
+    const again = new Client(server.port, 'い')
+    await again.waitFor('席についた')
+
+    await again.waitUntil('相手が居ないと届く', () => {
+      const link = again.latest('相手の繋がり')
+      return link?.kind === '相手の繋がり' && !link.connected
+    })
+    expect(again.latest('相手の繋がり')).toEqual({ kind: '相手の繋がり', connected: false })
+    await first.close()
+    await again.close()
+  })
+
+  /**
+   * #175。**同じことを言い続けない。** 受け取るたびにクライアントは畳み直して描き直すので、
+   * 変わっていないのに送ると、そのぶんの手間と紛れが増える。
+   */
+  it('繋がりが変わらない間は、送り直さない', async () => {
+    const { first, second } = await bothJoined(server.port)
+    await first.waitUntil('繋がりが届く', () => first.latest('相手の繋がり') !== undefined)
+    const sent = first.received.filter((message) => message.kind === '相手の繋がり').length
+
+    // 断られるだけのメッセージでも、部屋の様子は見に行く（`serve.ts`）。
+    second.send({ kind: 'ロビーに戻る' })
+    await second.waitFor('行えなかった')
+
+    expect(first.received.filter((message) => message.kind === '相手の繋がり')).toHaveLength(sent)
+    await first.close()
+    await second.close()
   })
 
   /** 回線が切れただけなら相手は戻ってくる（ADR-0016）。戻ったことも伝える。 */
   it('相手が戻ると、繋がったことが伝わる', async () => {
     const { first, second } = await bothJoined(server.port)
     await second.close()
-    await first.waitFor('相手の繋がり')
-    first.received.length = 0
+    await first.waitUntil('相手が切れたと届く', () => {
+      const link = first.latest('相手の繋がり')
+      return link?.kind === '相手の繋がり' && !link.connected
+    })
 
     const again = new Client(server.port, 'い')
     await again.waitFor('席についた')
 
-    expect(await first.waitFor('相手の繋がり')).toEqual({ kind: '相手の繋がり', connected: true })
+    await first.waitUntil('相手が戻ったと届く', () => {
+      const link = first.latest('相手の繋がり')
+      return link?.kind === '相手の繋がり' && link.connected
+    })
+    expect(first.latest('相手の繋がり')).toEqual({ kind: '相手の繋がり', connected: true })
     await first.close()
     await again.close()
   })

@@ -8,7 +8,7 @@
 export { checkDecks, setupFromDecks } from './deck.js'
 export type { SeatedDeckViolation } from './deck.js'
 export { CPU_PREFIX, isCpu } from './cpu.js'
-export { emptyRooms, lobbyOf, receive, roomOf } from './room.js'
+export { emptyRooms, lobbyOf, partnerOf, receive, roomOf } from './room.js'
 export type { Delivery, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
 export { serve } from './serve.js'
 export type { RunningServer, ServeOptions } from './serve.js'

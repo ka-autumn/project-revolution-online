@@ -249,6 +249,20 @@ export function roomOf(rooms: Rooms, participant: ParticipantId): Room | undefin
   return [...rooms.values()].find((room) => room.participants.includes(participant))
 }
 
+/**
+ * その人の向かいの席にいる相手。まだデュエルが始まっていなければ `undefined`（#175）。
+ *
+ * **席から引く。部屋にいる人から引くのではない。** 相手が部屋を出た後も席の並びは残る
+ * （`withoutParticipant`）ので、**出ていった相手もここでは分かる。** 出ていったかどうかは、
+ * その名乗りが `participants` にあるかで見る。
+ */
+export function partnerOf(room: Room, participant: ParticipantId): ParticipantId | undefined {
+  const duel = room.duel
+  if (duel === undefined) return undefined
+
+  return seats(duel).find(([, who]) => who !== participant)?.[1]
+}
+
 /** ロビーに出す名前の長さの上限。一覧が読めなくなるほど長い名前を置かせない。 */
 const NAME_LIMIT = 24
 

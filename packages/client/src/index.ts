@@ -483,7 +483,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
       // 放棄しか行えない場面は押させずに送る。**描いてから送る**ので、進む前の盤面が一度は
       // 画面に出る。送った結果は次の盤面として届き、そこでまた同じ判断をする。
-      const automatic = automaticAction(session)
+      //
+      // **見るのは盤面が届いた時だけである。** 行える手が変わるのは盤面が届いた時だけ
+      // （`session.ts`）で、ほかのものが届くたびに見ると、送った手が断られた（`行えなかった`）
+      // 後にもう一度同じ手を送ることになり、断られ続ける。
+      const automatic = message.kind === '盤面' ? automaticAction(session) : undefined
       if (automatic !== undefined) connection.send({ kind: '行動する', action: automatic })
     },
     onLinkChanged: (value) => {
