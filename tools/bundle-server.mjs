@@ -13,6 +13,14 @@ import * as esbuild from 'esbuild'
 
 export const DEFAULT_PORT = 8787
 
+/**
+ * 書いたものを置く先の既定（ADR-0018）。
+ *
+ * **束ねたものと同じところには置かない。** 束ねたものは置き直すたびに差し替わる（ADR-0015）
+ * ので、そこに置くと消える。立てる側が `--store` か `STORE` で決める。
+ */
+export const DEFAULT_STORE = 'revolution.sqlite'
+
 const repoRoot = fileURLToPath(new URL('../', import.meta.url))
 
 /**
@@ -45,9 +53,9 @@ export function readFlag(argv, name) {
  * ポートは焼き付けた値を既定にしつつ、`PORT` で上書きできるようにしてある。
  * **置き場では、待つポートを常駐の設定の側で決めたい。** 束ね直さずに変えられる余地を残す。
  */
-function entryPoint(decksModule, port) {
+function entryPoint(decksModule, port, store) {
   return `
-import { checkDecks, serve, setupFromDecks } from ${JSON.stringify(serverEntry)}
+import { checkDecks, openStore, serve, setupFromDecks } from ${JSON.stringify(serverEntry)}
 import { decks } from ${JSON.stringify(specifier(decksModule))}
 
 if (!Array.isArray(decks) || decks.length !== 2 || !decks.every(Array.isArray)) {
@@ -63,9 +71,16 @@ if (violations.length > 0) {
   process.exit(1)
 }
 
-serve({ port: Number(process.env.PORT ?? ${port}), setup })
+// 書いたものが残る置き場（ADR-0018）。**置き場は束ね直さずに変えられるようにする**——
+// 待つポートと同じ理由で、置く先を決めるのは常駐の設定の側である（ADR-0015）。
+// 渡さなければ何も残らず、立て直せば対戦は消える（ADR-0018 より前と同じ）。
+const storePath = process.env.STORE ?? ${JSON.stringify(store)}
+const store = storePath === '' ? undefined : openStore(storePath)
+
+serve({ port: Number(process.env.PORT ?? ${port}), setup, store })
   .then((running) => {
     console.log(\`ポート \${running.port} で待っています\`)
+    if (store !== undefined) console.log(\`置き場: \${storePath}\`)
   })
   .catch((error) => {
     console.error(error)
@@ -80,10 +95,10 @@ serve({ port: Number(process.env.PORT ?? ${port}), setup })
  * 失敗したときは `false` を返す。**呼ぶ側で言い直さない。** esbuild がすでに読める形で
  * 書いているので、同じことを二度言わないため。
  */
-export async function bundleServer({ decks, port = DEFAULT_PORT, outfile }) {
+export async function bundleServer({ decks, port = DEFAULT_PORT, store = DEFAULT_STORE, outfile }) {
   try {
     await esbuild.build({
-      stdin: { contents: entryPoint(decks, port), resolveDir: repoRoot, loader: 'ts' },
+      stdin: { contents: entryPoint(decks, port, store), resolveDir: repoRoot, loader: 'ts' },
       outfile,
       absWorkingDir: repoRoot,
       bundle: true,

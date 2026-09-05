@@ -11,6 +11,11 @@ node_modules/
 # ビルド出力
 dist/
 
+# 手元で立てたときの置き場（ADR-0018）。打った対戦がそのまま入る
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
 # ローカル設定
 .claude/settings.local.json
 CLAUDE.local.md
