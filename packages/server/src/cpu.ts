@@ -1,4 +1,4 @@
-import { findAnywhere, legalActions, nextInt } from '@revolution/engine'
+import { cardsIn, findAnywhere, legalActions, nextInt } from '@revolution/engine'
 import type { ChoiceAnswer, DuelState, LegalAction, Random, RoomCode, WireChoice } from '@revolution/engine'
 import type { ParticipantId } from './room.js'
 
@@ -53,13 +53,36 @@ function pointless(state: DuelState, action: LegalAction): boolean {
 }
 
 /**
+ * ここに届くまでは、置けるなら必ずエネルギーを置く枚数。
+ *
+ * カードをプレイできるかは、エネルギーゾーンの枚数で決まる（レベルを満たす、総合ルール 第1部
+ * 第2章 3-1）。**置けるのはエネルギーフェイズに 1 枚だけ**（同 第3部 第7章 1）なので、置くかどうかを
+ * ランダムに任せると置き損ねがそのまま積み上がり、いつまでも何も出せない相手になる。
+ *
+ * ここまで貯まれば大抵のカードはレベルを満たせるので、そこから先は貯めることを優先しない。
+ */
+const ENERGY_TARGET = 7
+
+/**
  * CPU が選ぶ余地のある手（#175）。合法手から、選ばない手（`pointless`）を除いたもの。
+ *
+ * **エネルギーが足りていない間は、置く手だけを候補にする。** どの札を置くかはランダムのままで
+ * ある。置けるのは自分のエネルギーフェイズだけ（総合ルール 第3部 第7章 1）なので、ほかの場面
+ * では何も狭まらない。
  *
  * `優先権を放棄する` は終わっていない限り必ず合法手にある（`legal-action.ts`）ので、除いても
  * 空にはならない。
  */
 export function cpuCandidates(state: DuelState): readonly LegalAction[] {
-  return legalActions(state).filter((action) => !pointless(state, action))
+  const candidates = legalActions(state).filter((action) => !pointless(state, action))
+
+  const placing = candidates.filter((action) => action.kind === 'エネルギーを置く')
+  if (placing.length === 0) return candidates
+
+  // 置けるのはアクティブプレイヤーだけ（同）なので、数えるのもその人のゾーンである。
+  const placed = cardsIn(state, state.turn.active, 'エネルギーゾーン').length
+
+  return placed < ENERGY_TARGET ? placing : candidates
 }
 
 /** CPU が次に行う手。行える手が無ければ `undefined`。 */
