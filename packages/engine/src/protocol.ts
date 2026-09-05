@@ -27,6 +27,25 @@ import type { PlayerZone } from './zone.js'
 /** 2 人を繋ぐための合言葉。最初の完走ではアカウント認証を作らない（#17）。 */
 export type RoomCode = string
 
+/** 部屋を作る時に決める、誰と打つか。 */
+export type Opponent = '人間' | 'CPU'
+
+/**
+ * ロビーに並ぶ部屋 1 つ。
+ *
+ * **そこにいる人の名乗りは載せない。** 名乗りは認証ではなく、知っている人がその席に座れる
+ * 合言葉である（ADR-0009）。一覧に出すと、居合わせた誰でも他人の席に着けてしまう。出すのは
+ * 部屋に付けられた名前だけで、これは席とは何の関係も無い。
+ */
+export interface WireRoom {
+  readonly code: RoomCode
+  /** 作った人が付けた名前。付いていなければ合言葉がそのまま入る。 */
+  readonly name: string
+  readonly status: '相手を待っている' | '対戦中' | '終わった'
+  /** CPU が座っているか。座っているなら、人が入れる席はもう無い。 */
+  readonly cpu: boolean
+}
+
 /**
  * 候補の何番目を選んだか（ADR-0008）。
  *
@@ -151,6 +170,22 @@ export interface WireChoice {
 /** クライアントからサーバへ送るもの。 */
 export type FromClient =
   | { readonly kind: '部屋に入る'; readonly room: RoomCode }
+  /**
+   * 新しい部屋を作って、そこに入る（#175）。
+   *
+   * **合言葉を決めるのはサーバである。** 打つ前に相手と合言葉を決めておかなくても、ロビーに
+   * 並んだ部屋を選べば入れる。付けられるのは名前だけで、これは席とは関係が無い（`WireRoom`）。
+   *
+   * `against` が `CPU` なら、もう一方の席にはサーバが座り、そのまま始まる。
+   */
+  | { readonly kind: '部屋を作る'; readonly name: string; readonly against: Opponent }
+  /**
+   * いる部屋を出てロビーに戻る（#175）。
+   *
+   * 出られるのは、まだ相手を待っているだけの部屋と、決着した部屋である（`server` の `room.ts` の
+   * `canLeave`）。打っている途中では断られる。
+   */
+  | { readonly kind: 'ロビーに戻る' }
   | { readonly kind: '行動する'; readonly action: LegalAction }
   | { readonly kind: '選ぶ'; readonly answer: ChoiceAnswer }
   /**
@@ -170,8 +205,33 @@ export type FromClient =
 
 /** サーバからクライアントへ送るもの。 */
 export type ToClient =
-  | { readonly kind: '相手を待っている' }
-  | { readonly kind: '席についた'; readonly seat: Player }
+  /**
+   * いま開いている部屋の一覧。**どの部屋にもいない人にだけ届く。**
+   *
+   * 部屋の様子が変わるたびに送り直す。受け取った側は覚えておくだけでよく、尋ね直す手立ては
+   * 要らない。
+   */
+  | { readonly kind: 'ロビー'; readonly rooms: readonly WireRoom[] }
+  /**
+   * 部屋に入って、相手が来るのを待っている。
+   *
+   * どの部屋かを添えるのは、**合言葉を決めたのがサーバだから**である（`部屋を作る`）。切れて
+   * 繋ぎ直す時に入り直す先は、これで分かる（ADR-0016）。
+   */
+  | { readonly kind: '相手を待っている'; readonly room: RoomCode }
+  | {
+      readonly kind: '席についた'
+      readonly seat: Player
+      readonly room: RoomCode
+      /**
+       * 誰と打っているか。
+       *
+       * 部屋が続く限り変わらないので、席と一緒に届く。**CPU との対戦は打っている途中でも
+       * 投げ出せる**（`server` の `room.ts` の `canLeave`）ので、その口を出すかどうかがこれで
+       * 決まる（#175）。
+       */
+      readonly opponent: Opponent
+    }
   | {
       readonly kind: '盤面'
       readonly perspective: WirePerspective
@@ -197,6 +257,18 @@ export type ToClient =
       readonly passOutcome: PassOutcome | undefined
     }
   | { readonly kind: '選んでほしい'; readonly choice: WireChoice }
+  /**
+   * 相手がいま繋がっているか（#175）。変わるたびに、同じ部屋のもう 1 人に届く。
+   *
+   * **止まっている理由が読めるようにするためにある。** 相手が画面を閉じると、待っている側の
+   * 画面は相手の優先権のまま動かなくなる。回線が切れただけなら戻ってくる（ADR-0016）が、
+   * 待っている側からはどちらか分からない。
+   *
+   * 繋がっていない間は、その対戦を投げ出してロビーに戻れる（`server` の `room.ts` の
+   * `canLeave`）。CPU が相手の部屋には届かない。繋がらないのが当たり前であり、投げ出せるかは
+   * 相手が CPU であることから決まっている。
+   */
+  | { readonly kind: '相手の繋がり'; readonly connected: boolean }
   | { readonly kind: '行えなかった'; readonly reason: string }
 
 /** 行動を適用しようとした結果（ADR-0008）。 */

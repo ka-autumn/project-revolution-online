@@ -1,21 +1,24 @@
 import { MAX_ATTEMPTS, connect, connectingLink } from './connection.js'
 import type { Connection, Link } from './connection.js'
 import { indexOfSquare } from '@revolution/engine'
-import type { CardId, LoggedEvent, RoomCode } from '@revolution/engine'
+import type { CardId, LoggedEvent, Opponent, RoomCode } from '@revolution/engine'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import {
   actionsElement,
   boardElement,
   choiceElement,
+  leaveElement,
+  lobbyElement,
   overlayElement,
   pickElement,
   waitingForOverlayElement,
 } from './render.js'
-import { applyMessage, connecting } from './session.js'
+import { applyMessage, connecting, roomOf } from './session.js'
 import type { Session } from './session.js'
 import {
   boardView,
   cutInViews,
+  lobbyView,
   overlayDurationMs,
   priorityReason,
   showsOverlay,
@@ -40,8 +43,13 @@ export interface MountOptions {
   readonly url: string
   /** 誰であるかを名乗る合言葉（ADR-0009）。 */
   readonly participant: string
-  /** 入る部屋の合言葉。 */
-  readonly room: RoomCode
+  /**
+   * 直に入る部屋の合言葉。指していなければロビーから始める（#175）。
+   *
+   * 合言葉を知っている相手と待ち合わせる時だけ要る。ふだんはロビーで部屋を作るか選ぶので、
+   * **打つ前に決めておくものは何も無い。**
+   */
+  readonly room?: RoomCode
 }
 
 /**
@@ -64,9 +72,12 @@ function statusOf(session: Session, link: Link): string | undefined {
 
   switch (session.stage.kind) {
     case '繋いでいる':
-      return '部屋に入ろうとしています'
+      return '待っています'
+    case 'ロビー':
+      // ロビーは自分で全部を出す（`lobbyElement`）ので、上に足す 1 行は要らない。
+      return undefined
     case '相手を待っている':
-      return '相手を待っています'
+      return '相手を待っています。この部屋はロビーに出ているので、選んで入ってもらえます'
     case '打っている':
       return session.stage.board === undefined ? '盤面を待っています' : undefined
   }
@@ -117,6 +128,21 @@ function line(className: string, text: string): HTMLElement {
 }
 
 /**
+ * ロビーで押せるものと、打ち込みかけている部屋の名前（#175）。
+ *
+ * 名前をここに持つのは、**画面が丸ごと描き直される**（`draw`）ためである。ほかの人が部屋を
+ * 作ればロビーが届いて描き直しが起きるので、入力欄に置いたままにすると打ち込みかけが消える。
+ */
+interface Lobby {
+  readonly name: string
+  readonly onName: (name: string) => void
+  readonly onCreate: (name: string, against: Opponent) => void
+  readonly onJoin: (code: RoomCode) => void
+  /** 部屋を出てロビーに戻る。断るのはサーバである（`server` の `room.ts` の `canLeave`）。 */
+  readonly onLeave: () => void
+}
+
+/**
  * 操作するところをひとまとめにする器（#128）。
  *
  * 盤面より上に置き、スクロールしても見えたままにする（`style.css` の `.controls`）。**中身は
@@ -147,7 +173,10 @@ function draw(
   connection: Connection,
   overlay: Overlay,
   picking: Picking,
+  lobby: Lobby,
 ): void {
+  // 打ち込みかけの場所は描き直すと消える。打っていた人には返す（`lobbyElement`）。
+  const typing = document.activeElement?.classList.contains('lobby__name') === true
   root.replaceChildren()
 
   const status = statusOf(session, link)
@@ -159,6 +188,23 @@ function draw(
   const connected = link.kind === '繋がっている'
 
   const stage = session.stage
+  // ロビーは繋がっている間だけ出す。作る・入るは送らないと何も起きないので、押せる形で出さない。
+  if (stage.kind === 'ロビー' && connected) {
+    root.append(
+      lobbyElement(
+        lobbyView(stage.rooms),
+        lobby.name,
+        { onCreate: lobby.onCreate, onJoin: lobby.onJoin, onName: lobby.onName },
+        typing,
+      ),
+    )
+  }
+
+  // 待っている間は、やめて戻れる。相手が来ないまま閉じ込められない（#175）。
+  if (stage.kind === '相手を待っている' && connected) {
+    root.append(leaveElement('やめてロビーに戻る', lobby.onLeave))
+  }
+
   if (stage.kind === '打っている' && stage.board !== undefined) {
     const board = stage.board
     // 演出が出ている間は手を送れない（#115）ので、盤面の上でも押せなくする。
@@ -206,6 +252,13 @@ function draw(
     const controlArea = controls()
     // どのフェイズの誰の優先権かは、打つ前に見るものなので操作するところの一番上に置く。
     controlArea.append(line('controls__turn', boardData.turn))
+
+    // 相手が閉じたまま戻らないと、画面は相手の優先権のまま動かなくなる（#175）。**止まって
+    // いる理由を読めるようにする。** 回線が切れただけなら戻ってくる（ADR-0016）ので、待つか
+    // やめるかは人が決める。
+    if (connected && !stage.opponentConnected) {
+      controlArea.append(line('controls__offline', '相手の繋がりが切れています。戻るのを待つか、やめてロビーに戻れます'))
+    }
 
     // 相手が何をして優先権が回ってきたのかを、打つところに 1 行で出す（#147）。
     //
@@ -275,6 +328,16 @@ function draw(
       )
     }
 
+    // ロビーに戻る口を出すのは、投げ出せる対戦の間だけである（`server` の `room.ts` の
+    // `canLeave`）。決着した後はどちらの対戦でも戻れて、CPU との対戦と、相手が繋がっていない
+    // 対戦は途中でも戻れる。**断るのはサーバである。** ここで決めているのは、押す口を出すか
+    // どうかだけである。
+    if (connected && (stage.opponent === 'CPU' || !stage.opponentConnected || board.result !== undefined)) {
+      controlArea.append(
+        leaveElement(board.result === undefined ? 'やめてロビーに戻る' : 'ロビーに戻る', lobby.onLeave),
+      )
+    }
+
     // 操作するところを盤面より上に置く（#128）。盤面は縦に長いので、下にあると打つたびに
     // 往復することになる。
     root.append(controlArea)
@@ -296,6 +359,16 @@ function draw(
 export function mount(root: HTMLElement, options: MountOptions): () => void {
   let session = connecting()
   let link: Link = connectingLink()
+
+  // ロビーで打ち込みかけている部屋の名前（#175）。
+  let roomName = ''
+  /**
+   * 入ろうとしている部屋。届いたものがまだ無い間の入り先である（#175）。
+   *
+   * 入ってしまえば、いる部屋は届いたものから分かる（`session.ts` の `roomOf`）。ここに残るのは
+   * 送ってから返事が来るまでの間と、合言葉を直に指して開いた時（`options.room`）だけである。
+   */
+  let pendingRoom: RoomCode | undefined = options.room
 
   // 盤面をクリックして操作する（#94）。選びかけているカードは**盤面が届くたびに捨てる**。
   // 届いた手は入れ替わっており、選びかけの手がまだ行えるとは限らないためである。
@@ -337,7 +410,28 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
   })
 
-  const redraw = (): void => draw(root, session, link, connection, overlay, picking())
+  const lobby = (): Lobby => ({
+    name: roomName,
+    onName: (name) => {
+      // 描き直さない。入力欄の値はブラウザが持っていて、覚えるのは描き直しに備えるためである。
+      roomName = name
+    },
+    onCreate: (name, against) => {
+      // 合言葉を決めるのはサーバなので、入る先はここで決められない（#175）。届いてから分かる。
+      pendingRoom = undefined
+      connection.send({ kind: '部屋を作る', name, against })
+    },
+    onJoin: (code) => {
+      pendingRoom = code
+      connection.send({ kind: '部屋に入る', room: code })
+    },
+    onLeave: () => {
+      pendingRoom = undefined
+      connection.send({ kind: 'ロビーに戻る' })
+    },
+  })
+
+  const redraw = (): void => draw(root, session, link, connection, overlay, picking(), lobby())
 
   /**
    * 待ち行列の先頭を出す。無ければ消える。呼ぶたびにタイマーを 1 つだけ張る。
@@ -376,9 +470,12 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   const connection: Connection = connect({
     url: options.url,
     participant: options.participant,
-    room: options.room,
+    // 繋ぎ直した時に入り直す先。ロビーにいるなら何も送らない（ADR-0016、#175）。
+    rejoining: () => roomOf(session) ?? pendingRoom,
     onMessage: (message) => {
       session = applyMessage(session, message)
+      // ロビーが届いたなら、どの部屋にもいない。入ろうとしていた先は残さない（#175）。
+      if (session.stage.kind === 'ロビー' || message.kind === '行えなかった') pendingRoom = undefined
       // 盤面が入れ替わったら、選びかけは捨てる（#94）。
       pickedCard = undefined
       enqueueOverlays()
@@ -386,7 +483,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
       // 放棄しか行えない場面は押させずに送る。**描いてから送る**ので、進む前の盤面が一度は
       // 画面に出る。送った結果は次の盤面として届き、そこでまた同じ判断をする。
-      const automatic = automaticAction(session)
+      //
+      // **見るのは盤面が届いた時だけである。** 行える手が変わるのは盤面が届いた時だけ
+      // （`session.ts`）で、ほかのものが届くたびに見ると、送った手が断られた（`行えなかった`）
+      // 後にもう一度同じ手を送ることになり、断られ続ける。
+      const automatic = message.kind === '盤面' ? automaticAction(session) : undefined
       if (automatic !== undefined) connection.send({ kind: '行動する', action: automatic })
     },
     onLinkChanged: (value) => {

@@ -458,7 +458,12 @@ describe('選ぶ候補', () => {
 describe('自動で送る手', () => {
   /** 席についたうえで、その手が届いた状態。 */
   function receiving(actions: readonly LegalAction[]): Session {
-    const seated = applyMessage(connecting(), { kind: '席についた', seat: '先攻' })
+    const seated = applyMessage(connecting(), {
+      kind: '席についた',
+      seat: '先攻',
+      room: 'あいことば',
+      opponent: '人間',
+    })
     return applyMessage(seated, { kind: '盤面', perspective: board(), actions, passOutcome: undefined })
   }
 

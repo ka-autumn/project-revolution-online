@@ -69,8 +69,14 @@ export interface ConnectionOptions {
   readonly url: string
   /** 誰であるかを名乗る合言葉。これを知っている人がその席に座れる（ADR-0009）。 */
   readonly participant: string
-  /** 繋がったら入る部屋。繋ぎ直すたびに、同じ部屋へ入り直す。 */
-  readonly room: RoomCode
+  /**
+   * 繋がった時に入り直す部屋。どこにもいなければ `undefined`（#175）。
+   *
+   * **値ではなく関数で受け取る。** 入っている部屋は打っている間に変わる（ロビーで作る・入る・
+   * 戻る）ので、繋いだ時に決まっていない。繋ぎ直すたびに、その時いる部屋を尋ねる。どこにも
+   * いなければ何も送らず、サーバがロビーを送ってくる。
+   */
+  readonly rejoining: () => RoomCode | undefined
   /** メッセージが届くたびに呼ばれる。 */
   readonly onMessage: (message: ToClient) => void
   /** 繋がりの様子が変わるたびに呼ばれる。 */
@@ -108,7 +114,7 @@ function parse(data: unknown): ToClient | undefined {
 }
 
 /**
- * 繋いで、繋がったら部屋に入る。切れたら間を空けて繋ぎ直す。
+ * 繋いで、部屋にいるなら入り直す。切れたら間を空けて繋ぎ直す。
  *
  * 入り直しは繋ぐのと同じでよい。同じ合言葉で入り直せば、サーバがいまの盤面を送り直す
  * （ADR-0009）ので、**送れなかった手を貯めて後から流し直すことはしない。** 何を行えるかを
@@ -133,7 +139,10 @@ export function connect(options: ConnectionOptions): Connection {
 
     opening.addEventListener('open', () => {
       moveTo({ kind: '繋がっている' })
-      opening.send(JSON.stringify({ kind: '部屋に入る', room: options.room } satisfies FromClient))
+
+      // どこにもいないなら、入り直す先が無い。サーバがロビーを送ってくる（#175）。
+      const room = options.rejoining()
+      if (room !== undefined) opening.send(JSON.stringify({ kind: '部屋に入る', room } satisfies FromClient))
     })
     // 繋ぎ損ねた時も閉じたことになる（`error` の後に必ず来る）ので、繋ぎ直しはここだけで足りる。
     // 差し替わった後の古い接続からも遅れて届くため、いま張っているものかを確かめる。

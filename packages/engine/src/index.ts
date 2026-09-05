@@ -100,6 +100,7 @@ export {
   cardsOn,
   draw,
   emptyDuelState,
+  findAnywhere,
   hasEnded,
   instantiate,
   librarySize,
@@ -182,11 +183,13 @@ export type {
   ActionProgress,
   ChoiceAnswer,
   FromClient,
+  Opponent,
   RoomCode,
   ToClient,
   WireCandidate,
   WireCardPosition,
   WireChoice,
+  WireRoom,
 } from './protocol.js'
 export type { PlayDeclaration } from './play.js'
 export { PLAYERS } from './player.js'

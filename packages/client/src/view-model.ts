@@ -17,6 +17,7 @@ import type {
   Procedure,
   Progress,
   ResolutionVia,
+  RoomCode,
   SmashJudgmentStep,
   Square,
   SquareIndex,
@@ -24,6 +25,7 @@ import type {
   WireCardInstance,
   WireCardPosition,
   WirePerspective,
+  WireRoom,
   WireVisibleCard,
 } from '@revolution/engine'
 
@@ -1265,6 +1267,49 @@ function resultLabel(result: DuelResult, viewer: Player): string {
   if (result.kind === '引き分け') return '引き分け'
 
   return result.winner === viewer ? '勝ち' : '負け'
+}
+
+/** ロビーに並ぶ部屋 1 つの見え方（#175）。 */
+export interface RoomView {
+  readonly code: RoomCode
+  readonly name: string
+  /** その部屋の様子を、そのまま出す 1 行。 */
+  readonly status: string
+  /** 入れるか。**入れない部屋は押せる形で出さない**（ADR-0010）。 */
+  readonly joinable: boolean
+}
+
+/** その部屋がどうなっているか、見る人の言い方で。 */
+function roomStatusLine(room: WireRoom): string {
+  switch (room.status) {
+    case '相手を待っている':
+      return '相手を待っています'
+    case '対戦中':
+      return room.cpu ? 'CPU と対戦中' : '対戦中'
+    case '終わった':
+      return '終わりました'
+  }
+}
+
+/**
+ * ロビーを、画面に出す形にする（#175）。
+ *
+ * **入れる部屋を先に出す。** 一覧を見る人がまずしたいのは「打てる部屋に入る」ことで、対戦中の
+ * 部屋はそのついでに見えていればよい。同じ様子の部屋どうしは届いた順（作られた順）のままにする。
+ */
+export function lobbyView(rooms: readonly WireRoom[]): readonly RoomView[] {
+  const order: readonly WireRoom['status'][] = ['相手を待っている', '対戦中', '終わった']
+
+  return order.flatMap((status) =>
+    rooms
+      .filter((room) => room.status === status)
+      .map((room) => ({
+        code: room.code,
+        name: room.name,
+        status: roomStatusLine(room),
+        joinable: room.status === '相手を待っている',
+      })),
+  )
 }
 
 /** 届いた盤面を、画面に出す形にする。 */

@@ -31,6 +31,20 @@ export function checkDecks(decks: readonly Deck[]): readonly SeatedDeckViolation
   )
 }
 
+/** 新しい部屋に付ける合言葉の長さ。 */
+const CODE_LENGTH = 6
+
+/**
+ * 新しい部屋の合言葉（#175）。
+ *
+ * **シードとは別に引く。** 合言葉はロビーにいる全員に見える（`room.ts` の `lobbyOf`）ので、
+ * シードから作ると山札の並びが読み取れてしまう（ADR-0005）。URL にも載る（`?room=`）ので、
+ * 英数字だけにする。
+ */
+function newCode(): string {
+  return Math.random().toString(36).slice(2, 2 + CODE_LENGTH)
+}
+
 /**
  * デッキ 2 つから、部屋が始まるたびに呼ばれる `RoomSetup` を返す。
  *
@@ -42,5 +56,5 @@ export function checkDecks(decks: readonly Deck[]): readonly SeatedDeckViolation
  * 使い回してよい。
  */
 export function setupFromDecks(decks: readonly [Deck, Deck]): () => RoomSetup {
-  return () => ({ decks, seed: Math.floor(Math.random() * 2 ** 31) })
+  return () => ({ decks, seed: Math.floor(Math.random() * 2 ** 31), code: newCode() })
 }

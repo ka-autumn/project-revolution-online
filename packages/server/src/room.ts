@@ -14,11 +14,15 @@ import type {
   DuelState,
   FromClient,
   LegalAction,
+  Opponent,
   Player,
+  Random,
   RoomCode,
   Square,
   ToClient,
+  WireRoom,
 } from '@revolution/engine'
+import { cpuParticipantOf, isCpu, pickCpuAction, pickCpuAnswer } from './cpu.js'
 
 /**
  * ルームコードで 2 人を繋いで 1 つのデュエルを進めるところ（ADR-0004 / ADR-0008、#13）。
@@ -35,12 +39,19 @@ import type {
 /** 部屋にいる 1 人。誰であるかを決めるのは通信の側なので、識別子だけを受け取る。 */
 export type ParticipantId = string
 
-/** 部屋でデュエルを始めるのに要るもの。呼ぶ側が用意する。 */
+/** 部屋を作ってデュエルを始めるのに要るもの。呼ぶ側が用意する。 */
 export interface RoomSetup {
   /** 2 人のデッキ。並びは席の順であって、先攻・後攻の順ではない（`prepareDuel`）。 */
   readonly decks: readonly [Deck, Deck]
   /** シャッフルと先攻・後攻の決定に使うシード（ADR-0005）。部屋ごとに変える。 */
   readonly seed: number
+  /**
+   * 新しい部屋に付ける合言葉（`部屋を作る`、#175）。すでに使われていれば、これを元に別のものを作る。
+   *
+   * **シードから作ってはならない。** 合言葉はロビーにいる全員に見える（`WireRoom`）ので、
+   * シードが読み取れると山札の並びまで読み取れてしまう（ADR-0005）。
+   */
+  readonly code: RoomCode
 }
 
 /** 適用しかけている行動と、そこまでに受け取った答え（ADR-0008）。 */
@@ -57,15 +68,36 @@ interface DuelInRoom {
   /** どちらの席に誰がいるか。 */
   readonly seats: Readonly<Record<Player, ParticipantId>>
   readonly pending: PendingAction | undefined
+  /**
+   * CPU が次の手を選ぶのに使う乱数列（`cpu.ts`、#175）。準備で使った続きから始める。
+   *
+   * 盤面の側は乱数を持たない（`DuelState` は値であって、進めるのは呼ぶ側である）。CPU が
+   * いない部屋では最初から動かない。
+   */
+  readonly random: Random
 }
 
 /** 1 つの部屋。 */
 export interface Room {
   readonly code: RoomCode
+  /**
+   * ロビーに出す名前（#175）。付けられていなければ合言葉がそのまま入る。
+   *
+   * **席とは関係が無い。** 誰がいるかは出せない（名乗りは席に座れる合言葉である、ADR-0009）
+   * ので、ロビーで部屋を見分けるためだけにある。
+   */
+  readonly name: string
   /** 入ってきた順の参加者。2 人目が来たところでデュエルが始まる。 */
   readonly participants: readonly ParticipantId[]
   /** 始まっていなければ `undefined`。 */
   readonly duel: DuelInRoom | undefined
+  /**
+   * CPU が座っている席の名乗り（#175）。座っていなければ `undefined`。
+   *
+   * 部屋から見れば人と変わらない 1 人の参加者で、違うのは繋がっていないことだけである。
+   * 送るものは届く先が無いので捨てる（`receive`）。
+   */
+  readonly cpu: ParticipantId | undefined
 }
 
 /** 開いているすべての部屋。ルームコードで引く。 */
@@ -99,10 +131,33 @@ export function receive(
   participant: ParticipantId,
   message: FromClient,
   setup: RoomSetup,
+  connected: ReadonlySet<ParticipantId>,
+): RoomOutcome {
+  const outcome = handle(rooms, participant, message, setup, connected)
+
+  // 相手が CPU なら、そのまま打てるところまで打つ（#175）。**送り主のいる部屋だけを進める。**
+  // ほかの部屋の CPU は、その部屋で手が打たれた時に動く。
+  const code = roomOf(outcome.rooms, participant)?.code
+  const played = code === undefined ? outcome : withCpu(outcome, code)
+
+  // CPU は繋がっていないので、宛てたものは届く先が無い（`serve.ts`）。ここで落とす。
+  return { ...played, deliveries: played.deliveries.filter((delivery) => !isCpu(delivery.to)) }
+}
+
+function handle(
+  rooms: Rooms,
+  participant: ParticipantId,
+  message: FromClient,
+  setup: RoomSetup,
+  connected: ReadonlySet<ParticipantId>,
 ): RoomOutcome {
   switch (message.kind) {
     case '部屋に入る':
-      return enter(rooms, participant, message.room, setup)
+      return enter(rooms, participant, message.room, setup, connected)
+    case '部屋を作る':
+      return open(rooms, participant, message.name, message.against, setup, connected)
+    case 'ロビーに戻る':
+      return leave(rooms, participant, connected)
     case '行動する':
       return act(rooms, participant, message.action)
     case '選ぶ':
@@ -112,6 +167,32 @@ export function receive(
     case '取り消す':
       return rewind(rooms, participant, 'すべて')
   }
+}
+
+/**
+ * いま開いている部屋の一覧（#175）。作られた順に並ぶ。
+ *
+ * **そこにいる人の名乗りは出さない**（`WireRoom`）。名乗りは認証ではなく席に座れる合言葉
+ * （ADR-0009）なので、一覧に出すと居合わせた誰でも他人の席に着けてしまう。
+ */
+export function lobbyOf(rooms: Rooms): readonly WireRoom[] {
+  return [...rooms.values()].map((room) => ({
+    code: room.code,
+    name: room.name,
+    status: statusOf(room),
+    cpu: room.cpu !== undefined,
+  }))
+}
+
+function statusOf(room: Room): WireRoom['status'] {
+  if (room.duel === undefined) return '相手を待っている'
+
+  return hasEnded(room.duel.state) ? '終わった' : '対戦中'
+}
+
+/** その部屋で誰と打っているか。 */
+function opponentOf(room: Room): Opponent {
+  return room.cpu === undefined ? '人間' : 'CPU'
 }
 
 function refuse(rooms: Rooms, participant: ParticipantId, reason: string): RoomOutcome {
@@ -125,33 +206,145 @@ function withRoom(rooms: Rooms, room: Room): Rooms {
 /**
  * その部屋から 1 人を抜けさせる。誰もいなくなった部屋は取り除く。
  *
- * 席の並び（`duel.seats`）からは抜かない。**抜けられるのは終わったデュエルの部屋だけ**であり、
- * 終わった盤面はもう動かない（総合ルール 第3部 第3章 3）ので、誰がどちらの席にいたかは
- * そのまま残しておいてよい。残ったほうが入り直せば、同じ席で終わった盤面を見られる。
+ * **打っている途中に抜けられたら、部屋ごと取り除く**（#175）。席は 2 つで（ADR-0004）、抜けた
+ * 席に誰かが座り直すことはない（`enter` が断る）ので、**その対戦はもう続けられない。** 残して
+ * おくと、動かない対戦がロビーに「対戦中」として残り、戻ってきた相手は誰も来ない席に座り続ける
+ * ことになる。
+ *
+ * **終わった対戦の部屋は残す。** 終わった盤面はもう動かない（総合ルール 第3部 第3章 3）ので、
+ * 残ったほうが入り直せば、同じ席で終わった盤面を見られる。席の並び（`duel.seats`）から抜かない
+ * のもそのためである。
  */
 function withoutParticipant(rooms: Rooms, room: Room, participant: ParticipantId): Rooms {
-  const remaining = room.participants.filter((each) => each !== participant)
   const next = new Map(rooms)
-  if (remaining.length === 0) next.delete(room.code)
+  if (room.duel !== undefined && !hasEnded(room.duel.state)) {
+    next.delete(room.code)
+    return next
+  }
+
+  const remaining = room.participants.filter((each) => each !== participant)
+  // 残ったのが CPU だけなら、その部屋にはもう誰もいない（#175）。CPU は繋がっておらず、
+  // 入り直してくることも無いので、待たせておく先が無い。
+  if (remaining.every((each) => isCpu(each))) next.delete(room.code)
   else next.set(room.code, { ...room, participants: remaining })
 
   return next
 }
 
 /**
- * その部屋を抜けて、別の部屋に移れるか（#92）。
+ * その部屋を抜けられるか（#92）。
  *
- * 移れるのは、まだ相手を待っているだけの部屋と、決着した部屋である。**打っている途中の部屋は
- * 抜けられない。** 合言葉を打ち間違えただけで対戦が消えることになるためである。意図して
- * 投げ出す経路は、席をどう扱うかを決めてから別に足す。
+ * 抜けられるのは、まだ相手を待っているだけの部屋と、決着した部屋である。**打っている途中の
+ * 部屋は抜けられない。** 合言葉を打ち間違えただけで対戦が消えることになるためである。人を
+ * 相手に意図して投げ出す経路は、席をどう扱うかを決めてから別に足す。
+ *
+ * 打っている途中でも抜けられるのは 2 つの場合だけである（#175）。
+ *
+ * - **CPU との対戦。** 抜けられなくしているのは相手の対戦を消さないためであり、CPU の側には
+ *   消えて困るものが無い。1 人で始めた対戦を終えるまでロビーに戻れないのはおかしい。
+ * - **相手が繋がっていない対戦。** 相手が画面を閉じるとその席には誰も戻ってこない（名乗りは
+ *   画面が覚えているもので、閉じれば消える、ADR-0009）。残された側が永久に待たされ、その部屋も
+ *   ロビーに残り続けることになる。**回線が切れただけなら相手は戻ってくる**（ADR-0016）ので、
+ *   抜けるかどうかは人が決める。ここでは口を開けるだけである。
  */
-function canLeave(room: Room): boolean {
-  return room.duel === undefined || hasEnded(room.duel.state)
+function canLeave(room: Room, participant: ParticipantId, connected: ReadonlySet<ParticipantId>): boolean {
+  if (room.duel === undefined || hasEnded(room.duel.state)) return true
+  if (room.cpu !== undefined) return true
+
+  return room.participants.every((each) => each === participant || !connected.has(each))
 }
 
-/** その参加者がいる部屋。どこにもいなければ `undefined`。 */
-function roomOf(rooms: Rooms, participant: ParticipantId): Room | undefined {
+/** その参加者がいる部屋。どこにもいなければ `undefined`（＝ロビーにいる）。 */
+export function roomOf(rooms: Rooms, participant: ParticipantId): Room | undefined {
   return [...rooms.values()].find((room) => room.participants.includes(participant))
+}
+
+/**
+ * その人の向かいの席にいる相手。まだデュエルが始まっていなければ `undefined`（#175）。
+ *
+ * **席から引く。部屋にいる人から引くのではない。** 相手が部屋を出た後も席の並びは残る
+ * （`withoutParticipant`）ので、**出ていった相手もここでは分かる。** 出ていったかどうかは、
+ * その名乗りが `participants` にあるかで見る。
+ */
+export function partnerOf(room: Room, participant: ParticipantId): ParticipantId | undefined {
+  const duel = room.duel
+  if (duel === undefined) return undefined
+
+  return seats(duel).find(([, who]) => who !== participant)?.[1]
+}
+
+/** ロビーに出す名前の長さの上限。一覧が読めなくなるほど長い名前を置かせない。 */
+const NAME_LIMIT = 24
+
+/** 付けられた名前。空なら合言葉をそのまま名前にする。 */
+function nameOf(name: string, code: RoomCode): string {
+  const trimmed = name.trim().slice(0, NAME_LIMIT)
+
+  return trimmed === '' ? code : trimmed
+}
+
+/** まだ使われていない合言葉。渡されたものが空いていればそれを使う。 */
+function unusedCode(rooms: Rooms, code: RoomCode): RoomCode {
+  let candidate = code
+  for (let n = 2; rooms.has(candidate); n += 1) candidate = `${code}-${n}`
+
+  return candidate
+}
+
+/**
+ * 新しい部屋を作って、そこに入る（#175）。
+ *
+ * **合言葉を決めるのはサーバである。** 打つ前に相手と決めておかなくても、ロビーに並んだ部屋を
+ * 選べば入れる。相手が `CPU` なら、もう一方の席には繋がっていない参加者（`cpu.ts`）が座り、
+ * 2 人揃ったものとしてそのまま始まる。
+ *
+ * いま打っている途中の部屋にいるなら断る。抜けられる部屋にいるなら、そこを出てから作る
+ * （`enter` と同じ扱い、#92）。
+ */
+function open(
+  rooms: Rooms,
+  participant: ParticipantId,
+  name: string,
+  against: Opponent,
+  setup: RoomSetup,
+  connected: ReadonlySet<ParticipantId>,
+): RoomOutcome {
+  const current = roomOf(rooms, participant)
+  if (current !== undefined && !canLeave(current, participant, connected)) {
+    return refuse(rooms, participant, 'ほかの部屋にいる')
+  }
+  const left = current === undefined ? rooms : withoutParticipant(rooms, current, participant)
+
+  const code = unusedCode(left, setup.code)
+  const opened: Room = {
+    code,
+    name: nameOf(name, code),
+    participants: [participant],
+    duel: undefined,
+    cpu: against === 'CPU' ? cpuParticipantOf(code) : undefined,
+  }
+  if (opened.cpu === undefined) {
+    return {
+      rooms: withRoom(left, opened),
+      deliveries: [{ to: participant, message: { kind: '相手を待っている', room: code } }],
+    }
+  }
+
+  return start(left, opened, participant, opened.cpu, setup)
+}
+
+/**
+ * いる部屋を出てロビーに戻る（#175）。
+ *
+ * 出られる部屋は `canLeave` が決める。**何も送らない。** 部屋から出たことは、ロビーが届くこと
+ * そのもので分かる（`serve.ts`）。
+ */
+function leave(rooms: Rooms, participant: ParticipantId, connected: ReadonlySet<ParticipantId>): RoomOutcome {
+  const room = roomOf(rooms, participant)
+  if (room === undefined) return { rooms, deliveries: [] }
+  if (!canLeave(room, participant, connected)) return refuse(rooms, participant, '打っている途中の部屋')
+
+  return { rooms: withoutParticipant(rooms, room, participant), deliveries: [] }
 }
 
 /**
@@ -167,20 +360,27 @@ function roomOf(rooms: Rooms, participant: ParticipantId): Room | undefined {
  * いるまま**にする。移れないことが分かった時点で抜けたことにすると、どこにもいない参加者が
  * できてしまう。
  */
-function enter(rooms: Rooms, participant: ParticipantId, code: RoomCode, setup: RoomSetup): RoomOutcome {
+function enter(
+  rooms: Rooms,
+  participant: ParticipantId,
+  code: RoomCode,
+  setup: RoomSetup,
+  connected: ReadonlySet<ParticipantId>,
+): RoomOutcome {
   const current = roomOf(rooms, participant)
   if (current !== undefined) {
     if (current.code === code) return rejoin(rooms, current, participant)
-    if (!canLeave(current)) return refuse(rooms, participant, 'ほかの部屋にいる')
+    if (!canLeave(current, participant, connected)) return refuse(rooms, participant, 'ほかの部屋にいる')
   }
   const left = current === undefined ? rooms : withoutParticipant(rooms, current, participant)
 
   const room = left.get(code)
   if (room === undefined) {
-    const opened: Room = { code, participants: [participant], duel: undefined }
+    // 合言葉を直に指して入った部屋。ロビーで見分けるものが無いので、合言葉を名前にする。
+    const opened: Room = { code, name: code, participants: [participant], duel: undefined, cpu: undefined }
     return {
       rooms: withRoom(left, opened),
-      deliveries: [{ to: participant, message: { kind: '相手を待っている' } }],
+      deliveries: [{ to: participant, message: { kind: '相手を待っている', room: code } }],
     }
   }
   const [waiting] = room.participants
@@ -208,7 +408,7 @@ function enter(rooms: Rooms, participant: ParticipantId, code: RoomCode, setup: 
 function rejoin(rooms: Rooms, room: Room, participant: ParticipantId): RoomOutcome {
   const duel = room.duel
   if (duel === undefined) {
-    return { rooms, deliveries: [{ to: participant, message: { kind: '相手を待っている' } }] }
+    return { rooms, deliveries: [{ to: participant, message: { kind: '相手を待っている', room: room.code } }] }
   }
 
   const seat = seatOf(duel, participant)
@@ -219,7 +419,7 @@ function rejoin(rooms: Rooms, room: Room, participant: ParticipantId): RoomOutco
   return {
     rooms,
     deliveries: [
-      { to: participant, message: { kind: '席についた', seat } },
+      { to: participant, message: { kind: '席についた', seat, room: room.code, opponent: opponentOf(room) } },
       ...boards(duel, pendingProgress(duel)?.board).filter((delivery) => delivery.to === participant),
       ...pendingChoice(duel, seat),
     ],
@@ -287,13 +487,17 @@ function start(
     state: prepared.state,
     seats: prepared.first === 0 ? { 先攻: waiting, 後攻: joining } : { 先攻: joining, 後攻: waiting },
     pending: undefined,
+    random: prepared.random,
   }
   const seated: Room = { ...room, participants: [waiting, joining], duel }
 
   return {
     rooms: withRoom(rooms, seated),
     deliveries: [
-      ...seats(duel).map(([player, to]) => ({ to, message: { kind: '席についた', seat: player } as const })),
+      ...seats(duel).map(([player, to]) => ({
+        to,
+        message: { kind: '席についた', seat: player, room: room.code, opponent: opponentOf(seated) } as const,
+      })),
       ...boards(duel),
     ],
   }
@@ -446,6 +650,75 @@ function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAct
 
   const advanced: DuelInRoom = { ...duel, state: progress.state, pending: undefined }
   return { rooms: withRoom(rooms, { ...room, duel: advanced }), deliveries: boards(advanced) }
+}
+
+/**
+ * CPU が 1 度に打つ手数の上限（#175）。
+ *
+ * **終わらない手順に落ちてもサーバが止まらないようにするためだけにある。** 打つのは自分の
+ * 優先権がある間だけで、1 手ごとに相手へ優先権が渡る（`play.ts` の `grantPriorityToInactive`）
+ * ため、実際に続けて打つのは数手である。ここに届くのはエンジンの穴であり、その時は打ち切って
+ * 盤面を止める——回り続けて応答を返さないよりは、止まって見えるほうがましである。
+ */
+const CPU_STEP_LIMIT = 200
+
+/**
+ * CPU の番である限り、CPU に打たせる（#175）。
+ *
+ * **人が打った後に呼ぶ。** 1 手ごとに盤面が両方に送られる（`advance`）ので、人の画面には
+ * CPU が何をしたかが順に届く。CPU 宛てのものを落とすのは呼ぶ側（`receive`）である。
+ */
+function withCpu(outcome: RoomOutcome, code: RoomCode): RoomOutcome {
+  let rooms = outcome.rooms
+  let deliveries = outcome.deliveries
+
+  for (let step = 0; step < CPU_STEP_LIMIT; step += 1) {
+    const room = rooms.get(code)
+    const played = room === undefined ? undefined : cpuStep(rooms, room)
+    if (played === undefined) break
+
+    rooms = played.rooms
+    deliveries = [...deliveries, ...played.deliveries]
+  }
+
+  return { rooms, deliveries }
+}
+
+/**
+ * CPU の番なら 1 手だけ進める。CPU の番でなければ `undefined`。
+ *
+ * 打つのも答えるのも、人が送ってきた時と同じ道筋（`advance`）を通す。**CPU のために別の
+ * 進め方を作らない。** 通り道が分かれると、片方だけで起きる違いが生まれる。
+ */
+function cpuStep(rooms: Rooms, room: Room): RoomOutcome | undefined {
+  const duel = room.duel
+  if (duel === undefined || room.cpu === undefined || hasEnded(duel.state)) return undefined
+
+  const seat = seatOf(duel, room.cpu)
+  if (seat === undefined) return undefined
+
+  const pending = duel.pending
+  if (pending !== undefined) {
+    if (pending.player !== seat) return undefined
+
+    const progress = pendingProgress(duel)
+    if (progress === undefined) return undefined
+
+    const picked = pickCpuAnswer(progress.choice, duel.random)
+    const stepped: DuelInRoom = { ...duel, random: picked.random }
+    return advance(rooms, { ...room, duel: stepped }, stepped, {
+      ...pending,
+      answers: [...pending.answers, picked.answer],
+    })
+  }
+
+  if (duel.state.turn.priority !== seat) return undefined
+
+  const picked = pickCpuAction(duel.state, duel.random)
+  if (picked === undefined) return undefined
+
+  const stepped: DuelInRoom = { ...duel, random: picked.random }
+  return advance(rooms, { ...room, duel: stepped }, stepped, { action: picked.action, answers: [], player: seat })
 }
 
 /**
