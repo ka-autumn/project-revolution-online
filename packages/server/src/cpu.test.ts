@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BATTLE_SPACE,
   applyLegalAction,
+  areaOf,
   cardsIn,
   defineTrap,
   defineUnit,
+  instantiate,
   legalActions,
   prepareDuel,
+  putOnSquare,
   randomChooser,
   randomFromSeed,
 } from '@revolution/engine'
-import type { Card, Deck, DuelState } from '@revolution/engine'
+import type { Card, Deck, DuelState, LegalAction, Player, Square } from '@revolution/engine'
 import { cpuCandidates, cpuParticipantOf, isCpu, pickCpuAction, pickCpuAnswer } from './cpu.js'
 
 /**
@@ -86,6 +90,95 @@ describe('CPU が選ぶ候補', () => {
     const state = readyToSetTrap('ユニット')
 
     expect(cpuCandidates(state)).toContainEqual(PASS)
+  })
+})
+
+/**
+ * ユニットを出せるのは自分の味方エリアと中央エリアだけである（敵エリアには出せない、総合ルール
+ * 第2部 第20章 1-3）。**空いている中央へ出すと、そのまま相手の登場先になる。**
+ */
+describe('CPU がユニットを登場させる場所', () => {
+  /** そのプレイヤーから見て、そのエリアにあるスクエア。 */
+  function squaresIn(player: Player, area: '味方エリア' | '中央エリア'): readonly Square[] {
+    return BATTLE_SPACE.filter((square) => areaOf(player, square) === area)
+  }
+
+  /** 登場先として並んでいるスクエアを、エリアごとに数える。 */
+  function placingIn(state: DuelState, actions: readonly LegalAction[], area: '味方エリア' | '中央エリア'): number {
+    return actions.filter(
+      (action) =>
+        action.kind === 'カードをプレイする' &&
+        action.declaration.square !== undefined &&
+        areaOf(state.turn.active, action.declaration.square) === area,
+    ).length
+  }
+
+  /** ユニットを登場させられるところまで進めた盤面。放棄だけで進める。 */
+  function readyToPlay(): DuelState {
+    const prepared = prepareDuel({ decks: [deckOf('ユニット'), deckOf('ユニット')], seed: 20260905 })
+    if (prepared.kind !== '準備完了') throw new Error('デッキが規定を満たしていない')
+
+    const { chooser } = randomChooser(randomFromSeed(5))
+    let current = prepared.state
+    for (let step = 0; step < 100; step += 1) {
+      const placing = legalActions(current).some(
+        (action) => action.kind === 'カードをプレイする' && action.declaration.square !== undefined,
+      )
+      if (placing) return current
+
+      current = applyLegalAction(current, PASS, chooser)
+    }
+    throw new Error('ユニットを登場させられるところまで進まなかった')
+  }
+
+  /** そのスクエアにユニットを置いた盤面。誰のユニットかを指定する。 */
+  function withUnitOn(state: DuelState, square: Square, owner: Player, id: string): DuelState {
+    const unit = defineUnit({ name: `テスト・置いた${id}`, level: 0, bp: 100, sp: 100 })
+
+    return putOnSquare(state, square, instantiate({ id, card: unit, owner }))
+  }
+
+  it('味方エリアが空いているなら、中央エリアには出さない', () => {
+    const state = readyToPlay()
+
+    // 合法手そのものには中央エリアも並んでいる。狭めているのは候補だけである。
+    expect(placingIn(state, legalActions(state), '中央エリア')).toBeGreaterThan(0)
+    expect(placingIn(state, cpuCandidates(state), '中央エリア')).toBe(0)
+    expect(placingIn(state, cpuCandidates(state), '味方エリア')).toBeGreaterThan(0)
+  })
+
+  /** そこへ出すのは攻め込む手であって、空いた中央へ置きに行く手ではない。 */
+  it('敵ユニットがいる中央エリアのスクエアには出す', () => {
+    const ready = readyToPlay()
+    const enemy = ready.turn.active === '先攻' ? '後攻' : '先攻'
+    const [square] = squaresIn(ready.turn.active, '中央エリア')
+    if (square === undefined) throw new Error('中央エリアのスクエアが無い')
+
+    const state = withUnitOn(ready, square, enemy, '敵ユニット')
+
+    const placing = cpuCandidates(state).filter(
+      (action) => action.kind === 'カードをプレイする' && action.declaration.square !== undefined,
+    )
+    expect(
+      placing.some(
+        (action) =>
+          action.kind === 'カードをプレイする' &&
+          action.declaration.square?.row === square.row &&
+          action.declaration.square?.column === square.column,
+      ),
+    ).toBe(true)
+  })
+
+  it('味方エリアが埋まっていれば、中央エリアに出す', () => {
+    const ready = readyToPlay()
+    const player = ready.turn.active
+    const state = squaresIn(player, '味方エリア').reduce(
+      (filling, square, index) => withUnitOn(filling, square, player, `自分のユニット${index}`),
+      ready,
+    )
+
+    expect(placingIn(state, cpuCandidates(state), '味方エリア')).toBe(0)
+    expect(placingIn(state, cpuCandidates(state), '中央エリア')).toBeGreaterThan(0)
   })
 })
 

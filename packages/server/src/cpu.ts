@@ -1,4 +1,4 @@
-import { cardsIn, findAnywhere, legalActions, nextInt } from '@revolution/engine'
+import { BATTLE_SPACE, areaOf, cardsIn, cardsOn, findAnywhere, legalActions, nextInt } from '@revolution/engine'
 import type { ChoiceAnswer, DuelState, LegalAction, Random, RoomCode, WireChoice } from '@revolution/engine'
 import type { ParticipantId } from './room.js'
 
@@ -53,6 +53,30 @@ function pointless(state: DuelState, action: LegalAction): boolean {
 }
 
 /**
+ * その手が、味方エリアを空けたまま中央エリアへ登場させる手か（#175）。
+ *
+ * **相手がユニットを出せるのは自分の味方エリアと中央エリアだけである**（敵エリアには出せない、
+ * 総合ルール 第2部 第20章 1-3）。空いている中央へ出したユニットは、そのまま相手の登場先に
+ * なる。味方エリアが空いているなら、まずそちらへ出す。
+ *
+ * **敵ユニットがいる中央のスクエアへ出す手は残す。** そこへ出すのは攻め込む手であって、
+ * 空いた中央へ置きに行く手ではない。
+ */
+function entersEmptyCenter(state: DuelState, action: LegalAction): boolean {
+  if (action.kind !== 'カードをプレイする') return false
+
+  const square = action.declaration.square
+  if (square === undefined) return false
+
+  // 登場させられるのはアクティブプレイヤーだけである（`play.ts` の `playCard`）。
+  const player = state.turn.active
+  if (areaOf(player, square) !== '中央エリア') return false
+  if (cardsOn(state, square).some((each) => each.controller !== player)) return false
+
+  return BATTLE_SPACE.some((each) => areaOf(player, each) === '味方エリア' && cardsOn(state, each).length === 0)
+}
+
+/**
  * ここに届くまでは、置けるなら必ずエネルギーを置く枚数。
  *
  * カードをプレイできるかは、エネルギーゾーンの枚数で決まる（レベルを満たす、総合ルール 第1部
@@ -64,7 +88,10 @@ function pointless(state: DuelState, action: LegalAction): boolean {
 const ENERGY_TARGET = 7
 
 /**
- * CPU が選ぶ余地のある手（#175）。合法手から、選ばない手（`pointless`）を除いたもの。
+ * CPU が選ぶ余地のある手（#175）。合法手から、選ばない手を除いたもの。
+ *
+ * 除くのは 2 つ——**選んでも意味の無い手**（`pointless`）と、**置き先がまずい手**
+ * （`entersEmptyCenter`）である。どちらも合法手そのものは変えない（ADR-0005）。
  *
  * **エネルギーが足りていない間は、置く手だけを候補にする。** どの札を置くかはランダムのままで
  * ある。置けるのは自分のエネルギーフェイズだけ（総合ルール 第3部 第7章 1）なので、ほかの場面
@@ -74,7 +101,9 @@ const ENERGY_TARGET = 7
  * 空にはならない。
  */
 export function cpuCandidates(state: DuelState): readonly LegalAction[] {
-  const candidates = legalActions(state).filter((action) => !pointless(state, action))
+  const candidates = legalActions(state).filter(
+    (action) => !pointless(state, action) && !entersEmptyCenter(state, action),
+  )
 
   const placing = candidates.filter((action) => action.kind === 'エネルギーを置く')
   if (placing.length === 0) return candidates
