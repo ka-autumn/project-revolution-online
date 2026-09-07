@@ -519,10 +519,20 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     // 繋ぎ直した時に入り直す先。ロビーにいるなら何も送らない（ADR-0016、#175）。
     rejoining: () => roomOf(session) ?? pendingRoom,
     onMessage: (message) => {
-      // ログインが要るなら、ログインへ送る（ADR-0019）。送ればこの画面は無くなるので、
-      // ここで畳んでよい。**送らなかったなら繋ぎ直さない**——同じ理由で断られ続ける。
+      // ログインが要るなら、ログインへ送る（ADR-0019）。
+      //
+      // **送る前に繋ぎ直しを止める。** サーバは断ったあと接続を閉じるので、止めずにおくと
+      // `connection.ts` がそれを切れたものとして扱い、**Google へ移るまでの間に「繋がりが
+      // 切れました。繋ぎ直しています」を出す。** 断られたのは繋がったうえでのことなので、
+      // 繋ぎ直しても同じ理由で断られる。送らなかった場合も止めるのは同じ理由である。
       if (message.kind === '行えなかった' && message.reason === NOT_SIGNED_IN) {
-        if (!goToSignIn(options.signInUrl)) connection.close()
+        connection.close()
+        if (goToSignIn(options.signInUrl)) {
+          // **移るまでの間、この画面は生きている。** 断られたことは出さない——人がすることは
+          // 何も無く、次に起きることだけが読めればよい。
+          root.replaceChildren(line('status', 'ログインへ移動しています'))
+          return
+        }
       } else if (!signedIn) {
         // 断られていないなら入れている。次にログインが要る場面で、また送れるようにしておく。
         signedIn = true
