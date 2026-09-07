@@ -379,6 +379,12 @@ body {
   font-weight: bold;
 }
 
+/* 誰と打っているか（ADR-0020）。部屋が続く限り変わらないので、優先権より控えめに出す。 */
+.controls__opponent {
+  margin: 0 0 var(--gap);
+  color: #666;
+}
+
 /* 見出しの行。添えるもの（操作のしかた）を同じ行の右端に置く（#128）。 */
 .panel__head {
   display: flex;

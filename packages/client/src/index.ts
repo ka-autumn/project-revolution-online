@@ -20,6 +20,7 @@ import {
   boardView,
   cutInViews,
   lobbyView,
+  opponentLine,
   overlayDurationMs,
   priorityReason,
   showsOverlay,
@@ -320,6 +321,10 @@ function draw(
     const controlArea = controls()
     // どのフェイズの誰の優先権かは、打つ前に見るものなので操作するところの一番上に置く。
     controlArea.append(line('controls__turn', boardData.turn))
+    // 誰と打っているか（ADR-0020）。**上には置かない**——部屋が続く限り変わらないもので、毎手
+    // 見るのは優先権のほうである。盤面の見出しに混ぜないのは、`boardView` を盤面だけから
+    // 組み立てる切り分けを崩さないためである（相手が誰かは `席についた` から来る）。
+    controlArea.append(line('controls__opponent', opponentLine(stage.opponent)))
 
     // 相手が閉じたまま戻らないと、画面は相手の優先権のまま動かなくなる（#175）。**止まって
     // いる理由を読めるようにする。** 回線が切れただけなら戻ってくる（ADR-0016）ので、待つか
