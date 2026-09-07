@@ -1277,6 +1277,25 @@ export interface RoomView {
   readonly status: string
   /** 入れるか。**入れない部屋は押せる形で出さない**（ADR-0010）。 */
   readonly joinable: boolean
+  /**
+   * そこに誰がいるか、そのまま出す 1 行（ADR-0020）。誰もいなければ `undefined`。
+   *
+   * **CPU も 1 人として並べる。** 部屋から見れば席は 2 つで（ADR-0004）、片方に CPU が座って
+   * いることは、そこが空いていないことと同じである。
+   */
+  readonly occupants: string | undefined
+}
+
+/**
+ * そこに誰がいるか、見る人の言い方で（ADR-0020）。
+ *
+ * **CPU を人の名前と混ぜて並べる。** 座っているのが人か CPU かは `cpu` が持っており、名前を
+ * 持たないのはそちらだけである。誰もいない部屋は残らない（`room.ts`）ので、`undefined` に
+ * なるのは CPU も人もいない形が届いた時だけである。
+ */
+function occupantsLine(room: WireRoom): string | undefined {
+  const seated = room.cpu ? [...room.occupants, 'CPU'] : room.occupants
+  return seated.length === 0 ? undefined : seated.join('、')
 }
 
 /** その部屋がどうなっているか、見る人の言い方で。 */
@@ -1308,6 +1327,7 @@ export function lobbyView(rooms: readonly WireRoom[]): readonly RoomView[] {
         name: room.name,
         status: roomStatusLine(room),
         joinable: room.status === '相手を待っている',
+        occupants: occupantsLine(room),
       })),
   )
 }

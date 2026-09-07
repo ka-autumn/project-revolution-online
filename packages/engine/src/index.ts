@@ -184,6 +184,7 @@ export type {
   ChoiceAnswer,
   FromClient,
   Opponent,
+  OpponentKind,
   RoomCode,
   ToClient,
   WireCandidate,

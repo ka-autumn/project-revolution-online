@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import { choose, defineStrategy, defineUnit } from '@revolution/engine'
 import type { Card, Deck, FromClient } from '@revolution/engine'
@@ -261,6 +262,84 @@ describe('身元とセッション', () => {
     const again = openStore(path)
     expect(again.sessionHolder('ようやく', 0)).toBe(participant)
     again.close()
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  })
+})
+
+/** ADR-0020。表示名は呼ぶためのもので、人を指す識別子ではない。 */
+describe('表示名', () => {
+  it('決めていなければ、まだ無い', () => {
+    const store = openStore(':memory:')
+
+    expect(store.nameOf(store.identify('google', '10001'))).toBeUndefined()
+    store.close()
+  })
+
+  it('付けた名前が返る', () => {
+    const store = openStore(':memory:')
+    const participant = store.identify('google', '10001')
+
+    store.rename(participant, 'かずお')
+
+    expect(store.nameOf(participant)).toBe('かずお')
+    store.close()
+  })
+
+  /** **変えられる**（ADR-0020）。本人が付けたものなので、直せないのは辛い。 */
+  it('付け替えられる', () => {
+    const store = openStore(':memory:')
+    const participant = store.identify('google', '10001')
+
+    store.rename(participant, 'まえのなまえ')
+    store.rename(participant, 'あとのなまえ')
+
+    expect(store.nameOf(participant)).toBe('あとのなまえ')
+    store.close()
+  })
+
+  /**
+   * ADR-0020。**重複を許す。** 人を指しているのは身元の行番号であって、表示名ではない。
+   * 一意にすると、変わりうるものが 2 つ目の識別子になる。
+   */
+  it('同じ名前の人が並んでもよい', () => {
+    const store = openStore(':memory:')
+    const one = store.identify('google', '10001')
+    const other = store.identify('google', '10002')
+
+    store.rename(one, 'かずお')
+    store.rename(other, 'かずお')
+
+    expect(store.nameOf(one)).toBe('かずお')
+    expect(store.nameOf(other)).toBe('かずお')
+    store.close()
+  })
+
+  /**
+   * ADR-0020。**列を足す前からある置き場に、足りない列を足す。** `create table if not exists` は
+   * 表がある限り何もしないので、動いている置き場には列が増えない。
+   */
+  it('列が無い置き場を開いても、名前を付けられる', () => {
+    const path = `${tmpdir()}/revolution-rename-${randomUUID()}.sqlite`
+    const old = new DatabaseSync(path)
+    old.exec(`
+      create table identities (
+        id integer primary key autoincrement,
+        issuer text not null,
+        subject text not null,
+        unique (issuer, subject)
+      );
+    `)
+    old.exec("insert into identities (issuer, subject) values ('google', '10001')")
+    old.close()
+
+    const store = openStore(path)
+    const participant = store.identify('google', '10001')
+    // 列を足しただけで、行は残っている。**足す前からいる人は「まだ決めていない」ことになる。**
+    expect(store.nameOf(participant)).toBeUndefined()
+
+    store.rename(participant, 'かずお')
+    expect(store.nameOf(participant)).toBe('かずお')
+    store.close()
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
   })
 })

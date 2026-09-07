@@ -14,13 +14,26 @@ import type {
 /**
  * クライアントがいまどこにいるか。
  *
- * 4 つしか無く、どれになるかはサーバから届いたもので決まる。「盤面が届いているか」のような
+ * 5 つしか無く、どれになるかはサーバから届いたもので決まる。「盤面が届いているか」のような
  * 述語をいくつも並べるかわりに、なりうる形そのものを数え上げている。
  */
 export type Stage =
   | {
       /** 繋いだが、まだ何も届いていない。 */
       readonly kind: '繋いでいる'
+    }
+  | {
+      /**
+       * 表示名を決めるまで、ほかへは進めない（ADR-0020）。
+       *
+       * **画面は名前が要るかどうかを判断しない**（ADR-0010、ADR-0019）。サーバが尋ねてきたから
+       * ここにいるのであり、決まりに通ったかどうかもサーバが決める。
+       */
+      readonly kind: '名前を決める'
+      /** いま付いている名前。まだ決めていなければ `undefined`。 */
+      readonly current: string | undefined
+      /** 送ったものが通らなかった理由。初めて尋ねられた時は `undefined`。 */
+      readonly reason: string | undefined
     }
   | {
       /** どの部屋にもいない。開いている部屋を見て、作るか入るかを選ぶ（#175）。 */
@@ -43,7 +56,11 @@ export type Stage =
       readonly kind: '打っている'
       /** いる部屋の合言葉。`相手を待っている` と同じ理由で持つ。 */
       readonly room: RoomCode
-      /** 誰と打っているか。**投げ出せる対戦かがこれで決まる**（#175）。 */
+      /**
+       * 誰と打っているか。人が相手なら表示名も入る（ADR-0020）。
+       *
+       * **投げ出せる対戦かがこれで決まる**（#175）。
+       */
       readonly opponent: Opponent
       /**
        * 相手が繋がっているか（#175）。決めているのはサーバである（`server` の `serve.ts`）。
@@ -129,6 +146,13 @@ export function applyMessage(session: Session, message: ToClient): Session {
   switch (message.kind) {
     case 'ロビー':
       return { stage: { kind: 'ロビー', rooms: message.rooms }, refusal: undefined }
+    case '名前を決めてほしい':
+      // 断られた理由は `名前を決めてほしい` が自分で持つ（ADR-0020）。ここに残すと、名前の
+      // ことなのか 1 つ前に送った手のことなのかが読めなくなる。
+      return {
+        stage: { kind: '名前を決める', current: message.current, reason: message.reason },
+        refusal: undefined,
+      }
     case '相手を待っている':
       return { stage: { kind: '相手を待っている', room: message.room }, refusal: undefined }
     case '席についた':

@@ -1679,10 +1679,16 @@ describe('優先権が回ってきた理由', () => {
 
 /** #175。ロビーに並ぶ部屋。 */
 describe('ロビー', () => {
-  const waiting = { code: 'ま', name: 'まっているへや', status: '相手を待っている', cpu: false } as const
-  const playing = { code: 'う', name: 'うっているへや', status: '対戦中', cpu: false } as const
-  const withCpu = { code: 'し', name: 'ひとりのへや', status: '対戦中', cpu: true } as const
-  const over = { code: 'お', name: 'おわったへや', status: '終わった', cpu: false } as const
+  const waiting = {
+    code: 'ま',
+    name: 'まっているへや',
+    status: '相手を待っている',
+    cpu: false,
+    occupants: ['ぬし'],
+  } as const
+  const playing = { code: 'う', name: 'うっているへや', status: '対戦中', cpu: false, occupants: ['ぬし', 'きゃく'] } as const
+  const withCpu = { code: 'し', name: 'ひとりのへや', status: '対戦中', cpu: true, occupants: ['ぬし'] } as const
+  const over = { code: 'お', name: 'おわったへや', status: '終わった', cpu: false, occupants: ['ぬし', 'きゃく'] } as const
 
   /** 一覧を見る人がまずしたいのは、打てる部屋に入ることである。 */
   it('入れる部屋が先に並ぶ', () => {
@@ -1705,5 +1711,22 @@ describe('ロビー', () => {
 
   it('部屋が無ければ、並ぶものも無い', () => {
     expect(lobbyView([])).toEqual([])
+  })
+
+  /**
+   * ADR-0020。誰がいるかを出す。名乗りが席に座れる合言葉だった頃は出せなかった（ADR-0009）が、
+   * 席はログインから来る身元で決まるようになった（ADR-0019）。
+   */
+  it('そこにいる人の名前が並ぶ', () => {
+    expect(lobbyView([playing])[0]?.occupants).toBe('ぬし、きゃく')
+  })
+
+  /** 座っているのが人か CPU かは別に届く。**席が空いていないことは同じである。** */
+  it('CPU も 1 人として並ぶ', () => {
+    expect(lobbyView([withCpu])[0]?.occupants).toBe('ぬし、CPU')
+  })
+
+  it('誰もいなければ、出すものは無い', () => {
+    expect(lobbyView([{ ...waiting, occupants: [] }])[0]?.occupants).toBeUndefined()
   })
 })

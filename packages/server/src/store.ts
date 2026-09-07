@@ -25,9 +25,9 @@ import type { DuelRecord, ParticipantId, StoredDuel } from './room.js'
  * ログインの手立てを足したときに既存の行が壊れない。** 席に使う識別子は行の番号のほうで、
  * `sub` をそのまま席に使わないのは、発行元をまたいで同じ文字列が来うるからである。
  *
- * **表示名の列はまだ持たない。** ADR-0019 は表示名を預かると決めたが、その決まり（重複を
- * 許すか、変えられるか、使えない文字）は意図的に決めていない。**書く口が無いものを先に
- * 作らない。**
+ * **表示名は NULL を許す**（ADR-0020）。決まりを決める前からいる身元には名前が無く、**「まだ
+ * 決めていない」を表せる形でなければならない。** 名前が無い人は、決めるまで何もできない
+ * （`serve.ts`）。
  *
  * セッションは合言葉そのものではなく、その要約を鍵にする（`sign-in.ts` の `digest`）。
  * **置き場に残るものは公開できないものとして扱う**（ADR-0018）ので、漏れてもその行から席に
@@ -58,6 +58,7 @@ const SCHEMA = `
     id integer primary key autoincrement,
     issuer text not null,
     subject text not null,
+    name text,
     unique (issuer, subject)
   );
   create table if not exists sessions (
@@ -118,6 +119,22 @@ function identityOf(participant: ParticipantId): number {
   return id
 }
 
+/**
+ * すでにある置き場に、足りない列だけを足す（ADR-0020）。
+ *
+ * **`create table if not exists` は、表がある限り何もしない。** 列を 1 つ足したときに、新しく
+ * 作った置き場では通り、動いている置き場では通らないという食い違いがここで生まれる。置き場は
+ * 差し替えても消えないもの（ADR-0018）なので、**動いているほうに合わせる手立てが要る。**
+ *
+ * **足すだけで、落とさない。** 消す向きの手当ては、消してよいと決めたときに書く。
+ */
+function addMissingColumns(db: DatabaseSync): void {
+  const columns = db.prepare('pragma table_info(identities)').all()
+  if (columns.some((column) => text(column as Row, 'name') === 'name')) return
+
+  db.exec('alter table identities add column name text')
+}
+
 export interface Store {
   /**
    * 書き足す。**渡された並びを 1 つのまとまりとして書く。**
@@ -138,6 +155,14 @@ export interface Store {
    * 増えないための約束であり、**席に戻れるかどうかがここに乗っている。**
    */
   identify(issuer: string, subject: string): ParticipantId
+  /**
+   * その人が付けた表示名。まだ決めていなければ `undefined`（ADR-0020）。
+   *
+   * **決まりを見るのはここではない**（`name.ts`）。置き場は、通ったものを預かって返すだけである。
+   */
+  nameOf(participant: ParticipantId): string | undefined
+  /** 表示名を付ける。すでに付いていれば付け替える（ADR-0020）。 */
+  rename(participant: ParticipantId, name: string): void
   /** セッションを開く。渡すのは合言葉ではなく、その要約（`sign-in.ts` の `digest`）。 */
   openSession(digest: string, participant: ParticipantId): void
   /**
@@ -159,6 +184,7 @@ export function openStore(path: string): Store {
   db.exec('pragma journal_mode = wal')
   db.exec('pragma foreign_keys = on')
   db.exec(SCHEMA)
+  addMissingColumns(db)
 
   const insertDuel = db.prepare(
     `insert into duels (code, name, seed, first, second, cpu, decks, started_at)
@@ -171,6 +197,8 @@ export function openStore(path: string): Store {
   const stepCount = db.prepare('select count(*) as n from steps where duel = ?')
   const insertIdentity = db.prepare('insert or ignore into identities (issuer, subject) values (?, ?)')
   const identityRow = db.prepare('select id from identities where issuer = ? and subject = ?')
+  const nameRow = db.prepare('select name from identities where id = ?')
+  const setName = db.prepare('update identities set name = ? where id = ?')
   const insertSession = db.prepare('insert or replace into sessions (digest, identity, opened_at) values (?, ?, ?)')
   const sessionRow = db.prepare('select identity from sessions where digest = ? and opened_at >= ?')
 
@@ -259,6 +287,13 @@ export function openStore(path: string): Store {
       if (row === undefined) throw new Error(`身元を作れませんでした: ${issuer}`)
 
       return seatedAs(int(row, 'id'))
+    },
+    nameOf: (participant) => {
+      const row = nameRow.get(identityOf(participant))
+      return row === undefined ? undefined : maybeText(row, 'name')
+    },
+    rename: (participant, name) => {
+      setName.run(name, identityOf(participant))
     },
     openSession: (digest, participant) => {
       insertSession.run(digest, identityOf(participant), Date.now())
