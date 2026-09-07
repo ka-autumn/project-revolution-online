@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto'
+import { rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { choose, defineStrategy, defineUnit } from '@revolution/engine'
 import type { Card, Deck, FromClient } from '@revolution/engine'
@@ -191,5 +194,73 @@ describe('置き場（ADR-0018）', () => {
     // 部屋を作った時点で CPU が打てるところまで打っている（#175）。
     expect((duel?.steps.length ?? 0) > 0).toBe(true)
     store.close()
+  })
+})
+
+/**
+ * 身元とセッション（ADR-0019）。
+ *
+ * **確かめるのは、同じ人が同じ席に戻れることである。** ログインの道筋そのものは
+ * `sign-in.test.ts` が見ている。
+ */
+describe('身元とセッション', () => {
+  it('同じ (発行元, sub) からは同じ識別子が返る', () => {
+    const store = openStore(':memory:')
+
+    expect(store.identify('google', '10001')).toBe(store.identify('google', '10001'))
+    store.close()
+  })
+
+  it('sub が同じでも、発行元が違えば別の人である', () => {
+    const store = openStore(':memory:')
+
+    expect(store.identify('google', '10001')).not.toBe(store.identify('よそ', '10001'))
+    store.close()
+  })
+
+  it('開いたセッションから、その人を引ける', () => {
+    const store = openStore(':memory:')
+    const participant = store.identify('google', '10001')
+    store.openSession('ようやく', participant)
+
+    expect(store.sessionHolder('ようやく', 0)).toBe(participant)
+    store.close()
+  })
+
+  it('知らないセッションでは誰も引けない', () => {
+    const store = openStore(':memory:')
+
+    expect(store.sessionHolder('しらない', 0)).toBeUndefined()
+    store.close()
+  })
+
+  /** 寿命を決めるのは呼ぶ側（`sign-in.ts`）で、置き場は言われた線で切るだけである。 */
+  it('線より前に開いたセッションは無かったことにする', () => {
+    const store = openStore(':memory:')
+    store.openSession('ようやく', store.identify('google', '10001'))
+
+    expect(store.sessionHolder('ようやく', Date.now() + 1)).toBeUndefined()
+    store.close()
+  })
+
+  it('身元の識別子でないものではセッションを開けない', () => {
+    const store = openStore(':memory:')
+
+    expect(() => store.openSession('ようやく', 'だれか')).toThrow(/身元の識別子ではありません/)
+    store.close()
+  })
+
+  /** 立て直しても身元は残る（ADR-0018）。ファイルに書いてから開き直して確かめる。 */
+  it('立て直しても、同じ人として戻れる', () => {
+    const path = `${tmpdir()}/revolution-identity-${randomUUID()}.sqlite`
+    const first = openStore(path)
+    const participant = first.identify('google', '10001')
+    first.openSession('ようやく', participant)
+    first.close()
+
+    const again = openStore(path)
+    expect(again.sessionHolder('ようやく', 0)).toBe(participant)
+    again.close()
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
   })
 })

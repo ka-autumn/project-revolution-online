@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
-import { defineStrategy, defineUnit } from '@revolution/engine'
+import { NOT_SIGNED_IN, SIGN_IN_PATH, defineStrategy, defineUnit } from '@revolution/engine'
 import type { Card, Deck, FromClient, ToClient } from '@revolution/engine'
 import { CPU_PREFIX } from './cpu.js'
 import type { RoomSetup } from './room.js'
 import { serve } from './serve.js'
 import type { RunningServer } from './serve.js'
+import { CALLBACK_PATH, createSignIn, digest } from './sign-in.js'
+import { openStore } from './store.js'
+import type { Store } from './store.js'
 
 /**
  * 実際にソケットを張って 2 人を繋ぐ（ADR-0009、#83）。
@@ -46,8 +49,11 @@ class Client {
   readonly received: ToClient[] = []
   private readonly socket: WebSocket
 
-  constructor(port: number, participant: string) {
-    this.socket = new WebSocket(`ws://localhost:${port}/?participant=${encodeURIComponent(participant)}`)
+  constructor(port: number, participant: string, cookie?: string) {
+    this.socket = new WebSocket(`ws://localhost:${port}/?participant=${encodeURIComponent(participant)}`, {
+      // 握手の HTTP リクエストに載る（ADR-0019）。ブラウザなら自動で載せるところである。
+      ...(cookie === undefined ? {} : { headers: { cookie } }),
+    })
     this.socket.on('message', (data) => this.received.push(JSON.parse(String(data)) as ToClient))
   }
 
@@ -481,5 +487,91 @@ describe('生きているかを確かめる', () => {
     // 黙っている間は、落とされたことも降りてこない。読み取りを戻したところで閉じたと分かる。
     client.answersAgain()
     await client.closed()
+  })
+})
+
+/**
+ * ログインの設定があるときの繋ぎ方（ADR-0019）。
+ *
+ * **見るのは、誰として席に着くかがどこから来るかである。** ログインの道筋そのものは
+ * `sign-in.test.ts` が見ている。ここで確かめるのは、**設定があると名乗りが効かなくなること**と、
+ * **HTTP と WebSocket が同じポートに同居していること**の 2 つ。
+ */
+describe('ログインの設定があるとき', () => {
+  let server: RunningServer
+  let store: Store
+  let signedIn: string
+
+  beforeEach(async () => {
+    store = openStore(':memory:')
+    const participant = store.identify('google', '10001')
+    // Cookie は握手のヘッダーに載る。**ヘッダーに書けるのは ASCII だけ**なので、ここも実物と
+    // 同じ形（`sign-in.ts` の `newToken` は base64url を作る）にする。
+    const token = 'signed-in-token'
+    store.openSession(digest(token), participant)
+    signedIn = `revolution_session=${token}`
+
+    server = await serve({
+      port: 0,
+      setup,
+      store,
+      signIn: createSignIn({
+        config: {
+          clientId: 'テスト.apps.googleusercontent.com',
+          clientSecret: 'ひみつ',
+          callback: `http://localhost${CALLBACK_PATH}`,
+          returnTo: 'http://localhost:5173/',
+        },
+        store,
+      }),
+    })
+  })
+
+  afterEach(async () => {
+    await server.close()
+    store.close()
+  })
+
+  /**
+   * **名乗りは受け付けない。** 受け付けると、他人の識別子を名乗るだけでその席に座れてしまう。
+   * 画面はこの返事を見てログインへ送る（ADR-0019）。
+   */
+  it('Cookie が無ければ、名乗っていても断られる', async () => {
+    const client = new Client(server.port, '10001')
+
+    expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: NOT_SIGNED_IN })
+    await client.closed()
+  })
+
+  it('知らない合言葉でも断られる', async () => {
+    const client = new Client(server.port, 'あ', 'revolution_session=unknown-token')
+
+    expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: NOT_SIGNED_IN })
+    await client.closed()
+  })
+
+  it('セッションを持っていれば、その身元として席に着ける', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+    await client.opened()
+    await client.waitFor('ロビー')
+
+    client.send({ kind: '部屋を作る', name: 'ろぐいんの部屋', against: 'CPU' })
+
+    const seated = await client.waitFor('席についた')
+    expect(seated.kind === '席についた' && seated.opponent).toBe('CPU')
+    await client.close()
+  })
+
+  /** ADR-0019。中継の設定も、WebSocket だけでなく通常の HTTP の道が要るようになる。 */
+  it('同じポートで HTTP のログインの口が開いている', async () => {
+    const response = await fetch(`http://localhost:${server.port}${SIGN_IN_PATH}`, { redirect: 'manual' })
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get('location')).toContain('accounts.google.com')
+    expect(response.headers.get('set-cookie')).toContain('revolution_state=')
+  })
+
+  it('ログインの口でないところは断る', async () => {
+    expect((await fetch(`http://localhost:${server.port}/よそ`)).status).toBe(404)
   })
 })

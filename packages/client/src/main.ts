@@ -1,4 +1,5 @@
 import './style.css'
+import { SIGN_IN_PATH } from '@revolution/engine'
 import { mount } from './index.js'
 
 /**
@@ -34,6 +35,20 @@ function serverUrl(params: URLSearchParams): string {
 
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${scheme}//${location.hostname}:${DEFAULT_SERVER_PORT}`
+}
+
+/**
+ * ログインを始める先（ADR-0019）。**サーバと同じところにある。**
+ *
+ * WebSocket の URL から作る。同じポートに HTTP が同居している（`server` の `serve.ts`）ので、
+ * 向き先をもう 1 つ設定に持つ必要が無い。**2 つ持つと、片方だけ直した時に食い違う。**
+ */
+function signInUrl(server: string): string {
+  const url = new URL(server)
+  url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
+  url.pathname = SIGN_IN_PATH
+  url.search = ''
+  return url.toString()
 }
 
 /** 名乗りを覚えておく先の名前。 */
@@ -73,8 +88,11 @@ if (root === null) throw new Error('#board が無い')
 const named = params.get('participant')
 const room = params.get('room')
 
+const server = serverUrl(params)
+
 mount(root, {
-  url: serverUrl(params),
+  url: server,
+  signInUrl: signInUrl(server),
   participant: named === null || named === '' ? participantId() : named,
   // 指していなければロビーから始める。合言葉を知っている相手と待ち合わせる時だけ要る。
   ...(room === null || room === '' ? {} : { room }),

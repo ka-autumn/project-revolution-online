@@ -271,6 +271,27 @@ export type ToClient =
   | { readonly kind: '相手の繋がり'; readonly connected: boolean }
   | { readonly kind: '行えなかった'; readonly reason: string }
 
+/**
+ * ログインしていないので繋げない（ADR-0019）。`行えなかった` の `reason` に載る。
+ *
+ * **理由の中で 1 つだけ、受け取った側が見分けるものである。** ほかの理由は人に見せるための
+ * 文言だが、これはログインへ送るという次の手に繋がる。**両側が同じ文字列を指せる場所がここ
+ * しか無い**ので、語彙としてここに置く（`protocol.ts` の説明）。
+ *
+ * **ログインしているかどうかを画面が判断するのではない**（ADR-0019）。繋ぎに行った結果として
+ * サーバがこれを返し、画面はそれに従うだけである。
+ */
+export const NOT_SIGNED_IN = 'ログインしていない'
+
+/**
+ * ログインを始める道筋（ADR-0019）。サーバが待ち、画面がそこへ送る。
+ *
+ * **同じポートに WebSocket と HTTP が同居している**（`server` の `serve.ts`）ので、画面は繋ぎ先
+ * からこの URL を作れる。向き先を 2 つ持たずに済む。**両側が指す同じ 1 つの文字列**なので、
+ * 断る理由（`NOT_SIGNED_IN`）と同じくここに置く。
+ */
+export const SIGN_IN_PATH = '/auth/google'
+
 /** 行動を適用しようとした結果（ADR-0008）。 */
 export type ActionProgress =
   | { readonly kind: '進んだ'; readonly state: DuelState }

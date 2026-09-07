@@ -12,5 +12,7 @@ export { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room
 export type { Delivery, DuelRecord, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms, StoredDuel } from './room.js'
 export { openStore } from './store.js'
 export type { Store } from './store.js'
+export { CALLBACK_PATH, createSignIn, signInConfigFrom } from './sign-in.js'
+export type { SignIn, SignInConfig } from './sign-in.js'
 export { serve } from './serve.js'
 export type { RunningServer, ServeOptions } from './serve.js'

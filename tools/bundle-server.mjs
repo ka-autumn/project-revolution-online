@@ -55,7 +55,7 @@ export function readFlag(argv, name) {
  */
 function entryPoint(decksModule, port, store) {
   return `
-import { checkDecks, openStore, serve, setupFromDecks } from ${JSON.stringify(serverEntry)}
+import { checkDecks, createSignIn, openStore, serve, setupFromDecks, signInConfigFrom } from ${JSON.stringify(serverEntry)}
 import { decks } from ${JSON.stringify(specifier(decksModule))}
 
 if (!Array.isArray(decks) || decks.length !== 2 || !decks.every(Array.isArray)) {
@@ -77,10 +77,27 @@ if (violations.length > 0) {
 const storePath = process.env.STORE ?? ${JSON.stringify(store)}
 const store = storePath === '' ? undefined : openStore(storePath)
 
-serve({ port: Number(process.env.PORT ?? ${port}), setup, store })
+// ログイン（ADR-0019）。**秘密は束ねたものに焼き込まず、環境変数で受け取る**（ADR-0015 が
+// 宛先について決めたのと同じ形）。設定が揃っていれば Cookie のセッションで席が決まり、
+// 無ければ今までどおり \`?participant=\` で名乗る。**半分だけ揃っていれば立ち上がらない。**
+let signInConfig
+try {
+  signInConfig = signInConfigFrom(process.env)
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error)
+  process.exit(1)
+}
+if (signInConfig !== undefined && store === undefined) {
+  console.error('ログインを持つなら置き場が要ります（STORE を空にしないでください）')
+  process.exit(1)
+}
+const signIn = signInConfig === undefined ? undefined : createSignIn({ config: signInConfig, store })
+
+serve({ port: Number(process.env.PORT ?? ${port}), setup, store, signIn })
   .then((running) => {
     console.log(\`ポート \${running.port} で待っています\`)
     if (store !== undefined) console.log(\`置き場: \${storePath}\`)
+    console.log(signIn === undefined ? 'ログイン: 無し（名乗りで入ります）' : \`ログイン: \${signInConfig.callback}\`)
   })
   .catch((error) => {
     console.error(error)
