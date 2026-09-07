@@ -469,8 +469,53 @@ body {
   white-space: nowrap;
 }
 
+/* そこにいる人（ADR-0020）。名前は打ち込まれたものなので、部屋の名前と同じように収める。 */
+.lobby__room-occupants {
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: #666;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .lobby__room-status {
   color: #666;
+}
+
+/* 表示名を決めるところ（ADR-0020）。決まるまでほかへは進めないので、ここだけが出る。 */
+.naming {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  align-items: center;
+  margin: calc(var(--gap) * 2) 0;
+}
+
+.naming__title,
+.naming__lead,
+.naming__refusal {
+  flex: 1 0 100%;
+  margin: 0;
+}
+
+.naming__title {
+  font-size: 1rem;
+}
+
+.naming__lead {
+  color: #666;
+}
+
+.naming__input {
+  flex: 1 1 12rem;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
+/* 通らなかった理由。**色だけで区別させない**（#91）——文言そのものが理由になっている。 */
+.naming__refusal {
+  color: #a00;
 }
 
 /* 部屋を出る口。押し間違えたくないので、ほかの操作から離して置く。 */

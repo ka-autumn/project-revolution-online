@@ -4,8 +4,9 @@ import type { WebSocket } from 'ws'
 import { NOT_SIGNED_IN } from '@revolution/engine'
 import type { FromClient, ToClient } from '@revolution/engine'
 import { isCpu } from './cpu.js'
+import { readName } from './name.js'
 import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room.js'
-import type { ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
+import type { Names, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
 import type { SignIn } from './sign-in.js'
 import type { Store } from './store.js'
 
@@ -95,6 +96,7 @@ const ACCEPTED: Readonly<Record<FromClient['kind'], true>> = {
   選ぶ: true,
   ひとつ戻る: true,
   取り消す: true,
+  名前を決める: true,
 }
 
 /** 受け取ったバイト列をメッセージとして読む。読めなければ `undefined`。 */
@@ -172,6 +174,30 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
 
   /** いま繋がっている人。部屋はこれを見て、抜けられるかを決める（`room.ts` の `canLeave`）。 */
   const linked = (): ReadonlySet<ParticipantId> => new Set(sockets.keys())
+
+  /**
+   * その人が付けた表示名。まだ決めていなければ `undefined`（ADR-0020）。
+   *
+   * **預かるのは置き場である**（`store.ts`）。ログインの設定が無いときは預ける先が無いので、
+   * **名乗りがそのまま表示名になる**——ここでも、設定が渡されたかどうかがそのまま境目である
+   * （ADR-0019、ADR-0020）。
+   */
+  function nameOf(participant: ParticipantId): string | undefined {
+    if (options.signIn === undefined || options.store === undefined) return participant
+
+    return options.store.nameOf(participant)
+  }
+
+  /**
+   * 部屋に渡す名前の引き方（`room.ts` の `Names`）。
+   *
+   * **CPU は置き場に居ない。** 部屋の側は CPU の名前を尋ねないが（ロビーからは外し、相手が CPU
+   * なら名前を持たない）、尋ねられても置き場を引きに行かせない。
+   */
+  const names: Names = (participant) => (isCpu(participant) ? participant : (nameOf(participant) ?? participant))
+
+  /** 表示名を決めたか（ADR-0020）。**決めるまで、ほかのことは受け付けない。** */
+  const named = (participant: ParticipantId): boolean => nameOf(participant) !== undefined
 
   /**
    * 握手してきた接続が誰のものかを決める（ADR-0019）。
@@ -270,10 +296,16 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    * 作れば、ほかの人の一覧にすぐ出る。前に送ったものと同じなら送らない。
    */
   function pushLobby(): void {
-    const lobby = lobbyOf(rooms)
+    const lobby = lobbyOf(rooms, names)
     const shown = JSON.stringify(lobby)
     for (const [participant, socket] of sockets) {
       if (roomOf(rooms, participant) !== undefined) {
+        lobbySent.delete(participant)
+        continue
+      }
+      // 名前を決めていない人には出さない（ADR-0020）。**入れない場所を見せない**——ここから
+      // 押せるものは、どれも名前を決めるまで断られる。
+      if (!named(participant)) {
         lobbySent.delete(participant)
         continue
       }
@@ -332,12 +364,56 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
      * どの部屋にいたかを忘れている（合言葉を決めたのはサーバなので、URL にも無い）。入り直しを
      * 待っていると、誰も何も送らないまま止まる。部屋にいる人には、入り直したものとして
      * いまの盤面を送る（ADR-0009、`room.ts` の `rejoin`）。
+     *
+     * **名前を決めていないなら、そこへ通さない**（ADR-0020）。繋ぎはするが、決まるまで先へは
+     * 進めない。名前を決め終わったところで、もう一度ここを通る。
      */
-    const current = roomOf(rooms, participant)
-    if (current === undefined) pushLobby()
-    else deliver(receive(rooms, participant, { kind: '部屋に入る', room: current.code }, options.setup(), linked()))
-    // 入り直した本人にも、相手にも、繋がりが変わったことを伝える。
-    tellLinks(roomOf(rooms, participant))
+    function admit(): void {
+      if (!named(participant)) {
+        send(socket, { kind: '名前を決めてほしい', current: undefined, reason: undefined })
+        return
+      }
+
+      const current = roomOf(rooms, participant)
+      if (current === undefined) pushLobby()
+      else {
+        deliver(receive(rooms, participant, { kind: '部屋に入る', room: current.code }, options.setup(), linked(), names))
+      }
+      // 入り直した本人にも、相手にも、繋がりが変わったことを伝える。
+      tellLinks(roomOf(rooms, participant))
+    }
+
+    /**
+     * 送られてきたものを表示名として預かる（ADR-0020）。
+     *
+     * **決まりを見るのは `name.ts` である。** 通らなければ理由を添えて尋ね直し、置き場には
+     * 何も書かない。**通れば、そこで初めて先へ進める**（`admit`）。
+     */
+    function decideName(raw: string): void {
+      const store = options.store
+      if (options.signIn === undefined || store === undefined) {
+        // 手元で立てたときは名乗りがそのまま表示名である（ADR-0020）。預ける先が無い。
+        send(socket, { kind: '行えなかった', reason: '名前は名乗りで決まっています' })
+        return
+      }
+
+      const reading = readName(raw)
+      if (reading.kind === '断る') {
+        send(socket, { kind: '名前を決めてほしい', current: nameOf(participant), reason: reading.reason })
+        return
+      }
+
+      // **初めて決めた人だけを、そこで先へ通す。** すでに入っている人まで通し直すと、名前を
+      // 変えるたびに盤面が送り直される（`admit` は入り直しと同じ道筋である）。
+      const first = !named(participant)
+      store.rename(participant, reading.name)
+      if (first) admit()
+      // **ロビーの中身は人の名前でも変わる**（ADR-0020）。名前を変えた人だけでなく、ロビーに
+      // いる全員に送り直す。前と同じなら送られない（`pushLobby`）。
+      pushLobby()
+    }
+
+    admit()
 
     socket.on('message', (data) => {
       const message = parse(data)
@@ -345,10 +421,20 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         send(socket, { kind: '行えなかった', reason: '読めないメッセージ' })
         return
       }
+      if (message.kind === '名前を決める') {
+        decideName(message.name)
+        return
+      }
+      // **決まるまで、ほかのことは受け付けない**（ADR-0020）。断るのではなく尋ね直すのは、
+      // 画面がそこで止まっているとは限らないためである（繋ぎ直した先など）。
+      if (!named(participant)) {
+        send(socket, { kind: '名前を決めてほしい', current: undefined, reason: undefined })
+        return
+      }
 
       // 部屋を出入りすると、残った人から見た相手が変わる（#175）。出た先と入った先の両方に伝える。
       const before = roomOf(rooms, participant)?.code
-      deliver(receive(rooms, participant, message, options.setup(), linked()))
+      deliver(receive(rooms, participant, message, options.setup(), linked(), names))
       for (const code of new Set([before, roomOf(rooms, participant)?.code])) {
         if (code !== undefined) tellLinks(rooms.get(code))
       }

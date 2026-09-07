@@ -40,7 +40,7 @@ function fold(...messages: readonly ToClient[]): Session {
 
 const ROOM = 'あいことば'
 
-const SEATED: ToClient = { kind: '席についた', seat: '先攻', room: ROOM, opponent: '人間' }
+const SEATED: ToClient = { kind: '席についた', seat: '先攻', room: ROOM, opponent: { kind: '人間', name: 'あいて' } }
 
 describe('届いたものを畳む', () => {
   it('繋いだ直後は、まだ何も届いていない', () => {
@@ -49,7 +49,9 @@ describe('届いたものを畳む', () => {
 
   /** #175。どの部屋にもいない間は、開いている部屋が届く。 */
   it('ロビーが届いたら、ロビーにいる', () => {
-    const rooms = [{ code: ROOM, name: 'てすとのへや', status: '相手を待っている', cpu: false }] as const
+    const rooms = [
+      { code: ROOM, name: 'てすとのへや', status: '相手を待っている', cpu: false, occupants: ['ぬし'] },
+    ] as const
 
     expect(fold({ kind: 'ロビー', rooms }).stage).toEqual({ kind: 'ロビー', rooms })
   })
@@ -74,10 +76,18 @@ describe('届いたものを畳む', () => {
 
   /** #175。投げ出せる対戦かは、相手が誰かで決まる（`server` の `room.ts` の `canLeave`）。 */
   it('誰と打っているかが分かる', () => {
-    const stage = fold({ ...SEATED, opponent: 'CPU' }).stage
+    const stage = fold({ ...SEATED, opponent: { kind: 'CPU' } }).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
-    expect(stage.opponent).toBe('CPU')
+    expect(stage.opponent).toEqual({ kind: 'CPU' })
+  })
+
+  /** ADR-0020。人が相手なら、誰と打っているかが名前で分かる。 */
+  it('人が相手なら、その表示名も届く', () => {
+    const stage = fold(SEATED).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.opponent).toEqual({ kind: '人間', name: 'あいて' })
   })
 
   /** #175。席についた時点では相手も繋がっている。変わったらそう届く。 */
@@ -266,5 +276,34 @@ describe('断られたこと', () => {
     const advanced = applyMessage(refused, { kind: '盤面', perspective: board(2), actions: [], passOutcome: undefined })
 
     expect(advanced.refusal).toBeUndefined()
+  })
+})
+
+/** ADR-0020。名前を決めるまで、ほかへは進めない。 */
+describe('名前を決める', () => {
+  it('尋ねられたら、名前を決めるところにいる', () => {
+    const session = fold({ kind: '名前を決めてほしい', current: undefined, reason: undefined })
+
+    expect(session.stage).toEqual({ kind: '名前を決める', current: undefined, reason: undefined })
+  })
+
+  /** 断られた理由は名前についてのものである。1 つ前に送った手のことと混ざらない。 */
+  it('通らなかった理由は、名前のところに出る', () => {
+    const session = fold({ kind: '名前を決めてほしい', current: 'ふるいなまえ', reason: '使えない文字が入っています' })
+    if (session.stage.kind !== '名前を決める') throw new Error('名前を決めるところにいるはずだった')
+
+    expect(session.stage.reason).toBe('使えない文字が入っています')
+    expect(session.stage.current).toBe('ふるいなまえ')
+    expect(session.refusal).toBeUndefined()
+  })
+
+  /** 決まればロビーが届く。**次に何が届くかを決めるのはサーバである**（ADR-0010）。 */
+  it('ロビーが届けば、そこから出る', () => {
+    const session = fold({ kind: '名前を決めてほしい', current: undefined, reason: undefined }, {
+      kind: 'ロビー',
+      rooms: [],
+    })
+
+    expect(session.stage).toEqual({ kind: 'ロビー', rooms: [] })
   })
 })

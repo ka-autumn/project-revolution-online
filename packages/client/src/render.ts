@@ -2,7 +2,7 @@ import type {
   CardId,
   ChoiceAnswer,
   LegalAction,
-  Opponent,
+  OpponentKind,
   RoomCode,
   Square,
   WireCardPosition,
@@ -313,7 +313,7 @@ export function actionsElement(
 /** ロビーで押せるもの（#175）。 */
 export interface LobbyHandlers {
   /** 部屋を作って入る。名前は空でもよい。 */
-  readonly onCreate: (name: string, against: Opponent) => void
+  readonly onCreate: (name: string, against: OpponentKind) => void
   /** 相手を待っている部屋に入る。 */
   readonly onJoin: (code: RoomCode) => void
   /** 打ち込んだ名前が変わった。**画面は描き直されるので、覚えておくのは呼ぶ側である。** */
@@ -368,6 +368,8 @@ export function lobbyElement(
   for (const view of views) {
     const row = element('div', 'lobby__room')
     row.append(element('span', 'lobby__room-name', view.name))
+    // 誰がいるかを出す（ADR-0020）。名乗りが席に座れる合言葉だった頃は出せなかった（ADR-0009）。
+    if (view.occupants !== undefined) row.append(element('span', 'lobby__room-occupants', view.occupants))
     row.append(element('span', 'lobby__room-status', view.status))
     // 入れない部屋には押す口を出さない。断られる手を画面に出さないのは盤面と同じである。
     if (view.joinable) row.append(button('入る', () => handlers.onJoin(view.code)))
@@ -376,6 +378,60 @@ export function lobbyElement(
   node.append(list)
 
   // 描き直しで打ち込みかけの場所を見失わないように、打っていた人には返す。
+  if (focused) {
+    input.focus()
+    input.setSelectionRange(input.value.length, input.value.length)
+  }
+
+  return node
+}
+
+/** 表示名として受け取る長さの上限（`server` の `name.ts` の `NAME_LIMIT` と同じ）。 */
+const DISPLAY_NAME_LIMIT = 20
+
+/** 名前を決めるところで押せるもの（ADR-0020）。 */
+export interface NamingHandlers {
+  /** 打ち込んだものが変わった。**画面は描き直されるので、覚えておくのは呼ぶ側である。** */
+  readonly onDraft: (value: string) => void
+  /** これで決める。**通るかどうかを決めるのはサーバである**（`server` の `name.ts`）。 */
+  readonly onDecide: (name: string) => void
+}
+
+/**
+ * 表示名を決めるところ（ADR-0020）。**決まるまで、ほかへは進めない。**
+ *
+ * ここに決まりの判断は無い。**上限を入力欄に持たせているのは打ち込みかけを切るためだけ**で、
+ * 断るのはサーバである（ADR-0010）。通らなかった理由も、こちらで作らずに届いたものを出す。
+ */
+export function nameElement(
+  draft: string,
+  reason: string | undefined,
+  handlers: NamingHandlers,
+  focused = false,
+): HTMLElement {
+  const node = element('section', 'naming')
+  node.append(element('h2', 'naming__title', '名前を決める'))
+  node.append(element('p', 'naming__lead', 'ロビーと対戦相手のところに出る名前です。後から変えられます'))
+
+  const input = document.createElement('input')
+  input.className = 'naming__input'
+  input.type = 'text'
+  input.maxLength = DISPLAY_NAME_LIMIT
+  input.placeholder = '名前'
+  input.value = draft
+  input.addEventListener('input', () => handlers.onDraft(input.value))
+  // 打ち終わってそのまま押せるようにする。**押す口も残す**——鍵盤が出ている画面では、
+  // Enter が送るものだと読み取れないことがある。
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') handlers.onDecide(input.value)
+  })
+  node.append(input)
+  // 押した時の入力欄の中身を読む。渡された `draft` は描き直した時点の値である（`lobbyElement`）。
+  node.append(button('これにする', () => handlers.onDecide(input.value)))
+
+  if (reason !== undefined) node.append(element('p', 'naming__refusal', reason))
+
+  // 描き直しで打ち込みかけの場所を見失わないように、打っていた人には返す（`lobbyElement`）。
   if (focused) {
     input.focus()
     input.setSelectionRange(input.value.length, input.value.length)

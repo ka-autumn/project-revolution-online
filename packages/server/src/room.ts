@@ -15,6 +15,7 @@ import type {
   FromClient,
   LegalAction,
   Opponent,
+  OpponentKind,
   Player,
   Random,
   RoomCode,
@@ -38,6 +39,20 @@ import { cpuParticipantOf, isCpu, pickCpuAction, pickCpuAnswer } from './cpu.js'
 
 /** 部屋にいる 1 人。誰であるかを決めるのは通信の側なので、識別子だけを受け取る。 */
 export type ParticipantId = string
+
+/**
+ * 参加者の表示名を引く（ADR-0020）。
+ *
+ * **部屋は名前を持たない。** 預かっているのは置き場で（`store.ts`）、部屋が知っているのは席に
+ * いる人の識別子だけである。ここでも決まりごとと I/O を分けている——引き方を渡してもらえば、
+ * 部屋は置き場を知らないままロビーに名前を出せる。
+ *
+ * 渡されなければ、識別子をそのまま名前として使う。**手元で立てたときは名乗りがそのまま表示名に
+ * なる**（ADR-0020）ので、そこがちょうど既定になる。
+ */
+export type Names = (participant: ParticipantId) => string
+
+const asNamed: Names = (participant) => participant
 
 /** 部屋を作ってデュエルを始めるのに要るもの。呼ぶ側が用意する。 */
 export interface RoomSetup {
@@ -256,8 +271,9 @@ export function receive(
   message: FromClient,
   setup: RoomSetup,
   connected: ReadonlySet<ParticipantId>,
+  names: Names = asNamed,
 ): RoomOutcome {
-  const outcome = handle(rooms, participant, message, setup, connected)
+  const outcome = handle(rooms, participant, message, setup, connected, names)
 
   // 相手が CPU なら、そのまま打てるところまで打つ（#175）。**送り主のいる部屋だけを進める。**
   // ほかの部屋の CPU は、その部屋で手が打たれた時に動く。
@@ -275,12 +291,17 @@ function handle(
   message: FromClient,
   setup: RoomSetup,
   connected: ReadonlySet<ParticipantId>,
+  names: Names,
 ): RoomOutcome {
   switch (message.kind) {
     case '部屋に入る':
-      return enter(rooms, participant, message.room, setup, connected)
+      return enter(rooms, participant, message.room, setup, connected, names)
     case '部屋を作る':
-      return open(rooms, participant, message.name, message.against, setup, connected)
+      return open(rooms, participant, message.name, message.against, setup, connected, names)
+    // 表示名を決めるのは部屋の外のことである（ADR-0020）。預かるのは置き場で、決まりを見るのは
+    // `name.ts`、受けるのは `serve.ts` である。**部屋に届く頃には名前は決まっている。**
+    case '名前を決める':
+      return { rooms, deliveries: [], records: [] }
     case 'ロビーに戻る':
       return leave(rooms, participant, connected)
     case '行動する':
@@ -297,15 +318,18 @@ function handle(
 /**
  * いま開いている部屋の一覧（#175）。作られた順に並ぶ。
  *
- * **そこにいる人の名乗りは出さない**（`WireRoom`）。名乗りは認証ではなく席に座れる合言葉
- * （ADR-0009）なので、一覧に出すと居合わせた誰でも他人の席に着けてしまう。
+ * **そこにいる人の表示名を出す**（ADR-0020）。名乗りが席に座れる合言葉だった頃は出せなかった
+ * （ADR-0009）が、席はログインから来る身元で決まるようになった（ADR-0019）。
+ *
+ * **CPU の名乗りは出さない。** 座っているかどうかは `cpu` が持っており、CPU に表示名は無い。
  */
-export function lobbyOf(rooms: Rooms): readonly WireRoom[] {
+export function lobbyOf(rooms: Rooms, names: Names = asNamed): readonly WireRoom[] {
   return [...rooms.values()].map((room) => ({
     code: room.code,
     name: room.name,
     status: statusOf(room),
     cpu: room.cpu !== undefined,
+    occupants: room.participants.filter((each) => !isCpu(each)).map((each) => names(each)),
   }))
 }
 
@@ -315,9 +339,14 @@ function statusOf(room: Room): WireRoom['status'] {
   return hasEnded(room.duel.state) ? '終わった' : '対戦中'
 }
 
-/** その部屋で誰と打っているか。 */
-function opponentOf(room: Room): Opponent {
-  return room.cpu === undefined ? '人間' : 'CPU'
+/**
+ * その部屋で誰と打っているか（ADR-0020）。
+ *
+ * **見る人ごとに違う。** 相手が誰かは席によって変わるので、相手そのものを受け取る。**部屋から
+ * 引き当てない**——`席についた` は 2 人ぶん作られ、それぞれの相手はもう一方である。
+ */
+function opponentOf(room: Room, partner: ParticipantId, names: Names): Opponent {
+  return room.cpu === undefined ? { kind: '人間', name: names(partner) } : { kind: 'CPU' }
 }
 
 function refuse(rooms: Rooms, participant: ParticipantId, reason: string): RoomOutcome {
@@ -451,9 +480,10 @@ function open(
   rooms: Rooms,
   participant: ParticipantId,
   name: string,
-  against: Opponent,
+  against: OpponentKind,
   setup: RoomSetup,
   connected: ReadonlySet<ParticipantId>,
+  names: Names,
 ): RoomOutcome {
   const current = roomOf(rooms, participant)
   if (current !== undefined && !canLeave(current, participant, connected)) {
@@ -479,7 +509,7 @@ function open(
     }
   }
 
-  return after(closed, start(left, opened, participant, opened.cpu, setup))
+  return after(closed, start(left, opened, participant, opened.cpu, setup, names))
 }
 
 /**
@@ -516,10 +546,11 @@ function enter(
   code: RoomCode,
   setup: RoomSetup,
   connected: ReadonlySet<ParticipantId>,
+  names: Names,
 ): RoomOutcome {
   const current = roomOf(rooms, participant)
   if (current !== undefined) {
-    if (current.code === code) return rejoin(rooms, current, participant)
+    if (current.code === code) return rejoin(rooms, current, participant, names)
     if (!canLeave(current, participant, connected)) return refuse(rooms, participant, 'ほかの部屋にいる')
   }
   const leaving = current === undefined ? undefined : withoutParticipant(rooms, current, participant)
@@ -546,7 +577,7 @@ function enter(
     return refuse(rooms, participant, '対戦が終わっている部屋')
   }
 
-  return after(closed, start(left, room, waiting, participant, setup))
+  return after(closed, start(left, room, waiting, participant, setup, names))
 }
 
 /**
@@ -558,7 +589,7 @@ function enter(
  * 選択の途中で切れていた場合は、貯めた答えの並びで適用をやり直せば同じ「選んでほしい」が
  * 返る（ADR-0008）。**送ったメッセージを覚えておく必要は無い。**
  */
-function rejoin(rooms: Rooms, room: Room, participant: ParticipantId): RoomOutcome {
+function rejoin(rooms: Rooms, room: Room, participant: ParticipantId, names: Names): RoomOutcome {
   const duel = room.duel
   if (duel === undefined) {
     return {
@@ -571,12 +602,16 @@ function rejoin(rooms: Rooms, room: Room, participant: ParticipantId): RoomOutco
   const seat = seatOf(duel, participant)
   if (seat === undefined) return refuse(rooms, participant, '席に着いていない')
 
+  const facing = duel.seats[seat === '先攻' ? '後攻' : '先攻']
   // 選ぶのを待っているなら、行動を始める前の盤面ではなく、その選択が起きている盤面を
   // 送り直す（#142）。入り直す前に見えていたものと同じものが届く。
   return {
     rooms,
     deliveries: [
-      { to: participant, message: { kind: '席についた', seat, room: room.code, opponent: opponentOf(room) } },
+      {
+        to: participant,
+        message: { kind: '席についた', seat, room: room.code, opponent: opponentOf(room, facing, names) },
+      },
       ...boards(duel, pendingProgress(duel)?.board).filter((delivery) => delivery.to === participant),
       ...pendingChoice(duel, seat),
     ],
@@ -632,6 +667,7 @@ function start(
   waiting: ParticipantId,
   joining: ParticipantId,
   setup: RoomSetup,
+  names: Names,
 ): RoomOutcome {
   const prepared = prepareDuel({ decks: setup.decks, seed: setup.seed })
   if (prepared.kind !== '準備完了') {
@@ -656,7 +692,13 @@ function start(
     deliveries: [
       ...seats(duel).map(([player, to]) => ({
         to,
-        message: { kind: '席についた', seat: player, room: room.code, opponent: opponentOf(seated) } as const,
+        message: {
+          kind: '席についた',
+          seat: player,
+          room: room.code,
+          // 相手は、もう一方の席にいる人である。**2 人ぶんで別のものになる。**
+          opponent: opponentOf(seated, duel.seats[player === '先攻' ? '後攻' : '先攻'], names),
+        } as const,
       })),
       ...boards(duel),
     ],

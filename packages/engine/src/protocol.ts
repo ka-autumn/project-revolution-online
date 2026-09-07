@@ -27,15 +27,26 @@ import type { PlayerZone } from './zone.js'
 /** 2 人を繋ぐための合言葉。最初の完走ではアカウント認証を作らない（#17）。 */
 export type RoomCode = string
 
-/** 部屋を作る時に決める、誰と打つか。 */
-export type Opponent = '人間' | 'CPU'
+/** 部屋を作る時に決める、どちらを相手にするか。 */
+export type OpponentKind = '人間' | 'CPU'
+
+/**
+ * いま誰と打っているか（ADR-0020）。
+ *
+ * **部屋を作る時に選ぶ種類（`OpponentKind`）とは別のものである。** 作る時に決まるのは人か CPU
+ * かだけで、相手が誰かは座ってみるまで分からない。
+ *
+ * 人が相手なら表示名が入る。**その名前は呼ぶためのもので、人を指す識別子ではない**
+ * （ADR-0020）。重複しうるし、相手が変えれば次に届くものから変わる。
+ */
+export type Opponent = { readonly kind: 'CPU' } | { readonly kind: '人間'; readonly name: string }
 
 /**
  * ロビーに並ぶ部屋 1 つ。
  *
- * **そこにいる人の名乗りは載せない。** 名乗りは認証ではなく、知っている人がその席に座れる
- * 合言葉である（ADR-0009）。一覧に出すと、居合わせた誰でも他人の席に着けてしまう。出すのは
- * 部屋に付けられた名前だけで、これは席とは何の関係も無い。
+ * **そこにいる人の表示名を載せる**（ADR-0020）。名乗りが席に座れる合言葉だった頃は出せなかった
+ * （出すと居合わせた誰でも他人の席に着けた、ADR-0009）が、席はログインから来る身元で決まる
+ * ようになった（ADR-0019）ので、その理由は消えている。
  */
 export interface WireRoom {
   readonly code: RoomCode
@@ -44,6 +55,12 @@ export interface WireRoom {
   readonly status: '相手を待っている' | '対戦中' | '終わった'
   /** CPU が座っているか。座っているなら、人が入れる席はもう無い。 */
   readonly cpu: boolean
+  /**
+   * そこに座っている人の表示名。入ってきた順に並ぶ（ADR-0020）。
+   *
+   * **CPU は入らない。** 座っているかどうかは `cpu` が持っており、CPU に表示名は無い。
+   */
+  readonly occupants: readonly string[]
 }
 
 /**
@@ -178,7 +195,14 @@ export type FromClient =
    *
    * `against` が `CPU` なら、もう一方の席にはサーバが座り、そのまま始まる。
    */
-  | { readonly kind: '部屋を作る'; readonly name: string; readonly against: Opponent }
+  | { readonly kind: '部屋を作る'; readonly name: string; readonly against: OpponentKind }
+  /**
+   * 自分の表示名を決める（ADR-0020）。すでに付いていれば付け替える。
+   *
+   * **決まりを見るのはサーバである**（`server` の `name.ts`）。長さも使える文字も、通らなければ
+   * `名前を決めてほしい` が理由を添えて返る。画面は断らない（ADR-0010）。
+   */
+  | { readonly kind: '名前を決める'; readonly name: string }
   /**
    * いる部屋を出てロビーに戻る（#175）。
    *
@@ -224,7 +248,7 @@ export type ToClient =
       readonly seat: Player
       readonly room: RoomCode
       /**
-       * 誰と打っているか。
+       * 誰と打っているか。人が相手なら、その表示名も入る（ADR-0020）。
        *
        * 部屋が続く限り変わらないので、席と一緒に届く。**CPU との対戦は打っている途中でも
        * 投げ出せる**（`server` の `room.ts` の `canLeave`）ので、その口を出すかどうかがこれで
@@ -269,6 +293,23 @@ export type ToClient =
    * 相手が CPU であることから決まっている。
    */
   | { readonly kind: '相手の繋がり'; readonly connected: boolean }
+  /**
+   * 表示名を決めてほしい（ADR-0020）。**決めるまで、ほかのことは受け付けない。**
+   *
+   * 繋いだ時に名前が無ければ届き、送った名前が決まりに通らなくても理由を添えて届く。
+   * **画面はログインしているかどうかも、名前が要るかどうかも判断しない**（ADR-0019、
+   * ADR-0010）。繋いだ結果としてこれが届き、従うだけである。
+   *
+   * 断って閉じないのは、**閉じると名前を送り返す口が無くなる**からである。画面とサーバは
+   * 出所が違う（ADR-0019）ので、HTTP の口を開けば CORS が 1 つ増える。同じ接続の上で決めさせる。
+   */
+  | {
+      readonly kind: '名前を決めてほしい'
+      /** いま付いている名前。まだ決めていなければ `undefined`。 */
+      readonly current: string | undefined
+      /** 送ったものが通らなかった理由。初めて尋ねる時は `undefined`。 */
+      readonly reason: string | undefined
+    }
   | { readonly kind: '行えなかった'; readonly reason: string }
 
 /**

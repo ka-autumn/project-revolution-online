@@ -1,7 +1,7 @@
 import { MAX_ATTEMPTS, connect, connectingLink } from './connection.js'
 import type { Connection, Link } from './connection.js'
 import { NOT_SIGNED_IN, indexOfSquare } from '@revolution/engine'
-import type { CardId, LoggedEvent, Opponent, RoomCode } from '@revolution/engine'
+import type { CardId, LoggedEvent, OpponentKind, RoomCode } from '@revolution/engine'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import {
   actionsElement,
@@ -9,6 +9,7 @@ import {
   choiceElement,
   leaveElement,
   lobbyElement,
+  nameElement,
   overlayElement,
   pickElement,
   waitingForOverlayElement,
@@ -116,6 +117,9 @@ function statusOf(session: Session, link: Link): string | undefined {
   switch (session.stage.kind) {
     case '繋いでいる':
       return '待っています'
+    case '名前を決める':
+      // 名前を決めるところが自分で全部を出す（`nameElement`）ので、上に足す 1 行は要らない。
+      return undefined
     case 'ロビー':
       // ロビーは自分で全部を出す（`lobbyElement`）ので、上に足す 1 行は要らない。
       return undefined
@@ -179,10 +183,22 @@ function line(className: string, text: string): HTMLElement {
 interface Lobby {
   readonly name: string
   readonly onName: (name: string) => void
-  readonly onCreate: (name: string, against: Opponent) => void
+  readonly onCreate: (name: string, against: OpponentKind) => void
   readonly onJoin: (code: RoomCode) => void
   /** 部屋を出てロビーに戻る。断るのはサーバである（`server` の `room.ts` の `canLeave`）。 */
   readonly onLeave: () => void
+}
+
+/**
+ * 表示名を決めるところで押せるものと、打ち込みかけている名前（ADR-0020）。
+ *
+ * 打ち込みかけをここに持つのは、部屋の名前と同じ理由である（`Lobby`）。**画面は丸ごと描き直され
+ * る**ので、入力欄に置いたままにすると、繋ぎ直しなどで描き直しが起きた時に消える。
+ */
+interface Naming {
+  readonly draft: string
+  readonly onDraft: (value: string) => void
+  readonly onDecide: (name: string) => void
 }
 
 /**
@@ -217,9 +233,11 @@ function draw(
   overlay: Overlay,
   picking: Picking,
   lobby: Lobby,
+  naming: Naming,
 ): void {
   // 打ち込みかけの場所は描き直すと消える。打っていた人には返す（`lobbyElement`）。
   const typing = document.activeElement?.classList.contains('lobby__name') === true
+  const typingName = document.activeElement?.classList.contains('naming__input') === true
   root.replaceChildren()
 
   const status = statusOf(session, link)
@@ -231,6 +249,13 @@ function draw(
   const connected = link.kind === '繋がっている'
 
   const stage = session.stage
+  // 名前を決めるまで、ほかへは進めない（ADR-0020）。ロビーと同じく、送れる間だけ出す。
+  if (stage.kind === '名前を決める' && connected) {
+    root.append(
+      nameElement(naming.draft, stage.reason, { onDraft: naming.onDraft, onDecide: naming.onDecide }, typingName),
+    )
+  }
+
   // ロビーは繋がっている間だけ出す。作る・入るは送らないと何も起きないので、押せる形で出さない。
   if (stage.kind === 'ロビー' && connected) {
     root.append(
@@ -375,7 +400,7 @@ function draw(
     // `canLeave`）。決着した後はどちらの対戦でも戻れて、CPU との対戦と、相手が繋がっていない
     // 対戦は途中でも戻れる。**断るのはサーバである。** ここで決めているのは、押す口を出すか
     // どうかだけである。
-    if (connected && (stage.opponent === 'CPU' || !stage.opponentConnected || board.result !== undefined)) {
+    if (connected && (stage.opponent.kind === 'CPU' || !stage.opponentConnected || board.result !== undefined)) {
       controlArea.append(
         leaveElement(board.result === undefined ? 'やめてロビーに戻る' : 'ロビーに戻る', lobby.onLeave),
       )
@@ -405,6 +430,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   // ロビーで打ち込みかけている部屋の名前（#175）。
   let roomName = ''
+  // 打ち込みかけている表示名（ADR-0020）。尋ねられるたびに、いま付いている名前から始める。
+  let nameDraft = ''
   /**
    * 入ろうとしている部屋。届いたものがまだ無い間の入り先である（#175）。
    *
@@ -453,6 +480,18 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
   })
 
+  const naming = (): Naming => ({
+    draft: nameDraft,
+    onDraft: (value) => {
+      // 描き直さない。入力欄の値はブラウザが持っている（`lobby` の `onName` と同じ）。
+      nameDraft = value
+    },
+    onDecide: (name) => {
+      nameDraft = name
+      connection.send({ kind: '名前を決める', name })
+    },
+  })
+
   const lobby = (): Lobby => ({
     name: roomName,
     onName: (name) => {
@@ -474,7 +513,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
   })
 
-  const redraw = (): void => draw(root, session, link, connection, overlay, picking(), lobby())
+  const redraw = (): void => draw(root, session, link, connection, overlay, picking(), lobby(), naming())
 
   /**
    * 待ち行列の先頭を出す。無ければ消える。呼ぶたびにタイマーを 1 つだけ張る。
@@ -542,6 +581,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       session = applyMessage(session, message)
       // ロビーが届いたなら、どの部屋にもいない。入ろうとしていた先は残さない（#175）。
       if (session.stage.kind === 'ロビー' || message.kind === '行えなかった') pendingRoom = undefined
+      // 名前を尋ねられたら、いま付いているものから打ち始められるようにする（ADR-0020）。
+      // **打ち込みかけがあれば消さない。** 断られて尋ね直された時に、直そうとしていたものが
+      // 消えてしまう。
+      if (message.kind === '名前を決めてほしい' && nameDraft === '') nameDraft = message.current ?? ''
       // 盤面が入れ替わったら、選びかけは捨てる（#94）。
       pickedCard = undefined
       enqueueOverlays()

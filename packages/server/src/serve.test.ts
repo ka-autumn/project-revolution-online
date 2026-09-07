@@ -501,15 +501,26 @@ describe('ログインの設定があるとき', () => {
   let server: RunningServer
   let store: Store
   let signedIn: string
+  /** 繋ぎに行く側の身元。名前が置き場に入ったかを見るのに使う（ADR-0020）。 */
+  let me: string
+  /** もう 1 人ぶんの身元。**同じ身元で 2 本繋ぐと入り直しになる**ので、別の人が要る場面で使う。 */
+  let signedInOther: string
 
   beforeEach(async () => {
     store = openStore(':memory:')
-    const participant = store.identify('google', '10001')
+    me = store.identify('google', '10001')
     // Cookie は握手のヘッダーに載る。**ヘッダーに書けるのは ASCII だけ**なので、ここも実物と
     // 同じ形（`sign-in.ts` の `newToken` は base64url を作る）にする。
     const token = 'signed-in-token'
-    store.openSession(digest(token), participant)
+    store.openSession(digest(token), me)
     signedIn = `revolution_session=${token}`
+
+    const other = store.identify('google', '10002')
+    // こちらは名前が付いているものとして始める。確かめたいのは相手の側の振る舞いである。
+    store.rename(other, 'あいて')
+    const otherToken = 'signed-in-other'
+    store.openSession(digest(otherToken), other)
+    signedInOther = `revolution_session=${otherToken}`
 
     server = await serve({
       port: 0,
@@ -553,12 +564,139 @@ describe('ログインの設定があるとき', () => {
   it('セッションを持っていれば、その身元として席に着ける', async () => {
     const client = new Client(server.port, 'なのっても無駄', signedIn)
     await client.opened()
+    // 名前を決めるまで先へは進めない（ADR-0020）。
+    await client.waitFor('名前を決めてほしい')
+    client.send({ kind: '名前を決める', name: 'かずお' })
     await client.waitFor('ロビー')
 
     client.send({ kind: '部屋を作る', name: 'ろぐいんの部屋', against: 'CPU' })
 
     const seated = await client.waitFor('席についた')
-    expect(seated.kind === '席についた' && seated.opponent).toBe('CPU')
+    expect(seated.kind === '席についた' && seated.opponent).toEqual({ kind: 'CPU' })
+    await client.close()
+  })
+
+  /**
+   * ADR-0020。**繋ぎはするが、決めるまでほかのことは受け付けない。**
+   *
+   * 断って閉じないのは、閉じると名前を送り返す口が無くなるからである。
+   */
+  it('名前を決めていなければ、まず尋ねられる', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+
+    expect(await client.waitFor('名前を決めてほしい')).toEqual({
+      kind: '名前を決めてほしい',
+      current: undefined,
+      reason: undefined,
+    })
+    await client.close()
+  })
+
+  it('名前を決めるまでは、部屋を作れない', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+    await client.waitFor('名前を決めてほしい')
+    client.received.length = 0
+
+    client.send({ kind: '部屋を作る', name: 'つくれないはず', against: 'CPU' })
+
+    // 断るのではなく尋ね直す。画面がそこで止まっているとは限らない（繋ぎ直した先など）。
+    await client.waitFor('名前を決めてほしい')
+    expect(client.received.some((message) => message.kind === '席についた')).toBe(false)
+    await client.close()
+  })
+
+  /** 決まりを見るのはサーバである（`name.ts`、ADR-0010）。 */
+  it('決まりに通らない名前は、理由を添えて尋ね直される', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+    await client.waitFor('名前を決めてほしい')
+    client.received.length = 0
+
+    client.send({ kind: '名前を決める', name: '   ' })
+
+    const asked = await client.waitFor('名前を決めてほしい')
+    expect(asked).toEqual({ kind: '名前を決めてほしい', current: undefined, reason: '名前を入れてください' })
+    // **通らなかったものは置き場に入らない。**
+    expect(store.nameOf(me)).toBeUndefined()
+    await client.close()
+  })
+
+  /** ADR-0020。名前は変えられる。**記録には焼き付けない**ので、過去の対戦もいまの名前で出る。 */
+  it('決めた名前は変えられる', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+    await client.waitFor('名前を決めてほしい')
+    client.send({ kind: '名前を決める', name: 'まえのなまえ' })
+    await client.waitFor('ロビー')
+
+    client.send({ kind: '名前を決める', name: 'あとのなまえ' })
+
+    await client.waitUntil('名前が変わる', () => store.nameOf(me) === 'あとのなまえ')
+    await client.close()
+  })
+
+  /** ADR-0020。**ロビーの中身は、部屋の様子だけでなく人の名前でも変わる。** */
+  it('名前を変えると、ロビーにいる人にも届き直す', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+    await client.waitFor('名前を決めてほしい')
+    client.send({ kind: '名前を決める', name: 'まえのなまえ' })
+    await client.waitFor('ロビー')
+    client.send({ kind: '部屋を作る', name: 'なまえのかわる部屋', against: '人間' })
+    await client.waitFor('相手を待っている')
+
+    const watcher = new Client(server.port, 'なのっても無駄', signedInOther)
+    await watcher.waitUntil('部屋が出る', () => {
+      const lobby = watcher.latest('ロビー')
+      return lobby?.kind === 'ロビー' && lobby.rooms[0]?.occupants[0] === 'まえのなまえ'
+    })
+
+    client.send({ kind: '名前を決める', name: 'あとのなまえ' })
+
+    await watcher.waitUntil('名前が変わって届く', () => {
+      const lobby = watcher.latest('ロビー')
+      return lobby?.kind === 'ロビー' && lobby.rooms[0]?.occupants[0] === 'あとのなまえ'
+    })
+    await watcher.close()
+    await client.close()
+  })
+
+  /** ADR-0020。ロビーには誰がいるかが出る。名乗りが合言葉だった頃は出せなかった（ADR-0009）。 */
+  it('ロビーに、そこにいる人の表示名が出る', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+    await client.waitFor('名前を決めてほしい')
+    client.send({ kind: '名前を決める', name: 'かずお' })
+    await client.waitFor('ロビー')
+
+    client.send({ kind: '部屋を作る', name: 'なまえのでる部屋', against: '人間' })
+    await client.waitFor('相手を待っている')
+
+    // 部屋にいる人にはロビーが届かない（#175）ので、**別の身元**の目で見る。同じ身元で繋ぎ直すと
+    // それは入り直しになり、ロビーではなく部屋の様子が届く（ADR-0016）。
+    const watcher = new Client(server.port, 'なのっても無駄', signedInOther)
+    const lobby = await watcher.waitFor('ロビー')
+    expect(lobby.kind === 'ロビー' && lobby.rooms[0]?.occupants).toEqual(['かずお'])
+    await watcher.close()
+    await client.close()
+  })
+
+  /** ADR-0020。人が相手なら、誰と打っているかが名前で分かる。 */
+  it('席についたら、相手の表示名が届く', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+    await client.waitFor('名前を決めてほしい')
+    client.send({ kind: '名前を決める', name: 'かずお' })
+    await client.waitFor('ロビー')
+    client.send({ kind: '部屋を作る', name: 'ふたりの部屋', against: '人間' })
+    const waiting = await client.waitFor('相手を待っている')
+    if (waiting.kind !== '相手を待っている') throw new Error('待っているはずだった')
+
+    const other = new Client(server.port, 'なのっても無駄', signedInOther)
+    await other.waitFor('ロビー')
+    other.send({ kind: '部屋に入る', room: waiting.room })
+
+    const seated = await other.waitFor('席についた')
+    expect(seated.kind === '席についた' && seated.opponent).toEqual({ kind: '人間', name: 'かずお' })
+    // **2 人ぶんで別のものになる。** それぞれの相手はもう一方である。
+    const mine = await client.waitFor('席についた')
+    expect(mine.kind === '席についた' && mine.opponent).toEqual({ kind: '人間', name: 'あいて' })
+    await other.close()
     await client.close()
   })
 

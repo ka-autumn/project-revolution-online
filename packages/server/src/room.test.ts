@@ -948,7 +948,7 @@ describe('部屋を作る', () => {
     const outcome = send(emptyRooms(), 'あ', MAKE)
 
     expect(lobbyOf(outcome.rooms)).toEqual([
-      { code: SETUP.code, name: 'てすとのへや', status: '相手を待っている', cpu: false },
+      { code: SETUP.code, name: 'てすとのへや', status: '相手を待っている', cpu: false, occupants: ['あ'] },
     ])
   })
 
@@ -1010,7 +1010,7 @@ describe('CPU と対戦する', () => {
     const outcome = send(emptyRooms(), 'あ', AGAINST_CPU)
 
     expect(lobbyOf(outcome.rooms)).toEqual([
-      { code: SETUP.code, name: 'ひとり', status: '対戦中', cpu: true },
+      { code: SETUP.code, name: 'ひとり', status: '対戦中', cpu: true, occupants: ['あ'] },
     ])
   })
 
@@ -1073,7 +1073,7 @@ describe('ロビーに戻る', () => {
   it('決着した部屋からも、出られる', () => {
     const left = send(ended().rooms, 'あ', { kind: 'ロビーに戻る' })
 
-    expect(lobbyOf(left.rooms)).toEqual([{ code: CODE, name: CODE, status: '終わった', cpu: false }])
+    expect(lobbyOf(left.rooms)).toEqual([{ code: CODE, name: CODE, status: '終わった', cpu: false, occupants: ['い'] }])
   })
 
   /** 投げ出す口はまだ無い（#92）。合言葉の打ち間違いと同じく、対戦が消えてはならない。 */
@@ -1163,10 +1163,72 @@ describe('ロビー', () => {
   })
 
   it('始まった部屋は対戦中になる', () => {
-    expect(lobbyOf(started().rooms)).toEqual([{ code: CODE, name: CODE, status: '対戦中', cpu: false }])
+    expect(lobbyOf(started().rooms)).toEqual([
+      { code: CODE, name: CODE, status: '対戦中', cpu: false, occupants: ['あ', 'い'] },
+    ])
   })
 
   it('決着した部屋は終わったになる', () => {
-    expect(lobbyOf(ended().rooms)).toEqual([{ code: CODE, name: CODE, status: '終わった', cpu: false }])
+    expect(lobbyOf(ended().rooms)).toEqual([
+      { code: CODE, name: CODE, status: '終わった', cpu: false, occupants: ['あ', 'い'] },
+    ])
+  })
+
+  /**
+   * ADR-0020。**部屋は名前を持たない。** 預かっているのは置き場で、引き方を渡してもらう。
+   * 渡されなければ、識別子がそのまま名前になる（手元で立てたときの形）。
+   */
+  it('そこにいる人の表示名が並ぶ', () => {
+    const names = (participant: ParticipantId): string => (participant === 'あ' ? 'かずお' : 'あいて')
+
+    expect(lobbyOf(started().rooms, names)[0]?.occupants).toEqual(['かずお', 'あいて'])
+  })
+
+  /** CPU に表示名は無い。座っているかどうかは `cpu` が持っている。 */
+  it('CPU は並ばない', () => {
+    const opened = send(emptyRooms(), 'あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU' })
+
+    expect(lobbyOf(opened.rooms)[0]).toMatchObject({ cpu: true, occupants: ['あ'] })
+  })
+})
+
+/** ADR-0020。誰と打っているかは、席についた時に届く。 */
+describe('相手が誰か', () => {
+  const names = (participant: ParticipantId): string => (participant === 'あ' ? 'かずお' : 'あいて')
+
+  /** **2 人ぶんで別のものになる。** それぞれの相手はもう一方である。 */
+  it('人が相手なら、その表示名が届く', () => {
+    const outcome = receive(
+      receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP, ALL_LINKED).rooms,
+      'い',
+      { kind: '部屋に入る', room: CODE },
+      SETUP,
+      ALL_LINKED,
+      names,
+    )
+
+    const seatedOf = (participant: ParticipantId): ToClient | undefined =>
+      to(outcome.deliveries, participant).find((message) => message.kind === '席についた')
+
+    expect(seatedOf('あ')).toMatchObject({ opponent: { kind: '人間', name: 'あいて' } })
+    expect(seatedOf('い')).toMatchObject({ opponent: { kind: '人間', name: 'かずお' } })
+  })
+
+  it('CPU が相手なら、名前は付かない', () => {
+    const against: FromClient = { kind: '部屋を作る', name: 'ひとり', against: 'CPU' }
+    const outcome = receive(emptyRooms(), 'あ', against, SETUP, ALL_LINKED, names)
+
+    expect(to(outcome.deliveries, 'あ').find((message) => message.kind === '席についた')).toMatchObject({
+      opponent: { kind: 'CPU' },
+    })
+  })
+
+  /** 入り直した時にも届く（ADR-0016、`rejoin`）。**その時のいまの名前で届く。** */
+  it('入り直しても、相手の表示名が届く', () => {
+    const outcome = receive(started().rooms, 'あ', { kind: '部屋に入る', room: CODE }, SETUP, ALL_LINKED, names)
+
+    expect(to(outcome.deliveries, 'あ').find((message) => message.kind === '席についた')).toMatchObject({
+      opponent: { kind: '人間', name: 'あいて' },
+    })
   })
 })
