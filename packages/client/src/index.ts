@@ -513,7 +513,22 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
   })
 
-  const redraw = (): void => draw(root, session, link, connection, overlay, picking(), lobby(), naming())
+  /**
+   * 描き直す。**組み立てられなくても、白い画面にしない。**
+   *
+   * `draw` は組み立てる前に中身を捨てる（`replaceChildren`）ので、途中で投げると何も無い画面が
+   * 残る。**何が起きたか読めないまま止まるのが一番重い**（#175 が繋がりについて書いたのと同じ
+   * ことである）。届いたものが思っていた形と違うことは起こりうる——画面とサーバは別々に配られ、
+   * 同時には入れ替わらない（ADR-0013、ADR-0015）。
+   */
+  const redraw = (): void => {
+    try {
+      draw(root, session, link, connection, overlay, picking(), lobby(), naming())
+    } catch (error) {
+      console.error('画面を組み立てられませんでした:', error)
+      root.replaceChildren(line('status', '画面を組み立てられませんでした。ページを再読み込みしてください'))
+    }
+  }
 
   /**
    * 待ち行列の先頭を出す。無ければ消える。呼ぶたびにタイマーを 1 つだけ張る。
