@@ -178,7 +178,7 @@ export type {
   VisibleSmashJudgment,
 } from './perspective.js'
 export { activateTrap, playAsTrap, playCard } from './play.js'
-export { applyWithAnswers } from './protocol.js'
+export { NOT_SIGNED_IN, SIGN_IN_PATH, applyWithAnswers } from './protocol.js'
 export type {
   ActionProgress,
   ChoiceAnswer,

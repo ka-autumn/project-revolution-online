@@ -1,6 +1,6 @@
 import { MAX_ATTEMPTS, connect, connectingLink } from './connection.js'
 import type { Connection, Link } from './connection.js'
-import { indexOfSquare } from '@revolution/engine'
+import { NOT_SIGNED_IN, indexOfSquare } from '@revolution/engine'
 import type { CardId, LoggedEvent, Opponent, RoomCode } from '@revolution/engine'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import {
@@ -50,6 +50,49 @@ export interface MountOptions {
    * **打つ前に決めておくものは何も無い。**
    */
   readonly room?: RoomCode
+  /**
+   * ログインを始める先（ADR-0019、`server` の `sign-in.ts`）。
+   *
+   * **ログインしているかどうかを画面は判断しない。** 繋ぎに行き、サーバが「ログインしていない」
+   * と返したらここへ送るだけである。何を行えるかを決めるのはサーバである（ADR-0010）。
+   */
+  readonly signInUrl: string
+}
+
+/** ログインへ一度送ったことを覚えておく先の名前。 */
+const SIGN_IN_TRIED = 'revolution.signInTried'
+
+/**
+ * ログインへ送る。**同じタブでは一度だけ。** 送ったなら `true`。
+ *
+ * 繰り返しを止めるためにある。ログインは通ったのに Cookie が握手に付いてこない場合
+ * （同じ登録可能ドメインの下に無い、`SameSite` に弾かれる、ADR-0019）、送り続けると画面と
+ * Google の間を往復し続け、**何が悪いのかが読めないまま止まる。** 一度で止めれば、断られた
+ * 理由がそのまま画面に出る。
+ *
+ * 覚えられないブラウザでは繰り返しを防げないが、それでも送る。**送らなければログインできない
+ * のに対し、繰り返しはタブを閉じれば止まる。**
+ */
+function goToSignIn(url: string): boolean {
+  try {
+    if (sessionStorage.getItem(SIGN_IN_TRIED) !== null) return false
+
+    sessionStorage.setItem(SIGN_IN_TRIED, '送った')
+  } catch {
+    // 覚えられなかった。送るほうを採る。
+  }
+
+  location.assign(url)
+  return true
+}
+
+/** 送ったことを忘れる。次にログインが要る場面では、また送れるようにするため。 */
+function forgetSignIn(): void {
+  try {
+    sessionStorage.removeItem(SIGN_IN_TRIED)
+  } catch {
+    // 覚えていないなら忘れることも要らない。
+  }
 }
 
 /**
@@ -467,12 +510,25 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     if (overlayTimer === undefined) showNextOverlay()
   }
 
+  /** 一度でも断られずに何かが届いたか。ログインへ送ったことを忘れるのは一度でよい。 */
+  let signedIn = false
+
   const connection: Connection = connect({
     url: options.url,
     participant: options.participant,
     // 繋ぎ直した時に入り直す先。ロビーにいるなら何も送らない（ADR-0016、#175）。
     rejoining: () => roomOf(session) ?? pendingRoom,
     onMessage: (message) => {
+      // ログインが要るなら、ログインへ送る（ADR-0019）。送ればこの画面は無くなるので、
+      // ここで畳んでよい。**送らなかったなら繋ぎ直さない**——同じ理由で断られ続ける。
+      if (message.kind === '行えなかった' && message.reason === NOT_SIGNED_IN) {
+        if (!goToSignIn(options.signInUrl)) connection.close()
+      } else if (!signedIn) {
+        // 断られていないなら入れている。次にログインが要る場面で、また送れるようにしておく。
+        signedIn = true
+        forgetSignIn()
+      }
+
       session = applyMessage(session, message)
       // ロビーが届いたなら、どの部屋にもいない。入ろうとしていた先は残さない（#175）。
       if (session.stage.kind === 'ロビー' || message.kind === '行えなかった') pendingRoom = undefined

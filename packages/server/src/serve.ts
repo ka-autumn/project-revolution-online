@@ -1,9 +1,12 @@
+import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
+import { NOT_SIGNED_IN } from '@revolution/engine'
 import type { FromClient, ToClient } from '@revolution/engine'
 import { isCpu } from './cpu.js'
 import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room.js'
 import type { ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
+import type { SignIn } from './sign-in.js'
 import type { Store } from './store.js'
 
 /**
@@ -13,13 +16,20 @@ import type { Store } from './store.js'
  * 返ってきたものを送り分けるだけ**である。盤面を進めるところと同じように（ADR-0001）、
  * 決まりごとと I/O を分けている。
  *
- * **接続 1 本が参加者 1 人に対応する。** 誰であるかは繋ぐ時の URL で名乗る（`?participant=`）。
- * これはクライアントが持ち続ける合言葉であって認証ではない（ADR-0009）。最初の完走では
- * アカウント認証を作らない（#17）ため、これを知っている人がその席に座れる。
+ * **接続 1 本が参加者 1 人に対応する。** 誰であるかは 2 通りのどちらかで決まる（ADR-0019）。
  *
- * 同じ合言葉で繋ぎ直すと、部屋はそのままに続きから打てる。切れた接続は覚えておかず、その
- * 合言葉に紐づく接続を新しいものに差し替えるだけでよい。**入り直した人にいまの盤面を送り直す
- * のは `room.ts` の仕事**である。
+ * - **ログインの設定があるとき** — 握手に付いてきた Cookie のセッションで決まる。`?participant=`
+ *   は読まない。**両方であることはできない**ので、開いているかどうかを別の旗で持たず、
+ *   設定が渡されたかどうかがそのまま境目になる
+ * - **設定が無いとき** — 繋ぐ時の URL で名乗る（`?participant=`）。これは認証ではなく、知って
+ *   いる人がその席に座れる合言葉である（ADR-0009）。手元で 2 人ぶん試すためのものである
+ *
+ * 同じ人として繋ぎ直すと、部屋はそのままに続きから打てる。切れた接続は覚えておかず、その人に
+ * 紐づく接続を新しいものに差し替えるだけでよい。**入り直した人にいまの盤面を送り直すのは
+ * `room.ts` の仕事**である。
+ *
+ * **HTTP も同じポートで喋る**（ADR-0019）。ログインの口（`sign-in.ts`）がそこに乗る。中継の
+ * 設定も、WebSocket を通すだけでなく通常の HTTP の道が要る（ADR-0015）。
  */
 
 export interface ServeOptions {
@@ -40,6 +50,13 @@ export interface ServeOptions {
    * なる。置き場を持つかどうかを決めるのは、サーバを立てる側である（`tools/bundle-server.mjs`）。
    */
   readonly store?: Store
+  /**
+   * ログインの口（ADR-0019、`sign-in.ts`）。
+   *
+   * **渡すと `?participant=` は受け付けなくなる。** 誰であるかは Cookie のセッションだけから
+   * 決まり、ログインしていない接続は断られる。渡さなければ今までどおり名乗りで入れる。
+   */
+  readonly signIn?: SignIn
 }
 
 export interface RunningServer {
@@ -53,6 +70,16 @@ function participantOf(url: string | undefined): ParticipantId | undefined {
   const named = new URL(url ?? '/', 'ws://localhost').searchParams.get('participant')
   return named === null || named === '' ? undefined : named
 }
+
+/**
+ * 握手してきた接続を誰のものとするか（ADR-0019）。
+ *
+ * **なりうる形を数え上げる。** 「誰であるか」と「断る理由」を別々に持つと、どちらも無い形や
+ * どちらもある形が書けてしまう。
+ */
+type Seating =
+  | { readonly kind: '通す'; readonly participant: ParticipantId }
+  | { readonly kind: '断る'; readonly reason: string }
 
 /**
  * 受け取ってよいメッセージの種類（`protocol.ts` の `FromClient`）。
@@ -106,7 +133,19 @@ function send(socket: WebSocket | undefined, message: ToClient): void {
  * 部屋も、合言葉から接続を引く表も、この中にしか無い。落とすと対戦は消える（ADR-0009）。
  */
 export function serve(options: ServeOptions): Promise<RunningServer> {
-  const server = new WebSocketServer({ port: options.port })
+  /**
+   * HTTP と WebSocket を同じポートに同居させる（ADR-0019）。
+   *
+   * 引き受け先の無い要求は断る。**ここに置くのはログインの道筋だけ**で、画面を配るのは別の
+   * ところである（ADR-0013）。
+   */
+  const http = createServer((request, response) => {
+    if (options.signIn?.handle(request, response) === true) return
+
+    response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
+    response.end('ここには何もありません')
+  })
+  const server = new WebSocketServer({ server: http })
   const sockets = new Map<ParticipantId, WebSocket>()
   /** 前回の確認から返事があった接続。ここに無いものは死んだものとして落とす。 */
   const answered = new Set<WebSocket>()
@@ -133,6 +172,30 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
 
   /** いま繋がっている人。部屋はこれを見て、抜けられるかを決める（`room.ts` の `canLeave`）。 */
   const linked = (): ReadonlySet<ParticipantId> => new Set(sockets.keys())
+
+  /**
+   * 握手してきた接続が誰のものかを決める（ADR-0019）。
+   *
+   * **ログインの設定があるなら Cookie だけを見る。** URL の名乗りは読まない——読めば、他人の
+   * 識別子を名乗るだけでその席に座れてしまう。**両方であることはできない。**
+   *
+   * 断るときは理由を送ってから閉じる。**握手そのものを断らない**のは、ブラウザの `WebSocket`
+   * には閉じた理由が降りてこないからである。画面はこの返事を見てログインへ送る（同）。
+   */
+  function whoIs(cookie: string | undefined, url: string | undefined): Seating {
+    if (options.signIn !== undefined) {
+      const holder = options.signIn.holderOf(cookie)
+      return holder === undefined ? { kind: '断る', reason: NOT_SIGNED_IN } : { kind: '通す', participant: holder }
+    }
+
+    const named = participantOf(url)
+    if (named === undefined) return { kind: '断る', reason: '名乗っていない' }
+    // CPU の名乗りは人に使わせない（#175）。名乗りは認証ではなく、知っている人がその席に
+    // 座れる合言葉である（ADR-0009）ため、名乗れてしまうと CPU の席に座れる。
+    if (isCpu(named)) return { kind: '断る', reason: '使えない名乗り' }
+
+    return { kind: '通す', participant: named }
+  }
 
   /**
    * 部屋が返したものを、それぞれの宛先へ送る。ロビーも送り直す。
@@ -246,19 +309,13 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     socket.on('close', () => answered.delete(socket))
 
 
-    const participant = participantOf(request.url)
-    if (participant === undefined) {
-      send(socket, { kind: '行えなかった', reason: '名乗っていない' })
+    const decided = whoIs(request.headers.cookie, request.url)
+    if (decided.kind === '断る') {
+      send(socket, { kind: '行えなかった', reason: decided.reason })
       socket.close()
       return
     }
-    // CPU の名乗りは人に使わせない（#175）。名乗りは認証ではなく、知っている人がその席に
-    // 座れる合言葉である（ADR-0009）ため、名乗れてしまうと CPU の席に座れる。
-    if (isCpu(participant)) {
-      send(socket, { kind: '行えなかった', reason: '使えない名乗り' })
-      socket.close()
-      return
-    }
+    const { participant } = decided
 
     // 同じ合言葉で繋ぎ直された場合、古い接続は捨てる。部屋の側は入り直しとして扱う。
     sockets.set(participant, socket)
@@ -308,16 +365,23 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   })
 
   return new Promise((resolve, reject) => {
-    server.on('error', reject)
-    server.on('listening', () => {
-      const address = server.address()
+    http.on('error', reject)
+    http.listen(options.port, () => {
+      const address = http.address()
       resolve({
         port: typeof address === 'object' && address !== null ? address.port : options.port,
         close: () =>
           new Promise((done, failed) => {
             clearInterval(heartbeat)
-            server.close((error) => (error === undefined ? done() : failed(error)))
             for (const socket of sockets.values()) socket.terminate()
+            // **両方閉じる。** ポートを持っているのは HTTP のほうで、WebSocket はその上に
+            // 乗っている（ADR-0019）。片方だけ閉じるとポートが空かない。
+            server.close(() => {
+              http.close((error) => (error === undefined ? done() : failed(error)))
+              // **繋ぎっぱなしのものを待たない。** HTTP は返事の後も繋いだままにされうるので、
+              // 閉じるのを頼むだけでは、誰も何もしていなくてもポートが空かないことがある。
+              http.closeAllConnections()
+            })
           }),
       })
     })
