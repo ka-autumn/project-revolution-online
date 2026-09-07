@@ -19,6 +19,7 @@ import {
   cutInViews,
   lobbyView,
   logLines,
+  opponentLine,
   overlayDurationMs,
   priorityReason,
   showsOverlay,
@@ -1729,6 +1730,12 @@ describe('ロビー', () => {
 
   it('誰もいなければ、出すものは無い', () => {
     expect(lobbyView([{ ...waiting, occupants: [] }])[0]?.occupants).toBeUndefined()
+  })
+
+  /** ADR-0020。誰と打っているかは、盤面ではなく席についた時に届いたものから出す。 */
+  it('相手が誰かを 1 行で出す', () => {
+    expect(opponentLine({ kind: '人間', name: 'かずお' })).toBe('かずお と対戦中')
+    expect(opponentLine({ kind: 'CPU' })).toBe('CPU と対戦中')
   })
 
   /**

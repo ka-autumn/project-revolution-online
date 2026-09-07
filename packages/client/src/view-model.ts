@@ -10,6 +10,7 @@ import type {
   LegalAction,
   LoggedEvent,
   LoggedInstruction,
+  Opponent,
   Orientation,
   OrientedZone,
   Player,
@@ -1303,6 +1304,19 @@ function occupantsLine(room: WireRoom): string | undefined {
   const seated = room.cpu ? [...occupants, 'CPU'] : occupants
 
   return seated.length === 0 ? undefined : seated.join('、')
+}
+
+/**
+ * 誰と打っているか、打つところに出す 1 行（ADR-0020）。
+ *
+ * **盤面から作らない。** 相手が誰かは席についた時に届くもので、盤面には入っていない
+ * （`session.ts`）。`boardView` を盤面だけから組み立てる切り分けを崩さないために、別に置く。
+ *
+ * **相手の名前は、届いた時のものである。** 相手が後から変えても、次に席につくまで変わらない
+ * （ADR-0020）。
+ */
+export function opponentLine(opponent: Opponent): string {
+  return opponent.kind === 'CPU' ? 'CPU と対戦中' : `${opponent.name} と対戦中`
 }
 
 /** その部屋がどうなっているか、見る人の言い方で。 */
