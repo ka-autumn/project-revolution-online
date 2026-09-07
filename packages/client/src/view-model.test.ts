@@ -11,6 +11,7 @@ import type {
   Turn,
   WireCardInstance,
   WirePerspective,
+  WireRoom,
 } from '@revolution/engine'
 import { emptyBoard, instance, logged, unitFace, withZone } from './test-support.js'
 import {
@@ -1728,5 +1729,21 @@ describe('ロビー', () => {
 
   it('誰もいなければ、出すものは無い', () => {
     expect(lobbyView([{ ...waiting, occupants: [] }])[0]?.occupants).toBeUndefined()
+  })
+
+  /**
+   * **画面とサーバは別々に配られ、同時には入れ替わらない**（ADR-0013、ADR-0015）。サーバが古い
+   * 間、この列は付いてこない。**読めずに投げると、ロビーが 1 つ並んだだけで画面が真っ白になる**
+   * ——`draw` は組み立てる前に中身を捨てるためである。
+   */
+  it('誰がいるかが届かなくても、部屋は並ぶ', () => {
+    const old = { code: 'ふ', name: 'ふるいサーバの部屋', status: '相手を待っている', cpu: false }
+
+    const views = lobbyView([old as unknown as WireRoom, { ...withCpu, occupants: undefined } as unknown as WireRoom])
+
+    expect(views.map((view) => view.code)).toEqual(['ふ', 'し'])
+    expect(views[0]?.occupants).toBeUndefined()
+    // CPU が座っていることは、そこにいる人が分からなくても分かる。
+    expect(views[1]?.occupants).toBe('CPU')
   })
 })

@@ -1294,7 +1294,14 @@ export interface RoomView {
  * なるのは CPU も人もいない形が届いた時だけである。
  */
 function occupantsLine(room: WireRoom): string | undefined {
-  const seated = room.cpu ? [...room.occupants, 'CPU'] : room.occupants
+  // **届かなかったものを、在るものとして扱わない。** 画面とサーバは別々に配られ（ADR-0013、
+  // ADR-0015）、同時には入れ替わらない。**サーバが古ければ、この列は付いてこない。** 型の上では
+  // 必ずあることになっているが、届いたものは実際には何でもありうる（`connection.ts` の
+  // `JSON.parse` が境目である）。ここで読めないと、ロビーが 1 つでも並んだ時点で画面が真っ白に
+  // なる——`draw` は組み立てる前に中身を捨てるためである。
+  const occupants = room.occupants ?? []
+  const seated = room.cpu ? [...occupants, 'CPU'] : occupants
+
   return seated.length === 0 ? undefined : seated.join('、')
 }
 
