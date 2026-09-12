@@ -1,11 +1,13 @@
 import type {
   CardId,
   ChoiceAnswer,
+  DeckId,
   LegalAction,
   OpponentKind,
   RoomCode,
   Square,
   WireCardPosition,
+  WireDeck,
 } from '@revolution/engine'
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import type {
@@ -318,6 +320,30 @@ export interface LobbyHandlers {
   readonly onJoin: (code: RoomCode) => void
   /** 打ち込んだ名前が変わった。**画面は描き直されるので、覚えておくのは呼ぶ側である。** */
   readonly onName: (name: string) => void
+  /** 持ち込むデッキを選び直した（ADR-0021）。名前と同じく、覚えておくのは呼ぶ側である。 */
+  readonly onDeck: (deck: DeckId) => void
+}
+
+/** 持ち込むデッキを選ぶところ（ADR-0021）。**選べるものは届いたものだけである。** */
+function deckPicker(decks: readonly WireDeck[], chosen: DeckId | undefined, onDeck: (deck: DeckId) => void): HTMLElement {
+  const node = element('label', 'lobby__deck')
+  node.append(element('span', 'lobby__deck-label', '持ち込むデッキ'))
+
+  const select = document.createElement('select')
+  select.className = 'lobby__deck-select'
+  for (const deck of decks) {
+    const option = document.createElement('option')
+    option.value = deck.id
+    option.textContent = deck.name
+    // 選ばれていなければ先頭が選ばれた形になる。**サーバも選ばれなかった席を既定のデッキに
+    // 座らせる**（`server` の `room.ts` の `start`）ので、出ているものと座るものがずれない。
+    option.selected = deck.id === chosen
+    select.append(option)
+  }
+  select.addEventListener('change', () => onDeck(select.value))
+  node.append(select)
+
+  return node
 }
 
 /** 部屋の名前として受け取る長さの上限（`server` の `room.ts` の `NAME_LIMIT` と同じ）。 */
@@ -335,11 +361,17 @@ const NAME_LIMIT = 24
 export function lobbyElement(
   views: readonly RoomView[],
   name: string,
+  decks: readonly WireDeck[],
+  chosenDeck: DeckId | undefined,
   handlers: LobbyHandlers,
   focused = false,
 ): HTMLElement {
   const node = element('section', 'lobby')
   node.append(element('h2', 'lobby__title', '対戦を始める'))
+
+  // **デッキを選ぶところは、作る口と入る口の両方の上に置く。** どちらで座るかはここで決まる
+  // （ADR-0021）ので、どちらか一方に付けると、もう一方から選べないように見える。
+  if (decks.length > 0) node.append(deckPicker(decks, chosenDeck, handlers.onDeck))
 
   const making = element('div', 'lobby__make')
   const input = document.createElement('input')

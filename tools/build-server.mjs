@@ -24,7 +24,7 @@ const DEFAULT_OUT = 'dist/serve.cjs'
 function options(argv) {
   const decks = readFlag(argv, 'decks')
   if (decks === undefined || decks === '') {
-    throw new Error('--decks <モジュールのパス> が要ります。デッキ 2 つを `decks` として export するモジュールを指してください')
+    throw new Error('--decks <モジュールのパス> が要ります。カードのプールと既製デッキを export するモジュールを指してください')
   }
 
   return {

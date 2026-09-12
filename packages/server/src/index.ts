@@ -5,11 +5,30 @@
  * WebSocket に載せるところ（`serve.ts`、ADR-0009）に分かれている。前者は受け取ったメッセージ
  * 1 つから次の状態と送るものを返すだけの純粋な関数で、通信の手立ては持たない。
  */
-export { checkDecks, setupFromDecks } from './deck.js'
-export type { SeatedDeckViolation } from './deck.js'
+export { checkPresets, deckChoicesOf, deckSourceFrom, newSetup, readSupply } from './deck.js'
+export type {
+  CardKey,
+  CardPool,
+  CardSupply,
+  PresetDeck,
+  PresetDeckViolation,
+  RestrictionList,
+  SupplyReading,
+} from './deck.js'
 export { CPU_PREFIX, isCpu } from './cpu.js'
 export { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room.js'
-export type { Delivery, DuelRecord, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms, StoredDuel } from './room.js'
+export type {
+  DeckSource,
+  Delivery,
+  DuelRecord,
+  ParticipantId,
+  Room,
+  RoomOutcome,
+  RoomSetup,
+  Rooms,
+  SeatedDeck,
+  StoredDuel,
+} from './room.js'
 export { openStore } from './store.js'
 export type { Store } from './store.js'
 export { CALLBACK_PATH, createSignIn, signInConfigFrom } from './sign-in.js'

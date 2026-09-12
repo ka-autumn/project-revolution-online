@@ -53,7 +53,9 @@ describe('届いたものを畳む', () => {
       { code: ROOM, name: 'てすとのへや', status: '相手を待っている', cpu: false, occupants: ['ぬし'] },
     ] as const
 
-    expect(fold({ kind: 'ロビー', rooms }).stage).toEqual({ kind: 'ロビー', rooms })
+    const decks = [{ id: '既製1', name: 'ひとつめ' }] as const
+
+    expect(fold({ kind: 'ロビー', rooms, decks }).stage).toEqual({ kind: 'ロビー', rooms, decks })
   })
 
   it('相手を待っていると言われたら、待っている', () => {
@@ -70,7 +72,7 @@ describe('届いたものを畳む', () => {
   })
 
   it('ロビーにいる間は、入り直す先が無い', () => {
-    expect(roomOf(fold({ kind: 'ロビー', rooms: [] }))).toBeUndefined()
+    expect(roomOf(fold({ kind: 'ロビー', rooms: [], decks: [] }))).toBeUndefined()
     expect(roomOf(connecting())).toBeUndefined()
   })
 
@@ -302,8 +304,9 @@ describe('名前を決める', () => {
     const session = fold({ kind: '名前を決めてほしい', current: undefined, reason: undefined }, {
       kind: 'ロビー',
       rooms: [],
+      decks: [],
     })
 
-    expect(session.stage).toEqual({ kind: 'ロビー', rooms: [] })
+    expect(session.stage).toEqual({ kind: 'ロビー', rooms: [], decks: [] })
   })
 })

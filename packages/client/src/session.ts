@@ -7,6 +7,7 @@ import type {
   RoomCode,
   ToClient,
   WireChoice,
+  WireDeck,
   WirePerspective,
   WireRoom,
 } from '@revolution/engine'
@@ -39,6 +40,13 @@ export type Stage =
       /** どの部屋にもいない。開いている部屋を見て、作るか入るかを選ぶ（#175）。 */
       readonly kind: 'ロビー'
       readonly rooms: readonly WireRoom[]
+      /**
+       * 席に着く時に選べるデッキ（ADR-0021）。**届いたものをそのまま出す。**
+       *
+       * 画面はどんなデッキがあるかを知らない。名前も識別子もサーバから届く値で、カードの表記と
+       * 同じである（ADR-0010）。
+       */
+      readonly decks: readonly WireDeck[]
     }
   | {
       /** 部屋に入って、相手が来るのを待っている。 */
@@ -145,7 +153,7 @@ export function applyMessage(session: Session, message: ToClient): Session {
   const stage = session.stage
   switch (message.kind) {
     case 'ロビー':
-      return { stage: { kind: 'ロビー', rooms: message.rooms }, refusal: undefined }
+      return { stage: { kind: 'ロビー', rooms: message.rooms, decks: message.decks }, refusal: undefined }
     case '名前を決めてほしい':
       // 断られた理由は `名前を決めてほしい` が自分で持つ（ADR-0020）。ここに残すと、名前の
       // ことなのか 1 つ前に送った手のことなのかが読めなくなる。

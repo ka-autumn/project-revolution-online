@@ -434,6 +434,21 @@ body {
   font-size: 1rem;
 }
 
+/* 持ち込むデッキを選ぶところ（ADR-0021）。作る口と入る口の両方に効くので、その上に置く。 */
+.lobby__deck {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.lobby__deck-select {
+  flex: 1 1 12rem;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
 .lobby__make {
   display: flex;
   flex-wrap: wrap;

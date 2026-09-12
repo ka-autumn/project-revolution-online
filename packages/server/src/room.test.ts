@@ -7,15 +7,16 @@ import {
   drawCards,
   placeTopOfLibrary,
 } from '@revolution/engine'
-import type { Card, Deck, FromClient, LegalAction, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
-import { emptyRooms, lobbyOf, partnerOf, receive, roomOf } from './room.js'
-import type { Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
+import type { Card, FromClient, LegalAction, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
+import { deckSourceFrom } from './deck.js'
+import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room.js'
+import type { DeckSource, Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
 
 /**
  * 部屋を、メッセージだけで動かして確かめる。
  *
- * サーバはカードを知れない（ADR-0002）ので、デッキは外から渡す。ここで使うのはエンジンの中で
- * 定義した架空のカードである。
+ * サーバはカードを知れない（ADR-0002）ので、カードは外から渡す。ここで使うのはエンジンの中で
+ * 定義した架空のカードと、架空の識別子である（ADR-0021）。
  */
 
 /**
@@ -45,12 +46,31 @@ const CARDS: Readonly<Record<string, Card>> = Object.fromEntries([
   ],
 ])
 
-/** 構築戦の最小枚数（60 枚）を満たす、15 種類 × 4 枚のデッキ（総合ルール 第3部 第1章 3-1）。 */
-function buildDeck(): Deck {
-  return Object.values(CARDS).flatMap((card) => Array.from({ length: 4 }, () => card))
+/** 構築戦の最小枚数（60 枚）を満たす、15 種類 × 4 枚の並び（総合ルール 第3部 第1章 3-1）。 */
+function deckKeys(pool: Readonly<Record<string, Card>>): readonly string[] {
+  return Object.keys(pool).flatMap((key) => Array.from({ length: 4 }, () => key))
 }
 
-const SETUP: RoomSetup = { decks: [buildDeck(), buildDeck()], seed: 20260816, code: 'あたらしいへや' }
+/**
+ * そのカードのまとまりから、席に持ち込めるデッキを引くところを作る（ADR-0021）。
+ *
+ * 既製デッキを 2 つ渡すのは、**選べることを確かめるため**である。中身は同じでよい——どちらを
+ * 選んだかは記録に残る識別子で分かる。
+ */
+function deckSource(pool: Readonly<Record<string, Card>>): DeckSource {
+  return deckSourceFrom({
+    pool,
+    presets: [
+      { id: '既製1', name: 'ひとつめ', cards: deckKeys(pool) },
+      { id: '既製2', name: 'ふたつめ', cards: [...deckKeys(pool)].reverse() },
+    ],
+    restrictions: [],
+  })
+}
+
+const DECKS = deckSource(CARDS)
+
+const SETUP: RoomSetup = { seed: 20260816, code: 'あたらしいへや' }
 
 /**
  * 引くだけで山札を空にするストラテジー。**支配者が自分で負ける**（総合ルール 第3部 第3章 2）。
@@ -68,14 +88,8 @@ const DECKOUT: Card = defineStrategy({
   },
 })
 
-/** 2 度選ばせるストラテジーを、引き切るストラテジーに差し替えたデッキ。ほかは同じ。 */
-function buildEndingDeck(): Deck {
-  return Object.entries(CARDS).flatMap(([id, card]) =>
-    Array.from({ length: 4 }, () => (id === 'TEST-S' ? DECKOUT : card)),
-  )
-}
-
-const ENDING_SETUP: RoomSetup = { decks: [buildEndingDeck(), buildEndingDeck()], seed: 20260816, code: 'あたらしいへや' }
+/** 2 度選ばせるストラテジーを、引き切るストラテジーに差し替えたまとまり。ほかは同じ。 */
+const ENDING_DECKS = deckSource({ ...CARDS, 'TEST-S': DECKOUT })
 
 /**
  * 山札の 1 番上を捨札へ置いてから選ばせるストラテジー（#142）。
@@ -94,18 +108,8 @@ const REVEALING: Card = defineStrategy({
   },
 })
 
-/** 2 度選ばせるストラテジーを、めくってから選ばせるものに差し替えたデッキ。ほかは同じ。 */
-function buildRevealingDeck(): Deck {
-  return Object.entries(CARDS).flatMap(([id, card]) =>
-    Array.from({ length: 4 }, () => (id === 'TEST-S' ? REVEALING : card)),
-  )
-}
-
-const REVEALING_SETUP: RoomSetup = {
-  decks: [buildRevealingDeck(), buildRevealingDeck()],
-  seed: 20260816,
-  code: 'あたらしいへや',
-}
+/** 2 度選ばせるストラテジーを、めくってから選ばせるものに差し替えたまとまり。ほかは同じ。 */
+const REVEALING_DECKS = deckSource({ ...CARDS, 'TEST-S': REVEALING })
 
 const CODE = 'あいことば'
 
@@ -121,10 +125,15 @@ const PASS: FromClient = { kind: '行動する', action: { kind: '優先権を�
  */
 const ALL_LINKED: ReadonlySet<ParticipantId> = new Set(['あ', 'い', 'う', 'え'])
 
+/** その部屋に入るメッセージ。デッキを選ばなければ、既定の既製デッキで座る（ADR-0021）。 */
+function entering(room: string, deck?: string): FromClient {
+  return { kind: '部屋に入る', room, deck }
+}
+
 /** 2 人が入って、デュエルが始まったところ。 */
-function started(setup: RoomSetup = SETUP): RoomOutcome {
-  const first = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, setup, ALL_LINKED)
-  return receive(first.rooms, 'い', { kind: '部屋に入る', room: CODE }, setup, ALL_LINKED)
+function started(decks: DeckSource = DECKS): RoomOutcome {
+  const first = receive(emptyRooms(), 'あ', entering(CODE), SETUP, decks, ALL_LINKED)
+  return receive(first.rooms, 'い', entering(CODE), SETUP, decks, ALL_LINKED)
 }
 
 /** その参加者に届いたメッセージ。 */
@@ -185,7 +194,7 @@ function send(
   message: FromClient,
   connected: ReadonlySet<ParticipantId> = ALL_LINKED,
 ): RoomOutcome {
-  return receive(rooms, participant, message, SETUP, connected)
+  return receive(rooms, participant, message, SETUP, DECKS, connected)
 }
 
 /**
@@ -247,7 +256,7 @@ function answerAll(outcome: RoomOutcome): RoomOutcome {
 // #13。ルームコードで 2 人を繋ぐ。
 describe('部屋に入る', () => {
   it('1 人目は相手を待つ', () => {
-    const outcome = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP, ALL_LINKED)
+    const outcome = receive(emptyRooms(), 'あ', entering(CODE), SETUP, DECKS, ALL_LINKED)
 
     expect(outcome.deliveries).toEqual([{ to: 'あ', message: { kind: '相手を待っている', room: CODE } }])
   })
@@ -268,13 +277,13 @@ describe('部屋に入る', () => {
 
   // 観戦は扱わない。相手の非公開情報を見てよい人がいない（ADR-0004）。
   it('3 人目は入れない', () => {
-    const outcome = send(started().rooms, 'う', { kind: '部屋に入る', room: CODE })
+    const outcome = send(started().rooms, 'う', entering(CODE))
 
     expect(outcome.deliveries).toEqual([{ to: 'う', message: { kind: '行えなかった', reason: '部屋がいっぱい' } }])
   })
 
   it('別のルームコードなら別の部屋になる', () => {
-    const outcome = send(started().rooms, 'う', { kind: '部屋に入る', room: 'べつのあいことば' })
+    const outcome = send(started().rooms, 'う', entering('べつのあいことば'))
 
     expect(outcome.deliveries).toEqual([{ to: 'う', message: { kind: '相手を待っている', room: 'べつのあいことば' } }])
     expect(outcome.rooms.size).toBe(2)
@@ -434,12 +443,12 @@ function placeEnergy(outcome: RoomOutcome): RoomOutcome {
  * 決め打ちにせず、持っているほうを探す。
  */
 function choosingTwice(): { readonly outcome: RoomOutcome; readonly acting: ParticipantId } {
-  return playingStrategy(SETUP, STRATEGY_NAME)
+  return playingStrategy(DECKS, STRATEGY_NAME)
 }
 
 /** めくってから選ばせる行動を始めたところまで進める（#142）。 */
 function revealingThenChoosing(): { readonly outcome: RoomOutcome; readonly acting: ParticipantId } {
-  return playingStrategy(REVEALING_SETUP, REVEALING_NAME)
+  return playingStrategy(REVEALING_DECKS, REVEALING_NAME)
 }
 
 /**
@@ -449,10 +458,10 @@ function revealingThenChoosing(): { readonly outcome: RoomOutcome; readonly acti
  * 引くかはシードで決まるので、席を決め打ちにせず、持っているほうを探す。
  */
 function playingStrategy(
-  setup: RoomSetup,
+  decks: DeckSource,
   name: string,
 ): { readonly outcome: RoomOutcome; readonly acting: ParticipantId } {
-  let current = readyToAct(passUntil(started(setup), 'メインフェイズ'))
+  let current = readyToAct(passUntil(started(decks), 'メインフェイズ'))
   for (let steps = 0; steps < 300; steps += 1) {
     const board = boardOf(current.deliveries, 'あ')
     const acting = participantAt(board.turn.priority, board.viewer)
@@ -490,7 +499,7 @@ function cardInHand(outcome: RoomOutcome, participant: ParticipantId, name: stri
  * 進める。どちらが先に引くかはシードで決まるので、席を決め打ちにせず、持っているほうを探す。
  */
 function ended(): RoomOutcome {
-  let current = readyToAct(passUntil(started(ENDING_SETUP), 'メインフェイズ'))
+  let current = readyToAct(passUntil(started(ENDING_DECKS), 'メインフェイズ'))
   for (let steps = 0; steps < 300; steps += 1) {
     const board = boardOf(current.deliveries, 'あ')
     const acting = participantAt(board.turn.priority, board.viewer)
@@ -694,7 +703,7 @@ describe('入り直す', () => {
     const outcome = started()
     const before = boardOf(outcome.deliveries, 'あ')
 
-    const again = send(outcome.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+    const again = send(outcome.rooms, 'あ', entering(CODE))
 
     expect(seatOf(again.deliveries, 'あ')).toBe(before.viewer)
     expect(boardOf(again.deliveries, 'あ')).toEqual(before)
@@ -702,7 +711,7 @@ describe('入り直す', () => {
 
   // 入り直したのは片方だけなので、相手には何も起こらない。
   it('相手には何も届かない', () => {
-    const again = send(started().rooms, 'あ', { kind: '部屋に入る', room: CODE })
+    const again = send(started().rooms, 'あ', entering(CODE))
 
     expect(again.deliveries.every((delivery) => delivery.to === 'あ')).toBe(true)
   })
@@ -710,7 +719,7 @@ describe('入り直す', () => {
   it('部屋も盤面もそのまま', () => {
     const outcome = started()
 
-    const again = send(outcome.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+    const again = send(outcome.rooms, 'あ', entering(CODE))
 
     expect(again.rooms).toEqual(outcome.rooms)
   })
@@ -720,7 +729,7 @@ describe('入り直す', () => {
     const board = boardOf(outcome.deliveries, 'あ')
     const acting = participantAt(board.turn.priority, board.viewer)
 
-    const again = send(outcome.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+    const again = send(outcome.rooms, 'あ', entering(CODE))
     const passed = send(again.rooms, acting, PASS)
 
     expect(passed.deliveries.map((delivery) => delivery.message.kind)).toEqual(['盤面', '盤面'])
@@ -735,7 +744,7 @@ describe('入り直す', () => {
     const { outcome, acting } = planning()
     const asked = choiceOf(outcome.deliveries, acting)
 
-    const again = send(outcome.rooms, acting, { kind: '部屋に入る', room: CODE })
+    const again = send(outcome.rooms, acting, entering(CODE))
 
     expect(to(again.deliveries, acting).map((message) => message.kind)).toEqual([
       '席についた',
@@ -757,7 +766,7 @@ describe('入り直す', () => {
     const acted = placeEnergy(readyToAct(passUntil(started(), 'エネルギーフェイズ')))
     expect(boardOf(acted.deliveries, 'あ').log).not.toEqual([]) // 前提: 何か起きている
 
-    const again = send(acted.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+    const again = send(acted.rooms, 'あ', entering(CODE))
 
     expect(boardOf(again.deliveries, 'あ').log).toEqual(boardOf(acted.deliveries, 'あ').log)
   })
@@ -766,15 +775,15 @@ describe('入り直す', () => {
     const { outcome, acting } = planning()
     const other = acting === 'あ' ? 'い' : 'あ'
 
-    const again = send(outcome.rooms, other, { kind: '部屋に入る', room: CODE })
+    const again = send(outcome.rooms, other, entering(CODE))
 
     expect(to(again.deliveries, other).map((message) => message.kind)).toEqual(['席についた', '盤面'])
   })
 
   it('まだ 1 人で待っている間に入り直すと、また待つ', () => {
-    const waiting = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP, ALL_LINKED)
+    const waiting = receive(emptyRooms(), 'あ', entering(CODE), SETUP, DECKS, ALL_LINKED)
 
-    const again = send(waiting.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+    const again = send(waiting.rooms, 'あ', entering(CODE))
 
     expect(again.deliveries).toEqual([{ to: 'あ', message: { kind: '相手を待っている', room: CODE } }])
   })
@@ -790,23 +799,23 @@ describe('別の部屋に移る', () => {
   const OTHER = 'べつのあいことば'
 
   it('決着した部屋にいた人は、別の部屋に入れる', () => {
-    const moved = send(ended().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+    const moved = send(ended().rooms, 'あ', entering(OTHER))
 
     expect(to(moved.deliveries, 'あ')).toEqual([{ kind: '相手を待っている', room: OTHER }])
   })
 
   it('決着した部屋にいた 2 人が移ると、そこでまた始まる', () => {
-    const first = send(ended().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+    const first = send(ended().rooms, 'あ', entering(OTHER))
 
-    const again = send(first.rooms, 'い', { kind: '部屋に入る', room: OTHER })
+    const again = send(first.rooms, 'い', entering(OTHER))
 
     expect([seatOf(again.deliveries, 'あ'), seatOf(again.deliveries, 'い')].sort()).toEqual(['先攻', '後攻'])
   })
 
   it('相手を待っているだけの人は、別の部屋に入れる', () => {
-    const waiting = receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP, ALL_LINKED)
+    const waiting = receive(emptyRooms(), 'あ', entering(CODE), SETUP, DECKS, ALL_LINKED)
 
-    const moved = send(waiting.rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+    const moved = send(waiting.rooms, 'あ', entering(OTHER))
 
     expect(to(moved.deliveries, 'あ')).toEqual([{ kind: '相手を待っている', room: OTHER }])
     expect([...moved.rooms.keys()]).toEqual([OTHER])
@@ -814,24 +823,24 @@ describe('別の部屋に移る', () => {
 
   /** 合言葉の打ち間違いで、打っている途中の対戦が消えてはならない。 */
   it('打っている途中なら移れない', () => {
-    const again = send(started().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+    const again = send(started().rooms, 'あ', entering(OTHER))
 
     expect(to(again.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: 'ほかの部屋にいる' }])
   })
 
   it('誰もいなくなった部屋は残らない', () => {
-    const first = send(ended().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+    const first = send(ended().rooms, 'あ', entering(OTHER))
 
-    const second = send(first.rooms, 'い', { kind: '部屋に入る', room: OTHER })
+    const second = send(first.rooms, 'い', entering(OTHER))
 
     expect([...second.rooms.keys()]).toEqual([OTHER])
   })
 
   /** 片方が残っているなら、その人はまだ終わった盤面を見に入り直せる（ADR-0009）。 */
   it('片方が残っている間は、部屋も残る', () => {
-    const moved = send(ended().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+    const moved = send(ended().rooms, 'あ', entering(OTHER))
 
-    const again = send(moved.rooms, 'い', { kind: '部屋に入る', room: CODE })
+    const again = send(moved.rooms, 'い', entering(CODE))
 
     expect([...moved.rooms.keys()].sort()).toEqual([CODE, OTHER].sort())
     expect(boardOf(again.deliveries, 'い').result).toBeDefined()
@@ -839,9 +848,9 @@ describe('別の部屋に移る', () => {
 
   /** 席が 1 つ空いたように見えても、そこは始まっているデュエルの部屋である。 */
   it('決着した部屋に、席に着いていない人は入れない', () => {
-    const moved = send(ended().rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+    const moved = send(ended().rooms, 'あ', entering(OTHER))
 
-    const outsider = send(moved.rooms, 'う', { kind: '部屋に入る', room: CODE })
+    const outsider = send(moved.rooms, 'う', entering(CODE))
 
     expect(to(outsider.deliveries, 'う')).toEqual([{ kind: '行えなかった', reason: '対戦が終わっている部屋' }])
   })
@@ -849,10 +858,10 @@ describe('別の部屋に移る', () => {
   /** 入れなかった時に抜けたことにすると、どこにもいない参加者ができてしまう。 */
   it('移れなかったときは、元の部屋にいるまま', () => {
     const over = ended()
-    const opened = receive(over.rooms, 'う', { kind: '部屋に入る', room: OTHER }, SETUP, ALL_LINKED)
-    const full = receive(opened.rooms, 'え', { kind: '部屋に入る', room: OTHER }, SETUP, ALL_LINKED)
+    const opened = receive(over.rooms, 'う', entering(OTHER), SETUP, DECKS, ALL_LINKED)
+    const full = receive(opened.rooms, 'え', entering(OTHER), SETUP, DECKS, ALL_LINKED)
 
-    const refused = send(full.rooms, 'あ', { kind: '部屋に入る', room: OTHER })
+    const refused = send(full.rooms, 'あ', entering(OTHER))
 
     expect(to(refused.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '部屋がいっぱい' }])
     expect(refused.rooms).toEqual(full.rooms)
@@ -935,7 +944,7 @@ describe('見てしまったら戻れない', () => {
  * おく必要が無い。**
  */
 describe('部屋を作る', () => {
-  const MAKE: FromClient = { kind: '部屋を作る', name: 'てすとのへや', against: '人間' }
+  const MAKE: FromClient = { kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined }
 
   it('サーバが決めた合言葉の部屋に入って、相手を待つ', () => {
     const outcome = send(emptyRooms(), 'あ', MAKE)
@@ -971,7 +980,7 @@ describe('部屋を作る', () => {
   it('作った部屋に、ロビーから入って始められる', () => {
     const opened = send(emptyRooms(), 'あ', MAKE)
 
-    const joined = send(opened.rooms, 'い', { kind: '部屋に入る', room: SETUP.code })
+    const joined = send(opened.rooms, 'い', entering(SETUP.code))
 
     expect([seatOf(joined.deliveries, 'あ'), seatOf(joined.deliveries, 'い')].sort()).toEqual(['先攻', '後攻'])
   })
@@ -990,7 +999,7 @@ describe('部屋を作る', () => {
  * 人と同じ道筋を通る。**
  */
 describe('CPU と対戦する', () => {
-  const AGAINST_CPU: FromClient = { kind: '部屋を作る', name: 'ひとり', against: 'CPU' }
+  const AGAINST_CPU: FromClient = { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined }
 
   it('作った時点で始まっている', () => {
     const outcome = send(emptyRooms(), 'あ', AGAINST_CPU)
@@ -1018,7 +1027,7 @@ describe('CPU と対戦する', () => {
   it('CPU がいる部屋には入れない', () => {
     const opened = send(emptyRooms(), 'あ', AGAINST_CPU)
 
-    const outsider = send(opened.rooms, 'い', { kind: '部屋に入る', room: SETUP.code })
+    const outsider = send(opened.rooms, 'い', entering(SETUP.code))
 
     expect(to(outsider.deliveries, 'い')).toEqual([{ kind: '行えなかった', reason: '部屋がいっぱい' }])
   })
@@ -1062,7 +1071,7 @@ describe('CPU と対戦する', () => {
 /** #175。部屋を出てロビーに戻る。 */
 describe('ロビーに戻る', () => {
   it('相手を待っているだけなら、出られる', () => {
-    const waiting = send(emptyRooms(), 'あ', { kind: '部屋を作る', name: '', against: '人間' })
+    const waiting = send(emptyRooms(), 'あ', { kind: '部屋を作る', name: '', against: '人間', deck: undefined })
 
     const left = send(waiting.rooms, 'あ', { kind: 'ロビーに戻る' })
 
@@ -1144,7 +1153,7 @@ describe('ロビーに戻る', () => {
   it('決着した部屋を出ていった人は、その部屋に戻れない', () => {
     const left = send(ended().rooms, 'あ', { kind: 'ロビーに戻る' })
 
-    const back = send(left.rooms, 'あ', { kind: '部屋に入る', room: CODE })
+    const back = send(left.rooms, 'あ', entering(CODE))
 
     expect(to(back.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '対戦が終わっている部屋' }])
   })
@@ -1186,7 +1195,7 @@ describe('ロビー', () => {
 
   /** CPU に表示名は無い。座っているかどうかは `cpu` が持っている。 */
   it('CPU は並ばない', () => {
-    const opened = send(emptyRooms(), 'あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU' })
+    const opened = send(emptyRooms(), 'あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined })
 
     expect(lobbyOf(opened.rooms)[0]).toMatchObject({ cpu: true, occupants: ['あ'] })
   })
@@ -1199,10 +1208,11 @@ describe('相手が誰か', () => {
   /** **2 人ぶんで別のものになる。** それぞれの相手はもう一方である。 */
   it('人が相手なら、その表示名が届く', () => {
     const outcome = receive(
-      receive(emptyRooms(), 'あ', { kind: '部屋に入る', room: CODE }, SETUP, ALL_LINKED).rooms,
+      receive(emptyRooms(), 'あ', entering(CODE), SETUP, DECKS, ALL_LINKED).rooms,
       'い',
-      { kind: '部屋に入る', room: CODE },
+      entering(CODE),
       SETUP,
+      DECKS,
       ALL_LINKED,
       names,
     )
@@ -1215,8 +1225,8 @@ describe('相手が誰か', () => {
   })
 
   it('CPU が相手なら、名前は付かない', () => {
-    const against: FromClient = { kind: '部屋を作る', name: 'ひとり', against: 'CPU' }
-    const outcome = receive(emptyRooms(), 'あ', against, SETUP, ALL_LINKED, names)
+    const against: FromClient = { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined }
+    const outcome = receive(emptyRooms(), 'あ', against, SETUP, DECKS, ALL_LINKED, names)
 
     expect(to(outcome.deliveries, 'あ').find((message) => message.kind === '席についた')).toMatchObject({
       opponent: { kind: 'CPU' },
@@ -1225,10 +1235,105 @@ describe('相手が誰か', () => {
 
   /** 入り直した時にも届く（ADR-0016、`rejoin`）。**その時のいまの名前で届く。** */
   it('入り直しても、相手の表示名が届く', () => {
-    const outcome = receive(started().rooms, 'あ', { kind: '部屋に入る', room: CODE }, SETUP, ALL_LINKED, names)
+    const outcome = receive(started().rooms, 'あ', entering(CODE), SETUP, DECKS, ALL_LINKED, names)
 
     expect(to(outcome.deliveries, 'あ').find((message) => message.kind === '席についた')).toMatchObject({
       opponent: { kind: '人間', name: 'あいて' },
     })
+  })
+})
+
+/** ADR-0021。どのデッキで座るかは、座る人が決める。 */
+describe('持ち込むデッキを選ぶ', () => {
+  /** 記録は席の順に並ぶ（`prepareDuel` の先攻・後攻の順ではない）ので、入った順で引ける。 */
+  function broughtDecks(outcome: RoomOutcome): readonly (readonly string[])[] {
+    const record = outcome.records.find((each) => each.kind === '始まった')
+    if (record?.kind !== '始まった') throw new Error('始まった記録があるはずだった')
+
+    return record.decks
+  }
+
+  it('選んだ既製デッキで席に着く', () => {
+    const first = send(emptyRooms(), 'あ', entering(CODE, '既製2'))
+
+    const [brought] = broughtDecks(send(first.rooms, 'い', entering(CODE, '既製1')))
+
+    expect(brought).toEqual([...deckKeys(CARDS)].reverse())
+  })
+
+  /** 60 枚を選び切るまで対戦できない入口にしない（ADR-0021）。 */
+  it('選ばなければ、既定の既製デッキで席に着く', () => {
+    const first = send(emptyRooms(), 'あ', entering(CODE))
+
+    const [brought] = broughtDecks(send(first.rooms, 'い', entering(CODE)))
+
+    expect(brought).toEqual(deckKeys(CARDS))
+  })
+
+  /** 2 人が別のデッキを持ち込める。**どちらの席のものかは、記録の並びで分かる。** */
+  it('2 人が別々のデッキで座れる', () => {
+    const first = send(emptyRooms(), 'あ', entering(CODE, '既製1'))
+
+    const brought = broughtDecks(send(first.rooms, 'い', entering(CODE, '既製2')))
+
+    expect(brought[0]).not.toEqual(brought[1])
+  })
+
+  it('部屋を作る時にも選べる', () => {
+    const opened = send(emptyRooms(), 'あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: '既製2' })
+
+    expect(broughtDecks(opened)[0]).toEqual([...deckKeys(CARDS)].reverse())
+  })
+
+  /**
+   * 相手を待っている間は選び直せる。**繋ぎ直しでは上書きしない**——入り直しに飛ぶのも同じ
+   * メッセージで、そこに選んだものは入っていない（`FromClient` の `部屋に入る`）。
+   */
+  it('相手を待っている間に選び直せる', () => {
+    const first = send(emptyRooms(), 'あ', entering(CODE, '既製1'))
+    const again = send(first.rooms, 'あ', entering(CODE, '既製2'))
+    const rejoined = send(again.rooms, 'あ', entering(CODE))
+
+    const [brought] = broughtDecks(send(rejoined.rooms, 'い', entering(CODE)))
+
+    expect(brought).toEqual([...deckKeys(CARDS)].reverse())
+  })
+
+  /** 画面が知らない識別子を送ってくることはありうる（棚が変わった後など、ADR-0013）。 */
+  it('知らないデッキを選んだら、2 人とも断られる', () => {
+    const first = send(emptyRooms(), 'あ', entering(CODE, '知らないデッキ'))
+
+    const outcome = send(first.rooms, 'い', entering(CODE))
+
+    expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '選ばれたデッキを持ち込めません' }])
+    expect(to(outcome.deliveries, 'い')).toEqual([{ kind: '行えなかった', reason: '選ばれたデッキを持ち込めません' }])
+  })
+})
+
+/** ADR-0018・ADR-0021。記録に残した識別子から、同じ対戦を作り直す。 */
+describe('記録から立て直す', () => {
+  /** 置き場から読み出した形（`StoredDuel`）に直す。書くところは `store.ts` にある。 */
+  function storedFrom(outcome: RoomOutcome): Parameters<typeof restore>[0] {
+    const started = outcome.records.find((each) => each.kind === '始まった')
+    if (started?.kind !== '始まった') throw new Error('始まった記録があるはずだった')
+
+    return [{ ...started, steps: [] }]
+  }
+
+  it('記録が持っている識別子でデッキを組み直す', () => {
+    const restored = restore(storedFrom(started()), DECKS)
+
+    expect(restored.get(CODE)?.duel).toBeDefined()
+  })
+
+  /** 取り下げられたカードを含むデッキは、使えないものとして扱う（ADR-0021）。 */
+  it('引けないカードを含む記録は、作り直さない', () => {
+    const withoutCards = deckSourceFrom({
+      pool: { 'TEST-0': CARDS['TEST-0'] as Card },
+      presets: [{ id: '既製1', name: 'ひとつめ', cards: ['TEST-0'] }],
+      restrictions: [],
+    })
+
+    expect(restore(storedFrom(started()), withoutCards).size).toBe(0)
   })
 })

@@ -1,7 +1,7 @@
 import { MAX_ATTEMPTS, connect, connectingLink } from './connection.js'
 import type { Connection, Link } from './connection.js'
 import { NOT_SIGNED_IN, indexOfSquare } from '@revolution/engine'
-import type { CardId, LoggedEvent, OpponentKind, RoomCode } from '@revolution/engine'
+import type { CardId, DeckId, LoggedEvent, OpponentKind, RoomCode } from '@revolution/engine'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import {
   actionsElement,
@@ -183,7 +183,15 @@ function line(className: string, text: string): HTMLElement {
  */
 interface Lobby {
   readonly name: string
+  /**
+   * 選んでいるデッキ（ADR-0021）。まだ選んでいなければ `undefined`。
+   *
+   * 名前と同じ理由でここに持つ。**画面は丸ごと描き直される**ので、選んだものを `select` に
+   * 置いたままにすると、ほかの人が部屋を作るたびに選び直しになる。
+   */
+  readonly deck: DeckId | undefined
   readonly onName: (name: string) => void
+  readonly onDeck: (deck: DeckId) => void
   readonly onCreate: (name: string, against: OpponentKind) => void
   readonly onJoin: (code: RoomCode) => void
   /** 部屋を出てロビーに戻る。断るのはサーバである（`server` の `room.ts` の `canLeave`）。 */
@@ -263,7 +271,9 @@ function draw(
       lobbyElement(
         lobbyView(stage.rooms),
         lobby.name,
-        { onCreate: lobby.onCreate, onJoin: lobby.onJoin, onName: lobby.onName },
+        stage.decks,
+        lobby.deck,
+        { onCreate: lobby.onCreate, onJoin: lobby.onJoin, onName: lobby.onName, onDeck: lobby.onDeck },
         typing,
       ),
     )
@@ -435,6 +445,13 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   // ロビーで打ち込みかけている部屋の名前（#175）。
   let roomName = ''
+  /**
+   * ロビーで選んでいるデッキ（ADR-0021）。まだ選んでいなければ `undefined`。
+   *
+   * **選ばないまま作っても入っても構わない。** 選ばれなかった席は、サーバが決めた既定のデッキに
+   * 座る（`server` の `room.ts` の `start`）。画面はどれが既定かを決めない（ADR-0010）。
+   */
+  let chosenDeck: DeckId | undefined
   // 打ち込みかけている表示名（ADR-0020）。尋ねられるたびに、いま付いている名前から始める。
   let nameDraft = ''
   /**
@@ -499,18 +516,23 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   const lobby = (): Lobby => ({
     name: roomName,
+    deck: chosenDeck,
     onName: (name) => {
       // 描き直さない。入力欄の値はブラウザが持っていて、覚えるのは描き直しに備えるためである。
       roomName = name
     },
+    onDeck: (deck) => {
+      // 描き直さない。選んだものは `select` が持っている（`onName` と同じ）。
+      chosenDeck = deck
+    },
     onCreate: (name, against) => {
       // 合言葉を決めるのはサーバなので、入る先はここで決められない（#175）。届いてから分かる。
       pendingRoom = undefined
-      connection.send({ kind: '部屋を作る', name, against })
+      connection.send({ kind: '部屋を作る', name, against, deck: chosenDeck })
     },
     onJoin: (code) => {
       pendingRoom = code
-      connection.send({ kind: '部屋に入る', room: code })
+      connection.send({ kind: '部屋に入る', room: code, deck: chosenDeck })
     },
     onLeave: () => {
       pendingRoom = undefined

@@ -142,7 +142,11 @@ export function connect(options: ConnectionOptions): Connection {
 
       // どこにもいないなら、入り直す先が無い。サーバがロビーを送ってくる（#175）。
       const room = options.rejoining()
-      if (room !== undefined) opening.send(JSON.stringify({ kind: '部屋に入る', room } satisfies FromClient))
+      // **デッキは選び直さない。** どれで座っていたかは部屋が覚えている（`server` の `room.ts` の
+      // `rejoin`）ので、繋ぎ直しで上書きしない（ADR-0021）。
+      if (room !== undefined) {
+        opening.send(JSON.stringify({ kind: '部屋に入る', room, deck: undefined } satisfies FromClient))
+      }
     })
     // 繋ぎ損ねた時も閉じたことになる（`error` の後に必ず来る）ので、繋ぎ直しはここだけで足りる。
     // 差し替わった後の古い接続からも遅れて届くため、いま張っているものかを確かめる。

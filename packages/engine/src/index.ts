@@ -182,6 +182,7 @@ export { NOT_SIGNED_IN, SIGN_IN_PATH, applyWithAnswers } from './protocol.js'
 export type {
   ActionProgress,
   ChoiceAnswer,
+  DeckId,
   FromClient,
   Opponent,
   OpponentKind,
@@ -190,6 +191,7 @@ export type {
   WireCandidate,
   WireCardPosition,
   WireChoice,
+  WireDeck,
   WireRoom,
 } from './protocol.js'
 export type { PlayDeclaration } from './play.js'
