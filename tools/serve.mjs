@@ -2,17 +2,21 @@
 //
 // **どのカードを使うかは、このリポジトリが知らない。** カードの実装は非公開で（ADR-0002）、
 // 公開リポジトリだけを clone した人でも `pnpm install` と `pnpm verify` を通せる必要がある。
-// そのため、デッキを渡すモジュールは**実行時に受け取り、静的な依存にしない。**
+// そのため、カードを渡すモジュールは**実行時に受け取り、静的な依存にしない。**
 //
 //     pnpm serve --decks ../revolution-decks/index.ts
 //
-// 渡すモジュールは、デッキ 2 つを `decks` として export する。デッキはただのカードの並びなので、
-// **何をどの枚数入れるかは渡す側が決める。** このリポジトリは積み方の取り決めを持たない。
+// 渡すモジュールが export するのは、識別子で引けるカードのまとまり（`pool`）と、識別子の並びで
+// できた既製デッキ（`presets`）と、禁止／制限リスト（`restrictions`、空でよい）である
+// （ADR-0021）。**何がプールに入るかも、既製デッキに何を何枚積むかも渡す側が決める。**
+// このリポジトリは積み方の取り決めを持たない。
 //
-//     export const decks = [[cardA, cardA, cardB, ...], [...]]
+//     export const pool = { 'カードの識別子': card, ... }
+//     export const presets = [{ id: 'デッキの識別子', name: '名前', cards: ['カードの識別子', ...] }]
+//     export const restrictions = []
 //
-// 立てる時に構築戦の規定（総合ルール 第3部 第1章 3-1）を満たしているかを確かめるので、
-// 満たしていなければその場で分かる。
+// 立てる時に、既製デッキが構築戦の規定（総合ルール 第3部 第1章 3-1）を満たしているかを
+// 確かめるので、満たしていなければその場で分かる。
 //
 // **ここは手元で立てるためのもので、置き場へ運ぶものは `build-server.mjs` が書き出す。**
 // 束ね方はどちらも `bundle-server.mjs` にある。
@@ -31,7 +35,7 @@ import { DEFAULT_PORT, DEFAULT_STORE, bundleServer, readFlag } from './bundle-se
 function options(argv) {
   const decks = readFlag(argv, 'decks')
   if (decks === undefined || decks === '') {
-    throw new Error('--decks <モジュールのパス> が要ります。デッキ 2 つを `decks` として export するモジュールを指してください')
+    throw new Error('--decks <モジュールのパス> が要ります。カードのプールと既製デッキを export するモジュールを指してください')
   }
 
   return {

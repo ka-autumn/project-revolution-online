@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
 import { NOT_SIGNED_IN, SIGN_IN_PATH, defineStrategy, defineUnit } from '@revolution/engine'
-import type { Card, Deck, FromClient, ToClient } from '@revolution/engine'
+import type { Card, FromClient, ToClient } from '@revolution/engine'
 import { CPU_PREFIX } from './cpu.js'
+import { deckChoicesOf, deckSourceFrom } from './deck.js'
+import type { CardSupply } from './deck.js'
 import type { RoomSetup } from './room.js'
 import { serve } from './serve.js'
 import type { RunningServer } from './serve.js'
@@ -25,17 +27,28 @@ const CARDS: Readonly<Record<string, Card>> = Object.fromEntries([
   ['TEST-S', defineStrategy({ name: 'テスト・接続のストラテジー', level: 0 })],
 ])
 
-/** 構築戦の最小枚数（60 枚）を満たすデッキ（総合ルール 第3部 第1章 3-1）。 */
-function buildDeck(): Deck {
-  return Object.values(CARDS).flatMap((card) => Array.from({ length: 4 }, () => card))
+/** 立てる時に渡されるもの（ADR-0021）。既製デッキは構築戦の最小枚数を満たす（第3部 第1章 3-1）。 */
+const SUPPLY: CardSupply = {
+  pool: CARDS,
+  presets: [
+    {
+      id: '既製1',
+      name: 'ひとつめ',
+      cards: Object.keys(CARDS).flatMap((key) => Array.from({ length: 4 }, () => key)),
+    },
+  ],
+  restrictions: [],
 }
+
+const decks = deckSourceFrom(SUPPLY)
+const deckChoices = deckChoicesOf(SUPPLY)
 
 let created = 0
 
 /** 呼ぶたびに違う合言葉を返す。同じものを返すと、2 つめの部屋が作れない。 */
 const setup = (): RoomSetup => {
   created += 1
-  return { decks: [buildDeck(), buildDeck()], seed: 20260816, code: `あたらしいへや${created}` }
+  return { seed: 20260816, code: `あたらしいへや${created}` }
 }
 
 const CODE = 'あいことば'
@@ -134,7 +147,7 @@ describe('WebSocket で繋ぐ', () => {
   let server: RunningServer
 
   beforeEach(async () => {
-    server = await serve({ port: 0, setup })
+    server = await serve({ port: 0, setup, decks, deckChoices })
   })
 
   afterEach(async () => {
@@ -175,7 +188,21 @@ describe('WebSocket で繋ぐ', () => {
   it('繋ぐとロビーが届く', async () => {
     const client = new Client(server.port, 'あ')
 
-    expect(await client.waitFor('ロビー')).toEqual({ kind: 'ロビー', rooms: [] })
+    expect(await client.waitFor('ロビー')).toEqual({ kind: 'ロビー', rooms: [], decks: deckChoices })
+    await client.close()
+  })
+
+  /**
+   * ADR-0021。どのデッキで座るかは、部屋を作る時と入る時に決まる。
+   *
+   * **選べるものは、それを押せる画面に無ければならない**ので、部屋の一覧と一緒に届く。
+   */
+  it('ロビーと一緒に、選べるデッキが届く', async () => {
+    const client = new Client(server.port, 'あ')
+
+    const lobby = await client.waitFor('ロビー')
+
+    expect(lobby.kind === 'ロビー' && lobby.decks).toEqual([{ id: '既製1', name: 'ひとつめ' }])
     await client.close()
   })
 
@@ -202,7 +229,7 @@ describe('WebSocket で繋ぐ', () => {
 
     const making = new Client(server.port, 'い')
     await making.opened()
-    making.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間' })
+    making.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined })
 
     const lobby = await watching.waitFor('ロビー')
     if (lobby.kind !== 'ロビー') throw new Error('ロビーのはずだった')
@@ -217,13 +244,13 @@ describe('WebSocket で繋ぐ', () => {
   it('部屋にいる人にはロビーが届かない', async () => {
     const client = new Client(server.port, 'あ')
     await client.opened()
-    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU' })
+    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined })
     await client.waitFor('席についた')
     client.received.length = 0
 
     const other = new Client(server.port, 'い')
     await other.opened()
-    other.send({ kind: '部屋を作る', name: 'もうひとつ', against: '人間' })
+    other.send({ kind: '部屋を作る', name: 'もうひとつ', against: '人間', deck: undefined })
     await other.waitFor('相手を待っている')
 
     expect(client.received.some((message) => message.kind === 'ロビー')).toBe(false)
@@ -238,7 +265,7 @@ describe('WebSocket で繋ぐ', () => {
   it('部屋にいる人が繋ぎ直すと、何も送らなくてもその部屋の様子が届く', async () => {
     const client = new Client(server.port, 'あ')
     await client.opened()
-    client.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間' })
+    client.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined })
     const waiting = await client.waitFor('相手を待っている')
     if (waiting.kind !== '相手を待っている') throw new Error('相手を待っているのはずだった')
     await client.close()
@@ -342,7 +369,7 @@ describe('WebSocket で繋ぐ', () => {
     const client = new Client(server.port, 'あ')
     await client.opened()
 
-    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU' })
+    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined })
 
     expect((await client.waitFor('席についた')).kind).toBe('席についた')
     expect((await client.waitFor('盤面')).kind).toBe('盤面')
@@ -352,12 +379,12 @@ describe('WebSocket で繋ぐ', () => {
   it('1 人目は相手を待ち、2 人目が来ると両方が席につく', async () => {
     const first = new Client(server.port, 'あ')
     await first.opened()
-    first.send({ kind: '部屋に入る', room: CODE })
+    first.send({ kind: '部屋に入る', room: CODE, deck: undefined })
     await first.waitFor('相手を待っている')
 
     const second = new Client(server.port, 'い')
     await second.opened()
-    second.send({ kind: '部屋に入る', room: CODE })
+    second.send({ kind: '部屋に入る', room: CODE, deck: undefined })
 
     const seatOfFirst = await first.waitFor('席についた')
     const seatOfSecond = await second.waitFor('席についた')
@@ -401,7 +428,7 @@ describe('WebSocket で繋ぐ', () => {
 
     const again = new Client(server.port, 'あ')
     await again.opened()
-    again.send({ kind: '部屋に入る', room: CODE })
+    again.send({ kind: '部屋に入る', room: CODE, deck: undefined })
 
     expect(await again.waitFor('盤面')).toEqual(advanced)
     await again.close()
@@ -418,7 +445,7 @@ describe('WebSocket で繋ぐ', () => {
 
     const again = new Client(server.port, 'あ')
     await again.opened()
-    again.send({ kind: '部屋に入る', room: CODE })
+    again.send({ kind: '部屋に入る', room: CODE, deck: undefined })
     await again.waitFor('盤面')
     second.received.length = 0
     const acting = priority === seatOfFirst ? again : second
@@ -437,9 +464,9 @@ async function bothJoined(port: number): Promise<{ readonly first: Client; reado
   const second = new Client(port, 'い')
   await first.opened()
   await second.opened()
-  first.send({ kind: '部屋に入る', room: CODE })
+  first.send({ kind: '部屋に入る', room: CODE, deck: undefined })
   await first.waitFor('相手を待っている')
-  second.send({ kind: '部屋に入る', room: CODE })
+  second.send({ kind: '部屋に入る', room: CODE, deck: undefined })
   await first.waitFor('席についた')
   await second.waitFor('席についた')
   return { first, second }
@@ -456,7 +483,7 @@ describe('生きているかを確かめる', () => {
   let server: RunningServer
 
   beforeEach(async () => {
-    server = await serve({ port: 0, setup, heartbeatMs: BEAT_MS })
+    server = await serve({ port: 0, setup, decks, deckChoices, heartbeatMs: BEAT_MS })
   })
 
   afterEach(async () => {
@@ -466,14 +493,14 @@ describe('生きているかを確かめる', () => {
   it('返事が返る間は落とさない', async () => {
     const client = new Client(server.port, 'あ')
     await client.opened()
-    client.send({ kind: '部屋に入る', room: CODE })
+    client.send({ kind: '部屋に入る', room: CODE, deck: undefined })
     await client.waitFor('相手を待っている')
 
     await new Promise((resolve) => setTimeout(resolve, BEAT_MS * 5))
 
     // 何度確かめられても、まだ打てる。返事は `ws` が勝手に返している。
     client.received.length = 0
-    client.send({ kind: '部屋に入る', room: CODE })
+    client.send({ kind: '部屋に入る', room: CODE, deck: undefined })
     expect((await client.waitFor('相手を待っている')).kind).toBe('相手を待っている')
     await client.close()
   })
@@ -525,6 +552,8 @@ describe('ログインの設定があるとき', () => {
     server = await serve({
       port: 0,
       setup,
+      decks,
+      deckChoices,
       store,
       signIn: createSignIn({
         config: {
@@ -569,7 +598,7 @@ describe('ログインの設定があるとき', () => {
     client.send({ kind: '名前を決める', name: 'かずお' })
     await client.waitFor('ロビー')
 
-    client.send({ kind: '部屋を作る', name: 'ろぐいんの部屋', against: 'CPU' })
+    client.send({ kind: '部屋を作る', name: 'ろぐいんの部屋', against: 'CPU', deck: undefined })
 
     const seated = await client.waitFor('席についた')
     expect(seated.kind === '席についた' && seated.opponent).toEqual({ kind: 'CPU' })
@@ -597,7 +626,7 @@ describe('ログインの設定があるとき', () => {
     await client.waitFor('名前を決めてほしい')
     client.received.length = 0
 
-    client.send({ kind: '部屋を作る', name: 'つくれないはず', against: 'CPU' })
+    client.send({ kind: '部屋を作る', name: 'つくれないはず', against: 'CPU', deck: undefined })
 
     // 断るのではなく尋ね直す。画面がそこで止まっているとは限らない（繋ぎ直した先など）。
     await client.waitFor('名前を決めてほしい')
@@ -639,7 +668,7 @@ describe('ログインの設定があるとき', () => {
     await client.waitFor('名前を決めてほしい')
     client.send({ kind: '名前を決める', name: 'まえのなまえ' })
     await client.waitFor('ロビー')
-    client.send({ kind: '部屋を作る', name: 'なまえのかわる部屋', against: '人間' })
+    client.send({ kind: '部屋を作る', name: 'なまえのかわる部屋', against: '人間', deck: undefined })
     await client.waitFor('相手を待っている')
 
     const watcher = new Client(server.port, 'なのっても無駄', signedInOther)
@@ -665,7 +694,7 @@ describe('ログインの設定があるとき', () => {
     client.send({ kind: '名前を決める', name: 'かずお' })
     await client.waitFor('ロビー')
 
-    client.send({ kind: '部屋を作る', name: 'なまえのでる部屋', against: '人間' })
+    client.send({ kind: '部屋を作る', name: 'なまえのでる部屋', against: '人間', deck: undefined })
     await client.waitFor('相手を待っている')
 
     // 部屋にいる人にはロビーが届かない（#175）ので、**別の身元**の目で見る。同じ身元で繋ぎ直すと
@@ -683,13 +712,13 @@ describe('ログインの設定があるとき', () => {
     await client.waitFor('名前を決めてほしい')
     client.send({ kind: '名前を決める', name: 'かずお' })
     await client.waitFor('ロビー')
-    client.send({ kind: '部屋を作る', name: 'ふたりの部屋', against: '人間' })
+    client.send({ kind: '部屋を作る', name: 'ふたりの部屋', against: '人間', deck: undefined })
     const waiting = await client.waitFor('相手を待っている')
     if (waiting.kind !== '相手を待っている') throw new Error('待っているはずだった')
 
     const other = new Client(server.port, 'なのっても無駄', signedInOther)
     await other.waitFor('ロビー')
-    other.send({ kind: '部屋に入る', room: waiting.room })
+    other.send({ kind: '部屋に入る', room: waiting.room, deck: undefined })
 
     const seated = await other.waitFor('席についた')
     expect(seated.kind === '席についた' && seated.opponent).toEqual({ kind: '人間', name: 'かずお' })

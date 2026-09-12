@@ -2,11 +2,11 @@ import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import { NOT_SIGNED_IN } from '@revolution/engine'
-import type { FromClient, ToClient } from '@revolution/engine'
+import type { FromClient, ToClient, WireDeck } from '@revolution/engine'
 import { isCpu } from './cpu.js'
 import { readName } from './name.js'
 import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room.js'
-import type { Names, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
+import type { DeckSource, Names, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
 import type { SignIn } from './sign-in.js'
 import type { Store } from './store.js'
 
@@ -42,6 +42,20 @@ export interface ServeOptions {
    * どの部屋も同じ山札の並びになる（ADR-0005）。
    */
   readonly setup: () => RoomSetup
+  /**
+   * 席に持ち込めるデッキ（ADR-0021、`deck.ts` の `deckSourceFrom`）。
+   *
+   * **部屋ごとに変わらないので、`setup` とは別に受け取る。** 引けるものを決めるのは立てる時に
+   * 渡されたもので、シードや合言葉のように部屋ごとに引き直すものではない。
+   */
+  readonly decks: DeckSource
+  /**
+   * 選べるデッキとしてロビーに出すもの（`deck.ts` の `deckChoicesOf`）。
+   *
+   * **引くところ（`decks`）と別に受け取る。** 引けるかどうかと、選ぶ人に見せるかどうかは
+   * 別である——記録を立て直す時に引くデッキは、棚に並んでいるとは限らない。
+   */
+  readonly deckChoices: readonly WireDeck[]
   /** 生きているかを確かめる間隔（ミリ秒）。既定は `HEARTBEAT_MS`。テストで縮めるために開けてある。 */
   readonly heartbeatMs?: number
   /**
@@ -167,10 +181,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    * 置き場に残っていた対戦から始める（ADR-0018）。
    *
    * **立て直しても対戦が消えない。** 作り直すのは記録した入力を打ち直すことで、決着まで打った
-   * 1 本でも 18ms しかかからない（`room.ts` の `restore`）。デッキは立てるときに渡されたものを
-   * 使い、記録と違っていればその対戦は作り直さない。
+   * 1 本でも 18ms しかかからない（`room.ts` の `restore`）。デッキは記録に残っている識別子から
+   * 引き直し（ADR-0021）、引けないカードを含んでいればその対戦は作り直さない。
    */
-  let rooms: Rooms = options.store === undefined ? emptyRooms() : restore(options.store.openDuels(), options.setup().decks)
+  let rooms: Rooms = options.store === undefined ? emptyRooms() : restore(options.store.openDuels(), options.decks)
 
   /** いま繋がっている人。部屋はこれを見て、抜けられるかを決める（`room.ts` の `canLeave`）。 */
   const linked = (): ReadonlySet<ParticipantId> => new Set(sockets.keys())
@@ -312,7 +326,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       if (lobbySent.get(participant) === shown) continue
 
       lobbySent.set(participant, shown)
-      send(socket, { kind: 'ロビー', rooms: lobby })
+      send(socket, { kind: 'ロビー', rooms: lobby, decks: options.deckChoices })
     }
   }
 
@@ -377,7 +391,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       const current = roomOf(rooms, participant)
       if (current === undefined) pushLobby()
       else {
-        deliver(receive(rooms, participant, { kind: '部屋に入る', room: current.code }, options.setup(), linked(), names))
+        // **デッキは選び直さない。** どれで座っていたかは部屋が覚えている（`room.ts` の
+        // `rejoin`）ので、入り直しで上書きしない（ADR-0021）。
+        const entering = { kind: '部屋に入る', room: current.code, deck: undefined } as const
+        deliver(receive(rooms, participant, entering, options.setup(), options.decks, linked(), names))
       }
       // 入り直した本人にも、相手にも、繋がりが変わったことを伝える。
       tellLinks(roomOf(rooms, participant))
@@ -434,7 +451,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
 
       // 部屋を出入りすると、残った人から見た相手が変わる（#175）。出た先と入った先の両方に伝える。
       const before = roomOf(rooms, participant)?.code
-      deliver(receive(rooms, participant, message, options.setup(), linked(), names))
+      deliver(receive(rooms, participant, message, options.setup(), options.decks, linked(), names))
       for (const code of new Set([before, roomOf(rooms, participant)?.code])) {
         if (code !== undefined) tellLinks(rooms.get(code))
       }

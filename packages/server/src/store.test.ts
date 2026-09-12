@@ -4,9 +4,10 @@ import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import { choose, defineStrategy, defineUnit } from '@revolution/engine'
-import type { Card, Deck, FromClient } from '@revolution/engine'
+import type { Card, FromClient } from '@revolution/engine'
+import { deckSourceFrom } from './deck.js'
 import { emptyRooms, receive, restore, roomOf } from './room.js'
-import type { ParticipantId, RoomSetup, Rooms } from './room.js'
+import type { DeckSource, ParticipantId, RoomSetup, Rooms } from './room.js'
 import { openStore } from './store.js'
 import type { Store } from './store.js'
 
@@ -16,7 +17,7 @@ import type { Store } from './store.js'
  * **置き場は `:memory:` で開く。** 手元のファイルを触らずに済み、閉じれば消える。確かめたいのは
  * 「書いて、読み戻して、同じところへ進む」ことであって、どこに置いたかではない。
  *
- * サーバはカードを知れない（ADR-0002）ので、デッキは架空のテストカードで組む。
+ * サーバはカードを知れない（ADR-0002）ので、デッキは架空のテストカードと架空の識別子で組む。
  */
 
 const CHOOSING_NAME = 'テスト・置き場のストラテジー'
@@ -38,19 +39,23 @@ const CARDS: Readonly<Record<string, Card>> = Object.fromEntries([
   ],
 ])
 
-/** 構築戦の最小枚数（60 枚）を満たす、15 種類 × 4 枚のデッキ（総合ルール 第3部 第1章 3-1）。 */
-function buildDeck(): Deck {
-  return Object.values(CARDS).flatMap((card) => Array.from({ length: 4 }, () => card))
-}
+/** 構築戦の最小枚数（60 枚）を満たす、15 種類 × 4 枚の並び（総合ルール 第3部 第1章 3-1）。 */
+const DECK_KEYS = Object.keys(CARDS).flatMap((key) => Array.from({ length: 4 }, () => key))
 
-/** 1 枚だけ違うデッキ。**記録と違うデッキで立て直した**場合を作るために要る。 */
-function buildOtherDeck(): Deck {
-  const [, ...rest] = buildDeck()
-  return [defineUnit({ name: 'テスト・置き場のよそもの', level: 0, bp: 100, sp: 100, moveIcon: ['上'] }), ...rest]
-}
+const DECKS: DeckSource = deckSourceFrom({
+  pool: CARDS,
+  presets: [{ id: '既製1', name: 'ひとつめ', cards: DECK_KEYS }],
+  restrictions: [],
+})
 
-const DECKS: readonly [Deck, Deck] = [buildDeck(), buildDeck()]
-const SETUP: RoomSetup = { decks: DECKS, seed: 20260905, code: 'あたらしいへや' }
+/** 1 枚が引けなくなったカードのまとまり。**取り下げられたカードを含む記録**を作るために要る。 */
+const WITHOUT_ONE: DeckSource = deckSourceFrom({
+  pool: Object.fromEntries(Object.entries(CARDS).filter(([key]) => key !== 'TEST-0')),
+  presets: [{ id: '既製1', name: 'ひとつめ', cards: DECK_KEYS.filter((key) => key !== 'TEST-0') }],
+  restrictions: [],
+})
+
+const SETUP: RoomSetup = { seed: 20260905, code: 'あたらしいへや' }
 const CODE = 'あいことば'
 const PASS: FromClient = { kind: '行動する', action: { kind: '優先権を放棄する' } }
 const BOTH: ReadonlySet<ParticipantId> = new Set(['あ', 'い'])
@@ -70,7 +75,7 @@ class Table {
   ) {}
 
   send(who: ParticipantId, message: FromClient, connected: ReadonlySet<ParticipantId> = BOTH): Table {
-    const outcome = receive(this.rooms, who, message, this.setup, connected)
+    const outcome = receive(this.rooms, who, message, this.setup, DECKS, connected)
     this.store.write(outcome.records)
     this.rooms = outcome.rooms
     return this
@@ -78,7 +83,7 @@ class Table {
 
   /** 2 人を入れてデュエルを始める。 */
   start(code = CODE): Table {
-    return this.send('あ', { kind: '部屋に入る', room: code }).send('い', { kind: '部屋に入る', room: code })
+    return this.send('あ', { kind: '部屋に入る', room: code, deck: undefined }).send('い', { kind: '部屋に入る', room: code, deck: undefined })
   }
 
   /**
@@ -174,11 +179,11 @@ describe('置き場（ADR-0018）', () => {
     store.close()
   })
 
-  it('記録と違うデッキで立て直すと、その対戦は作り直さない（ADR-0018）', () => {
+  it('取り下げられたカードを含む記録は、作り直さない（ADR-0018・ADR-0021）', () => {
     const store = openStore(':memory:')
     new Table(store).start().passes(4)
 
-    const restored = restore(store.openDuels(), [buildOtherDeck(), buildDeck()])
+    const restored = restore(store.openDuels(), WITHOUT_ONE)
 
     // **消したのではない。** 記録は置き場に残っていて、戻す先の部屋ができないだけである。
     expect(restored.size).toBe(0)
@@ -188,7 +193,7 @@ describe('置き場（ADR-0018）', () => {
 
   it('CPU が打った手も記録に残る', () => {
     const store = openStore(':memory:')
-    new Table(store).send('あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU' })
+    new Table(store).send('あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined })
 
     const [duel] = store.openDuels()
     expect(duel?.cpu).toBeDefined()

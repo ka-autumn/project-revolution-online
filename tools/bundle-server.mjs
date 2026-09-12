@@ -55,21 +55,26 @@ export function readFlag(argv, name) {
  */
 function entryPoint(decksModule, port, store) {
   return `
-import { checkDecks, createSignIn, openStore, serve, setupFromDecks, signInConfigFrom } from ${JSON.stringify(serverEntry)}
-import { decks } from ${JSON.stringify(specifier(decksModule))}
+import { checkPresets, createSignIn, deckChoicesOf, deckSourceFrom, newSetup, openStore, readSupply, serve, signInConfigFrom } from ${JSON.stringify(serverEntry)}
+import * as supplied from ${JSON.stringify(specifier(decksModule))}
 
-if (!Array.isArray(decks) || decks.length !== 2 || !decks.every(Array.isArray)) {
-  console.error('渡されたモジュールは、デッキ 2 つを decks として export していません')
+// 渡されたものを読むのはサーバの側である（\`packages/server/src/deck.ts\`）。**この文字列は型検査を
+// 通らないので、判断を持たせない。**
+const reading = readSupply(supplied)
+if (reading.kind === '断る') {
+  console.error(reading.reason)
   process.exit(1)
 }
+const supply = reading.supply
 
-const setup = setupFromDecks(decks)
-const violations = checkDecks(decks)
+const violations = checkPresets(supply)
 if (violations.length > 0) {
-  console.error('デッキが構築戦の規定を満たしていません:')
-  for (const { seat, violation } of violations) console.error(\`  \${seat + 1} 人目: \${JSON.stringify(violation)}\`)
+  console.error('既製デッキが構築戦の規定を満たしていません:')
+  for (const { deck, violation } of violations) console.error(\`  \${deck}: \${JSON.stringify(violation)}\`)
   process.exit(1)
 }
+const decks = deckSourceFrom(supply)
+const deckChoices = deckChoicesOf(supply)
 
 // 書いたものが残る置き場（ADR-0018）。**置き場は束ね直さずに変えられるようにする**——
 // 待つポートと同じ理由で、置く先を決めるのは常駐の設定の側である（ADR-0015）。
@@ -93,7 +98,7 @@ if (signInConfig !== undefined && store === undefined) {
 }
 const signIn = signInConfig === undefined ? undefined : createSignIn({ config: signInConfig, store })
 
-serve({ port: Number(process.env.PORT ?? ${port}), setup, store, signIn })
+serve({ port: Number(process.env.PORT ?? ${port}), setup: newSetup, decks, deckChoices, store, signIn })
   .then((running) => {
     console.log(\`ポート \${running.port} で待っています\`)
     if (store !== undefined) console.log(\`置き場: \${storePath}\`)

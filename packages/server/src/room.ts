@@ -11,6 +11,7 @@ import type {
   ActionProgress,
   ChoiceAnswer,
   Deck,
+  DeckId,
   DuelState,
   FromClient,
   LegalAction,
@@ -54,10 +55,40 @@ export type Names = (participant: ParticipantId) => string
 
 const asNamed: Names = (participant) => participant
 
-/** 部屋を作ってデュエルを始めるのに要るもの。呼ぶ側が用意する。 */
+/**
+ * 席に持ち込まれたデッキ 1 つ（ADR-0021）。
+ *
+ * **識別子の並びと、その中身の両方を持つ。** 打つのに要るのはカードのほうで、記録に残すのは
+ * 識別子のほうである——カードそのものは非公開で（ADR-0002）、置き場に持ち込めない。
+ */
+export interface SeatedDeck {
+  readonly cards: Deck
+  /** カードを指す識別子の並び。**部屋はこれを読み取らず、そのまま記録へ渡す。** */
+  readonly keys: readonly string[]
+}
+
+/**
+ * 席に持ち込めるデッキの引き方（ADR-0021）。
+ *
+ * **部屋はカードを知らない**ので、引くところを渡してもらう。何が引けるかを決めるのは、立てる時に
+ * 渡されたものである（`deck.ts` の `deckSourceFrom`）。
+ */
+export interface DeckSource {
+  /** 既製デッキを識別子で引く。知らない識別子なら `undefined`。 */
+  readonly of: (id: DeckId) => SeatedDeck | undefined
+  /** 選ばずに座った人が使うデッキ。**デッキを選ばないまま席に着けるようにするためにある。** */
+  readonly fallback: DeckId
+  /** 識別子の並びから組み直す。1 つでも引けなければ `undefined`（`restore`）。 */
+  readonly from: (keys: readonly string[]) => SeatedDeck | undefined
+}
+
+/**
+ * 部屋を作ってデュエルを始めるのに要るもの。呼ぶ側が用意する。
+ *
+ * **デッキは入っていない。** どのデッキで座るかは座る人が決める（ADR-0021）ので、部屋ごとに
+ * 引くのはシードと合言葉だけである。
+ */
 export interface RoomSetup {
-  /** 2 人のデッキ。並びは席の順であって、先攻・後攻の順ではない（`prepareDuel`）。 */
-  readonly decks: readonly [Deck, Deck]
   /** シャッフルと先攻・後攻の決定に使うシード（ADR-0005）。部屋ごとに変える。 */
   readonly seed: number
   /**
@@ -107,6 +138,15 @@ export interface Room {
   /** 始まっていなければ `undefined`。 */
   readonly duel: DuelInRoom | undefined
   /**
+   * 待っている人が選んだデッキ（ADR-0021）。選んでいなければ `undefined`。
+   *
+   * **始まるまでの預かりものである。** 相手が来た時に、待っていた人がどのデッキで座るかはここから
+   * 決まる。席に着いた後は使わない——デッキはもう盤面の中にある。
+   *
+   * 相手を待っている部屋には 1 人しかいないので、1 つで足りる。
+   */
+  readonly deck: DeckId | undefined
+  /**
    * CPU が座っている席の名乗り（#175）。座っていなければ `undefined`。
    *
    * 部屋から見れば人と変わらない 1 人の参加者で、違うのは繋がっていないことだけである。
@@ -142,11 +182,15 @@ export type DuelRecord =
       readonly cpu: ParticipantId | undefined
       readonly seed: number
       /**
-       * 席の順に並べた、デッキに入っていたカードの名前。
+       * 席の順に並べた、デッキに入っていたカードの識別子（ADR-0021）。
        *
-       * **カードそのものは残せない**（非公開である、ADR-0002）。名前だけを残し、戻すときに
-       * いま渡されているデッキと突き合わせる（`restore`）。違っていれば作り直せない——
-       * **それは避けられない**（ADR-0018）。
+       * **カードそのものは残せない**（非公開である、ADR-0002）ので、指すものだけを残す。
+       * **その対戦で使われたデッキそのものである**——サーバに渡されているデッキと突き合わせて
+       * いた頃（#105）は、デッキが 1 組しか無い前提の作りだった。座る人がデッキを選ぶように
+       * なれば、その前提は消える。
+       *
+       * 戻すときは識別子からカードを引き直す（`restore`）。プールから取り下げられたカードを
+       * 含む記録は作り直せない——**それは避けられない**（ADR-0018）。
        */
       readonly decks: readonly [readonly string[], readonly string[]]
     }
@@ -203,9 +247,10 @@ export function emptyRooms(): Rooms {
  * 覚えておく仕組みは要らない**（ADR-0008）。
  *
  * **作り直せなかった対戦は捨てる。消すのではない。** 記録は置き場に残っており、戻す先の部屋が
- * できないだけである。デッキが変われば同じところへ進まない——**これは避けられない**（ADR-0018）。
+ * できないだけである。使われていたカードがプールから取り下げられていれば、同じところへ進まない
+ * ——**これは避けられない**（ADR-0018）。
  */
-export function restore(stored: readonly StoredDuel[], decks: readonly [Deck, Deck]): Rooms {
+export function restore(stored: readonly StoredDuel[], decks: DeckSource): Rooms {
   const rooms = new Map<RoomCode, Room>()
   for (const duel of stored) {
     const room = replay(duel, decks)
@@ -216,13 +261,16 @@ export function restore(stored: readonly StoredDuel[], decks: readonly [Deck, De
 }
 
 /** 記録した入力を打ち直して部屋を作る。同じところへ進まなければ `undefined`。 */
-function replay(stored: StoredDuel, decks: readonly [Deck, Deck]): Room | undefined {
-  // **いま渡されているデッキと違えば、そこから先は別の対戦になる。** 名前の並びまで見るのは、
-  // 順番がシャッフルの入力そのものだからである（`prepareDuel`）。
-  if (!sameNames(stored.decks[0], namesOf(decks[0])) || !sameNames(stored.decks[1], namesOf(decks[1]))) {
-    return undefined
-  }
+function replay(stored: StoredDuel, source: DeckSource): Room | undefined {
+  // **記録が持っているデッキで打ち直す**（ADR-0021）。識別子の並びが残っているので、いま渡されて
+  // いるものと突き合わせる必要は無い。並び順まで残すのは、それがシャッフルの入力そのもの
+  // だからである（`prepareDuel`）。
+  const first = source.from(stored.decks[0])
+  const second = source.from(stored.decks[1])
+  // 引けないカードを含むなら、その対戦は作り直せない。**記録は消さない**（ADR-0018）。
+  if (first === undefined || second === undefined) return undefined
 
+  const decks: readonly [Deck, Deck] = [first.cards, second.cards]
   const prepared = prepareDuel({ decks, seed: stored.seed })
   if (prepared.kind !== '準備完了') return undefined
 
@@ -240,6 +288,8 @@ function replay(stored: StoredDuel, decks: readonly [Deck, Deck]): Room | undefi
   return {
     code: stored.code,
     name: stored.name,
+    // 席に着いた後の部屋なので、選びかけのデッキは持たない。
+    deck: undefined,
     // 入ってきた順は残していない。**席に着いている 2 人であることだけが要る。**
     participants: seated,
     duel: {
@@ -254,10 +304,6 @@ function replay(stored: StoredDuel, decks: readonly [Deck, Deck]): Room | undefi
   }
 }
 
-function sameNames(one: readonly string[], other: readonly string[]): boolean {
-  return one.length === other.length && one.every((name, at) => name === other[at])
-}
-
 /**
  * メッセージを 1 つ受け取り、次の部屋の状態と送るものを返す。
  *
@@ -270,10 +316,11 @@ export function receive(
   participant: ParticipantId,
   message: FromClient,
   setup: RoomSetup,
+  decks: DeckSource,
   connected: ReadonlySet<ParticipantId>,
   names: Names = asNamed,
 ): RoomOutcome {
-  const outcome = handle(rooms, participant, message, setup, connected, names)
+  const outcome = handle(rooms, participant, message, setup, decks, connected, names)
 
   // 相手が CPU なら、そのまま打てるところまで打つ（#175）。**送り主のいる部屋だけを進める。**
   // ほかの部屋の CPU は、その部屋で手が打たれた時に動く。
@@ -290,14 +337,15 @@ function handle(
   participant: ParticipantId,
   message: FromClient,
   setup: RoomSetup,
+  decks: DeckSource,
   connected: ReadonlySet<ParticipantId>,
   names: Names,
 ): RoomOutcome {
   switch (message.kind) {
     case '部屋に入る':
-      return enter(rooms, participant, message.room, setup, connected, names)
+      return enter(rooms, participant, message.room, message.deck, setup, decks, connected, names)
     case '部屋を作る':
-      return open(rooms, participant, message.name, message.against, setup, connected, names)
+      return open(rooms, participant, message, setup, decks, connected, names)
     // 表示名を決めるのは部屋の外のことである（ADR-0020）。預かるのは置き場で、決まりを見るのは
     // `name.ts`、受けるのは `serve.ts` である。**部屋に届く頃には名前は決まっている。**
     case '名前を決める':
@@ -479,12 +527,13 @@ function unusedCode(rooms: Rooms, code: RoomCode): RoomCode {
 function open(
   rooms: Rooms,
   participant: ParticipantId,
-  name: string,
-  against: OpponentKind,
+  opening: { readonly name: string; readonly against: OpponentKind; readonly deck: DeckId | undefined },
   setup: RoomSetup,
+  decks: DeckSource,
   connected: ReadonlySet<ParticipantId>,
   names: Names,
 ): RoomOutcome {
+  const { name, against } = opening
   const current = roomOf(rooms, participant)
   if (current !== undefined && !canLeave(current, participant, connected)) {
     return refuse(rooms, participant, 'ほかの部屋にいる')
@@ -499,6 +548,7 @@ function open(
     name: nameOf(name, code),
     participants: [participant],
     duel: undefined,
+    deck: opening.deck,
     cpu: against === 'CPU' ? cpuParticipantOf(code) : undefined,
   }
   if (opened.cpu === undefined) {
@@ -509,7 +559,11 @@ function open(
     }
   }
 
-  return after(closed, start(left, opened, participant, opened.cpu, setup, names))
+  // **CPU の席は既定のデッキで座る。** 相手のデッキを指定できるようにするのは、自分でデッキを
+  // 組めるようになってからである（ADR-0021）——いま選べるのは誰でも使える既製デッキだけで、
+  // 作る人が指定できても指定しなくても、座るデッキの中身は変わらない。
+  const seating = { participant, deck: opening.deck }
+  return after(closed, start(left, opened, seating, { participant: opened.cpu, deck: undefined }, setup, decks, names))
 }
 
 /**
@@ -544,13 +598,15 @@ function enter(
   rooms: Rooms,
   participant: ParticipantId,
   code: RoomCode,
+  chosen: DeckId | undefined,
   setup: RoomSetup,
+  decks: DeckSource,
   connected: ReadonlySet<ParticipantId>,
   names: Names,
 ): RoomOutcome {
   const current = roomOf(rooms, participant)
   if (current !== undefined) {
-    if (current.code === code) return rejoin(rooms, current, participant, names)
+    if (current.code === code) return rejoin(rooms, current, participant, chosen, names)
     if (!canLeave(current, participant, connected)) return refuse(rooms, participant, 'ほかの部屋にいる')
   }
   const leaving = current === undefined ? undefined : withoutParticipant(rooms, current, participant)
@@ -560,7 +616,14 @@ function enter(
   const room = left.get(code)
   if (room === undefined) {
     // 合言葉を直に指して入った部屋。ロビーで見分けるものが無いので、合言葉を名前にする。
-    const opened: Room = { code, name: code, participants: [participant], duel: undefined, cpu: undefined }
+    const opened: Room = {
+      code,
+      name: code,
+      participants: [participant],
+      duel: undefined,
+      deck: chosen,
+      cpu: undefined,
+    }
     return {
       rooms: withRoom(left, opened),
       deliveries: [{ to: participant, message: { kind: '相手を待っている', room: code } }],
@@ -577,7 +640,10 @@ function enter(
     return refuse(rooms, participant, '対戦が終わっている部屋')
   }
 
-  return after(closed, start(left, room, waiting, participant, setup, names))
+  return after(
+    closed,
+    start(left, room, { participant: waiting, deck: room.deck }, { participant, deck: chosen }, setup, decks, names),
+  )
 }
 
 /**
@@ -588,12 +654,22 @@ function enter(
  *
  * 選択の途中で切れていた場合は、貯めた答えの並びで適用をやり直せば同じ「選んでほしい」が
  * 返る（ADR-0008）。**送ったメッセージを覚えておく必要は無い。**
+ *
+ * 相手を待っている間なら、持ち込むデッキは選び直せる（ADR-0021）。**選ばずに入り直した人の
+ * ものは変えない**——繋ぎ直した時に飛ぶのも同じメッセージで、そこには選んだものが入っていない
+ * （`FromClient` の `部屋に入る`）。
  */
-function rejoin(rooms: Rooms, room: Room, participant: ParticipantId, names: Names): RoomOutcome {
+function rejoin(
+  rooms: Rooms,
+  room: Room,
+  participant: ParticipantId,
+  chosen: DeckId | undefined,
+  names: Names,
+): RoomOutcome {
   const duel = room.duel
   if (duel === undefined) {
     return {
-      rooms,
+      rooms: chosen === undefined ? rooms : withRoom(rooms, { ...room, deck: chosen }),
       deliveries: [{ to: participant, message: { kind: '相手を待っている', room: room.code } }],
       records: [],
     }
@@ -664,19 +740,31 @@ function mayGoBack(duel: DuelInRoom): boolean {
 function start(
   rooms: Rooms,
   room: Room,
-  waiting: ParticipantId,
-  joining: ParticipantId,
+  first: Seating,
+  second: Seating,
   setup: RoomSetup,
+  decks: DeckSource,
   names: Names,
 ): RoomOutcome {
-  const prepared = prepareDuel({ decks: setup.decks, seed: setup.seed })
+  const waiting = first.participant
+  const joining = second.participant
+  const refusal = (reason: string): RoomOutcome => ({
+    rooms,
+    deliveries: [waiting, joining].map((to) => ({ to, message: { kind: '行えなかった', reason } as const })),
+    records: [],
+  })
+
+  // **席に着く時にも確かめる**（ADR-0021）。渡された時に確かめただけでは、その後にプールが
+  // 変わったデッキがそのまま席に着ける。
+  const brought = [first, second].map((seating) => decks.of(seating.deck ?? decks.fallback))
+  const [firstDeck, secondDeck] = brought
+  if (firstDeck === undefined || secondDeck === undefined) {
+    return refusal('選ばれたデッキを持ち込めません')
+  }
+
+  const prepared = prepareDuel({ decks: [firstDeck.cards, secondDeck.cards], seed: setup.seed })
   if (prepared.kind !== '準備完了') {
-    const reason = `デッキ不備: ${JSON.stringify(prepared.violations)}`
-    return {
-      rooms,
-      deliveries: [waiting, joining].map((to) => ({ to, message: { kind: '行えなかった', reason } as const })),
-      records: [],
-    }
+    return refusal(`デッキ不備: ${JSON.stringify(prepared.violations)}`)
   }
 
   const duel: DuelInRoom = {
@@ -685,7 +773,8 @@ function start(
     pending: undefined,
     random: prepared.random,
   }
-  const seated: Room = { ...room, participants: [waiting, joining], duel }
+  // 席に着いたので、選びかけの預かりものは要らない。デッキはもう盤面の中にある。
+  const seated: Room = { ...room, participants: [waiting, joining], duel, deck: undefined }
 
   return {
     rooms: withRoom(rooms, seated),
@@ -702,8 +791,9 @@ function start(
       })),
       ...boards(duel),
     ],
-    // ここから先の手を書き足していく先ができる（ADR-0018）。**デッキはカードの名前だけ残す**
-    // ——カードそのものは非公開で（ADR-0002）、置き場に持ち込めない。
+    // ここから先の手を書き足していく先ができる（ADR-0018）。**デッキは識別子の並びだけ残す**
+    // ——カードそのものは非公開で（ADR-0002）、置き場に持ち込めない。席の順で並べる
+    // （先攻・後攻の順ではない、`prepareDuel`）。
     records: [
       {
         kind: '始まった',
@@ -712,15 +802,16 @@ function start(
         seats: duel.seats,
         cpu: seated.cpu,
         seed: setup.seed,
-        decks: [namesOf(setup.decks[0]), namesOf(setup.decks[1])],
+        decks: [firstDeck.keys, secondDeck.keys],
       },
     ],
   }
 }
 
-/** デッキに入っているカードの名前を、置かれた順に並べたもの。 */
-function namesOf(deck: Deck): readonly string[] {
-  return deck.map((card) => card.name)
+/** 席に着こうとしている 1 人と、その人が選んだデッキ（ADR-0021）。選んでいなければ `undefined`。 */
+interface Seating {
+  readonly participant: ParticipantId
+  readonly deck: DeckId | undefined
 }
 
 /** 席と、そこにいる参加者の組。 */

@@ -31,6 +31,25 @@ export type RoomCode = string
 export type OpponentKind = '人間' | 'CPU'
 
 /**
+ * 席に持ち込めるデッキ 1 つを指す識別子（ADR-0021）。
+ *
+ * **公開側にとってはただの文字列である。** 何を指すかも、どんなデッキがあるかも知らない
+ * （ADR-0002）。**読み取らずに、そのまま返す鍵として扱う**——並べ替えにも絞り込みにも使わない。
+ */
+export type DeckId = string
+
+/**
+ * 席に着く時に選べるデッキ 1 つ（ADR-0021）。
+ *
+ * 名前が付いているのは**人が選ぶため**で、指すのは識別子のほうである。名前は重なりうるし、
+ * 渡す側が変えれば次に繋いだ時から変わる（カードの表記と同じで、値はサーバから届く）。
+ */
+export interface WireDeck {
+  readonly id: DeckId
+  readonly name: string
+}
+
+/**
  * いま誰と打っているか（ADR-0020）。
  *
  * **部屋を作る時に選ぶ種類（`OpponentKind`）とは別のものである。** 作る時に決まるのは人か CPU
@@ -186,7 +205,18 @@ export interface WireChoice {
 
 /** クライアントからサーバへ送るもの。 */
 export type FromClient =
-  | { readonly kind: '部屋に入る'; readonly room: RoomCode }
+  | {
+      readonly kind: '部屋に入る'
+      readonly room: RoomCode
+      /**
+       * どのデッキで座るか（ADR-0021）。**選ばなければ `undefined`。**
+       *
+       * 入り直し（繋ぎ直し、ADR-0016）でも同じものが飛ぶので、**選ばなかった時に選び直させない。**
+       * `undefined` で入ってきた人は、その部屋で前に選んでいたものに座る。まだ何も選んでいなければ、
+       * サーバが決めた既定のデッキになる。
+       */
+      readonly deck: DeckId | undefined
+    }
   /**
    * 新しい部屋を作って、そこに入る（#175）。
    *
@@ -195,7 +225,13 @@ export type FromClient =
    *
    * `against` が `CPU` なら、もう一方の席にはサーバが座り、そのまま始まる。
    */
-  | { readonly kind: '部屋を作る'; readonly name: string; readonly against: OpponentKind }
+  | {
+      readonly kind: '部屋を作る'
+      readonly name: string
+      readonly against: OpponentKind
+      /** どのデッキで座るか（ADR-0021）。選ばなければ、サーバが決めた既定のデッキになる。 */
+      readonly deck: DeckId | undefined
+    }
   /**
    * 自分の表示名を決める（ADR-0020）。すでに付いていれば付け替える。
    *
@@ -235,7 +271,18 @@ export type ToClient =
    * 部屋の様子が変わるたびに送り直す。受け取った側は覚えておくだけでよく、尋ね直す手立ては
    * 要らない。
    */
-  | { readonly kind: 'ロビー'; readonly rooms: readonly WireRoom[] }
+  | {
+      readonly kind: 'ロビー'
+      readonly rooms: readonly WireRoom[]
+      /**
+       * 席に着く時に選べるデッキ（ADR-0021）。**渡す側が決めたものがそのまま並ぶ。**
+       *
+       * 部屋の一覧と一緒に届くのは、**選ぶ場所がここだから**である。どのデッキで座るかは部屋を
+       * 作る時と入る時に決まる（`FromClient` の `部屋を作る`・`部屋に入る`）ので、選べるものは
+       * それを押せる画面に無ければならない。
+       */
+      readonly decks: readonly WireDeck[]
+    }
   /**
    * 部屋に入って、相手が来るのを待っている。
    *
