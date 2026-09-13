@@ -585,6 +585,12 @@ body {
   color: #666;
 }
 
+/* 絵文字だけのボタン（`render.ts` の `iconButton`）。文字のボタンと並んでも高さが揃うようにする。 */
+.icon-button {
+  min-width: 2.2em;
+  line-height: 1.2;
+}
+
 /* デッキを組むところ（#193）。左にプール、右にデッキ、その右に詳しく出すところを並べる。 */
 .builder {
   margin: calc(var(--gap) * 2) 0;

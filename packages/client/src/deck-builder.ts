@@ -77,18 +77,34 @@ export type BuilderConfirm =
   /** 保存していない変更を捨てて、デッキの一覧に戻る。 */
   | { readonly kind: '変更を捨てる' }
 
-/** 尋ねる文と、「はい」の側の見出し。 */
+/**
+ * 尋ねる文と、2 つのボタンの見出し。
+ *
+ * **見出しは、押すと何が起きるかをそのまま書く。** 「はい」「いいえ」では、文を読み返さないと
+ * どちらを押せばよいかが分からない。
+ */
 export interface ConfirmView {
   readonly message: string
+  /** 進める側。戻せないことをする。 */
   readonly confirmLabel: string
+  /** やめる側。何もせずに閉じる。 */
+  readonly cancelLabel: string
 }
 
 export function confirmView(confirm: BuilderConfirm): ConfirmView {
   switch (confirm.kind) {
     case 'デッキを消す':
-      return { message: `「${confirm.name}」を消しますか？ 消したデッキは戻せません`, confirmLabel: '消す' }
+      return {
+        message: `「${confirm.name}」を削除しますか？ 削除したデッキは戻せません`,
+        confirmLabel: '削除する',
+        cancelLabel: 'やめる',
+      }
     case '変更を捨てる':
-      return { message: '保存していない変更があります。捨てて、デッキの一覧に戻りますか？', confirmLabel: '捨てて戻る' }
+      return {
+        message: '保存していない変更があります。保存せずに、デッキの一覧に戻りますか？',
+        confirmLabel: '保存せずに戻る',
+        cancelLabel: '編集を続ける',
+      }
   }
 }
 
