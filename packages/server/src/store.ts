@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
-import type { RoomCode } from '@revolution/engine'
+import type { DeckId, RoomCode } from '@revolution/engine'
+import type { DeckDraft, OwnedDeck } from './owned-deck.js'
 import type { DuelRecord, ParticipantId, StoredDuel } from './room.js'
 
 /**
@@ -32,6 +33,11 @@ import type { DuelRecord, ParticipantId, StoredDuel } from './room.js'
  * セッションは合言葉そのものではなく、その要約を鍵にする（`sign-in.ts` の `digest`）。
  * **置き場に残るものは公開できないものとして扱う**（ADR-0018）ので、漏れてもその行から席に
  * 座れないようにしておく。
+ *
+ * **デッキは身元の持ち物である**（ADR-0021）。持つのはカードを指す識別子の並びだけで、JSON の
+ * 配列として 1 列に入れる。**並びは揃えてから入る**（`owned-deck.ts` の `sortCards`）ので、同じ
+ * 中身なら同じ文字列になる。対戦の記録（`duels.decks`）はデッキの行を指さずに並びを写し取って
+ * いるので、**デッキを消しても記録は壊れない。**
  */
 const SCHEMA = `
   create table if not exists duels (
@@ -66,6 +72,15 @@ const SCHEMA = `
     identity integer not null references identities (id),
     opened_at integer not null
   );
+  create table if not exists decks (
+    id integer primary key autoincrement,
+    owner integer not null references identities (id),
+    name text not null,
+    description text not null,
+    cards text not null,
+    updated_at integer not null
+  );
+  create index if not exists decks_by_owner on decks (owner);
 `
 
 /**
@@ -117,6 +132,17 @@ function identityOf(participant: ParticipantId): number {
   if (!Number.isInteger(id)) throw new Error(`身元の識別子ではありません: ${participant}`)
 
   return id
+}
+
+/**
+ * デッキを指す識別子から行番号を引く。**知らない形なら `undefined`。**
+ *
+ * 身元と違って投げない。デッキの識別子は画面から送られてくるもので、読めないものが来ても
+ * それは「そのデッキは無い」と同じである。
+ */
+function deckRowOf(deck: DeckId): number | undefined {
+  const row = Number(deck)
+  return Number.isSafeInteger(row) && row > 0 && String(row) === deck ? row : undefined
 }
 
 /**
@@ -173,6 +199,22 @@ export interface Store {
    * 送られてきたものが古いかどうかは置き場の側でも見る。
    */
   sessionHolder(digest: string, since: number): ParticipantId | undefined
+  /**
+   * その人が持っているデッキ。作った順に並ぶ（ADR-0021）。
+   *
+   * **決まりを見るのはここではない**（`owned-deck.ts`）。置き場は、通ったものを預かって返すだけ
+   * である。
+   */
+  decksOf(owner: ParticipantId): readonly OwnedDeck[]
+  /**
+   * デッキを残す。`deck` が `undefined` なら新しく作り、あればその人のものを上書きする。
+   *
+   * 残した識別子を返す。**上書きしようとしたデッキがその人のものでなければ `undefined`**——
+   * 他人のデッキの識別子を送っても、書き換えられない。
+   */
+  saveDeck(owner: ParticipantId, deck: DeckId | undefined, draft: DeckDraft): DeckId | undefined
+  /** その人のデッキを消す。**その人のものでなければ何もせず `false`。** */
+  deleteDeck(owner: ParticipantId, deck: DeckId): boolean
   close(): void
 }
 
@@ -201,6 +243,15 @@ export function openStore(path: string): Store {
   const setName = db.prepare('update identities set name = ? where id = ?')
   const insertSession = db.prepare('insert or replace into sessions (digest, identity, opened_at) values (?, ?, ?)')
   const sessionRow = db.prepare('select identity from sessions where digest = ? and opened_at >= ?')
+  const deckRows = db.prepare('select id, name, description, cards from decks where owner = ? order by id')
+  const insertDeck = db.prepare(
+    'insert into decks (owner, name, description, cards, updated_at) values (?, ?, ?, ?, ?)',
+  )
+  // **持ち主も条件に入れる。** 識別子だけで引くと、他人のデッキを書き換えられる。
+  const updateDeck = db.prepare(
+    'update decks set name = ?, description = ?, cards = ?, updated_at = ? where id = ? and owner = ?',
+  )
+  const removeDeck = db.prepare('delete from decks where id = ? and owner = ?')
 
   /**
    * いま開いている対戦の、合言葉から行番号への引き当て。
@@ -301,6 +352,32 @@ export function openStore(path: string): Store {
     sessionHolder: (digest, since) => {
       const row = sessionRow.get(digest, since)
       return row === undefined ? undefined : seatedAs(int(row, 'identity'))
+    },
+    decksOf: (owner) =>
+      deckRows.all(identityOf(owner)).map((row) => ({
+        id: String(int(row, 'id')),
+        name: text(row, 'name'),
+        description: text(row, 'description'),
+        cards: JSON.parse(text(row, 'cards')) as readonly string[],
+      })),
+    saveDeck: (owner, deck, draft) => {
+      const cards = JSON.stringify(draft.cards)
+      if (deck === undefined) {
+        const result = insertDeck.run(identityOf(owner), draft.name, draft.description, cards, Date.now())
+        return String(result.lastInsertRowid)
+      }
+
+      const row = deckRowOf(deck)
+      if (row === undefined) return undefined
+
+      const result = updateDeck.run(draft.name, draft.description, cards, Date.now(), row, identityOf(owner))
+      return Number(result.changes) === 0 ? undefined : deck
+    },
+    deleteDeck: (owner, deck) => {
+      const row = deckRowOf(deck)
+      if (row === undefined) return false
+
+      return Number(removeDeck.run(row, identityOf(owner)).changes) > 0
     },
     close: () => {
       db.close()

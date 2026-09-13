@@ -210,5 +210,9 @@ export function applyMessage(session: Session, message: ToClient): Session {
       return { stage: { ...stage, actions: [], passOutcome: undefined, choice: message.choice }, refusal: undefined }
     case '行えなかった':
       return { ...session, refusal: message.reason }
+    // 自分のデッキを出す画面はまだ無い（#193）。届いても置く先が無いので捨てる。
+    case '自分のデッキ':
+    case 'デッキを保存した':
+      return session
   }
 }

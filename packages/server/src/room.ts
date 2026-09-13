@@ -350,6 +350,12 @@ function handle(
     // `name.ts`、受けるのは `serve.ts` である。**部屋に届く頃には名前は決まっている。**
     case '名前を決める':
       return { rooms, deliveries: [], records: [] }
+    // 自分のデッキも部屋の外のことである（ADR-0021）。預かるのは置き場で、決まりを見るのは
+    // `owned-deck.ts`、受けるのは `serve.ts` である。
+    case 'デッキを保存する':
+    case 'デッキを消す':
+    case 'デッキをコピーする':
+      return { rooms, deliveries: [], records: [] }
     case 'ロビーに戻る':
       return leave(rooms, participant, connected)
     case '行動する':

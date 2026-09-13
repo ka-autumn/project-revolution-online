@@ -5,6 +5,7 @@ import type { Card, FromClient, ToClient } from '@revolution/engine'
 import { CPU_PREFIX } from './cpu.js'
 import { deckChoicesOf, deckSourceFrom } from './deck.js'
 import type { CardSupply } from './deck.js'
+import { OWNED_DECK_LIMIT, sortCards } from './owned-deck.js'
 import type { RoomSetup } from './room.js'
 import { serve } from './serve.js'
 import type { RunningServer } from './serve.js'
@@ -147,7 +148,7 @@ describe('WebSocket で繋ぐ', () => {
   let server: RunningServer
 
   beforeEach(async () => {
-    server = await serve({ port: 0, setup, decks, deckChoices })
+    server = await serve({ port: 0, setup, decks, deckChoices, supply: SUPPLY })
   })
 
   afterEach(async () => {
@@ -182,6 +183,24 @@ describe('WebSocket で繋ぐ', () => {
 
     expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: '使えない名乗り' })
     await client.closed()
+  })
+
+  /**
+   * ADR-0021。名乗りは認証ではない（ADR-0009）ので、そこにデッキを紐づけると、名乗りを知っている
+   * 人が他人のデッキを書き換えられる。
+   */
+  it('ログインを持たない立て方では、デッキを持てない', async () => {
+    const client = new Client(server.port, 'あ')
+    await client.waitFor('ロビー')
+
+    client.send({ kind: 'デッキをコピーする', origin: { kind: '既製デッキ', id: '既製1' } })
+
+    expect(await client.waitFor('行えなかった')).toEqual({
+      kind: '行えなかった',
+      reason: 'ログインしていないとデッキを持てません',
+    })
+    expect(client.received.some((message) => message.kind === '自分のデッキ')).toBe(false)
+    await client.close()
   })
 
   /** #175。尋ねに来るのを待たず、繋いだ時点で送る。最初に見るのがロビーだからである。 */
@@ -483,7 +502,7 @@ describe('生きているかを確かめる', () => {
   let server: RunningServer
 
   beforeEach(async () => {
-    server = await serve({ port: 0, setup, decks, deckChoices, heartbeatMs: BEAT_MS })
+    server = await serve({ port: 0, setup, decks, deckChoices, supply: SUPPLY, heartbeatMs: BEAT_MS })
   })
 
   afterEach(async () => {
@@ -554,6 +573,7 @@ describe('ログインの設定があるとき', () => {
       setup,
       decks,
       deckChoices,
+      supply: SUPPLY,
       store,
       signIn: createSignIn({
         config: {
@@ -726,6 +746,142 @@ describe('ログインの設定があるとき', () => {
     const mine = await client.waitFor('席についた')
     expect(mine.kind === '席についた' && mine.opponent).toEqual({ kind: '人間', name: 'あいて' })
     await other.close()
+    await client.close()
+  })
+
+  /** 名前を決めてロビーまで進んだ接続。**自分のデッキが届くのを待ってから返す。** */
+  async function enteredAsMe(): Promise<Client> {
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+    await client.waitFor('名前を決めてほしい')
+    client.send({ kind: '名前を決める', name: 'かずお' })
+    await client.waitFor('自分のデッキ')
+    await client.waitFor('ロビー')
+    client.received.length = 0
+    return client
+  }
+
+  /** 送ったあと、自分のデッキが送り直されるまで待つ。 */
+  async function decksAfter(client: Client, message: FromClient): Promise<ToClient> {
+    client.received.length = 0
+    client.send(message)
+    return client.waitFor('自分のデッキ')
+  }
+
+  /** ADR-0021。60 枚を選び切るまで対戦できない、という入口にしない。 */
+  it('名前を決めると、既製デッキが 1 つ自分のデッキとして届く', async () => {
+    const client = await enteredAsMe()
+    const [preset] = SUPPLY.presets
+    if (preset === undefined) throw new Error('既製デッキがあるはずだった')
+
+    expect(store.decksOf(me)).toEqual([
+      { id: expect.any(String), name: preset.name, description: '', cards: sortCards(preset.cards) },
+    ])
+    await client.close()
+  })
+
+  /** 配るのを「初めて名前を決めた時」にすると、それより前に名前を決めた人に届かない。 */
+  it('名前を決め終えていた人にも、繋いだ時に配られる', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedInOther)
+
+    const decks = await client.waitFor('自分のデッキ')
+    expect(decks.kind === '自分のデッキ' && decks.decks.map((deck) => deck.name)).toEqual(['ひとつめ'])
+    await client.close()
+  })
+
+  it('すでにデッキを持っている人には、配り直さない', async () => {
+    store.rename(me, 'かずお')
+    store.saveDeck(me, undefined, { name: 'くんだデッキ', description: '', cards: ['TEST-0'] })
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+
+    const decks = await client.waitFor('自分のデッキ')
+    expect(decks.kind === '自分のデッキ' && decks.decks.map((deck) => deck.name)).toEqual(['くんだデッキ'])
+    await client.close()
+  })
+
+  /** ADR-0021。不備があっても保存でき、並びは揃って残る。 */
+  it('保存すると並びが揃って残り、構築戦の規定を満たしていない点が届く', async () => {
+    const client = await enteredAsMe()
+
+    const decks = await decksAfter(client, {
+      kind: 'デッキを保存する',
+      deck: undefined,
+      name: 'くみかけ',
+      description: '',
+      cards: ['TEST-1', 'TEST-0'],
+    })
+
+    const saved = client.latest('デッキを保存した')
+    // 総合ルール 第3部 第1章 3-1（ADR-0006）
+    expect(saved?.kind === 'デッキを保存した' && saved.violations).toEqual([
+      { kind: '枚数不足', count: 2, minimum: 60 },
+    ])
+    expect(decks.kind === '自分のデッキ' && decks.decks[1]).toEqual({
+      id: saved?.kind === 'デッキを保存した' ? saved.deck : undefined,
+      name: 'くみかけ',
+      description: '',
+      cards: ['TEST-0', 'TEST-1'],
+    })
+    await client.close()
+  })
+
+  it('保存できないものは、理由を添えて断られる', async () => {
+    const client = await enteredAsMe()
+
+    client.send({ kind: 'デッキを保存する', deck: undefined, name: 'くみかけ', description: '', cards: ['どこにもない'] })
+
+    expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: '使えないカードが入っています' })
+    expect(store.decksOf(me)).toHaveLength(1)
+    await client.close()
+  })
+
+  it('既製デッキをコピーして、自分のデッキにできる', async () => {
+    const client = await enteredAsMe()
+
+    const decks = await decksAfter(client, { kind: 'デッキをコピーする', origin: { kind: '既製デッキ', id: '既製1' } })
+
+    expect(decks.kind === '自分のデッキ' && decks.decks.map((deck) => deck.name)).toEqual(['ひとつめ', 'ひとつめ'])
+    await client.close()
+  })
+
+  it('デッキを消せる', async () => {
+    const client = await enteredAsMe()
+    await decksAfter(client, { kind: 'デッキをコピーする', origin: { kind: '既製デッキ', id: '既製1' } })
+    const [first] = store.decksOf(me)
+    if (first === undefined) throw new Error('デッキがあるはずだった')
+
+    const decks = await decksAfter(client, { kind: 'デッキを消す', deck: first.id })
+
+    expect(decks.kind === '自分のデッキ' && decks.decks.map((deck) => deck.id)).not.toContain(first.id)
+    expect(store.decksOf(me)).toHaveLength(1)
+    await client.close()
+  })
+
+  /** 消せると、次に繋いだ時に既製デッキが配られ直して、消したはずのデッキが湧いて出る。 */
+  it('最後のデッキは消せない', async () => {
+    const client = await enteredAsMe()
+    const [only] = store.decksOf(me)
+    if (only === undefined) throw new Error('デッキがあるはずだった')
+
+    client.send({ kind: 'デッキを消す', deck: only.id })
+
+    expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: '最後のデッキは消せません' })
+    expect(store.decksOf(me)).toHaveLength(1)
+    await client.close()
+  })
+
+  it(`デッキは ${OWNED_DECK_LIMIT} 個まで`, async () => {
+    const client = await enteredAsMe()
+    for (let count = 1; count < OWNED_DECK_LIMIT; count += 1) {
+      store.saveDeck(me, undefined, { name: 'ならべる', description: '', cards: [] })
+    }
+
+    client.send({ kind: 'デッキをコピーする', origin: { kind: '既製デッキ', id: '既製1' } })
+
+    expect(await client.waitFor('行えなかった')).toEqual({
+      kind: '行えなかった',
+      reason: `デッキは ${OWNED_DECK_LIMIT} 個までです`,
+    })
+    expect(store.decksOf(me)).toHaveLength(OWNED_DECK_LIMIT)
     await client.close()
   })
 
