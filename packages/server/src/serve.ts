@@ -7,8 +7,8 @@ import { isCpu } from './cpu.js'
 import { poolFacesOf, restrictionChoicesOf } from './deck.js'
 import type { CardSupply, PresetDeck } from './deck.js'
 import { readName } from './name.js'
-import { OWNED_DECK_LIMIT, readDeck, sortCards, violationsOf } from './owned-deck.js'
-import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room.js'
+import { OWNED_DECK_LIMIT, readCards, readDeck, sortCards, violationsOf } from './owned-deck.js'
+import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf, rulesFor, violationsUnder } from './room.js'
 import type { DeckSource, Names, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
 import type { SignIn } from './sign-in.js'
 import type { Store } from './store.js'
@@ -125,6 +125,7 @@ const ACCEPTED: Readonly<Record<FromClient['kind'], true>> = {
   デッキを保存する: true,
   デッキを消す: true,
   デッキをコピーする: true,
+  デッキを確かめる: true,
 }
 
 /** 自分のデッキに手を加えるメッセージ（ADR-0021）。部屋の外のことなので、ここで受ける。 */
@@ -558,6 +559,27 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       sendOwnDecks(socket, participant)
     }
 
+    /**
+     * 組んでいるデッキを、選んだルールで確かめる（ADR-0021）。**置き場には触らない。**
+     *
+     * **ログインを持たない立て方では断る。** 組んでも残す場所が無く、カードプールも配っていない
+     * （`sendPool`）。確かめる口だけを開けておく理由が無い。
+     */
+    function checkDeck(message: Extract<FromClient, { readonly kind: 'デッキを確かめる' }>): void {
+      const refuse = (reason: string): void => send(socket, { kind: '行えなかった', reason })
+      if (deckStore === undefined) return refuse('ログインしていないとデッキを持てません')
+
+      const reading = readCards(message.cards, options.supply.pool)
+      if (reading.kind === '断る') return refuse(reading.reason)
+      const rules = rulesFor(message.format, message.restriction, options.decks.restrictions)
+      if (typeof rules === 'string') return refuse(rules)
+      // `readCards` を通った並びはプールのカードだけなので、引けないことは無い。
+      const deck = options.decks.from(reading.cards)
+      if (deck === undefined) throw new Error('プールにあるはずのカードが引けませんでした')
+
+      send(socket, { kind: 'デッキを確かめた', violations: violationsUnder(deck.cards, rules) })
+    }
+
     admit()
 
     socket.on('message', (data) => {
@@ -578,6 +600,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       }
       if (isDeckRequest(message)) {
         changeDecks(message)
+        return
+      }
+      if (message.kind === 'デッキを確かめる') {
+        checkDeck(message)
         return
       }
 
