@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { defineUnit } from '@revolution/engine'
 import type { Card } from '@revolution/engine'
-import { checkPresets, deckChoicesOf, deckSourceFrom, newSetup, readSupply } from './deck.js'
+import { checkPresets, deckChoicesOf, deckSourceFrom, newSetup, readSupply, restrictionChoicesOf } from './deck.js'
 import type { CardPool, CardSupply } from './deck.js'
 
 /**
@@ -39,7 +39,7 @@ describe('渡されたものを読む', () => {
     const reading = readSupply({
       pool: POOL,
       presets: [{ id: '既製1', name: 'ひとつめ', cards: ALL_KEYS }],
-      restrictions: [{ id: 'リスト1', name: '2026年版', limits: { [ALL_KEYS[0] as string]: 1 } }],
+      restrictions: [{ id: 'リスト1', name: '2026年版', limits: { 'テスト・カード0': 1 } }],
     })
 
     expect(reading.kind).toBe('通す')
@@ -85,7 +85,7 @@ describe('渡されたものを読む', () => {
     const reading = readSupply({
       pool: POOL,
       presets: [{ id: '既製1', name: 'ひとつめ', cards: ALL_KEYS }],
-      restrictions: [{ id: 'リスト1', name: '2026年版', limits: { [ALL_KEYS[0] as string]: '1 枚' } }],
+      restrictions: [{ id: 'リスト1', name: '2026年版', limits: { 'テスト・カード0': '1 枚' } }],
     })
 
     expect(reading.kind).toBe('断る')
@@ -99,10 +99,49 @@ describe('渡されたものを読む', () => {
     const reading = readSupply({
       pool: POOL,
       presets: [{ id: '既製1', name: 'ひとつめ', cards: ALL_KEYS }],
-      restrictions: [{ id: 'リスト1', name: '2026年版', limits: { 知らない番号: 0 } }],
+      restrictions: [{ id: 'リスト1', name: '2026年版', limits: { 'テスト・プールに無いカード': 0 } }],
     })
 
     expect(reading.kind).toBe('通す')
+  })
+
+  /** 部屋はリストを識別子で覚える（`room.ts`）。重なると、どちらを当てているか決められない。 */
+  it('識別子が重なる禁止／制限リストは断る', () => {
+    const list = { id: 'リスト1', name: '2026年版', limits: {} }
+    const reading = readSupply({
+      pool: POOL,
+      presets: [{ id: '既製1', name: 'ひとつめ', cards: ALL_KEYS }],
+      restrictions: [list, { ...list, name: '2027年版' }],
+    })
+
+    expect(reading).toEqual({ kind: '断る', reason: '禁止／制限リストの識別子が重なっています: リスト1' })
+  })
+
+  /** 空白を無視して比べると空になり、どのカードも指さない（engine の `sameNameKey`）。 */
+  it('名前が空白だけのカードを名指す禁止／制限リストは断る', () => {
+    const reading = readSupply({
+      pool: POOL,
+      presets: [{ id: '既製1', name: 'ひとつめ', cards: ALL_KEYS }],
+      restrictions: [{ id: 'リスト1', name: '2026年版', limits: { '　': 0 } }],
+    })
+
+    expect(reading).toEqual({ kind: '断る', reason: '禁止／制限リスト リスト1 に名前の無いカードが入っています' })
+  })
+})
+
+describe('選べる禁止／制限リスト', () => {
+  it('渡された順のまま、識別子と名前だけを並べる。中身は出さない', () => {
+    const supply = supplyOf({
+      restrictions: [
+        { id: 'リスト2', name: '2027年版', limits: { 'テスト・カード0': 0 } },
+        { id: 'リスト1', name: '2026年版', limits: {} },
+      ],
+    })
+
+    expect(restrictionChoicesOf(supply)).toEqual([
+      { id: 'リスト2', name: '2027年版' },
+      { id: 'リスト1', name: '2026年版' },
+    ])
   })
 })
 
@@ -144,9 +183,8 @@ describe('既製デッキの不備を確かめる', () => {
    * 通るとは限らない。**立てる時にリストを当てない。**
    */
   it('禁止／制限リストに触れていても、立てる時には不備にしない', () => {
-    const supply = supplyOf({
-      restrictions: [{ id: 'リスト1', name: '2026年版', limits: Object.fromEntries(ALL_KEYS.map((key) => [key, 0])) }],
-    })
+    const banningAll = Object.fromEntries(Object.values(POOL).map((card) => [card.name, 0]))
+    const supply = supplyOf({ restrictions: [{ id: 'リスト1', name: '2026年版', limits: banningAll }] })
 
     expect(checkPresets(supply)).toEqual([])
   })

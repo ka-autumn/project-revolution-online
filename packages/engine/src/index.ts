@@ -89,11 +89,15 @@ export type { BpModification } from './continuous.js'
 export { satisfiesLevel } from './cost.js'
 export {
   CONSTRUCTED_DECK_MINIMUM,
+  DUEL_FORMATS,
   SAME_NAME_MAXIMUM,
   STAR_ICON_MAXIMUM,
+  checkCardLimits,
   checkConstructedDeck,
+  checkDeckForFormat,
+  sameNameKey,
 } from './deck.js'
-export type { Deck, DeckViolation } from './deck.js'
+export type { CardLimits, Deck, DeckViolation, DuelFormat } from './deck.js'
 export {
   cardsIn,
   cardsInResolveZone,
@@ -187,6 +191,8 @@ export type {
   FromClient,
   Opponent,
   OpponentKind,
+  RestrictionChoice,
+  RestrictionListId,
   RoomCode,
   ToClient,
   WireCandidate,
@@ -194,7 +200,9 @@ export type {
   WireChoice,
   WireDeck,
   WireOwnedDeck,
+  WireRestrictionList,
   WireRoom,
+  WireRoomRules,
 } from './protocol.js'
 export type { PlayDeclaration } from './play.js'
 export { PLAYERS } from './player.js'

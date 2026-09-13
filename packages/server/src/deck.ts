@@ -1,5 +1,14 @@
 import { checkConstructedDeck } from '@revolution/engine'
-import type { Card, Deck, DeckId, DeckViolation, WireDeck } from '@revolution/engine'
+import type {
+  Card,
+  CardLimits,
+  Deck,
+  DeckId,
+  DeckViolation,
+  RestrictionListId,
+  WireDeck,
+  WireRestrictionList,
+} from '@revolution/engine'
 import type { DeckSource, RoomSetup, SeatedDeck } from './room.js'
 
 /**
@@ -50,12 +59,16 @@ export interface PresetDeck {
  *
  * **リストは、いまプールに無いカードを名指していてもよい。** リストは遊ばれている環境の側の言葉で、
  * 何が実装済みかとは別に決まる。
+ *
+ * **名指すのは識別子ではなくカード名である。** 制限は同名のカードに掛かる（フロアルール Version 1.12
+ * 第2部 第1章 1-1）。識別子で名指すと、同じ名前の再録カードがプールにあり、名指した識別子が
+ * プールに無いときに、名前を引けずに上限が当たらなくなる。
  */
 export interface RestrictionList {
-  readonly id: string
+  readonly id: RestrictionListId
   readonly name: string
-  /** 識別子ごとの、デッキに入れてよい枚数。`0` が禁止カード。**載っていないカードに上限は無い。** */
-  readonly limits: Readonly<Record<CardKey, number>>
+  /** カード名ごとの、デッキに入れてよい枚数。`0` が禁止カード。**載っていないカードに上限は無い。** */
+  readonly limits: CardLimits
 }
 
 /**
@@ -70,8 +83,8 @@ export interface CardSupply {
   /**
    * 名前の付いた禁止／制限リスト。**空でよい。**
    *
-   * どのリストを使うかは部屋ごとに決まる（ADR-0021）が、部屋がルールを持つのはデッキを組める
-   * ようになってからである。**いまは器として受け取るだけで、どこにも当てていない。**
+   * どのリストを使うかは部屋ごとに決まる（ADR-0021、`room.ts`）。**並び順がそのままロビーの並びに
+   * なり、先頭のものが、何も選ばずに作られた部屋の既定になる。**
    */
   readonly restrictions: readonly RestrictionList[]
 }
@@ -130,18 +143,24 @@ function readPresets(value: unknown, pool: CardPool): readonly PresetDeck[] | st
 function readRestrictions(value: unknown): readonly RestrictionList[] | string {
   if (!Array.isArray(value)) return 'restrictions がリストの配列ではありません'
   const lists: RestrictionList[] = []
+  const seen = new Set<RestrictionListId>()
   for (const list of value as readonly unknown[]) {
     if (!isObject(list)) return 'restrictions にリストでないものが入っています'
     const { id, name, limits } = list
     if (typeof id !== 'string' || id === '') return 'restrictions に識別子の無いリストが入っています'
+    // 部屋はリストを識別子で覚える（`room.ts`）。重なると、どちらを当てているか決められない。
+    if (seen.has(id)) return `禁止／制限リストの識別子が重なっています: ${id}`
     if (typeof name !== 'string' || name === '') return `禁止／制限リスト ${id} に名前がありません`
     if (!isObject(limits)) return `禁止／制限リスト ${id} の limits が枚数の表ではありません`
     for (const [card, limit] of Object.entries(limits)) {
+      // 空白だけの名前は、空白を無視して比べると空になり、どのカードも指さない（engine の `sameNameKey`）。
+      if (card.trim() === '') return `禁止／制限リスト ${id} に名前の無いカードが入っています`
       if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 0) {
         return `禁止／制限リスト ${id} の ${card} の枚数が 0 以上の整数ではありません`
       }
     }
-    lists.push({ id, name, limits: limits as Readonly<Record<CardKey, number>> })
+    seen.add(id)
+    lists.push({ id, name, limits: limits as CardLimits })
   }
 
   return lists
@@ -230,12 +249,21 @@ export function deckSourceFrom(supply: CardSupply): DeckSource {
     },
     fallback: first.id,
     from: (keys) => seatedDeckOf(supply.pool, keys),
+    restrictions: supply.restrictions,
   }
 }
 
 /** 選べるデッキとして画面に出すもの（`WireDeck`）。**渡された順のまま並べる。** */
 export function deckChoicesOf(supply: CardSupply): readonly WireDeck[] {
   return supply.presets.map((preset) => ({ id: preset.id, name: preset.name }))
+}
+
+/**
+ * 部屋を作る時に選べる禁止／制限リストとして画面に出すもの（`WireRestrictionList`）。
+ * **渡された順のまま並べる。** 中身（どのカードが何枚までか）は出さない。
+ */
+export function restrictionChoicesOf(supply: CardSupply): readonly WireRestrictionList[] {
+  return supply.restrictions.map((list) => ({ id: list.id, name: list.name }))
 }
 
 /** 新しい部屋に付ける合言葉の長さ。 */

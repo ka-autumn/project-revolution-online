@@ -7,8 +7,19 @@ import {
   drawCards,
   placeTopOfLibrary,
 } from '@revolution/engine'
-import type { Card, FromClient, LegalAction, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
+import type {
+  Card,
+  FromClient,
+  LegalAction,
+  OpponentKind,
+  RestrictionChoice,
+  ToClient,
+  WireChoice,
+  WirePerspective,
+  WireRoomRules,
+} from '@revolution/engine'
 import { deckSourceFrom } from './deck.js'
+import type { RestrictionList } from './deck.js'
 import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room.js'
 import type { DeckSource, Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
 
@@ -129,6 +140,20 @@ const ALL_LINKED: ReadonlySet<ParticipantId> = new Set(['あ', 'い', 'う', '�
 function entering(room: string, deck?: string): FromClient {
   return { kind: '部屋に入る', room, deck }
 }
+
+type Making = Extract<FromClient, { readonly kind: '部屋を作る' }>
+
+/** 部屋を作るメッセージ。デッキもルールも、選ばなければ既定のものになる（ADR-0021）。 */
+function making(
+  name: string,
+  against: OpponentKind,
+  chosen: Partial<Pick<Making, 'deck' | 'format' | 'restriction'>> = {},
+): Making {
+  return { kind: '部屋を作る', name, against, deck: undefined, format: undefined, restriction: undefined, ...chosen }
+}
+
+/** 渡されたリストが 1 つも無い部屋のルール。`DECKS` で作った部屋はどれもこれになる。 */
+const UNRESTRICTED: WireRoomRules = { format: '構築戦', restriction: { kind: '制限なし' } }
 
 /** 2 人が入って、デュエルが始まったところ。 */
 function started(decks: DeckSource = DECKS): RoomOutcome {
@@ -944,7 +969,7 @@ describe('見てしまったら戻れない', () => {
  * おく必要が無い。**
  */
 describe('部屋を作る', () => {
-  const MAKE: FromClient = { kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined }
+  const MAKE = making('てすとのへや', '人間')
 
   it('サーバが決めた合言葉の部屋に入って、相手を待つ', () => {
     const outcome = send(emptyRooms(), 'あ', MAKE)
@@ -957,7 +982,14 @@ describe('部屋を作る', () => {
     const outcome = send(emptyRooms(), 'あ', MAKE)
 
     expect(lobbyOf(outcome.rooms)).toEqual([
-      { code: SETUP.code, name: 'てすとのへや', status: '相手を待っている', cpu: false, occupants: ['あ'] },
+      {
+        code: SETUP.code,
+        name: 'てすとのへや',
+        status: '相手を待っている',
+        cpu: false,
+        occupants: ['あ'],
+        rules: UNRESTRICTED,
+      },
     ])
   })
 
@@ -999,7 +1031,7 @@ describe('部屋を作る', () => {
  * 人と同じ道筋を通る。**
  */
 describe('CPU と対戦する', () => {
-  const AGAINST_CPU: FromClient = { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined }
+  const AGAINST_CPU = making('ひとり', 'CPU')
 
   it('作った時点で始まっている', () => {
     const outcome = send(emptyRooms(), 'あ', AGAINST_CPU)
@@ -1019,7 +1051,7 @@ describe('CPU と対戦する', () => {
     const outcome = send(emptyRooms(), 'あ', AGAINST_CPU)
 
     expect(lobbyOf(outcome.rooms)).toEqual([
-      { code: SETUP.code, name: 'ひとり', status: '対戦中', cpu: true, occupants: ['あ'] },
+      { code: SETUP.code, name: 'ひとり', status: '対戦中', cpu: true, occupants: ['あ'], rules: UNRESTRICTED },
     ])
   })
 
@@ -1071,7 +1103,7 @@ describe('CPU と対戦する', () => {
 /** #175。部屋を出てロビーに戻る。 */
 describe('ロビーに戻る', () => {
   it('相手を待っているだけなら、出られる', () => {
-    const waiting = send(emptyRooms(), 'あ', { kind: '部屋を作る', name: '', against: '人間', deck: undefined })
+    const waiting = send(emptyRooms(), 'あ', making('', '人間'))
 
     const left = send(waiting.rooms, 'あ', { kind: 'ロビーに戻る' })
 
@@ -1082,7 +1114,9 @@ describe('ロビーに戻る', () => {
   it('決着した部屋からも、出られる', () => {
     const left = send(ended().rooms, 'あ', { kind: 'ロビーに戻る' })
 
-    expect(lobbyOf(left.rooms)).toEqual([{ code: CODE, name: CODE, status: '終わった', cpu: false, occupants: ['い'] }])
+    expect(lobbyOf(left.rooms)).toEqual([
+      { code: CODE, name: CODE, status: '終わった', cpu: false, occupants: ['い'], rules: UNRESTRICTED },
+    ])
   })
 
   /** 投げ出す口はまだ無い（#92）。合言葉の打ち間違いと同じく、対戦が消えてはならない。 */
@@ -1173,13 +1207,13 @@ describe('ロビー', () => {
 
   it('始まった部屋は対戦中になる', () => {
     expect(lobbyOf(started().rooms)).toEqual([
-      { code: CODE, name: CODE, status: '対戦中', cpu: false, occupants: ['あ', 'い'] },
+      { code: CODE, name: CODE, status: '対戦中', cpu: false, occupants: ['あ', 'い'], rules: UNRESTRICTED },
     ])
   })
 
   it('決着した部屋は終わったになる', () => {
     expect(lobbyOf(ended().rooms)).toEqual([
-      { code: CODE, name: CODE, status: '終わった', cpu: false, occupants: ['あ', 'い'] },
+      { code: CODE, name: CODE, status: '終わった', cpu: false, occupants: ['あ', 'い'], rules: UNRESTRICTED },
     ])
   })
 
@@ -1195,9 +1229,9 @@ describe('ロビー', () => {
 
   /** CPU に表示名は無い。座っているかどうかは `cpu` が持っている。 */
   it('CPU は並ばない', () => {
-    const opened = send(emptyRooms(), 'あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined })
+    const opened = send(emptyRooms(), 'あ', making('ひとり', 'CPU'))
 
-    expect(lobbyOf(opened.rooms)[0]).toMatchObject({ cpu: true, occupants: ['あ'] })
+    expect(lobbyOf(opened.rooms)[0]).toMatchObject({ cpu: true, occupants: ['あ'], rules: UNRESTRICTED })
   })
 })
 
@@ -1225,7 +1259,7 @@ describe('相手が誰か', () => {
   })
 
   it('CPU が相手なら、名前は付かない', () => {
-    const against: FromClient = { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined }
+    const against: FromClient = making('ひとり', 'CPU')
     const outcome = receive(emptyRooms(), 'あ', against, SETUP, DECKS, ALL_LINKED, names)
 
     expect(to(outcome.deliveries, 'あ').find((message) => message.kind === '席についた')).toMatchObject({
@@ -1280,7 +1314,7 @@ describe('持ち込むデッキを選ぶ', () => {
   })
 
   it('部屋を作る時にも選べる', () => {
-    const opened = send(emptyRooms(), 'あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: '既製2' })
+    const opened = send(emptyRooms(), 'あ', making('ひとり', 'CPU', { deck: '既製2' }))
 
     expect(broughtDecks(opened)[0]).toEqual([...deckKeys(CARDS)].reverse())
   })
@@ -1300,13 +1334,21 @@ describe('持ち込むデッキを選ぶ', () => {
   })
 
   /** 画面が知らない識別子を送ってくることはありうる（棚が変わった後など、ADR-0013）。 */
-  it('知らないデッキを選んだら、2 人とも断られる', () => {
-    const first = send(emptyRooms(), 'あ', entering(CODE, '知らないデッキ'))
-
-    const outcome = send(first.rooms, 'い', entering(CODE))
+  it('知らないデッキを選んだら、部屋に入れずに断られる', () => {
+    const outcome = send(emptyRooms(), 'あ', entering(CODE, '知らないデッキ'))
 
     expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '選ばれたデッキを持ち込めません' }])
+    expect(outcome.rooms.size).toBe(0)
+  })
+
+  it('相手を待っている部屋に、知らないデッキを選んで入ろうとしても断られる', () => {
+    const first = send(emptyRooms(), 'あ', entering(CODE))
+
+    const outcome = send(first.rooms, 'い', entering(CODE, '知らないデッキ'))
+
     expect(to(outcome.deliveries, 'い')).toEqual([{ kind: '行えなかった', reason: '選ばれたデッキを持ち込めません' }])
+    expect(to(outcome.deliveries, 'あ')).toEqual([])
+    expect(outcome.rooms.get(CODE)?.duel).toBeUndefined()
   })
 })
 
@@ -1335,5 +1377,258 @@ describe('記録から立て直す', () => {
     })
 
     expect(restore(storedFrom(started()), withoutCards).size).toBe(0)
+  })
+})
+
+/**
+ * ADR-0021。部屋がルールを持ち、席に着くデッキはその部屋のルールで確かめる。
+ *
+ * 禁止／制限リストの上限はフロアルール Version 1.12 第2部 第1章 1-1（ADR-0023）。
+ */
+describe('部屋のルール', () => {
+  /** どの既製デッキにも入っていないカードの名前。これを名指すリストは、どのデッキも通す。 */
+  const NOWHERE = 'テスト・どこにもないカード'
+
+  /** 既製デッキ「既製1」「既製2」に 4 枚ずつ入っているカードの名前。 */
+  const IN_PRESETS = 'テスト・部屋0'
+
+  const LENIENT = { id: 'ゆるいリスト', name: 'テストのゆるいリスト', limits: { [NOWHERE]: 0 } }
+  const OTHER = { id: 'もうひとつのリスト', name: 'テストのもうひとつのリスト', limits: { [NOWHERE]: 1 } }
+  const BANNING = { id: '禁じるリスト', name: 'テストの禁じるリスト', limits: { [IN_PRESETS]: 0 } }
+
+  /** `TEST-0` の代わりに入れるカード。「既製3」を 60 枚にするために要る。 */
+  const SUBSTITUTE = defineUnit({ name: 'テスト・部屋の代わり', level: 0, bp: 100, sp: 100, moveIcon: ['上'] })
+  const POOL = { ...CARDS, 'TEST-X': SUBSTITUTE }
+
+  /**
+   * 禁止／制限リストを渡したデッキの引き方。先頭のリストは、どの既製デッキも通す。
+   *
+   * 「既製3」だけが `IN_PRESETS` を含まない。**既定のデッキ（先頭の既製1）は含む**ので、禁じる
+   * リストの部屋に既定のデッキで座ろうとすると断られる。
+   */
+  const RESTRICTED: DeckSource = deckSourceFrom({
+    pool: POOL,
+    presets: [
+      { id: '既製1', name: 'ひとつめ', cards: deckKeys(CARDS) },
+      { id: '既製2', name: 'ふたつめ', cards: [...deckKeys(CARDS)].reverse() },
+      { id: '既製3', name: 'みっつめ', cards: deckKeys(POOL).filter((key) => key !== 'TEST-0') },
+    ],
+    restrictions: [LENIENT, OTHER, BANNING],
+  })
+
+  const BANNING_CHOSEN = { restriction: { kind: '禁止／制限リスト', id: BANNING.id } } as const
+
+  function sending(rooms: Rooms, participant: ParticipantId, message: FromClient, decks = RESTRICTED): RoomOutcome {
+    return receive(rooms, participant, message, SETUP, decks, ALL_LINKED)
+  }
+
+  function rulesInLobby(rooms: Rooms): WireRoomRules | undefined {
+    return lobbyOf(rooms)[0]?.rules
+  }
+
+  /** 禁止カードを含むデッキを断るときの理由。 */
+  function bannedReason(whose: '' | 'CPU の'): string {
+    return `${whose}デッキがこの部屋のルールを満たしていません: 禁止カード「${IN_PRESETS}」が入っています`
+  }
+
+  describe('部屋を作る時に選ぶ', () => {
+    it('何も選ばなければ、構築戦で、渡された先頭の禁止／制限リストを当てる', () => {
+      const outcome = sending(emptyRooms(), 'あ', making('へや', '人間'))
+
+      expect(rulesInLobby(outcome.rooms)).toEqual({
+        format: '構築戦',
+        restriction: { kind: '禁止／制限リスト', id: LENIENT.id, name: LENIENT.name },
+      })
+    })
+
+    it('禁止／制限リストが 1 つも渡されていなければ、何も選ばなかった部屋は制限なしになる', () => {
+      const outcome = sending(emptyRooms(), 'あ', making('へや', '人間'), DECKS)
+
+      expect(rulesInLobby(outcome.rooms)).toEqual(UNRESTRICTED)
+    })
+
+    it('渡されたリストの中から選べる', () => {
+      const restriction = { kind: '禁止／制限リスト', id: OTHER.id } as const
+      const outcome = sending(emptyRooms(), 'あ', making('へや', '人間', { format: '構築戦', restriction }))
+
+      expect(rulesInLobby(outcome.rooms)).toEqual({
+        format: '構築戦',
+        restriction: { kind: '禁止／制限リスト', id: OTHER.id, name: OTHER.name },
+      })
+    })
+
+    it('リストが渡されていても、制限なしを選べる', () => {
+      const outcome = sending(emptyRooms(), 'あ', making('へや', '人間', { restriction: { kind: '制限なし' } }))
+
+      expect(rulesInLobby(outcome.rooms)).toEqual(UNRESTRICTED)
+    })
+
+    /** 画面は選択肢の中からしか送らないはずだが、それを信じない（ADR-0010）。 */
+    it('渡されていないリストを選ぶと、部屋を作らずに断る', () => {
+      const restriction = { kind: '禁止／制限リスト', id: '知らないリスト' } as const
+      const outcome = sending(emptyRooms(), 'あ', making('へや', '人間', { restriction }))
+
+      expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: 'その禁止／制限リストはありません' }])
+      expect(outcome.rooms.size).toBe(0)
+    })
+
+    it('知らない形式を選ぶと、部屋を作らずに断る', () => {
+      const message = { ...making('へや', '人間'), format: '限定戦' } as unknown as FromClient
+      const outcome = sending(emptyRooms(), 'あ', message)
+
+      expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: 'その形式はありません' }])
+      expect(outcome.rooms.size).toBe(0)
+    })
+
+    it('合言葉を直に指して作った部屋は、何も選ばなかったルールになる', () => {
+      const outcome = sending(emptyRooms(), 'あ', entering(CODE))
+
+      expect(rulesInLobby(outcome.rooms)).toEqual({
+        format: '構築戦',
+        restriction: { kind: '禁止／制限リスト', id: LENIENT.id, name: LENIENT.name },
+      })
+    })
+  })
+
+  describe('席に着く時に確かめる', () => {
+    it('作る人のデッキが選んだリストで通らなければ、理由を添えて、部屋を作らずに断る', () => {
+      const outcome = sending(emptyRooms(), 'あ', making('へや', '人間', BANNING_CHOSEN))
+
+      expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: bannedReason('') }])
+      expect(outcome.rooms.size).toBe(0)
+    })
+
+    it('リストに通るデッキを選べば、同じリストの部屋を作れる', () => {
+      const outcome = sending(emptyRooms(), 'あ', making('へや', '人間', { ...BANNING_CHOSEN, deck: '既製3' }))
+
+      expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '相手を待っている', room: SETUP.code }])
+    })
+
+    it('相手が CPU で、CPU の席のデッキが通らなければ、部屋を作らずに断る', () => {
+      const outcome = sending(emptyRooms(), 'あ', making('ひとり', 'CPU', { ...BANNING_CHOSEN, deck: '既製3' }))
+
+      expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: bannedReason('CPU の') }])
+      expect(outcome.rooms.size).toBe(0)
+    })
+
+    it('入る人のデッキが部屋のルールで通らなければ、入れずに断る。待っている人には何も送らない', () => {
+      const waiting = sending(emptyRooms(), 'あ', making('へや', '人間', { ...BANNING_CHOSEN, deck: '既製3' }))
+
+      const outcome = sending(waiting.rooms, 'い', entering(SETUP.code, '既製1'))
+
+      expect(to(outcome.deliveries, 'い')).toEqual([{ kind: '行えなかった', reason: bannedReason('') }])
+      expect(to(outcome.deliveries, 'あ')).toEqual([])
+      expect(outcome.rooms.get(SETUP.code)?.participants).toEqual(['あ'])
+    })
+
+    it('入る人も、部屋のルールに通るデッキを選べば席に着ける', () => {
+      const waiting = sending(emptyRooms(), 'あ', making('へや', '人間', { ...BANNING_CHOSEN, deck: '既製3' }))
+
+      const outcome = sending(waiting.rooms, 'い', entering(SETUP.code, '既製3'))
+
+      expect(outcome.rooms.get(SETUP.code)?.duel).toBeDefined()
+    })
+
+    it('相手を待っている間に、部屋のルールで通らないデッキへは選び直せない。前に選んだものが残る', () => {
+      const waiting = sending(emptyRooms(), 'あ', making('へや', '人間', { ...BANNING_CHOSEN, deck: '既製3' }))
+
+      const refused = sending(waiting.rooms, 'あ', entering(SETUP.code, '既製1'))
+
+      expect(to(refused.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: bannedReason('') }])
+      expect(refused.rooms.get(SETUP.code)?.deck).toBe('既製3')
+    })
+
+    it('制限カードは、上限の枚数までなら通り、超えると断る', () => {
+      const four = { id: '4枚まで', name: 'テストの4枚まで', limits: { [IN_PRESETS]: 4 } }
+      const three = { id: '3枚まで', name: 'テストの3枚まで', limits: { [IN_PRESETS]: 3 } }
+      const decks = deckSourceFrom({
+        pool: CARDS,
+        presets: [{ id: '既製1', name: 'ひとつめ', cards: deckKeys(CARDS) }],
+        restrictions: [four, three],
+      })
+      const threeChosen = { restriction: { kind: '禁止／制限リスト', id: three.id } } as const
+
+      const passing = sending(emptyRooms(), 'あ', making('へや', '人間'), decks)
+      const failing = sending(emptyRooms(), 'あ', making('へや', '人間', threeChosen), decks)
+
+      expect(to(passing.deliveries, 'あ')).toEqual([{ kind: '相手を待っている', room: SETUP.code }])
+      expect(to(failing.deliveries, 'あ')).toEqual([
+        {
+          kind: '行えなかった',
+          reason: `デッキがこの部屋のルールを満たしていません: 制限カード「${IN_PRESETS}」が 4 枚入っています（3 枚まで）`,
+        },
+      ])
+    })
+  })
+
+  describe('記録と立て直し', () => {
+    /** CPU を相手に作って、そのまま始まったところ。 */
+    function startedWith(restriction: RestrictionChoice): RoomOutcome {
+      return sending(emptyRooms(), 'あ', making('ひとり', 'CPU', { deck: '既製3', restriction }))
+    }
+
+    /** 置き場から読み出した形（`StoredDuel`）に直す。書くところは `store.ts` にある。 */
+    function storedFrom(outcome: RoomOutcome): Parameters<typeof restore>[0] {
+      const record = outcome.records.find((each) => each.kind === '始まった')
+      if (record?.kind !== '始まった') throw new Error('始まった記録があるはずだった')
+
+      return [{ ...record, steps: [] }]
+    }
+
+    /** 立て直す時に渡すもの。既製デッキは記録の側に並びが残っているので、要るのはリストだけである。 */
+    function supplying(restrictions: readonly RestrictionList[]): DeckSource {
+      return deckSourceFrom({
+        pool: POOL,
+        presets: [{ id: '既製1', name: 'ひとつめ', cards: deckKeys(CARDS) }],
+        restrictions,
+      })
+    }
+
+    it('始まった記録に、部屋のルールが残る。リストは識別子だけを残す', () => {
+      const [stored] = storedFrom(startedWith({ kind: '禁止／制限リスト', id: OTHER.id }))
+
+      expect(stored?.rules).toEqual({ format: '構築戦', restriction: OTHER.id })
+    })
+
+    it('制限なしの部屋は、リストの識別子を残さない', () => {
+      const [stored] = storedFrom(startedWith({ kind: '制限なし' }))
+
+      expect(stored?.rules).toEqual({ format: '構築戦', restriction: undefined })
+    })
+
+    it('立て直した部屋は、記録と同じルールになる', () => {
+      const restored = restore(storedFrom(startedWith({ kind: '禁止／制限リスト', id: OTHER.id })), RESTRICTED)
+
+      expect(rulesInLobby(restored)).toEqual({
+        format: '構築戦',
+        restriction: { kind: '禁止／制限リスト', id: OTHER.id, name: OTHER.name },
+      })
+    })
+
+    it('制限なしで打っていた部屋は、リストが渡されていても、立て直した後も制限なしのまま', () => {
+      const restored = restore(storedFrom(startedWith({ kind: '制限なし' })), RESTRICTED)
+
+      expect(rulesInLobby(restored)).toEqual(UNRESTRICTED)
+    })
+
+    /**
+     * 渡す側がリストを差し替えた後に立て直した場合。**対戦中のデッキは確かめ直さない**——差し替えた
+     * 先のリストでは通らないデッキで打っていても、部屋は作り直せる。
+     */
+    it('記録されたリストがもう渡されていなければ、渡されたリストの先頭を当てる', () => {
+      const restored = restore(storedFrom(startedWith({ kind: '禁止／制限リスト', id: OTHER.id })), supplying([BANNING]))
+
+      expect(restored.get(SETUP.code)?.duel).toBeDefined()
+      expect(rulesInLobby(restored)).toEqual({
+        format: '構築戦',
+        restriction: { kind: '禁止／制限リスト', id: BANNING.id, name: BANNING.name },
+      })
+    })
+
+    it('記録されたリストが無く、リストが 1 つも渡されていなければ、制限なしにする', () => {
+      const restored = restore(storedFrom(startedWith({ kind: '禁止／制限リスト', id: OTHER.id })), supplying([]))
+
+      expect(rulesInLobby(restored)).toEqual(UNRESTRICTED)
+    })
   })
 })

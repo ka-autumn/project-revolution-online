@@ -9,6 +9,7 @@ import type {
   WireChoice,
   WireDeck,
   WirePerspective,
+  WireRestrictionList,
   WireRoom,
 } from '@revolution/engine'
 
@@ -47,6 +48,12 @@ export type Stage =
        * 同じである（ADR-0010）。
        */
       readonly decks: readonly WireDeck[]
+      /**
+       * 部屋を作る時に選べる禁止／制限リスト（ADR-0021）。**届いたものをそのまま出す。** 空でよい。
+       *
+       * デッキと同じく、名前も識別子もサーバから届く値である。
+       */
+      readonly restrictions: readonly WireRestrictionList[]
     }
   | {
       /** 部屋に入って、相手が来るのを待っている。 */
@@ -153,7 +160,17 @@ export function applyMessage(session: Session, message: ToClient): Session {
   const stage = session.stage
   switch (message.kind) {
     case 'ロビー':
-      return { stage: { kind: 'ロビー', rooms: message.rooms, decks: message.decks }, refusal: undefined }
+      return {
+        stage: {
+          kind: 'ロビー',
+          rooms: message.rooms,
+          decks: message.decks,
+          // **届かなかったものを、在るものとして扱わない**（`view-model.ts` の `occupantsLine`）。
+          // サーバが古ければ付いてこない。選べるリストが無いだけで、部屋は作れる。
+          restrictions: (message.restrictions as typeof message.restrictions | undefined) ?? [],
+        },
+        refusal: undefined,
+      }
     case '名前を決めてほしい':
       // 断られた理由は `名前を決めてほしい` が自分で持つ（ADR-0020）。ここに残すと、名前の
       // ことなのか 1 つ前に送った手のことなのかが読めなくなる。

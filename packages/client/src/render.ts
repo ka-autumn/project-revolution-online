@@ -1,13 +1,17 @@
+import { DUEL_FORMATS } from '@revolution/engine'
 import type {
   CardId,
   ChoiceAnswer,
   DeckId,
+  DuelFormat,
   LegalAction,
   OpponentKind,
+  RestrictionChoice,
   RoomCode,
   Square,
   WireCardPosition,
   WireDeck,
+  WireRestrictionList,
 } from '@revolution/engine'
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import type {
@@ -322,6 +326,86 @@ export interface LobbyHandlers {
   readonly onName: (name: string) => void
   /** 持ち込むデッキを選び直した（ADR-0021）。名前と同じく、覚えておくのは呼ぶ側である。 */
   readonly onDeck: (deck: DeckId) => void
+  /** 作る部屋の形式を選び直した（ADR-0021）。覚えておくのは呼ぶ側である。 */
+  readonly onFormat: (format: DuelFormat) => void
+  /** 作る部屋に当てる禁止／制限リストを選び直した（ADR-0021）。覚えておくのは呼ぶ側である。 */
+  readonly onRestriction: (restriction: RestrictionChoice) => void
+}
+
+/**
+ * 作る部屋のルールとして、ロビーで選んでいるもの（ADR-0021）。まだ選んでいなければ `undefined`。
+ *
+ * **選ばないまま作ってもよい。** 選ばなかったものは、サーバが既定を当てる（`server` の `room.ts`
+ * の `rulesFor`）。画面はどれが既定かを決めない（ADR-0010）。
+ */
+export interface ChosenRules {
+  readonly format: DuelFormat | undefined
+  readonly restriction: RestrictionChoice | undefined
+}
+
+/** 禁止／制限リストを当てないことを指す `select` の値。**リストの識別子とは重ならない**——リストは番号で指す。 */
+const UNRESTRICTED_VALUE = '制限なし'
+
+/**
+ * 作る部屋のルールを選ぶところ（ADR-0021）。**選べるものは届いたものだけである。**
+ *
+ * 形式が 1 つしか無くても出す。**どの形式で打つ部屋かは、作る人にも分かっていなければならない。**
+ */
+function rulesPicker(
+  restrictions: readonly WireRestrictionList[],
+  chosen: ChosenRules,
+  handlers: Pick<LobbyHandlers, 'onFormat' | 'onRestriction'>,
+): HTMLElement {
+  const node = element('div', 'lobby__rules')
+
+  const formatLabel = element('label', 'lobby__rule')
+  formatLabel.append(element('span', 'lobby__rule-label', '形式'))
+  const formats = document.createElement('select')
+  formats.className = 'lobby__rule-select'
+  for (const format of DUEL_FORMATS) {
+    const option = document.createElement('option')
+    option.value = format
+    option.textContent = format
+    // 選ばれていなければ先頭が選ばれた形になる。サーバも選ばれなかった形式を構築戦にする。
+    option.selected = format === chosen.format
+    formats.append(option)
+  }
+  formats.addEventListener('change', () => {
+    const format = DUEL_FORMATS.find((each) => each === formats.value)
+    if (format !== undefined) handlers.onFormat(format)
+  })
+  formatLabel.append(formats)
+  node.append(formatLabel)
+
+  const restrictionLabel = element('label', 'lobby__rule')
+  restrictionLabel.append(element('span', 'lobby__rule-label', '禁止／制限リスト'))
+  const lists = document.createElement('select')
+  lists.className = 'lobby__rule-select'
+  // **渡されたリストを先に、制限なしを後に並べる。** 選ばれていなければ先頭が選ばれた形になり、
+  // サーバも選ばれなかった部屋に渡された先頭のリストを当てる（リストが無ければ制限なし）ので、
+  // 出ているものと当たるものがずれない。
+  restrictions.forEach((list, index) => {
+    const option = document.createElement('option')
+    option.value = String(index)
+    option.textContent = list.name
+    option.selected = chosen.restriction?.kind === '禁止／制限リスト' && chosen.restriction.id === list.id
+    lists.append(option)
+  })
+  const unrestricted = document.createElement('option')
+  unrestricted.value = UNRESTRICTED_VALUE
+  unrestricted.textContent = '制限なし'
+  unrestricted.selected = chosen.restriction?.kind === '制限なし'
+  lists.append(unrestricted)
+  lists.addEventListener('change', () => {
+    if (lists.value === UNRESTRICTED_VALUE) return handlers.onRestriction({ kind: '制限なし' })
+
+    const list = restrictions[Number(lists.value)]
+    if (list !== undefined) handlers.onRestriction({ kind: '禁止／制限リスト', id: list.id })
+  })
+  restrictionLabel.append(lists)
+  node.append(restrictionLabel)
+
+  return node
 }
 
 /** 持ち込むデッキを選ぶところ（ADR-0021）。**選べるものは届いたものだけである。** */
@@ -363,6 +447,8 @@ export function lobbyElement(
   name: string,
   decks: readonly WireDeck[],
   chosenDeck: DeckId | undefined,
+  restrictions: readonly WireRestrictionList[],
+  chosenRules: ChosenRules,
   handlers: LobbyHandlers,
   focused = false,
 ): HTMLElement {
@@ -372,6 +458,10 @@ export function lobbyElement(
   // **デッキを選ぶところは、作る口と入る口の両方の上に置く。** どちらで座るかはここで決まる
   // （ADR-0021）ので、どちらか一方に付けると、もう一方から選べないように見える。
   if (decks.length > 0) node.append(deckPicker(decks, chosenDeck, handlers.onDeck))
+
+  // **ルールを選ぶところは、作る口の上にだけ置く。** ルールを決めるのは部屋を作る人で、入る人は
+  // 一覧に出ている部屋のルールを見て選ぶ（ADR-0021）。
+  node.append(rulesPicker(restrictions, chosenRules, handlers))
 
   const making = element('div', 'lobby__make')
   const input = document.createElement('input')
@@ -402,6 +492,9 @@ export function lobbyElement(
     row.append(element('span', 'lobby__room-name', view.name))
     // 誰がいるかを出す（ADR-0020）。名乗りが席に座れる合言葉だった頃は出せなかった（ADR-0009）。
     if (view.occupants !== undefined) row.append(element('span', 'lobby__room-occupants', view.occupants))
+    // その部屋のルール（ADR-0021）。**入る前に分からなければならない**——選んだデッキが通るかは
+    // 部屋のルールで決まる。
+    if (view.rules !== undefined) row.append(element('span', 'lobby__room-rules', view.rules))
     row.append(element('span', 'lobby__room-status', view.status))
     // 入れない部屋には押す口を出さない。断られる手を画面に出さないのは盤面と同じである。
     if (view.joinable) row.append(button('入る', () => handlers.onJoin(view.code)))

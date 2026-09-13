@@ -1,5 +1,5 @@
 import type { Square } from './board.js'
-import type { DeckViolation } from './deck.js'
+import type { DeckViolation, DuelFormat } from './deck.js'
 import { cardsIn } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import { applyLegalAction } from './legal-action.js'
@@ -68,6 +68,46 @@ export interface WireOwnedDeck {
 }
 
 /**
+ * 禁止／制限リスト 1 つを指す識別子（ADR-0021）。
+ *
+ * **公開側にとってはただの文字列である。** どのリストがあるかは渡す側が決める（`server` の
+ * `deck.ts` の `RestrictionList`）。
+ */
+export type RestrictionListId = string
+
+/**
+ * 部屋に当てられる禁止／制限リスト 1 つ（ADR-0021）。**中身（どのカードが何枚までか）は載せない。**
+ *
+ * 名前が付いているのは人が選ぶためで、指すのは識別子のほうである（`WireDeck` と同じ）。
+ */
+export interface WireRestrictionList {
+  readonly id: RestrictionListId
+  readonly name: string
+}
+
+/**
+ * 部屋を作る人が選ぶ禁止／制限リスト（ADR-0021）。
+ *
+ * **`制限なし` は、リストを 1 つも当てないことである。** 禁止カードも制限カードも無く、確かめるのは
+ * 形式の規定だけになる。「選ばなかった」とは別のもので、こちらは `部屋を作る` の `restriction` が
+ * `undefined` であることで表す——JSON にすると値の無いものは消えるので、同じ形では見分けられない。
+ */
+export type RestrictionChoice =
+  | { readonly kind: '制限なし' }
+  | { readonly kind: '禁止／制限リスト'; readonly id: RestrictionListId }
+
+/**
+ * 部屋のルール（ADR-0021）。**部屋がルールを持つ**ので、同じデッキがある部屋では通り、別の部屋では
+ * 通らない。
+ *
+ * 席に着くデッキは、形式の規定と、禁止／制限リストの上限の両方で確かめる（`server` の `room.ts`）。
+ */
+export interface WireRoomRules {
+  readonly format: DuelFormat
+  readonly restriction: { readonly kind: '制限なし' } | ({ readonly kind: '禁止／制限リスト' } & WireRestrictionList)
+}
+
+/**
  * コピーして自分のデッキにできるもの（ADR-0022）。
  *
  * **数え上げられるので、列挙で持つ。** いまは既製デッキだけだが、人が共有したレシピと、対戦が
@@ -106,6 +146,11 @@ export interface WireRoom {
    * **CPU は入らない。** 座っているかどうかは `cpu` が持っており、CPU に表示名は無い。
    */
   readonly occupants: readonly string[]
+  /**
+   * その部屋のルール（ADR-0021）。**選ぶ場所はルールが分かる場所と同じでなければならない**ので、
+   * 入る前に見えるロビーに載せる。
+   */
+  readonly rules: WireRoomRules
 }
 
 /**
@@ -257,6 +302,13 @@ export type FromClient =
       readonly against: OpponentKind
       /** どのデッキで座るか（ADR-0021）。選ばなければ、サーバが決めた既定のデッキになる。 */
       readonly deck: DeckId | undefined
+      /** どの形式で打つか（ADR-0021）。選ばなければ構築戦になる。 */
+      readonly format: DuelFormat | undefined
+      /**
+       * どの禁止／制限リストを当てるか（ADR-0021）。選ばなければ、渡された最初のリストになる。
+       * リストが 1 つも渡されていなければ `制限なし` になる。
+       */
+      readonly restriction: RestrictionChoice | undefined
     }
   /**
    * 自分の表示名を決める（ADR-0020）。すでに付いていれば付け替える。
@@ -328,6 +380,13 @@ export type ToClient =
        * それを押せる画面に無ければならない。
        */
       readonly decks: readonly WireDeck[]
+      /**
+       * 部屋を作る時に選べる禁止／制限リスト（ADR-0021）。**渡す側が決めた順のまま並ぶ。** 空でよい。
+       *
+       * デッキと同じく、選ぶ場所がここだから部屋の一覧と一緒に届く。`制限なし` はここに入らない
+       * ——リストではなく、リストを当てないことである（`RestrictionChoice`）。
+       */
+      readonly restrictions: readonly WireRestrictionList[]
     }
   /**
    * 部屋に入って、相手が来るのを待っている。

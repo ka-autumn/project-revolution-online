@@ -191,9 +191,37 @@ describe('置き場（ADR-0018）', () => {
     store.close()
   })
 
+  /** ADR-0021。立て直した部屋も同じルールになる（`room.ts` の `restore`）。 */
+  it('部屋のルールが記録に残る', () => {
+    const store = openStore(':memory:')
+    store.write([
+      {
+        kind: '始まった',
+        code: CODE,
+        name: CODE,
+        seats: { 先攻: 'あ', 後攻: 'い' },
+        cpu: undefined,
+        seed: SETUP.seed,
+        decks: [DECK_KEYS, DECK_KEYS],
+        rules: { format: '構築戦', restriction: 'リスト1' },
+      },
+    ])
+
+    expect(store.openDuels()[0]?.rules).toEqual({ format: '構築戦', restriction: 'リスト1' })
+    store.close()
+  })
+
+  it('制限なしの部屋は、リストを持たないものとして読み戻される', () => {
+    const store = openStore(':memory:')
+    new Table(store).start()
+
+    expect(store.openDuels()[0]?.rules).toEqual({ format: '構築戦', restriction: undefined })
+    store.close()
+  })
+
   it('CPU が打った手も記録に残る', () => {
     const store = openStore(':memory:')
-    new Table(store).send('あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined })
+    new Table(store).send('あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
 
     const [duel] = store.openDuels()
     expect(duel?.cpu).toBeDefined()
@@ -344,6 +372,39 @@ describe('表示名', () => {
 
     store.rename(participant, 'かずお')
     expect(store.nameOf(participant)).toBe('かずお')
+    store.close()
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  })
+
+  /**
+   * ADR-0021。部屋がルールを持つ前の対戦は、構築戦を制限なしで打ったものである——形式という値が
+   * 無く、禁止／制限リストはどこにも当てていなかった。
+   */
+  it('ルールの列が無い置き場を開くと、残っていた対戦は構築戦の制限なしとして読める', () => {
+    const path = `${tmpdir()}/revolution-rules-${randomUUID()}.sqlite`
+    const old = new DatabaseSync(path)
+    old.exec(`
+      create table duels (
+        id integer primary key autoincrement,
+        code text not null,
+        name text not null,
+        seed integer not null,
+        first text not null,
+        second text not null,
+        cpu text,
+        decks text not null,
+        started_at integer not null,
+        closed_at integer
+      );
+    `)
+    old
+      .prepare('insert into duels (code, name, seed, first, second, decks, started_at) values (?, ?, ?, ?, ?, ?, ?)')
+      .run(CODE, CODE, SETUP.seed, 'あ', 'い', JSON.stringify([DECK_KEYS, DECK_KEYS]), 0)
+    old.close()
+
+    const store = openStore(path)
+
+    expect(store.openDuels()[0]?.rules).toEqual({ format: '構築戦', restriction: undefined })
     store.close()
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
   })

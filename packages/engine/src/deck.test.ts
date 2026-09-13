@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkConstructedDeck, defineUnit } from './index.js'
+import { DUEL_FORMATS, checkCardLimits, checkConstructedDeck, checkDeckForFormat, defineUnit } from './index.js'
 import type { Card, Deck } from './index.js'
 
 function testUnit(name: string, stars = 0, reverseStars = 0): Card {
@@ -99,6 +99,20 @@ describe('構築戦のデッキ', () => {
     ])
   })
 
+  // フロアルール Version 1.12 第2部 第1章 1-1 の例（ADR-0023）
+  it.each([
+    ['半角', '松岡 美羽'],
+    ['全角', '松岡　美羽'],
+  ])('カード名に%sの空白が入っているかどうかは無視して同名として数える', (_, spaced) => {
+    const deck = [...legalDeck(), testUnit('松岡美羽'), testUnit('松岡美羽'), testUnit(spaced), testUnit(spaced)]
+
+    expect(checkConstructedDeck(deck)).toEqual([])
+    // 名前には、デッキで最初に出てきたものの書き方を使う。
+    expect(checkConstructedDeck([...deck, testUnit(spaced)])).toEqual([
+      { kind: '同名の入れすぎ', name: '松岡美羽', count: 5, maximum: 4 },
+    ])
+  })
+
   it('入れすぎているカード名が複数あれば、そのすべてが返る', () => {
     const deck = [...legalDeck(), testUnit('テストユニット0'), testUnit('テストユニット3')]
 
@@ -106,5 +120,68 @@ describe('構築戦のデッキ', () => {
       { kind: '同名の入れすぎ', name: 'テストユニット0', count: 5, maximum: 4 },
       { kind: '同名の入れすぎ', name: 'テストユニット3', count: 5, maximum: 4 },
     ])
+  })
+})
+
+// フロアルール Version 1.12 第2部 第1章 1-1（ADR-0023）
+describe('禁止／制限の上限', () => {
+  it('上限を超えていなければ違反がない', () => {
+    const deck = [...legalDeck(), testUnit('テスト制限カード')]
+
+    expect(checkCardLimits(deck, { テスト制限カード: 1 })).toEqual([])
+  })
+
+  it('上限を超えて入れていれば違反になる', () => {
+    const deck = [...legalDeck(), testUnit('テスト制限カード'), testUnit('テスト制限カード')]
+
+    expect(checkCardLimits(deck, { テスト制限カード: 1 })).toEqual([
+      { kind: '禁止／制限の入れすぎ', name: 'テスト制限カード', count: 2, maximum: 1 },
+    ])
+  })
+
+  it('上限が 0 枚のカードは 1 枚も入れられない', () => {
+    const deck = [...legalDeck(), testUnit('テスト禁止カード')]
+
+    expect(checkCardLimits(deck, { テスト禁止カード: 0 })).toEqual([
+      { kind: '禁止／制限の入れすぎ', name: 'テスト禁止カード', count: 1, maximum: 0 },
+    ])
+  })
+
+  it('載っていないカードに上限は無い', () => {
+    expect(checkCardLimits(legalDeck(), { テスト禁止カード: 0 })).toEqual([])
+  })
+
+  it('同名のカードは、別のカードでも合わせて数える', () => {
+    const one = testUnit('テスト制限カード', 0)
+    const another = testUnit('テスト制限カード', 1)
+
+    expect(checkCardLimits([...legalDeck(), one, another], { テスト制限カード: 1 })).toEqual([
+      { kind: '禁止／制限の入れすぎ', name: 'テスト制限カード', count: 2, maximum: 1 },
+    ])
+  })
+
+  it('空白が入っているかどうかは、デッキの側でもリストの側でも無視する', () => {
+    const deck = [...legalDeck(), testUnit('テスト制限カード'), testUnit('テスト　制限カード')]
+
+    expect(checkCardLimits(deck, { 'テスト 制限カード': 1 })).toEqual([
+      { kind: '禁止／制限の入れすぎ', name: 'テスト制限カード', count: 2, maximum: 1 },
+    ])
+  })
+
+  it('同名のカードに違う上限が付いていれば、小さいほうを使う', () => {
+    const deck = [...legalDeck(), testUnit('テスト制限カード'), testUnit('テスト制限カード')]
+
+    expect(checkCardLimits(deck, { テスト制限カード: 2, 'テスト 制限カード': 1 })).toEqual([
+      { kind: '禁止／制限の入れすぎ', name: 'テスト制限カード', count: 2, maximum: 1 },
+    ])
+  })
+})
+
+describe('デュエルの形式', () => {
+  it('構築戦では構築戦の規定で確かめる', () => {
+    const deck = legalDeck().slice(1)
+
+    expect(DUEL_FORMATS).toContain('構築戦')
+    expect(checkDeckForFormat(deck, '構築戦')).toEqual(checkConstructedDeck(deck))
   })
 })

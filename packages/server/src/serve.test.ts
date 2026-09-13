@@ -3,7 +3,7 @@ import { WebSocket } from 'ws'
 import { NOT_SIGNED_IN, SIGN_IN_PATH, defineStrategy, defineUnit } from '@revolution/engine'
 import type { Card, FromClient, ToClient } from '@revolution/engine'
 import { CPU_PREFIX } from './cpu.js'
-import { deckChoicesOf, deckSourceFrom } from './deck.js'
+import { deckChoicesOf, deckSourceFrom, restrictionChoicesOf } from './deck.js'
 import type { CardSupply } from './deck.js'
 import { OWNED_DECK_LIMIT, sortCards } from './owned-deck.js'
 import type { RoomSetup } from './room.js'
@@ -38,11 +38,13 @@ const SUPPLY: CardSupply = {
       cards: Object.keys(CARDS).flatMap((key) => Array.from({ length: 4 }, () => key)),
     },
   ],
-  restrictions: [],
+  // どの既製デッキにも入っていないカードを名指すので、どのデッキもこのリストで通る。
+  restrictions: [{ id: 'リスト1', name: 'テストのリスト', limits: { 'テスト・どこにもないカード': 0 } }],
 }
 
 const decks = deckSourceFrom(SUPPLY)
 const deckChoices = deckChoicesOf(SUPPLY)
+const restrictions = restrictionChoicesOf(SUPPLY)
 
 let created = 0
 
@@ -207,7 +209,7 @@ describe('WebSocket で繋ぐ', () => {
   it('繋ぐとロビーが届く', async () => {
     const client = new Client(server.port, 'あ')
 
-    expect(await client.waitFor('ロビー')).toEqual({ kind: 'ロビー', rooms: [], decks: deckChoices })
+    expect(await client.waitFor('ロビー')).toEqual({ kind: 'ロビー', rooms: [], decks: deckChoices, restrictions })
     await client.close()
   })
 
@@ -222,6 +224,16 @@ describe('WebSocket で繋ぐ', () => {
     const lobby = await client.waitFor('ロビー')
 
     expect(lobby.kind === 'ロビー' && lobby.decks).toEqual([{ id: '既製1', name: 'ひとつめ' }])
+    await client.close()
+  })
+
+  /** ADR-0021。部屋のルールも、選ぶ場所はそれが分かる場所と同じでなければならない。 */
+  it('ロビーと一緒に、部屋を作る時に選べる禁止／制限リストが届く', async () => {
+    const client = new Client(server.port, 'あ')
+
+    const lobby = await client.waitFor('ロビー')
+
+    expect(lobby.kind === 'ロビー' && lobby.restrictions).toEqual([{ id: 'リスト1', name: 'テストのリスト' }])
     await client.close()
   })
 
@@ -248,7 +260,7 @@ describe('WebSocket で繋ぐ', () => {
 
     const making = new Client(server.port, 'い')
     await making.opened()
-    making.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined })
+    making.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined, format: undefined, restriction: undefined })
 
     const lobby = await watching.waitFor('ロビー')
     if (lobby.kind !== 'ロビー') throw new Error('ロビーのはずだった')
@@ -263,13 +275,13 @@ describe('WebSocket で繋ぐ', () => {
   it('部屋にいる人にはロビーが届かない', async () => {
     const client = new Client(server.port, 'あ')
     await client.opened()
-    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined })
+    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
     await client.waitFor('席についた')
     client.received.length = 0
 
     const other = new Client(server.port, 'い')
     await other.opened()
-    other.send({ kind: '部屋を作る', name: 'もうひとつ', against: '人間', deck: undefined })
+    other.send({ kind: '部屋を作る', name: 'もうひとつ', against: '人間', deck: undefined, format: undefined, restriction: undefined })
     await other.waitFor('相手を待っている')
 
     expect(client.received.some((message) => message.kind === 'ロビー')).toBe(false)
@@ -284,7 +296,7 @@ describe('WebSocket で繋ぐ', () => {
   it('部屋にいる人が繋ぎ直すと、何も送らなくてもその部屋の様子が届く', async () => {
     const client = new Client(server.port, 'あ')
     await client.opened()
-    client.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined })
+    client.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined, format: undefined, restriction: undefined })
     const waiting = await client.waitFor('相手を待っている')
     if (waiting.kind !== '相手を待っている') throw new Error('相手を待っているのはずだった')
     await client.close()
@@ -388,7 +400,7 @@ describe('WebSocket で繋ぐ', () => {
     const client = new Client(server.port, 'あ')
     await client.opened()
 
-    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined })
+    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
 
     expect((await client.waitFor('席についた')).kind).toBe('席についた')
     expect((await client.waitFor('盤面')).kind).toBe('盤面')
@@ -618,7 +630,7 @@ describe('ログインの設定があるとき', () => {
     client.send({ kind: '名前を決める', name: 'かずお' })
     await client.waitFor('ロビー')
 
-    client.send({ kind: '部屋を作る', name: 'ろぐいんの部屋', against: 'CPU', deck: undefined })
+    client.send({ kind: '部屋を作る', name: 'ろぐいんの部屋', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
 
     const seated = await client.waitFor('席についた')
     expect(seated.kind === '席についた' && seated.opponent).toEqual({ kind: 'CPU' })
@@ -646,7 +658,7 @@ describe('ログインの設定があるとき', () => {
     await client.waitFor('名前を決めてほしい')
     client.received.length = 0
 
-    client.send({ kind: '部屋を作る', name: 'つくれないはず', against: 'CPU', deck: undefined })
+    client.send({ kind: '部屋を作る', name: 'つくれないはず', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
 
     // 断るのではなく尋ね直す。画面がそこで止まっているとは限らない（繋ぎ直した先など）。
     await client.waitFor('名前を決めてほしい')
@@ -688,7 +700,7 @@ describe('ログインの設定があるとき', () => {
     await client.waitFor('名前を決めてほしい')
     client.send({ kind: '名前を決める', name: 'まえのなまえ' })
     await client.waitFor('ロビー')
-    client.send({ kind: '部屋を作る', name: 'なまえのかわる部屋', against: '人間', deck: undefined })
+    client.send({ kind: '部屋を作る', name: 'なまえのかわる部屋', against: '人間', deck: undefined, format: undefined, restriction: undefined })
     await client.waitFor('相手を待っている')
 
     const watcher = new Client(server.port, 'なのっても無駄', signedInOther)
@@ -714,7 +726,7 @@ describe('ログインの設定があるとき', () => {
     client.send({ kind: '名前を決める', name: 'かずお' })
     await client.waitFor('ロビー')
 
-    client.send({ kind: '部屋を作る', name: 'なまえのでる部屋', against: '人間', deck: undefined })
+    client.send({ kind: '部屋を作る', name: 'なまえのでる部屋', against: '人間', deck: undefined, format: undefined, restriction: undefined })
     await client.waitFor('相手を待っている')
 
     // 部屋にいる人にはロビーが届かない（#175）ので、**別の身元**の目で見る。同じ身元で繋ぎ直すと
@@ -732,7 +744,7 @@ describe('ログインの設定があるとき', () => {
     await client.waitFor('名前を決めてほしい')
     client.send({ kind: '名前を決める', name: 'かずお' })
     await client.waitFor('ロビー')
-    client.send({ kind: '部屋を作る', name: 'ふたりの部屋', against: '人間', deck: undefined })
+    client.send({ kind: '部屋を作る', name: 'ふたりの部屋', against: '人間', deck: undefined, format: undefined, restriction: undefined })
     const waiting = await client.waitFor('相手を待っている')
     if (waiting.kind !== '相手を待っている') throw new Error('待っているはずだった')
 

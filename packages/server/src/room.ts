@@ -1,5 +1,8 @@
 import {
+  DUEL_FORMATS,
   applyWithAnswers,
+  checkCardLimits,
+  checkDeckForFormat,
   hasEnded,
   legalActions,
   passOutcome,
@@ -12,6 +15,8 @@ import type {
   ChoiceAnswer,
   Deck,
   DeckId,
+  DeckViolation,
+  DuelFormat,
   DuelState,
   FromClient,
   LegalAction,
@@ -19,12 +24,16 @@ import type {
   OpponentKind,
   Player,
   Random,
+  RestrictionChoice,
+  RestrictionListId,
   RoomCode,
   Square,
   ToClient,
   WireRoom,
+  WireRoomRules,
 } from '@revolution/engine'
 import { cpuParticipantOf, isCpu, pickCpuAction, pickCpuAnswer } from './cpu.js'
+import type { RestrictionList } from './deck.js'
 
 /**
  * ルームコードで 2 人を繋いで 1 つのデュエルを進めるところ（ADR-0004 / ADR-0008、#13）。
@@ -80,6 +89,37 @@ export interface DeckSource {
   readonly fallback: DeckId
   /** 識別子の並びから組み直す。1 つでも引けなければ `undefined`（`restore`）。 */
   readonly from: (keys: readonly string[]) => SeatedDeck | undefined
+  /**
+   * 部屋に当てられる禁止／制限リスト（ADR-0021）。渡された順で、**先頭が既定になる**（`rulesFor`）。
+   *
+   * デッキと一緒に渡してもらうのは、どちらも立てる時に渡されたものから決まり、部屋ごとに変わら
+   * ないからである。
+   */
+  readonly restrictions: readonly RestrictionList[]
+}
+
+/**
+ * 部屋のルール（ADR-0021）。**部屋を作る人が決め、席に着くデッキはこれで確かめる。**
+ *
+ * デッキはどのルールで組んだかを持たない（同）ので、同じデッキがある部屋では通り、別の部屋では
+ * 通らない。
+ */
+export interface RoomRules {
+  readonly format: DuelFormat
+  /** 当てる禁止／制限リスト。**`制限なし` はリストを 1 つも当てないことである。** */
+  readonly restriction:
+    | { readonly kind: '制限なし' }
+    | { readonly kind: '禁止／制限リスト'; readonly list: RestrictionList }
+}
+
+/**
+ * 記録に残す部屋のルール（ADR-0018）。**リストは識別子だけを残す**——中身は立てるたびに渡される
+ * もので、残すと渡す側が直したリストと食い違う。
+ */
+export interface RecordedRules {
+  readonly format: DuelFormat
+  /** 当てていたリストの識別子。`制限なし` なら `undefined`。 */
+  readonly restriction: RestrictionListId | undefined
 }
 
 /**
@@ -146,6 +186,8 @@ export interface Room {
    * 相手を待っている部屋には 1 人しかいないので、1 つで足りる。
    */
   readonly deck: DeckId | undefined
+  /** その部屋のルール（ADR-0021）。作った時に決まり、部屋が続く限り変わらない。 */
+  readonly rules: RoomRules
   /**
    * CPU が座っている席の名乗り（#175）。座っていなければ `undefined`。
    *
@@ -193,6 +235,8 @@ export type DuelRecord =
        * 含む記録は作り直せない——**それは避けられない**（ADR-0018）。
        */
       readonly decks: readonly [readonly string[], readonly string[]]
+      /** その部屋のルール（ADR-0021）。立て直した部屋も同じルールになる（`restore`）。 */
+      readonly rules: RecordedRules
     }
   | {
       readonly kind: '打たれた'
@@ -218,6 +262,7 @@ export interface StoredDuel {
   readonly cpu: ParticipantId | undefined
   readonly seed: number
   readonly decks: readonly [readonly string[], readonly string[]]
+  readonly rules: RecordedRules
   readonly steps: readonly { readonly action: LegalAction; readonly answers: readonly ChoiceAnswer[] }[]
 }
 
@@ -290,6 +335,7 @@ function replay(stored: StoredDuel, source: DeckSource): Room | undefined {
     name: stored.name,
     // 席に着いた後の部屋なので、選びかけのデッキは持たない。
     deck: undefined,
+    rules: rulesRestored(stored.rules, source.restrictions),
     // 入ってきた順は残していない。**席に着いている 2 人であることだけが要る。**
     participants: seated,
     duel: {
@@ -301,6 +347,126 @@ function replay(stored: StoredDuel, source: DeckSource): Room | undefined {
       random: prepared.random,
     },
     cpu: stored.cpu,
+  }
+}
+
+/**
+ * 記録に残っていたルールを、いま渡されているリストに当て直す（ADR-0021）。
+ *
+ * **残っていた識別子のリストがもう渡されていなければ、渡されたリストの先頭を当てる。** 1 つも
+ * 無ければ `制限なし` にする。渡す側がリストを差し替えた後に立て直した場合がこれにあたる。
+ *
+ * **デッキは確かめ直さない。** 立て直す部屋はもう打ち始めていて、席に着いた時のリストで確かめて
+ * ある。当て直しで変わるのは、ロビーに出るルールだけである。
+ */
+function rulesRestored(recorded: RecordedRules, lists: readonly RestrictionList[]): RoomRules {
+  if (recorded.restriction === undefined) return { format: recorded.format, restriction: { kind: '制限なし' } }
+
+  const list = lists.find((each) => each.id === recorded.restriction) ?? lists[0]
+  return {
+    format: recorded.format,
+    restriction: list === undefined ? { kind: '制限なし' } : { kind: '禁止／制限リスト', list },
+  }
+}
+
+/** 記録に残す形にする。リストは識別子だけを残す（`RecordedRules`）。 */
+function recordedRulesOf(rules: RoomRules): RecordedRules {
+  return {
+    format: rules.format,
+    restriction: rules.restriction.kind === '制限なし' ? undefined : rules.restriction.list.id,
+  }
+}
+
+/**
+ * 部屋を作る人が選んだものから、部屋のルールを決める（ADR-0021）。決められなければ断る理由を返す。
+ *
+ * **選ばなければ、形式は構築戦、リストは渡された先頭のものになる。** リストが 1 つも渡されて
+ * いなければ `制限なし` である。
+ *
+ * 形式もリストも送られてきた値なので、知らないものは断る。**画面は選択肢の中からしか送らない
+ * はずだが、それを信じない**（ADR-0010）。
+ */
+function rulesFor(
+  format: DuelFormat | undefined,
+  choice: RestrictionChoice | undefined,
+  lists: readonly RestrictionList[],
+): RoomRules | string {
+  const chosenFormat = format ?? '構築戦'
+  if (!DUEL_FORMATS.includes(chosenFormat)) return 'その形式はありません'
+
+  if (choice === undefined) {
+    const [first] = lists
+    return {
+      format: chosenFormat,
+      restriction: first === undefined ? { kind: '制限なし' } : { kind: '禁止／制限リスト', list: first },
+    }
+  }
+  if (choice.kind === '制限なし') return { format: chosenFormat, restriction: { kind: '制限なし' } }
+
+  const list = lists.find((each) => each.id === choice.id)
+  if (list === undefined) return 'その禁止／制限リストはありません'
+
+  return { format: chosenFormat, restriction: { kind: '禁止／制限リスト', list } }
+}
+
+/** 何も選ばずに決まる部屋のルール。合言葉を直に指して作られた部屋が使う（`enter`）。 */
+function defaultRules(lists: readonly RestrictionList[]): RoomRules {
+  const rules = rulesFor(undefined, undefined, lists)
+  // 何も選ばなければ、知らないものを指すことは無い。
+  if (typeof rules === 'string') throw new Error(rules)
+
+  return rules
+}
+
+/**
+ * 持ち込もうとしているデッキが、部屋のルールで通らない理由（ADR-0021）。通るなら `undefined`。
+ *
+ * **席に着く時に確かめる。** 形式の規定と、禁止／制限リストの上限の両方を当てる。デッキを選び
+ * 直せば通るかもしれないので、何が足りないかを添えて返す。
+ */
+function refusalOfDeck(
+  rules: RoomRules,
+  chosen: DeckId | undefined,
+  decks: DeckSource,
+  whose: '' | 'CPU の',
+): string | undefined {
+  const deck = decks.of(chosen ?? decks.fallback)
+  if (deck === undefined) return '選ばれたデッキを持ち込めません'
+
+  const violations = [
+    ...checkDeckForFormat(deck.cards, rules.format),
+    ...(rules.restriction.kind === '制限なし' ? [] : checkCardLimits(deck.cards, rules.restriction.list.limits)),
+  ]
+  if (violations.length === 0) return undefined
+
+  return `${whose}デッキがこの部屋のルールを満たしていません: ${violations.map(describeViolation).join('、')}`
+}
+
+/** デッキの不備 1 つを、断る理由として読める文にする。 */
+function describeViolation(violation: DeckViolation): string {
+  switch (violation.kind) {
+    case '枚数不足':
+      return `${violation.minimum} 枚に ${violation.minimum - violation.count} 枚足りません`
+    case '同名の入れすぎ':
+      return `「${violation.name}」が ${violation.count} 枚入っています（${violation.maximum} 枚まで）`
+    case 'スターアイコンの入れすぎ':
+      return `スターアイコンが ${violation.stars} 個あります（${violation.maximum} 個まで）`
+    case '禁止／制限の入れすぎ':
+      return violation.maximum === 0
+        ? `禁止カード「${violation.name}」が入っています`
+        : `制限カード「${violation.name}」が ${violation.count} 枚入っています（${violation.maximum} 枚まで）`
+  }
+}
+
+/** ロビーに出す形にする。**リストの中身は出さない**（`WireRoomRules`）。 */
+function wireRulesOf(rules: RoomRules): WireRoomRules {
+  const restriction = rules.restriction
+  return {
+    format: rules.format,
+    restriction:
+      restriction.kind === '制限なし'
+        ? restriction
+        : { kind: '禁止／制限リスト', id: restriction.list.id, name: restriction.list.name },
   }
 }
 
@@ -384,6 +550,7 @@ export function lobbyOf(rooms: Rooms, names: Names = asNamed): readonly WireRoom
     status: statusOf(room),
     cpu: room.cpu !== undefined,
     occupants: room.participants.filter((each) => !isCpu(each)).map((each) => names(each)),
+    rules: wireRulesOf(room.rules),
   }))
 }
 
@@ -529,11 +696,15 @@ function unusedCode(rooms: Rooms, code: RoomCode): RoomCode {
  *
  * いま打っている途中の部屋にいるなら断る。抜けられる部屋にいるなら、そこを出てから作る
  * （`enter` と同じ扱い、#92）。
+ *
+ * **作る人が選んだルールで、その人のデッキを確かめる**（ADR-0021）。通らなければ部屋を作らずに
+ * 断り、いる部屋からも出さない。相手が CPU なら、CPU の席のデッキも確かめる——通らないまま
+ * 作ると、始まらない部屋ができる。
  */
 function open(
   rooms: Rooms,
   participant: ParticipantId,
-  opening: { readonly name: string; readonly against: OpponentKind; readonly deck: DeckId | undefined },
+  opening: Extract<FromClient, { readonly kind: '部屋を作る' }>,
   setup: RoomSetup,
   decks: DeckSource,
   connected: ReadonlySet<ParticipantId>,
@@ -544,6 +715,14 @@ function open(
   if (current !== undefined && !canLeave(current, participant, connected)) {
     return refuse(rooms, participant, 'ほかの部屋にいる')
   }
+
+  const rules = rulesFor(opening.format, opening.restriction, decks.restrictions)
+  if (typeof rules === 'string') return refuse(rooms, participant, rules)
+  const refusal =
+    refusalOfDeck(rules, opening.deck, decks, '') ??
+    (against === 'CPU' ? refusalOfDeck(rules, undefined, decks, 'CPU の') : undefined)
+  if (refusal !== undefined) return refuse(rooms, participant, refusal)
+
   const leaving = current === undefined ? undefined : withoutParticipant(rooms, current, participant)
   const left = leaving?.rooms ?? rooms
   const closed = leaving?.records ?? []
@@ -555,6 +734,7 @@ function open(
     participants: [participant],
     duel: undefined,
     deck: opening.deck,
+    rules,
     cpu: against === 'CPU' ? cpuParticipantOf(code) : undefined,
   }
   if (opened.cpu === undefined) {
@@ -612,7 +792,7 @@ function enter(
 ): RoomOutcome {
   const current = roomOf(rooms, participant)
   if (current !== undefined) {
-    if (current.code === code) return rejoin(rooms, current, participant, chosen, names)
+    if (current.code === code) return rejoin(rooms, current, participant, chosen, decks, names)
     if (!canLeave(current, participant, connected)) return refuse(rooms, participant, 'ほかの部屋にいる')
   }
   const leaving = current === undefined ? undefined : withoutParticipant(rooms, current, participant)
@@ -622,12 +802,18 @@ function enter(
   const room = left.get(code)
   if (room === undefined) {
     // 合言葉を直に指して入った部屋。ロビーで見分けるものが無いので、合言葉を名前にする。
+    // **ルールを選ぶ場所が無い**（ロビーを通っていない）ので、何も選ばなかったものとして決める。
+    const rules = defaultRules(decks.restrictions)
+    const refusal = refusalOfDeck(rules, chosen, decks, '')
+    if (refusal !== undefined) return refuse(rooms, participant, refusal)
+
     const opened: Room = {
       code,
       name: code,
       participants: [participant],
       duel: undefined,
       deck: chosen,
+      rules,
       cpu: undefined,
     }
     return {
@@ -645,6 +831,10 @@ function enter(
   if (room.duel !== undefined) {
     return refuse(rooms, participant, '対戦が終わっている部屋')
   }
+  // **入る人のデッキを、その部屋のルールで確かめる**（ADR-0021）。通らなければ入れず、待っている
+  // 人には何も送らない——デッキを選び直せば入れるかもしれず、相手が知る筋合いのことではない。
+  const refusal = refusalOfDeck(room.rules, chosen, decks, '')
+  if (refusal !== undefined) return refuse(rooms, participant, refusal)
 
   return after(
     closed,
@@ -663,17 +853,22 @@ function enter(
  *
  * 相手を待っている間なら、持ち込むデッキは選び直せる（ADR-0021）。**選ばずに入り直した人の
  * ものは変えない**——繋ぎ直した時に飛ぶのも同じメッセージで、そこには選んだものが入っていない
- * （`FromClient` の `部屋に入る`）。
+ * （`FromClient` の `部屋に入る`）。選び直したデッキがその部屋のルールで通らなければ断り、前に
+ * 選んでいたものを残す。
  */
 function rejoin(
   rooms: Rooms,
   room: Room,
   participant: ParticipantId,
   chosen: DeckId | undefined,
+  decks: DeckSource,
   names: Names,
 ): RoomOutcome {
   const duel = room.duel
   if (duel === undefined) {
+    const refusal = chosen === undefined ? undefined : refusalOfDeck(room.rules, chosen, decks, '')
+    if (refusal !== undefined) return refuse(rooms, participant, refusal)
+
     return {
       rooms: chosen === undefined ? rooms : withRoom(rooms, { ...room, deck: chosen }),
       deliveries: [{ to: participant, message: { kind: '相手を待っている', room: room.code } }],
@@ -809,6 +1004,7 @@ function start(
         cpu: seated.cpu,
         seed: setup.seed,
         decks: [firstDeck.keys, secondDeck.keys],
+        rules: recordedRulesOf(seated.rules),
       },
     ],
   }
