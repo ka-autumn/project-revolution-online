@@ -12,6 +12,7 @@ import type {
   WireCardInstance,
   WirePerspective,
   WireRoom,
+  WireRoomRules,
 } from '@revolution/engine'
 import { emptyBoard, instance, logged, unitFace, withZone } from './test-support.js'
 import {
@@ -1681,16 +1682,36 @@ describe('優先権が回ってきた理由', () => {
 
 /** #175。ロビーに並ぶ部屋。 */
 describe('ロビー', () => {
+  const UNRESTRICTED: WireRoomRules = { format: '構築戦', restriction: { kind: '制限なし' } }
+  const RESTRICTED: WireRoomRules = {
+    format: '構築戦',
+    restriction: { kind: '禁止／制限リスト', id: 'リスト1', name: 'テストのリスト' },
+  }
   const waiting = {
     code: 'ま',
     name: 'まっているへや',
     status: '相手を待っている',
     cpu: false,
     occupants: ['ぬし'],
+    rules: UNRESTRICTED,
   } as const
-  const playing = { code: 'う', name: 'うっているへや', status: '対戦中', cpu: false, occupants: ['ぬし', 'きゃく'] } as const
-  const withCpu = { code: 'し', name: 'ひとりのへや', status: '対戦中', cpu: true, occupants: ['ぬし'] } as const
-  const over = { code: 'お', name: 'おわったへや', status: '終わった', cpu: false, occupants: ['ぬし', 'きゃく'] } as const
+  const playing = {
+    code: 'う',
+    name: 'うっているへや',
+    status: '対戦中',
+    cpu: false,
+    occupants: ['ぬし', 'きゃく'],
+    rules: RESTRICTED,
+  } as const
+  const withCpu = { code: 'し', name: 'ひとりのへや', status: '対戦中', cpu: true, occupants: ['ぬし'], rules: UNRESTRICTED } as const
+  const over = {
+    code: 'お',
+    name: 'おわったへや',
+    status: '終わった',
+    cpu: false,
+    occupants: ['ぬし', 'きゃく'],
+    rules: UNRESTRICTED,
+  } as const
 
   /** 一覧を見る人がまずしたいのは、打てる部屋に入ることである。 */
   it('入れる部屋が先に並ぶ', () => {
@@ -1726,6 +1747,22 @@ describe('ロビー', () => {
   /** 座っているのが人か CPU かは別に届く。**席が空いていないことは同じである。** */
   it('CPU も 1 人として並ぶ', () => {
     expect(lobbyView([withCpu])[0]?.occupants).toBe('ぬし、CPU')
+  })
+
+  /** ADR-0021。部屋がルールを持つので、入る前に分からなければならない。 */
+  it('その部屋のルールが 1 行で並ぶ', () => {
+    expect(lobbyView([playing])[0]?.rules).toBe('構築戦・テストのリスト')
+  })
+
+  it('禁止／制限リストを当てていない部屋は、制限なしと出る', () => {
+    expect(lobbyView([waiting])[0]?.rules).toBe('構築戦・制限なし')
+  })
+
+  /** サーバが古い間、ルールは付いてこない（下の「誰がいるかが届かなくても」と同じ理由）。 */
+  it('ルールが届かなくても、部屋は並ぶ', () => {
+    const old = { ...waiting, rules: undefined } as unknown as WireRoom
+
+    expect(lobbyView([old])[0]?.rules).toBeUndefined()
   })
 
   it('誰もいなければ、出すものは無い', () => {

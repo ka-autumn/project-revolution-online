@@ -50,12 +50,36 @@ describe('届いたものを畳む', () => {
   /** #175。どの部屋にもいない間は、開いている部屋が届く。 */
   it('ロビーが届いたら、ロビーにいる', () => {
     const rooms = [
-      { code: ROOM, name: 'てすとのへや', status: '相手を待っている', cpu: false, occupants: ['ぬし'] },
+      {
+        code: ROOM,
+        name: 'てすとのへや',
+        status: '相手を待っている',
+        cpu: false,
+        occupants: ['ぬし'],
+        rules: { format: '構築戦', restriction: { kind: '制限なし' } },
+      },
     ] as const
 
     const decks = [{ id: '既製1', name: 'ひとつめ' }] as const
 
-    expect(fold({ kind: 'ロビー', rooms, decks }).stage).toEqual({ kind: 'ロビー', rooms, decks })
+    const restrictions = [{ id: 'リスト1', name: 'テストのリスト' }] as const
+
+    expect(fold({ kind: 'ロビー', rooms, decks, restrictions }).stage).toEqual({
+      kind: 'ロビー',
+      rooms,
+      decks,
+      restrictions,
+    })
+  })
+
+  /**
+   * **画面とサーバは別々に配られ、同時には入れ替わらない**（ADR-0013、ADR-0015）。サーバが古い
+   * 間、選べる禁止／制限リストは付いてこない。
+   */
+  it('選べる禁止／制限リストが届かなくても、ロビーにいる。選べるものが無いだけである', () => {
+    const old = { kind: 'ロビー', rooms: [], decks: [] } as unknown as ToClient
+
+    expect(fold(old).stage).toEqual({ kind: 'ロビー', rooms: [], decks: [], restrictions: [] })
   })
 
   it('相手を待っていると言われたら、待っている', () => {
@@ -72,7 +96,7 @@ describe('届いたものを畳む', () => {
   })
 
   it('ロビーにいる間は、入り直す先が無い', () => {
-    expect(roomOf(fold({ kind: 'ロビー', rooms: [], decks: [] }))).toBeUndefined()
+    expect(roomOf(fold({ kind: 'ロビー', rooms: [], decks: [], restrictions: [] }))).toBeUndefined()
     expect(roomOf(connecting())).toBeUndefined()
   })
 
@@ -305,8 +329,9 @@ describe('名前を決める', () => {
       kind: 'ロビー',
       rooms: [],
       decks: [],
+      restrictions: [],
     })
 
-    expect(session.stage).toEqual({ kind: 'ロビー', rooms: [], decks: [] })
+    expect(session.stage).toEqual({ kind: 'ロビー', rooms: [], decks: [], restrictions: [] })
   })
 })

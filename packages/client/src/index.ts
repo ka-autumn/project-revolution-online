@@ -1,7 +1,15 @@
 import { MAX_ATTEMPTS, connect, connectingLink } from './connection.js'
 import type { Connection, Link } from './connection.js'
 import { NOT_SIGNED_IN, indexOfSquare } from '@revolution/engine'
-import type { CardId, DeckId, LoggedEvent, OpponentKind, RoomCode } from '@revolution/engine'
+import type {
+  CardId,
+  DeckId,
+  DuelFormat,
+  LoggedEvent,
+  OpponentKind,
+  RestrictionChoice,
+  RoomCode,
+} from '@revolution/engine'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import {
   actionsElement,
@@ -14,6 +22,7 @@ import {
   pickElement,
   waitingForOverlayElement,
 } from './render.js'
+import type { ChosenRules } from './render.js'
 import { applyMessage, connecting, roomOf } from './session.js'
 import type { Session } from './session.js'
 import {
@@ -190,8 +199,12 @@ interface Lobby {
    * 置いたままにすると、ほかの人が部屋を作るたびに選び直しになる。
    */
   readonly deck: DeckId | undefined
+  /** 作る部屋のルールとして選んでいるもの（ADR-0021）。デッキと同じ理由でここに持つ。 */
+  readonly rules: ChosenRules
   readonly onName: (name: string) => void
   readonly onDeck: (deck: DeckId) => void
+  readonly onFormat: (format: DuelFormat) => void
+  readonly onRestriction: (restriction: RestrictionChoice) => void
   readonly onCreate: (name: string, against: OpponentKind) => void
   readonly onJoin: (code: RoomCode) => void
   /** 部屋を出てロビーに戻る。断るのはサーバである（`server` の `room.ts` の `canLeave`）。 */
@@ -273,7 +286,16 @@ function draw(
         lobby.name,
         stage.decks,
         lobby.deck,
-        { onCreate: lobby.onCreate, onJoin: lobby.onJoin, onName: lobby.onName, onDeck: lobby.onDeck },
+        stage.restrictions,
+        lobby.rules,
+        {
+          onCreate: lobby.onCreate,
+          onJoin: lobby.onJoin,
+          onName: lobby.onName,
+          onDeck: lobby.onDeck,
+          onFormat: lobby.onFormat,
+          onRestriction: lobby.onRestriction,
+        },
         typing,
       ),
     )
@@ -452,6 +474,14 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    * 座る（`server` の `room.ts` の `start`）。画面はどれが既定かを決めない（ADR-0010）。
    */
   let chosenDeck: DeckId | undefined
+  /**
+   * ロビーで選んでいる、作る部屋のルール（ADR-0021）。まだ選んでいなければ `undefined`。
+   *
+   * デッキと同じく、**選ばないまま作っても構わない。** 選ばなかったものはサーバが既定を当てる
+   * （`server` の `room.ts` の `rulesFor`）。
+   */
+  let chosenFormat: DuelFormat | undefined
+  let chosenRestriction: RestrictionChoice | undefined
   // 打ち込みかけている表示名（ADR-0020）。尋ねられるたびに、いま付いている名前から始める。
   let nameDraft = ''
   /**
@@ -517,6 +547,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   const lobby = (): Lobby => ({
     name: roomName,
     deck: chosenDeck,
+    rules: { format: chosenFormat, restriction: chosenRestriction },
     onName: (name) => {
       // 描き直さない。入力欄の値はブラウザが持っていて、覚えるのは描き直しに備えるためである。
       roomName = name
@@ -525,10 +556,24 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // 描き直さない。選んだものは `select` が持っている（`onName` と同じ）。
       chosenDeck = deck
     },
+    onFormat: (format) => {
+      // 描き直さない。選んだものは `select` が持っている（`onDeck` と同じ）。
+      chosenFormat = format
+    },
+    onRestriction: (restriction) => {
+      chosenRestriction = restriction
+    },
     onCreate: (name, against) => {
       // 合言葉を決めるのはサーバなので、入る先はここで決められない（#175）。届いてから分かる。
       pendingRoom = undefined
-      connection.send({ kind: '部屋を作る', name, against, deck: chosenDeck })
+      connection.send({
+        kind: '部屋を作る',
+        name,
+        against,
+        deck: chosenDeck,
+        format: chosenFormat,
+        restriction: chosenRestriction,
+      })
     },
     onJoin: (code) => {
       pendingRoom = code

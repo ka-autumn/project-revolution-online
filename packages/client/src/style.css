@@ -449,6 +449,28 @@ body {
   font: inherit;
 }
 
+/* 作る部屋のルールを選ぶところ（ADR-0021）。決めるのは作る人なので、作る口の上に置く。 */
+.lobby__rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.lobby__rule {
+  display: flex;
+  flex: 1 1 12rem;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.lobby__rule-select {
+  flex: 1 1 auto;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
 .lobby__make {
   display: flex;
   flex-wrap: wrap;
@@ -492,6 +514,15 @@ body {
 
 /* そこにいる人（ADR-0020）。名前は打ち込まれたものなので、部屋の名前と同じように収める。 */
 .lobby__room-occupants {
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: #666;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* その部屋のルール（ADR-0021）。リストの名前は渡されたものなので、長くても行を割らずに収める。 */
+.lobby__room-rules {
   flex: 0 1 auto;
   overflow: hidden;
   color: #666;

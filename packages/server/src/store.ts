@@ -50,7 +50,9 @@ const SCHEMA = `
     cpu text,
     decks text not null,
     started_at integer not null,
-    closed_at integer
+    closed_at integer,
+    format text not null default '構築戦',
+    restriction text
   );
   create index if not exists duels_open on duels (code) where closed_at is null;
   create table if not exists steps (
@@ -155,10 +157,18 @@ function deckRowOf(deck: DeckId): number | undefined {
  * **足すだけで、落とさない。** 消す向きの手当ては、消してよいと決めたときに書く。
  */
 function addMissingColumns(db: DatabaseSync): void {
-  const columns = db.prepare('pragma table_info(identities)').all()
-  if (columns.some((column) => text(column as Row, 'name') === 'name')) return
+  addMissingColumn(db, 'identities', 'name', 'text')
+  // 部屋のルール（ADR-0021）。**ルールを持つ前の対戦は、構築戦を制限なしで打ったものである**
+  // ——当時は形式という値が無く、禁止／制限リストはどこにも当てていなかった。
+  addMissingColumn(db, 'duels', 'format', "text not null default '構築戦'")
+  addMissingColumn(db, 'duels', 'restriction', 'text')
+}
 
-  db.exec('alter table identities add column name text')
+function addMissingColumn(db: DatabaseSync, table: string, column: string, definition: string): void {
+  const columns = db.prepare(`pragma table_info(${table})`).all()
+  if (columns.some((each) => text(each as Row, 'name') === column)) return
+
+  db.exec(`alter table ${table} add column ${column} ${definition}`)
 }
 
 export interface Store {
@@ -229,8 +239,8 @@ export function openStore(path: string): Store {
   addMissingColumns(db)
 
   const insertDuel = db.prepare(
-    `insert into duels (code, name, seed, first, second, cpu, decks, started_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `insert into duels (code, name, seed, first, second, cpu, decks, started_at, format, restriction)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const insertStep = db.prepare('insert into steps (duel, ordinal, action, answers) values (?, ?, ?, ?)')
   const closeDuel = db.prepare('update duels set closed_at = ? where code = ? and closed_at is null')
@@ -280,6 +290,8 @@ export function openStore(path: string): Store {
           record.cpu ?? null,
           JSON.stringify(record.decks),
           Date.now(),
+          record.rules.format,
+          record.rules.restriction ?? null,
         )
         openIds.set(record.code, Number(result.lastInsertRowid))
         written.set(record.code, 0)
@@ -326,6 +338,10 @@ export function openStore(path: string): Store {
         seats: { 先攻: text(row, 'first'), 後攻: text(row, 'second') },
         cpu: maybeText(row, 'cpu'),
         decks: JSON.parse(text(row, 'decks')) as StoredDuel['decks'],
+        rules: {
+          format: text(row, 'format') as StoredDuel['rules']['format'],
+          restriction: maybeText(row, 'restriction'),
+        },
         steps: stepRows.all(int(row, 'id')).map((step) => ({
           action: JSON.parse(text(step, 'action')) as StoredDuel['steps'][number]['action'],
           answers: JSON.parse(text(step, 'answers')) as StoredDuel['steps'][number]['answers'],

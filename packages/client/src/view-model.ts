@@ -1285,6 +1285,27 @@ export interface RoomView {
    * いることは、そこが空いていないことと同じである。
    */
   readonly occupants: string | undefined
+  /**
+   * その部屋のルール、そのまま出す 1 行（ADR-0021）。届かなければ `undefined`。
+   *
+   * **入る前に分からなければならない。** 部屋がルールを持つので、同じデッキがある部屋では通り、
+   * 別の部屋では通らない。
+   */
+  readonly rules: string | undefined
+}
+
+/**
+ * その部屋のルール、見る人の言い方で（ADR-0021）。形式と、当てている禁止／制限リストを並べる。
+ *
+ * **届かなかったものを、在るものとして扱わない**（`occupantsLine` と同じ）。サーバが古ければ
+ * この列は付いてこない。
+ */
+function rulesLine(room: WireRoom): string | undefined {
+  const rules = room.rules as WireRoom['rules'] | undefined
+  if (rules === undefined) return undefined
+
+  const restriction = rules.restriction.kind === '制限なし' ? '制限なし' : rules.restriction.name
+  return `${rules.format}・${restriction}`
 }
 
 /**
@@ -1349,6 +1370,7 @@ export function lobbyView(rooms: readonly WireRoom[]): readonly RoomView[] {
         status: roomStatusLine(room),
         joinable: room.status === '相手を待っている',
         occupants: occupantsLine(room),
+        rules: rulesLine(room),
       })),
   )
 }

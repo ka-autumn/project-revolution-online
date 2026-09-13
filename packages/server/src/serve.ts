@@ -4,6 +4,7 @@ import type { WebSocket } from 'ws'
 import { NOT_SIGNED_IN } from '@revolution/engine'
 import type { FromClient, ToClient, WireDeck } from '@revolution/engine'
 import { isCpu } from './cpu.js'
+import { restrictionChoicesOf } from './deck.js'
 import type { CardSupply, PresetDeck } from './deck.js'
 import { readName } from './name.js'
 import { OWNED_DECK_LIMIT, readDeck, sortCards, violationsOf } from './owned-deck.js'
@@ -191,6 +192,8 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    * 部屋にいる間は消す。出てきた時に、変わっていなくてももう一度届くようにするためである。
    */
   const lobbySent = new Map<ParticipantId, string>()
+  /** 部屋を作る時に選べる禁止／制限リスト（ADR-0021）。立てる時に渡されたもので、変わらない。 */
+  const restrictions = restrictionChoicesOf(options.supply)
   /**
    * その人に最後に伝えた「相手が繋がっているか」（#175）。同じことを言い続けないために覚えている。
    *
@@ -378,7 +381,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       if (lobbySent.get(participant) === shown) continue
 
       lobbySent.set(participant, shown)
-      send(socket, { kind: 'ロビー', rooms: lobby, decks: options.deckChoices })
+      send(socket, { kind: 'ロビー', rooms: lobby, decks: options.deckChoices, restrictions })
     }
   }
 
