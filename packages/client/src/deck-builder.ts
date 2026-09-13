@@ -7,6 +7,8 @@ import type {
   WireOwnedDeck,
   WirePoolCard,
 } from '@revolution/engine'
+import { emptyFilter } from './pool-filter.js'
+import type { PoolFilter } from './pool-filter.js'
 import type { ChosenRules } from './render.js'
 import { squareLabel, summaryOf } from './view-model.js'
 import type { DetailRow } from './view-model.js'
@@ -132,6 +134,13 @@ export interface Builder {
   readonly refusal: string | undefined
   /** 尋ねていること。尋ねていなければ `undefined`。 */
   readonly confirming: BuilderConfirm | undefined
+  /**
+   * プールの絞り込み（`pool-filter.ts`）。**別のデッキを開いても外さない**——同じ条件で探し続ける
+   * ことが多い。
+   */
+  readonly filter: PoolFilter
+  /** 詳しく絞り込むところを開いているか。 */
+  readonly filterOpen: boolean
 }
 
 export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder {
@@ -144,6 +153,8 @@ export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder
     checking: 0,
     refusal: undefined,
     confirming: undefined,
+    filter: emptyFilter(),
+    filterOpen: false,
   }
 }
 

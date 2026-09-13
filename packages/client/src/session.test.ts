@@ -351,6 +351,7 @@ describe('デッキを組むのに要るもの', () => {
         attributes: [],
         text: [],
       },
+      expansions: [],
     },
   ] as const
 
