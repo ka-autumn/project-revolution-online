@@ -13,6 +13,7 @@ import type {
   WireDeck,
   WireRestrictionList,
 } from '@revolution/engine'
+import type { CardDetail, CheckView, DeckRow, OwnedDeckRow, PoolRow } from './deck-builder.js'
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import type {
   AbilityView,
@@ -330,6 +331,11 @@ export interface LobbyHandlers {
   readonly onFormat: (format: DuelFormat) => void
   /** 作る部屋に当てる禁止／制限リストを選び直した（ADR-0021）。覚えておくのは呼ぶ側である。 */
   readonly onRestriction: (restriction: RestrictionChoice) => void
+  /**
+   * デッキを組むところを開く（#193）。**組めない立て方では渡さない**——カードプールも自分のデッキも
+   * 届かず、組んでも残す場所が無い（ADR-0021）。
+   */
+  readonly onBuild?: () => void
 }
 
 /**
@@ -453,6 +459,11 @@ export function lobbyElement(
   focused = false,
 ): HTMLElement {
   const node = element('section', 'lobby')
+  if (handlers.onBuild !== undefined) {
+    const building = element('div', 'lobby__build')
+    building.append(button('デッキを組む', handlers.onBuild))
+    node.append(building)
+  }
   node.append(element('h2', 'lobby__title', '対戦を始める'))
 
   // **デッキを選ぶところは、作る口と入る口の両方の上に置く。** どちらで座るかはここで決まる
@@ -506,6 +517,279 @@ export function lobbyElement(
   if (focused) {
     input.focus()
     input.setSelectionRange(input.value.length, input.value.length)
+  }
+
+  return node
+}
+
+/** デッキを選ぶところで押せるもの（#193）。 */
+export interface DeckListHandlers {
+  readonly onOpen: (deck: DeckId) => void
+  readonly onNew: () => void
+  /** 既製デッキをコピーして、そのまま組み始める（ADR-0022）。 */
+  readonly onCopy: (preset: DeckId) => void
+  /** 自分のデッキを消す。**最後の 1 つは消せない**が、断るのはサーバである。 */
+  readonly onDelete: (deck: DeckId, name: string) => void
+  readonly onClose: () => void
+}
+
+/**
+ * どのデッキを組むかを選ぶところ（#193）。自分のデッキと、コピーできる既製デッキを並べる。
+ *
+ * `waiting` の間は、コピー・削除の返事を待っている。**重ねて押させない**——コピーを 2 度押すと
+ * デッキが 2 つできる。
+ */
+export function deckListElement(
+  decks: readonly OwnedDeckRow[],
+  presets: readonly WireDeck[],
+  waiting: boolean,
+  refusal: string | undefined,
+  handlers: DeckListHandlers,
+): HTMLElement {
+  const node = element('section', 'decks')
+  const head = element('div', 'decks__head')
+  head.append(element('h2', 'decks__title', '自分のデッキ'), button('ロビーに戻る', handlers.onClose))
+  node.append(head)
+
+  const list = element('div', 'decks__list')
+  for (const deck of decks) {
+    const row = element('div', 'decks__row')
+    row.append(element('span', 'decks__name', deck.name), element('span', 'decks__count', `${deck.count} 枚`))
+    const open = button('組む', () => handlers.onOpen(deck.id))
+    const remove = button('消す', () => handlers.onDelete(deck.id, deck.name))
+    remove.toggleAttribute('disabled', waiting)
+    row.append(open, remove)
+    list.append(row)
+  }
+  node.append(list)
+  node.append(button('新しく作る', handlers.onNew))
+
+  if (presets.length > 0) {
+    node.append(element('h2', 'decks__title', '既製デッキからコピーして作る'))
+    const presetList = element('div', 'decks__list')
+    for (const preset of presets) {
+      const row = element('div', 'decks__row')
+      row.append(element('span', 'decks__name', preset.name))
+      const copy = button('コピーして組む', () => handlers.onCopy(preset.id))
+      copy.toggleAttribute('disabled', waiting)
+      row.append(copy)
+      presetList.append(row)
+    }
+    node.append(presetList)
+  }
+
+  if (refusal !== undefined) node.append(element('p', 'refusal', `行えませんでした: ${refusal}`))
+
+  return node
+}
+
+/** デッキを組むところで押せるもの（#193）。 */
+export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'onRestriction'> {
+  /** 名前を打ち込んだ。**画面は描き直されるので、覚えておくのは呼ぶ側である**（`LobbyHandlers`）。 */
+  readonly onName: (name: string) => void
+  readonly onDescription: (description: string) => void
+  /** 打ち終えた（入力欄を離れた）。保存していない変更があるかを出し直すのに使う。 */
+  readonly onEdited: () => void
+  readonly onAdd: (key: string) => void
+  readonly onRemove: (key: string) => void
+  /** 詳しく出したままにするカードを決める。同じカードをもう一度押したら、やめる。 */
+  readonly onPin: (key: string) => void
+  readonly onSave: () => void
+  /** デッキの一覧に戻る。**保存していない変更を捨てるかを尋ねるのは呼ぶ側である。** */
+  readonly onBack: () => void
+}
+
+/** デッキを組むところに出すもの（#193）。どれも `deck-builder.ts` がすでに組み立てている。 */
+export interface DeckEditorView {
+  readonly name: string
+  readonly description: string
+  readonly count: number
+  readonly unsaved: boolean
+  /** 保存できるか。返事を待っている間と、使えないカードが入っている間は押せない。 */
+  readonly savable: boolean
+  readonly check: CheckView
+  readonly pool: readonly PoolRow[]
+  readonly deck: readonly DeckRow[]
+  readonly detail: (key: string) => CardDetail | undefined
+  readonly pinned: string | undefined
+  readonly restrictions: readonly WireRestrictionList[]
+  readonly rules: ChosenRules
+  readonly refusal: string | undefined
+}
+
+/** デッキの名前として受け取る長さの上限（`server` の `owned-deck.ts` の `DECK_NAME_LIMIT` と同じ）。 */
+const DECK_NAME_LIMIT = 40
+
+/** デッキの解説として受け取る長さの上限（`server` の `owned-deck.ts` の `DECK_DESCRIPTION_LIMIT` と同じ）。 */
+const DECK_DESCRIPTION_LIMIT = 1000
+
+/**
+ * 描き直しても、スクロールした位置を戻す印（`index.ts` の `draw`）。
+ *
+ * **画面は丸ごと描き直される。** 1 枚入れるたびに、確かめた結果が届くたびに作り直すので、長い
+ * 一覧が毎回先頭へ戻ると、続けて入れられない。
+ */
+export const KEEP_SCROLL = 'keepScroll'
+
+/** 詳しく出すところの中身を入れ替える。 */
+function fillDetail(node: HTMLElement, detail: CardDetail | undefined): void {
+  if (detail === undefined) {
+    node.replaceChildren(element('p', 'builder__detail-none', 'カードの名前にカーソルを合わせると、ここに出ます'))
+    return
+  }
+
+  const rows = element('dl', 'card__panel-rows')
+  for (const row of detail.rows) {
+    rows.append(element('dt', 'card__panel-label', row.label), element('dd', 'card__panel-value', row.value))
+  }
+  const parts: HTMLElement[] = [element('div', 'card__panel-name', detail.name), rows]
+  // 改行ごとに別の能力になる（総合ルール 第2部 第10章 1、第4部 第1章 3）ので、1 行ずつ出す。
+  if (detail.text.length > 0) {
+    const text = element('div', 'card__panel-text')
+    for (const line of detail.text) text.append(element('p', 'card__panel-line', line))
+    parts.push(text)
+  }
+  node.replaceChildren(...parts)
+}
+
+/** 1 種ぶんの行。名前・1 行の要約・枚数と、増やす・減らす口。 */
+function cardRow(
+  row: PoolRow,
+  pinned: boolean,
+  handlers: DeckEditorHandlers,
+  onHover: (key: string) => void,
+): HTMLElement {
+  const node = element('div', `builder__row${row.count > 0 ? ' builder__row--入っている' : ''}`)
+  const name = element('button', `builder__name${pinned ? ' builder__name--選択中' : ''}`, row.name)
+  name.setAttribute('aria-pressed', String(pinned))
+  name.addEventListener('click', () => handlers.onPin(row.key))
+  node.addEventListener('mouseenter', () => onHover(row.key))
+  node.append(name, element('span', 'builder__summary', row.summary), element('span', 'builder__count', String(row.count)))
+
+  const minus = button('−', () => handlers.onRemove(row.key))
+  minus.setAttribute('aria-label', `「${row.name}」を 1 枚抜く`)
+  minus.toggleAttribute('disabled', row.count === 0)
+  const plus = button('＋', () => handlers.onAdd(row.key))
+  plus.setAttribute('aria-label', `「${row.name}」を 1 枚入れる`)
+  node.append(minus, plus)
+
+  return node
+}
+
+/** 確かめた結果（ADR-0021）。 */
+function checkElement(check: CheckView): HTMLElement {
+  const node = element('div', `builder__check builder__check--${check.kind}`)
+  switch (check.kind) {
+    case '確かめている':
+      node.append(element('p', 'builder__check-line', '確かめています'))
+      break
+    case '確かめられない':
+      node.append(element('p', 'builder__check-line', check.reason))
+      break
+    case '満たしている':
+      node.append(element('p', 'builder__check-line', '規定を満たしています'))
+      break
+    case '満たしていない':
+      for (const line of check.lines) node.append(element('p', 'builder__check-line', line))
+      break
+  }
+
+  return node
+}
+
+/**
+ * デッキを組むところ（#193）。左にプール、右にデッキを並べ、その上に規定を確かめた結果を出す。
+ *
+ * **不備があっても保存できる**（ADR-0021）。確かめた結果は読むためのもので、保存を止めない。
+ *
+ * `focused` は、描き直す前に打ち込んでいた入力欄（`名前`・`解説`）。打っていた人には返す。
+ */
+export function deckEditorElement(
+  view: DeckEditorView,
+  handlers: DeckEditorHandlers,
+  focused: '名前' | '解説' | undefined = undefined,
+): HTMLElement {
+  const node = element('section', 'builder')
+
+  const head = element('div', 'builder__head')
+  head.append(button('デッキの一覧に戻る', handlers.onBack))
+  const name = document.createElement('input')
+  name.className = 'builder__deck-name'
+  name.type = 'text'
+  name.maxLength = DECK_NAME_LIMIT
+  name.placeholder = 'デッキの名前'
+  name.value = view.name
+  name.addEventListener('input', () => handlers.onName(name.value))
+  name.addEventListener('change', handlers.onEdited)
+  head.append(name)
+  const save = button('保存する', handlers.onSave)
+  save.toggleAttribute('disabled', !view.savable)
+  head.append(save)
+  if (view.unsaved) head.append(element('span', 'builder__unsaved', '保存していない変更があります'))
+  node.append(head)
+
+  const description = document.createElement('textarea')
+  description.className = 'builder__description'
+  description.maxLength = DECK_DESCRIPTION_LIMIT
+  description.placeholder = '解説（無くてもかまいません）'
+  description.rows = 2
+  description.value = view.description
+  description.addEventListener('input', () => handlers.onDescription(description.value))
+  description.addEventListener('change', handlers.onEdited)
+  node.append(description)
+
+  node.append(rulesPicker(view.restrictions, view.rules, handlers))
+  node.append(checkElement(view.check))
+  if (view.refusal !== undefined) node.append(element('p', 'refusal', `行えませんでした: ${view.refusal}`))
+
+  const detail = element('div', 'builder__detail')
+  const showPinned = (): void => fillDetail(detail, view.pinned === undefined ? undefined : view.detail(view.pinned))
+  showPinned()
+  // カーソルを合わせている間は仮に出し、離れたらクリックで決めたものに戻す。**描き直さない**——
+  // 一覧を丸ごと作り直すほどのことではない。
+  const hover = (key: string): void => fillDetail(detail, view.detail(key))
+
+  const columns = element('div', 'builder__columns')
+
+  const poolPane = element('div', 'builder__pane')
+  poolPane.append(element('h2', 'builder__title', 'カードプール'))
+  const poolList = element('div', 'builder__list')
+  poolList.dataset[KEEP_SCROLL] = 'プール'
+  for (const row of view.pool) poolList.append(cardRow(row, row.key === view.pinned, handlers, hover))
+  poolList.addEventListener('mouseleave', showPinned)
+  poolPane.append(poolList)
+
+  const deckPane = element('div', 'builder__pane')
+  deckPane.append(element('h2', 'builder__title', `デッキ（${view.count} 枚）`))
+  const deckList = element('div', 'builder__list')
+  deckList.dataset[KEEP_SCROLL] = 'デッキ'
+  if (view.deck.length === 0) deckList.append(element('p', 'builder__none', 'まだカードが入っていません'))
+  for (const row of view.deck) {
+    if (row.kind === '使える') {
+      deckList.append(cardRow(row, row.key === view.pinned, handlers, hover))
+      continue
+    }
+    const unusable = element('div', 'builder__row builder__row--使えない')
+    unusable.append(
+      element('span', 'builder__name', '使えないカード'),
+      element('span', 'builder__count', String(row.count)),
+      button('抜く', () => handlers.onRemove(row.key)),
+    )
+    deckList.append(unusable)
+  }
+  deckList.addEventListener('mouseleave', showPinned)
+  deckPane.append(deckList)
+
+  columns.append(poolPane, deckPane, detail)
+  node.append(columns)
+
+  if (focused === '名前') {
+    name.focus()
+    name.setSelectionRange(name.value.length, name.value.length)
+  }
+  if (focused === '解説') {
+    description.focus()
+    description.setSelectionRange(description.value.length, description.value.length)
   }
 
   return node

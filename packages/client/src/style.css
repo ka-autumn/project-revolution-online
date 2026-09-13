@@ -534,6 +534,216 @@ body {
   color: #666;
 }
 
+/* デッキを組むところへの入口（#193）。対戦を始める前にすることなので、ロビーの一番上に置く。 */
+.lobby__build {
+  margin-bottom: var(--gap);
+}
+
+/* どのデッキを組むかを選ぶところ（#193）。ロビーと同じく、読みやすい幅に抑える。 */
+.decks {
+  max-width: 40rem;
+  margin: calc(var(--gap) * 2) 0;
+}
+
+.decks__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.decks__title {
+  margin: calc(var(--gap) * 2) 0 var(--gap);
+  font-size: 1rem;
+}
+
+.decks__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.decks__row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--gap);
+  border: 1px solid var(--line);
+}
+
+/* デッキの名前は打ち込まれたものなので、長くても行を割らずに収める。 */
+.decks__name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  font-weight: bold;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decks__count {
+  color: #666;
+}
+
+/* デッキを組むところ（#193）。左にプール、右にデッキ、その右に詳しく出すところを並べる。 */
+.builder {
+  margin: calc(var(--gap) * 2) 0;
+}
+
+.builder__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.builder__deck-name {
+  flex: 1 1 12rem;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
+.builder__unsaved {
+  color: #b00;
+}
+
+.builder__description {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: var(--gap);
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+  resize: vertical;
+}
+
+/* 確かめた結果（ADR-0021）。満たしていなくても保存できるので、止める色ではなく読ませる色にする。 */
+.builder__check {
+  margin-bottom: var(--gap);
+  padding: var(--gap);
+  border: 1px solid var(--line);
+}
+
+.builder__check--満たしている {
+  border-color: var(--own);
+}
+
+.builder__check--満たしていない,
+.builder__check--確かめられない {
+  border-color: #b00;
+}
+
+.builder__check-line {
+  margin: 0;
+}
+
+.builder__check--確かめている .builder__check-line {
+  color: #666;
+}
+
+.builder__columns {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(12rem, 1fr);
+  align-items: start;
+  gap: calc(var(--gap) * 2);
+}
+
+/* 幅が足りなければ縦に積む。詳しく出すところは一番下になる。 */
+@media (max-width: 56rem) {
+  .builder__columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.builder__title {
+  margin: 0 0 var(--gap);
+  font-size: 1rem;
+}
+
+/*
+ * 一覧はその中でスクロールする。**ページごとスクロールすると、入れたカードを右の一覧で確かめる
+ * たびに、選んでいた場所を見失う。** 描き直しても位置は戻る（`render.ts` の `KEEP_SCROLL`）。
+ */
+.builder__list {
+  max-height: 65vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+}
+
+.builder__none {
+  margin: var(--gap);
+  color: #666;
+}
+
+.builder__row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 2px var(--gap);
+  border-bottom: 1px solid #ddd;
+}
+
+.builder__row--入っている {
+  background: #2f6fb014;
+}
+
+.builder__row--使えない {
+  color: #b00;
+}
+
+/* 名前は押すと詳しく出したままにする。ボタンだが、一覧として読めるように飾りを落とす。 */
+.builder__name {
+  /* 狭い列では要約から先に縮める。名前が読めないと、どのカードの行かが分からない。 */
+  flex: 1 0 8rem;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.builder__name--選択中 {
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+.builder__summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #666;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.builder__count {
+  min-width: 1.5em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* 詳しく出すところ。一覧をスクロールしても見えたままにする。 */
+.builder__detail {
+  position: sticky;
+  top: var(--gap);
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+.builder__detail-none {
+  margin: 0;
+  color: #666;
+}
+
 /* 表示名を決めるところ（ADR-0020）。決まるまでほかへは進めないので、ここだけが出る。 */
 .naming {
   display: flex;
