@@ -736,6 +736,82 @@ body {
   text-align: right;
 }
 
+/* プールを絞り込むところ（#193）。一覧の真上に置く。 */
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--gap);
+}
+
+.filter__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.filter__search {
+  flex: 1 1 12rem;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
+.filter__count {
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+.filter__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap);
+}
+
+/* 軸の名前の幅を揃える。一番長い「エキスパンション」に合わせる。 */
+.filter__label {
+  flex: 0 0 8em;
+  color: #666;
+}
+
+.filter__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.filter__range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter__number {
+  width: 6em;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
+.filter__more {
+  align-self: flex-start;
+}
+
+/* 絞り込みの値 1 つ。選んでいるものは、色だけでなく太さでも分かるようにする（`aria-pressed` にも出る）。 */
+.chip {
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+}
+
+.chip--選択中 {
+  border-color: var(--own);
+  background: #2f6fb026;
+  font-weight: bold;
+}
+
 /* 詳しく出すところ。一覧をスクロールしても見えたままにする。 */
 .builder__detail {
   position: sticky;
