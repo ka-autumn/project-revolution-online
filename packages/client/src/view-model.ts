@@ -507,7 +507,7 @@ function attributesLabel(face: WireCardFace, modified: ModifiedData | undefined)
  * バトルで比べられるのは後ろの数字（`card.ts` の `bpOf`）だが、**どちらがカードに書かれて
  * いる値かも要る**。
  */
-function summaryOf(face: WireCardFace, modified: ModifiedData | undefined = undefined): string {
+export function summaryOf(face: WireCardFace, modified: ModifiedData | undefined = undefined): string {
   const bp = modified?.bp === undefined ? '' : `→${modified.bp}`
   const body = face.type === 'ユニット' ? `BP${face.bp}${bp} SP${face.sp}` : face.type
 

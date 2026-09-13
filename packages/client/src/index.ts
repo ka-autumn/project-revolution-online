@@ -10,11 +10,33 @@ import type {
   RestrictionChoice,
   RoomCode,
 } from '@revolution/engine'
+import {
+  applyToBuilder,
+  cardDetailOf,
+  checkView,
+  closedBuilder,
+  confirmView,
+  deckRows,
+  draftOf,
+  draftToSave,
+  hasUnsavedChanges,
+  hasUnusableCards,
+  newDraft,
+  ownedDeckRows,
+  poolRows,
+  withCard,
+  withoutCard,
+} from './deck-builder.js'
+import type { Builder, DeckDraft } from './deck-builder.js'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import {
+  KEEP_SCROLL,
   actionsElement,
   boardElement,
   choiceElement,
+  confirmElement,
+  deckEditorElement,
+  deckListElement,
   leaveElement,
   lobbyElement,
   nameElement,
@@ -22,7 +44,7 @@ import {
   pickElement,
   waitingForOverlayElement,
 } from './render.js'
-import type { ChosenRules } from './render.js'
+import type { ChosenRules, DeckEditorHandlers, DeckListHandlers } from './render.js'
 import { applyMessage, connecting, roomOf } from './session.js'
 import type { Session } from './session.js'
 import {
@@ -224,6 +246,53 @@ interface Naming {
 }
 
 /**
+ * デッキを組むところの状態と、押せるもの（#193）。
+ *
+ * `checking` は、いまの組みかけへの確かめた結果をまだ待っているか（`deck-builder.ts` の `checkView`）。
+ */
+interface DeckBuilding {
+  readonly builder: Builder
+  readonly checking: boolean
+  readonly list: DeckListHandlers
+  readonly editor: DeckEditorHandlers
+  /** 尋ねていること（`Builder.confirming`）への答え。 */
+  readonly confirm: { readonly onConfirm: () => void; readonly onCancel: () => void }
+  /** ロビーから開く。組めない立て方では `undefined`。 */
+  readonly onBuild: (() => void) | undefined
+}
+
+/** 描き直す前に打ち込んでいた、デッキを組むところの入力欄。 */
+function builderTyping(): '名前' | '解説' | undefined {
+  const classes = document.activeElement?.classList
+  if (classes?.contains('builder__deck-name') === true) return '名前'
+  if (classes?.contains('builder__description') === true) return '解説'
+
+  return undefined
+}
+
+/**
+ * 印（`render.ts` の `KEEP_SCROLL`）の付いた一覧の、スクロールした位置。描き直した後に戻す。
+ *
+ * **一覧を丸ごと作り直す**ので、位置は要素と一緒に消える。印の値で、作り直した後の要素と結び付ける。
+ */
+function scrollPositions(root: HTMLElement): ReadonlyMap<string, number> {
+  const positions = new Map<string, number>()
+  for (const node of root.querySelectorAll<HTMLElement>('[data-keep-scroll]')) {
+    const key = node.dataset[KEEP_SCROLL]
+    if (key !== undefined) positions.set(key, node.scrollTop)
+  }
+
+  return positions
+}
+
+function restoreScroll(root: HTMLElement, positions: ReadonlyMap<string, number>): void {
+  for (const node of root.querySelectorAll<HTMLElement>('[data-keep-scroll]')) {
+    const top = positions.get(node.dataset[KEEP_SCROLL] ?? '')
+    if (top !== undefined) node.scrollTop = top
+  }
+}
+
+/**
  * 操作するところをひとまとめにする器（#128）。
  *
  * 盤面より上に置き、スクロールしても見えたままにする（`style.css` の `.controls`）。**中身は
@@ -256,10 +325,13 @@ function draw(
   picking: Picking,
   lobby: Lobby,
   naming: Naming,
+  building: DeckBuilding,
 ): void {
   // 打ち込みかけの場所は描き直すと消える。打っていた人には返す（`lobbyElement`）。
   const typing = document.activeElement?.classList.contains('lobby__name') === true
   const typingName = document.activeElement?.classList.contains('naming__input') === true
+  const typingDeck = builderTyping()
+  const scrolled = scrollPositions(root)
   root.replaceChildren()
 
   const status = statusOf(session, link)
@@ -278,8 +350,58 @@ function draw(
     )
   }
 
+  // デッキを組むところはロビーから開く（#193）。**ロビーの代わりに出す。** 部屋に入ったり名前を
+  // 尋ねられたりしてロビーを離れたら出さないが、組みかけは覚えたままにする。
+  const { builder } = building
+  const pool = session.pool
+  const owned = session.ownedDecks
+  const builderOpen =
+    stage.kind === 'ロビー' && connected && builder.screen !== '閉じている' && pool !== undefined && owned !== undefined
+
+  if (builderOpen && builder.screen === 'デッキを選ぶ') {
+    root.append(
+      deckListElement(
+        ownedDeckRows(owned),
+        stage.decks,
+        builder.waiting.kind !== '無し',
+        builder.refusal,
+        building.list,
+      ),
+    )
+  }
+
+  if (builderOpen && builder.screen === 'デッキを組む' && builder.draft !== undefined) {
+    const draft = builder.draft
+    root.append(
+      deckEditorElement(
+        {
+          name: draft.name,
+          description: draft.description,
+          count: draft.cards.length,
+          unsaved: hasUnsavedChanges(draft, owned),
+          savable: builder.waiting.kind === '無し' && !hasUnusableCards(pool, draft),
+          check: checkView(draft, building.checking, session.checked, pool),
+          pool: poolRows(pool, draft),
+          deck: deckRows(pool, draft),
+          detail: (key) => cardDetailOf(pool, key),
+          pinned: builder.pinned,
+          restrictions: stage.restrictions,
+          rules: builder.rules,
+          refusal: builder.refusal,
+        },
+        building.editor,
+        typingDeck,
+      ),
+    )
+  }
+
+  // 尋ねている間は、組むところの上に重ねる。**ブラウザの確認ダイアログは使わない**（`confirmElement`）。
+  if (builderOpen && builder.confirming !== undefined) {
+    root.append(confirmElement(confirmView(builder.confirming), building.confirm.onConfirm, building.confirm.onCancel))
+  }
+
   // ロビーは繋がっている間だけ出す。作る・入るは送らないと何も起きないので、押せる形で出さない。
-  if (stage.kind === 'ロビー' && connected) {
+  if (stage.kind === 'ロビー' && connected && !builderOpen) {
     root.append(
       lobbyElement(
         lobbyView(stage.rooms),
@@ -295,6 +417,7 @@ function draw(
           onDeck: lobby.onDeck,
           onFormat: lobby.onFormat,
           onRestriction: lobby.onRestriction,
+          ...(building.onBuild === undefined ? {} : { onBuild: building.onBuild }),
         },
         typing,
       ),
@@ -452,8 +575,58 @@ function draw(
     if (showsOverlay(overlay)) root.append(overlayElement(overlay))
   }
 
-  if (session.refusal !== undefined) root.append(line('refusal', `行えませんでした: ${session.refusal}`))
+  // 組むところは、断られた理由を自分で持って出す（`Builder.refusal`）。二重に出さない。
+  if (session.refusal !== undefined && !builderOpen) {
+    root.append(line('refusal', `行えませんでした: ${session.refusal}`))
+  }
+
+  restoreScroll(root, scrolled)
 }
+
+/** 組みかけのデッキを覚えておく先の名前（#193）。 */
+const DRAFT_KEY = 'revolution.deckDraft'
+
+/**
+ * 覚えておいた組みかけ。無ければ `undefined`。
+ *
+ * **保存するまでサーバには無い**ので、読み込み直しで消えないようにブラウザに置く。読めないもの
+ * （書き換えられた、形が変わった）は無かったものとして扱う——組みかけが消えるだけで、画面は開く。
+ */
+function rememberedDraft(): DeckDraft | undefined {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    if (raw === null) return undefined
+
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return undefined
+    const { deck, name, description, cards } = parsed as Record<string, unknown>
+    if (deck !== undefined && typeof deck !== 'string') return undefined
+    if (typeof name !== 'string' || typeof description !== 'string') return undefined
+    if (!Array.isArray(cards) || !cards.every((card) => typeof card === 'string')) return undefined
+
+    return { deck, name, description, cards }
+  } catch {
+    return undefined
+  }
+}
+
+/** 組みかけを覚える。`undefined` なら忘れる。覚えられないブラウザでは、読み込み直すと消える。 */
+function rememberDraft(draft: DeckDraft | undefined): void {
+  try {
+    if (draft === undefined) localStorage.removeItem(DRAFT_KEY)
+    else localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+  } catch {
+    // 覚えられなかった。組むことはできる。
+  }
+}
+
+/**
+ * 組み替えてから確かめに行くまでの間（ミリ秒）。
+ *
+ * **続けて押している間は送らない。** 1 枚ごとに送ると、60 枚入れる間に 60 回確かめることになる。
+ * 手が止まったと読める程度に短くする。
+ */
+const CHECK_DELAY_MS = 300
 
 /**
  * 画面を作って繋ぐ。返る関数を呼ぶと接続を閉じる。
@@ -544,6 +717,172 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
   })
 
+  /**
+   * デッキを組むところ（#193）。**組みかけは、読み込み直す前のものから始める。**
+   *
+   * 開くまでは出さない。開いた時に組みかけがあれば、一覧を挟まずにその続きから組む。
+   */
+  let builder: Builder = closedBuilder(rememberedDraft())
+  /** 確かめに行くのを待っているタイマー。待っていなければ `undefined`（`CHECK_DELAY_MS`）。 */
+  let checkTimer: ReturnType<typeof setTimeout> | undefined
+
+  /** 組むところを変える。組みかけが変わったなら覚え直す。 */
+  const updateBuilder = (next: Builder): void => {
+    if (next.draft !== builder.draft) rememberDraft(next.draft)
+    builder = next
+  }
+
+  /**
+   * 少し間を置いて、いまの組みかけを確かめに行く。**間を置いている間に組み替えたら、置き直す。**
+   *
+   * 使えないカードが入っている間は送らない。サーバは断るだけで、何が足りないかは分からない。
+   */
+  const scheduleCheck = (): void => {
+    if (checkTimer !== undefined) clearTimeout(checkTimer)
+    checkTimer = undefined
+    const draft = builder.draft
+    const pool = session.pool
+    if (builder.screen !== 'デッキを組む' || draft === undefined || pool === undefined) return
+    if (hasUnusableCards(pool, draft)) return
+
+    checkTimer = setTimeout(() => {
+      checkTimer = undefined
+      const current = builder.draft
+      if (builder.screen !== 'デッキを組む' || current === undefined) return
+
+      connection.send({
+        kind: 'デッキを確かめる',
+        cards: current.cards,
+        format: builder.rules.format,
+        restriction: builder.rules.restriction,
+      })
+      updateBuilder({ ...builder, checking: builder.checking + 1 })
+      redraw()
+    }, CHECK_DELAY_MS)
+  }
+
+  /** 組み始める。一覧から開いた時も、読み込み直した続きから始める時も通る。 */
+  const startEditing = (draft: DeckDraft): void => {
+    updateBuilder({ ...builder, screen: 'デッキを組む', draft, pinned: undefined, refusal: undefined })
+    scheduleCheck()
+    redraw()
+  }
+
+  /** 組みかけを変える。**描き直して、確かめに行く。** */
+  const editCards = (change: (draft: DeckDraft) => DeckDraft): void => {
+    if (builder.draft === undefined) return
+
+    updateBuilder({ ...builder, draft: change(builder.draft), refusal: undefined })
+    scheduleCheck()
+    redraw()
+  }
+
+  const building = (): DeckBuilding => ({
+    builder,
+    checking: checkTimer !== undefined || builder.checking > 0,
+    onBuild:
+      session.pool === undefined || session.ownedDecks === undefined
+        ? undefined
+        : () => {
+            if (builder.draft !== undefined) return startEditing(builder.draft)
+
+            updateBuilder({ ...builder, screen: 'デッキを選ぶ', refusal: undefined })
+            redraw()
+          },
+    list: {
+      onOpen: (id) => {
+        const deck = session.ownedDecks?.find((each) => each.id === id)
+        if (deck !== undefined) startEditing(draftOf(deck))
+      },
+      onNew: () => startEditing(newDraft()),
+      onCopy: (preset) => {
+        if (builder.waiting.kind !== '無し') return
+
+        // コピーしたデッキが届いたら、そのまま組み始める（`deck-builder.ts` の `applyToBuilder`）。
+        connection.send({ kind: 'デッキをコピーする', origin: { kind: '既製デッキ', id: preset } })
+        updateBuilder({ ...builder, waiting: { kind: 'コピー' }, refusal: undefined })
+        redraw()
+      },
+      onDelete: (deck, name) => {
+        // **消したデッキは戻らない。** 押し間違いで消えないように尋ねる。消すのは答えてから。
+        updateBuilder({ ...builder, confirming: { kind: 'デッキを消す', deck, name }, refusal: undefined })
+        redraw()
+      },
+      onClose: () => {
+        updateBuilder({ ...builder, screen: '閉じている', refusal: undefined })
+        redraw()
+      },
+    },
+    editor: {
+      onName: (name) => {
+        // 描き直さない。入力欄の値はブラウザが持っている（`lobby` の `onName` と同じ）。
+        if (builder.draft !== undefined) updateBuilder({ ...builder, draft: { ...builder.draft, name } })
+      },
+      onDescription: (description) => {
+        if (builder.draft !== undefined) updateBuilder({ ...builder, draft: { ...builder.draft, description } })
+      },
+      onEdited: () => redraw(),
+      onAdd: (key) => editCards((draft) => withCard(draft, key)),
+      onRemove: (key) => editCards((draft) => withoutCard(draft, key)),
+      onFormat: (format) => {
+        updateBuilder({ ...builder, rules: { ...builder.rules, format } })
+        scheduleCheck()
+        redraw()
+      },
+      onRestriction: (restriction) => {
+        updateBuilder({ ...builder, rules: { ...builder.rules, restriction } })
+        scheduleCheck()
+        redraw()
+      },
+      onPin: (key) => {
+        updateBuilder({ ...builder, pinned: builder.pinned === key ? undefined : key })
+        redraw()
+      },
+      onSave: () => {
+        const draft = builder.draft
+        const owned = session.ownedDecks
+        if (draft === undefined || owned === undefined || builder.waiting.kind !== '無し') return
+
+        const sending = draftToSave(draft, owned)
+        connection.send({ kind: 'デッキを保存する', ...sending })
+        updateBuilder({ ...builder, draft: sending, waiting: { kind: '保存', sent: sending }, refusal: undefined })
+        redraw()
+      },
+      onBack: () => {
+        const draft = builder.draft
+        const owned = session.ownedDecks ?? []
+        if (draft === undefined || !hasUnsavedChanges(draft, owned)) return backToList()
+
+        // **保存していない変更は、ここで捨てると戻らない。** 捨てるかどうかは人が決める。
+        updateBuilder({ ...builder, confirming: { kind: '変更を捨てる' } })
+        redraw()
+      },
+    },
+    confirm: {
+      onConfirm: () => {
+        const confirming = builder.confirming
+        updateBuilder({ ...builder, confirming: undefined })
+        if (confirming?.kind === 'デッキを消す') {
+          connection.send({ kind: 'デッキを消す', deck: confirming.deck })
+          redraw()
+        }
+        if (confirming?.kind === '変更を捨てる') backToList()
+      },
+      onCancel: () => {
+        updateBuilder({ ...builder, confirming: undefined })
+        redraw()
+      },
+    },
+  })
+
+  /** 組みかけを捨てて、デッキの一覧に戻る。 */
+  function backToList(): void {
+    if (checkTimer !== undefined) clearTimeout(checkTimer)
+    checkTimer = undefined
+    updateBuilder({ ...builder, screen: 'デッキを選ぶ', draft: undefined, pinned: undefined, refusal: undefined })
+    redraw()
+  }
+
   const lobby = (): Lobby => ({
     name: roomName,
     deck: chosenDeck,
@@ -595,7 +934,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    */
   const redraw = (): void => {
     try {
-      draw(root, session, link, connection, overlay, picking(), lobby(), naming())
+      draw(root, session, link, connection, overlay, picking(), lobby(), naming(), building())
     } catch (error) {
       console.error('画面を組み立てられませんでした:', error)
       root.replaceChildren(line('status', '画面を組み立てられませんでした。ページを再読み込みしてください'))
@@ -666,6 +1005,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       }
 
       session = applyMessage(session, message)
+      const wasEditing = builder.screen === 'デッキを組む'
+      updateBuilder(applyToBuilder(builder, message))
+      // コピーしたデッキが届いて組み始めたなら、そこから確かめる。
+      if (!wasEditing && builder.screen === 'デッキを組む') scheduleCheck()
       // ロビーが届いたなら、どの部屋にもいない。入ろうとしていた先は残さない（#175）。
       if (session.stage.kind === 'ロビー' || message.kind === '行えなかった') pendingRoom = undefined
       // 名前を尋ねられたら、いま付いているものから打ち始められるようにする（ADR-0020）。
@@ -688,6 +1031,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
     onLinkChanged: (value) => {
       link = value
+      // **切れている間に送ったものは届いていない**（`connection.ts`）ので、返事も来ない。待つのを
+      // やめて、繋がり直したら確かめ直す。組みかけは画面が持っているので消えない。
+      if (value.kind !== '繋がっている') updateBuilder({ ...builder, waiting: { kind: '無し' }, checking: 0 })
+      else scheduleCheck()
       redraw()
     },
   })
