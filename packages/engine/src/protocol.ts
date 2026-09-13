@@ -83,6 +83,15 @@ export interface WireOwnedDeck {
 export interface WirePoolCard {
   readonly key: string
   readonly face: WireCardFace
+  /**
+   * 収録されているエキスパンションの名前（#193）。**どこにも入っていなければ空。** 1 枚が複数に
+   * 入りうる。
+   *
+   * カードに書かれていることではないので、表記（`face`）には入れない。盤面には要らないもので、
+   * デッキを組む画面が絞り込むのに使う。**名前は渡す側が決めた値で、識別子から読み取ったものでは
+   * ない**（ADR-0021）。
+   */
+  readonly expansions: readonly string[]
 }
 
 /**

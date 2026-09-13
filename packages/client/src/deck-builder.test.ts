@@ -45,11 +45,11 @@ function strategyFace(name: string, values: Partial<WireCardFace> = {}): WireCar
 
 /** 識別子は意味の無い文字列にする。**並べる順が識別子に引きずられていないこと**を見るため。 */
 const POOL: readonly WirePoolCard[] = [
-  { key: 'き', face: strategyFace('テスト・無色のストラテジー') },
-  { key: 'え', face: unitFace('テスト・青のユニット', { colors: ['青'], level: 1 }) },
-  { key: 'う', face: unitFace('テスト・赤のユニットLv2', { colors: ['赤'], level: 2 }) },
-  { key: 'い', face: unitFace('テスト・赤のユニットLv1', { colors: ['赤'], level: 1 }) },
-  { key: 'あ', face: unitFace('テスト・無色のユニット', { colors: [], level: 0 }) },
+  { key: 'き', face: strategyFace('テスト・無色のストラテジー'), expansions: [] },
+  { key: 'え', face: unitFace('テスト・青のユニット', { colors: ['青'], level: 1 }), expansions: [] },
+  { key: 'う', face: unitFace('テスト・赤のユニットLv2', { colors: ['赤'], level: 2 }), expansions: [] },
+  { key: 'い', face: unitFace('テスト・赤のユニットLv1', { colors: ['赤'], level: 1 }), expansions: [] },
+  { key: 'あ', face: unitFace('テスト・無色のユニット', { colors: [], level: 0 }), expansions: [] },
 ]
 
 const OWNED: WireOwnedDeck = { id: 'デッキ1', name: 'くみかけ', description: 'かいせつ', cards: ['い', 'い', 'え'] }
@@ -285,7 +285,7 @@ describe('詳しく出す', () => {
   it('印刷されている項目と、テキストが出る', () => {
     const face = unitFace('テスト・詳しく', { level: 3, colors: ['緑'], stars: 1, attributes: ['テスト属性'], text: ['一行め'] })
 
-    expect(cardDetailOf([{ key: 'く', face }], 'く')).toEqual({
+    expect(cardDetailOf([{ key: 'く', face, expansions: [] }], 'く')).toEqual({
       name: 'テスト・詳しく',
       rows: [
         { label: '種別', value: 'ユニット' },
