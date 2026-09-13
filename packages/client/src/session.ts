@@ -1,4 +1,6 @@
 import type {
+  DeckId,
+  DeckViolation,
   LegalAction,
   LoggedEvent,
   Opponent,
@@ -8,7 +10,9 @@ import type {
   ToClient,
   WireChoice,
   WireDeck,
+  WireOwnedDeck,
   WirePerspective,
+  WirePoolCard,
   WireRestrictionList,
   WireRoom,
 } from '@revolution/engine'
@@ -127,11 +131,47 @@ export interface Session {
    * 持つ。
    */
   readonly refusal: string | undefined
+  /**
+   * デッキに入れられるカード全部（ADR-0021）。届いていなければ `undefined`。
+   *
+   * **`Stage` の中ではなくここに持つ。** 届くのは名前を決めた後に 1 度だけで（`server` の
+   * `serve.ts` の `admit`）、その後ロビーに出ても部屋に入っても変わらない。ログインを持たない
+   * 立て方では届かないので、`undefined` のままであることが「デッキを組めない」ことになる。
+   *
+   * 並び順に意味は無い。画面は識別子で引き、並べる順は画面が決める。
+   */
+  readonly pool: readonly WirePoolCard[] | undefined
+  /**
+   * いま持っている自分のデッキ全部（ADR-0021）。届いていなければ `undefined`。
+   *
+   * `pool` と同じ理由でここに持つ。保存・コピー・削除のたびに、まるごと届き直す。
+   */
+  readonly ownedDecks: readonly WireOwnedDeck[] | undefined
+  /**
+   * 最後に保存したデッキと、構築戦の規定を満たしていない点。まだ保存していなければ `undefined`。
+   *
+   * **新しく作ったデッキの識別子は、ここで初めて分かる。**
+   */
+  readonly saved: { readonly deck: DeckId; readonly violations: readonly DeckViolation[] } | undefined
+  /**
+   * 最後に確かめたデッキが、選んだルールで通らない点（ADR-0021）。まだ確かめていなければ `undefined`。
+   *
+   * **どのデッキをどのルールで確かめたかは覚えていない。** 返事には添えられておらず、送ったものの
+   * ほうを覚えているのは画面である。
+   */
+  readonly checked: readonly DeckViolation[] | undefined
 }
 
 /** 繋いだ直後の状態。 */
 export function connecting(): Session {
-  return { stage: { kind: '繋いでいる' }, refusal: undefined }
+  return {
+    stage: { kind: '繋いでいる' },
+    refusal: undefined,
+    pool: undefined,
+    ownedDecks: undefined,
+    saved: undefined,
+    checked: undefined,
+  }
 }
 
 /**
@@ -155,12 +195,16 @@ export function roomOf(session: Session): RoomCode | undefined {
  * 席につく前に盤面が届くことは無い。デュエルが始まる時も、切れて入り直した時も、サーバは
  * `席についた` を先に送る（`server` の `room.ts` の `start`・`rejoin`）。それでも届いたなら
  * 席が分からず盤面を置く先が無いので、捨てる。
+ *
+ * **どの場面に移っても、カードプールと自分のデッキは持ち越す。** 場面ごとに届くものではない
+ * （`Session.pool`）ので、ここで落とすと届き直さない。
  */
 export function applyMessage(session: Session, message: ToClient): Session {
   const stage = session.stage
   switch (message.kind) {
     case 'ロビー':
       return {
+        ...session,
         stage: {
           kind: 'ロビー',
           rooms: message.rooms,
@@ -175,13 +219,15 @@ export function applyMessage(session: Session, message: ToClient): Session {
       // 断られた理由は `名前を決めてほしい` が自分で持つ（ADR-0020）。ここに残すと、名前の
       // ことなのか 1 つ前に送った手のことなのかが読めなくなる。
       return {
+        ...session,
         stage: { kind: '名前を決める', current: message.current, reason: message.reason },
         refusal: undefined,
       }
     case '相手を待っている':
-      return { stage: { kind: '相手を待っている', room: message.room }, refusal: undefined }
+      return { ...session, stage: { kind: '相手を待っている', room: message.room }, refusal: undefined }
     case '席についた':
       return {
+        ...session,
         stage: {
           kind: '打っている',
           room: message.room,
@@ -203,6 +249,7 @@ export function applyMessage(session: Session, message: ToClient): Session {
       // ここでも履歴を演出し直さない。
       const fresh = stage.board === undefined ? [] : message.perspective.log.slice(stage.board.log.length)
       return {
+        ...session,
         stage: {
           ...stage,
           board: message.perspective,
@@ -224,13 +271,21 @@ export function applyMessage(session: Session, message: ToClient): Session {
 
       // 選んでいる間は行えることが無い。サーバも `選ぶのを待っている` として断る（`room.ts` の
       // `act`）ので、1 つ前の盤面と一緒に届いた手をそのまま並べ続けてはならない。
-      return { stage: { ...stage, actions: [], passOutcome: undefined, choice: message.choice }, refusal: undefined }
+      return {
+        ...session,
+        stage: { ...stage, actions: [], passOutcome: undefined, choice: message.choice },
+        refusal: undefined,
+      }
     case '行えなかった':
       return { ...session, refusal: message.reason }
-    // 自分のデッキやカードプールを出す画面はまだ無い（#193）。届いても置く先が無いので捨てる。
-    case '自分のデッキ':
+    // デッキにまつわるものは場面を変えない。部屋にいる間に届いても覚えておく。
     case 'カードプール':
+      return { ...session, pool: message.cards }
+    case '自分のデッキ':
+      return { ...session, ownedDecks: message.decks }
     case 'デッキを保存した':
-      return session
+      return { ...session, saved: { deck: message.deck, violations: message.violations } }
+    case 'デッキを確かめた':
+      return { ...session, checked: message.violations }
   }
 }

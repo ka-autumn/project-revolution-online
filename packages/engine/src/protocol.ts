@@ -356,6 +356,22 @@ export type FromClient =
   /** コピーして、新しい自分のデッキにする（ADR-0022）。名前はコピー元のものが付く。 */
   | { readonly kind: 'デッキをコピーする'; readonly origin: DeckOrigin }
   /**
+   * 組んでいるデッキが、選んだルールで通るかを確かめる（ADR-0021）。**保存はしない。**
+   *
+   * **確かめるのはサーバである。** 画面は禁止／制限リストの中身を知らず（`WireRestrictionList`）、
+   * カードの表記から規定を当てることもしない（ADR-0010）。組み替えるたびに送れば、その場で
+   * 不備が分かる。
+   *
+   * 形式とリストの選び方は `部屋を作る` と同じで、選ばなければ部屋を作る時と同じ既定になる。
+   * 使えないカードを含むときと、ログインを持たない立て方では断られる。
+   */
+  | {
+      readonly kind: 'デッキを確かめる'
+      readonly cards: readonly string[]
+      readonly format: DuelFormat | undefined
+      readonly restriction: RestrictionChoice | undefined
+    }
+  /**
    * いる部屋を出てロビーに戻る（#175）。
    *
    * 出られるのは、まだ相手を待っているだけの部屋と、決着した部屋である（`server` の `room.ts` の
@@ -505,6 +521,13 @@ export type ToClient =
    * ——保存は断らないが、確かめはする（同）。
    */
   | { readonly kind: 'デッキを保存した'; readonly deck: DeckId; readonly violations: readonly DeckViolation[] }
+  /**
+   * 確かめた結果（ADR-0021）。選んだルールで通らない点の並びで、**通るなら空である。**
+   *
+   * どのデッキをどのルールで確かめたかは添えない。送ったものへの返事は送った順に届くので、
+   * 画面は最後に送ったものへの返事を待てばよい。
+   */
+  | { readonly kind: 'デッキを確かめた'; readonly violations: readonly DeckViolation[] }
   | { readonly kind: '行えなかった'; readonly reason: string }
 
 /**

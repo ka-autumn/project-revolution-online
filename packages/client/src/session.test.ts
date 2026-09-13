@@ -335,3 +335,98 @@ describe('名前を決める', () => {
     expect(session.stage).toEqual({ kind: 'ロビー', rooms: [], decks: [], restrictions: [] })
   })
 })
+
+/** ADR-0021。デッキを組むのに要るものは、どの場面にいても覚えておく。 */
+describe('デッキを組むのに要るもの', () => {
+  const POOL = [
+    {
+      key: 'テストの識別子',
+      face: {
+        type: 'ストラテジー',
+        name: 'テスト・プールのストラテジー',
+        level: 0,
+        colors: [],
+        stars: 0,
+        reverseStars: 0,
+        attributes: [],
+        text: [],
+      },
+    },
+  ] as const
+
+  const DECKS = [{ id: 'デッキ1', name: 'くみかけ', description: '', cards: ['テストの識別子'] }] as const
+
+  const LOBBY: ToClient = { kind: 'ロビー', rooms: [], decks: [], restrictions: [] }
+
+  /** ログインを持たない立て方では届かない。届いていないことが、組めないことである。 */
+  it('繋いだ直後は、プールも自分のデッキも無い', () => {
+    const session = connecting()
+
+    expect(session.pool).toBeUndefined()
+    expect(session.ownedDecks).toBeUndefined()
+    expect(session.saved).toBeUndefined()
+    expect(session.checked).toBeUndefined()
+  })
+
+  it('届いたプールと自分のデッキを覚える', () => {
+    const session = fold({ kind: 'カードプール', cards: POOL }, { kind: '自分のデッキ', decks: DECKS })
+
+    expect(session.pool).toEqual(POOL)
+    expect(session.ownedDecks).toEqual(DECKS)
+  })
+
+  /** 名前を決めた後に 1 度しか届かない。場面が変わるたびに落とすと、届き直さない。 */
+  it('ロビーに出ても、席についても、盤面が届いても残る', () => {
+    const session = fold(
+      { kind: 'カードプール', cards: POOL },
+      { kind: '自分のデッキ', decks: DECKS },
+      LOBBY,
+      { kind: '相手を待っている', room: ROOM },
+      SEATED,
+      { kind: '盤面', perspective: board(1), actions: [], passOutcome: undefined },
+      { kind: '選んでほしい', choice: CHOICE },
+      { kind: '名前を決めてほしい', current: 'わたし', reason: undefined },
+    )
+
+    expect(session.pool).toEqual(POOL)
+    expect(session.ownedDecks).toEqual(DECKS)
+  })
+
+  it('自分のデッキは、届き直したものに置き換わる', () => {
+    const session = fold({ kind: '自分のデッキ', decks: DECKS }, { kind: '自分のデッキ', decks: [] })
+
+    expect(session.ownedDecks).toEqual([])
+  })
+
+  /** 新しく作ったデッキの識別子は、保存した返事で初めて分かる。 */
+  it('保存したデッキと、規定を満たしていない点を覚える', () => {
+    // 総合ルール 第3部 第1章 3-1（ADR-0006）
+    const violations = [{ kind: '枚数不足', count: 1, minimum: 60 }] as const
+
+    const session = fold({ kind: 'デッキを保存した', deck: 'デッキ1', violations })
+
+    expect(session.saved).toEqual({ deck: 'デッキ1', violations })
+  })
+
+  it('確かめた結果は、最後に届いたものになる', () => {
+    // 総合ルール 第3部 第1章 3-1（ADR-0006）
+    const session = fold(
+      { kind: 'デッキを確かめた', violations: [{ kind: '枚数不足', count: 1, minimum: 60 }] },
+      { kind: 'デッキを確かめた', violations: [] },
+    )
+
+    expect(session.checked).toEqual([])
+  })
+
+  it('確かめても保存しても、いる場面は変わらない', () => {
+    const before = fold(LOBBY)
+
+    const after = fold(
+      LOBBY,
+      { kind: 'デッキを確かめた', violations: [] },
+      { kind: 'デッキを保存した', deck: 'デッキ1', violations: [] },
+    )
+
+    expect(after.stage).toEqual(before.stage)
+  })
+})

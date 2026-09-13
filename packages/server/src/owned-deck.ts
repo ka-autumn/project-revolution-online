@@ -97,7 +97,24 @@ export function readDeck(
     return { kind: '断る', reason: `デッキの解説は ${DECK_DESCRIPTION_LIMIT} 文字までです` }
   }
 
-  const { cards } = raw
+  const cards = readCards(raw.cards, pool)
+  if (cards.kind === '断る') return cards
+
+  return { kind: '決まった', deck: { name, description, cards: sortCards(cards.cards) } }
+}
+
+/** カードの並びを読んだ結果。なりうる形を数え上げる（`DeckReading` と同じ）。 */
+export type CardsReading =
+  | { readonly kind: '決まった'; readonly cards: readonly CardKey[] }
+  | { readonly kind: '断る'; readonly reason: string }
+
+/**
+ * 送られてきたものを、デッキに入れるカードの並びとして読む（ADR-0021）。
+ *
+ * 保存するとき（`readDeck`）と、保存せずに確かめるとき（`serve.ts`）の両方が通る。**確かめる
+ * だけでも上限とプールを当てる**——当てなければ、置き場に入れられない並びがそちらからは通る。
+ */
+export function readCards(cards: unknown, pool: CardPool): CardsReading {
   if (!Array.isArray(cards) || !cards.every((card) => typeof card === 'string')) {
     return { kind: '断る', reason: 'デッキのカードが読めません' }
   }
@@ -109,7 +126,7 @@ export function readDeck(
     return { kind: '断る', reason: '使えないカードが入っています' }
   }
 
-  return { kind: '決まった', deck: { name, description, cards: sortCards(cards as readonly CardKey[]) } }
+  return { kind: '決まった', cards: cards as readonly CardKey[] }
 }
 
 /**

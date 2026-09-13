@@ -8,7 +8,7 @@ import type { CardSupply } from './deck.js'
 import { OWNED_DECK_LIMIT, sortCards } from './owned-deck.js'
 import type { RoomSetup } from './room.js'
 import { serve } from './serve.js'
-import type { RunningServer } from './serve.js'
+import type { RunningServer, ServeOptions } from './serve.js'
 import { CALLBACK_PATH, createSignIn, digest } from './sign-in.js'
 import { openStore } from './store.js'
 import type { Store } from './store.js'
@@ -202,6 +202,19 @@ describe('WebSocket で繋ぐ', () => {
       reason: 'ログインしていないとデッキを持てません',
     })
     expect(client.received.some((message) => message.kind === '自分のデッキ')).toBe(false)
+    await client.close()
+  })
+
+  it('ログインを持たない立て方では、組んでいるデッキを確かめられない', async () => {
+    const client = new Client(server.port, 'あ')
+    await client.waitFor('ロビー')
+
+    client.send({ kind: 'デッキを確かめる', cards: ['TEST-0'], format: undefined, restriction: undefined })
+
+    expect(await client.waitFor('行えなかった')).toEqual({
+      kind: '行えなかった',
+      reason: 'ログインしていないとデッキを持てません',
+    })
     await client.close()
   })
 
@@ -573,6 +586,8 @@ describe('ログインの設定があるとき', () => {
   let me: string
   /** もう 1 人ぶんの身元。**同じ身元で 2 本繋ぐと入り直しになる**ので、別の人が要る場面で使う。 */
   let signedInOther: string
+  /** 立てた時に渡したもの。**渡すものを変えて立て直す**場面で使う。 */
+  let options: ServeOptions
 
   beforeEach(async () => {
     store = openStore(':memory:')
@@ -590,7 +605,7 @@ describe('ログインの設定があるとき', () => {
     store.openSession(digest(otherToken), other)
     signedInOther = `revolution_session=${otherToken}`
 
-    server = await serve({
+    options = {
       port: 0,
       setup,
       decks,
@@ -606,7 +621,8 @@ describe('ログインの設定があるとき', () => {
         },
         store,
       }),
-    })
+    }
+    server = await serve(options)
   })
 
   afterEach(async () => {
@@ -894,6 +910,108 @@ describe('ログインの設定があるとき', () => {
     expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: '使えないカードが入っています' })
     expect(store.decksOf(me)).toHaveLength(1)
     await client.close()
+  })
+
+  describe('組んでいるデッキを確かめる', () => {
+    /** 既製デッキと同じ、構築戦の規定を満たす 60 枚。 */
+    const FULL = Object.keys(CARDS).flatMap((key) => Array.from({ length: 4 }, () => key))
+
+    /** 送ったあと、確かめた結果が届くまで待つ。 */
+    async function checked(client: Client, message: FromClient): Promise<ToClient> {
+      client.received.length = 0
+      client.send(message)
+      return client.waitFor('デッキを確かめた')
+    }
+
+    /** ADR-0021。「あと何枚」をそのまま出せる。 */
+    it('選んだルールで通らない点が届き、置き場には何も残らない', async () => {
+      const client = await enteredAsMe()
+      const before = store.decksOf(me)
+
+      const result = await checked(client, {
+        kind: 'デッキを確かめる',
+        cards: ['TEST-0', 'TEST-1'],
+        format: '構築戦',
+        restriction: { kind: '制限なし' },
+      })
+
+      // 総合ルール 第3部 第1章 3-1（ADR-0006）
+      expect(result).toEqual({ kind: 'デッキを確かめた', violations: [{ kind: '枚数不足', count: 2, minimum: 60 }] })
+      expect(store.decksOf(me)).toEqual(before)
+      expect(client.received.some((message) => message.kind === '自分のデッキ')).toBe(false)
+      await client.close()
+    })
+
+    it('通るなら、空で届く', async () => {
+      const client = await enteredAsMe()
+
+      const result = await checked(client, {
+        kind: 'デッキを確かめる',
+        cards: FULL,
+        format: undefined,
+        restriction: undefined,
+      })
+
+      // 総合ルール 第3部 第1章 3-1（ADR-0006）
+      expect(result).toEqual({ kind: 'デッキを確かめた', violations: [] })
+      await client.close()
+    })
+
+    /** 部屋を作る時と既定が食い違うと、組んでいる時に通ったデッキが、何も選ばずに作った部屋で断られる。 */
+    it('リストを選ばなければ、部屋を作る時と同じく、渡された先頭のリストを当てる', async () => {
+      const banning: CardSupply = {
+        ...SUPPLY,
+        restrictions: [{ id: '禁じるリスト', name: 'テストの禁じるリスト', limits: { 'テスト・接続0': 0 } }],
+      }
+      await server.close()
+      server = await serve({ ...options, decks: deckSourceFrom(banning), supply: banning })
+      const client = await enteredAsMe()
+
+      const unchosen = await checked(client, {
+        kind: 'デッキを確かめる',
+        cards: FULL,
+        format: undefined,
+        restriction: undefined,
+      })
+      const unrestricted = await checked(client, {
+        kind: 'デッキを確かめる',
+        cards: FULL,
+        format: undefined,
+        restriction: { kind: '制限なし' },
+      })
+
+      // フロアルール Version 1.12 第2部 第1章 1-1（ADR-0023）
+      expect(unchosen).toEqual({
+        kind: 'デッキを確かめた',
+        violations: [{ kind: '禁止／制限の入れすぎ', name: 'テスト・接続0', count: 4, maximum: 0 }],
+      })
+      expect(unrestricted).toEqual({ kind: 'デッキを確かめた', violations: [] })
+      await client.close()
+    })
+
+    it('知らないリストを選んだら断られる', async () => {
+      const client = await enteredAsMe()
+
+      client.send({
+        kind: 'デッキを確かめる',
+        cards: FULL,
+        format: undefined,
+        restriction: { kind: '禁止／制限リスト', id: '知らないリスト' },
+      })
+
+      expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'その禁止／制限リストはありません' })
+      await client.close()
+    })
+
+    /** 確かめるだけでも、置き場に入れられない並びを通さない。 */
+    it('使えないカードが入っていたら断られる', async () => {
+      const client = await enteredAsMe()
+
+      client.send({ kind: 'デッキを確かめる', cards: ['どこにもない'], format: undefined, restriction: undefined })
+
+      expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: '使えないカードが入っています' })
+      await client.close()
+    })
   })
 
   it('既製デッキをコピーして、自分のデッキにできる', async () => {

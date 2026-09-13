@@ -385,8 +385,11 @@ function recordedRulesOf(rules: RoomRules): RecordedRules {
  *
  * 形式もリストも送られてきた値なので、知らないものは断る。**画面は選択肢の中からしか送らない
  * はずだが、それを信じない**（ADR-0010）。
+ *
+ * デッキを組みながら確かめる時も、ここで決める（`serve.ts`）。**部屋を作る時と既定が食い違うと、
+ * 組んでいる時に通ったデッキが、何も選ばずに作った部屋で断られる。**
  */
-function rulesFor(
+export function rulesFor(
   format: DuelFormat | undefined,
   choice: RestrictionChoice | undefined,
   lists: readonly RestrictionList[],
@@ -419,6 +422,19 @@ function defaultRules(lists: readonly RestrictionList[]): RoomRules {
 }
 
 /**
+ * デッキがルールで通らない点（ADR-0021）。通るなら空。
+ *
+ * **形式の規定と、禁止／制限リストの上限の両方を当てる。** 席に着く時（`refusalOfDeck`）と、
+ * 組みながら確かめる時（`serve.ts`）で同じものを当てる。
+ */
+export function violationsUnder(deck: Deck, rules: RoomRules): readonly DeckViolation[] {
+  return [
+    ...checkDeckForFormat(deck, rules.format),
+    ...(rules.restriction.kind === '制限なし' ? [] : checkCardLimits(deck, rules.restriction.list.limits)),
+  ]
+}
+
+/**
  * 持ち込もうとしているデッキが、部屋のルールで通らない理由（ADR-0021）。通るなら `undefined`。
  *
  * **席に着く時に確かめる。** 形式の規定と、禁止／制限リストの上限の両方を当てる。デッキを選び
@@ -433,10 +449,7 @@ function refusalOfDeck(
   const deck = decks.of(chosen ?? decks.fallback)
   if (deck === undefined) return '選ばれたデッキを持ち込めません'
 
-  const violations = [
-    ...checkDeckForFormat(deck.cards, rules.format),
-    ...(rules.restriction.kind === '制限なし' ? [] : checkCardLimits(deck.cards, rules.restriction.list.limits)),
-  ]
+  const violations = violationsUnder(deck.cards, rules)
   if (violations.length === 0) return undefined
 
   return `${whose}デッキがこの部屋のルールを満たしていません: ${violations.map(describeViolation).join('、')}`
@@ -517,10 +530,12 @@ function handle(
     case '名前を決める':
       return { rooms, deliveries: [], records: [] }
     // 自分のデッキも部屋の外のことである（ADR-0021）。預かるのは置き場で、決まりを見るのは
-    // `owned-deck.ts`、受けるのは `serve.ts` である。
+    // `owned-deck.ts`、受けるのは `serve.ts` である。組みながら確かめるのも同じで、部屋を
+    // 作らずに部屋のルールを当てるだけである（`violationsUnder`）。
     case 'デッキを保存する':
     case 'デッキを消す':
     case 'デッキをコピーする':
+    case 'デッキを確かめる':
       return { rooms, deliveries: [], records: [] }
     case 'ロビーに戻る':
       return leave(rooms, participant, connected)
