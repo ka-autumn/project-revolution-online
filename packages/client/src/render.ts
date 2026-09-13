@@ -534,6 +534,21 @@ export interface DeckListHandlers {
 }
 
 /**
+ * 絵文字だけのボタン。**何をするかは読み上げと、カーソルを合わせた時の説明に書く。**
+ *
+ * 絵文字は目で見れば分かるが、読み上げでは「鉛筆」「ごみ箱」としか伝わらず、どのデッキに何をするかが
+ * 分からない。
+ */
+function iconButton(icon: string, label: string, onPress: () => void): HTMLElement {
+  const node = button(icon, onPress)
+  node.classList.add('icon-button')
+  node.setAttribute('aria-label', label)
+  node.title = label
+
+  return node
+}
+
+/**
  * どのデッキを組むかを選ぶところ（#193）。自分のデッキと、コピーできる既製デッキを並べる。
  *
  * `waiting` の間は、コピー・削除の返事を待っている。**重ねて押させない**——コピーを 2 度押すと
@@ -555,8 +570,8 @@ export function deckListElement(
   for (const deck of decks) {
     const row = element('div', 'decks__row')
     row.append(element('span', 'decks__name', deck.name), element('span', 'decks__count', `${deck.count} 枚`))
-    const open = button('組む', () => handlers.onOpen(deck.id))
-    const remove = button('消す', () => handlers.onDelete(deck.id, deck.name))
+    const open = iconButton('✏️', `「${deck.name}」を組む`, () => handlers.onOpen(deck.id))
+    const remove = iconButton('🗑️', `「${deck.name}」を削除する`, () => handlers.onDelete(deck.id, deck.name))
     remove.toggleAttribute('disabled', waiting)
     row.append(open, remove)
     list.append(row)
@@ -799,7 +814,7 @@ export function deckEditorElement(
  * 押す前に尋ねるところ（#193）。**ブラウザの確認ダイアログは使わない。**
  *
  * 画面の上に重ね、答えるまで下を押せなくする。尋ねている間に描き直されても、呼ぶ側が状態として
- * 持っているので消えない（`deck-builder.ts` の `BuilderConfirm`）。**初めに「やめる」に手を置く**——
+ * 持っているので消えない（`deck-builder.ts` の `BuilderConfirm`）。**初めにやめる側に手を置く**——
  * 戻せないことを尋ねているので、Enter を押しただけで進まないようにする。Escape でもやめられる。
  */
 export function confirmElement(view: ConfirmView, onConfirm: () => void, onCancel: () => void): HTMLElement {
@@ -813,7 +828,7 @@ export function confirmElement(view: ConfirmView, onConfirm: () => void, onCance
   box.append(message)
 
   const buttons = element('div', 'confirm__buttons')
-  const cancel = button('やめる', onCancel)
+  const cancel = button(view.cancelLabel, onCancel)
   const confirm = button(view.confirmLabel, onConfirm)
   confirm.classList.add('confirm__danger')
   buttons.append(cancel, confirm)

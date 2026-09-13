@@ -314,15 +314,19 @@ describe('詳しく出す', () => {
 })
 
 describe('押す前に尋ねる', () => {
-  it('消すときは、どのデッキを消すかと、戻せないことを尋ねる', () => {
+  it('削除するときは、どのデッキを削除するかと、戻せないことを尋ねる', () => {
     expect(confirmView({ kind: 'デッキを消す', deck: 'デッキ1', name: 'くみかけ' })).toEqual({
-      message: '「くみかけ」を消しますか？ 消したデッキは戻せません',
-      confirmLabel: '消す',
+      message: '「くみかけ」を削除しますか？ 削除したデッキは戻せません',
+      confirmLabel: '削除する',
+      cancelLabel: 'やめる',
     })
   })
 
-  it('保存していない変更を捨てるときは、捨てることを尋ねる', () => {
-    expect(confirmView({ kind: '変更を捨てる' }).confirmLabel).toBe('捨てて戻る')
+  /** 「はい」「いいえ」では、文を読み返さないとどちらを押せばよいかが分からない。 */
+  it('保存していない変更があるときは、押すと何が起きるかをボタンに書く', () => {
+    const view = confirmView({ kind: '変更を捨てる' })
+
+    expect([view.cancelLabel, view.confirmLabel]).toEqual(['編集を続ける', '保存せずに戻る'])
   })
 
   it('初めは何も尋ねていない', () => {
