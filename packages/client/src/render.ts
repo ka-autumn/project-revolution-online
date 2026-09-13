@@ -13,7 +13,7 @@ import type {
   WireDeck,
   WireRestrictionList,
 } from '@revolution/engine'
-import type { CardDetail, CheckView, DeckRow, OwnedDeckRow, PoolRow } from './deck-builder.js'
+import type { CardDetail, CheckView, ConfirmView, DeckRow, OwnedDeckRow, PoolRow } from './deck-builder.js'
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import type {
   AbilityView,
@@ -793,6 +793,44 @@ export function deckEditorElement(
   }
 
   return node
+}
+
+/**
+ * 押す前に尋ねるところ（#193）。**ブラウザの確認ダイアログは使わない。**
+ *
+ * 画面の上に重ね、答えるまで下を押せなくする。尋ねている間に描き直されても、呼ぶ側が状態として
+ * 持っているので消えない（`deck-builder.ts` の `BuilderConfirm`）。**初めに「やめる」に手を置く**——
+ * 戻せないことを尋ねているので、Enter を押しただけで進まないようにする。Escape でもやめられる。
+ */
+export function confirmElement(view: ConfirmView, onConfirm: () => void, onCancel: () => void): HTMLElement {
+  const layer = element('div', 'confirm')
+  const box = element('div', 'confirm__box')
+  box.setAttribute('role', 'alertdialog')
+  box.setAttribute('aria-modal', 'true')
+  const message = element('p', 'confirm__message', view.message)
+  message.id = 'confirm-message'
+  box.setAttribute('aria-describedby', message.id)
+  box.append(message)
+
+  const buttons = element('div', 'confirm__buttons')
+  const cancel = button('やめる', onCancel)
+  const confirm = button(view.confirmLabel, onConfirm)
+  confirm.classList.add('confirm__danger')
+  buttons.append(cancel, confirm)
+  box.append(buttons)
+  layer.append(box)
+
+  layer.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') onCancel()
+  })
+  // 重ねた層の外側（暗くしたところ）を押しても、やめる。
+  layer.addEventListener('click', (event) => {
+    if (event.target === layer) onCancel()
+  })
+  // 付け終わってから手を置く。まだ文書に無い要素には置けない。
+  queueMicrotask(() => cancel.focus())
+
+  return layer
 }
 
 /** 表示名として受け取る長さの上限（`server` の `name.ts` の `NAME_LIMIT` と同じ）。 */

@@ -15,6 +15,7 @@ import {
   cardDetailOf,
   checkView,
   closedBuilder,
+  confirmView,
   deckRows,
   draftOf,
   draftToSave,
@@ -33,6 +34,7 @@ import {
   actionsElement,
   boardElement,
   choiceElement,
+  confirmElement,
   deckEditorElement,
   deckListElement,
   leaveElement,
@@ -253,6 +255,8 @@ interface DeckBuilding {
   readonly checking: boolean
   readonly list: DeckListHandlers
   readonly editor: DeckEditorHandlers
+  /** 尋ねていること（`Builder.confirming`）への答え。 */
+  readonly confirm: { readonly onConfirm: () => void; readonly onCancel: () => void }
   /** ロビーから開く。組めない立て方では `undefined`。 */
   readonly onBuild: (() => void) | undefined
 }
@@ -389,6 +393,11 @@ function draw(
         typingDeck,
       ),
     )
+  }
+
+  // 尋ねている間は、組むところの上に重ねる。**ブラウザの確認ダイアログは使わない**（`confirmElement`）。
+  if (builderOpen && builder.confirming !== undefined) {
+    root.append(confirmElement(confirmView(builder.confirming), building.confirm.onConfirm, building.confirm.onCancel))
   }
 
   // ロビーは繋がっている間だけ出す。作る・入るは送らないと何も起きないので、押せる形で出さない。
@@ -795,11 +804,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         redraw()
       },
       onDelete: (deck, name) => {
-        // **消したデッキは戻らない。** 押し間違いで消えないように尋ねる。
-        if (!window.confirm(`「${name}」を消しますか？ 消したデッキは戻せません`)) return
-
-        connection.send({ kind: 'デッキを消す', deck })
-        updateBuilder({ ...builder, refusal: undefined })
+        // **消したデッキは戻らない。** 押し間違いで消えないように尋ねる。消すのは答えてから。
+        updateBuilder({ ...builder, confirming: { kind: 'デッキを消す', deck, name }, refusal: undefined })
         redraw()
       },
       onClose: () => {
@@ -845,18 +851,37 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       onBack: () => {
         const draft = builder.draft
         const owned = session.ownedDecks ?? []
-        if (draft !== undefined && hasUnsavedChanges(draft, owned)) {
-          // **保存していない変更は、ここで捨てると戻らない。** 捨てるかどうかは人が決める。
-          if (!window.confirm('保存していない変更があります。捨てて、デッキの一覧に戻りますか？')) return
-        }
+        if (draft === undefined || !hasUnsavedChanges(draft, owned)) return backToList()
 
-        if (checkTimer !== undefined) clearTimeout(checkTimer)
-        checkTimer = undefined
-        updateBuilder({ ...builder, screen: 'デッキを選ぶ', draft: undefined, pinned: undefined, refusal: undefined })
+        // **保存していない変更は、ここで捨てると戻らない。** 捨てるかどうかは人が決める。
+        updateBuilder({ ...builder, confirming: { kind: '変更を捨てる' } })
+        redraw()
+      },
+    },
+    confirm: {
+      onConfirm: () => {
+        const confirming = builder.confirming
+        updateBuilder({ ...builder, confirming: undefined })
+        if (confirming?.kind === 'デッキを消す') {
+          connection.send({ kind: 'デッキを消す', deck: confirming.deck })
+          redraw()
+        }
+        if (confirming?.kind === '変更を捨てる') backToList()
+      },
+      onCancel: () => {
+        updateBuilder({ ...builder, confirming: undefined })
         redraw()
       },
     },
   })
+
+  /** 組みかけを捨てて、デッキの一覧に戻る。 */
+  function backToList(): void {
+    if (checkTimer !== undefined) clearTimeout(checkTimer)
+    checkTimer = undefined
+    updateBuilder({ ...builder, screen: 'デッキを選ぶ', draft: undefined, pinned: undefined, refusal: undefined })
+    redraw()
+  }
 
   const lobby = (): Lobby => ({
     name: roomName,

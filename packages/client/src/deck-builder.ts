@@ -65,6 +65,33 @@ export type BuilderWaiting =
   /** コピーした。そのデッキが自分のデッキとして届いたら、組み始める。 */
   | { readonly kind: 'コピーしたデッキ'; readonly deck: DeckId }
 
+/**
+ * 押す前に尋ねていること。**戻せないことだけを尋ねる。**
+ *
+ * 画面の中に出す（`render.ts` の `confirmElement`）。ブラウザの確認ダイアログは使わない。画面は丸ごと
+ * 描き直されるので、尋ねていることは状態として持つ。
+ */
+export type BuilderConfirm =
+  /** 自分のデッキを消す。消したデッキは戻らない。 */
+  | { readonly kind: 'デッキを消す'; readonly deck: DeckId; readonly name: string }
+  /** 保存していない変更を捨てて、デッキの一覧に戻る。 */
+  | { readonly kind: '変更を捨てる' }
+
+/** 尋ねる文と、「はい」の側の見出し。 */
+export interface ConfirmView {
+  readonly message: string
+  readonly confirmLabel: string
+}
+
+export function confirmView(confirm: BuilderConfirm): ConfirmView {
+  switch (confirm.kind) {
+    case 'デッキを消す':
+      return { message: `「${confirm.name}」を消しますか？ 消したデッキは戻せません`, confirmLabel: '消す' }
+    case '変更を捨てる':
+      return { message: '保存していない変更があります。捨てて、デッキの一覧に戻りますか？', confirmLabel: '捨てて戻る' }
+  }
+}
+
 /** デッキを組むところの状態。**サーバから届いたものは持たない**——それは `Session` にある。 */
 export interface Builder {
   readonly screen: BuilderScreen
@@ -87,6 +114,8 @@ export interface Builder {
   readonly checking: number
   /** 直前に断られた理由。`Session.refusal` はロビーが届くたびに消えるので、組むところで別に持つ。 */
   readonly refusal: string | undefined
+  /** 尋ねていること。尋ねていなければ `undefined`。 */
+  readonly confirming: BuilderConfirm | undefined
 }
 
 export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder {
@@ -98,6 +127,7 @@ export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder
     waiting: { kind: '無し' },
     checking: 0,
     refusal: undefined,
+    confirming: undefined,
   }
 }
 

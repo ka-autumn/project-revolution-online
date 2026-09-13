@@ -744,6 +744,42 @@ body {
   color: #666;
 }
 
+/* 押す前に尋ねるところ（#193）。画面の上に重ね、答えるまで下を押せなくする。 */
+.confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gap);
+  background: #0006;
+}
+
+.confirm__box {
+  max-width: 28rem;
+  padding: calc(var(--gap) * 3);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: Canvas;
+  box-shadow: 0 2px 12px #0006;
+}
+
+.confirm__message {
+  margin: 0 0 calc(var(--gap) * 2);
+}
+
+.confirm__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--gap);
+}
+
+.confirm__danger {
+  color: #b00;
+  font-weight: bold;
+}
+
 /* 表示名を決めるところ（ADR-0020）。決まるまでほかへは進めないので、ここだけが出る。 */
 .naming {
   display: flex;

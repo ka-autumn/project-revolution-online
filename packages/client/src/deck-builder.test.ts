@@ -7,6 +7,7 @@ import {
   checkView,
   closedBuilder,
   comparePrinted,
+  confirmView,
   deckRows,
   draftOf,
   draftToSave,
@@ -309,6 +310,23 @@ describe('詳しく出す', () => {
 
   it('プールに無いカードは出せない', () => {
     expect(cardDetailOf(POOL, 'どこにもない')).toBeUndefined()
+  })
+})
+
+describe('押す前に尋ねる', () => {
+  it('消すときは、どのデッキを消すかと、戻せないことを尋ねる', () => {
+    expect(confirmView({ kind: 'デッキを消す', deck: 'デッキ1', name: 'くみかけ' })).toEqual({
+      message: '「くみかけ」を消しますか？ 消したデッキは戻せません',
+      confirmLabel: '消す',
+    })
+  })
+
+  it('保存していない変更を捨てるときは、捨てることを尋ねる', () => {
+    expect(confirmView({ kind: '変更を捨てる' }).confirmLabel).toBe('捨てて戻る')
+  })
+
+  it('初めは何も尋ねていない', () => {
+    expect(closedBuilder().confirming).toBeUndefined()
   })
 })
 
