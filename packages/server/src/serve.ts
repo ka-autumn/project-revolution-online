@@ -4,7 +4,9 @@ import type { WebSocket } from 'ws'
 import { NOT_SIGNED_IN } from '@revolution/engine'
 import type { FromClient, ToClient, WireDeck } from '@revolution/engine'
 import { isCpu } from './cpu.js'
+import type { CardSupply, PresetDeck } from './deck.js'
 import { readName } from './name.js'
+import { OWNED_DECK_LIMIT, readDeck, sortCards, violationsOf } from './owned-deck.js'
 import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room.js'
 import type { DeckSource, Names, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
 import type { SignIn } from './sign-in.js'
@@ -56,6 +58,14 @@ export interface ServeOptions {
    * 別である——記録を立て直す時に引くデッキは、棚に並んでいるとは限らない。
    */
   readonly deckChoices: readonly WireDeck[]
+  /**
+   * 立てる時に渡されたもの一式（`deck.ts` の `CardSupply`）。**自分のデッキを預かる時に引く**
+   * （ADR-0021）。
+   *
+   * 保存されるデッキにプールに無いカードが入っていないかを見るのにプールが、コピーするのと
+   * 初めて入った人に配るのに既製デッキが要る。
+   */
+  readonly supply: CardSupply
   /** 生きているかを確かめる間隔（ミリ秒）。既定は `HEARTBEAT_MS`。テストで縮めるために開けてある。 */
   readonly heartbeatMs?: number
   /**
@@ -111,6 +121,16 @@ const ACCEPTED: Readonly<Record<FromClient['kind'], true>> = {
   ひとつ戻る: true,
   取り消す: true,
   名前を決める: true,
+  デッキを保存する: true,
+  デッキを消す: true,
+  デッキをコピーする: true,
+}
+
+/** 自分のデッキに手を加えるメッセージ（ADR-0021）。部屋の外のことなので、ここで受ける。 */
+type DeckRequest = Extract<FromClient, { readonly kind: 'デッキを保存する' | 'デッキを消す' | 'デッキをコピーする' }>
+
+function isDeckRequest(message: FromClient): message is DeckRequest {
+  return message.kind === 'デッキを保存する' || message.kind === 'デッキを消す' || message.kind === 'デッキをコピーする'
 }
 
 /** 受け取ったバイト列をメッセージとして読む。読めなければ `undefined`。 */
@@ -212,6 +232,38 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
 
   /** 表示名を決めたか（ADR-0020）。**決めるまで、ほかのことは受け付けない。** */
   const named = (participant: ParticipantId): boolean => nameOf(participant) !== undefined
+
+  /**
+   * デッキを預かる置き場。**ログインを持たない立て方では `undefined`**（ADR-0021）。
+   *
+   * 名乗りは認証ではなく、知っている人がその席に座れる合言葉である（ADR-0009）。そこにデッキを
+   * 紐づけると、名乗りを知っている人が他人のデッキを書き換えられる。
+   */
+  const deckStore: Store | undefined = options.signIn === undefined ? undefined : options.store
+
+  /** 既製デッキを、その人の新しいデッキとして写す（ADR-0022）。名前はコピー元のものが付く。 */
+  function copyPreset(store: Store, participant: ParticipantId, preset: PresetDeck): string | undefined {
+    return store.saveDeck(participant, undefined, {
+      name: preset.name,
+      description: '',
+      cards: sortCards(preset.cards),
+    })
+  }
+
+  /**
+   * 自分のデッキを送る（ADR-0021）。**1 つも持っていなければ、先に既製デッキを 1 つ配る。**
+   *
+   * 配るのを「初めて表示名を決めた時」にしないのは、それより前に名前を決めた人に届かないから
+   * である。最後の 1 つは消せないので、消した後に知らないデッキが湧いて出ることはない。
+   */
+  function sendOwnDecks(socket: WebSocket, participant: ParticipantId): void {
+    if (deckStore === undefined) return
+
+    const [first] = options.supply.presets
+    if (first !== undefined && deckStore.decksOf(participant).length === 0) copyPreset(deckStore, participant, first)
+
+    send(socket, { kind: '自分のデッキ', decks: deckStore.decksOf(participant) })
+  }
 
   /**
    * 握手してきた接続が誰のものかを決める（ADR-0019）。
@@ -388,6 +440,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         return
       }
 
+      sendOwnDecks(socket, participant)
       const current = roomOf(rooms, participant)
       if (current === undefined) pushLobby()
       else {
@@ -430,6 +483,61 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       pushLobby()
     }
 
+    /**
+     * 自分のデッキに手を加える（ADR-0021）。
+     *
+     * **決まりを見るのは `owned-deck.ts` である。** ここが見るのは、置き場の中身を数えないと
+     * 決まらないこと——持てる数の上限と、最後の 1 つかどうか——だけである。通れば、変わった後の
+     * 自分のデッキを送り直す。
+     */
+    function changeDecks(message: DeckRequest): void {
+      if (deckStore === undefined) {
+        send(socket, { kind: '行えなかった', reason: 'ログインしていないとデッキを持てません' })
+        return
+      }
+      const refuse = (reason: string): void => send(socket, { kind: '行えなかった', reason })
+      const full = (): boolean => deckStore.decksOf(participant).length >= OWNED_DECK_LIMIT
+      const { pool, presets } = options.supply
+
+      switch (message.kind) {
+        case 'デッキを保存する': {
+          const reading = readDeck(message, pool)
+          if (reading.kind === '断る') return refuse(reading.reason)
+          if (message.deck === undefined && full()) return refuse(`デッキは ${OWNED_DECK_LIMIT} 個までです`)
+
+          const saved = deckStore.saveDeck(participant, message.deck, reading.deck)
+          if (saved === undefined) return refuse('そのデッキはありません')
+
+          send(socket, { kind: 'デッキを保存した', deck: saved, violations: violationsOf(reading.deck.cards, pool) })
+          break
+        }
+        case 'デッキを消す': {
+          const decks = deckStore.decksOf(participant)
+          if (!decks.some((deck) => deck.id === message.deck)) return refuse('そのデッキはありません')
+          // **最後の 1 つは消せない。** 消せると、次に繋いだ時に既製デッキが配られ直して、消した
+          // はずのところに知らないデッキが湧いて出る（`sendOwnDecks`）。
+          if (decks.length === 1) return refuse('最後のデッキは消せません')
+
+          deckStore.deleteDeck(participant, message.deck)
+          break
+        }
+        case 'デッキをコピーする': {
+          // 画面から来るものは型のとおりとは限らない（`parse` が見るのは種類だけである）。
+          const preset = presets.find((candidate) => candidate.id === message.origin?.id)
+          if (message.origin?.kind !== '既製デッキ' || preset === undefined) return refuse('そのデッキはありません')
+          if (full()) return refuse(`デッキは ${OWNED_DECK_LIMIT} 個までです`)
+
+          const saved = copyPreset(deckStore, participant, preset)
+          if (saved === undefined) return refuse('そのデッキはありません')
+
+          send(socket, { kind: 'デッキを保存した', deck: saved, violations: violationsOf(preset.cards, pool) })
+          break
+        }
+      }
+
+      sendOwnDecks(socket, participant)
+    }
+
     admit()
 
     socket.on('message', (data) => {
@@ -446,6 +554,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       // 画面がそこで止まっているとは限らないためである（繋ぎ直した先など）。
       if (!named(participant)) {
         send(socket, { kind: '名前を決めてほしい', current: undefined, reason: undefined })
+        return
+      }
+      if (isDeckRequest(message)) {
+        changeDecks(message)
         return
       }
 

@@ -23,8 +23,10 @@ export const NAME_LIMIT = 20
  *
  * **見た目が似た別の文字（ホモグリフ）は弾かない**（ADR-0020）。弾き始めると際限が無く、
  * それは迷惑対策である。
+ *
+ * デッキの名前も同じもので見る（`owned-deck.ts`）。**人に見せる名前の決まりを 2 つ持たない。**
  */
-function breaksDisplay(name: string): boolean {
+export function breaksDisplay(name: string): boolean {
   for (const character of name) {
     const code = character.codePointAt(0) ?? 0
     if (code < 0x20 || code === 0x7f) return true

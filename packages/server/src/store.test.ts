@@ -348,3 +348,113 @@ describe('表示名', () => {
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
   })
 })
+
+/**
+ * 自分のデッキ（ADR-0021）。
+ *
+ * **決まりを見るのは `owned-deck.ts` である。** ここで確かめるのは、預けたものが持ち主のもの
+ * として返ることと、**他人のデッキには手が届かない**ことである。
+ */
+describe('自分のデッキ', () => {
+  const DRAFT = { name: 'わたしのデッキ', description: 'かいせつ', cards: ['TEST-0', 'TEST-1'] }
+
+  it('はじめは何も持っていない', () => {
+    const store = openStore(':memory:')
+
+    expect(store.decksOf(store.identify('google', '10001'))).toEqual([])
+    store.close()
+  })
+
+  it('残したデッキが、作った順に返る', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+
+    const first = store.saveDeck(me, undefined, DRAFT)
+    const second = store.saveDeck(me, undefined, { ...DRAFT, name: 'ふたつめ' })
+
+    expect(store.decksOf(me)).toEqual([
+      { id: first, ...DRAFT },
+      { id: second, ...DRAFT, name: 'ふたつめ' },
+    ])
+    store.close()
+  })
+
+  it('上書きできる', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+    const deck = store.saveDeck(me, undefined, DRAFT)
+    if (deck === undefined) throw new Error('残せるはずだった')
+
+    expect(store.saveDeck(me, deck, { ...DRAFT, cards: ['TEST-2'] })).toBe(deck)
+    expect(store.decksOf(me)).toEqual([{ id: deck, ...DRAFT, cards: ['TEST-2'] }])
+    store.close()
+  })
+
+  it('他人のデッキは見えない', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+    store.saveDeck(store.identify('google', '10002'), undefined, DRAFT)
+
+    expect(store.decksOf(me)).toEqual([])
+    store.close()
+  })
+
+  /** 識別子だけで引くと、他人のデッキの識別子を送れば書き換えられてしまう。 */
+  it('他人のデッキは上書きできない', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+    const other = store.identify('google', '10002')
+    const theirs = store.saveDeck(other, undefined, DRAFT)
+    if (theirs === undefined) throw new Error('残せるはずだった')
+
+    expect(store.saveDeck(me, theirs, { ...DRAFT, name: 'のっとり' })).toBeUndefined()
+    expect(store.decksOf(other)).toEqual([{ id: theirs, ...DRAFT }])
+    store.close()
+  })
+
+  it('知らない識別子では上書きできない', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+
+    expect(store.saveDeck(me, '999', DRAFT)).toBeUndefined()
+    expect(store.saveDeck(me, 'よめない', DRAFT)).toBeUndefined()
+    expect(store.decksOf(me)).toEqual([])
+    store.close()
+  })
+
+  it('消せる', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+    const deck = store.saveDeck(me, undefined, DRAFT)
+    if (deck === undefined) throw new Error('残せるはずだった')
+
+    expect(store.deleteDeck(me, deck)).toBe(true)
+    expect(store.decksOf(me)).toEqual([])
+    store.close()
+  })
+
+  it('他人のデッキは消せない', () => {
+    const store = openStore(':memory:')
+    const other = store.identify('google', '10002')
+    const theirs = store.saveDeck(other, undefined, DRAFT)
+    if (theirs === undefined) throw new Error('残せるはずだった')
+
+    expect(store.deleteDeck(store.identify('google', '10001'), theirs)).toBe(false)
+    expect(store.decksOf(other)).toHaveLength(1)
+    store.close()
+  })
+
+  /** 置き場は差し替えても消えない（ADR-0018）。デッキは対戦が終わっても残るものである。 */
+  it('立て直しても残っている', () => {
+    const path = `${tmpdir()}/revolution-decks-${randomUUID()}.sqlite`
+    const first = openStore(path)
+    const me = first.identify('google', '10001')
+    const deck = first.saveDeck(me, undefined, DRAFT)
+    first.close()
+
+    const second = openStore(path)
+    expect(second.decksOf(me)).toEqual([{ id: deck, ...DRAFT }])
+    second.close()
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  })
+})

@@ -1,4 +1,5 @@
 import type { Square } from './board.js'
+import type { DeckViolation } from './deck.js'
 import { cardsIn } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import { applyLegalAction } from './legal-action.js'
@@ -48,6 +49,31 @@ export interface WireDeck {
   readonly id: DeckId
   readonly name: string
 }
+
+/**
+ * 持ち主が組んだデッキ 1 つ（ADR-0021）。**持ち主にだけ届く。**
+ *
+ * **持つのはカードを指す識別子の並びだけで、カードの姿は写し取らない。** カードの実装が直れば、
+ * 既にあるデッキも直った姿で見える。**並びは保存したときに揃えてある**ので、置いた順ではない。
+ *
+ * **どのルールで組んだかを持たない。** ルールを持つのは部屋の側である（ADR-0021）。
+ */
+export interface WireOwnedDeck {
+  readonly id: DeckId
+  readonly name: string
+  /** 持ち主が書いた解説。**空でよい。** */
+  readonly description: string
+  /** カードを指す識別子の並び。**同じ識別子を並べた数がその枚数**になる。 */
+  readonly cards: readonly string[]
+}
+
+/**
+ * コピーして自分のデッキにできるもの（ADR-0022）。
+ *
+ * **数え上げられるので、列挙で持つ。** いまは既製デッキだけだが、人が共有したレシピと、対戦が
+ * 終わった相手のデッキが後から加わる。**どれも同じ操作で自分のデッキになる**（同）。
+ */
+export type DeckOrigin = { readonly kind: '既製デッキ'; readonly id: DeckId }
 
 /**
  * いま誰と打っているか（ADR-0020）。
@@ -240,6 +266,26 @@ export type FromClient =
    */
   | { readonly kind: '名前を決める'; readonly name: string }
   /**
+   * 自分のデッキを保存する（ADR-0021）。`deck` が `undefined` なら新しく作り、あれば上書きする。
+   *
+   * **構築戦の規定を満たしていなくても保存できる。** 断られるのは防御の上限と、使えないカードを
+   * 含むときだけである（`server` の `owned-deck.ts`）。**並びは揃えて残る**ので、送った順では
+   * 返ってこない。
+   *
+   * ログインを持たない立て方ではデッキを持てないので、断られる（ADR-0021）。
+   */
+  | {
+      readonly kind: 'デッキを保存する'
+      readonly deck: DeckId | undefined
+      readonly name: string
+      readonly description: string
+      readonly cards: readonly string[]
+    }
+  /** 自分のデッキを消す（ADR-0021）。**最後の 1 つは消せない。** */
+  | { readonly kind: 'デッキを消す'; readonly deck: DeckId }
+  /** コピーして、新しい自分のデッキにする（ADR-0022）。名前はコピー元のものが付く。 */
+  | { readonly kind: 'デッキをコピーする'; readonly origin: DeckOrigin }
+  /**
    * いる部屋を出てロビーに戻る（#175）。
    *
    * 出られるのは、まだ相手を待っているだけの部屋と、決着した部屋である（`server` の `room.ts` の
@@ -357,6 +403,20 @@ export type ToClient =
       /** 送ったものが通らなかった理由。初めて尋ねる時は `undefined`。 */
       readonly reason: string | undefined
     }
+  /**
+   * いま持っている自分のデッキ全部（ADR-0021）。**持ち主にだけ届く。**
+   *
+   * 繋いだ時と、保存・コピー・削除で中身が変わるたびに届く。受け取った側は覚えておくだけで
+   * よく、尋ね直す手立ては要らない（`ロビー` と同じ）。ログインを持たない立て方では届かない。
+   */
+  | { readonly kind: '自分のデッキ'; readonly decks: readonly WireOwnedDeck[] }
+  /**
+   * デッキを保存した（ADR-0021）。コピーして新しくできた時も届く。
+   *
+   * **新しく作ったなら、ここで初めて識別子が分かる。** 構築戦の規定を満たしていない点も添える
+   * ——保存は断らないが、確かめはする（同）。
+   */
+  | { readonly kind: 'デッキを保存した'; readonly deck: DeckId; readonly violations: readonly DeckViolation[] }
   | { readonly kind: '行えなかった'; readonly reason: string }
 
 /**

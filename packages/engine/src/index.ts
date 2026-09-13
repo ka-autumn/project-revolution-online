@@ -183,6 +183,7 @@ export type {
   ActionProgress,
   ChoiceAnswer,
   DeckId,
+  DeckOrigin,
   FromClient,
   Opponent,
   OpponentKind,
@@ -192,6 +193,7 @@ export type {
   WireCardPosition,
   WireChoice,
   WireDeck,
+  WireOwnedDeck,
   WireRoom,
 } from './protocol.js'
 export type { PlayDeclaration } from './play.js'

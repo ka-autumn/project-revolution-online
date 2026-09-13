@@ -98,7 +98,7 @@ if (signInConfig !== undefined && store === undefined) {
 }
 const signIn = signInConfig === undefined ? undefined : createSignIn({ config: signInConfig, store })
 
-serve({ port: Number(process.env.PORT ?? ${port}), setup: newSetup, decks, deckChoices, store, signIn })
+serve({ port: Number(process.env.PORT ?? ${port}), setup: newSetup, decks, deckChoices, supply, store, signIn })
   .then((running) => {
     console.log(\`ポート \${running.port} で待っています\`)
     if (store !== undefined) console.log(\`置き場: \${storePath}\`)
