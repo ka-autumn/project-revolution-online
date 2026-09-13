@@ -4,7 +4,7 @@ import type { WebSocket } from 'ws'
 import { NOT_SIGNED_IN } from '@revolution/engine'
 import type { FromClient, ToClient, WireDeck } from '@revolution/engine'
 import { isCpu } from './cpu.js'
-import { restrictionChoicesOf } from './deck.js'
+import { poolFacesOf, restrictionChoicesOf } from './deck.js'
 import type { CardSupply, PresetDeck } from './deck.js'
 import { readName } from './name.js'
 import { OWNED_DECK_LIMIT, readDeck, sortCards, violationsOf } from './owned-deck.js'
@@ -269,6 +269,20 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   }
 
   /**
+   * 配るカードプール（ADR-0021）。**プールは立てている間変わらないので、書き出すのは 1 度でよい。**
+   *
+   * デッキを預かれない立て方では配らない。組んでも残す場所が無い。
+   */
+  const poolFaces = deckStore === undefined ? undefined : poolFacesOf(options.supply.pool)
+
+  /** カードプールを送る（ADR-0021）。**繋いだ接続ごとに 1 度だけ呼ぶ**——中身は変わらない。 */
+  function sendPool(socket: WebSocket): void {
+    if (poolFaces === undefined) return
+
+    send(socket, { kind: 'カードプール', cards: poolFaces })
+  }
+
+  /**
    * 握手してきた接続が誰のものかを決める（ADR-0019）。
    *
    * **ログインの設定があるなら Cookie だけを見る。** URL の名乗りは読まない——読めば、他人の
@@ -443,6 +457,9 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         return
       }
 
+      // **カードプールはデッキより先に送る。** デッキは識別子の並びで、引く先がプールである。
+      // `admit` は接続ごとに 1 度だけ通る（名前を初めて決めた時か、決め終えた人が繋いだ時）。
+      sendPool(socket)
       sendOwnDecks(socket, participant)
       const current = roomOf(rooms, participant)
       if (current === undefined) pushLobby()

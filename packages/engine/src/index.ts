@@ -200,6 +200,7 @@ export type {
   WireChoice,
   WireDeck,
   WireOwnedDeck,
+  WirePoolCard,
   WireRestrictionList,
   WireRoom,
   WireRoomRules,
@@ -231,7 +232,7 @@ export { SMASH_JUDGMENT_STEPS, smashesOf } from './smash.js'
 export type { SmashJudgment, SmashJudgmentStep } from './smash.js'
 export { PHASES } from './turn.js'
 export type { Phase, Turn } from './turn.js'
-export { toWire } from './wire.js'
+export { faceOf, toWire } from './wire.js'
 export type {
   WireCardFace,
   WireCardInstance,

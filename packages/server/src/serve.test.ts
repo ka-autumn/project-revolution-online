@@ -205,6 +205,16 @@ describe('WebSocket で繋ぐ', () => {
     await client.close()
   })
 
+  /** ADR-0021。カードプールは組むためのもので、デッキを持てない立て方では組む場所が無い。 */
+  it('ログインを持たない立て方では、カードプールが届かない', async () => {
+    const client = new Client(server.port, 'あ')
+    // カードプールを送るのはロビーより前である（`serve.ts` の `admit`）。ロビーまで来て無ければ届かない。
+    await client.waitFor('ロビー')
+
+    expect(client.received.some((message) => message.kind === 'カードプール')).toBe(false)
+    await client.close()
+  })
+
   /** #175。尋ねに来るのを待たず、繋いだ時点で送る。最初に見るのがロビーだからである。 */
   it('繋ぐとロビーが届く', async () => {
     const client = new Client(server.port, 'あ')
@@ -758,6 +768,46 @@ describe('ログインの設定があるとき', () => {
     const mine = await client.waitFor('席についた')
     expect(mine.kind === '席についた' && mine.opponent).toEqual({ kind: '人間', name: 'あいて' })
     await other.close()
+    await client.close()
+  })
+
+  /** ADR-0021。**組む前に**カードの表記が要る。席に着いた後に流れるだけでは組めない。 */
+  it('名前を決めると、席に着く前にカードプールが届く', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+    await client.waitFor('名前を決めてほしい')
+    client.send({ kind: '名前を決める', name: 'かずお' })
+
+    const pool = await client.waitFor('カードプール')
+    // 並びは確かめない。**画面は識別子で引く**もので、並べる順は画面の都合である（ADR-0021）。
+    expect(pool.kind === 'カードプール' && pool.cards.map((card) => card.key).sort()).toEqual(Object.keys(CARDS).sort())
+    expect(pool.kind === 'カードプール' && pool.cards.find((card) => card.key === 'TEST-S')?.face).toEqual({
+      type: 'ストラテジー',
+      name: 'テスト・接続のストラテジー',
+      level: 0,
+      colors: [],
+      stars: 0,
+      reverseStars: 0,
+      attributes: [],
+      text: [],
+    })
+    await client.close()
+  })
+
+  /** ADR-0021。カードプールは、席に着ける人にだけ配る。名前を決めるまでは席に着けない（ADR-0020）。 */
+  it('名前を決めるまでは、カードプールが届かない', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedIn)
+    // 繋いだ時に送るものは、尋ねるのと同じ所で送られる（`serve.ts` の `admit`）。尋ねられるまで
+    // 待てば、送られるはずのものは届いている。
+    await client.waitFor('名前を決めてほしい')
+
+    expect(client.received.some((message) => message.kind === 'カードプール')).toBe(false)
+    await client.close()
+  })
+
+  it('名前を決め終えていた人には、繋いだ時に届く', async () => {
+    const client = new Client(server.port, 'なのっても無駄', signedInOther)
+
+    await client.waitFor('カードプール')
     await client.close()
   })
 

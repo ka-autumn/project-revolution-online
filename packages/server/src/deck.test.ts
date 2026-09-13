@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { defineUnit } from '@revolution/engine'
+import { defineStrategy, defineTrap, defineUnit } from '@revolution/engine'
 import type { Card } from '@revolution/engine'
-import { checkPresets, deckChoicesOf, deckSourceFrom, newSetup, readSupply, restrictionChoicesOf } from './deck.js'
+import {
+  checkPresets,
+  deckChoicesOf,
+  deckSourceFrom,
+  newSetup,
+  poolFacesOf,
+  readSupply,
+  restrictionChoicesOf,
+} from './deck.js'
 import type { CardPool, CardSupply } from './deck.js'
 
 /**
@@ -141,6 +149,52 @@ describe('選べる禁止／制限リスト', () => {
     expect(restrictionChoicesOf(supply)).toEqual([
       { id: 'リスト2', name: '2027年版' },
       { id: 'リスト1', name: '2026年版' },
+    ])
+  })
+})
+
+describe('配るカードプール', () => {
+  it('識別子と、カードに書かれていることを組にして並べる。テキストは載り、効果は載らない', () => {
+    const pool: CardPool = {
+      'テスト-S': defineStrategy({
+        name: 'テスト・ストラテジー',
+        level: 2,
+        colors: ['赤'],
+        text: ['カードを1枚引く。'],
+        // 効果は関数なので、配る形には載らない。載っていないことを見るために書いておく。
+        *effect() {},
+      }),
+      'テスト-T': defineTrap({ name: 'テスト・トラップ', level: 1, triggerIcon: [{ row: 0, column: 1 }] }),
+    }
+
+    expect(poolFacesOf(pool)).toEqual([
+      {
+        key: 'テスト-S',
+        face: {
+          type: 'ストラテジー',
+          name: 'テスト・ストラテジー',
+          level: 2,
+          colors: ['赤'],
+          stars: 0,
+          reverseStars: 0,
+          attributes: [],
+          text: ['カードを1枚引く。'],
+        },
+      },
+      {
+        key: 'テスト-T',
+        face: {
+          type: 'トラップ',
+          name: 'テスト・トラップ',
+          level: 1,
+          colors: [],
+          stars: 0,
+          reverseStars: 0,
+          attributes: [],
+          text: [],
+          triggerIcon: [{ row: 0, column: 1 }],
+        },
+      },
     ])
   })
 })

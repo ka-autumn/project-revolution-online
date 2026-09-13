@@ -1,4 +1,4 @@
-import { checkConstructedDeck } from '@revolution/engine'
+import { checkConstructedDeck, faceOf } from '@revolution/engine'
 import type {
   Card,
   CardLimits,
@@ -7,6 +7,7 @@ import type {
   DeckViolation,
   RestrictionListId,
   WireDeck,
+  WirePoolCard,
   WireRestrictionList,
 } from '@revolution/engine'
 import type { DeckSource, RoomSetup, SeatedDeck } from './room.js'
@@ -264,6 +265,19 @@ export function deckChoicesOf(supply: CardSupply): readonly WireDeck[] {
  */
 export function restrictionChoicesOf(supply: CardSupply): readonly WireRestrictionList[] {
   return supply.restrictions.map((list) => ({ id: list.id, name: list.name }))
+}
+
+/**
+ * デッキを組む人に配るカードプール（`WirePoolCard`、ADR-0021）。
+ *
+ * **盤面に載るのと同じ書き出し方を使う**（engine の `faceOf`）。配るために別の道を作ると、盤面では
+ * 落としているもの（効果や能力）がこちらでだけ漏れる、という食い違いが生まれうる。
+ *
+ * **並べ替えない。** 識別子から何も読み取らない（ADR-0021）ので、渡されたまとまりから取り出した
+ * 順のまま並べる。
+ */
+export function poolFacesOf(pool: CardPool): readonly WirePoolCard[] {
+  return Object.entries(pool).map(([key, card]) => ({ key, face: faceOf(card) }))
 }
 
 /** 新しい部屋に付ける合言葉の長さ。 */

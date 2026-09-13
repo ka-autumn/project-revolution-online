@@ -203,8 +203,11 @@ function unitFaceOf(card: UnitCard): WireUnitFace {
  * `{ ...card }` で写していないのは、そうすると能力と効果まで載ってしまうためである。関数は
  * `JSON.stringify` で黙って落ちるので、混ざっていても通信の相手からは見えない。**混ぜないこと
  * を型で保てるように、項目を 1 つずつ書き写している。**
+ *
+ * **盤面ができる前にも使う**（ADR-0021）。デッキを組む人に配るカードプールも、盤面に載るのと
+ * 同じこの形で書き出す（`server` の `deck.ts` の `poolFacesOf`）。別の書き出し方を作らない。
  */
-function faceOf(card: Card): WireCardFace {
+export function faceOf(card: Card): WireCardFace {
   switch (card.type) {
     case 'ユニット':
       return unitFaceOf(card)
