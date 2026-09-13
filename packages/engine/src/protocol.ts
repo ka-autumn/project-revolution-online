@@ -10,7 +10,7 @@ import type { PassOutcome } from './progress.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
 import type { ChoicePurpose, Chooser } from './resolve.js'
-import type { WirePerspective } from './wire.js'
+import type { WireCardFace, WirePerspective } from './wire.js'
 import { PLAYER_ZONES } from './zone.js'
 import type { PlayerZone } from './zone.js'
 
@@ -65,6 +65,24 @@ export interface WireOwnedDeck {
   readonly description: string
   /** カードを指す識別子の並び。**同じ識別子を並べた数がその枚数**になる。 */
   readonly cards: readonly string[]
+}
+
+/**
+ * カードプールのカード 1 種（ADR-0021）。**識別子と、そのカードに書かれていることの組である。**
+ *
+ * 表記は盤面に載るものと同じ形（`WireCardFace`、ADR-0010）で、配るために新しい形を作らない。
+ * デッキが持つのは識別子の並び（`WireOwnedDeck.cards`）なので、画面はこれを引いてカードの
+ * 姿を出す。
+ *
+ * **識別子はただの文字列である。** 何を指すかを読み取らず、引く鍵としてだけ使う——並べ替えにも
+ * 絞り込みにも使わない。絞り込むなら、表記の項目で絞る。
+ *
+ * **識別子で引ける表（`Record`）にせず、組の並びで持つ。** 識別子は渡す側が決める任意の文字列で、
+ * オブジェクトのキーにすると `__proto__` のようなものがそのまま鍵になる。
+ */
+export interface WirePoolCard {
+  readonly key: string
+  readonly face: WireCardFace
 }
 
 /**
@@ -469,6 +487,17 @@ export type ToClient =
    * よく、尋ね直す手立ては要らない（`ロビー` と同じ）。ログインを持たない立て方では届かない。
    */
   | { readonly kind: '自分のデッキ'; readonly decks: readonly WireOwnedDeck[] }
+  /**
+   * デッキに入れられるカード全部（ADR-0021）。**並ぶのは実装済みのカードだけである。**
+   *
+   * 繋いで名前が決まっていれば、ロビーや部屋の様子より先に 1 度だけ届く。プールは立てている間
+   * 変わらないので、送り直さない。**並び順に意味は無い。** 画面は識別子で引いて使う。
+   *
+   * **席に着ける人にだけ届く**——名前を決めるまでは届かず、ログインを持たない立て方でも届かない
+   * （デッキを持てないので、組む場所が無い）。能力テキストも載るが、それは席に着いた人に盤面で
+   * 見えているものである。
+   */
+  | { readonly kind: 'カードプール'; readonly cards: readonly WirePoolCard[] }
   /**
    * デッキを保存した（ADR-0021）。コピーして新しくできた時も届く。
    *
