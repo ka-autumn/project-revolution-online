@@ -29,7 +29,9 @@ import {
 } from './deck-builder.js'
 import type { Builder, DeckDraft } from './deck-builder.js'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
+import { filterChoicesOf, filterPool } from './pool-filter.js'
 import {
+  KEEP_FOCUS,
   KEEP_SCROLL,
   actionsElement,
   boardElement,
@@ -261,13 +263,47 @@ interface DeckBuilding {
   readonly onBuild: (() => void) | undefined
 }
 
-/** 描き直す前に打ち込んでいた、デッキを組むところの入力欄。 */
-function builderTyping(): '名前' | '解説' | undefined {
-  const classes = document.activeElement?.classList
-  if (classes?.contains('builder__deck-name') === true) return '名前'
-  if (classes?.contains('builder__description') === true) return '解説'
+/**
+ * 描き直す前に打ち込んでいた入力欄の印（`render.ts` の `KEEP_FOCUS`）と、打っていた位置。
+ * 打っていなければ `undefined`。
+ */
+interface Typing {
+  readonly key: string
+  readonly start: number | null
+  readonly end: number | null
+}
 
-  return undefined
+function typingIn(root: HTMLElement): Typing | undefined {
+  const active = document.activeElement
+  if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) || !root.contains(active)) {
+    return undefined
+  }
+  const key = active.dataset[KEEP_FOCUS]
+  if (key === undefined) return undefined
+
+  // 数を打つ欄は、打っている位置を読めない（読むと投げるブラウザがある）。
+  try {
+    return { key, start: active.selectionStart, end: active.selectionEnd }
+  } catch {
+    return { key, start: null, end: null }
+  }
+}
+
+/** 作り直した入力欄に、打っていた人の手を戻す。 */
+function restoreTyping(root: HTMLElement, typing: Typing | undefined): void {
+  if (typing === undefined) return
+
+  for (const node of root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-keep-focus]')) {
+    if (node.dataset[KEEP_FOCUS] !== typing.key) continue
+
+    node.focus()
+    try {
+      if (typing.start !== null && typing.end !== null) node.setSelectionRange(typing.start, typing.end)
+    } catch {
+      // 位置を置けない欄（数を打つ欄）は、手を戻すだけにする。
+    }
+    return
+  }
 }
 
 /**
@@ -330,7 +366,7 @@ function draw(
   // 打ち込みかけの場所は描き直すと消える。打っていた人には返す（`lobbyElement`）。
   const typing = document.activeElement?.classList.contains('lobby__name') === true
   const typingName = document.activeElement?.classList.contains('naming__input') === true
-  const typingDeck = builderTyping()
+  const typingDeck = typingIn(root)
   const scrolled = scrollPositions(root)
   root.replaceChildren()
 
@@ -381,7 +417,12 @@ function draw(
           unsaved: hasUnsavedChanges(draft, owned),
           savable: builder.waiting.kind === '無し' && !hasUnusableCards(pool, draft),
           check: checkView(draft, building.checking, session.checked, pool),
-          pool: poolRows(pool, draft),
+          // 絞り込むのはプールの一覧だけである。デッキに入っているカードは、条件に合わなくても出す。
+          pool: poolRows(filterPool(pool, builder.filter), draft),
+          poolTotal: pool.length,
+          filter: builder.filter,
+          filterChoices: filterChoicesOf(pool),
+          filterOpen: builder.filterOpen,
           deck: deckRows(pool, draft),
           detail: (key) => cardDetailOf(pool, key),
           pinned: builder.pinned,
@@ -390,7 +431,6 @@ function draw(
           refusal: builder.refusal,
         },
         building.editor,
-        typingDeck,
       ),
     )
   }
@@ -581,6 +621,7 @@ function draw(
   }
 
   restoreScroll(root, scrolled)
+  restoreTyping(root, typingDeck)
 }
 
 /** 組みかけのデッキを覚えておく先の名前（#193）。 */
@@ -846,6 +887,17 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         const sending = draftToSave(draft, owned)
         connection.send({ kind: 'デッキを保存する', ...sending })
         updateBuilder({ ...builder, draft: sending, waiting: { kind: '保存', sent: sending }, refusal: undefined })
+        redraw()
+      },
+      onFilter: (filter) => {
+        // 一覧が変わるので、先頭から見せる。**打ち込んでいる手は `draw` が戻す。**
+        updateBuilder({ ...builder, filter })
+        redraw()
+        const list = root.querySelector<HTMLElement>(`[data-keep-scroll="プール"]`)
+        if (list !== null) list.scrollTop = 0
+      },
+      onFilterOpen: (filterOpen) => {
+        updateBuilder({ ...builder, filterOpen })
         redraw()
       },
       onBack: () => {

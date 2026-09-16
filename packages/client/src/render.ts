@@ -15,6 +15,8 @@ import type {
 } from '@revolution/engine'
 import type { CardDetail, CheckView, ConfirmView, DeckRow, OwnedDeckRow, PoolRow } from './deck-builder.js'
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
+import { emptyFilter, isFiltering, toggled } from './pool-filter.js'
+import type { FilterChoices, NumberRange, PoolFilter } from './pool-filter.js'
 import type {
   AbilityView,
   BattleView,
@@ -612,6 +614,10 @@ export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'on
   readonly onSave: () => void
   /** デッキの一覧に戻る。**保存していない変更を捨てるかを尋ねるのは呼ぶ側である。** */
   readonly onBack: () => void
+  /** 絞り込みの条件を変えた。**覚えておくのも、絞り込むのも呼ぶ側である**（`pool-filter.ts`）。 */
+  readonly onFilter: (filter: PoolFilter) => void
+  /** 詳しく絞り込むところを開く・閉じる。 */
+  readonly onFilterOpen: (open: boolean) => void
 }
 
 /** デッキを組むところに出すもの（#193）。どれも `deck-builder.ts` がすでに組み立てている。 */
@@ -623,7 +629,14 @@ export interface DeckEditorView {
   /** 保存できるか。返事を待っている間と、使えないカードが入っている間は押せない。 */
   readonly savable: boolean
   readonly check: CheckView
+  /** 絞り込んだ後のプール。 */
   readonly pool: readonly PoolRow[]
+  /** 絞り込む前のプールの種類の数。「何種のうち何種」を出す。 */
+  readonly poolTotal: number
+  readonly filter: PoolFilter
+  readonly filterChoices: FilterChoices
+  /** 詳しく絞り込むところを開いているか。 */
+  readonly filterOpen: boolean
   readonly deck: readonly DeckRow[]
   readonly detail: (key: string) => CardDetail | undefined
   readonly pinned: string | undefined
@@ -645,6 +658,139 @@ const DECK_DESCRIPTION_LIMIT = 1000
  * 一覧が毎回先頭へ戻ると、続けて入れられない。
  */
 export const KEEP_SCROLL = 'keepScroll'
+
+/**
+ * 描き直しても、打ち込んでいた入力欄に手を戻す印（`index.ts` の `draw`）。
+ *
+ * 絞り込みの文字は 1 文字打つたびに一覧を作り直すので、戻さないと 1 文字ごとに打つ場所を見失う。
+ * 値は画面の中で重ならない名前にする。
+ */
+export const KEEP_FOCUS = 'keepFocus'
+
+/** 選んでいるかどうかで見た目の変わるボタン。絞り込みの値を 1 つ選ぶのに使う。 */
+function chip(label: string, pressed: boolean, onPress: () => void): HTMLElement {
+  const node = button(label, onPress)
+  node.classList.add('chip')
+  node.classList.toggle('chip--選択中', pressed)
+  node.setAttribute('aria-pressed', String(pressed))
+
+  return node
+}
+
+/** 絞り込みの軸 1 つ。選べるものが無ければ出さない。 */
+function chipRow<T extends string | number>(
+  label: string,
+  choices: readonly T[],
+  chosen: readonly T[],
+  onToggle: (value: T) => void,
+): HTMLElement | undefined {
+  if (choices.length === 0) return undefined
+
+  const row = element('div', 'filter__row')
+  row.append(element('span', 'filter__label', label))
+  const values = element('div', 'filter__chips')
+  for (const value of choices) {
+    values.append(chip(typeof value === 'number' ? `Lv${value}` : value, chosen.includes(value), () => onToggle(value)))
+  }
+  row.append(values)
+
+  return row
+}
+
+/** 数の範囲を打ち込むところ（ＢＰ・ＳＰ）。空にすると、その側は区切らない。 */
+function rangeRow(label: string, range: NumberRange, focusKey: string, onRange: (range: NumberRange) => void): HTMLElement {
+  const row = element('div', 'filter__row')
+  row.append(element('span', 'filter__label', label))
+  const inputs = element('div', 'filter__range')
+
+  const input = (side: 'min' | 'max'): HTMLInputElement => {
+    const node = document.createElement('input')
+    node.className = 'filter__number'
+    node.type = 'number'
+    node.min = '0'
+    node.step = '500'
+    node.placeholder = side === 'min' ? '下限' : '上限'
+    node.setAttribute('aria-label', `${label}の${side === 'min' ? '下限' : '上限'}`)
+    node.value = range[side] === undefined ? '' : String(range[side])
+    node.dataset[KEEP_FOCUS] = `${focusKey}-${side}`
+    node.addEventListener('input', () => {
+      const value = node.value === '' ? undefined : Number(node.value)
+      onRange({ ...range, [side]: value !== undefined && Number.isFinite(value) ? value : undefined })
+    })
+    return node
+  }
+  inputs.append(input('min'), element('span', 'filter__between', '〜'), input('max'))
+  row.append(inputs)
+
+  return row
+}
+
+/**
+ * プールを絞り込むところ（#193）。**よく使う軸だけを出しておき、残りは開いて出す。**
+ *
+ * 軸はカードに印刷されている項目と、エキスパンションである（ADR-0021）。何種が残ったかも出す。
+ */
+function filterElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
+  const { filter, filterChoices: choices } = view
+  const change = (next: Partial<PoolFilter>): void => handlers.onFilter({ ...filter, ...next })
+  const node = element('div', 'filter')
+
+  const top = element('div', 'filter__top')
+  const search = document.createElement('input')
+  search.className = 'filter__search'
+  search.type = 'search'
+  search.placeholder = '名前・テキストで探す'
+  search.setAttribute('aria-label', '名前・テキストで探す')
+  search.value = filter.text
+  search.dataset[KEEP_FOCUS] = '絞り込みの文字'
+  // **変換している間は絞り込まない。** 1 文字ごとに一覧を作り直すと入力欄も作り直され、変換中の
+  // 文字が消える。確定してから絞り込む。
+  search.addEventListener('input', (event) => {
+    if (!(event instanceof InputEvent && event.isComposing)) change({ text: search.value })
+  })
+  search.addEventListener('compositionend', () => change({ text: search.value }))
+  top.append(search)
+  top.append(element('span', 'filter__count', `${view.pool.length} / ${view.poolTotal} 種`))
+  if (isFiltering(filter)) top.append(button('絞り込みを外す', () => handlers.onFilter(emptyFilter())))
+  node.append(top)
+
+  const rows: (HTMLElement | undefined)[] = [
+    chipRow('種別', choices.types, filter.types, (value) => change({ types: toggled(filter.types, value) })),
+    chipRow('色', choices.colors, filter.colors, (value) => change({ colors: toggled(filter.colors, value) })),
+    chipRow('レベル', choices.levels, filter.levels, (value) => change({ levels: toggled(filter.levels, value) })),
+  ]
+  for (const row of rows) if (row !== undefined) node.append(row)
+
+  const more = button(view.filterOpen ? '詳しい絞り込みを閉じる' : '詳しく絞り込む', () =>
+    handlers.onFilterOpen(!view.filterOpen),
+  )
+  more.classList.add('filter__more')
+  more.setAttribute('aria-expanded', String(view.filterOpen))
+  node.append(more)
+
+  if (view.filterOpen) {
+    const details: (HTMLElement | undefined)[] = [
+      rangeRow('ＢＰ', filter.bp, 'ＢＰ', (bp) => change({ bp })),
+      rangeRow('ＳＰ', filter.sp, 'ＳＰ', (sp) => change({ sp })),
+      chipRow('属性', choices.attributes, filter.attributes, (value) =>
+        change({ attributes: toggled(filter.attributes, value) }),
+      ),
+      chipRow('スター', choices.stars, filter.stars, (value) => change({ stars: toggled(filter.stars, value) })),
+      chipRow('ムーブ', choices.moveIcons, filter.moveIcons, (value) =>
+        change({ moveIcons: toggled(filter.moveIcons, value) }),
+      ),
+      chipRow('トリガー', choices.triggerIcons, filter.triggerIcons, (value) =>
+        change({ triggerIcons: toggled(filter.triggerIcons, value) }),
+      ),
+      chipRow('エキスパンション', choices.expansions, filter.expansions, (value) =>
+        change({ expansions: toggled(filter.expansions, value) }),
+      ),
+    ]
+    for (const row of details) if (row !== undefined) node.append(row)
+  }
+
+  return node
+}
 
 /** 詳しく出すところの中身を入れ替える。 */
 function fillDetail(node: HTMLElement, detail: CardDetail | undefined): void {
@@ -717,13 +863,9 @@ function checkElement(check: CheckView): HTMLElement {
  *
  * **不備があっても保存できる**（ADR-0021）。確かめた結果は読むためのもので、保存を止めない。
  *
- * `focused` は、描き直す前に打ち込んでいた入力欄（`名前`・`解説`）。打っていた人には返す。
+ * 打ち込む欄には `KEEP_FOCUS` を付ける。描き直した後に、打っていた人の手を戻すのは `index.ts` である。
  */
-export function deckEditorElement(
-  view: DeckEditorView,
-  handlers: DeckEditorHandlers,
-  focused: '名前' | '解説' | undefined = undefined,
-): HTMLElement {
+export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
   const node = element('section', 'builder')
 
   const head = element('div', 'builder__head')
@@ -734,6 +876,7 @@ export function deckEditorElement(
   name.maxLength = DECK_NAME_LIMIT
   name.placeholder = 'デッキの名前'
   name.value = view.name
+  name.dataset[KEEP_FOCUS] = 'デッキの名前'
   name.addEventListener('input', () => handlers.onName(name.value))
   name.addEventListener('change', handlers.onEdited)
   head.append(name)
@@ -749,6 +892,7 @@ export function deckEditorElement(
   description.placeholder = '解説（無くてもかまいません）'
   description.rows = 2
   description.value = view.description
+  description.dataset[KEEP_FOCUS] = 'デッキの解説'
   description.addEventListener('input', () => handlers.onDescription(description.value))
   description.addEventListener('change', handlers.onEdited)
   node.append(description)
@@ -768,8 +912,10 @@ export function deckEditorElement(
 
   const poolPane = element('div', 'builder__pane')
   poolPane.append(element('h2', 'builder__title', 'カードプール'))
+  poolPane.append(filterElement(view, handlers))
   const poolList = element('div', 'builder__list')
   poolList.dataset[KEEP_SCROLL] = 'プール'
+  if (view.pool.length === 0) poolList.append(element('p', 'builder__none', '条件に合うカードがありません'))
   for (const row of view.pool) poolList.append(cardRow(row, row.key === view.pinned, handlers, hover))
   poolList.addEventListener('mouseleave', showPinned)
   poolPane.append(poolList)
@@ -797,15 +943,6 @@ export function deckEditorElement(
 
   columns.append(poolPane, deckPane, detail)
   node.append(columns)
-
-  if (focused === '名前') {
-    name.focus()
-    name.setSelectionRange(name.value.length, name.value.length)
-  }
-  if (focused === '解説') {
-    description.focus()
-    description.setSelectionRange(description.value.length, description.value.length)
-  }
 
   return node
 }

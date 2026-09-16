@@ -274,7 +274,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    *
    * デッキを預かれない立て方では配らない。組んでも残す場所が無い。
    */
-  const poolFaces = deckStore === undefined ? undefined : poolFacesOf(options.supply.pool)
+  const poolFaces = deckStore === undefined ? undefined : poolFacesOf(options.supply)
 
   /** カードプールを送る（ADR-0021）。**繋いだ接続ごとに 1 度だけ呼ぶ**——中身は変わらない。 */
   function sendPool(socket: WebSocket): void {

@@ -60,6 +60,46 @@ describe('渡されたものを読む', () => {
     expect(reading.kind === '通す' && reading.supply.restrictions).toEqual([])
   })
 
+  /** #193。エキスパンションは絞り込みに使うだけで、無くても組める。 */
+  it('エキスパンションは渡されなくてもよい', () => {
+    const reading = readSupply({ pool: POOL, presets: [{ id: '既製1', name: 'ひとつめ', cards: ALL_KEYS }] })
+
+    expect(reading.kind === '通す' && reading.supply.expansions).toEqual([])
+  })
+
+  /** 収録されていることと、実装済みであることは別に決まる。 */
+  it('エキスパンションは、プールに無いカードを含んでいてもよい', () => {
+    const reading = readSupply({
+      pool: POOL,
+      presets: [{ id: '既製1', name: 'ひとつめ', cards: ALL_KEYS }],
+      expansions: [{ name: 'テストの第1弾', cards: ['カード-0', 'まだ実装していない番号'] }],
+    })
+
+    expect(reading.kind).toBe('通す')
+  })
+
+  /** 画面は名前で絞り込む。重なると、どちらのことか決められない。 */
+  it('名前が重なるエキスパンションは断る', () => {
+    const expansion = { name: 'テストの第1弾', cards: ['カード-0'] }
+    const reading = readSupply({
+      pool: POOL,
+      presets: [{ id: '既製1', name: 'ひとつめ', cards: ALL_KEYS }],
+      expansions: [expansion, { ...expansion, cards: ['カード-1'] }],
+    })
+
+    expect(reading).toEqual({ kind: '断る', reason: 'エキスパンションの名前が重なっています: テストの第1弾' })
+  })
+
+  it('収録カードが識別子の並びでないエキスパンションは断る', () => {
+    const reading = readSupply({
+      pool: POOL,
+      presets: [{ id: '既製1', name: 'ひとつめ', cards: ALL_KEYS }],
+      expansions: [{ name: 'テストの第1弾', cards: 'カード-0' }],
+    })
+
+    expect(reading.kind).toBe('断る')
+  })
+
   /** デッキを組む場所がまだ無いので、既製デッキが 1 つも無ければ誰も席に着けない。 */
   it('既製デッキが無ければ断る', () => {
     expect(readSupply({ pool: POOL, presets: [] }).kind).toBe('断る')
@@ -167,9 +207,10 @@ describe('配るカードプール', () => {
       'テスト-T': defineTrap({ name: 'テスト・トラップ', level: 1, triggerIcon: [{ row: 0, column: 1 }] }),
     }
 
-    expect(poolFacesOf(pool)).toEqual([
+    expect(poolFacesOf({ pool })).toEqual([
       {
         key: 'テスト-S',
+        expansions: [],
         face: {
           type: 'ストラテジー',
           name: 'テスト・ストラテジー',
@@ -183,6 +224,7 @@ describe('配るカードプール', () => {
       },
       {
         key: 'テスト-T',
+        expansions: [],
         face: {
           type: 'トラップ',
           name: 'テスト・トラップ',
@@ -195,6 +237,23 @@ describe('配るカードプール', () => {
           triggerIcon: [{ row: 0, column: 1 }],
         },
       },
+    ])
+  })
+
+  /** #193。1 枚が複数のエキスパンションに入りうる。名前は渡された並びの順に添える。 */
+  it('収録されているエキスパンションの名前を、渡された順に添える', () => {
+    const faces = poolFacesOf({
+      pool: poolOf('収録', 3),
+      expansions: [
+        { name: 'テストの第2弾', cards: ['収録-1', '収録-2'] },
+        { name: 'テストの第1弾', cards: ['収録-0', '収録-1'] },
+      ],
+    })
+
+    expect(faces.map((card) => [card.key, card.expansions])).toEqual([
+      ['収録-0', ['テストの第1弾']],
+      ['収録-1', ['テストの第2弾', 'テストの第1弾']],
+      ['収録-2', ['テストの第2弾']],
     ])
   })
 })

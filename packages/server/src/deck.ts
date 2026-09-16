@@ -76,6 +76,7 @@ export interface RestrictionList {
  * 立てる時に渡してもらうもの一式（ADR-0021）。
  *
  * これが非公開側との受け渡しの契約そのものである。**渡すモジュールは、この 3 つを export する。**
+ * エキスパンション（`expansions`）は渡さなくてもよい。
  */
 export interface CardSupply {
   readonly pool: CardPool
@@ -88,6 +89,27 @@ export interface CardSupply {
    * なり、先頭のものが、何も選ばずに作られた部屋の既定になる。**
    */
   readonly restrictions: readonly RestrictionList[]
+  /**
+   * カードがどのエキスパンションに収録されているか（#193）。**渡されなければ、どのカードも持たない。**
+   *
+   * デッキを組む画面で絞り込むのに使う。ルールには関わらない。
+   */
+  readonly expansions?: readonly Expansion[]
+}
+
+/**
+ * エキスパンション 1 つ（#193）。カードが収録されている商品の単位で、**名前と、収録されているカードの
+ * 識別子**を持つ。
+ *
+ * **公開側は識別子からエキスパンションを読み取らない**（ADR-0021）。どのカードがどこに入っているかは
+ * 渡す側が決め、画面へは名前として届く。**同じカードが複数のエキスパンションに入ってよい。**
+ *
+ * **プールに無いカードを含んでよい。** 収録されていることと実装済みであることは別に決まる。
+ */
+export interface Expansion {
+  /** 画面に出す名前。**エキスパンションはこれで指す**ので、重ならない。 */
+  readonly name: string
+  readonly cards: readonly CardKey[]
 }
 
 /** 渡されたものを読んだ結果。**なりうる形を数え上げる**——読めたのに理由もある形を書けなくする。 */
@@ -167,6 +189,26 @@ function readRestrictions(value: unknown): readonly RestrictionList[] | string {
   return lists
 }
 
+function readExpansions(value: unknown): readonly Expansion[] | string {
+  if (!Array.isArray(value)) return 'expansions がエキスパンションの配列ではありません'
+  const expansions: Expansion[] = []
+  const seen = new Set<string>()
+  for (const expansion of value as readonly unknown[]) {
+    if (!isObject(expansion)) return 'expansions にエキスパンションでないものが入っています'
+    const { name, cards } = expansion
+    if (typeof name !== 'string' || name === '') return 'expansions に名前の無いエキスパンションが入っています'
+    // 画面は名前で絞り込む。重なると、どちらのことか決められない。
+    if (seen.has(name)) return `エキスパンションの名前が重なっています: ${name}`
+    if (!Array.isArray(cards) || !cards.every((card) => typeof card === 'string')) {
+      return `エキスパンション ${name} の cards が識別子の並びではありません`
+    }
+    seen.add(name)
+    expansions.push({ name, cards: cards as readonly CardKey[] })
+  }
+
+  return expansions
+}
+
 /**
  * 渡されたモジュールを、受け渡しの契約として読む。
  *
@@ -186,7 +228,10 @@ export function readSupply(module: unknown): SupplyReading {
   const restrictions = readRestrictions(module['restrictions'] ?? [])
   if (typeof restrictions === 'string') return { kind: '断る', reason: restrictions }
 
-  return { kind: '通す', supply: { pool, presets, restrictions } }
+  const expansions = readExpansions(module['expansions'] ?? [])
+  if (typeof expansions === 'string') return { kind: '断る', reason: expansions }
+
+  return { kind: '通す', supply: { pool, presets, restrictions, expansions } }
 }
 
 /** 既製デッキ 1 つ分の不備。どのデッキかが分かるように、識別子を添える。 */
@@ -275,9 +320,17 @@ export function restrictionChoicesOf(supply: CardSupply): readonly WireRestricti
  *
  * **並べ替えない。** 識別子から何も読み取らない（ADR-0021）ので、渡されたまとまりから取り出した
  * 順のまま並べる。
+ *
+ * エキスパンションは、渡された並びの順で名前を添える（`Expansion`）。どこにも入っていなければ空。
  */
-export function poolFacesOf(pool: CardPool): readonly WirePoolCard[] {
-  return Object.entries(pool).map(([key, card]) => ({ key, face: faceOf(card) }))
+export function poolFacesOf(supply: Pick<CardSupply, 'pool' | 'expansions'>): readonly WirePoolCard[] {
+  const expansions = supply.expansions ?? []
+
+  return Object.entries(supply.pool).map(([key, card]) => ({
+    key,
+    face: faceOf(card),
+    expansions: expansions.filter((expansion) => expansion.cards.includes(key)).map((expansion) => expansion.name),
+  }))
 }
 
 /** 新しい部屋に付ける合言葉の長さ。 */
