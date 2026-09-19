@@ -3,7 +3,7 @@
 // **どこへ持ち込むかを、このリポジトリは知らない。** 置き場の素性は公開する情報ではないので、
 // 宛先は引数か環境変数で受け取る。ここに書いてよいのは**運び方**だけである。
 //
-//     pnpm deploy:server --decks packages/decks/src/index.ts --host <ユーザ>@<ホスト> --key <秘密鍵>
+//     pnpm deploy:server --decks private/decks/src/index.ts --host <ユーザ>@<ホスト> --key <秘密鍵>
 //
 // 引数を省いた分は環境変数から読む。
 //

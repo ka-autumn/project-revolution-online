@@ -4,7 +4,7 @@
 // 束ねるのは手元でだけ行い、置き場へ渡すのは出来上がった 1 ファイルにする。
 // 置き場がリポジトリを読んでビルドする形にすると、非公開のカードをそこへ渡すことになってしまう。
 //
-//     pnpm build:server --decks packages/decks/src/index.ts --out dist/serve.cjs
+//     pnpm build:server --decks private/decks/src/index.ts --out dist/serve.cjs
 //
 // 出したものは node だけで動く（`ws` も束ねてある）。**待つポートは `PORT` で、書いたものを置く
 // 先は `STORE` で決められる**ので、置き場では常駐の設定の側に書けばよく、束ね直す必要はない。

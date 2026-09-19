@@ -1,5 +1,8 @@
 packages:
   - packages/*
+  # 公開リポジトリに含められないパッケージ（ADR-0002）。ここに無くても
+  # pnpm verify は通る——対戦を動かすときだけ要る
+  - private/*
 allowBuilds:
   esbuild: true
 

@@ -42,7 +42,7 @@ const plainUnits = Array.from({ length: 9 }, (_, index) =>
  * スマッシュ判定（総合ルール 第3部 第9章 1、プレイヤーへのダメージが 1000 に届く必要がある）
  * は、ランダムな自己対戦では実際には踏まれない。ＳＰもトリガーアイコンも作り物だからである。
  * エンジンはカードを知れない（ADR-0002）ので、ここは本物の値を持てない。この 2 経路は、実装
- * された実カードで組んだデッキの自己対戦（`packages/cards` の `self-play.test.ts`）が踏む。
+ * された実カードで組んだデッキの自己対戦（`private/cards` の `self-play.test.ts`）が踏む。
  */
 const templates = [moverUnit, pepUnit, dreamUnit, coloredUnit, strategyCard, trapCard, ...plainUnits]
 
