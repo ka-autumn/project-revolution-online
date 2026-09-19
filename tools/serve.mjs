@@ -4,7 +4,7 @@
 // 公開リポジトリだけを clone した人でも `pnpm install` と `pnpm verify` を通せる必要がある。
 // そのため、カードを渡すモジュールは**実行時に受け取り、静的な依存にしない。**
 //
-//     pnpm serve --decks ../revolution-decks/index.ts
+//     pnpm serve --decks private/decks/src/index.ts
 //
 // 渡すモジュールが export するのは、識別子で引けるカードのまとまり（`pool`）と、識別子の並びで
 // できた既製デッキ（`presets`）と、禁止／制限リスト（`restrictions`、空でよい）である

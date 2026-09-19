@@ -13,13 +13,17 @@ pnpm ワークスペースのモノレポ。
 | パッケージ | 役割 |
 | --- | --- |
 | `packages/engine` | ルールエンジン。「盤面 ＋ 行動 → 次の盤面」の純粋関数。実行時依存を持たず、ブラウザとサーバの両方で動く（ADR-0001） |
-| `packages/cards` | カード実装。独立した非公開リポジトリであり、この公開リポジトリには含まれない（ADR-0002） |
 | `packages/server` | 盤面の唯一の権威（ADR-0004） |
 | `packages/client` | 対戦画面。受け取った盤面を描いて選んだものを送るだけで、ルールの判断は持たない（ADR-0010） |
-| `packages/decks` | 対戦に使うカードのまとまりを渡すだけ。カードを名指しするため、cards と同じくこの公開リポジトリには含まれない |
+| `private/cards` | カード実装。この公開リポジトリには含まれない（ADR-0002） |
+| `private/decks` | 対戦に使うカードのまとまりを渡すだけ。カードを名指しするため、cards と同じく含まれない |
+
+`private/` は**公開リポジトリに含められないパッケージの置き場**で、独立した非公開リポジトリを
+そこへ clone する（ADR-0002）。作業ツリー上はワークスペースの一部として振る舞うが、コミット先が
+別になる。
 
 依存の向きは cards → engine の一方向で、engine は cards を知らない。**カードを名指しするのは
-`packages/decks` だけ**で、デッキの組み方もサーバの立て方も公開側にある（ADR-0002）。
+`private/decks` だけ**で、デッキの組み方もサーバの立て方も公開側にある（ADR-0002）。
 
 ## 開発
 
@@ -30,17 +34,16 @@ pnpm install --frozen-lockfile
 pnpm verify
 ```
 
-`--frozen-lockfile` を付けるのは、`pnpm-lock.yaml` が `packages/cards` と `packages/host` の
-importer を持っているため。それらが無い環境で素の `pnpm install` を走らせると、ロックファイルから
-黙って消える。
+`--frozen-lockfile` を付けるのは、`pnpm-lock.yaml` が `private/` 以下の importer を持っているため。
+それらが無い環境で素の `pnpm install` を走らせると、ロックファイルから黙って消える。
 
 ## 対戦する
 
 サーバと対戦画面を別々に立てる。
 
 ```sh
-pnpm serve --decks packages/decks/src/index.ts   # 対戦サーバ（既定で 8787 番）
-pnpm --filter @revolution/client dev             # 対戦画面（既定で 5173 番）
+pnpm serve --decks private/decks/src/index.ts   # 対戦サーバ（既定で 8787 番）
+pnpm --filter @revolution/client dev            # 対戦画面（既定で 5173 番）
 ```
 
 **打った対戦は残る**（ADR-0018）。既定では立てたところに `revolution.sqlite` ができ、**サーバを
@@ -48,7 +51,7 @@ pnpm --filter @revolution/client dev             # 対戦画面（既定で 5173
 「行動と答えの並び」だけである。置き先は `--store` で変えられ、空文字を渡せば何も残さずに立つ。
 
 ```sh
-pnpm serve --decks packages/decks/src/index.ts --store ''   # 何も残さない
+pnpm serve --decks private/decks/src/index.ts --store ''   # 何も残さない
 ```
 
 `--decks` に渡すのは、次の 3 つを export するモジュールである（ADR-0021）。
@@ -109,14 +112,14 @@ Cookie のセッションで決まる（ADR-0019、「ログインできるよ�
 出来上がった 1 ファイルにする。
 
 ```sh
-pnpm build:server --decks packages/decks/src/index.ts    # dist/serve.cjs を書き出すだけ
+pnpm build:server --decks private/decks/src/index.ts    # dist/serve.cjs を書き出すだけ
 ```
 
 運ぶところまでまとめて行うならこちら。**束ねる → 運ぶ → 差し替えて立て直す**を順に行い、
 途中で失敗すればそこで止まる。
 
 ```sh
-pnpm deploy:server --decks packages/decks/src/index.ts --host <ユーザ>@<ホスト> --key <秘密鍵>
+pnpm deploy:server --decks private/decks/src/index.ts --host <ユーザ>@<ホスト> --key <秘密鍵>
 ```
 
 宛先は引数か環境変数で渡す。**このリポジトリは置き場を知らない。**
@@ -226,7 +229,7 @@ pnpm verify:engine   # エンジンが依存ゼロで、ブラウザ／サーバ
 
 ## この公開リポジトリだけを clone した場合
 
-`packages/cards` と `packages/decks` が無いため、対戦を動かすことはできない。`pnpm verify` は通る。
+`private/` が無いため、対戦を動かすことはできない。`pnpm verify` は通る。
 エンジンのテストは実カードではなく架空のテストカードで書くため、カード実装の有無に依存しない（ADR-0002）。
 クライアントも同じで、テストは手で組み立てた盤面に対して書くため、カード実装を要らない（ADR-0010）。
 
