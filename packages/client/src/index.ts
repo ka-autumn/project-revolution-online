@@ -693,6 +693,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    *
    * **選ばないまま作っても入っても構わない。** 選ばれなかった席は、サーバが決めた既定のデッキに
    * 座る（`server` の `room.ts` の `start`）。画面はどれが既定かを決めない（ADR-0010）。
+   *
+   * **既定が決まらないこともある**（#194）。前に選んでいたデッキを消した人がそれで、選ぶまで
+   * 断られる。画面はそれを先回りして止めない——**何が起きるかを決めるのはサーバである。**
    */
   let chosenDeck: DeckId | undefined
   /**

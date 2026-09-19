@@ -322,9 +322,14 @@ export function deckSourceFrom(supply: CardSupply): DeckSource {
  * 書く手立ては要らない。
  */
 export interface OwnedDeckSource {
-  /** その人が持っているデッキ。作った順に並ぶ。**持っていなければ空。** */
+  /**
+   * その人が持っているデッキ。作った順に並ぶ。**持っていなければ空。**
+   *
+   * **身元を持たない参加者（CPU、`cpu.ts`）が渡されても投げてはならない。** 部屋は席にいる人を
+   * 区別せずにここへ渡す（`room.ts` の `start`）ので、置き場に直に繋ぐなら、呼ぶ側が先に外す。
+   */
   readonly decksOf: (participant: ParticipantId) => readonly OwnedDeck[]
-  /** その人が前に席に着く時に選んだデッキ。まだ選んでいなければ `undefined`。 */
+  /** その人が前に席に着く時に選んだデッキ。まだ選んでいなければ `undefined`。`decksOf` と同じ約束。 */
   readonly lastChosenOf: (participant: ParticipantId) => DeckId | undefined
 }
 
@@ -345,24 +350,28 @@ export interface OwnedDeckSource {
  *   人には既製デッキが 1 つ配られており（ADR-0021）、前に選んだ覚えも無い
  * - 自分のデッキを 1 つも持てない立て方では、既製デッキの先頭
  *
- * **既製デッキも引けるままにする。** 選ぶ場所には並ばない（並ぶのは自分のデッキである）が、
- * 自分のデッキを持てない人の既定が既製デッキなので、引けなくなると誰も座れない。
+ * **デッキを持てる人は、既製デッキでは座れない**（ADR-0021）。選ぶ場所に並ばないだけでなく、
+ * 識別子を直に送っても引けない——**画面の決まりで終わらせない**（ADR-0010）。デッキを 1 つも
+ * 持てない立て方では既製デッキが既定なので、そちらでは今までどおり引ける。
  */
 export function withOwnedDecks(base: DeckSource, pool: CardPool, owned: OwnedDeckSource): DeckSource {
-  const ownedDeckOf = (participant: ParticipantId, id: DeckId): OwnedDeck | undefined =>
-    owned.decksOf(participant).find((deck) => deck.id === id)
-
   return {
     ...base,
     of: (participant, id) => {
-      const mine = ownedDeckOf(participant, id)
-      return mine === undefined ? base.of(participant, id) : readingOf(pool, mine.cards)
+      const mine = owned.decksOf(participant)
+      const found = mine.find((deck) => deck.id === id)
+      if (found !== undefined) return readingOf(pool, found.cards)
+
+      return mine.length === 0 ? base.of(participant, id) : { kind: '無い' }
     },
     fallbackFor: (participant) => {
+      // **持っているデッキを引くのは 1 度でよい。** ロビーを送り直すたびに人数ぶん呼ばれる
+      // （`serve.ts` の `pushLobby`）。
+      const mine = owned.decksOf(participant)
       const chosen = owned.lastChosenOf(participant)
-      if (chosen !== undefined) return ownedDeckOf(participant, chosen) === undefined ? undefined : chosen
+      if (chosen !== undefined) return mine.some((deck) => deck.id === chosen) ? chosen : undefined
 
-      const [first] = owned.decksOf(participant)
+      const [first] = mine
       return first?.id ?? base.fallbackFor(participant)
     },
   }

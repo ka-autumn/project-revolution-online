@@ -242,7 +242,13 @@ export interface Store {
    * 置き場から消える道が増えるたびに消し漏れる。
    */
   lastChosenDeckOf(owner: ParticipantId): DeckId | undefined
-  /** 席に着く時に選んだデッキを覚える。**前に覚えたものは置き換わる。** */
+  /**
+   * 席に着く時に選んだデッキを覚える。**前に覚えたものは置き換わる。**
+   *
+   * **そのデッキがその人のものかは見ない。** 覚えるのは識別子だけで、読む時に持っているデッキと
+   * 突き合わせる（`deck.ts` の `withOwnedDecks`）ので、他人のものが入っていても引けない。
+   * **持ち主を確かめるのは呼ぶ側である**（`serve.ts`）——書くものと引けるものを別々に見る。
+   */
   rememberChosenDeck(owner: ParticipantId, deck: DeckId): void
   close(): void
 }

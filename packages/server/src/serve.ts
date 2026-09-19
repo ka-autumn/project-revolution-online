@@ -626,6 +626,15 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     /**
      * 席に着く時に選んだデッキを覚える（ADR-0021、#194）。**次にロビーへ出た時の既定になる。**
      *
+     * **選ばずに座った人の既定も覚える。** 画面は既定を選んだ状態で出している（`ロビー` の
+     * `chosen`）ので、そのまま座ったのは、出ていたものを選んだのと同じことである。**覚えないと、
+     * そのデッキを消した時に別のデッキが黙って既定になる**——仕組みが防ごうとしているものが、
+     * 一度も選び直さなかった人にだけ起きる。
+     *
+     * **入り直し（ADR-0016）では覚えない。** 繋ぎ直しで飛ぶのも同じメッセージで、そこには選んだ
+     * ものが入っていない（`FromClient` の `部屋に入る`）。席を選び直す場面ではないので、切れた
+     * だけで既定が決まってしまわないようにする。
+     *
      * **選んだことだけを覚え、座れたかどうかは見ない。** 部屋のルールで断られたとしても、その人が
      * 選んだのはそのデッキである。通るかどうかは部屋ごとに変わる（同）ので、断られたことを理由に
      * 忘れると、ルールの違う部屋を覗いただけで既定が消える。
@@ -636,8 +645,9 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     function rememberChoice(message: FromClient): void {
       if (deckStore === undefined) return
       if (message.kind !== '部屋に入る' && message.kind !== '部屋を作る') return
+      if (message.kind === '部屋に入る' && roomOf(rooms, participant)?.code === message.room) return
 
-      const chosen = message.deck
+      const chosen = message.deck ?? decks.fallbackFor(participant)
       if (chosen === undefined) return
       if (!deckStore.decksOf(participant).some((deck) => deck.id === chosen)) return
 

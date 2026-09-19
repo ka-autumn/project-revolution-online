@@ -483,7 +483,11 @@ function refusalOfDeck(
   const reading = decks.of(participant, id)
   if (reading.kind !== '引けた') return refusalOfReading(reading, whose)
 
-  const violations = violationsUnder(reading.deck.cards, rules)
+  return refusalOfViolations(violationsUnder(reading.deck.cards, rules), whose)
+}
+
+/** デッキがルールで通らない点を、断る理由として読める文にする。通るなら `undefined`。 */
+function refusalOfViolations(violations: readonly DeckViolation[], whose: '' | 'CPU の'): string | undefined {
   if (violations.length === 0) return undefined
 
   return `${whose}デッキがこの部屋のルールを満たしていません: ${violations.map(describeViolation).join('、')}`
@@ -1024,6 +1028,10 @@ function start(
 
   // **席に着く時にも確かめる**（ADR-0021）。渡された時に確かめただけでは、その後にプールが
   // 変わったデッキがそのまま席に着ける。
+  //
+  // **引き直すのは、部屋を作った時や入った時と同じものとは限らないからである。** 選ばずに座った
+  // 人のデッキはその人の既定から決まり（`fallbackFor`）、既定は待っている間に変わりうる。
+  // **だから部屋のルールもここで当て直す**——確かめた時のデッキのまま座るとは限らない。
   const brought = [first, second].map((seating) => {
     const id = seating.deck ?? decks.fallbackFor(seating.participant)
     return id === undefined ? ({ kind: '無い' } as const) : decks.of(seating.participant, id)
@@ -1035,6 +1043,11 @@ function start(
 
   const firstDeck = firstReading.deck
   const secondDeck = secondReading.deck
+
+  const unfit = [firstDeck, secondDeck]
+    .map((deck) => refusalOfViolations(violationsUnder(deck.cards, room.rules), ''))
+    .find((reason) => reason !== undefined)
+  if (unfit !== undefined) return refusal(unfit)
 
   const prepared = prepareDuel({ decks: [firstDeck.cards, secondDeck.cards], seed: setup.seed })
   if (prepared.kind !== '準備完了') {
