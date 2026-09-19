@@ -236,7 +236,7 @@ describe('WebSocket で繋ぐ', () => {
       kind: 'ロビー',
       rooms: [],
       presets: deckChoices,
-      chosen: undefined,
+      chosen: '既製1',
       restrictions,
     })
     await client.close()
@@ -257,17 +257,18 @@ describe('WebSocket で繋ぐ', () => {
   })
 
   /**
-   * ADR-0021、#194。自分のデッキを持てない立て方では、既定も無い——既製デッキで座る。
+   * ADR-0021、#194。**ログインの設定が無ければデッキを持てない**（名乗りは認証ではない、
+   * ADR-0009）ので、既定になるのは既製デッキの先頭である。
    *
-   * **ログインの設定が無ければデッキを持てない**（名乗りは認証ではない、ADR-0009）ので、
-   * ここに出せるものが無い。
+   * この立て方では、選ぶところにも既製デッキが並ぶ（`client` の `seatableDecks`）——**出るものと
+   * 座れるものがずれない。**
    */
-  it('自分のデッキを持てない立て方では、既定のデッキは届かない', async () => {
+  it('自分のデッキを持てない立て方では、既製デッキの先頭が既定になる', async () => {
     const client = new Client(server.port, 'あ')
 
     const lobby = await client.waitFor('ロビー')
 
-    expect(lobby.kind === 'ロビー' && lobby.chosen).toBeUndefined()
+    expect(lobby.kind === 'ロビー' && lobby.chosen).toBe('既製1')
     await client.close()
   })
 

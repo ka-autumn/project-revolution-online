@@ -262,20 +262,6 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           lastChosenOf: (participant) => (isCpu(participant) ? undefined : deckStore.lastChosenDeckOf(participant)),
         })
 
-  /**
-   * 何も選ばずに座った時に使われる自分のデッキ（ADR-0021、#194）。持てない立て方では `undefined`。
-   *
-   * **決めるのは `decks` の `fallbackFor` である。** ここはそれが自分のデッキになる場合だけを
-   * 取り出している——既製デッキは選ぶところに並ばないので、既定として出しても選んだ状態に
-   * ならない。**どちらが既定かを 2 か所で決めない。**
-   */
-  function ownedDefaultOf(participant: ParticipantId): DeckId | undefined {
-    if (deckStore === undefined || isCpu(participant)) return undefined
-
-    const fallback = decks.fallbackFor(participant)
-    return deckStore.decksOf(participant).some((deck) => deck.id === fallback) ? fallback : undefined
-  }
-
   /** 既製デッキを、その人の新しいデッキとして写す（ADR-0022）。名前はコピー元のものが付く。 */
   function copyPreset(store: Store, participant: ParticipantId, preset: PresetDeck): string | undefined {
     return store.saveDeck(participant, undefined, {
@@ -429,7 +415,9 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         kind: 'ロビー',
         rooms: lobby,
         presets: options.deckChoices,
-        chosen: ownedDefaultOf(participant),
+        // **座る時に使うものと同じところで決める**（`room.ts` の `refusalOfDeck`）。既定を
+        // 2 か所で決めると、出ているものと座るものがずれる。
+        chosen: decks.fallbackFor(participant),
         restrictions,
       } as const
       const shown = JSON.stringify(message)

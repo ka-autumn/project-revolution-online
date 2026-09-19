@@ -444,17 +444,18 @@ function draw(
 
   // ロビーは繋がっている間だけ出す。作る・入るは送らないと何も起きないので、押せる形で出さない。
   if (stage.kind === 'ロビー' && connected && !builderOpen) {
+    // **席に着くのに選ぶのは自分のデッキである**（ADR-0021、#194）。既製デッキはデッキを組む
+    // ところでコピーしてから使う。**デッキを持てない立て方でだけ、既製デッキがここに並ぶ。**
+    const seatable = seatableDecks(session.ownedDecks, stage.presets)
     root.append(
       lobbyElement(
         lobbyView(stage.rooms),
         lobby.name,
-        // **席に着くのに選ぶのは自分のデッキである**（ADR-0021、#194）。既製デッキはここに並ばず、
-        // デッキを組むところでコピーしてから使う。
-        seatableDecks(session.ownedDecks),
+        seatable,
         // 選んでいなければ、サーバが決めた既定を選んだ状態で出す。**どれを既定にするかを決めるのは
         // サーバである**（ADR-0010）——前に選んだものが残っているかを見るのもそちらで、ここは
         // もう無いデッキを選んだ状態にしないだけである。
-        seatedChoice(session.ownedDecks, lobby.deck, stage.chosen),
+        seatedChoice(seatable, lobby.deck, stage.chosen),
         stage.restrictions,
         lobby.rules,
         {
