@@ -4,6 +4,7 @@ import type {
   DeckViolation,
   ToClient,
   WireCardFace,
+  WireDeck,
   WireOwnedDeck,
   WirePoolCard,
 } from '@revolution/engine'
@@ -467,4 +468,32 @@ export interface OwnedDeckRow {
 /** 自分のデッキの一覧。**届いた順のまま並べる。** */
 export function ownedDeckRows(decks: readonly WireOwnedDeck[]): readonly OwnedDeckRow[] {
   return decks.map((deck) => ({ id: deck.id, name: deck.name, count: deck.cards.length }))
+}
+
+/**
+ * 席に着く時に選べるデッキ（ADR-0021、#194）。**自分のデッキだけが並ぶ。**
+ *
+ * 既製デッキは並ばない。コピーして自分のデッキにしてから使う（ADR-0022）。**まだ届いていなければ
+ * 空**——自分のデッキを持てない立て方では、そもそも届かない。
+ */
+export function seatableDecks(decks: readonly WireOwnedDeck[] | undefined): readonly WireDeck[] {
+  return (decks ?? []).map((deck) => ({ id: deck.id, name: deck.name }))
+}
+
+/**
+ * ロビーで選んだ状態にするデッキ（#194）。**もう無いデッキは選ばない。**
+ *
+ * 自分で選んだものを優先し、選んでいなければサーバが決めた既定（`ロビー` の `chosen`）を使う。
+ * どちらも、そのデッキが残っている時だけ選ぶ——**消したデッキを選んだ状態のままにすると、座れない
+ * ものが選ばれて見える。** デッキを消してもロビーは届き直さないので、ここでも確かめる。
+ */
+export function seatedChoice(
+  decks: readonly WireOwnedDeck[] | undefined,
+  picked: DeckId | undefined,
+  standing: DeckId | undefined,
+): DeckId | undefined {
+  const alive = (id: DeckId | undefined): boolean => id !== undefined && (decks ?? []).some((deck) => deck.id === id)
+  if (alive(picked)) return picked
+
+  return alive(standing) ? standing : undefined
 }

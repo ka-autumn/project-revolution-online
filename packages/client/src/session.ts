@@ -46,12 +46,22 @@ export type Stage =
       readonly kind: 'ロビー'
       readonly rooms: readonly WireRoom[]
       /**
-       * 席に着く時に選べるデッキ（ADR-0021）。**届いたものをそのまま出す。**
+       * コピーして自分のデッキにできる既製デッキ（ADR-0021、ADR-0022）。**届いたものをそのまま出す。**
        *
        * 画面はどんなデッキがあるかを知らない。名前も識別子もサーバから届く値で、カードの表記と
        * 同じである（ADR-0010）。
+       *
+       * **席に着く時に選ぶものではない**（#194）。座るのは自分のデッキ（`Session.ownedDecks`）で、
+       * これはデッキを組むところにコピー元として並ぶ。
        */
-      readonly decks: readonly WireDeck[]
+      readonly presets: readonly WireDeck[]
+      /**
+       * 何も選ばずに座った時に使われる自分のデッキ（ADR-0021、#194）。**選んだ状態で出す。**
+       *
+       * 自分のデッキを持てない立て方では `undefined` で、その時は既製デッキで座る。**画面は
+       * どれが既定かを決めない**（ADR-0010）——前に選んだものが残っているかを見るのはサーバである。
+       */
+      readonly chosen: DeckId | undefined
       /**
        * 部屋を作る時に選べる禁止／制限リスト（ADR-0021）。**届いたものをそのまま出す。** 空でよい。
        *
@@ -208,7 +218,8 @@ export function applyMessage(session: Session, message: ToClient): Session {
         stage: {
           kind: 'ロビー',
           rooms: message.rooms,
-          decks: message.decks,
+          presets: message.presets,
+          chosen: message.chosen,
           // **届かなかったものを、在るものとして扱わない**（`view-model.ts` の `occupantsLine`）。
           // サーバが古ければ付いてこない。選べるリストが無いだけで、部屋は作れる。
           restrictions: (message.restrictions as typeof message.restrictions | undefined) ?? [],

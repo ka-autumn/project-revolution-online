@@ -24,6 +24,8 @@ import {
   newDraft,
   ownedDeckRows,
   poolRows,
+  seatableDecks,
+  seatedChoice,
   withCard,
   withoutCard,
 } from './deck-builder.js'
@@ -398,7 +400,7 @@ function draw(
     root.append(
       deckListElement(
         ownedDeckRows(owned),
-        stage.decks,
+        stage.presets,
         builder.waiting.kind !== '無し',
         builder.refusal,
         building.list,
@@ -446,8 +448,13 @@ function draw(
       lobbyElement(
         lobbyView(stage.rooms),
         lobby.name,
-        stage.decks,
-        lobby.deck,
+        // **席に着くのに選ぶのは自分のデッキである**（ADR-0021、#194）。既製デッキはここに並ばず、
+        // デッキを組むところでコピーしてから使う。
+        seatableDecks(session.ownedDecks),
+        // 選んでいなければ、サーバが決めた既定を選んだ状態で出す。**どれを既定にするかを決めるのは
+        // サーバである**（ADR-0010）——前に選んだものが残っているかを見るのもそちらで、ここは
+        // もう無いデッキを選んだ状態にしないだけである。
+        seatedChoice(session.ownedDecks, lobby.deck, stage.chosen),
         stage.restrictions,
         lobby.rules,
         {
@@ -945,7 +952,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
     onDeck: (deck) => {
       // 描き直さない。選んだものは `select` が持っている（`onName` と同じ）。
-      chosenDeck = deck
+      // 空の選択肢（`render.ts` の `deckPicker`）が選ばれたら、選んでいないことにする。
+      chosenDeck = deck === '' ? undefined : deck
     },
     onFormat: (format) => {
       // 描き直さない。選んだものは `select` が持っている（`onDeck` と同じ）。

@@ -67,6 +67,7 @@ const SCHEMA = `
     issuer text not null,
     subject text not null,
     name text,
+    last_deck integer,
     unique (issuer, subject)
   );
   create table if not exists sessions (
@@ -104,6 +105,11 @@ function text(row: Row, key: string): string {
 function maybeText(row: Row, key: string): string | undefined {
   const value = row[key]
   return value === null || value === undefined ? undefined : text(row, key)
+}
+
+function maybeInt(row: Row, key: string): number | undefined {
+  const value = row[key]
+  return value === null || value === undefined ? undefined : int(row, key)
 }
 
 function int(row: Row, key: string): number {
@@ -158,6 +164,9 @@ function deckRowOf(deck: DeckId): number | undefined {
  */
 function addMissingColumns(db: DatabaseSync): void {
   addMissingColumn(db, 'identities', 'name', 'text')
+  // 前に席に着く時に選んだデッキ（ADR-0021、#194）。**選ぶ前の人には入っていない**——自分の
+  // デッキを持つようになるより前からいる人も、初めて選ぶまでは空のままである。
+  addMissingColumn(db, 'identities', 'last_deck', 'integer')
   // 部屋のルール（ADR-0021）。**ルールを持つ前の対戦は、構築戦を制限なしで打ったものである**
   // ——当時は形式という値が無く、禁止／制限リストはどこにも当てていなかった。
   addMissingColumn(db, 'duels', 'format', "text not null default '構築戦'")
@@ -225,6 +234,16 @@ export interface Store {
   saveDeck(owner: ParticipantId, deck: DeckId | undefined, draft: DeckDraft): DeckId | undefined
   /** その人のデッキを消す。**その人のものでなければ何もせず `false`。** */
   deleteDeck(owner: ParticipantId, deck: DeckId): boolean
+  /**
+   * その人が前に席に着く時に選んだデッキ（ADR-0021、#194）。まだ選んでいなければ `undefined`。
+   *
+   * **そのデッキがまだあるかは見ない。** 消えたものを指したままになりうるので、使う側が読む時に
+   * 確かめる（`deck.ts` の `withOwnedDecks`）。消す時に覚えているほうも消しに行くと、デッキが
+   * 置き場から消える道が増えるたびに消し漏れる。
+   */
+  lastChosenDeckOf(owner: ParticipantId): DeckId | undefined
+  /** 席に着く時に選んだデッキを覚える。**前に覚えたものは置き換わる。** */
+  rememberChosenDeck(owner: ParticipantId, deck: DeckId): void
   close(): void
 }
 
@@ -262,6 +281,8 @@ export function openStore(path: string): Store {
     'update decks set name = ?, description = ?, cards = ?, updated_at = ? where id = ? and owner = ?',
   )
   const removeDeck = db.prepare('delete from decks where id = ? and owner = ?')
+  const lastDeckRow = db.prepare('select last_deck from identities where id = ?')
+  const setLastDeck = db.prepare('update identities set last_deck = ? where id = ?')
 
   /**
    * いま開いている対戦の、合言葉から行番号への引き当て。
@@ -394,6 +415,20 @@ export function openStore(path: string): Store {
       if (row === undefined) return false
 
       return Number(removeDeck.run(row, identityOf(owner)).changes) > 0
+    },
+    lastChosenDeckOf: (owner) => {
+      const row = lastDeckRow.get(identityOf(owner))
+      if (row === undefined) return undefined
+
+      const deck = maybeInt(row, 'last_deck')
+      return deck === undefined ? undefined : String(deck)
+    },
+    rememberChosenDeck: (owner, deck) => {
+      const row = deckRowOf(deck)
+      // 読めない形の識別子は、指せるデッキが無いのと同じである（`deckRowOf`）。覚えずに捨てる。
+      if (row === undefined) return
+
+      setLastDeck.run(row, identityOf(owner))
     },
     close: () => {
       db.close()

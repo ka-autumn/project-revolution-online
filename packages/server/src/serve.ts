@@ -2,9 +2,9 @@ import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import { NOT_SIGNED_IN } from '@revolution/engine'
-import type { FromClient, ToClient, WireDeck } from '@revolution/engine'
+import type { DeckId, FromClient, ToClient, WireDeck } from '@revolution/engine'
 import { isCpu } from './cpu.js'
-import { poolFacesOf, restrictionChoicesOf } from './deck.js'
+import { poolFacesOf, restrictionChoicesOf, withOwnedDecks } from './deck.js'
 import type { CardSupply, PresetDeck } from './deck.js'
 import { readName } from './name.js'
 import { OWNED_DECK_LIMIT, readCards, readDeck, sortCards, violationsOf } from './owned-deck.js'
@@ -53,10 +53,13 @@ export interface ServeOptions {
    */
   readonly decks: DeckSource
   /**
-   * 選べるデッキとしてロビーに出すもの（`deck.ts` の `deckChoicesOf`）。
+   * コピー元としてロビーに出す既製デッキ（`deck.ts` の `deckChoicesOf`）。
    *
    * **引くところ（`decks`）と別に受け取る。** 引けるかどうかと、選ぶ人に見せるかどうかは
    * 別である——記録を立て直す時に引くデッキは、棚に並んでいるとは限らない。
+   *
+   * **席に着く時に選べるものではない**（ADR-0021、#194）。座るのは自分のデッキで、既製デッキは
+   * コピーしてから使う。
    */
   readonly deckChoices: readonly WireDeck[]
   /**
@@ -245,6 +248,34 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    */
   const deckStore: Store | undefined = options.signIn === undefined ? undefined : options.store
 
+  /**
+   * 席に持ち込めるデッキ（ADR-0021、#194）。**自分のデッキを預かれるなら、そこからも引く。**
+   *
+   * **CPU の席には自分のデッキが無い。** CPU は身元を持たない参加者（`cpu.ts`）で、置き場に
+   * 引きに行くと身元の識別子として読めずに落ちる。**引く前に外す。**
+   */
+  const decks: DeckSource =
+    deckStore === undefined
+      ? options.decks
+      : withOwnedDecks(options.decks, options.supply.pool, {
+          decksOf: (participant) => (isCpu(participant) ? [] : deckStore.decksOf(participant)),
+          lastChosenOf: (participant) => (isCpu(participant) ? undefined : deckStore.lastChosenDeckOf(participant)),
+        })
+
+  /**
+   * 何も選ばずに座った時に使われる自分のデッキ（ADR-0021、#194）。持てない立て方では `undefined`。
+   *
+   * **決めるのは `decks` の `fallbackFor` である。** ここはそれが自分のデッキになる場合だけを
+   * 取り出している——既製デッキは選ぶところに並ばないので、既定として出しても選んだ状態に
+   * ならない。**どちらが既定かを 2 か所で決めない。**
+   */
+  function ownedDefaultOf(participant: ParticipantId): DeckId | undefined {
+    if (deckStore === undefined || isCpu(participant)) return undefined
+
+    const fallback = decks.fallbackFor(participant)
+    return deckStore.decksOf(participant).some((deck) => deck.id === fallback) ? fallback : undefined
+  }
+
   /** 既製デッキを、その人の新しいデッキとして写す（ADR-0022）。名前はコピー元のものが付く。 */
   function copyPreset(store: Store, participant: ParticipantId, preset: PresetDeck): string | undefined {
     return store.saveDeck(participant, undefined, {
@@ -381,7 +412,6 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    */
   function pushLobby(): void {
     const lobby = lobbyOf(rooms, names)
-    const shown = JSON.stringify(lobby)
     for (const [participant, socket] of sockets) {
       if (roomOf(rooms, participant) !== undefined) {
         lobbySent.delete(participant)
@@ -393,10 +423,20 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         lobbySent.delete(participant)
         continue
       }
+      // **人ごとに違うものを送る。** 既定のデッキはその人のものである（ADR-0021、#194）ので、
+      // 部屋の一覧が同じでも同じメッセージにはならない。
+      const message = {
+        kind: 'ロビー',
+        rooms: lobby,
+        presets: options.deckChoices,
+        chosen: ownedDefaultOf(participant),
+        restrictions,
+      } as const
+      const shown = JSON.stringify(message)
       if (lobbySent.get(participant) === shown) continue
 
       lobbySent.set(participant, shown)
-      send(socket, { kind: 'ロビー', rooms: lobby, decks: options.deckChoices, restrictions })
+      send(socket, message)
     }
   }
 
@@ -468,7 +508,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         // **デッキは選び直さない。** どれで座っていたかは部屋が覚えている（`room.ts` の
         // `rejoin`）ので、入り直しで上書きしない（ADR-0021）。
         const entering = { kind: '部屋に入る', room: current.code, deck: undefined } as const
-        deliver(receive(rooms, participant, entering, options.setup(), options.decks, linked(), names))
+        deliver(receive(rooms, participant, entering, options.setup(), decks, linked(), names))
       }
       // 入り直した本人にも、相手にも、繋がりが変わったことを伝える。
       tellLinks(roomOf(rooms, participant))
@@ -557,6 +597,9 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       }
 
       sendOwnDecks(socket, participant)
+      // **ロビーも送り直す。** 何も選ばずに座った時のデッキはその人のデッキから決まる（#194）ので、
+      // デッキが増えたり消えたりすると変わりうる。**部屋の様子が変わっていなくても送り直す。**
+      pushLobby()
     }
 
     /**
@@ -578,6 +621,27 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       if (deck === undefined) throw new Error('プールにあるはずのカードが引けませんでした')
 
       send(socket, { kind: 'デッキを確かめた', violations: violationsUnder(deck.cards, rules) })
+    }
+
+    /**
+     * 席に着く時に選んだデッキを覚える（ADR-0021、#194）。**次にロビーへ出た時の既定になる。**
+     *
+     * **選んだことだけを覚え、座れたかどうかは見ない。** 部屋のルールで断られたとしても、その人が
+     * 選んだのはそのデッキである。通るかどうかは部屋ごとに変わる（同）ので、断られたことを理由に
+     * 忘れると、ルールの違う部屋を覗いただけで既定が消える。
+     *
+     * **自分のデッキでなければ覚えない。** 既製デッキは選ぶところに並ばず（#194）、他人のデッキの
+     * 識別子は送られてきただけのものである。
+     */
+    function rememberChoice(message: FromClient): void {
+      if (deckStore === undefined) return
+      if (message.kind !== '部屋に入る' && message.kind !== '部屋を作る') return
+
+      const chosen = message.deck
+      if (chosen === undefined) return
+      if (!deckStore.decksOf(participant).some((deck) => deck.id === chosen)) return
+
+      deckStore.rememberChosenDeck(participant, chosen)
     }
 
     admit()
@@ -607,9 +671,11 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         return
       }
 
+      rememberChoice(message)
+
       // 部屋を出入りすると、残った人から見た相手が変わる（#175）。出た先と入った先の両方に伝える。
       const before = roomOf(rooms, participant)?.code
-      deliver(receive(rooms, participant, message, options.setup(), options.decks, linked(), names))
+      deliver(receive(rooms, participant, message, options.setup(), decks, linked(), names))
       for (const code of new Set([before, roomOf(rooms, participant)?.code])) {
         if (code !== undefined) tellLinks(rooms.get(code))
       }

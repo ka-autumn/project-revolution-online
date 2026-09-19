@@ -60,14 +60,15 @@ describe('届いたものを畳む', () => {
       },
     ] as const
 
-    const decks = [{ id: '既製1', name: 'ひとつめ' }] as const
+    const presets = [{ id: '既製1', name: 'ひとつめ' }] as const
 
     const restrictions = [{ id: 'リスト1', name: 'テストのリスト' }] as const
 
-    expect(fold({ kind: 'ロビー', rooms, decks, restrictions }).stage).toEqual({
+    expect(fold({ kind: 'ロビー', rooms, presets, chosen: 'デッキ1', restrictions }).stage).toEqual({
       kind: 'ロビー',
       rooms,
-      decks,
+      presets,
+      chosen: 'デッキ1',
       restrictions,
     })
   })
@@ -77,9 +78,9 @@ describe('届いたものを畳む', () => {
    * 間、選べる禁止／制限リストは付いてこない。
    */
   it('選べる禁止／制限リストが届かなくても、ロビーにいる。選べるものが無いだけである', () => {
-    const old = { kind: 'ロビー', rooms: [], decks: [] } as unknown as ToClient
+    const old = { kind: 'ロビー', rooms: [], presets: [] } as unknown as ToClient
 
-    expect(fold(old).stage).toEqual({ kind: 'ロビー', rooms: [], decks: [], restrictions: [] })
+    expect(fold(old).stage).toEqual({ kind: 'ロビー', rooms: [], presets: [], chosen: undefined, restrictions: [] })
   })
 
   it('相手を待っていると言われたら、待っている', () => {
@@ -96,7 +97,7 @@ describe('届いたものを畳む', () => {
   })
 
   it('ロビーにいる間は、入り直す先が無い', () => {
-    expect(roomOf(fold({ kind: 'ロビー', rooms: [], decks: [], restrictions: [] }))).toBeUndefined()
+    expect(roomOf(fold({ kind: 'ロビー', rooms: [], presets: [], chosen: undefined, restrictions: [] }))).toBeUndefined()
     expect(roomOf(connecting())).toBeUndefined()
   })
 
@@ -328,11 +329,12 @@ describe('名前を決める', () => {
     const session = fold({ kind: '名前を決めてほしい', current: undefined, reason: undefined }, {
       kind: 'ロビー',
       rooms: [],
-      decks: [],
+      presets: [],
+      chosen: undefined,
       restrictions: [],
     })
 
-    expect(session.stage).toEqual({ kind: 'ロビー', rooms: [], decks: [], restrictions: [] })
+    expect(session.stage).toEqual({ kind: 'ロビー', rooms: [], presets: [], chosen: undefined, restrictions: [] })
   })
 })
 
@@ -357,7 +359,7 @@ describe('デッキを組むのに要るもの', () => {
 
   const DECKS = [{ id: 'デッキ1', name: 'くみかけ', description: '', cards: ['テストの識別子'] }] as const
 
-  const LOBBY: ToClient = { kind: 'ロビー', rooms: [], decks: [], restrictions: [] }
+  const LOBBY: ToClient = { kind: 'ロビー', rooms: [], presets: [], chosen: undefined, restrictions: [] }
 
   /** ログインを持たない立て方では届かない。届いていないことが、組めないことである。 */
   it('繋いだ直後は、プールも自分のデッキも無い', () => {

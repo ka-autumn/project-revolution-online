@@ -1337,7 +1337,7 @@ describe('持ち込むデッキを選ぶ', () => {
   it('知らないデッキを選んだら、部屋に入れずに断られる', () => {
     const outcome = send(emptyRooms(), 'あ', entering(CODE, '知らないデッキ'))
 
-    expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '選ばれたデッキを持ち込めません' }])
+    expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: 'デッキが見つかりません' }])
     expect(outcome.rooms.size).toBe(0)
   })
 
@@ -1346,7 +1346,7 @@ describe('持ち込むデッキを選ぶ', () => {
 
     const outcome = send(first.rooms, 'い', entering(CODE, '知らないデッキ'))
 
-    expect(to(outcome.deliveries, 'い')).toEqual([{ kind: '行えなかった', reason: '選ばれたデッキを持ち込めません' }])
+    expect(to(outcome.deliveries, 'い')).toEqual([{ kind: '行えなかった', reason: 'デッキが見つかりません' }])
     expect(to(outcome.deliveries, 'あ')).toEqual([])
     expect(outcome.rooms.get(CODE)?.duel).toBeUndefined()
   })

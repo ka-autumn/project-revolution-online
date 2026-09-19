@@ -311,7 +311,7 @@ export type FromClient =
        *
        * 入り直し（繋ぎ直し、ADR-0016）でも同じものが飛ぶので、**選ばなかった時に選び直させない。**
        * `undefined` で入ってきた人は、その部屋で前に選んでいたものに座る。まだ何も選んでいなければ、
-       * サーバが決めた既定のデッキになる。
+       * ロビーで既定になっていたデッキ（`ToClient` の `ロビー` の `chosen`）である。
        */
       readonly deck: DeckId | undefined
     }
@@ -327,7 +327,10 @@ export type FromClient =
       readonly kind: '部屋を作る'
       readonly name: string
       readonly against: OpponentKind
-      /** どのデッキで座るか（ADR-0021）。選ばなければ、サーバが決めた既定のデッキになる。 */
+      /**
+       * どのデッキで座るか（ADR-0021）。選ばなければ、ロビーで既定になっていたデッキ
+       * （`ToClient` の `ロビー` の `chosen`）になる。
+       */
       readonly deck: DeckId | undefined
       /** どの形式で打つか（ADR-0021）。選ばなければ構築戦になる。 */
       readonly format: DuelFormat | undefined
@@ -416,13 +419,24 @@ export type ToClient =
       readonly kind: 'ロビー'
       readonly rooms: readonly WireRoom[]
       /**
-       * 席に着く時に選べるデッキ（ADR-0021）。**渡す側が決めたものがそのまま並ぶ。**
+       * コピーして自分のデッキにできる既製デッキ（ADR-0021、ADR-0022）。**渡す側が決めたものが
+       * そのまま並ぶ。**
        *
-       * 部屋の一覧と一緒に届くのは、**選ぶ場所がここだから**である。どのデッキで座るかは部屋を
-       * 作る時と入る時に決まる（`FromClient` の `部屋を作る`・`部屋に入る`）ので、選べるものは
-       * それを押せる画面に無ければならない。
+       * **席に着く時に選べるものではない。** 座るのは自分のデッキで（`chosen`）、既製デッキは
+       * コピーしてから使う。ここに並ぶのはコピー元としてである。
        */
-      readonly decks: readonly WireDeck[]
+      readonly presets: readonly WireDeck[]
+      /**
+       * 何も選ばずに座った時に使われる自分のデッキ（ADR-0021）。**画面はこれを選んだ状態で出す。**
+       *
+       * 前に選んだものが残っていればそれ、無ければ自分のデッキの先頭である。**消えたデッキは
+       * 指さない**——選び直してもらう。自分のデッキを持てない立て方では `undefined` で、その時は
+       * 既製デッキで座る。
+       *
+       * 選べるデッキそのものは `自分のデッキ` で届く。**持ち主にしか送らないものなので、ここに
+       * 並べ直さない**（ロビーは部屋にいない人みなに送られる形をしている）。
+       */
+      readonly chosen: DeckId | undefined
       /**
        * 部屋を作る時に選べる禁止／制限リスト（ADR-0021）。**渡す側が決めた順のまま並ぶ。** 空でよい。
        *
