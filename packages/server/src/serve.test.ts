@@ -1216,7 +1216,29 @@ describe('ログインの設定があるとき', () => {
      * ADR-0016。入り直しで飛ぶのも `部屋に入る` で、そこには選んだものが入っていない
      * （`FromClient`）。**席を選び直す場面ではないので、切れただけで既定が決まってしまわない。**
      */
-    it('いる部屋に入り直しても、既定を覚え直さない', async () => {
+    it('選んでいたデッキを消した後に入り直しても、残っているデッキが黙って既定にならない', async () => {
+      const first = myDeck('ひとつめ')
+      const second = myDeck('ふたつめ')
+      const { client } = await lobbyAsMe()
+      client.received.length = 0
+      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: second, format: undefined, restriction: undefined })
+      const waiting = await client.waitFor('相手を待っている')
+      const code = waiting.kind === '相手を待っている' ? waiting.room : ''
+      // 待っている間に、選んでいたデッキを消す。ここで既定は決まらなくなる（`fallbackFor`）。
+      await decksAfter(client, { kind: 'デッキを消す', deck: second })
+
+      client.send({ kind: '部屋に入る', room: code, deck: undefined })
+      await client.waitFor('相手を待っている')
+
+      // 覚えているのは消えた `second` のままで、`first` に置き換わらない。**選び直してもらう決まり
+      // （#194）が、入り直しただけで解けない。**
+      expect(store.lastChosenDeckOf(me)).toBe(second)
+      expect(first).not.toBe(second)
+      await client.close()
+    })
+
+    /** ADR-0021。相手を待っている間なら、持ち込むデッキは選び直せる（`room.ts` の `rejoin`）。 */
+    it('選んで入り直したなら、その選択を覚える', async () => {
       const first = myDeck('ひとつめ')
       const second = myDeck('ふたつめ')
       const { client } = await lobbyAsMe()
@@ -1224,11 +1246,10 @@ describe('ログインの設定があるとき', () => {
       client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: first, format: undefined, restriction: undefined })
       const waiting = await client.waitFor('相手を待っている')
       const code = waiting.kind === '相手を待っている' ? waiting.room : ''
-      store.rememberChosenDeck(me, second)
 
-      client.send({ kind: '部屋に入る', room: code, deck: undefined })
+      client.send({ kind: '部屋に入る', room: code, deck: second })
+      await client.waitUntil('選び直したものを覚える', () => store.lastChosenDeckOf(me) === second)
 
-      // 入り直しで `first` に戻されない。**選んでいないメッセージで既定を書き換えない。**
       expect(store.lastChosenDeckOf(me)).toBe(second)
       await client.close()
     })

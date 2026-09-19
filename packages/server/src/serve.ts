@@ -619,9 +619,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
      * そのデッキを消した時に別のデッキが黙って既定になる**——仕組みが防ごうとしているものが、
      * 一度も選び直さなかった人にだけ起きる。
      *
-     * **入り直し（ADR-0016）では覚えない。** 繋ぎ直しで飛ぶのも同じメッセージで、そこには選んだ
-     * ものが入っていない（`FromClient` の `部屋に入る`）。席を選び直す場面ではないので、切れた
-     * だけで既定が決まってしまわないようにする。
+     * **入り直し（ADR-0016）で既定が変わることはない。** 繋ぎ直した人に送り直すのはサーバの側で
+     * （`admit`）、ここを通らない。画面から同じ部屋へ選ばずに入り直した場合も、覚えているものを
+     * 引き直して同じ値を書くだけである。選んで入り直したなら、待っている間のデッキは選び直せる
+     * （`room.ts` の `rejoin`）ので、そのまま覚えてよい。
      *
      * **選んだことだけを覚え、座れたかどうかは見ない。** 部屋のルールで断られたとしても、その人が
      * 選んだのはそのデッキである。通るかどうかは部屋ごとに変わる（同）ので、断られたことを理由に
@@ -633,7 +634,6 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     function rememberChoice(message: FromClient): void {
       if (deckStore === undefined) return
       if (message.kind !== '部屋に入る' && message.kind !== '部屋を作る') return
-      if (message.kind === '部屋に入る' && roomOf(rooms, participant)?.code === message.room) return
 
       const chosen = message.deck ?? decks.fallbackFor(participant)
       if (chosen === undefined) return
