@@ -10,7 +10,8 @@ import type {
   WirePoolCard,
   WireRestrictionList,
 } from '@revolution/engine'
-import type { DeckSource, RoomSetup, SeatedDeck } from './room.js'
+import type { OwnedDeck } from './owned-deck.js'
+import type { DeckSource, ParticipantId, RoomSetup, SeatedDeck, SeatedDeckReading } from './room.js'
 
 /**
  * 立てる時に渡してもらうものを、部屋に渡せる形にする（ADR-0021、#105）。
@@ -278,10 +279,24 @@ function seatedDeckOf(pool: CardPool, keys: readonly CardKey[]): SeatedDeck | un
 }
 
 /**
+ * あるデッキの中身を、席に持ち込めるかどうかとして読む（`room.ts` の `SeatedDeckReading`）。
+ *
+ * **識別子で引けたデッキにしか使わない。** ここまで来て引けないのは、プールから取り下げられた
+ * カードを含む場合だけである（ADR-0021）。
+ */
+function readingOf(pool: CardPool, keys: readonly CardKey[]): SeatedDeckReading {
+  const deck = seatedDeckOf(pool, keys)
+  return deck === undefined ? { kind: '使えないカードがある' } : { kind: '引けた', deck }
+}
+
+/**
  * 渡されたものから、部屋がデッキを引くところを作る（`room.ts` の `DeckSource`）。
  *
- * **既定は最初の既製デッキである。** 選ばずに座った人も、デッキが無いまま席に着くことはない
- * ——60 枚を選び切るまで対戦できない入口にしない（ADR-0021）。
+ * **引けるのは既製デッキだけである。** 自分のデッキは持ち主ごとに預かっているもので、渡された
+ * ものからは引けない——足すのは `withOwnedDecks` である。
+ *
+ * **既定は最初の既製デッキである。** 自分のデッキを持てない立て方（ADR-0021）でも、デッキが
+ * 無いまま席に着くことはない。
  */
 export function deckSourceFrom(supply: CardSupply): DeckSource {
   const presets = new Map(supply.presets.map((preset) => [preset.id, preset] as const))
@@ -289,17 +304,80 @@ export function deckSourceFrom(supply: CardSupply): DeckSource {
   if (first === undefined) throw new Error('既製デッキが 1 つも渡されていません')
 
   return {
-    of: (id) => {
+    // 既製デッキは誰のものでもないので、誰が座るかを見ない。
+    of: (_participant, id) => {
       const preset = presets.get(id)
-      return preset === undefined ? undefined : seatedDeckOf(supply.pool, preset.cards)
+      return preset === undefined ? { kind: '無い' } : readingOf(supply.pool, preset.cards)
     },
-    fallback: first.id,
+    fallbackFor: () => first.id,
     from: (keys) => seatedDeckOf(supply.pool, keys),
     restrictions: supply.restrictions,
   }
 }
 
-/** 選べるデッキとして画面に出すもの（`WireDeck`）。**渡された順のまま並べる。** */
+/**
+ * 預かっている自分のデッキを引くところ（ADR-0021）。**ログインを持たない立て方では渡されない。**
+ *
+ * **置き場そのものではなく、引くところだけを受け取る。** デッキを引くのに要るのはこの 2 つで、
+ * 書く手立ては要らない。
+ */
+export interface OwnedDeckSource {
+  /**
+   * その人が持っているデッキ。作った順に並ぶ。**持っていなければ空。**
+   *
+   * **身元を持たない参加者（CPU、`cpu.ts`）が渡されても投げてはならない。** 部屋は席にいる人を
+   * 区別せずにここへ渡す（`room.ts` の `start`）ので、置き場に直に繋ぐなら、呼ぶ側が先に外す。
+   */
+  readonly decksOf: (participant: ParticipantId) => readonly OwnedDeck[]
+  /** その人が前に席に着く時に選んだデッキ。まだ選んでいなければ `undefined`。`decksOf` と同じ約束。 */
+  readonly lastChosenOf: (participant: ParticipantId) => DeckId | undefined
+}
+
+/**
+ * 既製デッキしか引けないところに、自分のデッキを足す（ADR-0021、#194）。
+ *
+ * **自分のデッキを先に引く。** 識別子はどちらもただの文字列で、重なりうる（既製デッキの識別子を
+ * 決めるのは渡す側、自分のデッキの識別子を決めるのは置き場である）。**座る人のものを優先する**
+ * ——自分のデッキを選んだつもりで既製デッキに座らされるほうが分かりにくい。
+ *
+ * **既定は、前に選んだデッキがあるかどうかで分かれる**（#194）。
+ *
+ * - 前に選んだデッキが残っていれば、それ
+ * - **前に選んだデッキが消えていれば、既定は決まらない**（`undefined`）。選び直すまで席に着けない
+ *   ——選んだ覚えのないデッキで相手の前に座らせない。**覚えているほうを消す時に消しに行かない**
+ *   のは、デッキが置き場から消える道が増えるたびに消し漏れるからである（ADR-0021）
+ * - まだ一度も選んでいなければ、自分のデッキの先頭。**初めて座る人に選ばせない**——初めて入った
+ *   人には既製デッキが 1 つ配られており（ADR-0021）、前に選んだ覚えも無い
+ * - 自分のデッキを 1 つも持てない立て方では、既製デッキの先頭
+ *
+ * **デッキを持てる人は、既製デッキでは座れない**（ADR-0021）。選ぶ場所に並ばないだけでなく、
+ * 識別子を直に送っても引けない——**画面の決まりで終わらせない**（ADR-0010）。デッキを 1 つも
+ * 持てない立て方では既製デッキが既定なので、そちらでは今までどおり引ける。
+ */
+export function withOwnedDecks(base: DeckSource, pool: CardPool, owned: OwnedDeckSource): DeckSource {
+  return {
+    ...base,
+    of: (participant, id) => {
+      const mine = owned.decksOf(participant)
+      const found = mine.find((deck) => deck.id === id)
+      if (found !== undefined) return readingOf(pool, found.cards)
+
+      return mine.length === 0 ? base.of(participant, id) : { kind: '無い' }
+    },
+    fallbackFor: (participant) => {
+      // **持っているデッキを引くのは 1 度でよい。** ロビーを送り直すたびに人数ぶん呼ばれる
+      // （`serve.ts` の `pushLobby`）。
+      const mine = owned.decksOf(participant)
+      const chosen = owned.lastChosenOf(participant)
+      if (chosen !== undefined) return mine.some((deck) => deck.id === chosen) ? chosen : undefined
+
+      const [first] = mine
+      return first?.id ?? base.fallbackFor(participant)
+    },
+  }
+}
+
+/** コピー元として画面に出す既製デッキ（`WireDeck`）。**渡された順のまま並べる。** */
 export function deckChoicesOf(supply: CardSupply): readonly WireDeck[] {
   return supply.presets.map((preset) => ({ id: preset.id, name: preset.name }))
 }

@@ -9,8 +9,11 @@ import {
   poolFacesOf,
   readSupply,
   restrictionChoicesOf,
+  withOwnedDecks,
 } from './deck.js'
 import type { CardPool, CardSupply } from './deck.js'
+import type { OwnedDeck } from './owned-deck.js'
+import type { DeckSource } from './room.js'
 
 /**
  * 立てる時に渡してもらうものを、部屋に渡せる形にするところ（ADR-0021、#105）。
@@ -312,19 +315,21 @@ describe('席に持ち込めるデッキ', () => {
   })
 
   it('識別子で引ける', () => {
-    const brought = deckSourceFrom(supply).of('既製2')
+    const reading = deckSourceFrom(supply).of('だれか', '既製2')
 
-    expect(brought?.cards).toHaveLength(60)
-    expect(brought?.keys).toEqual(ALL_KEYS)
+    expect(reading.kind).toBe('引けた')
+    if (reading.kind !== '引けた') return
+    expect(reading.deck.cards).toHaveLength(60)
+    expect(reading.deck.keys).toEqual(ALL_KEYS)
   })
 
   it('知らない識別子では引けない', () => {
-    expect(deckSourceFrom(supply).of('知らないデッキ')).toBeUndefined()
+    expect(deckSourceFrom(supply).of('だれか', '知らないデッキ')).toEqual({ kind: '無い' })
   })
 
   /** 選ばずに座った人も席に着ける。**60 枚を選び切るまで対戦できない入口にしない**（ADR-0021）。 */
   it('既定は最初の既製デッキである', () => {
-    expect(deckSourceFrom(supply).fallback).toBe('既製1')
+    expect(deckSourceFrom(supply).fallbackFor('だれか')).toBe('既製1')
   })
 
   /** 記録に残っているのは識別子の並びで、そこから打ち直す（`room.ts` の `restore`）。 */
@@ -345,6 +350,102 @@ describe('席に持ち込めるデッキ', () => {
       { id: '既製1', name: 'ひとつめ' },
       { id: '既製2', name: 'ふたつめ' },
     ])
+  })
+})
+
+/**
+ * 自分のデッキで席に着くところ（ADR-0021、#194）。
+ *
+ * **デッキは持ち主のものなので、誰が座るかまで見て引く。** ここで使うのも架空のカードと架空の
+ * 識別子である。
+ */
+describe('自分のデッキを足した引き方', () => {
+  const supply = supplyOf({ presets: [{ id: '既製1', name: 'ひとつめ', cards: ALL_KEYS }] })
+
+  function sourceOf(
+    decks: Readonly<Record<string, readonly OwnedDeck[]>>,
+    lastChosen: Readonly<Record<string, string>> = {},
+  ): DeckSource {
+    return withOwnedDecks(deckSourceFrom(supply), POOL, {
+      decksOf: (participant) => decks[participant] ?? [],
+      lastChosenOf: (participant) => lastChosen[participant],
+    })
+  }
+
+  function ownedDeck(id: string, cards: readonly string[] = ALL_KEYS): OwnedDeck {
+    return { id, name: `デッキ${id}`, description: '', cards }
+  }
+
+  it('自分のデッキを識別子で引ける', () => {
+    const reading = sourceOf({ あ: [ownedDeck('1')] }).of('あ', '1')
+
+    expect(reading.kind).toBe('引けた')
+    if (reading.kind !== '引けた') return
+    expect(reading.deck.keys).toEqual(ALL_KEYS)
+  })
+
+  /** **他人のデッキの識別子を送っても引けない。** 持ち主を見るのはここである。 */
+  it('他人のデッキは引けない', () => {
+    expect(sourceOf({ あ: [ownedDeck('1')] }).of('い', '1')).toEqual({ kind: '無い' })
+  })
+
+  /** 取り下げられたカードを含むデッキは、使えないものとして扱う（ADR-0021）。 */
+  it('取り下げられたカードを含むデッキは、理由が分かる形で引けない', () => {
+    const withdrawn = ownedDeck('1', [...ALL_KEYS.slice(0, 59), '取り下げられた番号'])
+
+    expect(sourceOf({ あ: [withdrawn] }).of('あ', '1')).toEqual({ kind: '使えないカードがある' })
+  })
+
+  /** 前回選んだものを既定にすれば、続けて対戦するときの手数は増えない（ADR-0021）。 */
+  it('前に選んだデッキが残っていれば、それが既定になる', () => {
+    const source = sourceOf({ あ: [ownedDeck('1'), ownedDeck('2')] }, { あ: '2' })
+
+    expect(source.fallbackFor('あ')).toBe('2')
+  })
+
+  /** 初めて入った人には既製デッキが 1 つ配られている（ADR-0021）ので、選ばせずに座れる。 */
+  it('まだ一度も選んでいなければ、自分のデッキの先頭が既定になる', () => {
+    const source = sourceOf({ あ: [ownedDeck('1'), ownedDeck('2')] })
+
+    expect(source.fallbackFor('あ')).toBe('1')
+  })
+
+  /**
+   * **残っているデッキから自動で選び直さない**（ADR-0021）。選んだ覚えのないデッキで相手の前に
+   * 座ることになる。
+   */
+  it('前に選んだデッキが消えていれば、既定は決まらない', () => {
+    const source = sourceOf({ あ: [ownedDeck('1'), ownedDeck('2')] }, { あ: '消えたデッキ' })
+
+    expect(source.fallbackFor('あ')).toBeUndefined()
+  })
+
+  /** ログインを持たない立て方では、今までどおり既製デッキで座る（ADR-0021）。 */
+  it('自分のデッキを持たない人の既定は、既製デッキの先頭である', () => {
+    expect(sourceOf({}).fallbackFor('あ')).toBe('既製1')
+  })
+
+  /** **画面の決まりで終わらせない**（ADR-0010）。識別子を直に送っても引けない。 */
+  it('デッキを持っている人は、既製デッキでは座れない', () => {
+    expect(sourceOf({ あ: [ownedDeck('1')] }).of('あ', '既製1')).toEqual({ kind: '無い' })
+  })
+
+  /** 引けなくすると、自分のデッキを持てない立て方で誰も座れなくなる。 */
+  it('デッキを持てない人は、既製デッキで座れる', () => {
+    expect(sourceOf({}).of('あ', '既製1').kind).toBe('引けた')
+  })
+
+  /**
+   * 識別子はどちらもただの文字列で、決める側が違う（渡す側と置き場）ので重なりうる。
+   * **座る人のものを優先する。**
+   */
+  it('識別子が既製デッキと重なったら、自分のデッキを引く', () => {
+    const mine = ownedDeck('既製1', ALL_KEYS.slice(0, 3))
+    const reading = sourceOf({ あ: [mine] }).of('あ', '既製1')
+
+    expect(reading.kind).toBe('引けた')
+    if (reading.kind !== '引けた') return
+    expect(reading.deck.keys).toHaveLength(3)
   })
 })
 

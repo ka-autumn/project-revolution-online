@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
 import { NOT_SIGNED_IN, SIGN_IN_PATH, defineStrategy, defineUnit } from '@revolution/engine'
-import type { Card, FromClient, ToClient } from '@revolution/engine'
+import type { Card, DeckId, FromClient, ToClient } from '@revolution/engine'
 import { CPU_PREFIX } from './cpu.js'
 import { deckChoicesOf, deckSourceFrom, restrictionChoicesOf } from './deck.js'
 import type { CardSupply } from './deck.js'
@@ -232,21 +232,43 @@ describe('WebSocket で繋ぐ', () => {
   it('繋ぐとロビーが届く', async () => {
     const client = new Client(server.port, 'あ')
 
-    expect(await client.waitFor('ロビー')).toEqual({ kind: 'ロビー', rooms: [], decks: deckChoices, restrictions })
+    expect(await client.waitFor('ロビー')).toEqual({
+      kind: 'ロビー',
+      rooms: [],
+      presets: deckChoices,
+      chosen: '既製1',
+      restrictions,
+    })
     await client.close()
   })
 
   /**
-   * ADR-0021。どのデッキで座るかは、部屋を作る時と入る時に決まる。
+   * ADR-0021 / ADR-0022、#194。既製デッキはコピー元として並ぶ。
    *
-   * **選べるものは、それを押せる画面に無ければならない**ので、部屋の一覧と一緒に届く。
+   * **席に着く時に選べるものではない。** 座るのは自分のデッキで、そちらは `自分のデッキ` で届く。
    */
-  it('ロビーと一緒に、選べるデッキが届く', async () => {
+  it('ロビーと一緒に、コピー元の既製デッキが届く', async () => {
     const client = new Client(server.port, 'あ')
 
     const lobby = await client.waitFor('ロビー')
 
-    expect(lobby.kind === 'ロビー' && lobby.decks).toEqual([{ id: '既製1', name: 'ひとつめ' }])
+    expect(lobby.kind === 'ロビー' && lobby.presets).toEqual([{ id: '既製1', name: 'ひとつめ' }])
+    await client.close()
+  })
+
+  /**
+   * ADR-0021、#194。**ログインの設定が無ければデッキを持てない**（名乗りは認証ではない、
+   * ADR-0009）ので、既定になるのは既製デッキの先頭である。
+   *
+   * この立て方では、選ぶところにも既製デッキが並ぶ（`client` の `seatableDecks`）——**出るものと
+   * 座れるものがずれない。**
+   */
+  it('自分のデッキを持てない立て方では、既製デッキの先頭が既定になる', async () => {
+    const client = new Client(server.port, 'あ')
+
+    const lobby = await client.waitFor('ロビー')
+
+    expect(lobby.kind === 'ロビー' && lobby.chosen).toBe('既製1')
     await client.close()
   })
 
@@ -1010,6 +1032,299 @@ describe('ログインの設定があるとき', () => {
       client.send({ kind: 'デッキを確かめる', cards: ['どこにもない'], format: undefined, restriction: undefined })
 
       expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: '使えないカードが入っています' })
+      await client.close()
+    })
+  })
+
+  /**
+   * ADR-0021、#194。自分で組んだデッキで席に着く。
+   *
+   * **ロビーに並ぶのは自分のデッキだけである**（既製デッキはコピー元として別に届く）。規定を
+   * 満たしているかは、残すときだけでなく席に着くときにも確かめる。
+   */
+  describe('自分のデッキで席に着く', () => {
+    /** 構築戦の規定を満たす 60 枚（総合ルール 第3部 第1章 3-1）。 */
+    const FULL = Object.keys(CARDS).flatMap((key) => Array.from({ length: 4 }, () => key))
+
+    /**
+     * 自分のデッキを置き場に残す。**繋ぐ前に呼ぶ。**
+     *
+     * 1 つも持っていない人には繋いだ時に既製デッキが配られる（ADR-0021）ので、先に残しておかないと
+     * 並び順が配られたものから始まる。
+     */
+    function myDeck(name: string, cards: readonly string[] = FULL): DeckId {
+      const id = store.saveDeck(me, undefined, { name, description: '', cards: sortCards(cards) })
+      if (id === undefined) throw new Error('デッキを残せるはずだった')
+
+      return id
+    }
+
+    /**
+     * ロビーまで進み、届いたロビーごと返す。**繋ぎ直しでも同じように使える。**
+     *
+     * 名前は置き場に残る（ADR-0020）ので、決まっていなければここで入れておく。決まるまで先へ
+     * 進めないのは別のところで確かめている。
+     */
+    async function lobbyAsMe(): Promise<{ readonly client: Client; readonly lobby: ToClient }> {
+      if (store.nameOf(me) === undefined) store.rename(me, 'かずお')
+      const client = new Client(server.port, 'なのっても無駄', signedIn)
+
+      return { client, lobby: await client.waitFor('ロビー') }
+    }
+
+    /** CPU と打つ部屋を作って、席に着くまで待つ。 */
+    async function seatWith(client: Client, deck: DeckId | undefined): Promise<void> {
+      client.send({ kind: '部屋を作る', name: 'じぶんのへや', against: 'CPU', deck, format: undefined, restriction: undefined })
+      await client.waitFor('席についた')
+    }
+
+    it('選んだ自分のデッキで座る。記録にはその時の識別子の並びが残る', async () => {
+      const chosen = myDeck('じぶんの', FULL)
+      const { client } = await lobbyAsMe()
+
+      await seatWith(client, chosen)
+
+      const [duel] = store.openDuels()
+      // 席の順に並ぶ（`room.ts` の `start`）。作った人が先で、CPU が後である。
+      expect(duel?.decks[0]).toEqual(store.decksOf(me).find((deck) => deck.id === chosen)?.cards)
+      await client.close()
+    })
+
+    /** 初めて入った人には既製デッキが 1 つ配られている（ADR-0021）ので、選ばせずに座れる。 */
+    it('まだ一度も選んでいなければ、自分のデッキの先頭が既定になる', async () => {
+      const first = myDeck('ひとつめ')
+      myDeck('ふたつめ')
+
+      const { client, lobby } = await lobbyAsMe()
+
+      expect(lobby.kind === 'ロビー' && lobby.chosen).toBe(first)
+      await client.close()
+    })
+
+    /** 前回選んだものを既定にすれば、続けて対戦するときの手数は増えない（ADR-0021）。 */
+    it('座ると選んだデッキを覚えていて、次のロビーの既定になる', async () => {
+      myDeck('ひとつめ')
+      const second = myDeck('ふたつめ')
+      const { client } = await lobbyAsMe()
+      await seatWith(client, second)
+      // **繋ぎ直して確かめる。** 覚えているのが置き場なら、接続をまたいでも既定は変わらない。
+      client.received.length = 0
+      client.send({ kind: 'ロビーに戻る' })
+      await client.waitFor('ロビー')
+      await client.close()
+
+      const next = await lobbyAsMe()
+
+      expect(next.lobby.kind === 'ロビー' && next.lobby.chosen).toBe(second)
+      await next.client.close()
+    })
+
+    /**
+     * ADR-0021。**残っているデッキから自動で選び直さない**——選んだ覚えのないデッキで相手の前に
+     * 座ることになる。
+     */
+    it('覚えていたデッキを消すと、既定が無くなり、選ばずには座れない', async () => {
+      const first = myDeck('ひとつめ')
+      const second = myDeck('ふたつめ')
+      const { client } = await lobbyAsMe()
+      await seatWith(client, second)
+      // 繋いだ時のロビーが残っていると、出てきたところで届くものと見分けが付かない。
+      client.received.length = 0
+      client.send({ kind: 'ロビーに戻る' })
+      await client.waitFor('ロビー')
+      await decksAfter(client, { kind: 'デッキを消す', deck: second })
+      const lobby = await client.waitFor('ロビー')
+      client.received.length = 0
+      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
+
+      expect(lobby.kind === 'ロビー' && lobby.chosen).toBeUndefined()
+      expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'デッキが選ばれていません' })
+      // 消していないほうを選び直せば座れる。**行き止まりにしない。**
+      expect(store.decksOf(me).map((deck) => deck.id)).toEqual([first])
+      await client.close()
+    })
+
+    /** ADR-0021。保存した後にプールやリストが変わっていても、そのまま座らせない。 */
+    it('規定を満たしていないデッキを選ぶと、何が足りないかを添えて断られる', async () => {
+      const short = myDeck('くみかけ', FULL.slice(0, 2))
+      const { client } = await lobbyAsMe()
+      client.received.length = 0
+
+      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: short, format: undefined, restriction: undefined })
+
+      // 総合ルール 第3部 第1章 3-1（ADR-0006）
+      expect(await client.waitFor('行えなかった')).toEqual({
+        kind: '行えなかった',
+        reason: 'デッキがこの部屋のルールを満たしていません: 60 枚に 58 枚足りません',
+      })
+      await client.close()
+    })
+
+    /**
+     * ADR-0021。取り下げられたカードを含むデッキは、使えないものとして扱う——**消さないが、席には
+     * 着けない。**
+     */
+    it('取り下げられたカードを含むデッキを選ぶと、理由が分かる形で断られる', async () => {
+      const withdrawn = myDeck('とりさげ', FULL)
+      // 置き場のデッキはそのままに、渡されるプールのほうを狭めて立て直す。
+      const narrowed: CardSupply = { ...SUPPLY, pool: { 'TEST-0': CARDS['TEST-0'] as Card } }
+      await server.close()
+      server = await serve({ ...options, decks: deckSourceFrom(narrowed), supply: narrowed })
+      const { client } = await lobbyAsMe()
+      client.received.length = 0
+
+      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: withdrawn, format: undefined, restriction: undefined })
+
+      expect(await client.waitFor('行えなかった')).toEqual({
+        kind: '行えなかった',
+        reason: 'デッキに、いまは使えないカードが入っています',
+      })
+      await client.close()
+    })
+
+    /** デッキは持ち主のものである（ADR-0021）。**識別子を送っただけでは持ち込めない。** */
+    it('他人のデッキの識別子を送っても座れない', async () => {
+      myDeck('じぶんの')
+      const other = store.identify('google', '10002')
+      const theirs = store.saveDeck(other, undefined, { name: 'ひとの', description: '', cards: sortCards(FULL) })
+      if (theirs === undefined) throw new Error('デッキを残せるはずだった')
+      const { client } = await lobbyAsMe()
+      client.received.length = 0
+
+      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: theirs, format: undefined, restriction: undefined })
+
+      expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'デッキが見つかりません' })
+      await client.close()
+    })
+
+    /**
+     * ADR-0021、#194。画面は既定を選んだ状態で出しているので、そのまま座ったのは、出ていたものを
+     * 選んだのと同じことである。
+     */
+    it('選ばずに座っても、その時の既定を覚えている', async () => {
+      const first = myDeck('ひとつめ')
+      myDeck('ふたつめ')
+      const { client } = await lobbyAsMe()
+
+      await seatWith(client, undefined)
+
+      expect(store.lastChosenDeckOf(me)).toBe(first)
+      await client.close()
+    })
+
+    /**
+     * ADR-0016。入り直しで飛ぶのも `部屋に入る` で、そこには選んだものが入っていない
+     * （`FromClient`）。**席を選び直す場面ではないので、切れただけで既定が決まってしまわない。**
+     */
+    it('選んでいたデッキを消した後に入り直しても、残っているデッキが黙って既定にならない', async () => {
+      const first = myDeck('ひとつめ')
+      const second = myDeck('ふたつめ')
+      const { client } = await lobbyAsMe()
+      client.received.length = 0
+      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: second, format: undefined, restriction: undefined })
+      const waiting = await client.waitFor('相手を待っている')
+      const code = waiting.kind === '相手を待っている' ? waiting.room : ''
+      // 待っている間に、選んでいたデッキを消す。ここで既定は決まらなくなる（`fallbackFor`）。
+      await decksAfter(client, { kind: 'デッキを消す', deck: second })
+
+      client.send({ kind: '部屋に入る', room: code, deck: undefined })
+      await client.waitFor('相手を待っている')
+
+      // 覚えているのは消えた `second` のままで、`first` に置き換わらない。**選び直してもらう決まり
+      // （#194）が、入り直しただけで解けない。**
+      expect(store.lastChosenDeckOf(me)).toBe(second)
+      expect(first).not.toBe(second)
+      await client.close()
+    })
+
+    /** ADR-0021。相手を待っている間なら、持ち込むデッキは選び直せる（`room.ts` の `rejoin`）。 */
+    it('選んで入り直したなら、その選択を覚える', async () => {
+      const first = myDeck('ひとつめ')
+      const second = myDeck('ふたつめ')
+      const { client } = await lobbyAsMe()
+      client.received.length = 0
+      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: first, format: undefined, restriction: undefined })
+      const waiting = await client.waitFor('相手を待っている')
+      const code = waiting.kind === '相手を待っている' ? waiting.room : ''
+
+      client.send({ kind: '部屋に入る', room: code, deck: second })
+      await client.waitUntil('選び直したものを覚える', () => store.lastChosenDeckOf(me) === second)
+
+      expect(store.lastChosenDeckOf(me)).toBe(second)
+      await client.close()
+    })
+
+    /**
+     * ADR-0021。**確かめた時のデッキのまま座るとは限らない。** 選ばずに待っている人のデッキは
+     * 既定から決まり、既定は待っている間に変わりうるので、席に着く時にも部屋のルールを当てる。
+     */
+    it('待っている間に既定が変わっても、部屋のルールを満たさないデッキでは始まらない', async () => {
+      myDeck('とおる')
+      const { client } = await lobbyAsMe()
+      client.received.length = 0
+      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: undefined, format: undefined, restriction: undefined })
+      const waiting = await client.waitFor('相手を待っている')
+      const code = waiting.kind === '相手を待っている' ? waiting.room : ''
+      // 待っている間に、この部屋では通らないデッキを既定にする。**部屋は選ばれたものを覚えていない**
+      // ——選ばずに作ったので、座る時にもう一度その人の既定から決まる。
+      const short = store.saveDeck(me, undefined, { name: 'くみかけ', description: '', cards: sortCards(FULL.slice(0, 2)) })
+      if (short === undefined) throw new Error('デッキを残せるはずだった')
+      store.rememberChosenDeck(me, short)
+
+      const other = new Client(server.port, 'なのっても無駄', signedInOther)
+      await other.waitFor('ロビー')
+      other.send({ kind: '部屋に入る', room: code, deck: undefined })
+
+      // 総合ルール 第3部 第1章 3-1（ADR-0006）
+      expect(await client.waitFor('行えなかった')).toEqual({
+        kind: '行えなかった',
+        reason: 'デッキがこの部屋のルールを満たしていません: 60 枚に 58 枚足りません',
+      })
+      expect(store.openDuels()).toEqual([])
+      await other.close()
+      await client.close()
+    })
+
+    /**
+     * ADR-0021、#194。合言葉を直に指して入った部屋にはデッキを選ぶ場所が無い（ロビーを通っていない）
+     * ので、**覚えている既定がそのまま席に着く。**
+     */
+    it('合言葉を直に指して入っても、覚えている既定で座る', async () => {
+      myDeck('ひとつめ')
+      const second = myDeck('ふたつめ')
+      const { client } = await lobbyAsMe()
+      await seatWith(client, second)
+      client.received.length = 0
+      client.send({ kind: 'ロビーに戻る' })
+      await client.waitFor('ロビー')
+
+      // ロビーに並んでいない合言葉を直に指す。**部屋はここで作られる。**
+      client.send({ kind: '部屋に入る', room: 'あいことば', deck: undefined })
+      await client.waitFor('相手を待っている')
+      const other = new Client(server.port, 'なのっても無駄', signedInOther)
+      await other.waitFor('ロビー')
+      other.send({ kind: '部屋に入る', room: 'あいことば', deck: undefined })
+      await client.waitFor('席についた')
+
+      const started = store.openDuels().find((duel) => duel.code === 'あいことば')
+      expect(started?.decks[0]).toEqual(store.decksOf(me).find((deck) => deck.id === second)?.cards)
+      await other.close()
+      await client.close()
+    })
+
+    /** ロビーにデッキの名前も中身も出さない（ADR-0021）。山札は非公開情報である（第2部 第23章 2-1）。 */
+    it('ロビーに並ぶ部屋に、相手のデッキは出ない', async () => {
+      const mine = myDeck('じぶんの')
+      const { client } = await lobbyAsMe()
+      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: mine, format: undefined, restriction: undefined })
+      await client.waitFor('相手を待っている')
+
+      const watcher = new Client(server.port, 'なのっても無駄', signedInOther)
+      const lobby = await watcher.waitFor('ロビー')
+
+      // **識別子では見ない。** 置き場が振る番号は短く、部屋の名前や合言葉にたまたま含まれうる。
+      expect(JSON.stringify(lobby.kind === 'ロビー' && lobby.rooms)).not.toContain('じぶんの')
+      await watcher.close()
       await client.close()
     })
   })

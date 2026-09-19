@@ -4,6 +4,7 @@ import type {
   DeckViolation,
   ToClient,
   WireCardFace,
+  WireDeck,
   WireOwnedDeck,
   WirePoolCard,
 } from '@revolution/engine'
@@ -467,4 +468,40 @@ export interface OwnedDeckRow {
 /** 自分のデッキの一覧。**届いた順のまま並べる。** */
 export function ownedDeckRows(decks: readonly WireOwnedDeck[]): readonly OwnedDeckRow[] {
   return decks.map((deck) => ({ id: deck.id, name: deck.name, count: deck.cards.length }))
+}
+
+/**
+ * 席に着く時に選べるデッキ（ADR-0021、#194）。**並ぶのは自分のデッキである。**
+ *
+ * 既製デッキは並ばない。コピーして自分のデッキにしてから使う（ADR-0022）。
+ *
+ * **自分のデッキが届いていなければ、既製デッキを並べる。** 届かないのは、デッキを持てない
+ * 立て方だからである（ログインが無い、ADR-0021）。そこで何も並べないと、手元で 2 人ぶん試す時に
+ * 両方の席が同じデッキに固定される。**サーバもその人には既製デッキを引かせる**ので、出るものと
+ * 座れるものがずれない。
+ */
+export function seatableDecks(
+  decks: readonly WireOwnedDeck[] | undefined,
+  presets: readonly WireDeck[],
+): readonly WireDeck[] {
+  return decks === undefined ? presets : decks.map((deck) => ({ id: deck.id, name: deck.name }))
+}
+
+/**
+ * ロビーで選んだ状態にするデッキ（#194）。**もう無いデッキは選ばない。**
+ *
+ * 自分で選んだものを優先し、選んでいなければサーバが決めた既定（`ロビー` の `chosen`）を使う。
+ * どちらも、**いま並んでいるもの**（`seatableDecks`）の中にある時だけ選ぶ——消したデッキを
+ * 選んだ状態のままにすると、座れないものが選ばれて見える。デッキを消した後にロビーが届き直すまでの
+ * 間がそれにあたる。
+ */
+export function seatedChoice(
+  shown: readonly WireDeck[],
+  picked: DeckId | undefined,
+  standing: DeckId | undefined,
+): DeckId | undefined {
+  const alive = (id: DeckId | undefined): boolean => id !== undefined && shown.some((deck) => deck.id === id)
+  if (alive(picked)) return picked
+
+  return alive(standing) ? standing : undefined
 }

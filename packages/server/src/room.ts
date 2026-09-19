@@ -77,16 +77,46 @@ export interface SeatedDeck {
 }
 
 /**
+ * デッキを引いた結果（ADR-0021）。
+ *
+ * **なりうる形を数え上げる。** 引けたかどうかを真偽で返すと、なぜ引けなかったのかが落ちる——
+ * 席に着けないデッキは理由が分かる形で断る（#194）ので、断り分けられる形で返す。
+ */
+export type SeatedDeckReading =
+  | { readonly kind: '引けた'; readonly deck: SeatedDeck }
+  /** その人のデッキにも既製デッキにも無い識別子。 */
+  | { readonly kind: '無い' }
+  /**
+   * 取り下げられたカードを含む（ADR-0021）。
+   *
+   * **置き場からは消えないが、席には着けない。** デッキは識別子の並びで、指す先がプールから
+   * 無くなれば組み直せない。抜けば、また席に着ける。
+   */
+  | { readonly kind: '使えないカードがある' }
+
+/**
  * 席に持ち込めるデッキの引き方（ADR-0021）。
  *
  * **部屋はカードを知らない**ので、引くところを渡してもらう。何が引けるかを決めるのは、立てる時に
  * 渡されたものである（`deck.ts` の `deckSourceFrom`）。
  */
 export interface DeckSource {
-  /** 既製デッキを識別子で引く。知らない識別子なら `undefined`。 */
-  readonly of: (id: DeckId) => SeatedDeck | undefined
-  /** 選ばずに座った人が使うデッキ。**デッキを選ばないまま席に着けるようにするためにある。** */
-  readonly fallback: DeckId
+  /**
+   * 座る人のデッキを識別子で引く。
+   *
+   * **誰が座るかを一緒に渡す。** 自分のデッキは持ち主のものなので（ADR-0021）、識別子だけでは
+   * 引けない。**他人のデッキの識別子を送っても引けない**のは、ここで持ち主を見るからである。
+   */
+  readonly of: (participant: ParticipantId, id: DeckId) => SeatedDeckReading
+  /**
+   * 選ばずに座った人が使うデッキ（ADR-0021）。**人によって違うので、値ではなく引くところを
+   * 渡してもらう。**
+   *
+   * **既定が決まらないこともある**（`undefined`）。前に選んだデッキが消えていた時がそれで、
+   * その人は選び直すまで席に着けない。**黙って別のデッキを差し込まない**——選んだ覚えのない
+   * デッキで相手の前に座ることになる。
+   */
+  readonly fallbackFor: (participant: ParticipantId) => DeckId | undefined
   /** 識別子の並びから組み直す。1 つでも引けなければ `undefined`（`restore`）。 */
   readonly from: (keys: readonly string[]) => SeatedDeck | undefined
   /**
@@ -442,17 +472,38 @@ export function violationsUnder(deck: Deck, rules: RoomRules): readonly DeckViol
  */
 function refusalOfDeck(
   rules: RoomRules,
+  participant: ParticipantId,
   chosen: DeckId | undefined,
   decks: DeckSource,
   whose: '' | 'CPU の',
 ): string | undefined {
-  const deck = decks.of(chosen ?? decks.fallback)
-  if (deck === undefined) return '選ばれたデッキを持ち込めません'
+  const id = chosen ?? decks.fallbackFor(participant)
+  if (id === undefined) return `${whose}デッキが選ばれていません`
 
-  const violations = violationsUnder(deck.cards, rules)
+  const reading = decks.of(participant, id)
+  if (reading.kind !== '引けた') return refusalOfReading(reading, whose)
+
+  return refusalOfViolations(violationsUnder(reading.deck.cards, rules), whose)
+}
+
+/** デッキがルールで通らない点を、断る理由として読める文にする。通るなら `undefined`。 */
+function refusalOfViolations(violations: readonly DeckViolation[], whose: '' | 'CPU の'): string | undefined {
   if (violations.length === 0) return undefined
 
   return `${whose}デッキがこの部屋のルールを満たしていません: ${violations.map(describeViolation).join('、')}`
+}
+
+/** 引けなかったデッキを、断る理由として読める文にする（#194）。 */
+function refusalOfReading(
+  reading: Exclude<SeatedDeckReading, { readonly kind: '引けた' }>,
+  whose: '' | 'CPU の',
+): string {
+  switch (reading.kind) {
+    case '無い':
+      return `${whose}デッキが見つかりません`
+    case '使えないカードがある':
+      return `${whose}デッキに、いまは使えないカードが入っています`
+  }
 }
 
 /** デッキの不備 1 つを、断る理由として読める文にする。 */
@@ -733,16 +784,21 @@ function open(
 
   const rules = rulesFor(opening.format, opening.restriction, decks.restrictions)
   if (typeof rules === 'string') return refuse(rooms, participant, rules)
-  const refusal =
-    refusalOfDeck(rules, opening.deck, decks, '') ??
-    (against === 'CPU' ? refusalOfDeck(rules, undefined, decks, 'CPU の') : undefined)
-  if (refusal !== undefined) return refuse(rooms, participant, refusal)
 
+  // **合言葉と CPU の席を、デッキを確かめる前に決める。** CPU のデッキも誰が座るかで引くので
+  // （`DeckSource`）、席に着く人が分かっていないと確かめられない。**どちらも部屋を作らずに
+  // 決まる**ので、断る時は今までどおり何も変えずに返る。
   const leaving = current === undefined ? undefined : withoutParticipant(rooms, current, participant)
   const left = leaving?.rooms ?? rooms
   const closed = leaving?.records ?? []
-
   const code = unusedCode(left, setup.code)
+  const cpu = against === 'CPU' ? cpuParticipantOf(code) : undefined
+
+  const refusal =
+    refusalOfDeck(rules, participant, opening.deck, decks, '') ??
+    (cpu === undefined ? undefined : refusalOfDeck(rules, cpu, undefined, decks, 'CPU の'))
+  if (refusal !== undefined) return refuse(rooms, participant, refusal)
+
   const opened: Room = {
     code,
     name: nameOf(name, code),
@@ -750,7 +806,7 @@ function open(
     duel: undefined,
     deck: opening.deck,
     rules,
-    cpu: against === 'CPU' ? cpuParticipantOf(code) : undefined,
+    cpu,
   }
   if (opened.cpu === undefined) {
     return {
@@ -819,7 +875,7 @@ function enter(
     // 合言葉を直に指して入った部屋。ロビーで見分けるものが無いので、合言葉を名前にする。
     // **ルールを選ぶ場所が無い**（ロビーを通っていない）ので、何も選ばなかったものとして決める。
     const rules = defaultRules(decks.restrictions)
-    const refusal = refusalOfDeck(rules, chosen, decks, '')
+    const refusal = refusalOfDeck(rules, participant, chosen, decks, '')
     if (refusal !== undefined) return refuse(rooms, participant, refusal)
 
     const opened: Room = {
@@ -848,7 +904,7 @@ function enter(
   }
   // **入る人のデッキを、その部屋のルールで確かめる**（ADR-0021）。通らなければ入れず、待っている
   // 人には何も送らない——デッキを選び直せば入れるかもしれず、相手が知る筋合いのことではない。
-  const refusal = refusalOfDeck(room.rules, chosen, decks, '')
+  const refusal = refusalOfDeck(room.rules, participant, chosen, decks, '')
   if (refusal !== undefined) return refuse(rooms, participant, refusal)
 
   return after(
@@ -881,7 +937,7 @@ function rejoin(
 ): RoomOutcome {
   const duel = room.duel
   if (duel === undefined) {
-    const refusal = chosen === undefined ? undefined : refusalOfDeck(room.rules, chosen, decks, '')
+    const refusal = chosen === undefined ? undefined : refusalOfDeck(room.rules, participant, chosen, decks, '')
     if (refusal !== undefined) return refuse(rooms, participant, refusal)
 
     return {
@@ -972,11 +1028,26 @@ function start(
 
   // **席に着く時にも確かめる**（ADR-0021）。渡された時に確かめただけでは、その後にプールが
   // 変わったデッキがそのまま席に着ける。
-  const brought = [first, second].map((seating) => decks.of(seating.deck ?? decks.fallback))
-  const [firstDeck, secondDeck] = brought
-  if (firstDeck === undefined || secondDeck === undefined) {
-    return refusal('選ばれたデッキを持ち込めません')
-  }
+  //
+  // **引き直すのは、部屋を作った時や入った時と同じものとは限らないからである。** 選ばずに座った
+  // 人のデッキはその人の既定から決まり（`fallbackFor`）、既定は待っている間に変わりうる。
+  // **だから部屋のルールもここで当て直す**——確かめた時のデッキのまま座るとは限らない。
+  const brought = [first, second].map((seating) => {
+    const id = seating.deck ?? decks.fallbackFor(seating.participant)
+    return id === undefined ? ({ kind: '無い' } as const) : decks.of(seating.participant, id)
+  })
+  const [firstReading, secondReading] = brought
+  if (firstReading === undefined || secondReading === undefined) throw new Error('席が 2 つ揃っていません')
+  if (firstReading.kind !== '引けた') return refusal(refusalOfReading(firstReading, ''))
+  if (secondReading.kind !== '引けた') return refusal(refusalOfReading(secondReading, ''))
+
+  const firstDeck = firstReading.deck
+  const secondDeck = secondReading.deck
+
+  const unfit = [firstDeck, secondDeck]
+    .map((deck) => refusalOfViolations(violationsUnder(deck.cards, room.rules), ''))
+    .find((reason) => reason !== undefined)
+  if (unfit !== undefined) return refusal(unfit)
 
   const prepared = prepareDuel({ decks: [firstDeck.cards, secondDeck.cards], seed: setup.seed })
   if (prepared.kind !== '準備完了') {

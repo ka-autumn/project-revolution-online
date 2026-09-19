@@ -423,12 +423,21 @@ function deckPicker(decks: readonly WireDeck[], chosen: DeckId | undefined, onDe
 
   const select = document.createElement('select')
   select.className = 'lobby__deck-select'
+  // **どれも選ばれていないなら、選ばれていないことを出す**（#194）。前に選んでいたデッキを消した
+  // 人がここへ来る（`seatedChoice`）。空の選択肢を置かないと、ブラウザが先頭を選んだ形にしてしまい、
+  // **選んだ覚えのないデッキが選ばれて見える。** サーバもこの席を断る（`server` の `room.ts` の
+  // `refusalOfDeck`）ので、出ているものと座れるものがずれない。
+  if (chosen === undefined) {
+    const empty = document.createElement('option')
+    empty.value = ''
+    empty.textContent = 'デッキを選んでください'
+    empty.selected = true
+    select.append(empty)
+  }
   for (const deck of decks) {
     const option = document.createElement('option')
     option.value = deck.id
     option.textContent = deck.name
-    // 選ばれていなければ先頭が選ばれた形になる。**サーバも選ばれなかった席を既定のデッキに
-    // 座らせる**（`server` の `room.ts` の `start`）ので、出ているものと座るものがずれない。
     option.selected = deck.id === chosen
     select.append(option)
   }

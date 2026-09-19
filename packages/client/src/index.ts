@@ -24,6 +24,8 @@ import {
   newDraft,
   ownedDeckRows,
   poolRows,
+  seatableDecks,
+  seatedChoice,
   withCard,
   withoutCard,
 } from './deck-builder.js'
@@ -398,7 +400,7 @@ function draw(
     root.append(
       deckListElement(
         ownedDeckRows(owned),
-        stage.decks,
+        stage.presets,
         builder.waiting.kind !== '無し',
         builder.refusal,
         building.list,
@@ -442,12 +444,18 @@ function draw(
 
   // ロビーは繋がっている間だけ出す。作る・入るは送らないと何も起きないので、押せる形で出さない。
   if (stage.kind === 'ロビー' && connected && !builderOpen) {
+    // **席に着くのに選ぶのは自分のデッキである**（ADR-0021、#194）。既製デッキはデッキを組む
+    // ところでコピーしてから使う。**デッキを持てない立て方でだけ、既製デッキがここに並ぶ。**
+    const seatable = seatableDecks(session.ownedDecks, stage.presets)
     root.append(
       lobbyElement(
         lobbyView(stage.rooms),
         lobby.name,
-        stage.decks,
-        lobby.deck,
+        seatable,
+        // 選んでいなければ、サーバが決めた既定を選んだ状態で出す。**どれを既定にするかを決めるのは
+        // サーバである**（ADR-0010）——前に選んだものが残っているかを見るのもそちらで、ここは
+        // もう無いデッキを選んだ状態にしないだけである。
+        seatedChoice(seatable, lobby.deck, stage.chosen),
         stage.restrictions,
         lobby.rules,
         {
@@ -686,6 +694,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    *
    * **選ばないまま作っても入っても構わない。** 選ばれなかった席は、サーバが決めた既定のデッキに
    * 座る（`server` の `room.ts` の `start`）。画面はどれが既定かを決めない（ADR-0010）。
+   *
+   * **既定が決まらないこともある**（#194）。前に選んでいたデッキを消した人がそれで、選ぶまで
+   * 断られる。画面はそれを先回りして止めない——**何が起きるかを決めるのはサーバである。**
    */
   let chosenDeck: DeckId | undefined
   /**
@@ -945,7 +956,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
     onDeck: (deck) => {
       // 描き直さない。選んだものは `select` が持っている（`onName` と同じ）。
-      chosenDeck = deck
+      // 空の選択肢（`render.ts` の `deckPicker`）が選ばれたら、選んでいないことにする。
+      chosenDeck = deck === '' ? undefined : deck
     },
     onFormat: (format) => {
       // 描き直さない。選んだものは `select` が持っている（`onDeck` と同じ）。

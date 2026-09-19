@@ -15,6 +15,8 @@ import {
   newDraft,
   poolRows,
   printedDetailsOf,
+  seatableDecks,
+  seatedChoice,
   violationLine,
   withCard,
   withoutCard,
@@ -337,5 +339,55 @@ describe('押す前に尋ねる', () => {
 describe('新しく作る', () => {
   it('名前が付いた、空のデッキから始まる', () => {
     expect(newDraft()).toEqual({ deck: undefined, name: NEW_DECK_NAME, description: '', cards: [] })
+  })
+})
+
+/** ADR-0021、#194。席に着く時に選ぶのは自分のデッキである。 */
+describe('席に着く時に選ぶデッキ', () => {
+  function owned(id: string, name: string): WireOwnedDeck {
+    return { id, name, description: '', cards: [] }
+  }
+
+  const MINE = [owned('1', 'ひとつめ'), owned('2', 'ふたつめ')]
+
+  const PRESETS = [{ id: '既製1', name: 'トライアルデッキ' }]
+
+  const SHOWN = [
+    { id: '1', name: 'ひとつめ' },
+    { id: '2', name: 'ふたつめ' },
+  ]
+
+  /** 既製デッキはコピーしてから使う（ADR-0022）ので、ここには並ばない。 */
+  it('自分のデッキが、届いた順に名前付きで並ぶ', () => {
+    expect(seatableDecks(MINE, PRESETS)).toEqual(SHOWN)
+  })
+
+  /**
+   * 届かないのは、デッキを持てない立て方だからである（ADR-0021）。**そこで何も並べないと、手元で
+   * 2 人ぶん試す時に両方の席が同じデッキに固定される。**
+   */
+  it('自分のデッキが届かない立て方では、既製デッキが並ぶ', () => {
+    expect(seatableDecks(undefined, PRESETS)).toEqual(PRESETS)
+  })
+
+  it('自分で選んだものがあれば、それを選んだ状態にする', () => {
+    expect(seatedChoice(SHOWN, '2', '1')).toBe('2')
+  })
+
+  /** どれが既定かを決めるのはサーバである（ADR-0010）。 */
+  it('選んでいなければ、サーバが決めた既定を選んだ状態にする', () => {
+    expect(seatedChoice(SHOWN, undefined, '1')).toBe('1')
+  })
+
+  /**
+   * デッキを消してもロビーは届き直すが、**届くまでの間に消えたものを選んだ状態にしない。**
+   * 座れないものが選ばれて見える。
+   */
+  it('選んでいたデッキが消えていれば、何も選ばない', () => {
+    expect(seatedChoice(SHOWN, '消えたデッキ', '消えた既定')).toBeUndefined()
+  })
+
+  it('既定が消えていても、自分で選んだものが残っていればそれを選ぶ', () => {
+    expect(seatedChoice(SHOWN, '1', '消えた既定')).toBe('1')
   })
 })
