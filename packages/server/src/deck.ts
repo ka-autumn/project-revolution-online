@@ -310,6 +310,7 @@ export function deckSourceFrom(supply: CardSupply): DeckSource {
       return preset === undefined ? { kind: '無い' } : readingOf(supply.pool, preset.cards)
     },
     fallbackFor: () => first.id,
+    cpuFallbackFor: () => first.id,
     from: (keys) => seatedDeckOf(supply.pool, keys),
     restrictions: supply.restrictions,
   }
@@ -331,6 +332,11 @@ export interface OwnedDeckSource {
   readonly decksOf: (participant: ParticipantId) => readonly OwnedDeck[]
   /** その人が前に席に着く時に選んだデッキ。まだ選んでいなければ `undefined`。`decksOf` と同じ約束。 */
   readonly lastChosenOf: (participant: ParticipantId) => DeckId | undefined
+  /**
+   * その人が前に CPU の席に選んだデッキ（#195）。まだ選んでいなければ `undefined`。**`lastChosenOf`
+   * とは別に覚える**——自分が座るデッキと CPU に持たせるデッキは違ってよい。
+   */
+  readonly lastChosenCpuOf: (participant: ParticipantId) => DeckId | undefined
 }
 
 /**
@@ -373,6 +379,17 @@ export function withOwnedDecks(base: DeckSource, pool: CardPool, owned: OwnedDec
 
       const [first] = mine
       return first?.id ?? base.fallbackFor(participant)
+    },
+    // **CPU の席も、決まり方は人の席と同じである**（#195）。前に選んだものが消えていれば決まらず、
+    // 自分のデッキの先頭に黙って落とさない。CPU に持たせるものは作る人の棚から引く（`of`）ので、
+    // 既製デッキを直に送っても、自分のデッキを持てる人は引けない。
+    cpuFallbackFor: (owner) => {
+      const mine = owned.decksOf(owner)
+      const chosen = owned.lastChosenCpuOf(owner)
+      if (chosen !== undefined) return mine.some((deck) => deck.id === chosen) ? chosen : undefined
+
+      const [first] = mine
+      return first?.id ?? base.cpuFallbackFor(owner)
     },
   }
 }

@@ -221,7 +221,7 @@ describe('置き場（ADR-0018）', () => {
 
   it('CPU が打った手も記録に残る', () => {
     const store = openStore(':memory:')
-    new Table(store).send('あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
+    new Table(store).send('あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
 
     const [duel] = store.openDuels()
     expect(duel?.cpu).toBeDefined()
@@ -423,6 +423,23 @@ describe('自分のデッキ', () => {
     const store = openStore(':memory:')
 
     expect(store.decksOf(store.identify('google', '10001'))).toEqual([])
+    store.close()
+  })
+
+  /** ADR-0021、#195。自分が座るデッキと CPU の席のデッキは、別々に覚える。 */
+  it('CPU の席に選んだデッキを、自分の席のデッキとは別に覚える', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+    const first = store.saveDeck(me, undefined, DRAFT)
+    const second = store.saveDeck(me, undefined, { ...DRAFT, name: 'ふたつめ' })
+    if (first === undefined || second === undefined) throw new Error('デッキを残せるはずだった')
+
+    expect(store.lastChosenCpuDeckOf(me)).toBeUndefined()
+    store.rememberChosenDeck(me, first)
+    store.rememberChosenCpuDeck(me, second)
+
+    expect(store.lastChosenDeckOf(me)).toBe(first)
+    expect(store.lastChosenCpuDeckOf(me)).toBe(second)
     store.close()
   })
 

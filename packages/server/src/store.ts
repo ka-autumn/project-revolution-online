@@ -68,6 +68,7 @@ const SCHEMA = `
     subject text not null,
     name text,
     last_deck integer,
+    last_cpu_deck integer,
     unique (issuer, subject)
   );
   create table if not exists sessions (
@@ -167,6 +168,8 @@ function addMissingColumns(db: DatabaseSync): void {
   // 前に席に着く時に選んだデッキ（ADR-0021、#194）。**選ぶ前の人には入っていない**——自分の
   // デッキを持つようになるより前からいる人も、初めて選ぶまでは空のままである。
   addMissingColumn(db, 'identities', 'last_deck', 'integer')
+  // 前に CPU の席に選んだデッキ（ADR-0021、#195）。`last_deck` と同じく、選ぶ前の人には入っていない。
+  addMissingColumn(db, 'identities', 'last_cpu_deck', 'integer')
   // 部屋のルール（ADR-0021）。**ルールを持つ前の対戦は、構築戦を制限なしで打ったものである**
   // ——当時は形式という値が無く、禁止／制限リストはどこにも当てていなかった。
   addMissingColumn(db, 'duels', 'format', "text not null default '構築戦'")
@@ -250,6 +253,14 @@ export interface Store {
    * **持ち主を確かめるのは呼ぶ側である**（`serve.ts`）——書くものと引けるものを別々に見る。
    */
   rememberChosenDeck(owner: ParticipantId, deck: DeckId): void
+  /**
+   * 前に CPU の席に選んだデッキ（ADR-0021、#195）。**`lastChosenDeckOf` とは別に覚える**——自分が
+   * 座るデッキと CPU に持たせるデッキは違ってよい。まだ選んでいなければ `undefined`。
+   * そのデッキがまだあるかは見ない（`lastChosenDeckOf` と同じ）。
+   */
+  lastChosenCpuDeckOf(owner: ParticipantId): DeckId | undefined
+  /** CPU の席に選んだデッキを覚える。**前に覚えたものは置き換わる。** 持ち主を確かめるのは呼ぶ側。 */
+  rememberChosenCpuDeck(owner: ParticipantId, deck: DeckId): void
   close(): void
 }
 
@@ -289,6 +300,8 @@ export function openStore(path: string): Store {
   const removeDeck = db.prepare('delete from decks where id = ? and owner = ?')
   const lastDeckRow = db.prepare('select last_deck from identities where id = ?')
   const setLastDeck = db.prepare('update identities set last_deck = ? where id = ?')
+  const lastCpuDeckRow = db.prepare('select last_cpu_deck from identities where id = ?')
+  const setLastCpuDeck = db.prepare('update identities set last_cpu_deck = ? where id = ?')
 
   /**
    * いま開いている対戦の、合言葉から行番号への引き当て。
@@ -435,6 +448,19 @@ export function openStore(path: string): Store {
       if (row === undefined) return
 
       setLastDeck.run(row, identityOf(owner))
+    },
+    lastChosenCpuDeckOf: (owner) => {
+      const row = lastCpuDeckRow.get(identityOf(owner))
+      if (row === undefined) return undefined
+
+      const deck = maybeInt(row, 'last_cpu_deck')
+      return deck === undefined ? undefined : String(deck)
+    },
+    rememberChosenCpuDeck: (owner, deck) => {
+      const row = deckRowOf(deck)
+      if (row === undefined) return
+
+      setLastCpuDeck.run(row, identityOf(owner))
     },
     close: () => {
       db.close()

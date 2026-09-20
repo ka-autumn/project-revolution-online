@@ -260,6 +260,8 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       : withOwnedDecks(options.decks, options.supply.pool, {
           decksOf: (participant) => (isCpu(participant) ? [] : deckStore.decksOf(participant)),
           lastChosenOf: (participant) => (isCpu(participant) ? undefined : deckStore.lastChosenDeckOf(participant)),
+          lastChosenCpuOf: (participant) =>
+            isCpu(participant) ? undefined : deckStore.lastChosenCpuDeckOf(participant),
         })
 
   /** 既製デッキを、その人の新しいデッキとして写す（ADR-0022）。名前はコピー元のものが付く。 */
@@ -418,6 +420,8 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         // **座る時に使うものと同じところで決める**（`room.ts` の `refusalOfDeck`）。既定を
         // 2 か所で決めると、出ているものと座るものがずれる。
         chosen: decks.fallbackFor(participant),
+        // CPU の席の既定も、座る時に使うものと同じところで決める（`room.ts` の `open`、#195）。
+        cpuChosen: decks.cpuFallbackFor(participant),
         restrictions,
       } as const
       const shown = JSON.stringify(message)
@@ -642,6 +646,21 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       deckStore.rememberChosenDeck(participant, chosen)
     }
 
+    /**
+     * CPU の席に選んだデッキを覚える（#195）。**自分のデッキでなければ覚えない**（`rememberChoice`
+     * と同じ）。相手が人の部屋では `cpuDeck` は読まれないので、覚えない。
+     */
+    function rememberCpuChoice(message: FromClient): void {
+      if (deckStore === undefined) return
+      if (message.kind !== '部屋を作る' || message.against !== 'CPU') return
+
+      const chosen = message.cpuDeck ?? decks.cpuFallbackFor(participant)
+      if (chosen === undefined) return
+      if (!deckStore.decksOf(participant).some((deck) => deck.id === chosen)) return
+
+      deckStore.rememberChosenCpuDeck(participant, chosen)
+    }
+
     admit()
 
     socket.on('message', (data) => {
@@ -670,6 +689,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       }
 
       rememberChoice(message)
+      rememberCpuChoice(message)
 
       // 部屋を出入りすると、残った人から見た相手が変わる（#175）。出た先と入った先の両方に伝える。
       const before = roomOf(rooms, participant)?.code
