@@ -20,5 +20,6 @@ CI で install するときは `pnpm install --frozen-lockfile` を使う。`pnp
 - ドメイン用語は型名を英語、値を日本語にする（ADR-0003）。用語の正は `CONTEXT.md`
 - テストは `packages/*/src/**/*.test.ts` に置き、実装と並べる（`private/` 以下も同じ）
 - ルールの挙動を検証するテストには、根拠となる総合ルールの条番号を付ける（ADR-0006）。
-  総合ルールの本文は `docs/rules/`。引用は `docs/rules/index.json` の `citation` と同じ文字列で書く
+  総合ルールの本文は `docs/rules/`。引用は `docs/rules/index.json` の `citation` と同じ文字列で書く。
+  総合ルールが外へ投げた判定はフロアルール第2部（`docs/floor-rules/`）を引く（ADR-0023 / ADR-0024）
 - エンジンに実行時依存を足さない。`private/cards` にも依存させない（ADR-0001 / ADR-0002）
