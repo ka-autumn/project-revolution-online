@@ -815,7 +815,8 @@ function open(
   const cpu = against === 'CPU' ? cpuParticipantOf(code) : undefined
 
   // **CPU の席のデッキは、作る人の棚から引く**（#195）。既定も作る人ごとに決まる。
-  const cpuDeck = opening.cpuDeck ?? decks.cpuFallbackFor(participant)
+  // 人の部屋では使わないので、既定も引かない（置き場への問い合わせを増やさない）。
+  const cpuDeck = cpu === undefined ? undefined : (opening.cpuDeck ?? decks.cpuFallbackFor(participant))
   const refusal =
     refusalOfDeck(rules, participant, opening.deck, decks) ??
     (cpu === undefined ? undefined : refusalOfSeating(rules, participant, cpuDeck, decks, 'CPU の'))
@@ -840,8 +841,8 @@ function open(
 
   // **確かめたデッキと座るデッキは同じものである。** 既定を決めたあとの識別子をそのまま渡す
   // ——`start` に既定を決め直させると、CPU の席が人の席の既定で引かれてしまう。
-  const seating = { participant, deck: opening.deck }
-  const cpuSeating = { participant: opened.cpu, deck: cpuDeck, shelf: participant }
+  const seating: Seating = { participant, deck: opening.deck, seat: '人' }
+  const cpuSeating: Seating = { participant: opened.cpu, deck: cpuDeck, seat: 'CPU', shelf: participant }
   return after(closed, start(left, opened, seating, cpuSeating, setup, decks, names))
 }
 
@@ -931,7 +932,15 @@ function enter(
 
   return after(
     closed,
-    start(left, room, { participant: waiting, deck: room.deck }, { participant, deck: chosen }, setup, decks, names),
+    start(
+      left,
+      room,
+      { participant: waiting, deck: room.deck, seat: '人' },
+      { participant, deck: chosen, seat: '人' },
+      setup,
+      decks,
+      names,
+    ),
   )
 }
 
@@ -1123,16 +1132,18 @@ function start(
 interface Seating {
   readonly participant: ParticipantId
   readonly deck: DeckId | undefined
+  /** 席に座るのが人か CPU か。**断る理由に誰のデッキかを添えるのに使う**（`whoseOf`）。 */
+  readonly seat: '人' | 'CPU'
   /**
-   * デッキを引く棚の持ち主（#195）。**CPU の席だけが、部屋を作った人の棚から引く**——CPU は自分の
-   * デッキを持たない。省くと、座る人自身の棚である。
+   * デッキを引く棚の持ち主（#195）。**CPU の席は、部屋を作った人の棚から引く**——CPU は自分の
+   * デッキを持たない。省くと、座る人自身の棚である。**誰のデッキと書くかは決めない**（`seat`）。
    */
   readonly shelf?: ParticipantId
 }
 
 /** 断る理由に添える、誰のデッキか。**人の席には何も付けない**（既存の言い回しのまま）。 */
 function whoseOf(seating: Seating): '' | 'CPU の' {
-  return seating.shelf === undefined ? '' : 'CPU の'
+  return seating.seat === 'CPU' ? 'CPU の' : ''
 }
 
 /** 席と、そこにいる参加者の組。 */

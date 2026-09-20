@@ -526,7 +526,7 @@ export function lobbyElement(
   const list = element('div', 'lobby__rooms')
   for (const view of views) {
     const row = element('div', 'lobby__room')
-    row.append(element('span', 'lobby__room-name', view.name))
+    if (view.name !== undefined) row.append(element('span', 'lobby__room-name', view.name))
     // 誰がいるかを出す（ADR-0020）。名乗りが席に座れる合言葉だった頃は出せなかった（ADR-0009）。
     if (view.occupants !== undefined) row.append(element('span', 'lobby__room-occupants', view.occupants))
     // その部屋のルール（ADR-0021）。**入る前に分からなければならない**——選んだデッキが通るかは

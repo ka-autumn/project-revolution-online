@@ -477,6 +477,16 @@ body {
   gap: var(--gap);
 }
 
+/* CPU と打つ行（#195）。人と打つ行の下に並ぶので行間を空け、ボタンが選ぶ欄の高さに伸びないようにする。 */
+.lobby__make--cpu {
+  align-items: center;
+  margin-top: var(--gap);
+}
+
+.lobby__deck--cpu {
+  margin-bottom: 0;
+}
+
 .lobby__name {
   flex: 1 1 12rem;
   padding: 4px 8px;

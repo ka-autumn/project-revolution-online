@@ -361,6 +361,27 @@ export interface OwnedDeckSource {
  * 持てない立て方では既製デッキが既定なので、そちらでは今までどおり引ける。
  */
 export function withOwnedDecks(base: DeckSource, pool: CardPool, owned: OwnedDeckSource): DeckSource {
+  /**
+   * 既定のデッキを決める。**人の席も CPU の席も、決まり方はこれ 1 つである**（#195）。前に選んだものが
+   * 残っていればそれ、消えていれば決まらず（自分のデッキの先頭に黙って落とさない）、一度も選んで
+   * いなければ自分のデッキの先頭、持てない立て方では `baseDefault` である。
+   *
+   * **持っているデッキを引くのは 1 度でよい。** ロビーを送り直すたびに人数ぶん呼ばれる
+   * （`serve.ts` の `pushLobby`）。人の席と CPU の席で 1 人 2 度引くことになるが、どちらも同じ
+   * 置き場の同じ行を読むだけで、ずれない。
+   */
+  function defaultOf(
+    participant: ParticipantId,
+    lastChosen: DeckId | undefined,
+    baseDefault: DeckId | undefined,
+  ): DeckId | undefined {
+    const mine = owned.decksOf(participant)
+    if (lastChosen !== undefined) return mine.some((deck) => deck.id === lastChosen) ? lastChosen : undefined
+
+    const [first] = mine
+    return first?.id ?? baseDefault
+  }
+
   return {
     ...base,
     of: (participant, id) => {
@@ -370,27 +391,11 @@ export function withOwnedDecks(base: DeckSource, pool: CardPool, owned: OwnedDec
 
       return mine.length === 0 ? base.of(participant, id) : { kind: '無い' }
     },
-    fallbackFor: (participant) => {
-      // **持っているデッキを引くのは 1 度でよい。** ロビーを送り直すたびに人数ぶん呼ばれる
-      // （`serve.ts` の `pushLobby`）。
-      const mine = owned.decksOf(participant)
-      const chosen = owned.lastChosenOf(participant)
-      if (chosen !== undefined) return mine.some((deck) => deck.id === chosen) ? chosen : undefined
-
-      const [first] = mine
-      return first?.id ?? base.fallbackFor(participant)
-    },
-    // **CPU の席も、決まり方は人の席と同じである**（#195）。前に選んだものが消えていれば決まらず、
-    // 自分のデッキの先頭に黙って落とさない。CPU に持たせるものは作る人の棚から引く（`of`）ので、
-    // 既製デッキを直に送っても、自分のデッキを持てる人は引けない。
-    cpuFallbackFor: (owner) => {
-      const mine = owned.decksOf(owner)
-      const chosen = owned.lastChosenCpuOf(owner)
-      if (chosen !== undefined) return mine.some((deck) => deck.id === chosen) ? chosen : undefined
-
-      const [first] = mine
-      return first?.id ?? base.cpuFallbackFor(owner)
-    },
+    fallbackFor: (participant) =>
+      defaultOf(participant, owned.lastChosenOf(participant), base.fallbackFor(participant)),
+    // CPU に持たせるものは作る人の棚から引く（`of`）ので、既製デッキを直に送っても、自分のデッキを
+    // 持てる人は引けない。
+    cpuFallbackFor: (owner) => defaultOf(owner, owned.lastChosenCpuOf(owner), base.cpuFallbackFor(owner)),
   }
 }
 

@@ -225,8 +225,8 @@ export function applyMessage(session: Session, message: ToClient): Session {
           rooms: message.rooms,
           presets: message.presets,
           chosen: message.chosen,
-          // 古いサーバからは付いてこない。既定が決まっていないのと同じに扱う。
-          cpuChosen: (message.cpuChosen as typeof message.cpuChosen | undefined) ?? undefined,
+          // 古いサーバからは付いてこない。その時は `undefined`（既定が決まっていないのと同じ）になる。
+          cpuChosen: message.cpuChosen,
           // **届かなかったものを、在るものとして扱わない**（`view-model.ts` の `occupantsLine`）。
           // サーバが古ければ付いてこない。選べるリストが無いだけで、部屋は作れる。
           restrictions: (message.restrictions as typeof message.restrictions | undefined) ?? [],

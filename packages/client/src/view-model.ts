@@ -1273,7 +1273,11 @@ function resultLabel(result: DuelResult, viewer: Player): string {
 /** ロビーに並ぶ部屋 1 つの見え方（#175）。 */
 export interface RoomView {
   readonly code: RoomCode
-  readonly name: string
+  /**
+   * 部屋の名前。**CPU との対戦では出さない**（`undefined`、#195）。CPU 戦は名前を付けずに作るので、
+   * 届く名前は合言葉で、人に見せる意味が無い。誰の CPU 戦かは `status` が言う。
+   */
+  readonly name: string | undefined
   /** その部屋の様子を、そのまま出す 1 行。 */
   readonly status: string
   /** 入れるか。**入れない部屋は押せる形で出さない**（ADR-0010）。 */
@@ -1340,13 +1344,27 @@ export function opponentLine(opponent: Opponent): string {
   return opponent.kind === 'CPU' ? 'CPU と対戦中' : `${opponent.name} と対戦中`
 }
 
+/**
+ * CPU との対戦の 1 行（#195）。**誰の CPU 戦かが分かる**ように、打っている人の名前を添える。
+ * 名前が届かなければ（古いサーバ、`occupantsLine` と同じ理由）、名前を除いた形にする。
+ */
+function cpuRoomLine(room: WireRoom): string {
+  const owner = (room.occupants as WireRoom['occupants'] | undefined)?.[0]
+  const finished = room.status === '終わった'
+  if (owner === undefined) return finished ? 'CPU との対戦は終わりました' : 'CPU と対戦中'
+
+  return finished ? `${owner} の CPU との対戦は終わりました` : `${owner} が CPU と対戦中`
+}
+
 /** その部屋がどうなっているか、見る人の言い方で。 */
 function roomStatusLine(room: WireRoom): string {
+  if (room.cpu) return cpuRoomLine(room)
+
   switch (room.status) {
     case '相手を待っている':
       return '相手を待っています'
     case '対戦中':
-      return room.cpu ? 'CPU と対戦中' : '対戦中'
+      return '対戦中'
     case '終わった':
       return '終わりました'
   }
@@ -1366,11 +1384,13 @@ export function lobbyView(rooms: readonly WireRoom[]): readonly RoomView[] {
       .filter((room) => room.status === status)
       .map((room) => ({
         code: room.code,
-        name: room.name,
+        // **CPU の部屋は入れない**ので、入る前に知る必要のあるもの（誰がいるか・ルール）も出さない。
+        // 判断は画面側で行う（`WireRoom.cpu` は届いている）。
+        name: room.cpu ? undefined : room.name,
         status: roomStatusLine(room),
         joinable: room.status === '相手を待っている',
-        occupants: occupantsLine(room),
-        rules: rulesLine(room),
+        occupants: room.cpu ? undefined : occupantsLine(room),
+        rules: room.cpu ? undefined : rulesLine(room),
       })),
   )
 }
