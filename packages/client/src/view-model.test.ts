@@ -1727,9 +1727,24 @@ describe('ロビー', () => {
     ])
   })
 
-  it('CPU との対戦は、そうと分かる', () => {
-    expect(lobbyView([withCpu])[0]?.status).toBe('CPU と対戦中')
+  /** #195。CPU 戦は部屋の名前を付けないので、名前の列は出さず、誰が打っているかだけを出す。 */
+  it('CPU との対戦は、部屋の名前・在席者・ルールを出さず、誰の対戦かだけが分かる', () => {
+    expect(lobbyView([withCpu])[0]).toEqual({
+      code: 'し',
+      name: undefined,
+      status: 'ぬし が CPU と対戦中',
+      joinable: false,
+      occupants: undefined,
+      rules: undefined,
+    })
     expect(lobbyView([playing])[0]?.status).toBe('対戦中')
+  })
+
+  it('終わった CPU との対戦も、部屋の名前を出さず、誰の対戦かが分かる', () => {
+    const view = lobbyView([{ ...withCpu, status: '終わった' }])[0]
+
+    expect(view?.name).toBeUndefined()
+    expect(view?.status).toBe('ぬし の CPU との対戦は終わりました')
   })
 
   it('部屋が無ければ、並ぶものも無い', () => {
@@ -1742,11 +1757,6 @@ describe('ロビー', () => {
    */
   it('そこにいる人の名前が並ぶ', () => {
     expect(lobbyView([playing])[0]?.occupants).toBe('ぬし、きゃく')
-  })
-
-  /** 座っているのが人か CPU かは別に届く。**席が空いていないことは同じである。** */
-  it('CPU も 1 人として並ぶ', () => {
-    expect(lobbyView([withCpu])[0]?.occupants).toBe('ぬし、CPU')
   })
 
   /** ADR-0021。部屋がルールを持つので、入る前に分からなければならない。 */
@@ -1787,7 +1797,7 @@ describe('ロビー', () => {
 
     expect(views.map((view) => view.code)).toEqual(['ふ', 'し'])
     expect(views[0]?.occupants).toBeUndefined()
-    // CPU が座っていることは、そこにいる人が分からなくても分かる。
-    expect(views[1]?.occupants).toBe('CPU')
+    // CPU が座っていることは、そこにいる人が分からなくても分かる。「 が CPU と対戦中」にしない。
+    expect(views[1]?.status).toBe('CPU と対戦中')
   })
 })

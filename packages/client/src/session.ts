@@ -63,6 +63,11 @@ export type Stage =
        */
       readonly chosen: DeckId | undefined
       /**
+       * CPU の席に何も選ばずに座らせた時に使われるデッキ（ADR-0021、#195）。`chosen` と同じく、
+       * **選んだ状態で出す。** どれを既定にするかを決めるのはサーバである（ADR-0010）。
+       */
+      readonly cpuChosen: DeckId | undefined
+      /**
        * 部屋を作る時に選べる禁止／制限リスト（ADR-0021）。**届いたものをそのまま出す。** 空でよい。
        *
        * デッキと同じく、名前も識別子もサーバから届く値である。
@@ -220,6 +225,8 @@ export function applyMessage(session: Session, message: ToClient): Session {
           rooms: message.rooms,
           presets: message.presets,
           chosen: message.chosen,
+          // 古いサーバからは付いてこない。その時は `undefined`（既定が決まっていないのと同じ）になる。
+          cpuChosen: message.cpuChosen,
           // **届かなかったものを、在るものとして扱わない**（`view-model.ts` の `occupantsLine`）。
           // サーバが古ければ付いてこない。選べるリストが無いだけで、部屋は作れる。
           restrictions: (message.restrictions as typeof message.restrictions | undefined) ?? [],

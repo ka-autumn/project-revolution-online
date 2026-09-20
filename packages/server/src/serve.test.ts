@@ -237,6 +237,7 @@ describe('WebSocket で繋ぐ', () => {
       rooms: [],
       presets: deckChoices,
       chosen: '既製1',
+      cpuChosen: '既製1',
       restrictions,
     })
     await client.close()
@@ -305,7 +306,7 @@ describe('WebSocket で繋ぐ', () => {
 
     const making = new Client(server.port, 'い')
     await making.opened()
-    making.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined, format: undefined, restriction: undefined })
+    making.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
 
     const lobby = await watching.waitFor('ロビー')
     if (lobby.kind !== 'ロビー') throw new Error('ロビーのはずだった')
@@ -320,13 +321,13 @@ describe('WebSocket で繋ぐ', () => {
   it('部屋にいる人にはロビーが届かない', async () => {
     const client = new Client(server.port, 'あ')
     await client.opened()
-    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
+    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
     await client.waitFor('席についた')
     client.received.length = 0
 
     const other = new Client(server.port, 'い')
     await other.opened()
-    other.send({ kind: '部屋を作る', name: 'もうひとつ', against: '人間', deck: undefined, format: undefined, restriction: undefined })
+    other.send({ kind: '部屋を作る', name: 'もうひとつ', against: '人間', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
     await other.waitFor('相手を待っている')
 
     expect(client.received.some((message) => message.kind === 'ロビー')).toBe(false)
@@ -341,7 +342,7 @@ describe('WebSocket で繋ぐ', () => {
   it('部屋にいる人が繋ぎ直すと、何も送らなくてもその部屋の様子が届く', async () => {
     const client = new Client(server.port, 'あ')
     await client.opened()
-    client.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined, format: undefined, restriction: undefined })
+    client.send({ kind: '部屋を作る', name: 'てすとのへや', against: '人間', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
     const waiting = await client.waitFor('相手を待っている')
     if (waiting.kind !== '相手を待っている') throw new Error('相手を待っているのはずだった')
     await client.close()
@@ -445,7 +446,7 @@ describe('WebSocket で繋ぐ', () => {
     const client = new Client(server.port, 'あ')
     await client.opened()
 
-    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
+    client.send({ kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
 
     expect((await client.waitFor('席についた')).kind).toBe('席についた')
     expect((await client.waitFor('盤面')).kind).toBe('盤面')
@@ -678,7 +679,7 @@ describe('ログインの設定があるとき', () => {
     client.send({ kind: '名前を決める', name: 'かずお' })
     await client.waitFor('ロビー')
 
-    client.send({ kind: '部屋を作る', name: 'ろぐいんの部屋', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
+    client.send({ kind: '部屋を作る', name: 'ろぐいんの部屋', against: 'CPU', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
 
     const seated = await client.waitFor('席についた')
     expect(seated.kind === '席についた' && seated.opponent).toEqual({ kind: 'CPU' })
@@ -706,7 +707,7 @@ describe('ログインの設定があるとき', () => {
     await client.waitFor('名前を決めてほしい')
     client.received.length = 0
 
-    client.send({ kind: '部屋を作る', name: 'つくれないはず', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
+    client.send({ kind: '部屋を作る', name: 'つくれないはず', against: 'CPU', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
 
     // 断るのではなく尋ね直す。画面がそこで止まっているとは限らない（繋ぎ直した先など）。
     await client.waitFor('名前を決めてほしい')
@@ -748,7 +749,7 @@ describe('ログインの設定があるとき', () => {
     await client.waitFor('名前を決めてほしい')
     client.send({ kind: '名前を決める', name: 'まえのなまえ' })
     await client.waitFor('ロビー')
-    client.send({ kind: '部屋を作る', name: 'なまえのかわる部屋', against: '人間', deck: undefined, format: undefined, restriction: undefined })
+    client.send({ kind: '部屋を作る', name: 'なまえのかわる部屋', against: '人間', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
     await client.waitFor('相手を待っている')
 
     const watcher = new Client(server.port, 'なのっても無駄', signedInOther)
@@ -774,7 +775,7 @@ describe('ログインの設定があるとき', () => {
     client.send({ kind: '名前を決める', name: 'かずお' })
     await client.waitFor('ロビー')
 
-    client.send({ kind: '部屋を作る', name: 'なまえのでる部屋', against: '人間', deck: undefined, format: undefined, restriction: undefined })
+    client.send({ kind: '部屋を作る', name: 'なまえのでる部屋', against: '人間', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
     await client.waitFor('相手を待っている')
 
     // 部屋にいる人にはロビーが届かない（#175）ので、**別の身元**の目で見る。同じ身元で繋ぎ直すと
@@ -792,7 +793,7 @@ describe('ログインの設定があるとき', () => {
     await client.waitFor('名前を決めてほしい')
     client.send({ kind: '名前を決める', name: 'かずお' })
     await client.waitFor('ロビー')
-    client.send({ kind: '部屋を作る', name: 'ふたりの部屋', against: '人間', deck: undefined, format: undefined, restriction: undefined })
+    client.send({ kind: '部屋を作る', name: 'ふたりの部屋', against: '人間', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
     const waiting = await client.waitFor('相手を待っている')
     if (waiting.kind !== '相手を待っている') throw new Error('待っているはずだった')
 
@@ -1074,7 +1075,7 @@ describe('ログインの設定があるとき', () => {
 
     /** CPU と打つ部屋を作って、席に着くまで待つ。 */
     async function seatWith(client: Client, deck: DeckId | undefined): Promise<void> {
-      client.send({ kind: '部屋を作る', name: 'じぶんのへや', against: 'CPU', deck, format: undefined, restriction: undefined })
+      client.send({ kind: '部屋を作る', name: 'じぶんのへや', against: 'CPU', deck, cpuDeck: undefined, format: undefined, restriction: undefined })
       await client.waitFor('席についた')
     }
 
@@ -1135,7 +1136,7 @@ describe('ログインの設定があるとき', () => {
       await decksAfter(client, { kind: 'デッキを消す', deck: second })
       const lobby = await client.waitFor('ロビー')
       client.received.length = 0
-      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: undefined, format: undefined, restriction: undefined })
+      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
 
       expect(lobby.kind === 'ロビー' && lobby.chosen).toBeUndefined()
       expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'デッキが選ばれていません' })
@@ -1150,7 +1151,7 @@ describe('ログインの設定があるとき', () => {
       const { client } = await lobbyAsMe()
       client.received.length = 0
 
-      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: short, format: undefined, restriction: undefined })
+      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: short, cpuDeck: undefined, format: undefined, restriction: undefined })
 
       // 総合ルール 第3部 第1章 3-1（ADR-0006）
       expect(await client.waitFor('行えなかった')).toEqual({
@@ -1173,7 +1174,7 @@ describe('ログインの設定があるとき', () => {
       const { client } = await lobbyAsMe()
       client.received.length = 0
 
-      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: withdrawn, format: undefined, restriction: undefined })
+      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: withdrawn, cpuDeck: undefined, format: undefined, restriction: undefined })
 
       expect(await client.waitFor('行えなかった')).toEqual({
         kind: '行えなかった',
@@ -1191,7 +1192,7 @@ describe('ログインの設定があるとき', () => {
       const { client } = await lobbyAsMe()
       client.received.length = 0
 
-      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: theirs, format: undefined, restriction: undefined })
+      client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: theirs, cpuDeck: undefined, format: undefined, restriction: undefined })
 
       expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'デッキが見つかりません' })
       await client.close()
@@ -1221,7 +1222,7 @@ describe('ログインの設定があるとき', () => {
       const second = myDeck('ふたつめ')
       const { client } = await lobbyAsMe()
       client.received.length = 0
-      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: second, format: undefined, restriction: undefined })
+      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: second, cpuDeck: undefined, format: undefined, restriction: undefined })
       const waiting = await client.waitFor('相手を待っている')
       const code = waiting.kind === '相手を待っている' ? waiting.room : ''
       // 待っている間に、選んでいたデッキを消す。ここで既定は決まらなくなる（`fallbackFor`）。
@@ -1243,7 +1244,7 @@ describe('ログインの設定があるとき', () => {
       const second = myDeck('ふたつめ')
       const { client } = await lobbyAsMe()
       client.received.length = 0
-      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: first, format: undefined, restriction: undefined })
+      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: first, cpuDeck: undefined, format: undefined, restriction: undefined })
       const waiting = await client.waitFor('相手を待っている')
       const code = waiting.kind === '相手を待っている' ? waiting.room : ''
 
@@ -1262,7 +1263,7 @@ describe('ログインの設定があるとき', () => {
       myDeck('とおる')
       const { client } = await lobbyAsMe()
       client.received.length = 0
-      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: undefined, format: undefined, restriction: undefined })
+      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
       const waiting = await client.waitFor('相手を待っている')
       const code = waiting.kind === '相手を待っている' ? waiting.room : ''
       // 待っている間に、この部屋では通らないデッキを既定にする。**部屋は選ばれたものを覚えていない**
@@ -1316,7 +1317,7 @@ describe('ログインの設定があるとき', () => {
     it('ロビーに並ぶ部屋に、相手のデッキは出ない', async () => {
       const mine = myDeck('じぶんの')
       const { client } = await lobbyAsMe()
-      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: mine, format: undefined, restriction: undefined })
+      client.send({ kind: '部屋を作る', name: 'まちのへや', against: '人間', deck: mine, cpuDeck: undefined, format: undefined, restriction: undefined })
       await client.waitFor('相手を待っている')
 
       const watcher = new Client(server.port, 'なのっても無駄', signedInOther)
@@ -1326,6 +1327,181 @@ describe('ログインの設定があるとき', () => {
       expect(JSON.stringify(lobby.kind === 'ロビー' && lobby.rooms)).not.toContain('じぶんの')
       await watcher.close()
       await client.close()
+    })
+
+    /**
+     * ADR-0021、#195。CPU の席のデッキは、部屋を作る人が自分のデッキから決める。
+     *
+     * **確かめるのは、人の席と同じ場所（部屋のルール）で、同じ理由付きの断り方をすること。** 黙って
+     * 別のデッキに差し替えない。
+     */
+    describe('CPU の席のデッキ', () => {
+      type Creating = { readonly deck?: DeckId; readonly cpuDeck?: DeckId }
+
+      /** CPU と打つ部屋を作る。CPU の席のデッキを指定しなければ `cpuDeck` を省く。 */
+      function createAgainstCpu(client: Client, chosen: Creating = {}): void {
+        client.received.length = 0
+        client.send({
+          kind: '部屋を作る',
+          name: '',
+          against: 'CPU',
+          deck: chosen.deck,
+          cpuDeck: chosen.cpuDeck,
+          format: undefined,
+          restriction: undefined,
+        })
+      }
+
+      const cardsOf = (id: DeckId): readonly string[] | undefined =>
+        store.decksOf(me).find((deck) => deck.id === id)?.cards
+
+      it('選んだ自分のデッキで CPU が座る。自分の席のデッキとは別でよい', async () => {
+        const mine = myDeck('じぶんの', FULL)
+        const theirs = myDeck('あいての', FULL.slice().reverse().slice(0, 61))
+        const { client } = await lobbyAsMe()
+
+        createAgainstCpu(client, { deck: mine, cpuDeck: theirs })
+        await client.waitFor('席についた')
+
+        const [duel] = store.openDuels()
+        expect(duel?.decks[0]).toEqual(cardsOf(mine))
+        expect(duel?.decks[1]).toEqual(cardsOf(theirs))
+        await client.close()
+      })
+
+      it('自分のデッキ同士でも回せる', async () => {
+        const mine = myDeck('じぶんの', FULL)
+        const { client } = await lobbyAsMe()
+
+        createAgainstCpu(client, { deck: mine, cpuDeck: mine })
+        await client.waitFor('席についた')
+
+        const [duel] = store.openDuels()
+        expect(duel?.decks[1]).toEqual(cardsOf(mine))
+        await client.close()
+      })
+
+      it('選ばなければ、自分のデッキの先頭で CPU が座る', async () => {
+        const first = myDeck('ひとつめ', FULL)
+        const second = myDeck('ふたつめ', FULL.slice().reverse().slice(0, 61))
+        const { client, lobby } = await lobbyAsMe()
+
+        expect(lobby.kind === 'ロビー' && lobby.cpuChosen).toBe(first)
+        createAgainstCpu(client, { deck: second })
+        await client.waitFor('席についた')
+
+        const [duel] = store.openDuels()
+        expect(duel?.decks[1]).toEqual(cardsOf(first))
+        await client.close()
+      })
+
+      /** ADR-0021。デッキは持ち主のものである。CPU の席も、識別子を送っただけでは持ち込めない。 */
+      it('他人のデッキの識別子を指定しても CPU の席に座らせられない', async () => {
+        const mine = myDeck('じぶんの')
+        const other = store.identify('google', '10002')
+        const theirs = store.saveDeck(other, undefined, { name: 'ひとの', description: '', cards: sortCards(FULL) })
+        if (theirs === undefined) throw new Error('デッキを残せるはずだった')
+        const { client } = await lobbyAsMe()
+
+        createAgainstCpu(client, { deck: mine, cpuDeck: theirs })
+
+        expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'CPU のデッキが見つかりません' })
+        expect(store.openDuels()).toEqual([])
+        await client.close()
+      })
+
+      /** ADR-0021。デッキを持てる人は、既製デッキの識別子を直に送っても座れない。CPU の席も同じ。 */
+      it('既製デッキの識別子を直に送っても CPU の席に座らせられない', async () => {
+        const mine = myDeck('じぶんの')
+        const { client } = await lobbyAsMe()
+
+        createAgainstCpu(client, { deck: mine, cpuDeck: deckChoices[0]?.id })
+
+        expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'CPU のデッキが見つかりません' })
+        expect(store.openDuels()).toEqual([])
+        await client.close()
+      })
+
+      it('選んだ CPU のデッキが部屋のルールを満たさなければ、理由付きで断られる。別のデッキに変わらない', async () => {
+        const mine = myDeck('じぶんの', FULL)
+        const short = myDeck('くみかけ', FULL.slice(0, 2))
+        const { client } = await lobbyAsMe()
+
+        createAgainstCpu(client, { deck: mine, cpuDeck: short })
+
+        // 総合ルール 第3部 第1章 3-1（ADR-0006）
+        expect(await client.waitFor('行えなかった')).toEqual({
+          kind: '行えなかった',
+          reason: 'CPU のデッキがこの部屋のルールを満たしていません: 60 枚に 58 枚足りません',
+        })
+        expect(store.openDuels()).toEqual([])
+        await client.close()
+      })
+
+      it('選んだ CPU のデッキを、自分の席のデッキとは別に覚える', async () => {
+        const mine = myDeck('じぶんの', FULL)
+        const theirs = myDeck('あいての', FULL.slice().reverse().slice(0, 61))
+        const { client } = await lobbyAsMe()
+
+        createAgainstCpu(client, { deck: mine, cpuDeck: theirs })
+        await client.waitFor('席についた')
+
+        expect(store.lastChosenCpuDeckOf(me)).toBe(theirs)
+        expect(store.lastChosenDeckOf(me)).toBe(mine)
+        client.send({ kind: 'ロビーに戻る' })
+        await client.close()
+
+        // **繋ぎ直して確かめる。** 覚えているのが置き場なら、接続をまたいでも既定は変わらない。
+        const next = await lobbyAsMe()
+        expect(next.lobby.kind === 'ロビー' && next.lobby.cpuChosen).toBe(theirs)
+        expect(next.lobby.kind === 'ロビー' && next.lobby.chosen).toBe(mine)
+        await next.client.close()
+      })
+
+      /**
+       * ADR-0021。**残っているデッキから自動で選び直さない**——選んだ覚えのないデッキを相手に
+       * 持たせることになる。人の席と同じ扱いである。
+       */
+      it('覚えていた CPU のデッキが消えていれば、既定は決まらず、選ばずには作れない', async () => {
+        const mine = myDeck('じぶんの', FULL)
+        const theirs = myDeck('あいての', FULL.slice().reverse().slice(0, 61))
+        store.rememberChosenCpuDeck(me, theirs)
+        store.deleteDeck(me, theirs)
+        const { client, lobby } = await lobbyAsMe()
+
+        expect(lobby.kind === 'ロビー' && lobby.cpuChosen).toBeUndefined()
+        createAgainstCpu(client, { deck: mine })
+
+        expect(await client.waitFor('行えなかった')).toEqual({
+          kind: '行えなかった',
+          reason: 'CPU のデッキが選ばれていません',
+        })
+        expect(store.openDuels()).toEqual([])
+        await client.close()
+      })
+
+      it('相手が人の部屋では、CPU のデッキは読まれず、覚えもしない', async () => {
+        const mine = myDeck('じぶんの', FULL)
+        const other = store.identify('google', '10002')
+        const theirs = store.saveDeck(other, undefined, { name: 'ひとの', description: '', cards: sortCards(FULL) })
+        if (theirs === undefined) throw new Error('デッキを残せるはずだった')
+        const { client } = await lobbyAsMe()
+        client.received.length = 0
+
+        client.send({
+          kind: '部屋を作る',
+          name: 'へや',
+          against: '人間',
+          deck: mine,
+          cpuDeck: theirs,
+          format: undefined,
+          restriction: undefined,
+        })
+
+        expect(await client.waitFor('相手を待っている')).toMatchObject({ kind: '相手を待っている' })
+        expect(store.lastChosenCpuDeckOf(me)).toBeUndefined()
+        await client.close()
+      })
     })
   })
 

@@ -332,6 +332,14 @@ export type FromClient =
        * （`ToClient` の `ロビー` の `chosen`）になる。
        */
       readonly deck: DeckId | undefined
+      /**
+       * CPU の席に座らせるデッキ（ADR-0021、#195）。**`against` が `CPU` の時だけ読まれる。**
+       * 選ばなければ、ロビーで既定になっていたデッキ（`ToClient` の `ロビー` の `cpuChosen`）になる。
+       *
+       * **引くのは作る人の自分のデッキである。** 他人のデッキの識別子を送っても引けない。
+       * 自分のデッキを持てない立て方では、人の席と同じく既製デッキから引く。
+       */
+      readonly cpuDeck: DeckId | undefined
       /** どの形式で打つか（ADR-0021）。選ばなければ構築戦になる。 */
       readonly format: DuelFormat | undefined
       /**
@@ -439,6 +447,14 @@ export type ToClient =
        * ここに並べ直さない**（ロビーは部屋にいない人みなに送られる形をしている）。
        */
       readonly chosen: DeckId | undefined
+      /**
+       * CPU の席に何も選ばずに座らせた時に使われるデッキ（ADR-0021、#195）。**`chosen` とは別に
+       * 覚える**——自分が座るデッキと、CPU に持たせるデッキは違ってよい。
+       *
+       * 決まり方は `chosen` と同じで、前に選んだものが残っていればそれ、無ければ自分のデッキの先頭
+       * （持てない立て方では既製デッキの先頭）。**消えていれば決まらない**（`undefined`）。
+       */
+      readonly cpuChosen: DeckId | undefined
       /**
        * 部屋を作る時に選べる禁止／制限リスト（ADR-0021）。**渡す側が決めた順のまま並ぶ。** 空でよい。
        *

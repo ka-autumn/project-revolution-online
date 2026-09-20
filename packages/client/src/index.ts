@@ -225,10 +225,13 @@ interface Lobby {
    * 置いたままにすると、ほかの人が部屋を作るたびに選び直しになる。
    */
   readonly deck: DeckId | undefined
+  /** CPU の席に座らせるものとして選んでいるデッキ（#195）。`deck` と同じ理由でここに持つ。 */
+  readonly cpuDeck: DeckId | undefined
   /** 作る部屋のルールとして選んでいるもの（ADR-0021）。デッキと同じ理由でここに持つ。 */
   readonly rules: ChosenRules
   readonly onName: (name: string) => void
   readonly onDeck: (deck: DeckId) => void
+  readonly onCpuDeck: (deck: DeckId) => void
   readonly onFormat: (format: DuelFormat) => void
   readonly onRestriction: (restriction: RestrictionChoice) => void
   readonly onCreate: (name: string, against: OpponentKind) => void
@@ -456,6 +459,8 @@ function draw(
         // サーバである**（ADR-0010）——前に選んだものが残っているかを見るのもそちらで、ここは
         // もう無いデッキを選んだ状態にしないだけである。
         seatedChoice(seatable, lobby.deck, stage.chosen),
+        // CPU の席に座らせるデッキも、選べるのは同じ棚である（#195）。
+        seatedChoice(seatable, lobby.cpuDeck, stage.cpuChosen),
         stage.restrictions,
         lobby.rules,
         {
@@ -463,6 +468,7 @@ function draw(
           onJoin: lobby.onJoin,
           onName: lobby.onName,
           onDeck: lobby.onDeck,
+          onCpuDeck: lobby.onCpuDeck,
           onFormat: lobby.onFormat,
           onRestriction: lobby.onRestriction,
           ...(building.onBuild === undefined ? {} : { onBuild: building.onBuild }),
@@ -699,6 +705,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    * 断られる。画面はそれを先回りして止めない——**何が起きるかを決めるのはサーバである。**
    */
   let chosenDeck: DeckId | undefined
+  /** ロビーで選んでいる、CPU の席に座らせるデッキ（#195）。`chosenDeck` と同じ扱い。 */
+  let chosenCpuDeck: DeckId | undefined
   /**
    * ロビーで選んでいる、作る部屋のルール（ADR-0021）。まだ選んでいなければ `undefined`。
    *
@@ -949,6 +957,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   const lobby = (): Lobby => ({
     name: roomName,
     deck: chosenDeck,
+    cpuDeck: chosenCpuDeck,
     rules: { format: chosenFormat, restriction: chosenRestriction },
     onName: (name) => {
       // 描き直さない。入力欄の値はブラウザが持っていて、覚えるのは描き直しに備えるためである。
@@ -958,6 +967,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // 描き直さない。選んだものは `select` が持っている（`onName` と同じ）。
       // 空の選択肢（`render.ts` の `deckPicker`）が選ばれたら、選んでいないことにする。
       chosenDeck = deck === '' ? undefined : deck
+    },
+    onCpuDeck: (deck) => {
+      chosenCpuDeck = deck === '' ? undefined : deck
     },
     onFormat: (format) => {
       // 描き直さない。選んだものは `select` が持っている（`onDeck` と同じ）。
@@ -974,6 +986,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         name,
         against,
         deck: chosenDeck,
+        cpuDeck: chosenCpuDeck,
         format: chosenFormat,
         restriction: chosenRestriction,
       })

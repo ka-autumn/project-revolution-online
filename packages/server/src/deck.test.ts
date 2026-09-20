@@ -369,6 +369,7 @@ describe('自分のデッキを足した引き方', () => {
     return withOwnedDecks(deckSourceFrom(supply), POOL, {
       decksOf: (participant) => decks[participant] ?? [],
       lastChosenOf: (participant) => lastChosen[participant],
+      lastChosenCpuOf: () => undefined,
     })
   }
 
@@ -418,6 +419,40 @@ describe('自分のデッキを足した引き方', () => {
     const source = sourceOf({ あ: [ownedDeck('1'), ownedDeck('2')] }, { あ: '消えたデッキ' })
 
     expect(source.fallbackFor('あ')).toBeUndefined()
+  })
+
+  describe('CPU の席の既定（#195）', () => {
+    function cpuSourceOf(
+      decks: Readonly<Record<string, readonly OwnedDeck[]>>,
+      lastChosenCpu: Readonly<Record<string, string>> = {},
+      lastChosen: Readonly<Record<string, string>> = {},
+    ): DeckSource {
+      return withOwnedDecks(deckSourceFrom(supply), POOL, {
+        decksOf: (participant) => decks[participant] ?? [],
+        lastChosenOf: (participant) => lastChosen[participant],
+        lastChosenCpuOf: (participant) => lastChosenCpu[participant],
+      })
+    }
+
+    it('前に CPU に選んだデッキが残っていれば、それが既定になる。自分の席の既定とは別に決まる', () => {
+      const source = cpuSourceOf({ あ: [ownedDeck('1'), ownedDeck('2')] }, { あ: '2' }, { あ: '1' })
+
+      expect(source.cpuFallbackFor('あ')).toBe('2')
+      expect(source.fallbackFor('あ')).toBe('1')
+    })
+
+    it('まだ選んでいなければ、自分のデッキの先頭が既定になる', () => {
+      expect(cpuSourceOf({ あ: [ownedDeck('1'), ownedDeck('2')] }).cpuFallbackFor('あ')).toBe('1')
+    })
+
+    /** ADR-0021。残っているデッキから自動で選び直さない。 */
+    it('前に選んだデッキが消えていれば、既定は決まらない', () => {
+      expect(cpuSourceOf({ あ: [ownedDeck('1')] }, { あ: '消えた' }).cpuFallbackFor('あ')).toBeUndefined()
+    })
+
+    it('自分のデッキを持たない立て方では、既製デッキの先頭になる', () => {
+      expect(cpuSourceOf({}).cpuFallbackFor('あ')).toBe('既製1')
+    })
   })
 
   /** ログインを持たない立て方では、今までどおり既製デッキで座る（ADR-0021）。 */

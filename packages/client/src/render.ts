@@ -329,6 +329,8 @@ export interface LobbyHandlers {
   readonly onName: (name: string) => void
   /** 持ち込むデッキを選び直した（ADR-0021）。名前と同じく、覚えておくのは呼ぶ側である。 */
   readonly onDeck: (deck: DeckId) => void
+  /** CPU の席に座らせるデッキを選び直した（#195）。`onDeck` と同じく、覚えておくのは呼ぶ側である。 */
+  readonly onCpuDeck: (deck: DeckId) => void
   /** 作る部屋の形式を選び直した（ADR-0021）。覚えておくのは呼ぶ側である。 */
   readonly onFormat: (format: DuelFormat) => void
   /** 作る部屋に当てる禁止／制限リストを選び直した（ADR-0021）。覚えておくのは呼ぶ側である。 */
@@ -417,9 +419,15 @@ function rulesPicker(
 }
 
 /** 持ち込むデッキを選ぶところ（ADR-0021）。**選べるものは届いたものだけである。** */
-function deckPicker(decks: readonly WireDeck[], chosen: DeckId | undefined, onDeck: (deck: DeckId) => void): HTMLElement {
-  const node = element('label', 'lobby__deck')
-  node.append(element('span', 'lobby__deck-label', '持ち込むデッキ'))
+function deckPicker(
+  decks: readonly WireDeck[],
+  chosen: DeckId | undefined,
+  onDeck: (deck: DeckId) => void,
+  label = '持ち込むデッキ',
+  className = 'lobby__deck',
+): HTMLElement {
+  const node = element('label', className)
+  node.append(element('span', 'lobby__deck-label', label))
 
   const select = document.createElement('select')
   select.className = 'lobby__deck-select'
@@ -464,6 +472,7 @@ export function lobbyElement(
   name: string,
   decks: readonly WireDeck[],
   chosenDeck: DeckId | undefined,
+  chosenCpuDeck: DeckId | undefined,
   restrictions: readonly WireRestrictionList[],
   chosenRules: ChosenRules,
   handlers: LobbyHandlers,
@@ -494,14 +503,20 @@ export function lobbyElement(
   input.value = name
   input.addEventListener('input', () => handlers.onName(input.value))
   making.append(input)
-  for (const against of ['人間', 'CPU'] as const) {
-    // 押した時の入力欄の中身を読む。**渡された `name` ではない。** あれは描き直した時点の値で、
-    // その後に打ち込まれた分が入っていない（打っている間は描き直さない）。
-    making.append(
-      button(against === 'CPU' ? 'CPU と対戦する' : '人と対戦する', () => handlers.onCreate(input.value, against)),
-    )
-  }
+  // 押した時の入力欄の中身を読む。**渡された `name` ではない。** あれは描き直した時点の値で、
+  // その後に打ち込まれた分が入っていない（打っている間は描き直さない）。
+  making.append(button('人と対戦する', () => handlers.onCreate(input.value, '人間')))
   node.append(making)
+
+  // **CPU 戦は、部屋の名前を付けずに作る**（#195）。相手は 1 人（CPU）で、ロビーに並べて呼び込む
+  // 部屋ではない。代わりに、CPU の席のデッキを選ぶ。選べるのは自分のデッキだけで、持てない立て方では
+  // 既製デッキが並ぶ（`deck.ts` の `withOwnedDecks`）。
+  const againstCpu = element('div', 'lobby__make lobby__make--cpu')
+  if (decks.length > 0) {
+    againstCpu.append(deckPicker(decks, chosenCpuDeck, handlers.onCpuDeck, 'CPU のデッキ', 'lobby__deck lobby__deck--cpu'))
+  }
+  againstCpu.append(button('CPU と対戦する', () => handlers.onCreate('', 'CPU')))
+  node.append(againstCpu)
 
   node.append(element('h2', 'lobby__title', 'いま開いている部屋'))
   if (views.length === 0) {
@@ -511,7 +526,7 @@ export function lobbyElement(
   const list = element('div', 'lobby__rooms')
   for (const view of views) {
     const row = element('div', 'lobby__room')
-    row.append(element('span', 'lobby__room-name', view.name))
+    if (view.name !== undefined) row.append(element('span', 'lobby__room-name', view.name))
     // 誰がいるかを出す（ADR-0020）。名乗りが席に座れる合言葉だった頃は出せなかった（ADR-0009）。
     if (view.occupants !== undefined) row.append(element('span', 'lobby__room-occupants', view.occupants))
     // その部屋のルール（ADR-0021）。**入る前に分からなければならない**——選んだデッキが通るかは

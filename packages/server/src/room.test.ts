@@ -147,9 +147,9 @@ type Making = Extract<FromClient, { readonly kind: '部屋を作る' }>
 function making(
   name: string,
   against: OpponentKind,
-  chosen: Partial<Pick<Making, 'deck' | 'format' | 'restriction'>> = {},
+  chosen: Partial<Pick<Making, 'deck' | 'cpuDeck' | 'format' | 'restriction'>> = {},
 ): Making {
-  return { kind: '部屋を作る', name, against, deck: undefined, format: undefined, restriction: undefined, ...chosen }
+  return { kind: '部屋を作る', name, against, deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined, ...chosen }
 }
 
 /** 渡されたリストが 1 つも無い部屋のルール。`DECKS` で作った部屋はどれもこれになる。 */
@@ -1097,6 +1097,67 @@ describe('CPU と対戦する', () => {
     const left = send(opened.rooms, 'あ', { kind: 'ロビーに戻る' })
 
     expect([...left.rooms.keys()]).toEqual([])
+  })
+})
+
+/**
+ * ADR-0021、#195。CPU の席のデッキは、部屋を作る人が決める。
+ *
+ * ここで使う `DECKS` は自分のデッキを持たない立て方（既製デッキから引く）である。自分のデッキを
+ * 持てる立て方は、置き場を通す `serve.test.ts` で確かめている。
+ */
+describe('CPU の席のデッキ', () => {
+  function cpuBrought(outcome: RoomOutcome): readonly string[] | undefined {
+    const record = outcome.records.find((each) => each.kind === '始まった')
+    if (record?.kind !== '始まった') return undefined
+
+    return record.decks[1]
+  }
+
+  it('選ばなければ、既定（既製デッキの先頭）で CPU が座る', () => {
+    const outcome = send(emptyRooms(), 'あ', making('', 'CPU'))
+
+    expect(cpuBrought(outcome)).toEqual(deckKeys(CARDS))
+  })
+
+  it('選んだデッキで CPU が座る。人の席のデッキには影響しない', () => {
+    const outcome = send(emptyRooms(), 'あ', making('', 'CPU', { deck: '既製1', cpuDeck: '既製2' }))
+
+    expect(cpuBrought(outcome)).toEqual([...deckKeys(CARDS)].reverse())
+    const record = outcome.records.find((each) => each.kind === '始まった')
+    expect(record?.kind === '始まった' && record.decks[0]).toEqual(deckKeys(CARDS))
+  })
+
+  it('引けないデッキを選ぶと、CPU のデッキだと分かる理由で断られ、部屋は作られない', () => {
+    const outcome = send(emptyRooms(), 'あ', making('', 'CPU', { cpuDeck: 'ない' }))
+
+    expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: 'CPU のデッキが見つかりません' }])
+    expect([...outcome.rooms.keys()]).toEqual([])
+  })
+
+  it('部屋のルールを満たさない CPU のデッキは、人の席と同じ理由付きで断られる', () => {
+    const short = deckSourceFrom({
+      pool: CARDS,
+      presets: [
+        { id: '既製1', name: 'ひとつめ', cards: deckKeys(CARDS) },
+        { id: '短い', name: 'みじかい', cards: deckKeys(CARDS).slice(0, 2) },
+      ],
+      restrictions: [],
+    })
+
+    const outcome = receive(emptyRooms(), 'あ', making('', 'CPU', { cpuDeck: '短い' }), SETUP, short, ALL_LINKED)
+
+    // 総合ルール 第3部 第1章 3-1（ADR-0006）
+    expect(to(outcome.deliveries, 'あ')).toEqual([
+      { kind: '行えなかった', reason: 'CPU のデッキがこの部屋のルールを満たしていません: 60 枚に 58 枚足りません' },
+    ])
+    expect([...outcome.rooms.keys()]).toEqual([])
+  })
+
+  it('相手が人なら、CPU のデッキは読まれない', () => {
+    const outcome = send(emptyRooms(), 'あ', making('', '人間', { cpuDeck: 'ない' }))
+
+    expect(to(outcome.deliveries, 'あ')).toMatchObject([{ kind: '相手を待っている' }])
   })
 })
 
