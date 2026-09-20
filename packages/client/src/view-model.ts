@@ -1285,8 +1285,7 @@ export interface RoomView {
   /**
    * そこに誰がいるか、そのまま出す 1 行（ADR-0020）。誰もいなければ `undefined`。
    *
-   * **CPU も 1 人として並べる。** 部屋から見れば席は 2 つで（ADR-0004）、片方に CPU が座って
-   * いることは、そこが空いていないことと同じである。
+   * **CPU の部屋では出さない**（#195）。誰の CPU 戦かは `status` が言う。
    */
   readonly occupants: string | undefined
   /**
@@ -1315,9 +1314,8 @@ function rulesLine(room: WireRoom): string | undefined {
 /**
  * そこに誰がいるか、見る人の言い方で（ADR-0020）。
  *
- * **CPU を人の名前と混ぜて並べる。** 座っているのが人か CPU かは `cpu` が持っており、名前を
- * 持たないのはそちらだけである。誰もいない部屋は残らない（`room.ts`）ので、`undefined` に
- * なるのは CPU も人もいない形が届いた時だけである。
+ * **人の部屋だけが呼ぶ。** CPU の部屋は名前を出さず（`lobbyView`）、誰もいない部屋は残らない
+ * （`room.ts`）ので、`undefined` になるのは人がいない形が届いた時だけである。
  */
 function occupantsLine(room: WireRoom): string | undefined {
   // **届かなかったものを、在るものとして扱わない。** 画面とサーバは別々に配られ（ADR-0013、
@@ -1326,9 +1324,8 @@ function occupantsLine(room: WireRoom): string | undefined {
   // `JSON.parse` が境目である）。ここで読めないと、ロビーが 1 つでも並んだ時点で画面が真っ白に
   // なる——`draw` は組み立てる前に中身を捨てるためである。
   const occupants = room.occupants ?? []
-  const seated = room.cpu ? [...occupants, 'CPU'] : occupants
 
-  return seated.length === 0 ? undefined : seated.join('、')
+  return occupants.length === 0 ? undefined : occupants.join('、')
 }
 
 /**
@@ -1350,10 +1347,15 @@ export function opponentLine(opponent: Opponent): string {
  */
 function cpuRoomLine(room: WireRoom): string {
   const owner = (room.occupants as WireRoom['occupants'] | undefined)?.[0]
-  const finished = room.status === '終わった'
-  if (owner === undefined) return finished ? 'CPU との対戦は終わりました' : 'CPU と対戦中'
-
-  return finished ? `${owner} の CPU との対戦は終わりました` : `${owner} が CPU と対戦中`
+  // `相手を待っている` の CPU の部屋は無い（作る時にそのまま始まる、`room.ts` の `open`）。
+  // 数え上げて、増えた時に型が知らせるようにする。
+  switch (room.status) {
+    case '相手を待っている':
+    case '対戦中':
+      return owner === undefined ? 'CPU と対戦中' : `${owner} が CPU と対戦中`
+    case '終わった':
+      return owner === undefined ? 'CPU との対戦は終わりました' : `${owner} の CPU との対戦は終わりました`
+  }
 }
 
 /** その部屋がどうなっているか、見る人の言い方で。 */
