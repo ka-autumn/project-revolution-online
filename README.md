@@ -3,7 +3,9 @@
 トレーディングカードゲーム「プロジェクトレヴォリューション」を、ルールを完全に自動適用する形で
 オンライン対戦できるようにするプロジェクト。
 
-ルールの拠り所は総合ルール Version 15.00 で、全文が [`docs/rules/`](docs/rules/) にある。
+ルールの拠り所は総合ルール Version 15.00 で、全文が [`docs/rules/`](docs/rules/) にある。総合ルールが
+「詳細はフロアルールをご参照ください」と外へ投げたところは、フロアルール（Version 1.12）の第2部で、
+こちらは [`docs/floor-rules/`](docs/floor-rules/) にある。
 用語の正は [`CONTEXT.md`](CONTEXT.md)、設計上の決定は [`docs/adr/`](docs/adr/)。
 
 ## 構成
