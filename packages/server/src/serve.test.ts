@@ -6,6 +6,7 @@ import { CPU_PREFIX } from './cpu.js'
 import { deckChoicesOf, deckSourceFrom, restrictionChoicesOf } from './deck.js'
 import type { CardSupply } from './deck.js'
 import { OWNED_DECK_LIMIT, sortCards } from './owned-deck.js'
+import { SHARE_LIMIT } from './recipe.js'
 import type { RoomSetup } from './room.js'
 import { serve } from './serve.js'
 import type { RunningServer, ServeOptions } from './serve.js'
@@ -1831,6 +1832,51 @@ describe('ログインの設定があるとき', () => {
       })
 
       expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'そのデッキはありません' })
+      await client.close()
+    })
+
+    /**
+     * `SHARE_LIMIT` の防御が働くことを確かめる。
+     *
+     * **同じレシピを繰り返し共有しても件数は増えない**（`store.ts` の `addShare` は、同じ人・
+     * 同じレシピなら書き換えになる）。上限に達した状態を作るには、`SHARE_LIMIT` 個の異なる
+     * レシピをそれぞれ 1 件ずつ共有させる必要がある（`serve.ts` の判定は「すでに上限に達して
+     * いるか」を見ており、達する 1 件手前までは通す）。ソケット越しに 1 件ずつ送ると時間が
+     * かかるので、置き場（`store.ensureRecipe` / `store.addShare`）を直に使って積み、上限に
+     * 達したところでソケット経由の共有を試みて断られることを確かめる。
+     */
+    it(`共有は ${SHARE_LIMIT} 個まで`, async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'あふれさせるデッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+
+      for (let count = 0; count < SHARE_LIMIT; count += 1) {
+        const key = `つみあげたかぎ${count}`
+        store.ensureRecipe(key, ['TEST-0'])
+        store.addShare(key, me, {
+          name: `つみあげた共有${count}`,
+          description: '',
+          format: '構築戦',
+          restriction: undefined,
+          visibility: 'リンクを知っている人だけ',
+        })
+      }
+
+      client.send({
+        kind: 'デッキを共有する',
+        deck,
+        name: 'あふれる共有',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      expect(await client.waitFor('行えなかった')).toEqual({
+        kind: '行えなかった',
+        reason: `共有は ${SHARE_LIMIT} 個までです`,
+      })
+      expect(store.sharesOf(me)).toHaveLength(SHARE_LIMIT)
       await client.close()
     })
 
