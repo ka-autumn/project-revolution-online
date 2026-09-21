@@ -2,13 +2,21 @@ import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import { NOT_SIGNED_IN } from '@revolution/engine'
-import type { DeckId, FromClient, RecipeKey, ToClient, WireDeck } from '@revolution/engine'
+import type { DeckId, FromClient, RecipeKey, RestrictionChoice, ToClient, WireDeck } from '@revolution/engine'
 import { isCpu } from './cpu.js'
 import { poolFacesOf, restrictionChoicesOf, withOwnedDecks } from './deck.js'
 import type { CardKey, CardSupply, PresetDeck } from './deck.js'
 import { readName } from './name.js'
 import { OWNED_DECK_LIMIT, readCards, readDeck, sortCards, violationsOf } from './owned-deck.js'
-import { recipeKeyOf, readShareRequest, wireRecipeSummaryOf, wireShareOf } from './recipe.js'
+import {
+  SHARE_LIMIT,
+  isRecipeListOrder,
+  isShareVisibility,
+  recipeKeyOf,
+  readShareRequest,
+  wireRecipeSummaryOf,
+  wireShareOf,
+} from './recipe.js'
 import { describeViolation, emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf, rulesFor, violationsUnder } from './room.js'
 import type { DeckSource, Names, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
 import type { SignIn } from './sign-in.js'
@@ -158,6 +166,27 @@ function isRecipeRequest(message: FromClient): message is RecipeRequest {
     message.kind === 'レシピを見る' ||
     message.kind === 'レシピの一覧を見る'
   )
+}
+
+/**
+ * `デッキを共有する` で受け取った禁止／制限リストの選択が、型どおりの形をしているか。
+ *
+ * **`parse` は `kind` しか見ない**ので、ここに来る値は画面が送ったとおりとは限らない
+ * （ADR-0010）。`room.ts` の `rulesFor` は `choice.kind` を直に読むため、`null` のような
+ * オブジェクトでない値が来ると投げて接続ごと落ちる。
+ *
+ * **`部屋を作る` と `デッキを確かめる` にも同じ穴があるが、ここでは触らない。** どちらも
+ * 既存の経路で、直すなら `rulesFor` 自体を直すことになり、影響がここより広がる。
+ */
+function isRestrictionChoiceShaped(raw: unknown): raw is RestrictionChoice | undefined {
+  if (raw === undefined) return true
+  if (typeof raw !== 'object' || raw === null) return false
+
+  const { kind } = raw as { readonly kind?: unknown }
+  if (kind === '制限なし') return true
+  if (kind !== '禁止／制限リスト') return false
+
+  return typeof (raw as { readonly id?: unknown }).id === 'string'
 }
 
 /** コピー元 1 つから写す中身（ADR-0022）。既製デッキと共有レシピのどちらも、この形に揃えてから写す。 */
@@ -700,7 +729,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     function sendMyShares(): void {
       if (deckStore === undefined) return
 
-      send(socket, { kind: '自分の共有', shares: deckStore.sharesOf(participant).map((share) => wireShareOf(share, names)) })
+      send(socket, {
+        kind: '自分の共有',
+        shares: deckStore.sharesOf(participant).map((share) => wireShareOf(share, names, options.decks.restrictions)),
+      })
     }
 
     /**
@@ -715,7 +747,12 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
      */
     function handleRecipe(message: RecipeRequest): void {
       const refuse = (reason: string): void => send(socket, { kind: '行えなかった', reason })
-      if (deckStore === undefined) return refuse('ログインしていないと共有できません')
+      if (deckStore === undefined) {
+        // **断る理由は、しようとしたことに対応させる。** 見ようとしただけの人に「共有できません」
+        // は返さない。
+        const viewing = message.kind === 'レシピを見る' || message.kind === 'レシピの一覧を見る'
+        return refuse(viewing ? 'ログインしていないと見られません' : 'ログインしていないと共有できません')
+      }
 
       switch (message.kind) {
         case 'デッキを共有する': {
@@ -724,6 +761,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
 
           const reading = readShareRequest(message)
           if (reading.kind === '断る') return refuse(reading.reason)
+
+          // `parse` は `kind` しか見ないので、ここに来る値は型どおりとは限らない（ADR-0010）。
+          // `rulesFor` は `choice.kind` を直に読むため、確かめずに渡すと `null` などで投げる。
+          if (!isRestrictionChoiceShaped(message.restriction)) return refuse('禁止／制限リストの選び方が読めません')
 
           const rules = rulesFor(message.format, message.restriction, options.decks.restrictions)
           if (typeof rules === 'string') return refuse(rules)
@@ -738,6 +779,13 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           }
 
           const key = recipeKeyOf(deck.cards)
+          // **上限は、新しく行が増える時だけ数える**（ADR-0022 の防御、`recipe.ts` の
+          // `SHARE_LIMIT`）。同じレシピへの生きている共有がすでにあれば、それは書き換わるだけで
+          // 行は増えない（`store.ts` の `addShare`）ので、上限に当てない。
+          const owned = deckStore.sharesOf(participant)
+          const overwrites = owned.some((share) => share.recipe === key && !share.revoked)
+          if (!overwrites && owned.length >= SHARE_LIMIT) return refuse(`共有は ${SHARE_LIMIT} 個までです`)
+
           deckStore.ensureRecipe(key, sortCards(deck.cards))
           const id = deckStore.addShare(key, participant, {
             name: reading.name,
@@ -747,7 +795,9 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
             restriction: rules.restriction.kind === '制限なし' ? undefined : rules.restriction.list.id,
           })
           const created = deckStore.shareById(id)
-          if (created !== undefined) send(socket, { kind: '共有した', share: wireShareOf(created, names) })
+          if (created !== undefined) {
+            send(socket, { kind: '共有した', share: wireShareOf(created, names, options.decks.restrictions) })
+          }
           sendMyShares()
           return
         }
@@ -758,6 +808,9 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           return
         }
         case '共有の公開範囲を変える': {
+          // **公開の段階は 2 値しかない**（ADR-0010）。文字列でさえあれば通す形にすると、知らない
+          // 値が `shares.visibility` 列にそのまま書き込まれる。
+          if (!isShareVisibility(message.visibility)) return refuse('公開の段階が読めません')
           if (!deckStore.setShareVisibility(participant, message.share, message.visibility)) {
             return refuse('その共有はありません')
           }
@@ -766,6 +819,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           return
         }
         case 'レシピを見る': {
+          // `message.recipe` は `RecipeKey`（文字列）のはずだが、`parse` は型まで確かめない。
+          // 確かめずに `node:sqlite` へ渡すと、オブジェクトや配列が来た時に投げて接続ごと落ちる。
+          if (typeof message.recipe !== 'string') return refuse('レシピの鍵が読めません')
+
           const cards = deckStore.recipeCards(message.recipe)
           // **共有が 1 つも残っていない（全部取り消された）レシピは開けない**（ADR-0022）。鍵を
           // 知らない場合と同じ形で返す——見分けても、開けないことは変わらない。
@@ -780,12 +837,18 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
             recipe: {
               key: message.recipe,
               cards,
-              shares: [...shares].sort((left, right) => right.sharedAt - left.sharedAt).map((share) => wireShareOf(share, names)),
+              // **同じミリ秒に 2 つ共有されうる**（置き場の側と同じ前提、`store.ts` の
+              // `publicShareRows`）ので、`shared_at` が並んだら行番号の新しいほうを勝たせる。
+              shares: [...shares]
+                .sort((left, right) => right.sharedAt - left.sharedAt || Number(right.id) - Number(left.id))
+                .map((share) => wireShareOf(share, names, options.decks.restrictions)),
             },
           })
           return
         }
         case 'レシピの一覧を見る': {
+          if (!isRecipeListOrder(message.order)) return refuse('並べ方が読めません')
+
           send(socket, {
             kind: 'レシピの一覧',
             order: message.order,

@@ -218,6 +218,44 @@ describe('WebSocket で繋ぐ', () => {
     await client.close()
   })
 
+  /**
+   * ADR-0022。共有もデッキと同じ理由（置き場に紐づける身元が無い）で断る。
+   * 自分のデッキについては上の 2 件で確かめているので、レシピと共有でも同じ作法にする。
+   */
+  it('ログインを持たない立て方では、レシピを見られない', async () => {
+    const client = new Client(server.port, 'あ')
+    await client.waitFor('ロビー')
+
+    client.send({ kind: 'レシピを見る', recipe: 'なにかのかぎ' })
+
+    expect(await client.waitFor('行えなかった')).toEqual({
+      kind: '行えなかった',
+      reason: 'ログインしていないと見られません',
+    })
+    await client.close()
+  })
+
+  it('ログインを持たない立て方では、デッキを共有できない', async () => {
+    const client = new Client(server.port, 'あ')
+    await client.waitFor('ロビー')
+
+    client.send({
+      kind: 'デッキを共有する',
+      deck: 'なにかのデッキ',
+      name: 'きょうゆうできないはず',
+      description: '',
+      visibility: 'リンクを知っている人だけ',
+      format: undefined,
+      restriction: undefined,
+    })
+
+    expect(await client.waitFor('行えなかった')).toEqual({
+      kind: '行えなかった',
+      reason: 'ログインしていないと共有できません',
+    })
+    await client.close()
+  })
+
   /** ADR-0021。カードプールは組むためのもので、デッキを持てない立て方では組む場所が無い。 */
   it('ログインを持たない立て方では、カードプールが届かない', async () => {
     const client = new Client(server.port, 'あ')
@@ -1656,10 +1694,18 @@ describe('ログインの設定があるとき', () => {
         format: undefined,
         restriction: undefined,
       })
+      const recipeKey = result.kind === '共有した' ? result.share.recipe : ''
 
-      // 識別子の並びだけを持ち、カードの表記（名前・能力テキストなど）は一切載らない。
-      const keys = result.kind === '共有した' ? Object.keys(result.share) : []
-      expect(keys.sort()).toEqual(['description', 'id', 'name', 'recipe', 'revoked', 'sharer', 'visibility'])
+      // **レシピの中身そのもの（`recipe.cards`）を見る。** 共有（`WireShare`）のキーだけを見ても、
+      // レシピ側にカードの姿が混ざっていないかは分からない。
+      client.received.length = 0
+      client.send({ kind: 'レシピを見る', recipe: recipeKey })
+      const recipe = await client.waitFor('レシピ')
+      const cards = recipe.kind === 'レシピ' ? recipe.recipe?.cards : undefined
+      expect(cards).toEqual([...FULL].sort())
+      // 識別子の並びだけを持ち、カードの表記（名前・能力テキストなど）を持つオブジェクトは
+      // 1 つも混ざらない。
+      expect(cards?.every((card) => typeof card === 'string')).toBe(true)
       await client.close()
     })
 
@@ -1994,6 +2040,169 @@ describe('ログインの設定があるとき', () => {
       const list = await client.waitFor('レシピの一覧')
       expect(list.kind === 'レシピの一覧' && list.recipes).toEqual([])
       await client.close()
+    })
+
+    /**
+     * `addShare` は内部で時刻を打つため、自然な流れでは書き込み順と時刻の順が必ず
+     * 一致し、`shared_at` を無視して行番号だけで並べる実装でもこのテストは通ってしまう。
+     * **時計を差し込んで、書き込み順と時刻の順をわざとずらす。**
+     */
+    it('新着順は、時計を差し込んで確かめても shared_at の時刻で決まる', async () => {
+      // **セッションの有効期限は本物の `Date.now()` で切られる**（`sign-in.ts` の `holderOf`）
+      // ので、差し込む時計は本物の現在時刻の近くに置く。ここでずらすのは、2 つの共有の間の
+      // 前後関係だけである。
+      const base = Date.now()
+      let now = base
+      const clockedStore = openStore(':memory:', { now: () => now })
+      const owner = clockedStore.identify('google', '20001')
+      clockedStore.rename(owner, 'とけいのひと')
+      const token = 'clocked-token'
+      clockedStore.openSession(digest(token), owner)
+      const clockedServer = await serve({
+        ...options,
+        store: clockedStore,
+        signIn: createSignIn({
+          config: {
+            clientId: 'テスト.apps.googleusercontent.com',
+            clientSecret: 'ひみつ',
+            callback: `http://localhost${CALLBACK_PATH}`,
+            returnTo: 'http://localhost:5173/',
+          },
+          store: clockedStore,
+        }),
+      })
+      try {
+        const client = new Client(clockedServer.port, 'なのっても無駄', `revolution_session=${token}`)
+        await client.waitFor('自分のデッキ')
+
+        // **通信の層を経由せず、置き場に直接書く。** ここで確かめたいのは並べる側
+        // （`serve.ts` の `レシピの一覧を見る`）の振る舞いで、有効なデッキを 2 つ組む手間は
+        // 要らない。行番号は「ふるい」のほうが先（若い）だが、時刻はこちらのほうが新しい——
+        // 行番号の並びに頼った実装では、この食い違いを見分けられない。
+        clockedStore.ensureRecipe('ふるいかぎ', ['TEST-0'])
+        clockedStore.ensureRecipe('あたらしいかぎ', ['TEST-1'])
+        now = base + 10_000
+        clockedStore.addShare('ふるいかぎ', owner, {
+          name: 'ふるいレシピ',
+          description: '',
+          format: '構築戦',
+          restriction: undefined,
+          visibility: '一覧に載せる',
+        })
+        now = base
+        clockedStore.addShare('あたらしいかぎ', owner, {
+          name: 'あたらしいレシピ',
+          description: '',
+          format: '構築戦',
+          restriction: undefined,
+          visibility: '一覧に載せる',
+        })
+
+        client.send({ kind: 'レシピの一覧を見る', order: '新着' })
+        const list = await client.waitFor('レシピの一覧')
+        expect(list.kind === 'レシピの一覧' && list.recipes.map((recipe) => recipe.name)).toEqual([
+          'ふるいレシピ',
+          'あたらしいレシピ',
+        ])
+        await client.close()
+      } finally {
+        await clockedServer.close()
+        clockedStore.close()
+      }
+    })
+
+    /**
+     * `parse` は `kind` しか見ないので、ここに来る値は型どおりとは限らない
+     * （ADR-0010）。**サーバが落ちず、断りが返って、接続が保たれたままであることを確かめる。**
+     * 続けて別のメッセージを送って、接続がまだ生きていることを見る。
+     */
+    describe('壊れたメッセージを送っても落ちない', () => {
+      /**
+       * 接続がまだ生きていることを確かめる。**`ロビーに戻る` は使えない**——すでにロビーにいる
+       * 間に送っても部屋の様子は変わらず、`pushLobby` が「前と同じなら送らない」で黙ってしまう
+       * （`serve.ts`）。`デッキを確かめる` は毎回必ず返事が届くので、これで見る。
+       */
+      async function stillConnected(client: Client): Promise<void> {
+        client.received.length = 0
+        client.send({ kind: 'デッキを確かめる', cards: [], format: undefined, restriction: undefined })
+        expect((await client.waitFor('デッキを確かめた')).kind).toBe('デッキを確かめた')
+      }
+
+      it('デッキを共有する: restriction が null でも断られるだけで済む', async () => {
+        const client = await enteredAsMe()
+        const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: ['TEST-0'] })
+        if (deck === undefined) throw new Error('デッキを残せるはずだった')
+
+        client.send({
+          kind: 'デッキを共有する',
+          deck,
+          name: 'こわれたきょうゆう',
+          description: '',
+          visibility: 'リンクを知っている人だけ',
+          format: undefined,
+          restriction: null as unknown as undefined,
+        })
+
+        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+        await stillConnected(client)
+        await client.close()
+      })
+
+      it('共有を取り消す: share が型どおりでなくても断られるだけで済む', async () => {
+        const client = await enteredAsMe()
+
+        client.send({ kind: '共有を取り消す', share: {} as unknown as string })
+
+        expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'その共有はありません' })
+        await stillConnected(client)
+        await client.close()
+      })
+
+      it('共有の公開範囲を変える: visibility が型どおりでなくても断られるだけで済む', async () => {
+        const client = await enteredAsMe()
+        const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+        if (deck === undefined) throw new Error('デッキを残せるはずだった')
+        const result = await shared(client, {
+          kind: 'デッキを共有する',
+          deck,
+          name: 'レシピ',
+          description: '',
+          visibility: 'リンクを知っている人だけ',
+          format: undefined,
+          restriction: undefined,
+        })
+        const shareId = result.kind === '共有した' ? result.share.id : ''
+
+        client.send({
+          kind: '共有の公開範囲を変える',
+          share: shareId,
+          visibility: {} as unknown as 'リンクを知っている人だけ',
+        })
+
+        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+        await stillConnected(client)
+        await client.close()
+      })
+
+      it('レシピを見る: recipe が型どおりでなくても断られるだけで済む', async () => {
+        const client = await enteredAsMe()
+
+        client.send({ kind: 'レシピを見る', recipe: ['はいれつ'] as unknown as string })
+
+        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+        await stillConnected(client)
+        await client.close()
+      })
+
+      it('レシピの一覧を見る: order が型どおりでなくても断られるだけで済む', async () => {
+        const client = await enteredAsMe()
+
+        client.send({ kind: 'レシピの一覧を見る', order: true as unknown as '新着' })
+
+        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+        await stillConnected(client)
+        await client.close()
+      })
     })
   })
 
