@@ -1640,6 +1640,84 @@ describe('ログインの設定があるとき', () => {
       await client.close()
     })
 
+    /**
+     * `レシピを見る` が返す共有の並び（新着順）に、`shared_at` が並んだ時のタイブレークが無いと、
+     * 同じミリ秒に 2 つ共有された時にどちらが先か決まらない（置き場の `publicShareRows` は
+     * `id desc` を添えている）。**時計を固定して、わざと同じ時刻に共有する。**
+     */
+    it('同じ shared_at の共有でも、新しい id が先に並ぶ', async () => {
+      const now = Date.now()
+      const clockedStore = openStore(':memory:', { now: () => now })
+      const owner = clockedStore.identify('google', '30001')
+      clockedStore.rename(owner, 'ひとりめ')
+      const other = clockedStore.identify('google', '30002')
+      clockedStore.rename(other, 'ふたりめ')
+      const token = 'same-instant-token'
+      const otherToken = 'same-instant-other-token'
+      clockedStore.openSession(digest(token), owner)
+      clockedStore.openSession(digest(otherToken), other)
+      const clockedServer = await serve({
+        ...options,
+        store: clockedStore,
+        signIn: createSignIn({
+          config: {
+            clientId: 'テスト.apps.googleusercontent.com',
+            clientSecret: 'ひみつ',
+            callback: `http://localhost${CALLBACK_PATH}`,
+            returnTo: 'http://localhost:5173/',
+          },
+          store: clockedStore,
+        }),
+      })
+      try {
+        const client = new Client(clockedServer.port, 'なのっても無駄', `revolution_session=${token}`)
+        await client.waitFor('自分のデッキ')
+        const otherClient = new Client(clockedServer.port, 'なのっても無駄', `revolution_session=${otherToken}`)
+        await otherClient.waitFor('自分のデッキ')
+        const deck = clockedStore.saveDeck(owner, undefined, { name: 'ひとつめ', description: '', cards: FULL })
+        const otherDeck = clockedStore.saveDeck(other, undefined, { name: 'ふたつめ', description: '', cards: FULL })
+        if (deck === undefined || otherDeck === undefined) throw new Error('デッキを残せるはずだった')
+
+        // どちらも同じ `now` で共有される。行番号は「さき」のほうが若いので、それだけで並べると
+        // 逆順になる。
+        const first = await shared(client, {
+          kind: 'デッキを共有する',
+          deck,
+          name: 'さきに共有',
+          description: '',
+          visibility: 'リンクを知っている人だけ',
+          format: undefined,
+          restriction: undefined,
+        })
+        const second = await shared(otherClient, {
+          kind: 'デッキを共有する',
+          deck: otherDeck,
+          name: 'あとから共有',
+          description: '',
+          visibility: 'リンクを知っている人だけ',
+          format: undefined,
+          restriction: undefined,
+        })
+        const recipeKey = first.kind === '共有した' ? first.share.recipe : ''
+
+        client.received.length = 0
+        client.send({ kind: 'レシピを見る', recipe: recipeKey })
+        const recipe = await client.waitFor('レシピ')
+        expect(recipe.kind === 'レシピ' && recipe.recipe?.shares.map((share) => share.name)).toEqual([
+          'あとから共有',
+          'さきに共有',
+        ])
+        expect(second.kind === '共有した' && Number(second.share.id) > (first.kind === '共有した' ? Number(first.share.id) : 0)).toBe(
+          true,
+        )
+        await client.close()
+        await otherClient.close()
+      } finally {
+        await clockedServer.close()
+        clockedStore.close()
+      }
+    })
+
     // 完了条件 2: 同じ中身のデッキを（同じ人でも別の人でも）共有すると、レシピは1つに決まる。
     it('別の人が同じ中身を共有しても、同じレシピになる', async () => {
       const client = await enteredAsMe()
