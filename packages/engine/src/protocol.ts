@@ -135,12 +135,34 @@ export interface WireRoomRules {
 }
 
 /**
+ * レシピを指す識別子（ADR-0022）。中身（揃えた識別子の並び）から決まる鍵で、誰のものでもない。
+ *
+ * **公開側にとってはただの文字列である。** 作り方はサーバの `recipe.ts` に 1 か所だけ閉じてある
+ * ——ここでは読み取らず、そのまま返す鍵として扱う。
+ */
+export type RecipeKey = string
+
+/** 共有 1 つを指す識別子（ADR-0022）。レシピとは別に持つ——**レシピ 1 つに共有がいくつもぶら下がる**。 */
+export type ShareId = string
+
+/**
+ * 共有の公開の段階（ADR-0022）。**共有ごとに持ち、あとから変えられる。**
+ *
+ * - `リンクを知っている人だけ` — URL を知っている人だけが開ける。一覧には出ない
+ * - `一覧に載せる` — それに加えて、一覧からも見つけられる
+ */
+export type ShareVisibility = 'リンクを知っている人だけ' | '一覧に載せる'
+
+/**
  * コピーして自分のデッキにできるもの（ADR-0022）。
  *
- * **数え上げられるので、列挙で持つ。** いまは既製デッキだけだが、人が共有したレシピと、対戦が
- * 終わった相手のデッキが後から加わる。**どれも同じ操作で自分のデッキになる**（同）。
+ * **数え上げられるので、列挙で持つ。** 既製デッキと、人が共有したレシピの共有 1 つ。対戦が終わった
+ * 相手のデッキは、まだこの並びに無い。**どれも同じ操作で自分のデッキになる**（同）。
+ *
+ * 共有のほうは共有そのもの（`ShareId`）を指す——レシピの鍵ではない。**名前と解説はコピーした共有の
+ * ものが付く**（ADR-0022）ので、どの共有からコピーしたかが分からなければ何を写すか決まらない。
  */
-export type DeckOrigin = { readonly kind: '既製デッキ'; readonly id: DeckId }
+export type DeckOrigin = { readonly kind: '既製デッキ'; readonly id: DeckId } | { readonly kind: '共有レシピ'; readonly share: ShareId }
 
 /**
  * いま誰と打っているか（ADR-0020）。
@@ -178,6 +200,64 @@ export interface WireRoom {
    * 入る前に見えるロビーに載せる。
    */
   readonly rules: WireRoomRules
+}
+
+/**
+ * レシピにぶら下がる共有 1 つ（ADR-0022）。**中身は持たない**——中身はレシピ側（`WireRecipe.cards`）
+ * にある。持つのは「誰が、どんな名前・解説で、どこまで公開したか」だけである。
+ */
+export interface WireShare {
+  readonly id: ShareId
+  readonly recipe: RecipeKey
+  /**
+   * 共有した人のいまの表示名（ADR-0020、ADR-0022）。
+   *
+   * **共有した時点のものではない。** 表示名は見るたびに引き直す——本人が後で名前を変えれば、
+   * 過去に出した共有の表示もそちらに追随する。
+   */
+  readonly sharer: string
+  readonly name: string
+  readonly description: string
+  readonly visibility: ShareVisibility
+  /**
+   * 取り消されているか。
+   *
+   * **取り消した本人にだけ、取り消された後も見える**（`自分の共有`）。レシピの画面や一覧には、
+   * 取り消されていない共有しか載らない。
+   */
+  readonly revoked: boolean
+}
+
+/**
+ * レシピ 1 つの中身と、そこにぶら下がる共有全部（ADR-0022）。`/recipe/<鍵>` の画面が受け取る。
+ *
+ * **カードの姿は持たない。** 持つのは識別子の並びだけで、画面はカードプール（`WirePoolCard`）を
+ * 引いて名前を出す——このためレシピの画面はカードプールが届く人（ログインしている人）にしか
+ * 開けない。
+ */
+export interface WireRecipe {
+  readonly key: RecipeKey
+  /** カードを指す識別子の並び。**同じ識別子を並べた数がその枚数**になる（`WireOwnedDeck` と同じ）。 */
+  readonly cards: readonly string[]
+  /** 取り消されていない共有全部。新着順。 */
+  readonly shares: readonly WireShare[]
+}
+
+/** 一覧の並べ方（ADR-0022）。 */
+export type RecipeListOrder = '新着' | 'コピー数'
+
+/**
+ * 一覧に並ぶレシピ 1 つの要約（ADR-0022）。
+ *
+ * **出るのは一番新しい「一覧に載せる」共有の名前と解説である。** 誰が共有したかは一覧には出さない
+ * ——同じレシピに複数の共有がぶら下がりうるので、代表 1 人を選んでも読み違えるだけである。
+ */
+export interface WireRecipeSummary {
+  readonly key: RecipeKey
+  readonly name: string
+  readonly description: string
+  /** コピーされた回数。**レシピ単位で数える**——どの共有からコピーされたかは数えない。 */
+  readonly copies: number
 }
 
 /**
@@ -376,6 +456,38 @@ export type FromClient =
   /** コピーして、新しい自分のデッキにする（ADR-0022）。名前はコピー元のものが付く。 */
   | { readonly kind: 'デッキをコピーする'; readonly origin: DeckOrigin }
   /**
+   * 自分のデッキを共有する（ADR-0022）。中身を写し取った不変のレシピができる——元のデッキを
+   * 直しても、共有したものは変わらない。
+   *
+   * **共有する人が形式と禁止／制限リストを選んで規定を確かめる。** 満たしていなければ、理由を
+   * 添えて断る（判定はサーバ側、ADR-0010）。選び方は `部屋を作る` と同じで、選ばなければ既定に
+   * なる。**満たすかどうかを確かめるだけで、レシピにも共有にも残さない**——レシピはどのルールで
+   * 組んだかを持たない（ADR-0021）。
+   */
+  | {
+      readonly kind: 'デッキを共有する'
+      readonly deck: DeckId
+      /** 初期値はそのデッキの名前と解説。**書式は持たない。** */
+      readonly name: string
+      readonly description: string
+      readonly visibility: ShareVisibility
+      readonly format: DuelFormat | undefined
+      readonly restriction: RestrictionChoice | undefined
+    }
+  /** 自分の共有を取り消す（ADR-0022）。**取り消せるのは自分の共有だけ。** */
+  | { readonly kind: '共有を取り消す'; readonly share: ShareId }
+  /** 自分の共有の公開の段階を変える（ADR-0022）。**あとから変えられる。** */
+  | { readonly kind: '共有の公開範囲を変える'; readonly share: ShareId; readonly visibility: ShareVisibility }
+  /**
+   * レシピの画面を開く（ADR-0022、`/recipe/<鍵>`）。
+   *
+   * **ログインしている人にしか答えない。** ログインを持たない立て方では断る——カードプールが
+   * 届かないので、識別子から名前を出す手立てが無い。
+   */
+  | { readonly kind: 'レシピを見る'; readonly recipe: RecipeKey }
+  /** 「一覧に載せる」共有が 1 つ以上あるレシピの一覧を見る（ADR-0022）。 */
+  | { readonly kind: 'レシピの一覧を見る'; readonly order: RecipeListOrder }
+  /**
    * 組んでいるデッキが、選んだルールで通るかを確かめる（ADR-0021）。**保存はしない。**
    *
    * **確かめるのはサーバである。** 画面は禁止／制限リストの中身を知らず（`WireRestrictionList`）、
@@ -569,6 +681,25 @@ export type ToClient =
    * 画面は最後に送ったものへの返事を待てばよい。
    */
   | { readonly kind: 'デッキを確かめた'; readonly violations: readonly DeckViolation[] }
+  /** 共有した（ADR-0022）。ここで初めて共有の識別子が分かる。**画面はここからリンクを組み立てる。** */
+  | { readonly kind: '共有した'; readonly share: WireShare }
+  /**
+   * いま持っている自分の共有全部（ADR-0022）。**持ち主にだけ届く。**
+   *
+   * `自分のデッキ` と同じく、繋いだ時と、共有・取り消し・公開範囲の変更で中身が変わるたびに
+   * まるごと届く。**取り消したものも入っている**——取り消した本人には、取り消したことが見える
+   * ままでよい。
+   */
+  | { readonly kind: '自分の共有'; readonly shares: readonly WireShare[] }
+  /**
+   * `レシピを見る` への返事（ADR-0022）。
+   *
+   * **無ければ `undefined`。** 鍵を知らない場合と、共有が 1 つも残っていない（全部取り消された）
+   * 場合のどちらも同じ形になる——見分けても、開けないことは変わらない。
+   */
+  | { readonly kind: 'レシピ'; readonly recipe: WireRecipe | undefined }
+  /** `レシピの一覧を見る` への返事（ADR-0022）。 */
+  | { readonly kind: 'レシピの一覧'; readonly order: RecipeListOrder; readonly recipes: readonly WireRecipeSummary[] }
   | { readonly kind: '行えなかった'; readonly reason: string }
 
 /**

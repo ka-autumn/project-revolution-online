@@ -191,9 +191,13 @@ export type {
   FromClient,
   Opponent,
   OpponentKind,
+  RecipeKey,
+  RecipeListOrder,
   RestrictionChoice,
   RestrictionListId,
   RoomCode,
+  ShareId,
+  ShareVisibility,
   ToClient,
   WireCandidate,
   WireCardPosition,
@@ -201,9 +205,12 @@ export type {
   WireDeck,
   WireOwnedDeck,
   WirePoolCard,
+  WireRecipe,
+  WireRecipeSummary,
   WireRestrictionList,
   WireRoom,
   WireRoomRules,
+  WireShare,
 } from './protocol.js'
 export type { PlayDeclaration } from './play.js'
 export { PLAYERS } from './player.js'
