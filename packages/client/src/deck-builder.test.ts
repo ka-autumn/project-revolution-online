@@ -179,6 +179,8 @@ describe('共有する', () => {
     description: '',
     visibility: 'リンクを知っている人だけ',
     revoked: false,
+    format: '構築戦',
+    restriction: undefined,
   } as const
 
   const DRAFT = {

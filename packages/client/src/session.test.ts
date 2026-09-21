@@ -446,6 +446,8 @@ describe('共有とレシピ', () => {
     description: '',
     visibility: 'リンクを知っている人だけ',
     revoked: false,
+    format: '構築戦',
+    restriction: undefined,
   } as const
 
   it('繋いだ直後は、何も届いていない', () => {

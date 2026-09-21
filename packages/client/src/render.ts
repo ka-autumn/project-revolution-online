@@ -1106,7 +1106,7 @@ export interface MyShareHandlers {
 export function myShareListElement(rows: readonly MyShareRow[], linkOf: (recipe: RecipeKey) => string, handlers: MyShareHandlers): HTMLElement {
   const node = element('section', 'decks')
   const head = element('div', 'decks__head')
-  head.append(element('h2', 'decks__title', '自分の共有'), button('ロビーに戻る', handlers.onClose))
+  head.append(element('h2', 'decks__title', '自分の共有'), button('デッキの一覧に戻る', handlers.onClose))
   node.append(head)
 
   if (rows.length === 0) node.append(element('p', 'decks__none', 'まだ何も共有していません'))
@@ -1161,7 +1161,7 @@ export interface RecipeListHandlers {
 export function recipeListElement(rows: readonly RecipeSummaryRow[], order: RecipeListOrder, handlers: RecipeListHandlers): HTMLElement {
   const node = element('section', 'decks')
   const head = element('div', 'decks__head')
-  head.append(element('h2', 'decks__title', '共有されたレシピ'), button('ロビーに戻る', handlers.onClose))
+  head.append(element('h2', 'decks__title', '共有されたレシピ'), button('デッキの一覧に戻る', handlers.onClose))
   node.append(head)
 
   const orderRow = element('div', 'share__order')
@@ -1205,7 +1205,7 @@ export function recipeElement(
 ): HTMLElement {
   const node = element('section', 'decks')
   const head = element('div', 'decks__head')
-  head.append(element('h2', 'decks__title', 'レシピ'), button('ロビーに戻る', handlers.onClose))
+  head.append(element('h2', 'decks__title', 'レシピ'), button('デッキの一覧に戻る', handlers.onClose))
   node.append(head)
 
   const cardList = element('div', 'decks__list')
@@ -1222,6 +1222,8 @@ export function recipeElement(
     const item = element('div', 'decks__row')
     item.append(element('span', 'decks__name', `${share.name}（${share.sharer}）`))
     if (share.description !== '') item.append(element('span', 'share__description-preview', share.description))
+    // **書き込むだけで読み出す経路が無かった**ので、確かめた形式とリストを添える（ADR-0022）。
+    item.append(element('span', 'share__rules', share.rulesLabel))
     const copy = button('コピーして自分のデッキにする', () => handlers.onCopy(share.id))
     copy.toggleAttribute('disabled', copying)
     item.append(copy)
