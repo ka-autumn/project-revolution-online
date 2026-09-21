@@ -312,7 +312,13 @@ export interface Store {
   ensureRecipe(key: RecipeKey, cards: readonly string[]): void
   /** そのレシピの中身。無ければ `undefined`。 */
   recipeCards(key: RecipeKey): readonly string[] | undefined
-  /** 共有を 1 つ残す。**常に新しい行として増える**——前の共有を上書きしない。 */
+  /**
+   * 共有を 1 つ残す（ADR-0022）。
+   *
+   * **同じレシピに対する、その人の生きている共有は 1 つまで。** すでにあれば名前・解説・公開の
+   * 段階・確かめた形式とリストを書き換え、無ければ新しく行を作る。**取り消し済みの共有は数えない**
+   * ——取り消したあとにもう一度共有すると、新しい行が 1 つできる。
+   */
   addShare(
     recipe: RecipeKey,
     owner: ParticipantId,
@@ -332,7 +338,12 @@ export interface Store {
   sharesOfRecipe(recipe: RecipeKey): readonly StoredShare[]
   /** 共有を取り消す。**その人のものでなければ何もせず `false`。** */
   revokeShare(owner: ParticipantId, share: ShareId): boolean
-  /** 共有の公開の段階を変える。**その人のものでなければ何もせず `false`。** */
+  /**
+   * 共有の公開の段階を変える。**その人のものでなければ何もせず `false`。**
+   *
+   * **取り消し済みの共有にも当てない。** 取り消した共有は取り消されたまま残る決まり（ADR-0022）
+   * なので、あとから公開の段階だけを動かせてはならない。
+   */
   setShareVisibility(owner: ParticipantId, share: ShareId, visibility: ShareVisibility): boolean
   /**
    * 「一覧に載せる」共有が 1 つ以上あるレシピの要約（ADR-0022）。
@@ -345,8 +356,21 @@ export interface Store {
   close(): void
 }
 
+export interface OpenStoreOptions {
+  /**
+   * 時刻の引き方。既定は `Date.now`。
+   *
+   * **テストで差し込むために開けてある。** `Date.now()` を直に呼ぶ実装のままだと、書き込みが
+   * 続けて起きる自然な流れでは行番号の順と時刻の順が必ず一致し、「時刻で並んでいる」ことと
+   * 「行番号で並んでいる」ことをテストで見分けられない。時計を差し込めば、わざとずらして確かめ
+   * られる。
+   */
+  readonly now?: () => number
+}
+
 /** 置き場を開く。無ければ作る。`:memory:` を渡すと、閉じたときに消えるものになる。 */
-export function openStore(path: string): Store {
+export function openStore(path: string, options: OpenStoreOptions = {}): Store {
+  const now = options.now ?? Date.now
   const db = new DatabaseSync(path)
   // 落ちたときに書き終えた分が残るようにする。読み書きが並ぶわけではない（部屋を持つのは
   // 1 つのプロセスだけ、ADR-0014）が、追記の形が素直になる。
@@ -397,7 +421,22 @@ export function openStore(path: string): Store {
   const openSharesByRecipe = db.prepare('select * from shares where recipe = ? and revoked_at is null order by id')
   // **持ち主も条件に入れる。** 識別子だけで引くと、他人の共有を取り消せてしまう。
   const revoke = db.prepare('update shares set revoked_at = ? where id = ? and owner = ? and revoked_at is null')
-  const setVisibility = db.prepare('update shares set visibility = ? where id = ? and owner = ?')
+  // **取り消し済みの共有には当てない。** `revoke` と同じ条件を持たせないと、取り消した共有の
+  // 公開の段階だけがあとから変えられてしまう——取り消した共有は取り消されたまま残る決まり
+  // （ADR-0022）に反する。
+  const setVisibility = db.prepare(
+    'update shares set visibility = ? where id = ? and owner = ? and revoked_at is null',
+  )
+  // 同じレシピに対する、その人のいま生きている共有（ADR-0022）。**もう一度共有すると、新しい
+  // 行にはならず、この行が書き換わる。** 取り消し済みの行は対象にしない——取り消したあとの
+  // 共有し直しは、新しい行として増える（既存の仕様のまま）。
+  const liveShareByOwner = db.prepare(
+    'select id from shares where recipe = ? and owner = ? and revoked_at is null',
+  )
+  const updateShare = db.prepare(
+    `update shares set name = ?, description = ?, format = ?, restriction = ?, visibility = ?, shared_at = ?
+     where id = ?`,
+  )
   // 「一覧に載せる」で、取り消されていない共有だけを、レシピごとに集めるための元データ。集計は
   // JS 側で行う（`publicRecipes`）——SQLite の窓関数に頼らず、既存の `restore` などと同じ
   // 「単純な select のあとで畳む」やり方に揃える。
@@ -435,7 +474,7 @@ export function openStore(path: string): Store {
           record.seats.後攻,
           record.cpu ?? null,
           JSON.stringify(record.decks),
-          Date.now(),
+          now(),
           record.rules.format,
           record.rules.restriction ?? null,
         )
@@ -455,7 +494,7 @@ export function openStore(path: string): Store {
         return
       }
       case '閉じた': {
-        closeDuel.run(Date.now(), record.code)
+        closeDuel.run(now(), record.code)
         openIds.delete(record.code)
         written.delete(record.code)
         return
@@ -474,6 +513,8 @@ export function openStore(path: string): Store {
       visibility: text(row, 'visibility') as ShareVisibility,
       sharedAt: int(row, 'shared_at'),
       revoked: maybeInt(row, 'revoked_at') !== undefined,
+      format: text(row, 'format'),
+      restriction: maybeText(row, 'restriction'),
     }
   }
 
@@ -559,7 +600,7 @@ export function openStore(path: string): Store {
       setName.run(name, identityOf(participant))
     },
     openSession: (digest, participant) => {
-      insertSession.run(digest, identityOf(participant), Date.now())
+      insertSession.run(digest, identityOf(participant), now())
     },
     sessionHolder: (digest, since) => {
       const row = sessionRow.get(digest, since)
@@ -575,14 +616,14 @@ export function openStore(path: string): Store {
     saveDeck: (owner, deck, draft) => {
       const cards = JSON.stringify(draft.cards)
       if (deck === undefined) {
-        const result = insertDeck.run(identityOf(owner), draft.name, draft.description, cards, Date.now())
+        const result = insertDeck.run(identityOf(owner), draft.name, draft.description, cards, now())
         return String(result.lastInsertRowid)
       }
 
       const row = deckRowOf(deck)
       if (row === undefined) return undefined
 
-      const result = updateDeck.run(draft.name, draft.description, cards, Date.now(), row, identityOf(owner))
+      const result = updateDeck.run(draft.name, draft.description, cards, now(), row, identityOf(owner))
       return Number(result.changes) === 0 ? undefined : deck
     },
     deleteDeck: (owner, deck) => {
@@ -626,6 +667,16 @@ export function openStore(path: string): Store {
       return row === undefined ? undefined : (JSON.parse(text(row, 'cards')) as readonly string[])
     },
     addShare: (recipe, owner, draft) => {
+      // **同じレシピに対する、その人の生きている共有は 1 つまで。** すでにあれば書き換え、
+      // 無ければ新しく作る。取り消し済みの行は対象にしない——取り消したあとの共有し直しは、
+      // 新しい行として増える（既存の仕様のまま）。
+      const existing = liveShareByOwner.get(recipe, identityOf(owner))
+      if (existing !== undefined) {
+        const row = int(existing as Row, 'id')
+        updateShare.run(draft.name, draft.description, draft.format, draft.restriction ?? null, draft.visibility, now(), row)
+        return String(row)
+      }
+
       const result = insertShare.run(
         recipe,
         identityOf(owner),
@@ -634,7 +685,7 @@ export function openStore(path: string): Store {
         draft.format,
         draft.restriction ?? null,
         draft.visibility,
-        Date.now(),
+        now(),
       )
       return String(result.lastInsertRowid)
     },
@@ -651,7 +702,7 @@ export function openStore(path: string): Store {
       const row = shareRowOf(share)
       if (row === undefined) return false
 
-      return Number(revoke.run(Date.now(), row, identityOf(owner)).changes) > 0
+      return Number(revoke.run(now(), row, identityOf(owner)).changes) > 0
     },
     setShareVisibility: (owner, share, visibility) => {
       const row = shareRowOf(share)
@@ -661,7 +712,7 @@ export function openStore(path: string): Store {
     },
     publicRecipes: (order) => publicRecipesOf(order),
     recordCopy: (recipe) => {
-      insertCopy.run(recipe, Date.now())
+      insertCopy.run(recipe, now())
     },
     close: () => {
       db.close()

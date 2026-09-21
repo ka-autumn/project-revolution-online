@@ -587,8 +587,31 @@ describe('レシピと共有', () => {
     const id = store.addShare('かぎ1', me, SHARE_DRAFT)
 
     expect(store.sharesOf(me)).toEqual([
-      { id, recipe: 'かぎ1', owner: me, name: 'わたしのレシピ', description: 'かいせつ', visibility: 'リンクを知っている人だけ', sharedAt: expect.any(Number), revoked: false },
+      {
+        id,
+        recipe: 'かぎ1',
+        owner: me,
+        name: 'わたしのレシピ',
+        description: 'かいせつ',
+        visibility: 'リンクを知っている人だけ',
+        sharedAt: expect.any(Number),
+        revoked: false,
+        format: '構築戦',
+        restriction: undefined,
+      },
     ])
+    store.close()
+  })
+
+  /** 確かめた形式と禁止／制限リストも読み出せる（ADR-0022）。 */
+  it('確かめた形式と禁止／制限リストも残る', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+    store.ensureRecipe('かぎ1', ['TEST-0'])
+
+    const id = store.addShare('かぎ1', me, { ...SHARE_DRAFT, format: '構築戦', restriction: 'リスト1' })
+
+    expect(store.shareById(id)).toMatchObject({ format: '構築戦', restriction: 'リスト1' })
     store.close()
   })
 
@@ -660,6 +683,68 @@ describe('レシピと共有', () => {
     store.close()
   })
 
+  /** 取り消し済みの共有は、公開の段階を変えられない（ADR-0022）。 */
+  it('取り消し済みの共有は、公開の段階を変えられない', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+    store.ensureRecipe('かぎ1', ['TEST-0'])
+    const id = store.addShare('かぎ1', me, SHARE_DRAFT)
+    store.revokeShare(me, id)
+
+    expect(store.setShareVisibility(me, id, '一覧に載せる')).toBe(false)
+    expect(store.sharesOf(me)[0]?.visibility).toBe(SHARE_DRAFT.visibility)
+    store.close()
+  })
+
+  /**
+   * 同じレシピに対する、自分の生きている共有は 1 つまで（ADR-0022）。もう一度共有すると
+   * 書き換わり、取り消した後の共有し直しは新しい行になる。
+   */
+  describe('同じレシピを二重に共有する', () => {
+    it('同じ人が同じレシピをもう一度共有しても、行は増えず内容が書き換わる', () => {
+      const store = openStore(':memory:')
+      const me = store.identify('google', '10001')
+      store.ensureRecipe('かぎ1', ['TEST-0'])
+      const first = store.addShare('かぎ1', me, SHARE_DRAFT)
+
+      const second = store.addShare('かぎ1', me, { ...SHARE_DRAFT, name: 'あたらしい名前', visibility: '一覧に載せる' })
+
+      expect(second).toBe(first)
+      expect(store.sharesOf(me)).toHaveLength(1)
+      expect(store.sharesOf(me)[0]).toMatchObject({ name: 'あたらしい名前', visibility: '一覧に載せる' })
+      store.close()
+    })
+
+    it('取り消したあとに共有し直すと、新しい行が 1 つできる', () => {
+      const store = openStore(':memory:')
+      const me = store.identify('google', '10001')
+      store.ensureRecipe('かぎ1', ['TEST-0'])
+      const first = store.addShare('かぎ1', me, SHARE_DRAFT)
+      store.revokeShare(me, first)
+
+      const second = store.addShare('かぎ1', me, SHARE_DRAFT)
+
+      expect(second).not.toBe(first)
+      expect(store.sharesOf(me)).toHaveLength(2)
+      expect(store.sharesOf(me).find((share) => share.id === first)?.revoked).toBe(true)
+      expect(store.sharesOf(me).find((share) => share.id === second)?.revoked).toBe(false)
+      store.close()
+    })
+
+    it('別の人が同じレシピを共有しても、それぞれ別の行のまま残る', () => {
+      const store = openStore(':memory:')
+      const me = store.identify('google', '10001')
+      const someoneElse = store.identify('google', '10002')
+      store.ensureRecipe('かぎ1', ['TEST-0'])
+      const mine = store.addShare('かぎ1', me, SHARE_DRAFT)
+      const theirs = store.addShare('かぎ1', someoneElse, SHARE_DRAFT)
+
+      expect(mine).not.toBe(theirs)
+      expect(store.sharesOfRecipe('かぎ1')).toHaveLength(2)
+      store.close()
+    })
+  })
+
   describe('一覧', () => {
     it('「一覧に載せる」共有が無いレシピは並ばない', () => {
       const store = openStore(':memory:')
@@ -683,6 +768,33 @@ describe('レシピと共有', () => {
       store.close()
     })
 
+    /**
+     * 新着順が本当に `shared_at` の時刻で決まることを、時計を差し込んで確かめる。
+     *
+     * `addShare` は内部で時刻を打つため、自然な流れでは書き込み順（行番号の順）と時刻の順が
+     * 必ず一致し、`shared_at` を完全に無視して行番号だけで並べる実装でも上のテストは通って
+     * しまう。**行番号の順と時刻の順をわざとずらして**、時刻そのもので並んでいることを見る。
+     */
+    it('新着順は、行番号の並びに頼らず shared_at の時刻そのもので決まる', () => {
+      let now = 2_000_000
+      const store = openStore(':memory:', { now: () => now })
+      const me = store.identify('google', '10001')
+      store.ensureRecipe('さきに書くが時刻は新しい', ['TEST-0'])
+      store.ensureRecipe('あとに書くが時刻は古い', ['TEST-1'])
+
+      // 行番号は「さきに書く」ほうが若いが、時刻はこちらのほうが新しい。行番号順に並べる実装なら
+      // 逆の結果になる。
+      store.addShare('さきに書くが時刻は新しい', me, { ...SHARE_DRAFT, visibility: '一覧に載せる' })
+      now = 1_000_000
+      store.addShare('あとに書くが時刻は古い', me, { ...SHARE_DRAFT, visibility: '一覧に載せる' })
+
+      expect(store.publicRecipes('新着').map((recipe) => recipe.key)).toEqual([
+        'さきに書くが時刻は新しい',
+        'あとに書くが時刻は古い',
+      ])
+      store.close()
+    })
+
     // 完了条件 8: 一番新しい共有の名前と解説が出る。
     it('出るのは一番新しい「一覧に載せる」共有の名前と解説', () => {
       const store = openStore(':memory:')
@@ -700,13 +812,18 @@ describe('レシピと共有', () => {
     /**
      * 身内に渡すつもりのものが新着に流れることを設定で防ぐ（ADR-0022）ので、「一覧に載せる」より
      * 後に「リンクを知っている人だけ」で共有しても、一覧の見え方は変わらない。
+     *
+     * **別の人が共有する。** 同じ人が同じレシピをもう一度共有すると、いまの共有そのものが
+     * 書き換わる（`store.ts` の `addShare`）ので、同じ人で試すと後の「リンクを知っている人
+     * だけ」が公開の共有を消してしまい、この完了条件を確かめられない。
      */
-    it('あとから「リンクを知っている人だけ」で共有しても、一覧の名前は変わらない', () => {
+    it('あとから別の人が「リンクを知っている人だけ」で共有しても、一覧の名前は変わらない', () => {
       const store = openStore(':memory:')
       const me = store.identify('google', '10001')
+      const someoneElse = store.identify('google', '10002')
       store.ensureRecipe('かぎ1', ['TEST-0'])
       store.addShare('かぎ1', me, { ...SHARE_DRAFT, visibility: '一覧に載せる', name: '一覧の名前' })
-      store.addShare('かぎ1', me, { ...SHARE_DRAFT, visibility: 'リンクを知っている人だけ', name: '身内向けの名前' })
+      store.addShare('かぎ1', someoneElse, { ...SHARE_DRAFT, visibility: 'リンクを知っている人だけ', name: '身内向けの名前' })
 
       expect(store.publicRecipes('新着')[0]?.name).toBe('一覧の名前')
       store.close()
@@ -770,6 +887,8 @@ describe('レシピと共有', () => {
         visibility: SHARE_DRAFT.visibility,
         sharedAt: expect.any(Number),
         revoked: false,
+        format: SHARE_DRAFT.format,
+        restriction: SHARE_DRAFT.restriction,
       },
     ])
     second.close()
