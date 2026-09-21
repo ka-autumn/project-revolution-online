@@ -2167,6 +2167,102 @@ describe('ログインの設定があるとき', () => {
     })
 
     /**
+     * ADR-0022「一覧」節。共有し直すことは自分の共有を編集することなので、公開の段階も
+     * 一緒に変わる——「一覧に載せる」で出していた共有を「リンクを知っている人だけ」で
+     * 共有し直すと、その共有は一覧から消える。**ほかに公開している人がいなければ、
+     * レシピごと一覧から落ちる。**
+     */
+    it('「一覧に載せる」で共有したあと、同じレシピを「リンクを知っている人だけ」で共有し直すと、一覧から消える', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+      await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'いちらんまえ',
+        description: '',
+        visibility: '一覧に載せる',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      client.send({ kind: 'レシピの一覧を見る', order: '新着' })
+      const before = await client.waitFor('レシピの一覧')
+      expect(before.kind === 'レシピの一覧' && before.recipes.map((recipe) => recipe.name)).toEqual(['いちらんまえ'])
+
+      // 同じデッキを、同じ人が「リンクを知っている人だけ」で共有し直す。中身が同じなので
+      // レシピの鍵も同じであり、`addShare` はその人の既存の共有を書き換える。
+      await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'いいなおし',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      client.received.length = 0
+      client.send({ kind: 'レシピの一覧を見る', order: '新着' })
+      const after = await client.waitFor('レシピの一覧')
+      // ほかに「一覧に載せる」共有が無いので、レシピごと消える。
+      expect(after.kind === 'レシピの一覧' && after.recipes).toEqual([])
+      await client.close()
+    })
+
+    /** 同じ場面でも、ほかの人の「一覧に載せる」共有が残っていれば、レシピは一覧に残る。 */
+    it('他人の「一覧に載せる」共有が残っていれば、共有し直してもレシピは一覧に残る', async () => {
+      const client = await enteredAsMe()
+      const myDeck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      const other = store.identify('google', '10002')
+      store.rename(other, 'あいて')
+      const otherDeck = store.saveDeck(other, undefined, { name: 'あいてのデッキ', description: '', cards: FULL })
+      if (myDeck === undefined || otherDeck === undefined) throw new Error('デッキを残せるはずだった')
+
+      const otherClient = new Client(server.port, 'なのっても無駄', signedInOther)
+      await otherClient.waitFor('ロビー')
+
+      await shared(client, {
+        kind: 'デッキを共有する',
+        deck: myDeck,
+        name: 'わたしの共有',
+        description: '',
+        visibility: '一覧に載せる',
+        format: undefined,
+        restriction: undefined,
+      })
+      otherClient.send({
+        kind: 'デッキを共有する',
+        deck: otherDeck,
+        name: 'あいての共有',
+        description: '',
+        visibility: '一覧に載せる',
+        format: undefined,
+        restriction: undefined,
+      })
+      await otherClient.waitFor('共有した')
+
+      // 自分の共有だけを「リンクを知っている人だけ」に共有し直す。
+      await shared(client, {
+        kind: 'デッキを共有する',
+        deck: myDeck,
+        name: 'ひきさげた',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      client.received.length = 0
+      client.send({ kind: 'レシピの一覧を見る', order: '新着' })
+      const list = await client.waitFor('レシピの一覧')
+      // あいての共有だけが残り、レシピは一覧から落ちない。
+      expect(list.kind === 'レシピの一覧' && list.recipes.map((recipe) => recipe.name)).toEqual(['あいての共有'])
+      await client.close()
+      await otherClient.close()
+    })
+
+    /**
      * `addShare` は内部で時刻を打つため、自然な流れでは書き込み順と時刻の順が必ず
      * 一致し、`shared_at` を無視して行番号だけで並べる実装でもこのテストは通ってしまう。
      * **時計を差し込んで、書き込み順と時刻の順をわざとずらす。**
