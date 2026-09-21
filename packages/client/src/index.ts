@@ -34,7 +34,18 @@ import {
 import type { Builder, DeckDraft } from './deck-builder.js'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import { filterChoicesOf, filterPool } from './pool-filter.js'
-import { myShareRows, recipeCardRows, recipeLinkOf, recipePathOf, recipeSummaryRows, shareDraftOf, shareRowsOf } from './recipe.js'
+import {
+  closedRecipeUrlOf,
+  myShareRows,
+  recipeCardRows,
+  recipeKeyFromPath,
+  recipeLinkOf,
+  recipeSummaryRows,
+  recipeUrlOf,
+  rememberPendingRecipe,
+  shareDraftOf,
+  shareRowsOf,
+} from './recipe.js'
 import {
   KEEP_FOCUS,
   KEEP_SCROLL,
@@ -496,11 +507,11 @@ function draw(
     const view = session.recipeView
     if (builder.viewingRecipeLoading || view === undefined) {
       root.append(line('status', '読み込んでいます'))
-      root.append(leaveElement('ロビーに戻る', building.recipeView.onClose))
+      root.append(leaveElement('デッキの一覧に戻る', building.recipeView.onClose))
     } else if (view.recipe === undefined) {
       // 鍵を知らない場合と、共有が 1 つも残っていない場合の両方がここに来る（ADR-0022）。
       root.append(line('status', 'このレシピは開けません'))
-      root.append(leaveElement('ロビーに戻る', building.recipeView.onClose))
+      root.append(leaveElement('デッキの一覧に戻る', building.recipeView.onClose))
     } else {
       root.append(
         recipeElement(recipeCardRows(pool, view.recipe.cards), shareRowsOf(view.recipe), builder.waiting.kind !== '無し', building.recipeView),
@@ -1167,7 +1178,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     connection.send({ kind: 'レシピを見る', recipe: key })
     if (pushUrl) {
       try {
-        history.pushState(null, '', recipePathOf(key))
+        // **問い合わせ文字列（`location.search`）は残す。** `?server=`・`?participant=` は README
+        // が現役の手段として案内している値で、落とすと開いて閉じた後の読み込み直しで消える。
+        history.pushState(null, '', recipeUrlOf(key, location.search))
       } catch {
         // URL を揃えられなくても、開くことはできる。
       }
@@ -1182,12 +1195,31 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     // 触っていない。
     if (location.pathname.startsWith('/recipe/')) {
       try {
-        history.replaceState(null, '', '/')
+        history.replaceState(null, '', closedRecipeUrlOf(location.search))
       } catch {
         // 戻せなくても、画面を閉じることはできる。
       }
     }
     redraw()
+  }
+
+  /**
+   * ブラウザの「戻る」に応じて、いま出す画面を URL に合わせ直す（ADR-0022）。
+   *
+   * **一覧からレシピを開いた時にだけ URL を積む**（`recipeList.onOpen` の `openRecipe(key, true)`）
+   * ので、戻る先が `/recipe/<鍵>` でなくなったら、開いた元の画面（一覧）へ戻す。**戻る操作その
+   * ものに URL は積み直さない**——ブラウザがすでに動かしている。
+   */
+  function onPopState(): void {
+    const key = recipeKeyFromPath(location.pathname)
+    if (key !== undefined) {
+      openRecipe(key, false)
+      return
+    }
+    if (builder.screen === 'レシピ') {
+      updateBuilder({ ...builder, screen: 'レシピの一覧', viewingRecipe: undefined, refusal: undefined })
+      redraw()
+    }
   }
 
   /** 一覧を、選んだ並べ方で尋ね直す（ADR-0022）。 */
@@ -1312,6 +1344,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // 繋ぎ直しても同じ理由で断られる。送らなかった場合も止めるのは同じ理由である。
       if (message.kind === '行えなかった' && message.reason === NOT_SIGNED_IN) {
         connection.close()
+        // **開こうとしていたレシピがあれば、ログインへ送る前に預ける**（ADR-0022）。ログインは
+        // 別ページ（Google の画面）を経由するので、この画面の JS のメモリ（`pendingRecipe`）は
+        // 戻ってきた時には残っていない。`main.ts` が戻ってきたところで拾う。
+        if (pendingRecipe !== undefined) rememberPendingRecipe(sessionStorage, pendingRecipe)
         if (goToSignIn(options.signInUrl)) {
           // **移るまでの間、この画面は生きている。** 断られたことは出さない——人がすることは
           // 何も無く、次に起きることだけが読めればよい。
@@ -1371,9 +1407,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   })
 
   redraw()
+  window.addEventListener('popstate', onPopState)
 
   return () => {
     if (overlayTimer !== undefined) clearTimeout(overlayTimer)
+    window.removeEventListener('popstate', onPopState)
     connection.close()
   }
 }
