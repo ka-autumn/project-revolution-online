@@ -435,3 +435,82 @@ describe('デッキを組むのに要るもの', () => {
     expect(after.stage).toEqual(before.stage)
   })
 })
+
+/** ADR-0022。共有とレシピ。 */
+describe('共有とレシピ', () => {
+  const SHARE = {
+    id: '共有1',
+    recipe: 'かぎ1',
+    sharer: 'ぬし',
+    name: 'わたしのレシピ',
+    description: '',
+    visibility: 'リンクを知っている人だけ',
+    revoked: false,
+  } as const
+
+  it('繋いだ直後は、何も届いていない', () => {
+    const session = connecting()
+
+    expect(session.myShares).toBeUndefined()
+    expect(session.sharedShare).toBeUndefined()
+    expect(session.recipeView).toBeUndefined()
+    expect(session.recipeList).toBeUndefined()
+  })
+
+  it('共有すると、そのままリンクを組み立てる分が届く', () => {
+    const session = fold({ kind: '共有した', share: SHARE })
+
+    expect(session.sharedShare).toEqual(SHARE)
+  })
+
+  it('自分の共有は、届き直したものに置き換わる', () => {
+    const session = fold({ kind: '自分の共有', shares: [SHARE] }, { kind: '自分の共有', shares: [] })
+
+    expect(session.myShares).toEqual([])
+  })
+
+  /** 取り消した本人の一覧にだけ、取り消されたものとして残る（ADR-0022）。落とさずにそのまま持つ。 */
+  it('取り消された共有も、自分の共有にはそのまま残る', () => {
+    const session = fold({ kind: '自分の共有', shares: [{ ...SHARE, revoked: true }] })
+
+    expect(session.myShares).toEqual([{ ...SHARE, revoked: true }])
+  })
+
+  it('レシピが見つかれば、その中身と共有が届く', () => {
+    const recipe = { key: 'かぎ1', cards: ['TEST-0'], shares: [SHARE] }
+
+    const session = fold({ kind: 'レシピ', recipe })
+
+    expect(session.recipeView).toEqual({ recipe })
+  })
+
+  /** 共有が1つも残っていない（全部取り消された）レシピは開けない（ADR-0022）。鍵を知らない時と同じ形。 */
+  it('開けないレシピは、中身が無いものとして届く', () => {
+    const session = fold({ kind: 'レシピ', recipe: undefined })
+
+    expect(session.recipeView).toEqual({ recipe: undefined })
+  })
+
+  it('一覧は、並べ方と一緒に届く', () => {
+    const recipes = [{ key: 'かぎ1', name: 'わたしのレシピ', description: '', copies: 3 }]
+
+    const session = fold({ kind: 'レシピの一覧', order: 'コピー数', recipes })
+
+    expect(session.recipeList).toEqual({ order: 'コピー数', recipes })
+  })
+
+  it('共有にまつわるものが届いても、いる場面は変わらない', () => {
+    const lobby: ToClient = { kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [] }
+    const before = fold(lobby)
+
+    const after = fold(
+      lobby,
+      { kind: '共有した', share: SHARE },
+      { kind: '自分の共有', shares: [SHARE] },
+      { kind: 'レシピ', recipe: undefined },
+      { kind: 'レシピの一覧', order: '新着', recipes: [] },
+    )
+
+    expect(after.stage).toEqual(before.stage)
+  })
+})

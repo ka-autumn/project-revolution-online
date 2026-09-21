@@ -6,6 +6,7 @@ import type {
   Opponent,
   PassOutcome,
   Player,
+  RecipeListOrder,
   RoomCode,
   ToClient,
   WireChoice,
@@ -13,8 +14,11 @@ import type {
   WireOwnedDeck,
   WirePerspective,
   WirePoolCard,
+  WireRecipe,
+  WireRecipeSummary,
   WireRestrictionList,
   WireRoom,
+  WireShare,
 } from '@revolution/engine'
 
 /**
@@ -175,6 +179,23 @@ export interface Session {
    * ほうを覚えているのは画面である。
    */
   readonly checked: readonly DeckViolation[] | undefined
+  /**
+   * いま持っている自分の共有全部（ADR-0022）。届いていなければ `undefined`。
+   *
+   * `ownedDecks` と同じ理由でここに持つ。共有・取り消し・公開範囲の変更のたびに、まるごと届き直す。
+   */
+  readonly myShares: readonly WireShare[] | undefined
+  /** 最後に共有できた共有（ADR-0022）。**画面はここからリンクを組み立てる。** */
+  readonly sharedShare: WireShare | undefined
+  /**
+   * 最後に尋ねたレシピへの返事（ADR-0022）。まだ届いていなければ `undefined`。
+   *
+   * **どの鍵を尋ねたかは覚えていない。** `デッキを確かめた` と同じで、送った順に届くので、
+   * 尋ねた側（`index.ts`）が最後に尋ねた鍵を覚えておく。
+   */
+  readonly recipeView: { readonly recipe: WireRecipe | undefined } | undefined
+  /** 最後に尋ねた一覧への返事（ADR-0022）。まだ届いていなければ `undefined`。 */
+  readonly recipeList: { readonly order: RecipeListOrder; readonly recipes: readonly WireRecipeSummary[] } | undefined
 }
 
 /** 繋いだ直後の状態。 */
@@ -186,6 +207,10 @@ export function connecting(): Session {
     ownedDecks: undefined,
     saved: undefined,
     checked: undefined,
+    myShares: undefined,
+    sharedShare: undefined,
+    recipeView: undefined,
+    recipeList: undefined,
   }
 }
 
@@ -305,5 +330,13 @@ export function applyMessage(session: Session, message: ToClient): Session {
       return { ...session, saved: { deck: message.deck, violations: message.violations } }
     case 'デッキを確かめた':
       return { ...session, checked: message.violations }
+    case '共有した':
+      return { ...session, sharedShare: message.share }
+    case '自分の共有':
+      return { ...session, myShares: message.shares }
+    case 'レシピ':
+      return { ...session, recipeView: { recipe: message.recipe } }
+    case 'レシピの一覧':
+      return { ...session, recipeList: { order: message.order, recipes: message.recipes } }
   }
 }

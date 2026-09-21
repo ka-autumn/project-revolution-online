@@ -81,12 +81,28 @@ function participantId(): string {
   return made
 }
 
+/**
+ * `/recipe/<鍵>` を直に開いた時の鍵（ADR-0022）。指していなければ `undefined`。
+ *
+ * **画面の側のパスである**——対戦サーバの道筋（`?room=` のような問い合わせ文字列）とは別で、
+ * `location.pathname` を読む。静的ホストがこのパスで `index.html` を返すことは `vercel.json` の
+ * rewrite（手元では Vite の既定の SPA フォールバック）が担っている。
+ */
+function recipeKeyFromPath(pathname: string): string | undefined {
+  const match = /^\/recipe\/([^/]+)\/?$/.exec(pathname)
+  if (match?.[1] === undefined) return undefined
+
+  // 画面がリンクを組み立てる時と同じ形（`client` の `recipe.ts` の `recipePathOf`）で戻す。
+  return decodeURIComponent(match[1])
+}
+
 const params = new URLSearchParams(location.search)
 const root = document.getElementById('board')
 if (root === null) throw new Error('#board が無い')
 
 const named = params.get('participant')
 const room = params.get('room')
+const recipe = recipeKeyFromPath(location.pathname)
 
 const server = serverUrl(params)
 
@@ -96,4 +112,6 @@ mount(root, {
   participant: named === null || named === '' ? participantId() : named,
   // 指していなければロビーから始める。合言葉を知っている相手と待ち合わせる時だけ要る。
   ...(room === null || room === '' ? {} : { room }),
+  // レシピの画面を直に開いた時だけ渡す。ふだんはロビーから始める。
+  ...(recipe === undefined ? {} : { recipe }),
 })

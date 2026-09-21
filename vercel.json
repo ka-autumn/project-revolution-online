@@ -6,5 +6,11 @@
   "outputDirectory": "packages/client/dist",
   "proxy": {
     "entrypoint": "proxy.ts"
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/recipe/:key",
+      "destination": "/index.html"
+    }
+  ]
 }

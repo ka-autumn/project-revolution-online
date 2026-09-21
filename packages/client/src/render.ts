@@ -6,8 +6,12 @@ import type {
   DuelFormat,
   LegalAction,
   OpponentKind,
+  RecipeKey,
+  RecipeListOrder,
   RestrictionChoice,
   RoomCode,
+  ShareId,
+  ShareVisibility,
   Square,
   WireCardPosition,
   WireDeck,
@@ -17,6 +21,7 @@ import type { CardDetail, CheckView, ConfirmView, DeckRow, OwnedDeckRow, PoolRow
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import { emptyFilter, isFiltering, toggled } from './pool-filter.js'
 import type { FilterChoices, NumberRange, PoolFilter } from './pool-filter.js'
+import type { MyShareRow, RecipeCardRow, RecipeSummaryRow, ShareDraft, ShareRow, SharingState } from './recipe.js'
 import type {
   AbilityView,
   BattleView,
@@ -557,6 +562,10 @@ export interface DeckListHandlers {
   /** 自分のデッキを消す。**最後の 1 つは消せない**が、断るのはサーバである。 */
   readonly onDelete: (deck: DeckId, name: string) => void
   readonly onClose: () => void
+  /** 自分が出した共有を並べるところを開く（ADR-0022）。 */
+  readonly onMyShares: () => void
+  /** 「一覧に載せる」共有があるレシピの一覧を開く（ADR-0022）。 */
+  readonly onRecipeList: () => void
 }
 
 /**
@@ -589,7 +598,12 @@ export function deckListElement(
 ): HTMLElement {
   const node = element('section', 'decks')
   const head = element('div', 'decks__head')
-  head.append(element('h2', 'decks__title', '自分のデッキ'), button('ロビーに戻る', handlers.onClose))
+  head.append(
+    element('h2', 'decks__title', '自分のデッキ'),
+    button('自分の共有', handlers.onMyShares),
+    button('共有されたレシピ', handlers.onRecipeList),
+    button('ロビーに戻る', handlers.onClose),
+  )
   node.append(head)
 
   const list = element('div', 'decks__list')
@@ -642,6 +656,8 @@ export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'on
   readonly onFilter: (filter: PoolFilter) => void
   /** 詳しく絞り込むところを開く・閉じる。 */
   readonly onFilterOpen: (open: boolean) => void
+  /** 共有する下書きを開く（ADR-0022）。**保存してあるデッキにしか出さない**（`view.canShare`）。 */
+  readonly onShare: () => void
 }
 
 /** デッキを組むところに出すもの（#193）。どれも `deck-builder.ts` がすでに組み立てている。 */
@@ -667,6 +683,8 @@ export interface DeckEditorView {
   readonly restrictions: readonly WireRestrictionList[]
   readonly rules: ChosenRules
   readonly refusal: string | undefined
+  /** 共有する口を出すか（ADR-0022）。**保存してあるデッキだけ共有できる**——まだ無い識別子は渡せない。 */
+  readonly canShare: boolean
 }
 
 /** デッキの名前として受け取る長さの上限（`server` の `owned-deck.ts` の `DECK_NAME_LIMIT` と同じ）。 */
@@ -907,6 +925,8 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
   const save = button('保存する', handlers.onSave)
   save.toggleAttribute('disabled', !view.savable)
   head.append(save)
+  // 保存してあるデッキだけ共有できる（ADR-0022）。まだ無い識別子は渡せない。
+  if (view.canShare) head.append(button('共有する', handlers.onShare))
   if (view.unsaved) head.append(element('span', 'builder__unsaved', '保存していない変更があります'))
   node.append(head)
 
@@ -967,6 +987,247 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
 
   columns.append(poolPane, deckPane, detail)
   node.append(columns)
+
+  return node
+}
+
+/** 公開の段階を選ぶところ（ADR-0022）。**選べるのは 2 つだけ**なので、`select` ではなくボタンで選ばせる。 */
+function visibilityPicker(chosen: ShareVisibility, onVisibility: (visibility: ShareVisibility) => void): HTMLElement {
+  const node = element('div', 'share__visibility')
+  node.append(element('span', 'share__visibility-label', '公開の段階'))
+  const options: readonly ShareVisibility[] = ['リンクを知っている人だけ', '一覧に載せる']
+  for (const option of options) node.append(chip(option, option === chosen, () => onVisibility(option)))
+
+  return node
+}
+
+/** 共有するダイアログと、自分の共有・レシピの一覧・レシピの画面で押せるもの（ADR-0022）。 */
+export interface ShareDialogHandlers {
+  readonly onName: (name: string) => void
+  readonly onDescription: (description: string) => void
+  readonly onVisibility: (visibility: ShareVisibility) => void
+  readonly onFormat: (format: DuelFormat) => void
+  readonly onRestriction: (restriction: RestrictionChoice) => void
+  readonly onShare: () => void
+  /** リンクをコピーする。**組み立てるのは呼ぶ側**（`recipe.ts` の `recipeLinkOf`）。 */
+  readonly onCopyLink: (link: string) => void
+  readonly onClose: () => void
+}
+
+/**
+ * デッキを共有するダイアログ（ADR-0022）。**確認ダイアログと同じく、画面の中に重ねる**——ブラウザの
+ * 確認ダイアログは使わない（`confirmElement` と同じ理由）。
+ *
+ * 共有できたら、打ち込むところの代わりにリンクを出す。**リンクは呼ぶ側が組み立てて渡す**——渡す人が
+ * アドレスバーをコピーすると `?participant=` まで付いてきて、席に座れる合言葉を渡すことになる
+ * （ADR-0022）ため、ここでは打ち込んだ値をそのまま出さない。
+ */
+export function shareDialogElement(state: SharingState, restrictions: readonly WireRestrictionList[], link: string | undefined, handlers: ShareDialogHandlers): HTMLElement {
+  const layer = element('div', 'confirm')
+  const box = element('div', 'confirm__box share')
+  box.setAttribute('role', 'dialog')
+  box.setAttribute('aria-modal', 'true')
+  layer.append(box)
+
+  if (state.kind === '共有した') {
+    box.append(element('p', 'share__done', '共有しました。このリンクを渡せます'))
+    if (link !== undefined) {
+      const field = document.createElement('input')
+      field.className = 'share__link'
+      field.type = 'text'
+      field.readOnly = true
+      field.value = link
+      field.setAttribute('aria-label', '共有のリンク')
+      box.append(field)
+    }
+    const buttons = element('div', 'confirm__buttons')
+    buttons.append(
+      button('リンクをコピーする', () => link !== undefined && handlers.onCopyLink(link)),
+      button('閉じる', handlers.onClose),
+    )
+    box.append(buttons)
+    return layer
+  }
+
+  const { draft } = state
+  box.append(element('h2', 'share__title', 'デッキを共有する'))
+
+  const name = document.createElement('input')
+  name.className = 'share__name'
+  name.type = 'text'
+  name.maxLength = DECK_NAME_LIMIT
+  name.value = draft.name
+  name.setAttribute('aria-label', '共有する名前')
+  name.dataset[KEEP_FOCUS] = '共有する名前'
+  name.addEventListener('input', () => handlers.onName(name.value))
+  box.append(name)
+
+  const description = document.createElement('textarea')
+  description.className = 'share__description'
+  description.maxLength = DECK_DESCRIPTION_LIMIT
+  description.rows = 2
+  description.placeholder = '解説（無くてもかまいません）'
+  description.value = draft.description
+  description.setAttribute('aria-label', '共有する解説')
+  description.dataset[KEEP_FOCUS] = '共有する解説'
+  description.addEventListener('input', () => handlers.onDescription(description.value))
+  box.append(description)
+
+  box.append(visibilityPicker(draft.visibility, handlers.onVisibility))
+  // **共有する人が形式と禁止／制限リストを選んで規定を確かめる**（ADR-0022）。部屋を作る時と同じ
+  // 選び方（`rulesPicker`）を使う。
+  box.append(rulesPicker(restrictions, { format: draft.format, restriction: draft.restriction }, handlers))
+
+  if (state.refusal !== undefined) box.append(element('p', 'refusal', `行えませんでした: ${state.refusal}`))
+
+  const buttons = element('div', 'confirm__buttons')
+  const share = button('共有する', handlers.onShare)
+  share.toggleAttribute('disabled', state.sending)
+  buttons.append(button('やめる', handlers.onClose), share)
+  box.append(buttons)
+
+  return layer
+}
+
+/** 自分の共有を並べるところで押せるもの（ADR-0022）。 */
+export interface MyShareHandlers {
+  readonly onVisibility: (share: ShareId, visibility: ShareVisibility) => void
+  readonly onRevoke: (share: ShareId, name: string) => void
+  readonly onCopyLink: (link: string) => void
+  readonly onClose: () => void
+}
+
+/**
+ * 自分が出した共有を並べ、公開の段階を変えたり取り消したりするところ（ADR-0022）。
+ *
+ * **取り消したものも並べる**——取り消した本人には、取り消したことが見えたままでよい
+ * （`Session.myShares`）。
+ */
+export function myShareListElement(rows: readonly MyShareRow[], linkOf: (recipe: RecipeKey) => string, handlers: MyShareHandlers): HTMLElement {
+  const node = element('section', 'decks')
+  const head = element('div', 'decks__head')
+  head.append(element('h2', 'decks__title', '自分の共有'), button('ロビーに戻る', handlers.onClose))
+  node.append(head)
+
+  if (rows.length === 0) node.append(element('p', 'decks__none', 'まだ何も共有していません'))
+
+  const list = element('div', 'decks__list')
+  for (const row of rows) {
+    const item = element('div', 'decks__row share__row')
+    item.append(element('span', 'decks__name', row.name))
+    if (row.revoked) {
+      item.append(element('span', 'share__revoked', '取り消し済み'))
+      list.append(item)
+      continue
+    }
+
+    item.append(button('リンクをコピーする', () => handlers.onCopyLink(linkOf(row.recipe))))
+
+    const visibility = document.createElement('select')
+    visibility.className = 'share__visibility-select'
+    visibility.setAttribute('aria-label', `「${row.name}」の公開の段階`)
+    for (const option of ['リンクを知っている人だけ', '一覧に載せる'] as const) {
+      const choice = document.createElement('option')
+      choice.value = option
+      choice.textContent = option
+      choice.selected = option === row.visibility
+      visibility.append(choice)
+    }
+    visibility.addEventListener('change', () => {
+      const value = visibility.value
+      if (value === 'リンクを知っている人だけ' || value === '一覧に載せる') handlers.onVisibility(row.id, value)
+    })
+    item.append(visibility)
+    item.append(button('取り消す', () => handlers.onRevoke(row.id, row.name)))
+    list.append(item)
+  }
+  node.append(list)
+
+  return node
+}
+
+/** レシピの一覧で押せるもの（ADR-0022）。 */
+export interface RecipeListHandlers {
+  readonly onOrder: (order: RecipeListOrder) => void
+  readonly onOpen: (key: RecipeKey) => void
+  readonly onClose: () => void
+}
+
+/**
+ * 「一覧に載せる」共有があるレシピの一覧（ADR-0022）。
+ *
+ * **絞り込みは作らない**（範囲外、ADR-0022）。並べ方だけ、新着順とコピー数順を切り替えられる。
+ */
+export function recipeListElement(rows: readonly RecipeSummaryRow[], order: RecipeListOrder, handlers: RecipeListHandlers): HTMLElement {
+  const node = element('section', 'decks')
+  const head = element('div', 'decks__head')
+  head.append(element('h2', 'decks__title', '共有されたレシピ'), button('ロビーに戻る', handlers.onClose))
+  node.append(head)
+
+  const orderRow = element('div', 'share__order')
+  const orders: readonly RecipeListOrder[] = ['新着', 'コピー数']
+  for (const option of orders) orderRow.append(chip(option, option === order, () => handlers.onOrder(option)))
+  node.append(orderRow)
+
+  if (rows.length === 0) node.append(element('p', 'decks__none', 'まだ一覧に載っているレシピがありません'))
+
+  const list = element('div', 'decks__list')
+  for (const row of rows) {
+    const item = element('div', 'decks__row')
+    item.append(element('span', 'decks__name', row.name))
+    if (row.description !== '') item.append(element('span', 'share__description-preview', row.description))
+    item.append(element('span', 'share__copies', `コピー ${row.copies} 回`))
+    item.append(button('見る', () => handlers.onOpen(row.key)))
+    list.append(item)
+  }
+  node.append(list)
+
+  return node
+}
+
+/** レシピの画面で押せるもの（ADR-0022）。 */
+export interface RecipeViewHandlers {
+  readonly onCopy: (share: ShareId) => void
+  readonly onClose: () => void
+}
+
+/**
+ * `/recipe/<鍵>` の画面（ADR-0022）。**開けるのはログインしている人だけ**——ここに渡す `cards` は
+ * カードプールを引いた後の形で、それが届くのは席に着ける人だけである。
+ *
+ * **共有を全部並べる。** 同じ中身に複数の人の読みが並びうる。共有ごとにコピーできる。
+ */
+export function recipeElement(
+  cards: readonly RecipeCardRow[],
+  shares: readonly ShareRow[],
+  copying: boolean,
+  handlers: RecipeViewHandlers,
+): HTMLElement {
+  const node = element('section', 'decks')
+  const head = element('div', 'decks__head')
+  head.append(element('h2', 'decks__title', 'レシピ'), button('ロビーに戻る', handlers.onClose))
+  node.append(head)
+
+  const cardList = element('div', 'decks__list')
+  for (const row of cards) {
+    const item = element('div', 'decks__row')
+    item.append(element('span', 'decks__name', row.name), element('span', 'decks__count', `${row.count} 枚`))
+    cardList.append(item)
+  }
+  node.append(cardList)
+
+  node.append(element('h2', 'decks__title', '共有'))
+  const shareList = element('div', 'decks__list')
+  for (const share of shares) {
+    const item = element('div', 'decks__row')
+    item.append(element('span', 'decks__name', `${share.name}（${share.sharer}）`))
+    if (share.description !== '') item.append(element('span', 'share__description-preview', share.description))
+    const copy = button('コピーして自分のデッキにする', () => handlers.onCopy(share.id))
+    copy.toggleAttribute('disabled', copying)
+    item.append(copy)
+    shareList.append(item)
+  }
+  node.append(shareList)
 
   return node
 }
