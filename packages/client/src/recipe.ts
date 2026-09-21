@@ -14,6 +14,24 @@ import type {
 } from '@revolution/engine'
 
 /**
+ * `/recipe/<鍵>` を直に開いた時の鍵（ADR-0022）。指していなければ `undefined`。
+ *
+ * **画面の側のパスである**——対戦サーバの道筋（`?room=` のような問い合わせ文字列）とは別で、
+ * `location.pathname` を読む。静的ホストがこのパスで `index.html` を返すことは `vercel.json` の
+ * rewrite（手元では Vite の既定の SPA フォールバック）が担っている。
+ *
+ * `main.ts` の起動時と、`index.ts` のブラウザの「戻る」（`popstate`）の両方から呼ぶので、ここに
+ * 1 か所だけ置く。
+ */
+export function recipeKeyFromPath(pathname: string): RecipeKey | undefined {
+  const match = /^\/recipe\/([^/]+)\/?$/.exec(pathname)
+  if (match?.[1] === undefined) return undefined
+
+  // `recipePathOf` と同じ形（`encodeURIComponent`）で戻す。
+  return decodeURIComponent(match[1])
+}
+
+/**
  * レシピと共有を扱うところ（ADR-0022）。
  *
  * **ここにルールの判断は無い。** 規定を満たしているかを確かめるのはサーバであり
@@ -31,6 +49,75 @@ export function recipePathOf(key: RecipeKey): string {
  */
 export function recipeLinkOf(origin: string, key: RecipeKey): string {
   return `${origin}${recipePathOf(key)}`
+}
+
+/**
+ * レシピの画面を開く時に積む URL（`index.ts` の `history.pushState`）。
+ *
+ * **問い合わせ文字列（`location.search`）は残す。** README が `?server=`・`?participant=` を
+ * 現役の手段として案内している——レシピ画面を開いて閉じた後に読み込み直すと、別のサーバに
+ * 繋ぎに行ったり別の名乗りになったりしてしまう。
+ */
+export function recipeUrlOf(key: RecipeKey, search: string): string {
+  return `${recipePathOf(key)}${search}`
+}
+
+/** レシピの画面を閉じる時に戻す URL。`recipeUrlOf` と同じ理由で問い合わせ文字列を残す。 */
+export function closedRecipeUrlOf(search: string): string {
+  return `/${search}`
+}
+
+/**
+ * `sessionStorage` の代わりに受け取れる最小限の形（ADR-0022）。
+ *
+ * **テストでは、実物の代わりに中身を持つだけの偽物を渡す。** ブラウザの外（vitest は Node で
+ * 走る）には無いもので、ここに直接依存すると純粋な関数として確かめられなくなる。
+ */
+export interface KeyValueStorage {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+  removeItem(key: string): void
+}
+
+/** 未ログインで `/recipe/<鍵>` を開こうとした鍵を預ける先の名前。 */
+const PENDING_RECIPE_KEY = 'revolution.pendingRecipe'
+
+/**
+ * 未ログインで `/recipe/<鍵>` を開こうとした鍵を、ログインへ送る前に預ける（ADR-0022）。
+ *
+ * **ログインの折り返し先（`server` の `sign-in.ts`）は触らない。** サーバは戻り先の URL を
+ * 設定から決めており（ADR-0019）、開こうとしていたレシピを渡す口を持たない。画面はログインの
+ * 前後で作り直される（Google の画面を経由する別ページなので、JS のメモリは残らない）ため、
+ * 覚えておく先はブラウザの `sessionStorage` になる。
+ *
+ * 使えないブラウザでも落ちない（`index.ts` の `goToSignIn` と同じ作法）。**預けられなくても、
+ * ログインへ送ることは止めない**——戻ってきた時にロビーへ出るだけで、以前の振る舞いより悪くは
+ * ならない。
+ */
+export function rememberPendingRecipe(storage: KeyValueStorage, key: RecipeKey): void {
+  try {
+    storage.setItem(PENDING_RECIPE_KEY, key)
+  } catch {
+    // 覚えられなかった。ログインへ送ることはできる。
+  }
+}
+
+/**
+ * 預けておいた鍵を取り出して忘れる（ADR-0022）。無ければ `undefined`。
+ *
+ * **取り出したら消す。** 次にログインが要る場面（無関係にセッションが切れた時など）で、古い鍵を
+ * 誤って開かないようにするためである。
+ */
+export function takePendingRecipe(storage: KeyValueStorage): RecipeKey | undefined {
+  try {
+    const key = storage.getItem(PENDING_RECIPE_KEY)
+    if (key === null) return undefined
+
+    storage.removeItem(PENDING_RECIPE_KEY)
+    return key
+  } catch {
+    return undefined
+  }
 }
 
 /** 共有する時に打ち込む下書き。**初期値はそのデッキの名前と解説**（ADR-0022）。 */
@@ -68,11 +155,28 @@ export interface ShareRow {
   readonly sharer: string
   readonly name: string
   readonly description: string
+  /**
+   * 確かめた形式とリストを、読める 1 行にしたもの（ADR-0022）。例:「構築戦・○○リストで確かめて
+   * 共有」。**書き込むだけで読み出す経路が無かった**ので、レシピの画面に出す。
+   */
+  readonly rulesLabel: string
+}
+
+/** 確かめた形式とリストを、読める 1 行にする。制限なしで確かめたなら、そう出す。 */
+function rulesLabelOf(share: WireShare): string {
+  const restriction = share.restriction === undefined ? '制限なし' : share.restriction.name
+  return `${share.format}・${restriction}で確かめて共有`
 }
 
 /** レシピにぶら下がる共有を、画面に並べる形にする。**届いた順（新着順）のまま並べる。** */
 export function shareRowsOf(recipe: WireRecipe): readonly ShareRow[] {
-  return recipe.shares.map((share) => ({ id: share.id, sharer: share.sharer, name: share.name, description: share.description }))
+  return recipe.shares.map((share) => ({
+    id: share.id,
+    sharer: share.sharer,
+    name: share.name,
+    description: share.description,
+    rulesLabel: rulesLabelOf(share),
+  }))
 }
 
 /** レシピの中身 1 種。カードの姿はプールを引いて出す——レシピ自身は識別子しか持たない。 */

@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import type { WireOwnedDeck, WirePoolCard, WireRecipe, WireShare } from '@revolution/engine'
-import { myShareRows, recipeCardRows, recipeLinkOf, recipePathOf, shareDraftOf, shareRowsOf } from './recipe.js'
+import type { KeyValueStorage } from './recipe.js'
+import {
+  closedRecipeUrlOf,
+  myShareRows,
+  recipeCardRows,
+  recipeKeyFromPath,
+  recipeLinkOf,
+  recipePathOf,
+  recipeUrlOf,
+  rememberPendingRecipe,
+  shareDraftOf,
+  shareRowsOf,
+  takePendingRecipe,
+} from './recipe.js'
 
 /**
  * レシピと共有を扱うところ（ADR-0022）。
@@ -24,6 +37,101 @@ describe('リンク', () => {
 
   it('渡す先の原点とパスを繋いでリンクにする', () => {
     expect(recipeLinkOf('https://example.com', 'かぎ1')).toBe(`https://example.com/recipe/${encodeURIComponent('かぎ1')}`)
+  })
+
+  // `recipePathOf` の逆。`main.ts` が URL を直に開いた時の鍵を読むのに使う。
+  it('画面の側のパスから鍵を読み戻す', () => {
+    expect(recipeKeyFromPath(`/recipe/${encodeURIComponent('かぎ1')}`)).toBe('かぎ1')
+  })
+
+  it('レシピのパスでなければ、鍵は無い', () => {
+    expect(recipeKeyFromPath('/')).toBeUndefined()
+    expect(recipeKeyFromPath('/deck')).toBeUndefined()
+  })
+
+  /**
+   * レシピ画面を開いて閉じても、問い合わせ文字列（`?server=`・`?participant=`）が元のまま残る
+   * こと（ADR-0022）。README がこれを現役の手段として案内している。
+   */
+  it('レシピ画面を開く URL は、問い合わせ文字列を残す', () => {
+    expect(recipeUrlOf('かぎ1', '?server=ws%3A%2F%2Fexample&participant=わたし')).toBe(
+      `/recipe/${encodeURIComponent('かぎ1')}?server=ws%3A%2F%2Fexample&participant=わたし`,
+    )
+  })
+
+  it('問い合わせ文字列が無ければ、そのまま足さない', () => {
+    expect(recipeUrlOf('かぎ1', '')).toBe(`/recipe/${encodeURIComponent('かぎ1')}`)
+  })
+
+  it('レシピ画面を閉じて戻す URL も、問い合わせ文字列を残す', () => {
+    expect(closedRecipeUrlOf('?server=ws%3A%2F%2Fexample')).toBe('/?server=ws%3A%2F%2Fexample')
+  })
+
+  it('問い合わせ文字列が無ければ、根のパスに戻す', () => {
+    expect(closedRecipeUrlOf('')).toBe('/')
+  })
+})
+
+/**
+ * 未ログインで `/recipe/<鍵>` を開き、ログインを終えた直後にそのレシピが開けるようにする
+ * （ADR-0022）。
+ *
+ * **`sessionStorage` を直に使わない。** ブラウザの外（vitest は Node で走る）には無いので、
+ * 最小限の形（`KeyValueStorage`）を渡せるようにして、偽物で確かめる。
+ */
+describe('未ログインで開こうとしたレシピを預ける', () => {
+  /** 中身を持つだけの偽物。`sessionStorage` の代わりに渡す。 */
+  function fakeStorage(initial: Readonly<Record<string, string>> = {}): KeyValueStorage {
+    const data = new Map(Object.entries(initial))
+    return {
+      getItem: (key) => data.get(key) ?? null,
+      setItem: (key, value) => {
+        data.set(key, value)
+      },
+      removeItem: (key) => {
+        data.delete(key)
+      },
+    }
+  }
+
+  it('預けた鍵が、そのまま取り出せる', () => {
+    const storage = fakeStorage()
+
+    rememberPendingRecipe(storage, 'かぎ1')
+
+    expect(takePendingRecipe(storage)).toBe('かぎ1')
+  })
+
+  /** 取り出したら忘れる。次にログインが要る場面で、古い鍵を誤って開かないようにするため。 */
+  it('取り出すと、忘れる', () => {
+    const storage = fakeStorage()
+    rememberPendingRecipe(storage, 'かぎ1')
+
+    takePendingRecipe(storage)
+
+    expect(takePendingRecipe(storage)).toBeUndefined()
+  })
+
+  it('預けていなければ、無い', () => {
+    expect(takePendingRecipe(fakeStorage())).toBeUndefined()
+  })
+
+  /** 覚えられないブラウザ（`index.ts` の `goToSignIn` と同じ作法）でも落ちない。 */
+  it('書き込めなくても、投げない', () => {
+    const throwing: KeyValueStorage = {
+      getItem: () => {
+        throw new Error('使えない')
+      },
+      setItem: () => {
+        throw new Error('使えない')
+      },
+      removeItem: () => {
+        throw new Error('使えない')
+      },
+    }
+
+    expect(() => rememberPendingRecipe(throwing, 'かぎ1')).not.toThrow()
+    expect(takePendingRecipe(throwing)).toBeUndefined()
   })
 })
 
@@ -52,8 +160,28 @@ describe('レシピの画面', () => {
     key: 'かぎ1',
     cards: ['TEST-0', 'TEST-0', 'TEST-1'],
     shares: [
-      { id: '共有1', recipe: 'かぎ1', sharer: 'ぬし', name: 'ひとつめ', description: 'かいせつ1', visibility: '一覧に載せる', revoked: false },
-      { id: '共有2', recipe: 'かぎ1', sharer: 'べつのひと', name: 'ふたつめ', description: '', visibility: 'リンクを知っている人だけ', revoked: false },
+      {
+        id: '共有1',
+        recipe: 'かぎ1',
+        sharer: 'ぬし',
+        name: 'ひとつめ',
+        description: 'かいせつ1',
+        visibility: '一覧に載せる',
+        revoked: false,
+        format: '構築戦',
+        restriction: { id: 'リスト1', name: 'テストのリスト' },
+      },
+      {
+        id: '共有2',
+        recipe: 'かぎ1',
+        sharer: 'べつのひと',
+        name: 'ふたつめ',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        revoked: false,
+        format: '構築戦',
+        restriction: undefined,
+      },
     ],
   }
 
@@ -73,9 +201,24 @@ describe('レシピの画面', () => {
   // 完了条件: レシピの画面には、共有を全部並べる（共有者・名前・解説）。
   it('共有を全部並べる', () => {
     expect(shareRowsOf(RECIPE)).toEqual([
-      { id: '共有1', sharer: 'ぬし', name: 'ひとつめ', description: 'かいせつ1' },
-      { id: '共有2', sharer: 'べつのひと', name: 'ふたつめ', description: '' },
+      {
+        id: '共有1',
+        sharer: 'ぬし',
+        name: 'ひとつめ',
+        description: 'かいせつ1',
+        rulesLabel: '構築戦・テストのリストで確かめて共有',
+      },
+      { id: '共有2', sharer: 'べつのひと', name: 'ふたつめ', description: '', rulesLabel: '構築戦・制限なしで確かめて共有' },
     ])
+  })
+
+  // 書き込むだけでなく、確かめた形式とリストをレシピの画面に出す（ADR-0022）。
+  it('制限なしで確かめたなら、そう出す', () => {
+    expect(shareRowsOf(RECIPE)[1]?.rulesLabel).toBe('構築戦・制限なしで確かめて共有')
+  })
+
+  it('リストを当てて確かめたなら、その名前を出す', () => {
+    expect(shareRowsOf(RECIPE)[0]?.rulesLabel).toBe('構築戦・テストのリストで確かめて共有')
   })
 
   // 完了条件 3: レシピには「何が何枚か」だけが写され、カードの姿は焼き付けられていない——プールを引く。
@@ -94,8 +237,28 @@ describe('レシピの画面', () => {
 
 describe('自分の共有', () => {
   const SHARES: readonly WireShare[] = [
-    { id: '共有1', recipe: 'かぎ1', sharer: 'わたし', name: 'ひとつめ', description: '', visibility: 'リンクを知っている人だけ', revoked: false },
-    { id: '共有2', recipe: 'かぎ2', sharer: 'わたし', name: 'ふたつめ', description: '', visibility: '一覧に載せる', revoked: true },
+    {
+      id: '共有1',
+      recipe: 'かぎ1',
+      sharer: 'わたし',
+      name: 'ひとつめ',
+      description: '',
+      visibility: 'リンクを知っている人だけ',
+      revoked: false,
+      format: '構築戦',
+      restriction: undefined,
+    },
+    {
+      id: '共有2',
+      recipe: 'かぎ2',
+      sharer: 'わたし',
+      name: 'ふたつめ',
+      description: '',
+      visibility: '一覧に載せる',
+      revoked: true,
+      format: '構築戦',
+      restriction: undefined,
+    },
   ]
 
   // 完了条件 5: 取り消した共有も、取り消した本人には見える。
