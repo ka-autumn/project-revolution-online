@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
-import type { DeckId, RoomCode } from '@revolution/engine'
+import type { DeckId, RecipeKey, RecipeListOrder, RoomCode, ShareId, ShareVisibility } from '@revolution/engine'
 import type { DeckDraft, OwnedDeck } from './owned-deck.js'
+import type { StoredRecipeSummary, StoredShare } from './recipe.js'
 import type { DuelRecord, ParticipantId, StoredDuel } from './room.js'
 
 /**
@@ -85,6 +86,40 @@ const SCHEMA = `
     updated_at integer not null
   );
   create index if not exists decks_by_owner on decks (owner);
+
+  -- レシピと共有は別の表に分ける（ADR-0022）。レシピは中身と、中身から決まる鍵（recipe.ts の
+  -- recipeKeyOf）だけを持つ不変のもので、誰のものでもない。共有は「ある人が、あるレシピを、
+  -- ある名前・解説・公開の段階で出したこと」で、レシピ 1 つに共有がいくつもぶら下がる。
+  create table if not exists recipes (
+    key text primary key,
+    cards text not null
+  );
+  create table if not exists shares (
+    id integer primary key autoincrement,
+    recipe text not null references recipes (key),
+    owner integer not null references identities (id),
+    name text not null,
+    description text not null,
+    -- 共有する時に確かめた規定（ADR-0022）。**レシピ本体には持たせない**——デッキはどのルールで
+    -- 組んだかを持たない決まり（ADR-0021）を、共有でも崩さない。あとから規定が変わっても、
+    -- ここは書き換えない（確かめ直すのは席に着く時である）。
+    format text not null,
+    restriction text,
+    visibility text not null,
+    shared_at integer not null,
+    -- 取り消した時刻。取り消していなければ null。**行は消さない**——取り消した人の一覧にだけ、
+    -- 取り消されたものとして残り続ける。
+    revoked_at integer
+  );
+  create index if not exists shares_by_recipe on shares (recipe);
+  create index if not exists shares_by_owner on shares (owner);
+  -- コピーされた回数を数えるための記録（ADR-0022）。**レシピ単位で数える**——どの共有から
+  -- コピーされたかは数えない。1 行 1 コピーで、集計はここを数えるだけで済ませる。
+  create table if not exists recipe_copies (
+    recipe text not null references recipes (key),
+    copied_at integer not null
+  );
+  create index if not exists recipe_copies_by_recipe on recipe_copies (recipe);
 `
 
 /**
@@ -152,6 +187,12 @@ function identityOf(participant: ParticipantId): number {
 function deckRowOf(deck: DeckId): number | undefined {
   const row = Number(deck)
   return Number.isSafeInteger(row) && row > 0 && String(row) === deck ? row : undefined
+}
+
+/** 共有を指す識別子から行番号を引く。**`deckRowOf` と同じ考え方**——知らない形なら `undefined`。 */
+function shareRowOf(share: ShareId): number | undefined {
+  const row = Number(share)
+  return Number.isSafeInteger(row) && row > 0 && String(row) === share ? row : undefined
 }
 
 /**
@@ -261,6 +302,46 @@ export interface Store {
   lastChosenCpuDeckOf(owner: ParticipantId): DeckId | undefined
   /** CPU の席に選んだデッキを覚える。**前に覚えたものは置き換わる。** 持ち主を確かめるのは呼ぶ側。 */
   rememberChosenCpuDeck(owner: ParticipantId, deck: DeckId): void
+  /**
+   * レシピを見つけるか、無ければ作る（ADR-0022）。
+   *
+   * **同じ鍵なら、すでにあるものをそのまま使う。** 鍵は中身から決まる（`recipe.ts` の
+   * `recipeKeyOf`）ので、渡された `cards` は初めて作る時にしか書き込まれない——2 度目以降は
+   * 中身が変わらないことが前提であり、揃えたはずの並びが違っても黙って上書きしない。
+   */
+  ensureRecipe(key: RecipeKey, cards: readonly string[]): void
+  /** そのレシピの中身。無ければ `undefined`。 */
+  recipeCards(key: RecipeKey): readonly string[] | undefined
+  /** 共有を 1 つ残す。**常に新しい行として増える**——前の共有を上書きしない。 */
+  addShare(
+    recipe: RecipeKey,
+    owner: ParticipantId,
+    draft: {
+      readonly name: string
+      readonly description: string
+      readonly format: string
+      readonly restriction: string | undefined
+      readonly visibility: ShareVisibility
+    },
+  ): ShareId
+  /** 識別子から共有を引く。**持ち主を見ない**——他人の共有もコピーできる（ADR-0022）。無ければ `undefined`。 */
+  shareById(share: ShareId): StoredShare | undefined
+  /** その人の共有全部（ADR-0022）。**取り消したものも含む**——共有した順。 */
+  sharesOf(owner: ParticipantId): readonly StoredShare[]
+  /** そのレシピにぶら下がる、取り消されていない共有。共有した順。 */
+  sharesOfRecipe(recipe: RecipeKey): readonly StoredShare[]
+  /** 共有を取り消す。**その人のものでなければ何もせず `false`。** */
+  revokeShare(owner: ParticipantId, share: ShareId): boolean
+  /** 共有の公開の段階を変える。**その人のものでなければ何もせず `false`。** */
+  setShareVisibility(owner: ParticipantId, share: ShareId, visibility: ShareVisibility): boolean
+  /**
+   * 「一覧に載せる」共有が 1 つ以上あるレシピの要約（ADR-0022）。
+   *
+   * 出るのは一番新しい「一覧に載せる」共有の名前と解説である。**取り消された共有は数えない。**
+   */
+  publicRecipes(order: RecipeListOrder): readonly StoredRecipeSummary[]
+  /** コピーされたことを記録する。 */
+  recordCopy(recipe: RecipeKey): void
   close(): void
 }
 
@@ -302,6 +383,31 @@ export function openStore(path: string): Store {
   const setLastDeck = db.prepare('update identities set last_deck = ? where id = ?')
   const lastCpuDeckRow = db.prepare('select last_cpu_deck from identities where id = ?')
   const setLastCpuDeck = db.prepare('update identities set last_cpu_deck = ? where id = ?')
+
+  // レシピと共有（ADR-0022）。`insert or ignore` は、鍵が同じレシピをもう一度作ろうとした時に
+  // 何もしないためのもの——**鍵は中身から決まる**ので、同じ鍵なら中身も同じである。
+  const insertRecipe = db.prepare('insert or ignore into recipes (key, cards) values (?, ?)')
+  const recipeRow = db.prepare('select cards from recipes where key = ?')
+  const insertShare = db.prepare(
+    `insert into shares (recipe, owner, name, description, format, restriction, visibility, shared_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+  const shareRow = db.prepare('select * from shares where id = ?')
+  const sharesByOwner = db.prepare('select * from shares where owner = ? order by id')
+  const openSharesByRecipe = db.prepare('select * from shares where recipe = ? and revoked_at is null order by id')
+  // **持ち主も条件に入れる。** 識別子だけで引くと、他人の共有を取り消せてしまう。
+  const revoke = db.prepare('update shares set revoked_at = ? where id = ? and owner = ? and revoked_at is null')
+  const setVisibility = db.prepare('update shares set visibility = ? where id = ? and owner = ?')
+  // 「一覧に載せる」で、取り消されていない共有だけを、レシピごとに集めるための元データ。集計は
+  // JS 側で行う（`publicRecipes`）——SQLite の窓関数に頼らず、既存の `restore` などと同じ
+  // 「単純な select のあとで畳む」やり方に揃える。
+  // **`id desc` を添える。** 同じミリ秒に 2 つ共有されると `shared_at` が並び、どちらが先に
+  // 積まれた行かが順序を決めてしまう。行番号は必ず後から増えるので、これで確実に新しい順になる。
+  const publicShareRows = db.prepare(
+    `select * from shares where visibility = '一覧に載せる' and revoked_at is null order by recipe, shared_at desc, id desc`,
+  )
+  const copyCount = db.prepare('select count(*) as n from recipe_copies where recipe = ?')
+  const insertCopy = db.prepare('insert into recipe_copies (recipe, copied_at) values (?, ?)')
 
   /**
    * いま開いている対戦の、合言葉から行番号への引き当て。
@@ -355,6 +461,56 @@ export function openStore(path: string): Store {
         return
       }
     }
+  }
+
+  /** 読み出した 1 行を `StoredShare` にする（ADR-0022）。 */
+  function shareOf(row: Row): StoredShare {
+    return {
+      id: String(int(row, 'id')),
+      recipe: text(row, 'recipe'),
+      owner: seatedAs(int(row, 'owner')),
+      name: text(row, 'name'),
+      description: text(row, 'description'),
+      visibility: text(row, 'visibility') as ShareVisibility,
+      sharedAt: int(row, 'shared_at'),
+      revoked: maybeInt(row, 'revoked_at') !== undefined,
+    }
+  }
+
+  /**
+   * 「一覧に載せる」共有を、レシピごとに畳んで要約にし、指定した並びで返す（ADR-0022）。
+   *
+   * **一番新しいものの名前と解説を使う。** `publicShareRows` はレシピごとに新しい順で並んでいる
+   * ので、初めて出てきた行がそのレシピの一番新しい共有である——「身内に渡すつもりのものが
+   * 新着に流れる」ことを防ぐ設定（ADR-0022）なので、ここで畳む元も「一覧に載せる」共有だけに
+   * 絞ってある（取り消された共有と同じく `publicShareRows` に含まれない）。
+   */
+  function publicRecipesOf(order: RecipeListOrder): readonly StoredRecipeSummary[] {
+    const newest = new Map<RecipeKey, StoredShare>()
+    for (const row of publicShareRows.all()) {
+      const share = shareOf(row as Row)
+      if (!newest.has(share.recipe)) newest.set(share.recipe, share)
+    }
+
+    const withCopies = [...newest.values()].map((share) => ({
+      share,
+      copies: int((copyCount.get(share.recipe) ?? {}) as Row, 'n'),
+    }))
+    // **時刻が並んだら、行番号の新しいほうを勝たせる。** 同じミリ秒に 2 つ共有されることがあり
+    // うる（テストでも起こる）ので、`shared_at` だけでは決まらない場合がある。
+    withCopies.sort(
+      (left, right) =>
+        (order === 'コピー数' ? right.copies - left.copies : 0) ||
+        right.share.sharedAt - left.share.sharedAt ||
+        Number(right.share.id) - Number(left.share.id),
+    )
+
+    return withCopies.map(({ share, copies }) => ({
+      key: share.recipe,
+      name: share.name,
+      description: share.description,
+      copies,
+    }))
   }
 
   return {
@@ -461,6 +617,51 @@ export function openStore(path: string): Store {
       if (row === undefined) return
 
       setLastCpuDeck.run(row, identityOf(owner))
+    },
+    ensureRecipe: (key, cards) => {
+      insertRecipe.run(key, JSON.stringify(cards))
+    },
+    recipeCards: (key) => {
+      const row = recipeRow.get(key)
+      return row === undefined ? undefined : (JSON.parse(text(row, 'cards')) as readonly string[])
+    },
+    addShare: (recipe, owner, draft) => {
+      const result = insertShare.run(
+        recipe,
+        identityOf(owner),
+        draft.name,
+        draft.description,
+        draft.format,
+        draft.restriction ?? null,
+        draft.visibility,
+        Date.now(),
+      )
+      return String(result.lastInsertRowid)
+    },
+    shareById: (share) => {
+      const row = shareRowOf(share)
+      if (row === undefined) return undefined
+
+      const found = shareRow.get(row)
+      return found === undefined ? undefined : shareOf(found as Row)
+    },
+    sharesOf: (owner) => sharesByOwner.all(identityOf(owner)).map((row) => shareOf(row as Row)),
+    sharesOfRecipe: (recipe) => openSharesByRecipe.all(recipe).map((row) => shareOf(row as Row)),
+    revokeShare: (owner, share) => {
+      const row = shareRowOf(share)
+      if (row === undefined) return false
+
+      return Number(revoke.run(Date.now(), row, identityOf(owner)).changes) > 0
+    },
+    setShareVisibility: (owner, share, visibility) => {
+      const row = shareRowOf(share)
+      if (row === undefined) return false
+
+      return Number(setVisibility.run(visibility, row, identityOf(owner)).changes) > 0
+    },
+    publicRecipes: (order) => publicRecipesOf(order),
+    recordCopy: (recipe) => {
+      insertCopy.run(recipe, Date.now())
     },
     close: () => {
       db.close()

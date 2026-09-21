@@ -536,3 +536,243 @@ describe('自分のデッキ', () => {
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
   })
 })
+
+/**
+ * レシピと共有（ADR-0022）。
+ *
+ * **決まりを見るのは `recipe.ts` である。** ここで確かめるのは、置き場に書いたものが正しく
+ * 返ることと、レシピと共有が別の表で、鍵とレシピが 1 対 1 で対応することである。
+ */
+describe('レシピと共有', () => {
+  const SHARE_DRAFT = {
+    name: 'わたしのレシピ',
+    description: 'かいせつ',
+    format: '構築戦',
+    restriction: undefined,
+    visibility: 'リンクを知っている人だけ' as const,
+  }
+
+  it('レシピを作ると、鍵から中身が引ける', () => {
+    const store = openStore(':memory:')
+
+    store.ensureRecipe('かぎ1', ['TEST-0', 'TEST-1'])
+
+    expect(store.recipeCards('かぎ1')).toEqual(['TEST-0', 'TEST-1'])
+    store.close()
+  })
+
+  it('知らない鍵では中身が引けない', () => {
+    const store = openStore(':memory:')
+
+    expect(store.recipeCards('しらないかぎ')).toBeUndefined()
+    store.close()
+  })
+
+  // 完了条件 2: 同じ中身のデッキを共有すると、レシピは1つに決まる。
+  it('同じ鍵をもう一度作ろうとしても、中身は変わらない', () => {
+    const store = openStore(':memory:')
+    store.ensureRecipe('かぎ1', ['TEST-0'])
+
+    store.ensureRecipe('かぎ1', ['TEST-9'])
+
+    expect(store.recipeCards('かぎ1')).toEqual(['TEST-0'])
+    store.close()
+  })
+
+  it('共有すると、その人の共有として残る', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+    store.ensureRecipe('かぎ1', ['TEST-0'])
+
+    const id = store.addShare('かぎ1', me, SHARE_DRAFT)
+
+    expect(store.sharesOf(me)).toEqual([
+      { id, recipe: 'かぎ1', owner: me, name: 'わたしのレシピ', description: 'かいせつ', visibility: 'リンクを知っている人だけ', sharedAt: expect.any(Number), revoked: false },
+    ])
+    store.close()
+  })
+
+  it('識別子から、持ち主を問わずに共有が引ける（コピーするのに使う）', () => {
+    const store = openStore(':memory:')
+    const owner = store.identify('google', '10001')
+    store.ensureRecipe('かぎ1', ['TEST-0'])
+    const id = store.addShare('かぎ1', owner, SHARE_DRAFT)
+
+    expect(store.shareById(id)?.owner).toBe(owner)
+    store.close()
+  })
+
+  it('知らない共有の識別子では引けない', () => {
+    const store = openStore(':memory:')
+
+    expect(store.shareById('999')).toBeUndefined()
+    expect(store.shareById('よめない')).toBeUndefined()
+    store.close()
+  })
+
+  /** 完了条件 5: 自分の共有を取り消すと、その共有は消える。 */
+  it('取り消すと、レシピにぶら下がる一覧からは外れる', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+    store.ensureRecipe('かぎ1', ['TEST-0'])
+    const id = store.addShare('かぎ1', me, SHARE_DRAFT)
+
+    expect(store.revokeShare(me, id)).toBe(true)
+
+    expect(store.sharesOfRecipe('かぎ1')).toEqual([])
+    // **取り消した本人の一覧にだけ、取り消されたものとして残る。**
+    expect(store.sharesOf(me)).toEqual([expect.objectContaining({ id, revoked: true })])
+    store.close()
+  })
+
+  it('他人の共有は取り消せない', () => {
+    const store = openStore(':memory:')
+    const owner = store.identify('google', '10001')
+    const someoneElse = store.identify('google', '10002')
+    store.ensureRecipe('かぎ1', ['TEST-0'])
+    const id = store.addShare('かぎ1', owner, SHARE_DRAFT)
+
+    expect(store.revokeShare(someoneElse, id)).toBe(false)
+    expect(store.sharesOfRecipe('かぎ1')).toHaveLength(1)
+    store.close()
+  })
+
+  it('公開の段階を変えられる', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+    store.ensureRecipe('かぎ1', ['TEST-0'])
+    const id = store.addShare('かぎ1', me, SHARE_DRAFT)
+
+    expect(store.setShareVisibility(me, id, '一覧に載せる')).toBe(true)
+
+    expect(store.sharesOf(me)[0]?.visibility).toBe('一覧に載せる')
+    store.close()
+  })
+
+  it('他人の共有の公開の段階は変えられない', () => {
+    const store = openStore(':memory:')
+    const owner = store.identify('google', '10001')
+    const someoneElse = store.identify('google', '10002')
+    store.ensureRecipe('かぎ1', ['TEST-0'])
+    const id = store.addShare('かぎ1', owner, SHARE_DRAFT)
+
+    expect(store.setShareVisibility(someoneElse, id, '一覧に載せる')).toBe(false)
+    store.close()
+  })
+
+  describe('一覧', () => {
+    it('「一覧に載せる」共有が無いレシピは並ばない', () => {
+      const store = openStore(':memory:')
+      const me = store.identify('google', '10001')
+      store.ensureRecipe('かぎ1', ['TEST-0'])
+      store.addShare('かぎ1', me, SHARE_DRAFT)
+
+      expect(store.publicRecipes('新着')).toEqual([])
+      store.close()
+    })
+
+    it('新着順は、一番新しい「一覧に載せる」共有の時刻で並ぶ', () => {
+      const store = openStore(':memory:')
+      const me = store.identify('google', '10001')
+      store.ensureRecipe('ふるい', ['TEST-0'])
+      store.ensureRecipe('あたらしい', ['TEST-1'])
+      store.addShare('ふるい', me, { ...SHARE_DRAFT, visibility: '一覧に載せる', name: 'ふるいレシピ' })
+      store.addShare('あたらしい', me, { ...SHARE_DRAFT, visibility: '一覧に載せる', name: 'あたらしいレシピ' })
+
+      expect(store.publicRecipes('新着').map((recipe) => recipe.key)).toEqual(['あたらしい', 'ふるい'])
+      store.close()
+    })
+
+    // 完了条件 8: 一番新しい共有の名前と解説が出る。
+    it('出るのは一番新しい「一覧に載せる」共有の名前と解説', () => {
+      const store = openStore(':memory:')
+      const me = store.identify('google', '10001')
+      store.ensureRecipe('かぎ1', ['TEST-0'])
+      store.addShare('かぎ1', me, { ...SHARE_DRAFT, visibility: '一覧に載せる', name: 'ふるい名前' })
+      store.addShare('かぎ1', me, { ...SHARE_DRAFT, visibility: '一覧に載せる', name: 'あたらしい名前' })
+
+      expect(store.publicRecipes('新着')).toEqual([
+        { key: 'かぎ1', name: 'あたらしい名前', description: 'かいせつ', copies: 0 },
+      ])
+      store.close()
+    })
+
+    /**
+     * 身内に渡すつもりのものが新着に流れることを設定で防ぐ（ADR-0022）ので、「一覧に載せる」より
+     * 後に「リンクを知っている人だけ」で共有しても、一覧の見え方は変わらない。
+     */
+    it('あとから「リンクを知っている人だけ」で共有しても、一覧の名前は変わらない', () => {
+      const store = openStore(':memory:')
+      const me = store.identify('google', '10001')
+      store.ensureRecipe('かぎ1', ['TEST-0'])
+      store.addShare('かぎ1', me, { ...SHARE_DRAFT, visibility: '一覧に載せる', name: '一覧の名前' })
+      store.addShare('かぎ1', me, { ...SHARE_DRAFT, visibility: 'リンクを知っている人だけ', name: '身内向けの名前' })
+
+      expect(store.publicRecipes('新着')[0]?.name).toBe('一覧の名前')
+      store.close()
+    })
+
+    it('コピー数順で並び替えられる。コピー数はレシピ単位で数える', () => {
+      const store = openStore(':memory:')
+      const me = store.identify('google', '10001')
+      const other = store.identify('google', '10002')
+      store.ensureRecipe('よくコピーされる', ['TEST-0'])
+      store.ensureRecipe('あまりコピーされない', ['TEST-1'])
+      store.addShare('よくコピーされる', me, { ...SHARE_DRAFT, visibility: '一覧に載せる' })
+      // **誰の共有からコピーされたかは数えない。** 同じレシピへの記録は、誰が書いても積み上がる。
+      store.addShare('よくコピーされる', other, { ...SHARE_DRAFT, visibility: '一覧に載せる' })
+      store.recordCopy('よくコピーされる')
+      store.recordCopy('よくコピーされる')
+      store.addShare('あまりコピーされない', me, { ...SHARE_DRAFT, visibility: '一覧に載せる' })
+      store.recordCopy('あまりコピーされない')
+
+      const ordered = store.publicRecipes('コピー数')
+      expect(ordered.map((recipe) => recipe.key)).toEqual(['よくコピーされる', 'あまりコピーされない'])
+      expect(ordered.map((recipe) => recipe.copies)).toEqual([2, 1])
+      store.close()
+    })
+
+    /** 完了条件 6: 取り消したあと、同じ中身を誰かが共有すると、また一覧に出るようになる。 */
+    it('取り消した後に同じレシピを一覧向けに共有すると、また一覧に出る', () => {
+      const store = openStore(':memory:')
+      const first = store.identify('google', '10001')
+      const second = store.identify('google', '10002')
+      store.ensureRecipe('かぎ1', ['TEST-0'])
+      const revoked = store.addShare('かぎ1', first, { ...SHARE_DRAFT, visibility: '一覧に載せる' })
+      store.revokeShare(first, revoked)
+      expect(store.publicRecipes('新着')).toEqual([])
+
+      store.addShare('かぎ1', second, { ...SHARE_DRAFT, visibility: '一覧に載せる' })
+
+      expect(store.publicRecipes('新着').map((recipe) => recipe.key)).toEqual(['かぎ1'])
+      store.close()
+    })
+  })
+
+  /** 置き場は差し替えても消えない（ADR-0018）。レシピと共有も対戦や自分のデッキと同じ扱いにする。 */
+  it('立て直しても、レシピと共有は残っている', () => {
+    const path = `${tmpdir()}/revolution-recipes-${randomUUID()}.sqlite`
+    const first = openStore(path)
+    const me = first.identify('google', '10001')
+    first.ensureRecipe('かぎ1', ['TEST-0'])
+    const id = first.addShare('かぎ1', me, SHARE_DRAFT)
+    first.close()
+
+    const second = openStore(path)
+    expect(second.recipeCards('かぎ1')).toEqual(['TEST-0'])
+    expect(second.sharesOf(me)).toEqual([
+      {
+        id,
+        recipe: 'かぎ1',
+        owner: me,
+        name: SHARE_DRAFT.name,
+        description: SHARE_DRAFT.description,
+        visibility: SHARE_DRAFT.visibility,
+        sharedAt: expect.any(Number),
+        revoked: false,
+      },
+    ])
+    second.close()
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  })
+})
