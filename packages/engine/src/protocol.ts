@@ -226,6 +226,18 @@ export interface WireShare {
    * 取り消されていない共有しか載らない。
    */
   readonly revoked: boolean
+  /**
+   * 共有する人が確かめた形式（ADR-0022）。**レシピ本体は持たない値**——共有ごとに残す。
+   *
+   * 出さないと、確かめたことを確かめる手立てが無くなる。「構築戦・○○リストで確かめて共有」の
+   * ように、レシピの画面が共有ごとに出す。
+   */
+  readonly format: DuelFormat
+  /**
+   * 共有する人が当てた禁止／制限リスト。**`制限なし` で確かめたなら `undefined`**（`WireRoomRules`
+   * と同じ形）。中身（何が何枚までか）は載せない——名前だけでよい。
+   */
+  readonly restriction: { readonly id: RestrictionListId; readonly name: string } | undefined
 }
 
 /**
