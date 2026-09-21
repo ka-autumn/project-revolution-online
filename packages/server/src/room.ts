@@ -528,8 +528,13 @@ function refusalOfReading(
   }
 }
 
-/** デッキの不備 1 つを、断る理由として読める文にする。 */
-function describeViolation(violation: DeckViolation): string {
+/**
+ * デッキの不備 1 つを、断る理由として読める文にする。
+ *
+ * **`serve.ts` の共有（ADR-0022）からも使う。** 共有する時に規定を満たしているかを確かめるのは
+ * 席に着く時と同じ判定（`violationsUnder`）なので、断る理由の書き方も揃える。
+ */
+export function describeViolation(violation: DeckViolation): string {
   switch (violation.kind) {
     case '枚数不足':
       return `${violation.minimum} 枚に ${violation.minimum - violation.count} 枚足りません`
@@ -609,6 +614,13 @@ function handle(
     case 'デッキを消す':
     case 'デッキをコピーする':
     case 'デッキを確かめる':
+    // レシピと共有も部屋の外のことである（ADR-0022）。預かるのは置き場で、決まりを見るのは
+    // `recipe.ts`、受けるのは `serve.ts` である。
+    case 'デッキを共有する':
+    case '共有を取り消す':
+    case '共有の公開範囲を変える':
+    case 'レシピを見る':
+    case 'レシピの一覧を見る':
       return { rooms, deliveries: [], records: [] }
     case 'ロビーに戻る':
       return leave(rooms, participant, connected)

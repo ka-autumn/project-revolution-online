@@ -1,6 +1,7 @@
 import './style.css'
 import { SIGN_IN_PATH } from '@revolution/engine'
 import { mount } from './index.js'
+import { recipeKeyFromPath, takePendingRecipe } from './recipe.js'
 
 /**
  * ブラウザで開いた時の入口。`index.html` が読み込む。
@@ -87,6 +88,21 @@ if (root === null) throw new Error('#board が無い')
 
 const named = params.get('participant')
 const room = params.get('room')
+/**
+ * 開くべきレシピの鍵（ADR-0022）。
+ *
+ * **`/recipe/<鍵>` を直に開いた時が主だが、未ログインでそこへ来てログインへ送られた後もここに
+ * 来る。** 後者は Google の画面を経由して戻ってくるので、`location.pathname` はもう
+ * `SIGN_IN_RETURN_TO`（ふつうはサイトの根）になっており、そちらからは鍵が読めない。
+ * `index.ts` の `mount` がログインへ送る前に `sessionStorage` へ預けておいたものを、ここで
+ * 拾う（`recipe.ts` の `rememberPendingRecipe` / `takePendingRecipe`）。
+ *
+ * **`takePendingRecipe` は先に呼び、必ず取り出して忘れる。** `??` の右側に直に書いて短絡させると、
+ * URL に鍵がある間は預けたものを消さないままになり、次に無関係な理由でログインへ送られた時に
+ * 古い鍵を誤って開いてしまう。
+ */
+const pendingRecipe = takePendingRecipe(sessionStorage)
+const recipe = recipeKeyFromPath(location.pathname) ?? pendingRecipe
 
 const server = serverUrl(params)
 
@@ -96,4 +112,6 @@ mount(root, {
   participant: named === null || named === '' ? participantId() : named,
   // 指していなければロビーから始める。合言葉を知っている相手と待ち合わせる時だけ要る。
   ...(room === null || room === '' ? {} : { room }),
+  // レシピの画面を直に開いた時だけ渡す。ふだんはロビーから始める。
+  ...(recipe === undefined ? {} : { recipe }),
 })

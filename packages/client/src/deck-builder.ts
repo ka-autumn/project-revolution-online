@@ -2,6 +2,9 @@ import { CARD_TYPES, COLORS } from '@revolution/engine'
 import type {
   DeckId,
   DeckViolation,
+  RecipeKey,
+  RecipeListOrder,
+  ShareId,
   ToClient,
   WireCardFace,
   WireDeck,
@@ -10,6 +13,7 @@ import type {
 } from '@revolution/engine'
 import { emptyFilter } from './pool-filter.js'
 import type { PoolFilter } from './pool-filter.js'
+import type { SharingState } from './recipe.js'
 import type { ChosenRules } from './render.js'
 import { squareLabel, summaryOf } from './view-model.js'
 import type { DetailRow } from './view-model.js'
@@ -43,13 +47,17 @@ export interface DeckDraft {
 export const NEW_DECK_NAME = '新しいデッキ'
 
 /**
- * デッキを組むところで、いまどこを見ているか。
+ * デッキを組むところで、いまどこを見ているか（ADR-0022 で共有とレシピが増えた）。
  *
  * - `閉じている` — ロビーを出している
  * - `デッキを選ぶ` — 自分のデッキと既製デッキを並べ、どれを組むかを選ぶ
  * - `デッキを組む` — 組みかけ（`Builder.draft`）を組んでいる
+ * - `自分の共有` — 自分が出した共有を並べ、公開の段階を変えたり取り消したりする
+ * - `レシピの一覧` — 「一覧に載せる」共有があるレシピを並べる
+ * - `レシピ` — 1 つのレシピ（`Builder.viewingRecipe`）を開き、共有ごとにコピーできる。
+ *   `/recipe/<鍵>` を直に開いた時もここに来る
  */
-export type BuilderScreen = '閉じている' | 'デッキを選ぶ' | 'デッキを組む'
+export type BuilderScreen = '閉じている' | 'デッキを選ぶ' | 'デッキを組む' | '自分の共有' | 'レシピの一覧' | 'レシピ'
 
 /**
  * 送ってまだ返事の来ていないもの。
@@ -79,6 +87,8 @@ export type BuilderConfirm =
   | { readonly kind: 'デッキを消す'; readonly deck: DeckId; readonly name: string }
   /** 保存していない変更を捨てて、デッキの一覧に戻る。 */
   | { readonly kind: '変更を捨てる' }
+  /** 自分の共有を取り消す（ADR-0022）。取り消した共有は取り消されたまま残り、復活しない。 */
+  | { readonly kind: '共有を取り消す'; readonly share: ShareId; readonly name: string }
 
 /**
  * 尋ねる文と、2 つのボタンの見出し。
@@ -107,6 +117,12 @@ export function confirmView(confirm: BuilderConfirm): ConfirmView {
         message: '保存していない変更があります。保存せずに、デッキの一覧に戻りますか？',
         confirmLabel: '保存せずに戻る',
         cancelLabel: '編集を続ける',
+      }
+    case '共有を取り消す':
+      return {
+        message: `「${confirm.name}」の共有を取り消しますか？ すでにコピーした人のデッキは残ります`,
+        confirmLabel: '取り消す',
+        cancelLabel: 'やめる',
       }
   }
 }
@@ -142,6 +158,25 @@ export interface Builder {
   readonly filter: PoolFilter
   /** 詳しく絞り込むところを開いているか。 */
   readonly filterOpen: boolean
+  /**
+   * 共有する下書き（ADR-0022）。尋ねていなければ `undefined`。
+   *
+   * `confirming` と同じ理由でここに持つ——画面は丸ごと描き直されるので、打ち込みかけを状態として
+   * 持つ。
+   */
+  readonly sharing: SharingState | undefined
+  /** `レシピの一覧` で選んでいる並べ方（ADR-0022）。 */
+  readonly recipeOrder: RecipeListOrder
+  /** `レシピ` で開いているレシピの鍵（ADR-0022）。開いていなければ `undefined`。 */
+  readonly viewingRecipe: RecipeKey | undefined
+  /**
+   * `viewingRecipe` を尋ねて、まだ返事が届いていないか（ADR-0022）。
+   *
+   * **`デッキを確かめる` の `checking` と同じ理由でここに持つ。** `レシピ` の返事はどの鍵を尋ねたかを
+   * 添えない（送った順に届く前提、`protocol.ts`）ので、違う鍵を続けて開いた時に前の答えを出さない
+   * ためにここで待っているかを覚える。
+   */
+  readonly viewingRecipeLoading: boolean
 }
 
 export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder {
@@ -156,6 +191,10 @@ export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder
     confirming: undefined,
     filter: emptyFilter(),
     filterOpen: false,
+    sharing: undefined,
+    recipeOrder: '新着',
+    viewingRecipe: undefined,
+    viewingRecipeLoading: false,
   }
 }
 
@@ -275,8 +314,23 @@ export function applyToBuilder(builder: Builder, message: ToClient): Builder {
     }
     case 'デッキを確かめた':
       return { ...builder, checking: Math.max(0, builder.checking - 1) }
-    case '行えなかった':
-      return { ...builder, waiting: { kind: '無し' }, checking: 0, refusal: message.reason }
+    case '共有した':
+      // 待っていたのがこの下書きへの返事である時だけ、共有できた画面に切り替える。
+      return builder.sharing?.kind === '打ち込み中' && builder.sharing.sending
+        ? { ...builder, sharing: { kind: '共有した', share: message.share } }
+        : builder
+    case 'レシピ':
+      // どの鍵への返事かは添えられていない（送った順に届く前提）ので、待っていたことだけを覚える。
+      return { ...builder, viewingRecipeLoading: false }
+    case '行えなかった': {
+      // **尋ねている最中の共有があれば、そこにも理由を出す。** 下に出る `refusal`（画面の外）とは
+      // 別に、ダイアログの中に出す必要がある——重なった画面の裏に断られた理由が隠れてしまう。
+      const sharing =
+        builder.sharing?.kind === '打ち込み中' && builder.sharing.sending
+          ? { ...builder.sharing, sending: false, refusal: message.reason }
+          : builder.sharing
+      return { ...builder, waiting: { kind: '無し' }, checking: 0, refusal: message.reason, sharing }
+    }
     default:
       return builder
   }

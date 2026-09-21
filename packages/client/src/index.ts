@@ -7,6 +7,8 @@ import type {
   DuelFormat,
   LoggedEvent,
   OpponentKind,
+  RecipeKey,
+  RecipeListOrder,
   RestrictionChoice,
   RoomCode,
 } from '@revolution/engine'
@@ -33,6 +35,18 @@ import type { Builder, DeckDraft } from './deck-builder.js'
 import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
 import { filterChoicesOf, filterPool } from './pool-filter.js'
 import {
+  closedRecipeUrlOf,
+  myShareRows,
+  recipeCardRows,
+  recipeKeyFromPath,
+  recipeLinkOf,
+  recipeSummaryRows,
+  recipeUrlOf,
+  rememberPendingRecipe,
+  shareDraftOf,
+  shareRowsOf,
+} from './recipe.js'
+import {
   KEEP_FOCUS,
   KEEP_SCROLL,
   actionsElement,
@@ -43,12 +57,24 @@ import {
   deckListElement,
   leaveElement,
   lobbyElement,
+  myShareListElement,
   nameElement,
   overlayElement,
   pickElement,
+  recipeElement,
+  recipeListElement,
+  shareDialogElement,
   waitingForOverlayElement,
 } from './render.js'
-import type { ChosenRules, DeckEditorHandlers, DeckListHandlers } from './render.js'
+import type {
+  ChosenRules,
+  DeckEditorHandlers,
+  DeckListHandlers,
+  MyShareHandlers,
+  RecipeListHandlers,
+  RecipeViewHandlers,
+  ShareDialogHandlers,
+} from './render.js'
 import { applyMessage, connecting, roomOf } from './session.js'
 import type { Session } from './session.js'
 import {
@@ -87,6 +113,13 @@ export interface MountOptions {
    * **打つ前に決めておくものは何も無い。**
    */
   readonly room?: RoomCode
+  /**
+   * 直に開くレシピの鍵（ADR-0022）。`/recipe/<鍵>` を開いた時に、`main.ts` がここへ渡す。
+   *
+   * 指していなければ、ふだんどおりロビーから始める。**ログインしている人にしか開けない**
+   * ——ログインを持たない立て方や、まだ名前を決めていない間は、開けない理由を出す。
+   */
+  readonly recipe?: RecipeKey
   /**
    * ログインを始める先（ADR-0019、`server` の `sign-in.ts`）。
    *
@@ -266,6 +299,11 @@ interface DeckBuilding {
   readonly confirm: { readonly onConfirm: () => void; readonly onCancel: () => void }
   /** ロビーから開く。組めない立て方では `undefined`。 */
   readonly onBuild: (() => void) | undefined
+  /** 共有するダイアログで押せるもの（ADR-0022）。尋ねていなければ `undefined`。 */
+  readonly sharing: ShareDialogHandlers | undefined
+  readonly myShares: MyShareHandlers
+  readonly recipeList: RecipeListHandlers
+  readonly recipeView: RecipeViewHandlers
 }
 
 /**
@@ -398,6 +436,10 @@ function draw(
   const owned = session.ownedDecks
   const builderOpen =
     stage.kind === 'ロビー' && connected && builder.screen !== '閉じている' && pool !== undefined && owned !== undefined
+  // `/recipe/<鍵>` を直に開いたが、ログインを持たない立て方だった（ADR-0022）。**プールが届か
+  // ないので、識別子から名前を出す手立てが無い。** `builderOpen` には乗せず、ここだけ別に出す。
+  const viewingRecipeWithoutLogin =
+    stage.kind === 'ロビー' && connected && builder.screen === 'レシピ' && pool === undefined
 
   if (builderOpen && builder.screen === 'デッキを選ぶ') {
     root.append(
@@ -434,10 +476,47 @@ function draw(
           restrictions: stage.restrictions,
           rules: builder.rules,
           refusal: builder.refusal,
+          // 共有できるのは保存してあるデッキだけである（ADR-0022）。まだ無い識別子は渡せない。
+          canShare: draft.deck !== undefined,
         },
         building.editor,
       ),
     )
+  }
+
+  // 自分が出した共有を並べるところ（ADR-0022）。繋いだ時から届いているので、尋ね直さない。
+  if (builderOpen && builder.screen === '自分の共有') {
+    root.append(
+      myShareListElement(myShareRows(session.myShares ?? []), (recipe) => recipeLinkOf(location.origin, recipe), building.myShares),
+    )
+  }
+
+  // 「一覧に載せる」共有があるレシピの一覧（ADR-0022）。届くまでは読み込み中を出す。
+  if (builderOpen && builder.screen === 'レシピの一覧') {
+    const list = session.recipeList
+    if (list === undefined) root.append(line('status', '読み込んでいます'))
+    else root.append(recipeListElement(recipeSummaryRows(list.recipes), list.order, building.recipeList))
+  }
+
+  // レシピの画面（ADR-0022、`/recipe/<鍵>`）。ログインを持たない立て方では開けない。
+  if (viewingRecipeWithoutLogin) {
+    root.append(line('status', 'ログインしていないと開けません'))
+    root.append(leaveElement('ロビーに戻る', building.recipeView.onClose))
+  }
+  if (builderOpen && builder.screen === 'レシピ') {
+    const view = session.recipeView
+    if (builder.viewingRecipeLoading || view === undefined) {
+      root.append(line('status', '読み込んでいます'))
+      root.append(leaveElement('デッキの一覧に戻る', building.recipeView.onClose))
+    } else if (view.recipe === undefined) {
+      // 鍵を知らない場合と、共有が 1 つも残っていない場合の両方がここに来る（ADR-0022）。
+      root.append(line('status', 'このレシピは開けません'))
+      root.append(leaveElement('デッキの一覧に戻る', building.recipeView.onClose))
+    } else {
+      root.append(
+        recipeElement(recipeCardRows(pool, view.recipe.cards), shareRowsOf(view.recipe), builder.waiting.kind !== '無し', building.recipeView),
+      )
+    }
   }
 
   // 尋ねている間は、組むところの上に重ねる。**ブラウザの確認ダイアログは使わない**（`confirmElement`）。
@@ -445,8 +524,21 @@ function draw(
     root.append(confirmElement(confirmView(builder.confirming), building.confirm.onConfirm, building.confirm.onCancel))
   }
 
+  // 共有するダイアログも、同じく画面の中に重ねる（ADR-0022）。
+  if (builderOpen && builder.sharing !== undefined && building.sharing !== undefined) {
+    const sharing = builder.sharing
+    root.append(
+      shareDialogElement(
+        sharing,
+        stage.restrictions,
+        sharing.kind === '共有した' ? recipeLinkOf(location.origin, sharing.share.recipe) : undefined,
+        building.sharing,
+      ),
+    )
+  }
+
   // ロビーは繋がっている間だけ出す。作る・入るは送らないと何も起きないので、押せる形で出さない。
-  if (stage.kind === 'ロビー' && connected && !builderOpen) {
+  if (stage.kind === 'ロビー' && connected && !builderOpen && !viewingRecipeWithoutLogin) {
     // **席に着くのに選ぶのは自分のデッキである**（ADR-0021、#194）。既製デッキはデッキを組む
     // ところでコピーしてから使う。**デッキを持てない立て方でだけ、既製デッキがここに並ぶ。**
     const seatable = seatableDecks(session.ownedDecks, stage.presets)
@@ -724,6 +816,13 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    * 送ってから返事が来るまでの間と、合言葉を直に指して開いた時（`options.room`）だけである。
    */
   let pendingRoom: RoomCode | undefined = options.room
+  /**
+   * `/recipe/<鍵>` を直に開いて始まった時の、開こうとしているレシピ（ADR-0022）。
+   *
+   * **ロビーに着いたところで開く。** 名前を決める必要があるかもしれず（ADR-0020）、決まって
+   * いなければそちらが先である。開いたら忘れる——`builder.viewingRecipe` が続きを持つ。
+   */
+  let pendingRecipe: RecipeKey | undefined = options.recipe
 
   // 盤面をクリックして操作する（#94）。選びかけているカードは**盤面が届くたびに捨てる**。
   // 届いた手は入れ替わっており、選びかけの手がまだ行えるとは限らないためである。
@@ -872,6 +971,12 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         updateBuilder({ ...builder, screen: '閉じている', refusal: undefined })
         redraw()
       },
+      onMyShares: () => {
+        // 自分の共有は繋いだ時から届いている（`server` の `serve.ts`）ので、尋ね直さずに出す。
+        updateBuilder({ ...builder, screen: '自分の共有', refusal: undefined })
+        redraw()
+      },
+      onRecipeList: () => requestRecipeList(builder.recipeOrder),
     },
     editor: {
       onName: (name) => {
@@ -928,6 +1033,15 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         updateBuilder({ ...builder, confirming: { kind: '変更を捨てる' } })
         redraw()
       },
+      onShare: () => {
+        // 共有できるのは保存してあるデッキだけである（`view.canShare`、ADR-0022）。組みかけの
+        // 打ち込みではなく、**いま自分のデッキとして残っているものの名前・解説**を初期値にする。
+        const deck = session.ownedDecks?.find((each) => each.id === builder.draft?.deck)
+        if (deck === undefined) return
+
+        updateBuilder({ ...builder, sharing: { kind: '打ち込み中', draft: shareDraftOf(deck), sending: false, refusal: undefined } })
+        redraw()
+      },
     },
     confirm: {
       onConfirm: () => {
@@ -938,11 +1052,97 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
           redraw()
         }
         if (confirming?.kind === '変更を捨てる') backToList()
+        if (confirming?.kind === '共有を取り消す') {
+          connection.send({ kind: '共有を取り消す', share: confirming.share })
+          redraw()
+        }
       },
       onCancel: () => {
         updateBuilder({ ...builder, confirming: undefined })
         redraw()
       },
+    },
+    sharing:
+      builder.sharing === undefined
+        ? undefined
+        : {
+            onName: (name) => {
+              if (builder.sharing?.kind === '打ち込み中') {
+                updateBuilder({ ...builder, sharing: { ...builder.sharing, draft: { ...builder.sharing.draft, name } } })
+              }
+            },
+            onDescription: (description) => {
+              if (builder.sharing?.kind === '打ち込み中') {
+                updateBuilder({
+                  ...builder,
+                  sharing: { ...builder.sharing, draft: { ...builder.sharing.draft, description } },
+                })
+              }
+            },
+            onVisibility: (visibility) => {
+              if (builder.sharing?.kind !== '打ち込み中') return
+              updateBuilder({ ...builder, sharing: { ...builder.sharing, draft: { ...builder.sharing.draft, visibility } } })
+              redraw()
+            },
+            onFormat: (format) => {
+              if (builder.sharing?.kind !== '打ち込み中') return
+              updateBuilder({ ...builder, sharing: { ...builder.sharing, draft: { ...builder.sharing.draft, format } } })
+              redraw()
+            },
+            onRestriction: (restriction) => {
+              if (builder.sharing?.kind !== '打ち込み中') return
+              updateBuilder({
+                ...builder,
+                sharing: { ...builder.sharing, draft: { ...builder.sharing.draft, restriction } },
+              })
+              redraw()
+            },
+            onShare: () => {
+              const sharing = builder.sharing
+              if (sharing?.kind !== '打ち込み中' || sharing.sending) return
+
+              connection.send({ kind: 'デッキを共有する', ...sharing.draft })
+              updateBuilder({ ...builder, sharing: { ...sharing, sending: true, refusal: undefined } })
+              redraw()
+            },
+            onCopyLink: copyLink,
+            onClose: () => {
+              updateBuilder({ ...builder, sharing: undefined })
+              redraw()
+            },
+          },
+    myShares: {
+      onVisibility: (share, visibility) => connection.send({ kind: '共有の公開範囲を変える', share, visibility }),
+      onRevoke: (share, name) => {
+        // **取り消すと元に戻らない。** 押し間違いで消えないように尋ねる。
+        updateBuilder({ ...builder, confirming: { kind: '共有を取り消す', share, name } })
+        redraw()
+      },
+      onCopyLink: copyLink,
+      onClose: () => {
+        updateBuilder({ ...builder, screen: 'デッキを選ぶ', refusal: undefined })
+        redraw()
+      },
+    },
+    recipeList: {
+      onOrder: requestRecipeList,
+      onOpen: (key) => openRecipe(key, true),
+      onClose: () => {
+        updateBuilder({ ...builder, screen: 'デッキを選ぶ', refusal: undefined })
+        redraw()
+      },
+    },
+    recipeView: {
+      onCopy: (share) => {
+        if (builder.waiting.kind !== '無し') return
+
+        // コピーしたレシピが届いたら、既製デッキのコピーと同じくそのまま組み始める
+        // （`deck-builder.ts` の `applyToBuilder`）。
+        connection.send({ kind: 'デッキをコピーする', origin: { kind: '共有レシピ', share } })
+        updateBuilder({ ...builder, waiting: { kind: 'コピー' }, refusal: undefined })
+        redraw()
+      },
+      onClose: closeRecipeScreens,
     },
   })
 
@@ -951,6 +1151,81 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     if (checkTimer !== undefined) clearTimeout(checkTimer)
     checkTimer = undefined
     updateBuilder({ ...builder, screen: 'デッキを選ぶ', draft: undefined, pinned: undefined, refusal: undefined })
+    redraw()
+  }
+
+  /**
+   * リンクをコピーする（ADR-0022）。**組み立てるのは呼ぶ側**（`recipe.ts` の `recipeLinkOf`）——
+   * ここはブラウザに渡すだけである。
+   *
+   * コピーの手立てが無い（対応していないブラウザ、`https` でない）場合は諦める。押した人には
+   * 画面に出ている値が見えているので、選んで自分でコピーできる。
+   */
+  function copyLink(link: string): void {
+    void navigator.clipboard?.writeText(link).catch(() => {
+      // コピーできなくても、リンクは画面に出ている。
+    })
+  }
+
+  /**
+   * レシピの画面を開く（ADR-0022、`/recipe/<鍵>`）。
+   *
+   * `pushUrl` は、画面の中で移動した時だけ真にする——URL を直に開いて始まった時は、すでにそこを
+   * 指しているので揃え直さない。
+   */
+  function openRecipe(key: RecipeKey, pushUrl: boolean): void {
+    updateBuilder({ ...builder, screen: 'レシピ', viewingRecipe: key, viewingRecipeLoading: true, refusal: undefined })
+    connection.send({ kind: 'レシピを見る', recipe: key })
+    if (pushUrl) {
+      try {
+        // **問い合わせ文字列（`location.search`）は残す。** `?server=`・`?participant=` は README
+        // が現役の手段として案内している値で、落とすと開いて閉じた後の読み込み直しで消える。
+        history.pushState(null, '', recipeUrlOf(key, location.search))
+      } catch {
+        // URL を揃えられなくても、開くことはできる。
+      }
+    }
+    redraw()
+  }
+
+  /** レシピにまつわる画面を出て、デッキの一覧に戻る。開いていた URL も戻す。 */
+  function closeRecipeScreens(): void {
+    updateBuilder({ ...builder, screen: 'デッキを選ぶ', viewingRecipe: undefined, refusal: undefined })
+    // **`/recipe/<鍵>` を直に開いていた時だけ戻す。** ほかの場所から来ていれば、URL は元から
+    // 触っていない。
+    if (location.pathname.startsWith('/recipe/')) {
+      try {
+        history.replaceState(null, '', closedRecipeUrlOf(location.search))
+      } catch {
+        // 戻せなくても、画面を閉じることはできる。
+      }
+    }
+    redraw()
+  }
+
+  /**
+   * ブラウザの「戻る」に応じて、いま出す画面を URL に合わせ直す（ADR-0022）。
+   *
+   * **一覧からレシピを開いた時にだけ URL を積む**（`recipeList.onOpen` の `openRecipe(key, true)`）
+   * ので、戻る先が `/recipe/<鍵>` でなくなったら、開いた元の画面（一覧）へ戻す。**戻る操作その
+   * ものに URL は積み直さない**——ブラウザがすでに動かしている。
+   */
+  function onPopState(): void {
+    const key = recipeKeyFromPath(location.pathname)
+    if (key !== undefined) {
+      openRecipe(key, false)
+      return
+    }
+    if (builder.screen === 'レシピ') {
+      updateBuilder({ ...builder, screen: 'レシピの一覧', viewingRecipe: undefined, refusal: undefined })
+      redraw()
+    }
+  }
+
+  /** 一覧を、選んだ並べ方で尋ね直す（ADR-0022）。 */
+  function requestRecipeList(order: RecipeListOrder): void {
+    updateBuilder({ ...builder, screen: 'レシピの一覧', recipeOrder: order, refusal: undefined })
+    connection.send({ kind: 'レシピの一覧を見る', order })
     redraw()
   }
 
@@ -1069,6 +1344,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // 繋ぎ直しても同じ理由で断られる。送らなかった場合も止めるのは同じ理由である。
       if (message.kind === '行えなかった' && message.reason === NOT_SIGNED_IN) {
         connection.close()
+        // **開こうとしていたレシピがあれば、ログインへ送る前に預ける**（ADR-0022）。ログインは
+        // 別ページ（Google の画面）を経由するので、この画面の JS のメモリ（`pendingRecipe`）は
+        // 戻ってきた時には残っていない。`main.ts` が戻ってきたところで拾う。
+        if (pendingRecipe !== undefined) rememberPendingRecipe(sessionStorage, pendingRecipe)
         if (goToSignIn(options.signInUrl)) {
           // **移るまでの間、この画面は生きている。** 断られたことは出さない——人がすることは
           // 何も無く、次に起きることだけが読めればよい。
@@ -1088,6 +1367,17 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       if (!wasEditing && builder.screen === 'デッキを組む') scheduleCheck()
       // ロビーが届いたなら、どの部屋にもいない。入ろうとしていた先は残さない（#175）。
       if (session.stage.kind === 'ロビー' || message.kind === '行えなかった') pendingRoom = undefined
+      // `/recipe/<鍵>` を直に開いていた時は、ロビーに着いたところで開く（ADR-0022）。名前を
+      // 決める必要があれば（ADR-0020）、そちらが先に済んでからここへ来る。
+      if (pendingRecipe !== undefined && session.stage.kind === 'ロビー') {
+        const key = pendingRecipe
+        pendingRecipe = undefined
+        // ログインを持たない立て方では開けない（ADR-0022）。尋ねずに、開けない理由だけを出す
+        // （`draw` が `session.pool` を見て決める）。
+        const loading = session.pool !== undefined
+        updateBuilder({ ...builder, screen: 'レシピ', viewingRecipe: key, viewingRecipeLoading: loading, refusal: undefined })
+        if (loading) connection.send({ kind: 'レシピを見る', recipe: key })
+      }
       // 名前を尋ねられたら、いま付いているものから打ち始められるようにする（ADR-0020）。
       // **打ち込みかけがあれば消さない。** 断られて尋ね直された時に、直そうとしていたものが
       // 消えてしまう。
@@ -1117,9 +1407,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   })
 
   redraw()
+  window.addEventListener('popstate', onPopState)
 
   return () => {
     if (overlayTimer !== undefined) clearTimeout(overlayTimer)
+    window.removeEventListener('popstate', onPopState)
     connection.close()
   }
 }

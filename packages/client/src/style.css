@@ -595,6 +595,104 @@ body {
   color: #666;
 }
 
+/*
+ * 共有とレシピの画面（ADR-0022）。`.decks` の上に重ねる分で、行そのものは `.decks__row` を
+ * そのまま使う。**ここにあるのは `share__` が付くところだけ**——名前・枚数のような共通の見た目は
+ * `.decks__name` などに任せ、二重に定義しない。
+ */
+
+/* 共有・レシピの一覧・自分の共有の行は、公開の段階や取り消しの操作などで項目が増える。 */
+.share__row {
+  flex-wrap: wrap;
+}
+
+/* 共有する下書き（ダイアログの見出し）。 */
+.share__title {
+  margin: 0 0 var(--gap);
+  font-size: 1.1rem;
+}
+
+.share__name {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: var(--gap);
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
+.share__description {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: var(--gap);
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+  resize: vertical;
+}
+
+.share__visibility {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: var(--gap);
+}
+
+.share__visibility-label {
+  flex: 0 0 auto;
+  color: #666;
+}
+
+.share__visibility-select {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
+/* 共有できた後の案内。 */
+.share__done {
+  margin: 0 0 var(--gap);
+}
+
+/* 渡すリンク。読むだけなので、打ち込む欄と分かるように枠だけ揃える。 */
+.share__link {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: var(--gap);
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
+.share__revoked {
+  color: #b00;
+}
+
+/* 一覧の並べ方（新着・コピー数）を切り替えるところ。 */
+.share__order {
+  display: flex;
+  gap: 4px;
+  margin-bottom: var(--gap);
+}
+
+.share__copies {
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 解説の下書き・一覧の要約。長い解説で行が伸びすぎないよう、幅いっぱいの別行にする。 */
+.share__description-preview {
+  flex-basis: 100%;
+  color: #666;
+}
+
+/* 共有ごとに確かめた形式とリスト（ADR-0022）。表記としては解説の要約と同じ重さでよい。 */
+.share__rules {
+  flex-basis: 100%;
+  color: #666;
+}
+
 /* 絵文字だけのボタン（`render.ts` の `iconButton`）。文字のボタンと並んでも高さが揃うようにする。 */
 .icon-button {
   min-width: 2.2em;

@@ -2,13 +2,22 @@ import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import { NOT_SIGNED_IN } from '@revolution/engine'
-import type { DeckId, FromClient, ToClient, WireDeck } from '@revolution/engine'
+import type { DeckId, FromClient, RecipeKey, RestrictionChoice, ToClient, WireDeck } from '@revolution/engine'
 import { isCpu } from './cpu.js'
 import { poolFacesOf, restrictionChoicesOf, withOwnedDecks } from './deck.js'
-import type { CardSupply, PresetDeck } from './deck.js'
+import type { CardKey, CardSupply, PresetDeck } from './deck.js'
 import { readName } from './name.js'
 import { OWNED_DECK_LIMIT, readCards, readDeck, sortCards, violationsOf } from './owned-deck.js'
-import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf, rulesFor, violationsUnder } from './room.js'
+import {
+  SHARE_LIMIT,
+  isRecipeListOrder,
+  isShareVisibility,
+  recipeKeyOf,
+  readShareRequest,
+  wireRecipeSummaryOf,
+  wireShareOf,
+} from './recipe.js'
+import { describeViolation, emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf, rulesFor, violationsUnder } from './room.js'
 import type { DeckSource, Names, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
 import type { SignIn } from './sign-in.js'
 import type { Store } from './store.js'
@@ -129,6 +138,11 @@ const ACCEPTED: Readonly<Record<FromClient['kind'], true>> = {
   デッキを消す: true,
   デッキをコピーする: true,
   デッキを確かめる: true,
+  デッキを共有する: true,
+  共有を取り消す: true,
+  共有の公開範囲を変える: true,
+  レシピを見る: true,
+  レシピの一覧を見る: true,
 }
 
 /** 自分のデッキに手を加えるメッセージ（ADR-0021）。部屋の外のことなので、ここで受ける。 */
@@ -136,6 +150,92 @@ type DeckRequest = Extract<FromClient, { readonly kind: 'デッキを保存す�
 
 function isDeckRequest(message: FromClient): message is DeckRequest {
   return message.kind === 'デッキを保存する' || message.kind === 'デッキを消す' || message.kind === 'デッキをコピーする'
+}
+
+/** レシピと共有に手を加える・見るメッセージ（ADR-0022）。部屋の外のことなので、ここで受ける。 */
+type RecipeRequest = Extract<
+  FromClient,
+  { readonly kind: 'デッキを共有する' | '共有を取り消す' | '共有の公開範囲を変える' | 'レシピを見る' | 'レシピの一覧を見る' }
+>
+
+function isRecipeRequest(message: FromClient): message is RecipeRequest {
+  return (
+    message.kind === 'デッキを共有する' ||
+    message.kind === '共有を取り消す' ||
+    message.kind === '共有の公開範囲を変える' ||
+    message.kind === 'レシピを見る' ||
+    message.kind === 'レシピの一覧を見る'
+  )
+}
+
+/**
+ * `デッキを共有する` で受け取った禁止／制限リストの選択が、型どおりの形をしているか。
+ *
+ * **`parse` は `kind` しか見ない**ので、ここに来る値は画面が送ったとおりとは限らない
+ * （ADR-0010）。`room.ts` の `rulesFor` は `choice.kind` を直に読むため、`null` のような
+ * オブジェクトでない値が来ると投げて接続ごと落ちる。
+ *
+ * **`部屋を作る` と `デッキを確かめる` にも同じ穴があるが、ここでは触らない。** どちらも
+ * 既存の経路で、直すなら `rulesFor` 自体を直すことになり、影響がここより広がる。
+ */
+function isRestrictionChoiceShaped(raw: unknown): raw is RestrictionChoice | undefined {
+  if (raw === undefined) return true
+  if (typeof raw !== 'object' || raw === null) return false
+
+  const { kind } = raw as { readonly kind?: unknown }
+  if (kind === '制限なし') return true
+  if (kind !== '禁止／制限リスト') return false
+
+  return typeof (raw as { readonly id?: unknown }).id === 'string'
+}
+
+/** コピー元 1 つから写す中身（ADR-0022）。既製デッキと共有レシピのどちらも、この形に揃えてから写す。 */
+interface CopySource {
+  readonly name: string
+  readonly description: string
+  readonly cards: readonly CardKey[]
+  /** コピー元が共有レシピなら、そのレシピの鍵。コピー数を数えるのに使う。既製デッキなら `undefined`。 */
+  readonly copiedRecipe: RecipeKey | undefined
+}
+
+/**
+ * `デッキをコピーする` の `origin` から、写す中身を決める（ADR-0022）。
+ *
+ * **種類を数え上げる形で書く。** 足すはずの種類を弾く側に書き足し忘れると、新しいコピー元が
+ * サイレントに「そのデッキはありません」で終わる——`switch` を種類で割り、抜けは `default` で
+ * 捕まえる形にして、足し忘れに気付きやすくする。
+ *
+ * **画面から来るものは型のとおりとは限らない**（`parse` が見るのは種類だけである）ので、`origin`
+ * を `unknown` として読み直す。
+ */
+function copySourceOf(origin: unknown, presets: readonly PresetDeck[], store: Store): CopySource | undefined {
+  if (typeof origin !== 'object' || origin === null) return undefined
+
+  const { kind } = origin as { readonly kind?: unknown }
+  switch (kind) {
+    case '既製デッキ': {
+      const { id } = origin as { readonly id?: unknown }
+      if (typeof id !== 'string') return undefined
+      const preset = presets.find((candidate) => candidate.id === id)
+
+      return preset === undefined ? undefined : { name: preset.name, description: '', cards: preset.cards, copiedRecipe: undefined }
+    }
+    case '共有レシピ': {
+      const { share: shareId } = origin as { readonly share?: unknown }
+      if (typeof shareId !== 'string') return undefined
+      // **持ち主を見ない。** 他人が「一覧に載せる」・「リンクを知っている人だけ」で出した共有も、
+      // 誰でもコピーできる（ADR-0022）。取り消された共有だけはここで弾く。
+      const share = store.shareById(shareId)
+      if (share === undefined || share.revoked) return undefined
+      const cards = store.recipeCards(share.recipe)
+
+      return cards === undefined
+        ? undefined
+        : { name: share.name, description: share.description, cards, copiedRecipe: share.recipe }
+    }
+    default:
+      return undefined
+  }
 }
 
 /** 受け取ったバイト列をメッセージとして読む。読めなければ `undefined`。 */
@@ -494,6 +594,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       // `admit` は接続ごとに 1 度だけ通る（名前を初めて決めた時か、決め終えた人が繋いだ時）。
       sendPool(socket)
       sendOwnDecks(socket, participant)
+      sendMyShares()
       const current = roomOf(rooms, participant)
       if (current === undefined) pushLobby()
       else {
@@ -575,15 +676,24 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           break
         }
         case 'デッキをコピーする': {
-          // 画面から来るものは型のとおりとは限らない（`parse` が見るのは種類だけである）。
-          const preset = presets.find((candidate) => candidate.id === message.origin?.id)
-          if (message.origin?.kind !== '既製デッキ' || preset === undefined) return refuse('そのデッキはありません')
+          // **コピー元の種類は数え上げる**（ADR-0022）——既製デッキと共有レシピのどちらも、
+          // ここでは同じ形に揃えてから写す。
+          const source = copySourceOf(message.origin, presets, deckStore)
+          if (source === undefined) return refuse('そのデッキはありません')
           if (full()) return refuse(`デッキは ${OWNED_DECK_LIMIT} 個までです`)
 
-          const saved = copyPreset(deckStore, participant, preset)
+          const saved = deckStore.saveDeck(participant, undefined, {
+            name: source.name,
+            description: source.description,
+            cards: sortCards(source.cards),
+          })
           if (saved === undefined) return refuse('そのデッキはありません')
 
-          send(socket, { kind: 'デッキを保存した', deck: saved, violations: violationsOf(preset.cards, pool) })
+          // **コピー数はレシピ単位で数える**（ADR-0022）。既製デッキのコピーは数えない——一覧に
+          // 並ぶのはレシピだけである。
+          if (source.copiedRecipe !== undefined) deckStore.recordCopy(source.copiedRecipe)
+
+          send(socket, { kind: 'デッキを保存した', deck: saved, violations: violationsOf(source.cards, pool) })
           break
         }
       }
@@ -613,6 +723,140 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       if (deck === undefined) throw new Error('プールにあるはずのカードが引けませんでした')
 
       send(socket, { kind: 'デッキを確かめた', violations: violationsUnder(deck.cards, rules) })
+    }
+
+    /** 自分の共有全部を送り直す（ADR-0022）。`sendOwnDecks` と同じ形。 */
+    function sendMyShares(): void {
+      if (deckStore === undefined) return
+
+      send(socket, {
+        kind: '自分の共有',
+        shares: deckStore.sharesOf(participant).map((share) => wireShareOf(share, names, options.decks.restrictions)),
+      })
+    }
+
+    /**
+     * レシピと共有に手を加える・見る（ADR-0022）。
+     *
+     * **決まりを見るのは `recipe.ts` である。** ここが見るのは、置き場の中身を読まないと決まら
+     * ないこと——共有しようとしているデッキの中身、規定を満たしているか、共有や共有先のレシピが
+     * あるかどうか——だけである。
+     *
+     * **ログインを持たない立て方では断る。** 組んだデッキを残す場所が無く、共有もできない
+     * （`changeDecks` と同じ理由）。
+     */
+    function handleRecipe(message: RecipeRequest): void {
+      const refuse = (reason: string): void => send(socket, { kind: '行えなかった', reason })
+      if (deckStore === undefined) {
+        // **断る理由は、しようとしたことに対応させる。** 見ようとしただけの人に「共有できません」
+        // は返さない。
+        const viewing = message.kind === 'レシピを見る' || message.kind === 'レシピの一覧を見る'
+        return refuse(viewing ? 'ログインしていないと見られません' : 'ログインしていないと共有できません')
+      }
+
+      switch (message.kind) {
+        case 'デッキを共有する': {
+          const deck = deckStore.decksOf(participant).find((each) => each.id === message.deck)
+          if (deck === undefined) return refuse('そのデッキはありません')
+
+          const reading = readShareRequest(message)
+          if (reading.kind === '断る') return refuse(reading.reason)
+
+          // `parse` は `kind` しか見ないので、ここに来る値は型どおりとは限らない（ADR-0010）。
+          // `rulesFor` は `choice.kind` を直に読むため、確かめずに渡すと `null` などで投げる。
+          if (!isRestrictionChoiceShaped(message.restriction)) return refuse('禁止／制限リストの選び方が読めません')
+
+          const rules = rulesFor(message.format, message.restriction, options.decks.restrictions)
+          if (typeof rules === 'string') return refuse(rules)
+          // `deck.cards` は保存する時にプールで確かめてある（`owned-deck.ts`）ので、引けないこと
+          // は無い——取り下げられたカードを含むデッキだけが例外である（ADR-0021）。
+          const seated = decks.from(deck.cards)
+          if (seated === undefined) return refuse('使えないカードが入っています')
+
+          const violations = violationsUnder(seated.cards, rules)
+          if (violations.length > 0) {
+            return refuse(`この規定を満たしていません: ${violations.map(describeViolation).join('、')}`)
+          }
+
+          const key = recipeKeyOf(deck.cards)
+          // **上限は、新しく行が増える時だけ数える**（ADR-0022 の防御、`recipe.ts` の
+          // `SHARE_LIMIT`）。同じレシピへの生きている共有がすでにあれば、それは書き換わるだけで
+          // 行は増えない（`store.ts` の `addShare`）ので、上限に当てない。
+          const owned = deckStore.sharesOf(participant)
+          const overwrites = owned.some((share) => share.recipe === key && !share.revoked)
+          if (!overwrites && owned.length >= SHARE_LIMIT) return refuse(`共有は ${SHARE_LIMIT} 個までです`)
+
+          deckStore.ensureRecipe(key, sortCards(deck.cards))
+          const id = deckStore.addShare(key, participant, {
+            name: reading.name,
+            description: reading.description,
+            visibility: reading.visibility,
+            format: rules.format,
+            restriction: rules.restriction.kind === '制限なし' ? undefined : rules.restriction.list.id,
+          })
+          const created = deckStore.shareById(id)
+          if (created !== undefined) {
+            send(socket, { kind: '共有した', share: wireShareOf(created, names, options.decks.restrictions) })
+          }
+          sendMyShares()
+          return
+        }
+        case '共有を取り消す': {
+          if (!deckStore.revokeShare(participant, message.share)) return refuse('その共有はありません')
+
+          sendMyShares()
+          return
+        }
+        case '共有の公開範囲を変える': {
+          // **公開の段階は 2 値しかない**（ADR-0010）。文字列でさえあれば通す形にすると、知らない
+          // 値が `shares.visibility` 列にそのまま書き込まれる。
+          if (!isShareVisibility(message.visibility)) return refuse('公開の段階が読めません')
+          if (!deckStore.setShareVisibility(participant, message.share, message.visibility)) {
+            return refuse('その共有はありません')
+          }
+
+          sendMyShares()
+          return
+        }
+        case 'レシピを見る': {
+          // `message.recipe` は `RecipeKey`（文字列）のはずだが、`parse` は型まで確かめない。
+          // 確かめずに `node:sqlite` へ渡すと、オブジェクトや配列が来た時に投げて接続ごと落ちる。
+          if (typeof message.recipe !== 'string') return refuse('レシピの鍵が読めません')
+
+          const cards = deckStore.recipeCards(message.recipe)
+          // **共有が 1 つも残っていない（全部取り消された）レシピは開けない**（ADR-0022）。鍵を
+          // 知らない場合と同じ形で返す——見分けても、開けないことは変わらない。
+          const shares = deckStore.sharesOfRecipe(message.recipe)
+          if (cards === undefined || shares.length === 0) {
+            send(socket, { kind: 'レシピ', recipe: undefined })
+            return
+          }
+
+          send(socket, {
+            kind: 'レシピ',
+            recipe: {
+              key: message.recipe,
+              cards,
+              // **同じミリ秒に 2 つ共有されうる**（置き場の側と同じ前提、`store.ts` の
+              // `publicShareRows`）ので、`shared_at` が並んだら行番号の新しいほうを勝たせる。
+              shares: [...shares]
+                .sort((left, right) => right.sharedAt - left.sharedAt || Number(right.id) - Number(left.id))
+                .map((share) => wireShareOf(share, names, options.decks.restrictions)),
+            },
+          })
+          return
+        }
+        case 'レシピの一覧を見る': {
+          if (!isRecipeListOrder(message.order)) return refuse('並べ方が読めません')
+
+          send(socket, {
+            kind: 'レシピの一覧',
+            order: message.order,
+            recipes: deckStore.publicRecipes(message.order).map(wireRecipeSummaryOf),
+          })
+          return
+        }
+      }
     }
 
     /**
@@ -685,6 +929,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       }
       if (message.kind === 'デッキを確かめる') {
         checkDeck(message)
+        return
+      }
+      if (isRecipeRequest(message)) {
+        handleRecipe(message)
         return
       }
 

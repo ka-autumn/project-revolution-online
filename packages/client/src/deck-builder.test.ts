@@ -169,6 +169,68 @@ describe('保存する', () => {
   })
 })
 
+/** ADR-0022。共有する下書きは、`Builder.sharing` に持つ。 */
+describe('共有する', () => {
+  const SHARE = {
+    id: '共有1',
+    recipe: 'かぎ1',
+    sharer: 'わたし',
+    name: 'わたしのレシピ',
+    description: '',
+    visibility: 'リンクを知っている人だけ',
+    revoked: false,
+    format: '構築戦',
+    restriction: undefined,
+  } as const
+
+  const DRAFT = {
+    deck: OWNED.id,
+    name: OWNED.name,
+    description: OWNED.description,
+    visibility: 'リンクを知っている人だけ',
+    format: undefined,
+    restriction: undefined,
+  } as const
+
+  function sending(): Builder {
+    return { ...closedBuilder(), sharing: { kind: '打ち込み中', draft: DRAFT, sending: true, refusal: undefined } }
+  }
+
+  it('共有できたら、リンクを組み立てる分に切り替わる', () => {
+    const builder = applyToBuilder(sending(), { kind: '共有した', share: SHARE })
+
+    expect(builder.sharing).toEqual({ kind: '共有した', share: SHARE })
+  })
+
+  /** 待っていないのに届いても、無視する。 */
+  it('尋ねていない時に届いても、そのまま', () => {
+    const builder = closedBuilder()
+
+    expect(applyToBuilder(builder, { kind: '共有した', share: SHARE }).sharing).toBeUndefined()
+  })
+
+  it('断られたら、ダイアログの中に理由が出る', () => {
+    const builder = applyToBuilder(sending(), { kind: '行えなかった', reason: 'この規定を満たしていません' })
+
+    expect(builder.sharing).toEqual({ kind: '打ち込み中', draft: DRAFT, sending: false, refusal: 'この規定を満たしていません' })
+  })
+
+  it('尋ねている最中でなければ、断られても触らない', () => {
+    const builder = applyToBuilder(closedBuilder(), { kind: '行えなかった', reason: 'そのデッキはありません' })
+
+    expect(builder.sharing).toBeUndefined()
+  })
+})
+
+/** ADR-0022。どの鍵を尋ねたかは届くものに添えられないので、待っていたかどうかを覚える。 */
+describe('レシピを尋ねる', () => {
+  it('尋ねている間は真', () => {
+    const builder = { ...closedBuilder(), viewingRecipe: 'かぎ1', viewingRecipeLoading: true }
+
+    expect(applyToBuilder(builder, { kind: 'レシピ', recipe: undefined }).viewingRecipeLoading).toBe(false)
+  })
+})
+
 describe('既製デッキをコピーする', () => {
   /** ADR-0022。コピーしたものは、そのまま組み始められる。 */
   it('コピーしたデッキが届いたら、そのデッキを組み始める', () => {
@@ -333,6 +395,13 @@ describe('押す前に尋ねる', () => {
 
   it('初めは何も尋ねていない', () => {
     expect(closedBuilder().confirming).toBeUndefined()
+  })
+
+  /** ADR-0022。取り消した共有は取り消されたまま残り、復活しない。 */
+  it('共有を取り消すときは、コピーしたデッキは残ることを添える', () => {
+    const view = confirmView({ kind: '共有を取り消す', share: '共有1', name: 'わたしのレシピ' })
+
+    expect(view.message).toContain('コピーした人のデッキは残ります')
   })
 })
 

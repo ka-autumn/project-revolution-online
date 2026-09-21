@@ -6,6 +6,7 @@ import { CPU_PREFIX } from './cpu.js'
 import { deckChoicesOf, deckSourceFrom, restrictionChoicesOf } from './deck.js'
 import type { CardSupply } from './deck.js'
 import { OWNED_DECK_LIMIT, sortCards } from './owned-deck.js'
+import { SHARE_LIMIT } from './recipe.js'
 import type { RoomSetup } from './room.js'
 import { serve } from './serve.js'
 import type { RunningServer, ServeOptions } from './serve.js'
@@ -214,6 +215,44 @@ describe('WebSocket で繋ぐ', () => {
     expect(await client.waitFor('行えなかった')).toEqual({
       kind: '行えなかった',
       reason: 'ログインしていないとデッキを持てません',
+    })
+    await client.close()
+  })
+
+  /**
+   * ADR-0022。共有もデッキと同じ理由（置き場に紐づける身元が無い）で断る。
+   * 自分のデッキについては上の 2 件で確かめているので、レシピと共有でも同じ作法にする。
+   */
+  it('ログインを持たない立て方では、レシピを見られない', async () => {
+    const client = new Client(server.port, 'あ')
+    await client.waitFor('ロビー')
+
+    client.send({ kind: 'レシピを見る', recipe: 'なにかのかぎ' })
+
+    expect(await client.waitFor('行えなかった')).toEqual({
+      kind: '行えなかった',
+      reason: 'ログインしていないと見られません',
+    })
+    await client.close()
+  })
+
+  it('ログインを持たない立て方では、デッキを共有できない', async () => {
+    const client = new Client(server.port, 'あ')
+    await client.waitFor('ロビー')
+
+    client.send({
+      kind: 'デッキを共有する',
+      deck: 'なにかのデッキ',
+      name: 'きょうゆうできないはず',
+      description: '',
+      visibility: 'リンクを知っている人だけ',
+      format: undefined,
+      restriction: undefined,
+    })
+
+    expect(await client.waitFor('行えなかった')).toEqual({
+      kind: '行えなかった',
+      reason: 'ログインしていないと共有できません',
     })
     await client.close()
   })
@@ -1554,6 +1593,837 @@ describe('ログインの設定があるとき', () => {
     })
     expect(store.decksOf(me)).toHaveLength(OWNED_DECK_LIMIT)
     await client.close()
+  })
+
+  /**
+   * デッキの共有（ADR-0022）。
+   *
+   * **決まりを見るのは `recipe.ts` である。** ここで確かめるのは、通信を通した時に完了条件が
+   * 満たされることである。
+   */
+  describe('デッキの共有', () => {
+    /** 構築戦の規定を満たす 60 枚（既製デッキと同じ中身）。 */
+    const FULL = Object.keys(CARDS).flatMap((key) => Array.from({ length: 4 }, () => key))
+
+    /** 送ったあと、共有した返事が届くまで待つ。 */
+    async function shared(client: Client, message: FromClient): Promise<ToClient> {
+      client.received.length = 0
+      client.send(message)
+      return client.waitFor('共有した')
+    }
+
+    // 完了条件 1: 共有すると中身の写しのレシピができ、元のデッキを直してもレシピの中身は変わらない。
+    it('自分のデッキを共有できる。レシピはそのときの中身を写し取る', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'もとのデッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+
+      const result = await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'わたしのレシピ',
+        description: 'かいせつ',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+      expect(result.kind === '共有した' && result.share.name).toBe('わたしのレシピ')
+
+      // 元のデッキを直す。
+      store.saveDeck(me, deck, { name: 'もとのデッキ', description: '', cards: ['TEST-0'] })
+
+      const shareId = result.kind === '共有した' ? result.share.id : ''
+      const recipeKey = result.kind === '共有した' ? result.share.recipe : ''
+      client.send({ kind: 'レシピを見る', recipe: recipeKey })
+      const recipe = await client.waitFor('レシピ')
+      expect(recipe.kind === 'レシピ' && recipe.recipe?.cards).toEqual([...FULL].sort())
+      expect(recipe.kind === 'レシピ' && recipe.recipe?.shares.map((share) => share.id)).toContain(shareId)
+      await client.close()
+    })
+
+    /**
+     * `レシピを見る` が返す共有の並び（新着順）に、`shared_at` が並んだ時のタイブレークが無いと、
+     * 同じミリ秒に 2 つ共有された時にどちらが先か決まらない（置き場の `publicShareRows` は
+     * `id desc` を添えている）。**時計を固定して、わざと同じ時刻に共有する。**
+     */
+    it('同じ shared_at の共有でも、新しい id が先に並ぶ', async () => {
+      const now = Date.now()
+      const clockedStore = openStore(':memory:', { now: () => now })
+      const owner = clockedStore.identify('google', '30001')
+      clockedStore.rename(owner, 'ひとりめ')
+      const other = clockedStore.identify('google', '30002')
+      clockedStore.rename(other, 'ふたりめ')
+      const token = 'same-instant-token'
+      const otherToken = 'same-instant-other-token'
+      clockedStore.openSession(digest(token), owner)
+      clockedStore.openSession(digest(otherToken), other)
+      const clockedServer = await serve({
+        ...options,
+        store: clockedStore,
+        signIn: createSignIn({
+          config: {
+            clientId: 'テスト.apps.googleusercontent.com',
+            clientSecret: 'ひみつ',
+            callback: `http://localhost${CALLBACK_PATH}`,
+            returnTo: 'http://localhost:5173/',
+          },
+          store: clockedStore,
+        }),
+      })
+      try {
+        const client = new Client(clockedServer.port, 'なのっても無駄', `revolution_session=${token}`)
+        await client.waitFor('自分のデッキ')
+        const otherClient = new Client(clockedServer.port, 'なのっても無駄', `revolution_session=${otherToken}`)
+        await otherClient.waitFor('自分のデッキ')
+        const deck = clockedStore.saveDeck(owner, undefined, { name: 'ひとつめ', description: '', cards: FULL })
+        const otherDeck = clockedStore.saveDeck(other, undefined, { name: 'ふたつめ', description: '', cards: FULL })
+        if (deck === undefined || otherDeck === undefined) throw new Error('デッキを残せるはずだった')
+
+        // どちらも同じ `now` で共有される。行番号は「さき」のほうが若いので、それだけで並べると
+        // 逆順になる。
+        const first = await shared(client, {
+          kind: 'デッキを共有する',
+          deck,
+          name: 'さきに共有',
+          description: '',
+          visibility: 'リンクを知っている人だけ',
+          format: undefined,
+          restriction: undefined,
+        })
+        const second = await shared(otherClient, {
+          kind: 'デッキを共有する',
+          deck: otherDeck,
+          name: 'あとから共有',
+          description: '',
+          visibility: 'リンクを知っている人だけ',
+          format: undefined,
+          restriction: undefined,
+        })
+        const recipeKey = first.kind === '共有した' ? first.share.recipe : ''
+
+        client.received.length = 0
+        client.send({ kind: 'レシピを見る', recipe: recipeKey })
+        const recipe = await client.waitFor('レシピ')
+        expect(recipe.kind === 'レシピ' && recipe.recipe?.shares.map((share) => share.name)).toEqual([
+          'あとから共有',
+          'さきに共有',
+        ])
+        expect(second.kind === '共有した' && Number(second.share.id) > (first.kind === '共有した' ? Number(first.share.id) : 0)).toBe(
+          true,
+        )
+        await client.close()
+        await otherClient.close()
+      } finally {
+        await clockedServer.close()
+        clockedStore.close()
+      }
+    })
+
+    // 完了条件 2: 同じ中身のデッキを（同じ人でも別の人でも）共有すると、レシピは1つに決まる。
+    it('別の人が同じ中身を共有しても、同じレシピになる', async () => {
+      const client = await enteredAsMe()
+      const myDeck = store.saveDeck(me, undefined, { name: 'ひとつめ', description: '', cards: FULL })
+      const other = store.identify('google', '10002')
+      store.rename(other, 'あいて')
+      const otherDeck = store.saveDeck(other, undefined, { name: 'ふたつめ', description: '', cards: [...FULL].reverse() })
+      if (myDeck === undefined || otherDeck === undefined) throw new Error('デッキを残せるはずだった')
+
+      const otherClient = new Client(server.port, 'なのっても無駄', signedInOther)
+      await otherClient.waitFor('ロビー')
+
+      const mine = await shared(client, {
+        kind: 'デッキを共有する',
+        deck: myDeck,
+        name: 'わたしの共有',
+        description: '',
+        visibility: '一覧に載せる',
+        format: undefined,
+        restriction: undefined,
+      })
+      otherClient.send({
+        kind: 'デッキを共有する',
+        deck: otherDeck,
+        name: 'あいての共有',
+        description: '',
+        visibility: '一覧に載せる',
+        format: undefined,
+        restriction: undefined,
+      })
+      const theirs = await otherClient.waitFor('共有した')
+
+      const myRecipe = mine.kind === '共有した' ? mine.share.recipe : 'みつからない'
+      const theirRecipe = theirs.kind === '共有した' ? theirs.share.recipe : '別のもの'
+      expect(myRecipe).toBe(theirRecipe)
+      await client.close()
+      await otherClient.close()
+    })
+
+    // 完了条件 3: レシピには「何が何枚か」だけが写され、カードの姿は焼き付けられていない。
+    it('レシピは識別子の並びだけを持つ', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+
+      const result = await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'レシピ',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+      const recipeKey = result.kind === '共有した' ? result.share.recipe : ''
+
+      // **レシピの中身そのもの（`recipe.cards`）を見る。** 共有（`WireShare`）のキーだけを見ても、
+      // レシピ側にカードの姿が混ざっていないかは分からない。
+      client.received.length = 0
+      client.send({ kind: 'レシピを見る', recipe: recipeKey })
+      const recipe = await client.waitFor('レシピ')
+      const cards = recipe.kind === 'レシピ' ? recipe.recipe?.cards : undefined
+      expect(cards).toEqual([...FULL].sort())
+      // 識別子の並びだけを持ち、カードの表記（名前・能力テキストなど）を持つオブジェクトは
+      // 1 つも混ざらない。
+      expect(cards?.every((card) => typeof card === 'string')).toBe(true)
+      await client.close()
+    })
+
+    // 完了条件 9: 規定を満たさないデッキは、共有しようとしたときに理由付きで断られる。
+    it('規定を満たしていないデッキは、理由を添えて共有を断られる', async () => {
+      const client = await enteredAsMe()
+      // enteredAsMe が最初に配る自分のデッキは既製デッキの写しで、60 枚に届いている
+      // （ADR-0021）。組みかけの、規定を満たさないデッキを別に残す。
+      const incomplete = store.saveDeck(me, undefined, { name: 'くみかけ', description: '', cards: ['TEST-0'] })
+      if (incomplete === undefined) throw new Error('デッキを残せるはずだった')
+
+      client.send({
+        kind: 'デッキを共有する',
+        deck: incomplete,
+        name: 'くみかけ',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      const refusal = await client.waitFor('行えなかった')
+      // 総合ルール 第3部 第1章 3-1（ADR-0006）
+      expect(refusal).toEqual({
+        kind: '行えなかった',
+        reason: expect.stringContaining('枚に'),
+      })
+      await client.close()
+    })
+
+    it('他人のデッキは共有できない', async () => {
+      const client = await enteredAsMe()
+      const other = store.identify('google', '10002')
+      const theirs = store.saveDeck(other, undefined, { name: 'あいてのデッキ', description: '', cards: FULL })
+      if (theirs === undefined) throw new Error('デッキを残せるはずだった')
+
+      client.send({
+        kind: 'デッキを共有する',
+        deck: theirs,
+        name: 'のっとり',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'そのデッキはありません' })
+      await client.close()
+    })
+
+    /**
+     * `SHARE_LIMIT` の防御が働くことを確かめる。
+     *
+     * **同じレシピを繰り返し共有しても件数は増えない**（`store.ts` の `addShare` は、同じ人・
+     * 同じレシピなら書き換えになる）。上限に達した状態を作るには、`SHARE_LIMIT` 個の異なる
+     * レシピをそれぞれ 1 件ずつ共有させる必要がある（`serve.ts` の判定は「すでに上限に達して
+     * いるか」を見ており、達する 1 件手前までは通す）。ソケット越しに 1 件ずつ送ると時間が
+     * かかるので、置き場（`store.ensureRecipe` / `store.addShare`）を直に使って積み、上限に
+     * 達したところでソケット経由の共有を試みて断られることを確かめる。
+     */
+    it(`共有は ${SHARE_LIMIT} 個まで`, async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'あふれさせるデッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+
+      for (let count = 0; count < SHARE_LIMIT; count += 1) {
+        const key = `つみあげたかぎ${count}`
+        store.ensureRecipe(key, ['TEST-0'])
+        store.addShare(key, me, {
+          name: `つみあげた共有${count}`,
+          description: '',
+          format: '構築戦',
+          restriction: undefined,
+          visibility: 'リンクを知っている人だけ',
+        })
+      }
+
+      client.send({
+        kind: 'デッキを共有する',
+        deck,
+        name: 'あふれる共有',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      expect(await client.waitFor('行えなかった')).toEqual({
+        kind: '行えなかった',
+        reason: `共有は ${SHARE_LIMIT} 個までです`,
+      })
+      expect(store.sharesOf(me)).toHaveLength(SHARE_LIMIT)
+      await client.close()
+    })
+
+    /** 完了条件 4: 公開の段階を「リンクを知っている人だけ」と「一覧に載せる」の間で変えられる。 */
+    it('公開の段階をあとから変えられる', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+      const result = await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'レシピ',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+      const shareId = result.kind === '共有した' ? result.share.id : ''
+
+      client.received.length = 0
+      client.send({ kind: '共有の公開範囲を変える', share: shareId, visibility: '一覧に載せる' })
+
+      const mine = await client.waitFor('自分の共有')
+      expect(mine.kind === '自分の共有' && mine.shares.find((share) => share.id === shareId)?.visibility).toBe(
+        '一覧に載せる',
+      )
+      await client.close()
+    })
+
+    /**
+     * 完了条件 5: 自分の共有を取り消すと、その共有は消える。共有が0になったレシピは開けない。
+     * ほかの人の共有が残っていれば開ける。
+     */
+    it('取り消すと、その共有だけが消える。ほかの共有が残っていればレシピは開ける', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      const other = store.identify('google', '10002')
+      store.rename(other, 'あいて')
+      const otherDeck = store.saveDeck(other, undefined, { name: 'あいてのデッキ', description: '', cards: FULL })
+      if (deck === undefined || otherDeck === undefined) throw new Error('デッキを残せるはずだった')
+
+      const otherClient = new Client(server.port, 'なのっても無駄', signedInOther)
+      await otherClient.waitFor('ロビー')
+
+      const mine = await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'わたしの共有',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+      otherClient.send({
+        kind: 'デッキを共有する',
+        deck: otherDeck,
+        name: 'あいての共有',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+      await otherClient.waitFor('共有した')
+      const shareId = mine.kind === '共有した' ? mine.share.id : ''
+      const recipeKey = mine.kind === '共有した' ? mine.share.recipe : ''
+
+      client.send({ kind: '共有を取り消す', share: shareId })
+      await client.waitFor('自分の共有')
+
+      client.received.length = 0
+      client.send({ kind: 'レシピを見る', recipe: recipeKey })
+      const stillOpen = await client.waitFor('レシピ')
+      // **ほかの人の共有が残っている間は開ける。** 取り消した自分の共有はもう並ばない。
+      expect(stillOpen.kind === 'レシピ' && stillOpen.recipe?.shares.map((share) => share.name)).toEqual(['あいての共有'])
+      await client.close()
+      await otherClient.close()
+    })
+
+    it('共有が1つも残っていないレシピは開けない', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+      const result = await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'レシピ',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+      const shareId = result.kind === '共有した' ? result.share.id : ''
+      const recipeKey = result.kind === '共有した' ? result.share.recipe : ''
+
+      client.send({ kind: '共有を取り消す', share: shareId })
+      await client.waitFor('自分の共有')
+
+      client.received.length = 0
+      client.send({ kind: 'レシピを見る', recipe: recipeKey })
+      const gone = await client.waitFor('レシピ')
+      expect(gone).toEqual({ kind: 'レシピ', recipe: undefined })
+      await client.close()
+    })
+
+    /** 完了条件 6: 取り消したあと、同じ中身を誰かが共有すると、また開けるようになる。 */
+    it('取り消したあと、同じ中身を誰かが共有すると、また開けるようになる', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+      const result = await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'さいしょの共有',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+      const recipeKey = result.kind === '共有した' ? result.share.recipe : ''
+      const firstShareId = result.kind === '共有した' ? result.share.id : ''
+      client.send({ kind: '共有を取り消す', share: firstShareId })
+      await client.waitFor('自分の共有')
+
+      const again = await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'ふたたびの共有',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+      expect(again.kind === '共有した' && again.share.recipe).toBe(recipeKey)
+
+      client.received.length = 0
+      client.send({ kind: 'レシピを見る', recipe: recipeKey })
+      const reopened = await client.waitFor('レシピ')
+      // **取り消した共有は取り消されたまま残り、その人の名前で復活しない。**
+      expect(reopened.kind === 'レシピ' && reopened.recipe?.shares.map((share) => share.name)).toEqual([
+        'ふたたびの共有',
+      ])
+      await client.close()
+    })
+
+    it('/recipe/<鍵> にあたる、共有ごとのコピーができる。コピー後は独立している', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+      const result = await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'コピーされる名前',
+        description: 'コピーされる解説',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+      const shareId = result.kind === '共有した' ? result.share.id : ''
+
+      const decks = await decksAfter(client, { kind: 'デッキをコピーする', origin: { kind: '共有レシピ', share: shareId } })
+      const copied = decks.kind === '自分のデッキ' ? decks.decks.find((each) => each.name === 'コピーされる名前') : undefined
+      expect(copied?.description).toBe('コピーされる解説')
+
+      // コピー後は独立している——元のレシピを取り消しても、コピーは残る。
+      client.send({ kind: '共有を取り消す', share: shareId })
+      await client.waitFor('自分の共有')
+      expect(store.decksOf(me).some((each) => each.id === copied?.id)).toBe(true)
+      await client.close()
+    })
+
+    it('取り消された共有からはコピーできない', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+      const result = await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'レシピ',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+      const shareId = result.kind === '共有した' ? result.share.id : ''
+      client.send({ kind: '共有を取り消す', share: shareId })
+      await client.waitFor('自分の共有')
+
+      client.send({ kind: 'デッキをコピーする', origin: { kind: '共有レシピ', share: shareId } })
+
+      expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'そのデッキはありません' })
+      await client.close()
+    })
+
+    /**
+     * 完了条件 8: 「一覧に載せる」にしたレシピが一覧で見られ、新着順とコピー数順を切り替えられる。
+     *
+     * **異なる中身の、どちらも規定を満たすデッキが要る。** `CARDS` は 15 種 × 4 枚がちょうど
+     * 60 枚（構築戦の最小枚数）になる大きさで、この中では「規定を満たす別の中身」が作れない
+     * （同名 4 枚までの上限に必ず当たる）。この 1 件だけ、種類の多いプールで部屋を立て直す。
+     */
+    it('一覧に載せたレシピが一覧に出て、新着順とコピー数順を切り替えられる', async () => {
+      const richCards: Readonly<Record<string, Card>> = Object.fromEntries(
+        Array.from({ length: 16 }, (_, index) => [
+          `RICH-${index}`,
+          defineUnit({ name: `テスト・一覧${index}`, level: 0, bp: 100, sp: 100, moveIcon: ['上'] }),
+        ]),
+      )
+      const richKeys = Object.keys(richCards)
+      const richSupply: CardSupply = {
+        pool: richCards,
+        presets: [{ id: '既製1', name: 'ひとつめ', cards: richKeys.slice(0, 15).flatMap((key) => Array.from({ length: 4 }, () => key)) }],
+        restrictions: [],
+      }
+      await server.close()
+      server = await serve({ ...options, decks: deckSourceFrom(richSupply), deckChoices: deckChoicesOf(richSupply), supply: richSupply })
+      // 15 種ずつだが、1 種だけずらしてあるので中身は違う。どちらも 15 種 × 4 枚で規定を満たす。
+      const oldCards = richKeys.slice(0, 15).flatMap((key) => Array.from({ length: 4 }, () => key))
+      const newCards = richKeys.slice(1, 16).flatMap((key) => Array.from({ length: 4 }, () => key))
+
+      const client = await enteredAsMe()
+      const oldDeck = store.saveDeck(me, undefined, { name: 'ふるいデッキ', description: '', cards: oldCards })
+      if (oldDeck === undefined) throw new Error('デッキを残せるはずだった')
+      const old = await shared(client, {
+        kind: 'デッキを共有する',
+        deck: oldDeck,
+        name: 'ふるいレシピ',
+        description: '',
+        visibility: '一覧に載せる',
+        format: undefined,
+        restriction: undefined,
+      })
+      const oldKey = old.kind === '共有した' ? old.share.recipe : ''
+
+      const newDeck = store.saveDeck(me, undefined, { name: 'あたらしいデッキ', description: '', cards: newCards })
+      if (newDeck === undefined) throw new Error('デッキを残せるはずだった')
+      await shared(client, {
+        kind: 'デッキを共有する',
+        deck: newDeck,
+        name: 'あたらしいレシピ',
+        description: '',
+        visibility: '一覧に載せる',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      // 古いレシピだけコピーして、コピー数を稼ぐ。
+      client.send({ kind: 'デッキをコピーする', origin: { kind: '共有レシピ', share: old.kind === '共有した' ? old.share.id : '' } })
+      await client.waitFor('デッキを保存した')
+
+      client.received.length = 0
+      client.send({ kind: 'レシピの一覧を見る', order: '新着' })
+      const byNew = await client.waitFor('レシピの一覧')
+      expect(byNew.kind === 'レシピの一覧' && byNew.recipes.map((recipe) => recipe.name)).toEqual([
+        'あたらしいレシピ',
+        'ふるいレシピ',
+      ])
+
+      client.received.length = 0
+      client.send({ kind: 'レシピの一覧を見る', order: 'コピー数' })
+      const byCopies = await client.waitFor('レシピの一覧')
+      expect(byCopies.kind === 'レシピの一覧' && byCopies.recipes[0]).toEqual({
+        key: oldKey,
+        name: 'ふるいレシピ',
+        description: '',
+        copies: 1,
+      })
+      await client.close()
+    })
+
+    it('「リンクを知っている人だけ」の共有だけのレシピは、一覧に出ない', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+      await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: '身内向け',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      client.send({ kind: 'レシピの一覧を見る', order: '新着' })
+      const list = await client.waitFor('レシピの一覧')
+      expect(list.kind === 'レシピの一覧' && list.recipes).toEqual([])
+      await client.close()
+    })
+
+    /**
+     * ADR-0022「一覧」節。共有し直すことは自分の共有を編集することなので、公開の段階も
+     * 一緒に変わる——「一覧に載せる」で出していた共有を「リンクを知っている人だけ」で
+     * 共有し直すと、その共有は一覧から消える。**ほかに公開している人がいなければ、
+     * レシピごと一覧から落ちる。**
+     */
+    it('「一覧に載せる」で共有したあと、同じレシピを「リンクを知っている人だけ」で共有し直すと、一覧から消える', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+      await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'いちらんまえ',
+        description: '',
+        visibility: '一覧に載せる',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      client.send({ kind: 'レシピの一覧を見る', order: '新着' })
+      const before = await client.waitFor('レシピの一覧')
+      expect(before.kind === 'レシピの一覧' && before.recipes.map((recipe) => recipe.name)).toEqual(['いちらんまえ'])
+
+      // 同じデッキを、同じ人が「リンクを知っている人だけ」で共有し直す。中身が同じなので
+      // レシピの鍵も同じであり、`addShare` はその人の既存の共有を書き換える。
+      await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: 'いいなおし',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      client.received.length = 0
+      client.send({ kind: 'レシピの一覧を見る', order: '新着' })
+      const after = await client.waitFor('レシピの一覧')
+      // ほかに「一覧に載せる」共有が無いので、レシピごと消える。
+      expect(after.kind === 'レシピの一覧' && after.recipes).toEqual([])
+      await client.close()
+    })
+
+    /** 同じ場面でも、ほかの人の「一覧に載せる」共有が残っていれば、レシピは一覧に残る。 */
+    it('他人の「一覧に載せる」共有が残っていれば、共有し直してもレシピは一覧に残る', async () => {
+      const client = await enteredAsMe()
+      const myDeck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      const other = store.identify('google', '10002')
+      store.rename(other, 'あいて')
+      const otherDeck = store.saveDeck(other, undefined, { name: 'あいてのデッキ', description: '', cards: FULL })
+      if (myDeck === undefined || otherDeck === undefined) throw new Error('デッキを残せるはずだった')
+
+      const otherClient = new Client(server.port, 'なのっても無駄', signedInOther)
+      await otherClient.waitFor('ロビー')
+
+      await shared(client, {
+        kind: 'デッキを共有する',
+        deck: myDeck,
+        name: 'わたしの共有',
+        description: '',
+        visibility: '一覧に載せる',
+        format: undefined,
+        restriction: undefined,
+      })
+      otherClient.send({
+        kind: 'デッキを共有する',
+        deck: otherDeck,
+        name: 'あいての共有',
+        description: '',
+        visibility: '一覧に載せる',
+        format: undefined,
+        restriction: undefined,
+      })
+      await otherClient.waitFor('共有した')
+
+      // 自分の共有だけを「リンクを知っている人だけ」に共有し直す。
+      await shared(client, {
+        kind: 'デッキを共有する',
+        deck: myDeck,
+        name: 'ひきさげた',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+
+      client.received.length = 0
+      client.send({ kind: 'レシピの一覧を見る', order: '新着' })
+      const list = await client.waitFor('レシピの一覧')
+      // あいての共有だけが残り、レシピは一覧から落ちない。
+      expect(list.kind === 'レシピの一覧' && list.recipes.map((recipe) => recipe.name)).toEqual(['あいての共有'])
+      await client.close()
+      await otherClient.close()
+    })
+
+    /**
+     * `addShare` は内部で時刻を打つため、自然な流れでは書き込み順と時刻の順が必ず
+     * 一致し、`shared_at` を無視して行番号だけで並べる実装でもこのテストは通ってしまう。
+     * **時計を差し込んで、書き込み順と時刻の順をわざとずらす。**
+     */
+    it('新着順は、時計を差し込んで確かめても shared_at の時刻で決まる', async () => {
+      // **セッションの有効期限は本物の `Date.now()` で切られる**（`sign-in.ts` の `holderOf`）
+      // ので、差し込む時計は本物の現在時刻の近くに置く。ここでずらすのは、2 つの共有の間の
+      // 前後関係だけである。
+      const base = Date.now()
+      let now = base
+      const clockedStore = openStore(':memory:', { now: () => now })
+      const owner = clockedStore.identify('google', '20001')
+      clockedStore.rename(owner, 'とけいのひと')
+      const token = 'clocked-token'
+      clockedStore.openSession(digest(token), owner)
+      const clockedServer = await serve({
+        ...options,
+        store: clockedStore,
+        signIn: createSignIn({
+          config: {
+            clientId: 'テスト.apps.googleusercontent.com',
+            clientSecret: 'ひみつ',
+            callback: `http://localhost${CALLBACK_PATH}`,
+            returnTo: 'http://localhost:5173/',
+          },
+          store: clockedStore,
+        }),
+      })
+      try {
+        const client = new Client(clockedServer.port, 'なのっても無駄', `revolution_session=${token}`)
+        await client.waitFor('自分のデッキ')
+
+        // **通信の層を経由せず、置き場に直接書く。** ここで確かめたいのは並べる側
+        // （`serve.ts` の `レシピの一覧を見る`）の振る舞いで、有効なデッキを 2 つ組む手間は
+        // 要らない。行番号は「ふるい」のほうが先（若い）だが、時刻はこちらのほうが新しい——
+        // 行番号の並びに頼った実装では、この食い違いを見分けられない。
+        clockedStore.ensureRecipe('ふるいかぎ', ['TEST-0'])
+        clockedStore.ensureRecipe('あたらしいかぎ', ['TEST-1'])
+        now = base + 10_000
+        clockedStore.addShare('ふるいかぎ', owner, {
+          name: 'ふるいレシピ',
+          description: '',
+          format: '構築戦',
+          restriction: undefined,
+          visibility: '一覧に載せる',
+        })
+        now = base
+        clockedStore.addShare('あたらしいかぎ', owner, {
+          name: 'あたらしいレシピ',
+          description: '',
+          format: '構築戦',
+          restriction: undefined,
+          visibility: '一覧に載せる',
+        })
+
+        client.send({ kind: 'レシピの一覧を見る', order: '新着' })
+        const list = await client.waitFor('レシピの一覧')
+        expect(list.kind === 'レシピの一覧' && list.recipes.map((recipe) => recipe.name)).toEqual([
+          'ふるいレシピ',
+          'あたらしいレシピ',
+        ])
+        await client.close()
+      } finally {
+        await clockedServer.close()
+        clockedStore.close()
+      }
+    })
+
+    /**
+     * `parse` は `kind` しか見ないので、ここに来る値は型どおりとは限らない
+     * （ADR-0010）。**サーバが落ちず、断りが返って、接続が保たれたままであることを確かめる。**
+     * 続けて別のメッセージを送って、接続がまだ生きていることを見る。
+     */
+    describe('壊れたメッセージを送っても落ちない', () => {
+      /**
+       * 接続がまだ生きていることを確かめる。**`ロビーに戻る` は使えない**——すでにロビーにいる
+       * 間に送っても部屋の様子は変わらず、`pushLobby` が「前と同じなら送らない」で黙ってしまう
+       * （`serve.ts`）。`デッキを確かめる` は毎回必ず返事が届くので、これで見る。
+       */
+      async function stillConnected(client: Client): Promise<void> {
+        client.received.length = 0
+        client.send({ kind: 'デッキを確かめる', cards: [], format: undefined, restriction: undefined })
+        expect((await client.waitFor('デッキを確かめた')).kind).toBe('デッキを確かめた')
+      }
+
+      it('デッキを共有する: restriction が null でも断られるだけで済む', async () => {
+        const client = await enteredAsMe()
+        const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: ['TEST-0'] })
+        if (deck === undefined) throw new Error('デッキを残せるはずだった')
+
+        client.send({
+          kind: 'デッキを共有する',
+          deck,
+          name: 'こわれたきょうゆう',
+          description: '',
+          visibility: 'リンクを知っている人だけ',
+          format: undefined,
+          restriction: null as unknown as undefined,
+        })
+
+        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+        await stillConnected(client)
+        await client.close()
+      })
+
+      it('共有を取り消す: share が型どおりでなくても断られるだけで済む', async () => {
+        const client = await enteredAsMe()
+
+        client.send({ kind: '共有を取り消す', share: {} as unknown as string })
+
+        expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'その共有はありません' })
+        await stillConnected(client)
+        await client.close()
+      })
+
+      it('共有の公開範囲を変える: visibility が型どおりでなくても断られるだけで済む', async () => {
+        const client = await enteredAsMe()
+        const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+        if (deck === undefined) throw new Error('デッキを残せるはずだった')
+        const result = await shared(client, {
+          kind: 'デッキを共有する',
+          deck,
+          name: 'レシピ',
+          description: '',
+          visibility: 'リンクを知っている人だけ',
+          format: undefined,
+          restriction: undefined,
+        })
+        const shareId = result.kind === '共有した' ? result.share.id : ''
+
+        client.send({
+          kind: '共有の公開範囲を変える',
+          share: shareId,
+          visibility: {} as unknown as 'リンクを知っている人だけ',
+        })
+
+        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+        await stillConnected(client)
+        await client.close()
+      })
+
+      it('レシピを見る: recipe が型どおりでなくても断られるだけで済む', async () => {
+        const client = await enteredAsMe()
+
+        client.send({ kind: 'レシピを見る', recipe: ['はいれつ'] as unknown as string })
+
+        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+        await stillConnected(client)
+        await client.close()
+      })
+
+      it('レシピの一覧を見る: order が型どおりでなくても断られるだけで済む', async () => {
+        const client = await enteredAsMe()
+
+        client.send({ kind: 'レシピの一覧を見る', order: true as unknown as '新着' })
+
+        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+        await stillConnected(client)
+        await client.close()
+      })
+    })
   })
 
   /** ADR-0019。中継の設定も、WebSocket だけでなく通常の HTTP の道が要るようになる。 */
