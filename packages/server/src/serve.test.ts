@@ -2330,99 +2330,155 @@ describe('ログインの設定があるとき', () => {
         clockedStore.close()
       }
     })
+  })
+
+  /**
+   * `parse` は `kind` しか見ないので、ここに来る値は型どおりとは限らない
+   * （ADR-0010）。**サーバが落ちず、断りが返って、接続が保たれたままであることを確かめる。**
+   * 続けて別のメッセージを送って、接続がまだ生きていることを見る。
+   */
+  describe('壊れたメッセージを送っても落ちない', () => {
+    /** 構築戦の規定を満たす 60 枚（既製デッキと同じ中身）。 */
+    const FULL = Object.keys(CARDS).flatMap((key) => Array.from({ length: 4 }, () => key))
 
     /**
-     * `parse` は `kind` しか見ないので、ここに来る値は型どおりとは限らない
-     * （ADR-0010）。**サーバが落ちず、断りが返って、接続が保たれたままであることを確かめる。**
-     * 続けて別のメッセージを送って、接続がまだ生きていることを見る。
+     * 接続がまだ生きていることを確かめる。**`ロビーに戻る` は使えない**——すでにロビーにいる
+     * 間に送っても部屋の様子は変わらず、`pushLobby` が「前と同じなら送らない」で黙ってしまう
+     * （`serve.ts`）。`デッキを確かめる` は毎回必ず返事が届くので、これで見る。
      */
-    describe('壊れたメッセージを送っても落ちない', () => {
-      /**
-       * 接続がまだ生きていることを確かめる。**`ロビーに戻る` は使えない**——すでにロビーにいる
-       * 間に送っても部屋の様子は変わらず、`pushLobby` が「前と同じなら送らない」で黙ってしまう
-       * （`serve.ts`）。`デッキを確かめる` は毎回必ず返事が届くので、これで見る。
-       */
-      async function stillConnected(client: Client): Promise<void> {
-        client.received.length = 0
-        client.send({ kind: 'デッキを確かめる', cards: [], format: undefined, restriction: undefined })
-        expect((await client.waitFor('デッキを確かめた')).kind).toBe('デッキを確かめた')
-      }
+    async function stillConnected(client: Client): Promise<void> {
+      client.received.length = 0
+      client.send({ kind: 'デッキを確かめる', cards: [], format: undefined, restriction: undefined })
+      expect((await client.waitFor('デッキを確かめた')).kind).toBe('デッキを確かめた')
+    }
 
-      it('デッキを共有する: restriction が null でも断られるだけで済む', async () => {
-        const client = await enteredAsMe()
-        const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: ['TEST-0'] })
-        if (deck === undefined) throw new Error('デッキを残せるはずだった')
+    it('デッキを共有する: restriction が null でも断られるだけで済む', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: ['TEST-0'] })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
 
-        client.send({
-          kind: 'デッキを共有する',
-          deck,
-          name: 'こわれたきょうゆう',
-          description: '',
-          visibility: 'リンクを知っている人だけ',
-          format: undefined,
-          restriction: null as unknown as undefined,
-        })
-
-        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
-        await stillConnected(client)
-        await client.close()
+      client.send({
+        kind: 'デッキを共有する',
+        deck,
+        name: 'こわれたきょうゆう',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: null as unknown as undefined,
       })
 
-      it('共有を取り消す: share が型どおりでなくても断られるだけで済む', async () => {
-        const client = await enteredAsMe()
+      expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+      await stillConnected(client)
+      await client.close()
+    })
 
-        client.send({ kind: '共有を取り消す', share: {} as unknown as string })
+    it('共有を取り消す: share が型どおりでなくても断られるだけで済む', async () => {
+      const client = await enteredAsMe()
 
-        expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'その共有はありません' })
-        await stillConnected(client)
-        await client.close()
+      client.send({ kind: '共有を取り消す', share: {} as unknown as string })
+
+      expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'その共有はありません' })
+      await stillConnected(client)
+      await client.close()
+    })
+
+    it('共有の公開範囲を変える: visibility が型どおりでなくても断られるだけで済む', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+      client.received.length = 0
+      client.send({
+        kind: 'デッキを共有する',
+        deck,
+        name: 'レシピ',
+        description: '',
+        visibility: 'リンクを知っている人だけ',
+        format: undefined,
+        restriction: undefined,
+      })
+      const result = await client.waitFor('共有した')
+      const shareId = result.kind === '共有した' ? result.share.id : ''
+
+      client.send({
+        kind: '共有の公開範囲を変える',
+        share: shareId,
+        visibility: {} as unknown as 'リンクを知っている人だけ',
       })
 
-      it('共有の公開範囲を変える: visibility が型どおりでなくても断られるだけで済む', async () => {
-        const client = await enteredAsMe()
-        const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
-        if (deck === undefined) throw new Error('デッキを残せるはずだった')
-        const result = await shared(client, {
-          kind: 'デッキを共有する',
-          deck,
-          name: 'レシピ',
-          description: '',
-          visibility: 'リンクを知っている人だけ',
-          format: undefined,
-          restriction: undefined,
-        })
-        const shareId = result.kind === '共有した' ? result.share.id : ''
+      expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+      await stillConnected(client)
+      await client.close()
+    })
 
-        client.send({
-          kind: '共有の公開範囲を変える',
-          share: shareId,
-          visibility: {} as unknown as 'リンクを知っている人だけ',
-        })
+    it('レシピを見る: recipe が型どおりでなくても断られるだけで済む', async () => {
+      const client = await enteredAsMe()
 
-        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
-        await stillConnected(client)
-        await client.close()
+      client.send({ kind: 'レシピを見る', recipe: ['はいれつ'] as unknown as string })
+
+      expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+      await stillConnected(client)
+      await client.close()
+    })
+
+    it('レシピの一覧を見る: order が型どおりでなくても断られるだけで済む', async () => {
+      const client = await enteredAsMe()
+
+      client.send({ kind: 'レシピの一覧を見る', order: true as unknown as '新着' })
+
+      expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+      await stillConnected(client)
+      await client.close()
+    })
+
+    // Issue #215。`デッキを共有する`（この describe 内の別テスト）で先に塞いであった穴。
+    it.each([
+      ['null', null],
+      ['オブジェクト', { 何か: 'それ' }],
+      ['配列', ['禁止／制限リスト']],
+      ['真偽値', true],
+    ])('部屋を作る: restriction が型どおりでない(%s)でも断られるだけで済む', async (_shape, restriction) => {
+      const client = await enteredAsMe()
+
+      client.send({
+        kind: '部屋を作る',
+        name: 'こわれたへや',
+        against: 'CPU',
+        deck: undefined,
+        cpuDeck: undefined,
+        format: undefined,
+        restriction: restriction as unknown as undefined,
       })
 
-      it('レシピを見る: recipe が型どおりでなくても断られるだけで済む', async () => {
-        const client = await enteredAsMe()
+      expect(await client.waitFor('行えなかった')).toEqual({
+        kind: '行えなかった',
+        reason: '禁止／制限リストの選び方が読めません',
+      })
+      expect(client.received.some((message) => message.kind === '席についた')).toBe(false)
+      await stillConnected(client)
+      await client.close()
+    })
 
-        client.send({ kind: 'レシピを見る', recipe: ['はいれつ'] as unknown as string })
+    it.each([
+      ['null', null],
+      ['オブジェクト', { 何か: 'それ' }],
+      ['配列', ['禁止／制限リスト']],
+      ['真偽値', true],
+    ])('デッキを確かめる: restriction が型どおりでない(%s)でも断られるだけで済む', async (_shape, restriction) => {
+      const client = await enteredAsMe()
 
-        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
-        await stillConnected(client)
-        await client.close()
+      client.send({
+        kind: 'デッキを確かめる',
+        cards: [],
+        format: undefined,
+        restriction: restriction as unknown as undefined,
       })
 
-      it('レシピの一覧を見る: order が型どおりでなくても断られるだけで済む', async () => {
-        const client = await enteredAsMe()
-
-        client.send({ kind: 'レシピの一覧を見る', order: true as unknown as '新着' })
-
-        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
-        await stillConnected(client)
-        await client.close()
+      expect(await client.waitFor('行えなかった')).toEqual({
+        kind: '行えなかった',
+        reason: '禁止／制限リストの選び方が読めません',
       })
+      await stillConnected(client)
+      await client.close()
     })
   })
 
