@@ -414,7 +414,7 @@ function recordedRulesOf(rules: RoomRules): RecordedRules {
   }
 }
 
-/** 禁止／制限リストの選び方を読んだ結果（`CardsReading`〔`owned-deck.ts`〕と同じ形）。 */
+/** 禁止／制限リストの選び方を読んだ結果（`CardsReading`（`owned-deck.ts`）と同じ形）。 */
 export type RestrictionChoiceReading =
   | { readonly kind: '決まった'; readonly choice: RestrictionChoice | undefined }
   | { readonly kind: '断る'; readonly reason: string }
@@ -422,10 +422,10 @@ export type RestrictionChoiceReading =
 /**
  * 送られてきたものを、禁止／制限リストの選び方として読む。
  *
- * **`parse`（`serve.ts`）は `kind` しか見ない**ので、ここに来る値は画面が送ったとおりとは限らない
+ * `parse`（`serve.ts`）は `kind` しか見ないので、ここに来る値は画面が送ったとおりとは限らない
  * （ADR-0010）。`rulesFor` は `choice.kind` を直に読むため、確かめずに渡すと `null` などで投げて
- * 接続ごと落ちる（#215）。**部屋を作る・デッキを確かめる・デッキを共有する、3 つの経路すべてが
- * ここを通ってから `rulesFor` に渡す。**
+ * 接続ごと落ちる（#215）。部屋を作る・デッキを確かめる・デッキを共有する、3 つの経路すべてが
+ * ここを通ってから `rulesFor` に渡す。
  */
 export function readRestrictionChoice(raw: unknown): RestrictionChoiceReading {
   const refuse = (): RestrictionChoiceReading => ({ kind: '断る', reason: '禁止／制限リストの選び方が読めません' })

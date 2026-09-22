@@ -1533,6 +1533,15 @@ describe('部屋のルール', () => {
       expect(outcome.rooms.size).toBe(0)
     })
 
+    /** #215。画面が送ったとおりとは限らない値が来ても、`choice.kind` を直に読んで投げない。 */
+    it('型どおりでない禁止／制限リストの選び方を送ると、部屋を作らずに断る', () => {
+      const message = { ...making('へや', '人間'), restriction: null } as unknown as FromClient
+      const outcome = sending(emptyRooms(), 'あ', message)
+
+      expect(to(outcome.deliveries, 'あ')).toEqual([{ kind: '行えなかった', reason: '禁止／制限リストの選び方が読めません' }])
+      expect(outcome.rooms.size).toBe(0)
+    })
+
     it('知らない形式を選ぶと、部屋を作らずに断る', () => {
       const message = { ...making('へや', '人間'), format: '限定戦' } as unknown as FromClient
       const outcome = sending(emptyRooms(), 'あ', message)
