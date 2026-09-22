@@ -2,7 +2,7 @@ import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import { NOT_SIGNED_IN } from '@revolution/engine'
-import type { DeckId, FromClient, RecipeKey, RestrictionChoice, ToClient, WireDeck } from '@revolution/engine'
+import type { DeckId, FromClient, RecipeKey, ToClient, WireDeck } from '@revolution/engine'
 import { isCpu } from './cpu.js'
 import { poolFacesOf, restrictionChoicesOf, withOwnedDecks } from './deck.js'
 import type { CardKey, CardSupply, PresetDeck } from './deck.js'
@@ -17,7 +17,18 @@ import {
   wireRecipeSummaryOf,
   wireShareOf,
 } from './recipe.js'
-import { describeViolation, emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf, rulesFor, violationsUnder } from './room.js'
+import {
+  describeViolation,
+  emptyRooms,
+  lobbyOf,
+  partnerOf,
+  readRestrictionChoice,
+  receive,
+  restore,
+  roomOf,
+  rulesFor,
+  violationsUnder,
+} from './room.js'
 import type { DeckSource, Names, ParticipantId, Room, RoomOutcome, RoomSetup, Rooms } from './room.js'
 import type { SignIn } from './sign-in.js'
 import type { Store } from './store.js'
@@ -166,27 +177,6 @@ function isRecipeRequest(message: FromClient): message is RecipeRequest {
     message.kind === 'レシピを見る' ||
     message.kind === 'レシピの一覧を見る'
   )
-}
-
-/**
- * `デッキを共有する` で受け取った禁止／制限リストの選択が、型どおりの形をしているか。
- *
- * **`parse` は `kind` しか見ない**ので、ここに来る値は画面が送ったとおりとは限らない
- * （ADR-0010）。`room.ts` の `rulesFor` は `choice.kind` を直に読むため、`null` のような
- * オブジェクトでない値が来ると投げて接続ごと落ちる。
- *
- * **`部屋を作る` と `デッキを確かめる` にも同じ穴があるが、ここでは触らない。** どちらも
- * 既存の経路で、直すなら `rulesFor` 自体を直すことになり、影響がここより広がる。
- */
-function isRestrictionChoiceShaped(raw: unknown): raw is RestrictionChoice | undefined {
-  if (raw === undefined) return true
-  if (typeof raw !== 'object' || raw === null) return false
-
-  const { kind } = raw as { readonly kind?: unknown }
-  if (kind === '制限なし') return true
-  if (kind !== '禁止／制限リスト') return false
-
-  return typeof (raw as { readonly id?: unknown }).id === 'string'
 }
 
 /** コピー元 1 つから写す中身（ADR-0022）。既製デッキと共有レシピのどちらも、この形に揃えてから写す。 */
@@ -716,7 +706,9 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
 
       const reading = readCards(message.cards, options.supply.pool)
       if (reading.kind === '断る') return refuse(reading.reason)
-      const rules = rulesFor(message.format, message.restriction, options.decks.restrictions)
+      const restriction = readRestrictionChoice(message.restriction)
+      if (restriction.kind === '断る') return refuse(restriction.reason)
+      const rules = rulesFor(message.format, restriction.choice, options.decks.restrictions)
       if (typeof rules === 'string') return refuse(rules)
       // `readCards` を通った並びはプールのカードだけなので、引けないことは無い。
       const deck = options.decks.from(reading.cards)
@@ -762,11 +754,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           const reading = readShareRequest(message)
           if (reading.kind === '断る') return refuse(reading.reason)
 
-          // `parse` は `kind` しか見ないので、ここに来る値は型どおりとは限らない（ADR-0010）。
-          // `rulesFor` は `choice.kind` を直に読むため、確かめずに渡すと `null` などで投げる。
-          if (!isRestrictionChoiceShaped(message.restriction)) return refuse('禁止／制限リストの選び方が読めません')
+          const restriction = readRestrictionChoice(message.restriction)
+          if (restriction.kind === '断る') return refuse(restriction.reason)
 
-          const rules = rulesFor(message.format, message.restriction, options.decks.restrictions)
+          const rules = rulesFor(message.format, restriction.choice, options.decks.restrictions)
           if (typeof rules === 'string') return refuse(rules)
           // `deck.cards` は保存する時にプールで確かめてある（`owned-deck.ts`）ので、引けないこと
           // は無い——取り下げられたカードを含むデッキだけが例外である（ADR-0021）。

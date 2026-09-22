@@ -2423,6 +2423,51 @@ describe('ログインの設定があるとき', () => {
         await stillConnected(client)
         await client.close()
       })
+
+      // Issue #215。`デッキを共有する`（この describe 内の別テスト）で先に塞いであった穴。
+      it.each([
+        ['null', null],
+        ['オブジェクト', { 何か: 'それ' }],
+        ['配列', ['禁止／制限リスト']],
+        ['真偽値', true],
+      ])('部屋を作る: restriction が型どおりでない(%s)でも断られるだけで済む', async (_shape, restriction) => {
+        const client = await enteredAsMe()
+
+        client.send({
+          kind: '部屋を作る',
+          name: 'こわれたへや',
+          against: 'CPU',
+          deck: undefined,
+          cpuDeck: undefined,
+          format: undefined,
+          restriction: restriction as unknown as undefined,
+        })
+
+        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+        expect(client.received.some((message) => message.kind === '席についた')).toBe(false)
+        await stillConnected(client)
+        await client.close()
+      })
+
+      it.each([
+        ['null', null],
+        ['オブジェクト', { 何か: 'それ' }],
+        ['配列', ['禁止／制限リスト']],
+        ['真偽値', true],
+      ])('デッキを確かめる: restriction が型どおりでない(%s)でも断られるだけで済む', async (_shape, restriction) => {
+        const client = await enteredAsMe()
+
+        client.send({
+          kind: 'デッキを確かめる',
+          cards: [],
+          format: undefined,
+          restriction: restriction as unknown as undefined,
+        })
+
+        expect((await client.waitFor('行えなかった')).kind).toBe('行えなかった')
+        await stillConnected(client)
+        await client.close()
+      })
     })
   })
 

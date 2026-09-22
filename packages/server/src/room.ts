@@ -414,6 +414,34 @@ function recordedRulesOf(rules: RoomRules): RecordedRules {
   }
 }
 
+/** 禁止／制限リストの選び方を読んだ結果（`CardsReading`〔`owned-deck.ts`〕と同じ形）。 */
+export type RestrictionChoiceReading =
+  | { readonly kind: '決まった'; readonly choice: RestrictionChoice | undefined }
+  | { readonly kind: '断る'; readonly reason: string }
+
+/**
+ * 送られてきたものを、禁止／制限リストの選び方として読む。
+ *
+ * **`parse`（`serve.ts`）は `kind` しか見ない**ので、ここに来る値は画面が送ったとおりとは限らない
+ * （ADR-0010）。`rulesFor` は `choice.kind` を直に読むため、確かめずに渡すと `null` などで投げて
+ * 接続ごと落ちる（#215）。**部屋を作る・デッキを確かめる・デッキを共有する、3 つの経路すべてが
+ * ここを通ってから `rulesFor` に渡す。**
+ */
+export function readRestrictionChoice(raw: unknown): RestrictionChoiceReading {
+  const refuse = (): RestrictionChoiceReading => ({ kind: '断る', reason: '禁止／制限リストの選び方が読めません' })
+  if (raw === undefined) return { kind: '決まった', choice: undefined }
+  if (typeof raw !== 'object' || raw === null) return refuse()
+
+  const { kind } = raw as { readonly kind?: unknown }
+  if (kind === '制限なし') return { kind: '決まった', choice: { kind: '制限なし' } }
+  if (kind !== '禁止／制限リスト') return refuse()
+
+  const { id } = raw as { readonly id?: unknown }
+  if (typeof id !== 'string') return refuse()
+
+  return { kind: '決まった', choice: { kind: '禁止／制限リスト', id } }
+}
+
 /**
  * 部屋を作る人が選んだものから、部屋のルールを決める（ADR-0021）。決められなければ断る理由を返す。
  *
@@ -816,7 +844,9 @@ function open(
     return refuse(rooms, participant, 'ほかの部屋にいる')
   }
 
-  const rules = rulesFor(opening.format, opening.restriction, decks.restrictions)
+  const restriction = readRestrictionChoice(opening.restriction)
+  if (restriction.kind === '断る') return refuse(rooms, participant, restriction.reason)
+  const rules = rulesFor(opening.format, restriction.choice, decks.restrictions)
   if (typeof rules === 'string') return refuse(rooms, participant, rules)
 
   // **合言葉と CPU の席を、デッキを確かめる前に決める。** CPU のデッキも誰が座るかで引くので
