@@ -19,7 +19,7 @@ import { resolve } from 'node:path'
 import { readFlag } from './bundle-server.mjs'
 import { deployServer } from './deploy-server-core.mjs'
 
-const DEFAULT_REMOTE_PATH = '/opt/revolution/serve-verify.cjs'
+const DEFAULT_REMOTE_PATH = '/opt/revolution-verify/serve.cjs'
 const DEFAULT_UNIT = 'revolution-duel-verify'
 const DEFAULT_OUT = 'dist/serve-verify.cjs'
 
