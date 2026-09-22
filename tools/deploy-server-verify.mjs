@@ -1,20 +1,20 @@
-// 束ねた対戦サーバを、常設のもう1組（本番以外での通し確認用）へ反映する（Issue #183）。
+// ビルド済みの対戦サーバを、常設の検証環境（本番以外での通し確認用）へデプロイする（Issue #183）。
 //
-// **本番の deploy:server とは、環境変数の名前も既定値も分けてある。** シェルに本番向けの
-// `REVOLUTION_DEPLOY_HOST` 等が残っていても、こちらはそれを読まない。逆に、こちらの
-// `_VERIFY` 環境変数が本番の deploy:server に拾われることも無い。**別コマンドを打たない限り、
-// どちらの宛先にも届かない。**
+// **本番用の deploy:server とは、環境変数の名前も既定値も分けている。** シェルに本番向けの
+// `REVOLUTION_DEPLOY_HOST` などが残っていても、こちらはそれを読み込まない。逆に、こちらの
+// `_VERIFY` 環境変数が本番用の deploy:server に読み込まれることもない。**別コマンドを実行しない
+// 限り、どちらの宛先にも届かない。**
 //
 //     pnpm deploy:server:verify --decks private/decks/src/index.ts --host <ユーザ>@<ホスト> --key <秘密鍵>
 //
-// 引数を省いた分は環境変数から読む。
+// 引数を省略した分は環境変数から読み込む。
 //
-//     REVOLUTION_DEPLOY_HOST_VERIFY   運ぶ先（`<ユーザ>@<ホスト>`）
-//     REVOLUTION_DEPLOY_KEY_VERIFY    使う秘密鍵
-//     REVOLUTION_DEPLOY_PATH_VERIFY   置き場でのパス（既定は下の DEFAULT_REMOTE_PATH）
-//     REVOLUTION_DEPLOY_UNIT_VERIFY   置き場での常駐単位の名前（既定は下の DEFAULT_UNIT）
+//     REVOLUTION_DEPLOY_HOST_VERIFY   デプロイ先（`<ユーザ>@<ホスト>`）
+//     REVOLUTION_DEPLOY_KEY_VERIFY    使用する秘密鍵
+//     REVOLUTION_DEPLOY_PATH_VERIFY   デプロイ先でのパス（既定値は下記 DEFAULT_REMOTE_PATH）
+//     REVOLUTION_DEPLOY_UNIT_VERIFY   デプロイ先の常駐単位の名前（既定値は下記 DEFAULT_UNIT）
 //
-// カードは置き場でビルドさせない（ADR-0002、ADR-0014）ので、束ねるのはここ＝手元だけで行う。
+// カードはデプロイ先でビルドさせない（ADR-0002、ADR-0014）ため、ビルドはここ＝手元だけで行う。
 import { resolve } from 'node:path'
 import { readFlag } from './bundle-server.mjs'
 import { deployServer } from './deploy-server-core.mjs'

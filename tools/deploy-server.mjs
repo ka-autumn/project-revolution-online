@@ -1,22 +1,22 @@
-// 束ねた対戦サーバを本番の置き場へ反映する。
+// ビルド済みの対戦サーバを本番へデプロイする。
 //
-// **どこへ持ち込むかを、このリポジトリは知らない。** 置き場の素性は公開する情報ではないので、
-// 宛先は引数か環境変数で受け取る。ここに書いてよいのは**運び方**だけである。
+// **デプロイ先を、このリポジトリは知らない。** デプロイ先の情報は公開しないため、
+// 宛先は引数か環境変数で受け取る。ここに書いてよいのは**デプロイ方法**だけである。
 //
 //     pnpm deploy:server --decks private/decks/src/index.ts --host <ユーザ>@<ホスト> --key <秘密鍵>
 //
-// 引数を省いた分は環境変数から読む。
+// 引数を省略した分は環境変数から読み込む。
 //
-//     REVOLUTION_DEPLOY_HOST   運ぶ先（`<ユーザ>@<ホスト>`）
-//     REVOLUTION_DEPLOY_KEY    使う秘密鍵
-//     REVOLUTION_DEPLOY_PATH   置き場でのパス（既定は下の DEFAULT_REMOTE_PATH）
-//     REVOLUTION_DEPLOY_UNIT   置き場での常駐単位の名前（既定は下の DEFAULT_UNIT）
+//     REVOLUTION_DEPLOY_HOST   デプロイ先（`<ユーザ>@<ホスト>`）
+//     REVOLUTION_DEPLOY_KEY    使用する秘密鍵
+//     REVOLUTION_DEPLOY_PATH   デプロイ先でのパス（既定値は下記 DEFAULT_REMOTE_PATH）
+//     REVOLUTION_DEPLOY_UNIT   デプロイ先の常駐単位の名前（既定値は下記 DEFAULT_UNIT）
 //
-// **常設のもう1組へ運ぶときはこれを使わない。** `pnpm deploy:server:verify`
-// （`deploy-server-verify.mjs`）が別の環境変数を読む、別のコマンドとして立っている。
-// 引数を省いても、この既定値・この環境変数名を通り越して向こうへ届くことは無い。
+// **常設の検証環境へデプロイする場合はこれを使わない。** `pnpm deploy:server:verify`
+// （`deploy-server-verify.mjs`）が別の環境変数を読み込む、別のコマンドとして用意されている。
+// 引数を省略しても、この既定値・環境変数名を越えて検証環境へ届くことはない。
 //
-// カードは置き場でビルドさせない（ADR-0002、ADR-0014）ので、束ねるのはここ＝手元だけで行う。
+// カードはデプロイ先でビルドさせない（ADR-0002、ADR-0014）ため、ビルドはここ＝手元だけで行う。
 import { resolve } from 'node:path'
 import { readFlag } from './bundle-server.mjs'
 import { deployServer } from './deploy-server-core.mjs'
