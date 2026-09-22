@@ -136,6 +136,27 @@ pnpm deploy:server --decks private/decks/src/index.ts --host <ユーザ>@<ホス
 置き場に何を用意するかは ADR-0015 にある。**待つポートは `PORT` で、打った対戦を書く先は `STORE`
 で決められる**ので、どちらも束ね直さずに変えられる。
 
+### もう1組（本番以外での通し確認）へ運ぶ
+
+ログイン込みの画面変更を、本番より前に1つ通しで確かめるための、常設のもう1組がある
+（ADR-0025）。運び方は同じだが、コマンドと環境変数を分けてある。
+
+```sh
+pnpm deploy:server:verify --decks private/decks/src/index.ts --host <ユーザ>@<ホスト> --key <秘密鍵>
+```
+
+| 環境変数 | 意味 |
+| --- | --- |
+| `REVOLUTION_DEPLOY_HOST_VERIFY` | 運ぶ先（`<ユーザ>@<ホスト>`） |
+| `REVOLUTION_DEPLOY_KEY_VERIFY` | 使う秘密鍵 |
+| `REVOLUTION_DEPLOY_PATH_VERIFY` | 置き場でのパス |
+| `REVOLUTION_DEPLOY_UNIT_VERIFY` | 置き場での常駐単位の名前 |
+
+**本番向けの環境変数（`REVOLUTION_DEPLOY_HOST` 等、末尾に `_VERIFY` が付かないもの）とは
+名前が別である。** どちらかだけをシェルに設定していても、もう片方のコマンドには拾われない。
+引数を省いたときに誤った宛先へ届くことはなく、`pnpm deploy:server` と
+`pnpm deploy:server:verify` は常に別々の宛先を向く。
+
 **書く先は、絶対パスで `STORE` に書くこと**（ADR-0018）。既定の `revolution.sqlite` は相対パスで、
 **常駐単位の作業ディレクトリから解決される。** それを書いていなければ `/` なので、意図しない
 ところにできる。`/run` や `PrivateTmp` の下は作りとして消えるので、そこも選ばない。
