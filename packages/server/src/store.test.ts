@@ -589,6 +589,7 @@ describe('レシピと共有', () => {
     expect(store.sharesOf(me)).toEqual([
       {
         id,
+        key: expect.any(String),
         recipe: 'かぎ1',
         owner: me,
         name: 'わたしのレシピ',
@@ -631,6 +632,69 @@ describe('レシピと共有', () => {
     expect(store.shareById('999')).toBeUndefined()
     expect(store.shareById('よめない')).toBeUndefined()
     store.close()
+  })
+
+  /** `/share/<鍵>` の口が使う（ADR-0022、#197）。`id` とは別の、未ログインにも渡せる鍵。 */
+  describe('公開の鍵から共有を引く', () => {
+    it('公開の鍵から、持ち主を問わずに共有が引ける', () => {
+      const store = openStore(':memory:')
+      const owner = store.identify('google', '10001')
+      store.ensureRecipe('かぎ1', ['TEST-0'])
+      const id = store.addShare('かぎ1', owner, SHARE_DRAFT)
+      const key = store.shareById(id)?.key
+      if (key === undefined) throw new Error('鍵が無い')
+
+      expect(store.shareByPublicKey(key)?.owner).toBe(owner)
+      store.close()
+    })
+
+    it('知らない鍵では引けない', () => {
+      const store = openStore(':memory:')
+
+      expect(store.shareByPublicKey('しらない鍵')).toBeUndefined()
+      store.close()
+    })
+
+    it('取り消した共有は、公開の鍵からは引けなくなる', () => {
+      const store = openStore(':memory:')
+      const me = store.identify('google', '10001')
+      store.ensureRecipe('かぎ1', ['TEST-0'])
+      const id = store.addShare('かぎ1', me, SHARE_DRAFT)
+      const key = store.shareById(id)?.key
+      if (key === undefined) throw new Error('鍵が無い')
+
+      store.revokeShare(me, id)
+
+      expect(store.shareByPublicKey(key)).toBeUndefined()
+      // **`id` からは、取り消した本人には見えたままである**（自分の共有）。公開の鍵だけが死ぬ。
+      expect(store.shareById(id)?.revoked).toBe(true)
+      store.close()
+    })
+
+    it('2 つの共有は、それぞれ別の鍵を持つ', () => {
+      const store = openStore(':memory:')
+      const owner = store.identify('google', '10001')
+      store.ensureRecipe('かぎ1', ['TEST-0'])
+      store.ensureRecipe('かぎ2', ['TEST-0'])
+      const first = store.shareById(store.addShare('かぎ1', owner, SHARE_DRAFT))?.key
+      const second = store.shareById(store.addShare('かぎ2', owner, SHARE_DRAFT))?.key
+
+      expect(first).not.toBe(second)
+      store.close()
+    })
+
+    it('同じレシピをもう一度共有しても、鍵は変わらない（書き換わるだけで同じ行のまま）', () => {
+      const store = openStore(':memory:')
+      const owner = store.identify('google', '10001')
+      store.ensureRecipe('かぎ1', ['TEST-0'])
+      const id = store.addShare('かぎ1', owner, SHARE_DRAFT)
+      const before = store.shareById(id)?.key
+
+      store.addShare('かぎ1', owner, { ...SHARE_DRAFT, name: '書き換え後' })
+
+      expect(store.shareById(id)?.key).toBe(before)
+      store.close()
+    })
   })
 
   /** 完了条件 5: 自分の共有を取り消すと、その共有は消える。 */
@@ -880,6 +944,7 @@ describe('レシピと共有', () => {
     expect(second.sharesOf(me)).toEqual([
       {
         id,
+        key: expect.any(String),
         recipe: 'かぎ1',
         owner: me,
         name: SHARE_DRAFT.name,
@@ -892,6 +957,62 @@ describe('レシピと共有', () => {
       },
     ])
     second.close()
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  })
+
+  /**
+   * ADR-0022、#197。`public_key` は #197 で足した列——**列を足す前からある共有にも、開いた時点で
+   * 埋まっていなければならない。** 埋めずに残すと、`/share/<鍵>` を持たない古い共有ができてしまう。
+   */
+  it('公開の鍵の列が無い置き場を開くと、既存の共有にも鍵が埋まる', () => {
+    const path = `${tmpdir()}/revolution-share-keys-${randomUUID()}.sqlite`
+    const old = new DatabaseSync(path)
+    old.exec(`
+      create table identities (
+        id integer primary key autoincrement,
+        issuer text not null,
+        subject text not null,
+        name text,
+        unique (issuer, subject)
+      );
+      create table recipes (
+        key text primary key,
+        cards text not null
+      );
+      create table shares (
+        id integer primary key autoincrement,
+        recipe text not null references recipes (key),
+        owner integer not null references identities (id),
+        name text not null,
+        description text not null,
+        format text not null,
+        restriction text,
+        visibility text not null,
+        shared_at integer not null,
+        revoked_at integer
+      );
+    `)
+    old.exec("insert into identities (issuer, subject) values ('google', '10001')")
+    old.exec("insert into recipes (key, cards) values ('かぎ1', '[\"TEST-0\"]')")
+    old.exec(
+      `insert into shares (recipe, owner, name, description, format, visibility, shared_at)
+       values ('かぎ1', 1, '共有A', '', '構築戦', 'リンクを知っている人だけ', 0),
+              ('かぎ1', 1, '共有B', '', '構築戦', 'リンクを知っている人だけ', 0)`,
+    )
+    old.close()
+
+    const store = openStore(path)
+    const shares = store.sharesOf('1')
+    expect(shares).toHaveLength(2)
+    for (const share of shares) {
+      expect(typeof share.key).toBe('string')
+      expect(share.key.length).toBeGreaterThan(0)
+      // 埋めた鍵がそのまま公開の口から引ける。
+      expect(store.shareByPublicKey(share.key)?.id).toBe(share.id)
+    }
+    // 2 行に同じ鍵が埋まっていない。
+    expect(shares[0]?.key).not.toBe(shares[1]?.key)
+    store.close()
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
   })
 })
