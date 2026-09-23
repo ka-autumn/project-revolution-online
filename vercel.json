@@ -12,6 +12,10 @@
     {
       "source": "/recipe/:key",
       "destination": "/index.html"
+    },
+    {
+      "source": "/share/:key",
+      "destination": "/index.html"
     }
   ]
 }
