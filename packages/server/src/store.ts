@@ -216,8 +216,8 @@ function addMissingColumns(db: DatabaseSync): void {
   // ——当時は形式という値が無く、禁止／制限リストはどこにも当てていなかった。
   addMissingColumn(db, 'duels', 'format', "text not null default '構築戦'")
   addMissingColumn(db, 'duels', 'restriction', 'text')
-  // 共有ごとに、ログインしていない人にも渡せる URL の鍵を持たせる（ADR-0022、#197）。**行番号
-  // （`shares.id`）とは別の、言い当てられない値である。** 行番号は認証済みの接続でしか使わない
+  // 共有ごとに、ログインしていない人にも渡せる URL の鍵を持たせる（ADR-0022、#197）。行番号
+  // （`shares.id`）とは別の、言い当てられない値である。行番号は認証済みの接続でしか使わない
   // （取り消す・公開範囲を変える）ので連番のままでよいが、こちらは未ログインにも渡す URL に
   // 載るので、総当たりに耐えなければならない。
   addMissingColumn(db, 'shares', 'public_key', 'text')
@@ -360,7 +360,7 @@ export interface Store {
   /**
    * 公開の鍵から共有を引く（ADR-0022、#197）。`/share/<鍵>` の口が使う。
    *
-   * **取り消されていれば `undefined`。** 知らない鍵の場合と同じ形で返す——見分けても、開けない
+   * 取り消されていれば `undefined`。知らない鍵の場合と同じ形で返す——見分けても、開けない
    * ことは変わらない。
    */
   shareByPublicKey(key: ShareKey): StoredShare | undefined
@@ -449,7 +449,7 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
      values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const shareRow = db.prepare('select * from shares where id = ?')
-  // **取り消されていないことも条件に入れる。** 取り消された共有の URL は、公開の鍵からは何も
+  // 取り消されていないことも条件に入れる。取り消された共有の URL は、公開の鍵からは何も
   // 返らない決まり（ADR-0022、#197）——持ち主に見せる `shareById` とはここで分かれる。
   const shareByPublicKeyRow = db.prepare('select * from shares where public_key = ? and revoked_at is null')
   const sharesByOwner = db.prepare('select * from shares where owner = ? order by id')

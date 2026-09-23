@@ -89,7 +89,7 @@ export interface SignIn {
   /** 握手に付いてきた Cookie の持ち主。ログインしていなければ `undefined`。 */
   holderOf(cookie: string | undefined): ParticipantId | undefined
   /**
-   * 画面の置き場（ADR-0022、#197）。**`config.returnTo` から作る**——戻り先として画面の URL を
+   * 画面の置き場（ADR-0022、#197）。`config.returnTo` から作る——戻り先として画面の URL を
    * すでに持っている（ADR-0019）ので、向き先をもう 1 つ設定に持つ必要が無い。
    *
    * `/share/<鍵>` の HTTP の口（`serve.ts`）が、CORS の `Access-Control-Allow-Origin` に使う。

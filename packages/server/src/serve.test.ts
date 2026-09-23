@@ -236,6 +236,16 @@ describe('WebSocket で繋ぐ', () => {
     await client.close()
   })
 
+  /**
+   * `deckStore`（したがって `poolFaces`）が無い立て方では、レシピも共有も存在しえない
+   * （ADR-0022、#197）。`/share/<鍵>` は置き場を引く前にここで断る。
+   */
+  it('ログインを持たない立て方では、/share/<鍵> は何も返さない', async () => {
+    const response = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}なにかのかぎ`)
+
+    expect(response.status).toBe(404)
+  })
+
   it('ログインを持たない立て方では、デッキを共有できない', async () => {
     const client = new Client(server.port, 'あ')
     await client.waitFor('ロビー')
@@ -1642,6 +1652,47 @@ describe('ログインの設定があるとき', () => {
     })
 
     /**
+     * `ShareKey`（公開の鍵）は「共有した人が渡すリンク」——渡す相手を選ぶのは共有した本人で
+     * あるべき値（`protocol.ts`）。レシピの画面（`レシピを見る`）は共有を全部並べる（他人の
+     * ぶんも含む）ので、そこに公開の鍵まで乗せると、レシピの鍵を知っている人なら誰でも他人の
+     * 共有鍵を未ログインの世界へ再配布できてしまう。持ち主向けの返事にしか載せない。
+     */
+    it('公開の鍵は、共有した本人向けの返事にしか載らない', async () => {
+      const client = await enteredAsMe()
+      const deck = store.saveDeck(me, undefined, { name: 'もとのデッキ', description: '', cards: FULL })
+      if (deck === undefined) throw new Error('デッキを残せるはずだった')
+
+      const result = await shared(client, {
+        kind: 'デッキを共有する',
+        deck,
+        name: '鍵の見え方を確かめるレシピ',
+        description: '',
+        visibility: '一覧に載せる',
+        format: undefined,
+        restriction: undefined,
+      })
+      // `共有した` は共有した本人にだけ届く返事なので、鍵が載る。
+      expect(result.kind === '共有した' && result.share.key).toEqual(expect.any(String))
+
+      const myShares = await client.waitFor('自分の共有')
+      // `自分の共有` も本人にだけ届く返事なので、鍵が載る。
+      expect(myShares.kind === '自分の共有' && myShares.shares.every((share) => typeof share.key === 'string')).toBe(
+        true,
+      )
+
+      const recipeKey = result.kind === '共有した' ? result.share.recipe : ''
+      const other = new Client(server.port, 'なのっても無駄', signedInOther)
+      await other.waitFor('自分のデッキ')
+      other.send({ kind: 'レシピを見る', recipe: recipeKey })
+      const recipe = await other.waitFor('レシピ')
+      // レシピの画面には他人の共有も並ぶので、鍵は載らない。
+      expect(recipe.kind === 'レシピ' && recipe.recipe?.shares.every((share) => share.key === undefined)).toBe(true)
+
+      await client.close()
+      await other.close()
+    })
+
+    /**
      * `レシピを見る` が返す共有の並び（新着順）に、`shared_at` が並んだ時のタイブレークが無いと、
      * 同じミリ秒に 2 つ共有された時にどちらが先か決まらない（置き場の `publicShareRows` は
      * `id desc` を添えている）。**時計を固定して、わざと同じ時刻に共有する。**
@@ -2497,7 +2548,7 @@ describe('ログインの設定があるとき', () => {
 
   /**
    * 完了条件（#197）。`/share/<鍵>` は対戦サーバの HTTP の口が返す——ログインの折り返しと
-   * 同じ口である。**ここだけ、ログインしていなくても答える。**
+   * 同じ口である。ここだけ、ログインしていなくても答える。
    */
   describe('/share/<鍵>（ADR-0022、#197）', () => {
     function share(cards: readonly string[] = ['TEST-0']) {
@@ -2527,10 +2578,13 @@ describe('ログインの設定があるとき', () => {
       // JSON にすると `undefined` の項目はそのまま消える——`detail` が無いことが線を守れている印。
       expect(body.cards).toEqual([expect.objectContaining({ count: 2 })])
       expect(body.cards[0]).not.toHaveProperty('detail')
+      // `ShareId` は認証済みの接続の上でしか使わない値なので、未ログインには渡さない
+      // （「コピーする」も出さない）。
+      expect(body).not.toHaveProperty('share')
     })
 
-    it('ログインしていれば detail が入る', async () => {
-      const { key } = share()
+    it('ログインしていれば detail と、コピーする用の識別子（share）が入る', async () => {
+      const { id, key } = share()
 
       const response = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}${key}`, {
         headers: { cookie: signedIn },
@@ -2539,6 +2593,7 @@ describe('ログインの設定があるとき', () => {
 
       expect(body.authenticated).toBe(true)
       expect(body.cards[0]?.detail).toBeDefined()
+      expect(body.share).toBe(id)
     })
 
     it('知らない鍵では何も返らない', async () => {
@@ -2562,12 +2617,38 @@ describe('ログインの設定があるとき', () => {
       expect(response.headers.get('access-control-allow-credentials')).toBe('true')
     })
 
+    /**
+     * `authenticated` と `cards[].detail` は Cookie で決まる。キャッシュされると、ログイン済み
+     * への答え（能力テキスト入り）が未ログインに配られうる——ADR-0002・ADR-0022 がこの口で
+     * 唯一守ると言っている線そのもの。
+     */
+    it('キャッシュされない', async () => {
+      const { key } = share()
+
+      const response = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}${key}`)
+
+      expect(response.headers.get('cache-control')).toBe('private, no-store')
+    })
+
     it('GET 以外は 405 で断る', async () => {
       const { key } = share()
 
       const response = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}${key}`, { method: 'POST' })
 
       expect(response.status).toBe(405)
+    })
+
+    /** クローラや死活監視が HEAD で叩くことがある。GET と同じだけ調べ、本文だけ付けない。 */
+    it('HEAD は GET と同じ判断をし、本文だけ付けない', async () => {
+      const { key } = share()
+
+      const found = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}${key}`, { method: 'HEAD' })
+      expect(found.status).toBe(200)
+      expect(await found.text()).toBe('')
+
+      const missing = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}しらない鍵`, { method: 'HEAD' })
+      expect(missing.status).toBe(404)
+      expect(await missing.text()).toBe('')
     })
 
     /**

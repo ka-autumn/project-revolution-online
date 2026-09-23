@@ -666,7 +666,7 @@ describe('レシピと共有', () => {
       store.revokeShare(me, id)
 
       expect(store.shareByPublicKey(key)).toBeUndefined()
-      // **`id` からは、取り消した本人には見えたままである**（自分の共有）。公開の鍵だけが死ぬ。
+      // `id` からは、取り消した本人には見えたままである（自分の共有）。公開の鍵だけが死ぬ。
       expect(store.shareById(id)?.revoked).toBe(true)
       store.close()
     })

@@ -395,25 +395,29 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     send(socket, { kind: 'カードプール', cards: poolFaces })
   }
 
-  /** 何も無い、と 404 で答える。`handlePublicShare` の断り方を 1 か所にまとめる。 */
-  function noSuchShare(response: ServerResponse): void {
+  /**
+   * 何も無い、と 404 で答える。`handlePublicShare` の断り方を 1 か所にまとめる。
+   *
+   * `HEAD` には本文を付けない（HTTP の決まりどおり）。ステータスとヘッダだけで足りる。
+   */
+  function noSuchShare(response: ServerResponse, method: string | undefined): void {
     response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
-    response.end('その共有はありません')
+    response.end(method === 'HEAD' ? undefined : 'その共有はありません')
   }
 
   /**
    * `/share/<鍵>` に答える（ADR-0022、#197）。
    *
-   * **ここだけ、ログインしていなくても答える。** ほかの口はすべて、ログインの折り返しか
+   * ここだけ、ログインしていなくても答える。ほかの口はすべて、ログインの折り返しか
    * （`signIn.handle`）、WebSocket の認証済みの接続の上にある。ここは SNS に貼られたリンクや
    * クローラからも直に叩かれる前提の、対戦サーバで唯一の公開 HTTP の口である。
    *
-   * **CORS を付ける。** 画面と対戦サーバは別の場所に置かれる（ADR-0013）ので、画面からの
+   * CORS を付ける。画面と対戦サーバは別の場所に置かれる（ADR-0013）ので、画面からの
    * `fetch` はクロスオリジンになる。ログインしているかを Cookie で見分けるには資格情報付きの
-   * 要求が要り、`Access-Control-Allow-Origin` に `*` は使えない——**出所を確かめられる先
-   * （`signIn.allowedOrigin`）にしか許可しない。**
+   * 要求が要り、`Access-Control-Allow-Origin` に `*` は使えない——出所を確かめられる先
+   * （`signIn.allowedOrigin`）にしか許可しない。
    *
-   * **決まりごとは持たない。** 置き場から引いて `publicShareOf`（`recipe.ts`）に渡すだけで、
+   * 決まりごとは持たない。置き場から引いて `publicShareOf`（`recipe.ts`）に渡すだけで、
    * 出してよい量を決めるのはあちらである（ADR-0002）。
    */
   function handlePublicShare(request: IncomingMessage, response: ServerResponse): boolean {
@@ -424,38 +428,44 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     if (origin !== undefined) {
       response.setHeader('access-control-allow-origin', origin)
       response.setHeader('access-control-allow-credentials', 'true')
-      // **`Origin` ごとに答えが変わる**（許可する先が固定の 1 つであっても）。中継や共有の
+      // `Origin` ごとに答えが変わる（許可する先が固定の 1 つであっても）。中継や共有の
       // キャッシュが、他の出所への答えをそのまま使い回さないようにする。
       response.setHeader('vary', 'origin')
     }
+    // キャッシュされない。`authenticated` と `cards[].detail` は Cookie で決まる——中継や
+    // 共有のキャッシュが誰か 1 人への答えをほかの人に配ると、未ログインに出さないと決めた
+    // 能力テキストが漏れる（ADR-0002・ADR-0022 がこの口で唯一守ると言っている線）。
+    response.setHeader('cache-control', 'private, no-store')
 
-    if (request.method !== 'GET') {
+    // クローラや死活監視が HEAD で叩くことがある。GET と同じだけ調べ、本文だけ付けない。
+    const method = request.method
+    if (method !== 'GET' && method !== 'HEAD') {
       response.writeHead(405, { 'content-type': 'text/plain; charset=utf-8' })
       response.end('GET だけ受け付けます')
       return true
     }
 
-    // **ログインを持たない立て方では、レシピも共有も無い**（`deckStore`・`poolFaces` と同じ
+    // ログインを持たない立て方では、レシピも共有も無い（`deckStore`・`poolFaces` と同じ
     // 前提）。組んでも残す場所が無いので、共有そのものが存在しえない。
     if (deckStore === undefined || poolFaces === undefined) {
-      noSuchShare(response)
+      noSuchShare(response, method)
       return true
     }
 
-    // **不正な percent-encoding は投げる**（`decodeURIComponent` の仕様）。ここで拾わずに
+    // 不正な percent-encoding は投げる（`decodeURIComponent` の仕様）。ここで拾わずに
     // 投げさせると、この接続だけでなく対戦サーバの全体が落ちる（`http.createServer` の要求
     // ハンドラの例外は握り潰されない）——知らない鍵と同じ形で断る。
     let key: string
     try {
       key = decodeURIComponent(url.pathname.slice(SHARE_PATH_PREFIX.length))
     } catch {
-      noSuchShare(response)
+      noSuchShare(response, method)
       return true
     }
 
     const share = deckStore.shareByPublicKey(key)
     if (share === undefined) {
-      noSuchShare(response)
+      noSuchShare(response, method)
       return true
     }
 
@@ -463,7 +473,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     if (cards === undefined) {
       // 共有はあるのにレシピが無い状態は起こらないはずだが、知らない鍵と同じ形で断る
       // （`recipeKeyOf` の呼び出し口と同じ考え方）。
-      noSuchShare(response)
+      noSuchShare(response, method)
       return true
     }
 
@@ -471,7 +481,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     const body = publicShareOf(share, cards, poolFaces, names, options.decks.restrictions, authenticated)
 
     response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-    response.end(JSON.stringify(body))
+    response.end(method === 'HEAD' ? undefined : JSON.stringify(body))
     return true
   }
 
@@ -806,7 +816,8 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
 
       send(socket, {
         kind: '自分の共有',
-        shares: deckStore.sharesOf(participant).map((share) => wireShareOf(share, names, options.decks.restrictions)),
+        // 本人にだけ送る返事なので、公開の鍵も載せる（`wireShareOf` の `ownerFacing`）。
+        shares: deckStore.sharesOf(participant).map((share) => wireShareOf(share, names, options.decks.restrictions, true)),
       })
     }
 
@@ -870,7 +881,8 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           })
           const created = deckStore.shareById(id)
           if (created !== undefined) {
-            send(socket, { kind: '共有した', share: wireShareOf(created, names, options.decks.restrictions) })
+            // 共有した本人にだけ返る返事なので、公開の鍵も載せる（渡すリンクを組み立てるのに要る）。
+            send(socket, { kind: '共有した', share: wireShareOf(created, names, options.decks.restrictions, true) })
           }
           sendMyShares()
           return
@@ -913,9 +925,13 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
               cards,
               // **同じミリ秒に 2 つ共有されうる**（置き場の側と同じ前提、`store.ts` の
               // `publicShareRows`）ので、`shared_at` が並んだら行番号の新しいほうを勝たせる。
+              //
+              // ここに並ぶのは他人の共有もある（レシピの画面は共有を全部並べる、ADR-0022）
+              // ので、公開の鍵は載せない（`wireShareOf` の `ownerFacing`）——載せると、レシピの
+              // 鍵を知っている人なら誰でも他人の共有鍵を未ログインの世界へ再配布できてしまう。
               shares: [...shares]
                 .sort((left, right) => right.sharedAt - left.sharedAt || Number(right.id) - Number(left.id))
-                .map((share) => wireShareOf(share, names, options.decks.restrictions)),
+                .map((share) => wireShareOf(share, names, options.decks.restrictions, false)),
             },
           })
           return
