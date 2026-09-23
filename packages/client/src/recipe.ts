@@ -1,10 +1,14 @@
+import { CARD_TYPES } from '@revolution/engine'
 import type {
+  CardType,
   DeckId,
   DuelFormat,
+  PublicShareCard,
   RecipeKey,
   RecipeListOrder,
   RestrictionChoice,
   ShareId,
+  ShareKey,
   ShareVisibility,
   WireOwnedDeck,
   WirePoolCard,
@@ -44,11 +48,33 @@ export function recipePathOf(key: RecipeKey): string {
 }
 
 /**
- * 共有した人が渡すリンク（ADR-0022）。**画面がここで組み立てる**——アドレスバーをコピーさせない。
- * `?participant=` が付いてくると、席に座れる合言葉を渡すことになるためである。
+ * `/share/<鍵>` を直に開いた時の鍵（ADR-0022、#197）。指していなければ `undefined`。
+ *
+ * **`recipeKeyFromPath` とは別のパスを読む。** `/recipe/<鍵>` はログインしている人が、
+ * すでに繋いだ WebSocket の上で開く画面（同じ中身の共有を全部並べる）だが、`/share/<鍵>` は
+ * ログインしていなくても開ける、共有 1 つだけの公開ページである。
  */
-export function recipeLinkOf(origin: string, key: RecipeKey): string {
-  return `${origin}${recipePathOf(key)}`
+export function shareKeyFromPath(pathname: string): ShareKey | undefined {
+  const match = /^\/share\/([^/]+)\/?$/.exec(pathname)
+  if (match?.[1] === undefined) return undefined
+
+  return decodeURIComponent(match[1])
+}
+
+/** 共有 1 つを指す鍵から、公開ページの画面の側のパスを作る（ADR-0022、#197）。 */
+export function sharePathOf(key: ShareKey): string {
+  return `/share/${encodeURIComponent(key)}`
+}
+
+/**
+ * 共有した人が渡すリンク（ADR-0022、#197）。**画面がここで組み立てる**——アドレスバーを
+ * コピーさせない。`?participant=` が付いてくると、席に座れる合言葉を渡すことになるためである。
+ *
+ * **共有ごとに分かれる。** 同じ中身のデッキを別の人が共有していても、渡した相手の画面には
+ * 渡した本人の解説だけが出る——`/recipe/<鍵>` の画面（全員の共有が並ぶ）とはここで分かれる。
+ */
+export function shareLinkOf(origin: string, key: ShareKey): string {
+  return `${origin}${sharePathOf(key)}`
 }
 
 /**
@@ -202,9 +228,31 @@ export function recipeCardRows(pool: readonly WirePoolCard[], cards: readonly st
     .sort((left, right) => left.name.localeCompare(right.name, 'ja'))
 }
 
+/**
+ * `/share/<鍵>` の公開ページで、種別ごとに分けた枠（ADR-0022、#197）。
+ *
+ * **1 枚も無い種別の枠は出さない。** 並びは `CARD_TYPES`（engine）の順——取り下げられたカード
+ * （`type` が `undefined`）は最後にまとめる。
+ */
+export interface PublicCardSection {
+  readonly type: CardType | undefined
+  readonly cards: readonly PublicShareCard[]
+}
+
+/** `PublicShare.cards` を、種別ごとの枠に分ける（ADR-0022、#197）。 */
+export function publicCardSections(cards: readonly PublicShareCard[]): readonly PublicCardSection[] {
+  const order: readonly (CardType | undefined)[] = [...CARD_TYPES, undefined]
+
+  return order
+    .map((type) => ({ type, cards: cards.filter((card) => card.type === type) }))
+    .filter((section) => section.cards.length > 0)
+}
+
 /** 自分の共有を管理する画面に並べる 1 行。 */
 export interface MyShareRow {
   readonly id: ShareId
+  /** 公開ページ（`/share/<鍵>`）の鍵（ADR-0022、#197）。渡すリンクはこれで組み立てる。 */
+  readonly key: ShareKey
   readonly recipe: RecipeKey
   readonly name: string
   readonly description: string
@@ -216,6 +264,7 @@ export interface MyShareRow {
 export function myShareRows(shares: readonly WireShare[]): readonly MyShareRow[] {
   return shares.map((share) => ({
     id: share.id,
+    key: share.key,
     recipe: share.recipe,
     name: share.name,
     description: share.description,

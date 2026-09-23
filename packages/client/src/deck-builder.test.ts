@@ -173,6 +173,7 @@ describe('保存する', () => {
 describe('共有する', () => {
   const SHARE = {
     id: '共有1',
+    key: '公開鍵1',
     recipe: 'かぎ1',
     sharer: 'わたし',
     name: 'わたしのレシピ',

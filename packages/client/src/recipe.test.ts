@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import type { WireOwnedDeck, WirePoolCard, WireRecipe, WireShare } from '@revolution/engine'
+import type { PublicShareCard, WireOwnedDeck, WirePoolCard, WireRecipe, WireShare } from '@revolution/engine'
 import type { KeyValueStorage } from './recipe.js'
 import {
   closedRecipeUrlOf,
   myShareRows,
+  publicCardSections,
   recipeCardRows,
   recipeKeyFromPath,
-  recipeLinkOf,
   recipePathOf,
   recipeUrlOf,
   rememberPendingRecipe,
   shareDraftOf,
+  shareKeyFromPath,
+  shareLinkOf,
+  sharePathOf,
   shareRowsOf,
   takePendingRecipe,
 } from './recipe.js'
@@ -35,10 +38,6 @@ describe('リンク', () => {
     expect(recipePathOf('かぎ/1?a=b')).toBe('/recipe/%E3%81%8B%E3%81%8E%2F1%3Fa%3Db')
   })
 
-  it('渡す先の原点とパスを繋いでリンクにする', () => {
-    expect(recipeLinkOf('https://example.com', 'かぎ1')).toBe(`https://example.com/recipe/${encodeURIComponent('かぎ1')}`)
-  })
-
   // `recipePathOf` の逆。`main.ts` が URL を直に開いた時の鍵を読むのに使う。
   it('画面の側のパスから鍵を読み戻す', () => {
     expect(recipeKeyFromPath(`/recipe/${encodeURIComponent('かぎ1')}`)).toBe('かぎ1')
@@ -47,6 +46,30 @@ describe('リンク', () => {
   it('レシピのパスでなければ、鍵は無い', () => {
     expect(recipeKeyFromPath('/')).toBeUndefined()
     expect(recipeKeyFromPath('/deck')).toBeUndefined()
+  })
+})
+
+/** `/share/<鍵>` の公開ページ（ADR-0022、#197）。`recipe/<鍵>` とは別のパスを持つ。 */
+describe('共有 1 つのリンク', () => {
+  it('画面の側のパスを組み立てる', () => {
+    expect(sharePathOf('かぎ1')).toBe(`/share/${encodeURIComponent('かぎ1')}`)
+  })
+
+  it('区切り文字が入っていても、パスの区切りが増えない', () => {
+    expect(sharePathOf('かぎ/1?a=b')).toBe('/share/%E3%81%8B%E3%81%8E%2F1%3Fa%3Db')
+  })
+
+  it('渡す先の原点とパスを繋いでリンクにする', () => {
+    expect(shareLinkOf('https://example.com', 'かぎ1')).toBe(`https://example.com/share/${encodeURIComponent('かぎ1')}`)
+  })
+
+  it('画面の側のパスから鍵を読み戻す', () => {
+    expect(shareKeyFromPath(`/share/${encodeURIComponent('かぎ1')}`)).toBe('かぎ1')
+  })
+
+  it('共有のパスでなければ、鍵は無い', () => {
+    expect(shareKeyFromPath('/')).toBeUndefined()
+    expect(shareKeyFromPath('/recipe/かぎ1')).toBeUndefined()
   })
 
   /**
@@ -162,6 +185,7 @@ describe('レシピの画面', () => {
     shares: [
       {
         id: '共有1',
+        key: '公開鍵1',
         recipe: 'かぎ1',
         sharer: 'ぬし',
         name: 'ひとつめ',
@@ -173,6 +197,7 @@ describe('レシピの画面', () => {
       },
       {
         id: '共有2',
+        key: '公開鍵2',
         recipe: 'かぎ1',
         sharer: 'べつのひと',
         name: 'ふたつめ',
@@ -239,6 +264,7 @@ describe('自分の共有', () => {
   const SHARES: readonly WireShare[] = [
     {
       id: '共有1',
+      key: '公開鍵1',
       recipe: 'かぎ1',
       sharer: 'わたし',
       name: 'ひとつめ',
@@ -250,6 +276,7 @@ describe('自分の共有', () => {
     },
     {
       id: '共有2',
+      key: '公開鍵2',
       recipe: 'かぎ2',
       sharer: 'わたし',
       name: 'ふたつめ',
@@ -264,8 +291,44 @@ describe('自分の共有', () => {
   // 完了条件 5: 取り消した共有も、取り消した本人には見える。
   it('取り消したものも、そうと分かる形で並ぶ', () => {
     expect(myShareRows(SHARES)).toEqual([
-      { id: '共有1', recipe: 'かぎ1', name: 'ひとつめ', description: '', visibility: 'リンクを知っている人だけ', revoked: false },
-      { id: '共有2', recipe: 'かぎ2', name: 'ふたつめ', description: '', visibility: '一覧に載せる', revoked: true },
+      { id: '共有1', key: '公開鍵1', recipe: 'かぎ1', name: 'ひとつめ', description: '', visibility: 'リンクを知っている人だけ', revoked: false },
+      { id: '共有2', key: '公開鍵2', recipe: 'かぎ2', name: 'ふたつめ', description: '', visibility: '一覧に載せる', revoked: true },
     ])
+  })
+})
+
+/** `/share/<鍵>` の公開ページで、カードを種類ごとの枠に分ける（ADR-0022、#197）。 */
+describe('公開ページのカードを種類ごとの枠に分ける', () => {
+  function card(overrides: Partial<PublicShareCard> = {}): PublicShareCard {
+    return { count: 1, name: 'てすと', type: 'ユニット', level: 0, colors: [], detail: undefined, ...overrides }
+  }
+
+  it('1 枚も無い種類の枠は出ない', () => {
+    const sections = publicCardSections([card({ type: 'ユニット' })])
+
+    expect(sections.map((section) => section.type)).toEqual(['ユニット'])
+  })
+
+  it('複数の種類があれば、CARD_TYPES の順に並ぶ', () => {
+    const sections = publicCardSections([
+      card({ name: 'とらっぷ', type: 'トラップ' }),
+      card({ name: 'ゆにっと', type: 'ユニット' }),
+      card({ name: 'すとらてじー', type: 'ストラテジー' }),
+    ])
+
+    expect(sections.map((section) => section.type)).toEqual(['ユニット', 'ストラテジー', 'トラップ'])
+  })
+
+  it('取り下げられたカード（type が undefined）は最後の枠にまとまる', () => {
+    const sections = publicCardSections([card({ type: 'ユニット' }), card({ name: 'きえた', type: undefined })])
+
+    expect(sections.map((section) => section.type)).toEqual(['ユニット', undefined])
+    expect(sections.at(-1)?.cards.map((c) => c.name)).toEqual(['きえた'])
+  })
+
+  it('同じ種類は同じ枠にまとまる', () => {
+    const sections = publicCardSections([card({ name: 'A' }), card({ name: 'B' })])
+
+    expect(sections).toEqual([{ type: 'ユニット', cards: [card({ name: 'A' }), card({ name: 'B' })] }])
   })
 })

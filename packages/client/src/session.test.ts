@@ -440,6 +440,7 @@ describe('デッキを組むのに要るもの', () => {
 describe('共有とレシピ', () => {
   const SHARE = {
     id: '共有1',
+    key: '公開鍵1',
     recipe: 'かぎ1',
     sharer: 'ぬし',
     name: 'わたしのレシピ',

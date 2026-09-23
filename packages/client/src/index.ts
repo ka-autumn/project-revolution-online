@@ -39,11 +39,11 @@ import {
   myShareRows,
   recipeCardRows,
   recipeKeyFromPath,
-  recipeLinkOf,
   recipeSummaryRows,
   recipeUrlOf,
   rememberPendingRecipe,
   shareDraftOf,
+  shareLinkOf,
   shareRowsOf,
 } from './recipe.js'
 import {
@@ -487,7 +487,7 @@ function draw(
   // 自分が出した共有を並べるところ（ADR-0022）。繋いだ時から届いているので、尋ね直さない。
   if (builderOpen && builder.screen === '自分の共有') {
     root.append(
-      myShareListElement(myShareRows(session.myShares ?? []), (recipe) => recipeLinkOf(location.origin, recipe), building.myShares),
+      myShareListElement(myShareRows(session.myShares ?? []), (key) => shareLinkOf(location.origin, key), building.myShares),
     )
   }
 
@@ -531,7 +531,7 @@ function draw(
       shareDialogElement(
         sharing,
         stage.restrictions,
-        sharing.kind === '共有した' ? recipeLinkOf(location.origin, sharing.share.recipe) : undefined,
+        sharing.kind === '共有した' ? shareLinkOf(location.origin, sharing.share.key) : undefined,
         building.sharing,
       ),
     )
@@ -1155,7 +1155,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   }
 
   /**
-   * リンクをコピーする（ADR-0022）。**組み立てるのは呼ぶ側**（`recipe.ts` の `recipeLinkOf`）——
+   * リンクをコピーする（ADR-0022）。**組み立てるのは呼ぶ側**（`recipe.ts` の `shareLinkOf`）——
    * ここはブラウザに渡すだけである。
    *
    * コピーの手立てが無い（対応していないブラウザ、`https` でない）場合は諦める。押した人には
