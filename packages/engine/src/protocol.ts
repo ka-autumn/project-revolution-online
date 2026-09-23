@@ -149,7 +149,7 @@ export type ShareId = string
 /**
  * 共有 1 つを指す、ログインしていない人にも渡してよい識別子（ADR-0022、#197）。
  *
- * **`ShareId` とは別のものである。** `ShareId` は認証済みの接続の上でしか使わない
+ * `ShareId` とは別のものである。`ShareId` は認証済みの接続の上でしか使わない
  * （共有を取り消す・公開範囲を変える。持ち主を確かめてから当てるので、連番のままで構わない）。
  * こちらは `/share/<鍵>` として未ログインの人にも渡る URL に載るので、総当たりで踏み当てられ
  * ない値でなければならない。作り方はサーバの `store.ts` に 1 か所だけ閉じる。
@@ -222,10 +222,16 @@ export interface WireShare {
   /**
    * `/share/<鍵>` として、ログインしていない人にも渡せるこの共有の URL の鍵（ADR-0022、#197）。
    *
-   * **`id` とは別に持つ。** `id` は認証済みの接続の上でしか使わない値なので、連番のままでも
+   * `id` とは別に持つ。`id` は認証済みの接続の上でしか使わない値なので、連番のままでも
    * 問題ないが、`key` はそのまま公開の URL に載るので、総当たりで踏み当てられない値である。
+   *
+   * 持ち主向けの返事にしか入らない。`ShareKey` は「共有した人が渡すリンク」——渡す相手を
+   * 選ぶのは共有した本人であるべき値で、レシピの画面（`/recipe/<鍵>`、共有を全部並べる）に
+   * 並ぶ他人の共有にまで載せると、レシピの鍵を知っている人なら誰でも他人の共有鍵を未ログインの
+   * 世界へ再配布できてしまう。持ち主向けでない返事では `undefined`（`server` の `recipe.ts` の
+   * `wireShareOf` の `ownerFacing`）。
    */
-  readonly key: ShareKey
+  readonly key: ShareKey | undefined
   readonly recipe: RecipeKey
   /**
    * 共有した人のいまの表示名（ADR-0020、ADR-0022）。
@@ -276,11 +282,11 @@ export interface WireRecipe {
 /**
  * `/share/<鍵>` が返す、共有 1 つの中身（ADR-0022、#197）。
  *
- * **`WireRecipe` とは別の形である。** `WireRecipe` はその鍵で繋いだ WebSocket の上で読む——
+ * `WireRecipe` とは別の形である。`WireRecipe` はその鍵で繋いだ WebSocket の上で読む——
  * ログインしている人にしか届かない前提で、能力テキストまで出しても線を破らない。こちらは
- * ログインしていない人にも答える口（`serve.ts` の HTTP）が返す形なので、**出してよい量が形
- * そのものに書かれていなければならない。** カード名・枚数・色・レベル・種別と、共有者・解説
- * までは常に載る。**能力テキストとその他の表記は `PublicShareCard.detail` にしか無く**、
+ * ログインしていない人にも答える口（`serve.ts` の HTTP）が返す形なので、出してよい量が形
+ * そのものに書かれていなければならない。カード名・枚数・色・レベル・種別と、共有者・解説
+ * までは常に載る。能力テキストとその他の表記は `PublicShareCard.detail` にしか無く、
  * それはログインした人への返事にしか入らない。
  */
 export interface PublicShare {
@@ -292,13 +298,22 @@ export interface PublicShare {
   readonly cards: readonly PublicShareCard[]
   /** ログインした人からの要求だったか。`cards[].detail` が入っているかどうかと対応する。 */
   readonly authenticated: boolean
+  /**
+   * この共有を指す識別子。ログインした人にしか渡さない（ADR-0022、#197）。
+   *
+   * `DeckOrigin`（`共有レシピ`）が指すのは `ShareKey` ではなく `ShareId` である——`ShareId` は
+   * 認証済みの接続の上でしか使わない値という取り決め（`ShareId` のコメント）を、この形でも
+   * 崩さない。未ログインには渡さないので、「コピーする」もログインした人にしか出さない。
+   */
+  readonly share: ShareId | undefined
 }
 
 /**
  * `PublicShare` にぶら下がるカード 1 種（ADR-0022、#197）。
  *
- * **取り下げられたカードは `type`・`level`・`colors` を持たない**（`recipeCardRows` と同じ
- * 扱い）——プールに無い識別子は、何が書かれていたかをもう引けない。
+ * 取り下げられたカードは `type` を持たない（`recipeCardRows` と同じ扱い）——プールに無い
+ * 識別子は、何が書かれていたかをもう引けない。`level`・`colors` にはその場合も既定値（`0`・
+ * 空の並び）が入る——JSON では項目を消せないので、無いことを型で表せるのは `type` だけである。
  */
 export interface PublicShareCard {
   readonly count: number
@@ -307,7 +322,7 @@ export interface PublicShareCard {
   readonly level: number
   readonly colors: readonly Color[]
   /**
-   * 能力テキストとその他の表記（ADR-0022）。**ログインした人にだけ入る**——未ログインへ渡す
+   * 能力テキストとその他の表記（ADR-0022）。ログインした人にだけ入る——未ログインへ渡す
    * 口は、識別子からここまでの項目までである。取り下げられたカードでは、ログインしていても
    * `undefined`（表記を引く先が無い）。
    */
@@ -796,10 +811,10 @@ export const SIGN_IN_PATH = '/auth/google'
 
 /**
  * 共有 1 つの公開ページが叩く先の道筋（ADR-0022、#197）。`SIGN_IN_PATH` と同じ理由でここに
- * 置く——**サーバと画面の両方が指す同じ 1 つの文字列**である。
+ * 置く——サーバと画面の両方が指す同じ 1 つの文字列である。
  *
- * `${SHARE_PATH_PREFIX}${key}` が実際に叩く URL（`GET`）になる。**`SIGN_IN_PATH` と違い、
- * ログインしていなくても答える。** Cookie を見て、載せる量（`PublicShare.authenticated`）を
+ * `${SHARE_PATH_PREFIX}${key}` が実際に叩く URL（`GET`）になる。`SIGN_IN_PATH` と違い、
+ * ログインしていなくても答える。Cookie を見て、載せる量（`PublicShare.authenticated`）を
  * 変えるだけである。
  */
 export const SHARE_PATH_PREFIX = '/share/'
