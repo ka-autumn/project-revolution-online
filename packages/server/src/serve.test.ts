@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
-import { NOT_SIGNED_IN, SIGN_IN_PATH, defineStrategy, defineUnit } from '@revolution/engine'
-import type { Card, DeckId, FromClient, ToClient } from '@revolution/engine'
+import { NOT_SIGNED_IN, SHARE_PATH_PREFIX, SIGN_IN_PATH, defineStrategy, defineUnit } from '@revolution/engine'
+import type { Card, DeckId, FromClient, PublicShare, ToClient } from '@revolution/engine'
 import { CPU_PREFIX } from './cpu.js'
 import { deckChoicesOf, deckSourceFrom, restrictionChoicesOf } from './deck.js'
 import type { CardSupply } from './deck.js'
@@ -2493,5 +2493,96 @@ describe('ログインの設定があるとき', () => {
 
   it('ログインの口でないところは断る', async () => {
     expect((await fetch(`http://localhost:${server.port}/よそ`)).status).toBe(404)
+  })
+
+  /**
+   * 完了条件（#197）。`/share/<鍵>` は対戦サーバの HTTP の口が返す——ログインの折り返しと
+   * 同じ口である。**ここだけ、ログインしていなくても答える。**
+   */
+  describe('/share/<鍵>（ADR-0022、#197）', () => {
+    function share(cards: readonly string[] = ['TEST-0']) {
+      store.ensureRecipe('かぎ1', cards)
+      const id = store.addShare('かぎ1', me, {
+        name: 'わたしのレシピ',
+        description: 'かいせつ',
+        format: '構築戦',
+        restriction: undefined,
+        visibility: 'リンクを知っている人だけ',
+      })
+      const key = store.shareById(id)?.key
+      if (key === undefined) throw new Error('鍵が無い')
+      return { id, key }
+    }
+
+    it('未ログインでも 200 で答え、能力テキストとその他の表記（detail）は無い', async () => {
+      const { key } = share(['TEST-0', 'TEST-0'])
+
+      const response = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}${key}`)
+      expect(response.status).toBe(200)
+
+      const body = (await response.json()) as PublicShare
+      expect(body.authenticated).toBe(false)
+      expect(body.name).toBe('わたしのレシピ')
+      expect(body.description).toBe('かいせつ')
+      // JSON にすると `undefined` の項目はそのまま消える——`detail` が無いことが線を守れている印。
+      expect(body.cards).toEqual([expect.objectContaining({ count: 2 })])
+      expect(body.cards[0]).not.toHaveProperty('detail')
+    })
+
+    it('ログインしていれば detail が入る', async () => {
+      const { key } = share()
+
+      const response = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}${key}`, {
+        headers: { cookie: signedIn },
+      })
+      const body = (await response.json()) as PublicShare
+
+      expect(body.authenticated).toBe(true)
+      expect(body.cards[0]?.detail).toBeDefined()
+    })
+
+    it('知らない鍵では何も返らない', async () => {
+      expect((await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}しらない鍵`)).status).toBe(404)
+    })
+
+    /** 完了条件: 取り消したレシピの URL にアクセスすると、何も返らない。 */
+    it('取り消した共有の URL には何も返らない', async () => {
+      const { id, key } = share()
+      store.revokeShare(me, id)
+
+      expect((await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}${key}`)).status).toBe(404)
+    })
+
+    it('画面の置き場（returnTo）に、CORS で許可を出す', async () => {
+      const { key } = share()
+
+      const response = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}${key}`)
+
+      expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:5173')
+      expect(response.headers.get('access-control-allow-credentials')).toBe('true')
+    })
+
+    it('GET 以外は 405 で断る', async () => {
+      const { key } = share()
+
+      const response = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}${key}`, { method: 'POST' })
+
+      expect(response.status).toBe(405)
+    })
+
+    /**
+     * `decodeURIComponent` は不正な percent-encoding に対して投げる。ここで拾わずに投げさせる
+     * と、この接続だけでなく `http.createServer` の要求ハンドラごと落ち、対戦サーバの全体が
+     * 落ちる（進行中の対戦も一緒に消える、ADR-0009）。**サーバが生きていることを、続けて別の
+     * 要求が通ることで確かめる。**
+     */
+    it('壊れた percent-encoding が来ても、対戦サーバは落ちずに 404 で答える', async () => {
+      const response = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}%zz`)
+      expect(response.status).toBe(404)
+
+      const { key } = share()
+      const stillUp = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}${key}`)
+      expect(stillUp.status).toBe(200)
+    })
   })
 })

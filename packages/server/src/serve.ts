@@ -1,7 +1,8 @@
 import { createServer } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
-import { NOT_SIGNED_IN } from '@revolution/engine'
+import { NOT_SIGNED_IN, SHARE_PATH_PREFIX } from '@revolution/engine'
 import type { DeckId, FromClient, RecipeKey, ToClient, WireDeck } from '@revolution/engine'
 import { isCpu } from './cpu.js'
 import { poolFacesOf, restrictionChoicesOf, withOwnedDecks } from './deck.js'
@@ -12,6 +13,7 @@ import {
   SHARE_LIMIT,
   isRecipeListOrder,
   isShareVisibility,
+  publicShareOf,
   recipeKeyOf,
   readShareRequest,
   wireRecipeSummaryOf,
@@ -267,11 +269,12 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   /**
    * HTTP と WebSocket を同じポートに同居させる（ADR-0019）。
    *
-   * 引き受け先の無い要求は断る。**ここに置くのはログインの道筋だけ**で、画面を配るのは別の
-   * ところである（ADR-0013）。
+   * 引き受け先の無い要求は断る。**ここに置くのはログインの道筋と、`/share/<鍵>` の公開の口
+   * だけ**で、画面を配るのは別のところである（ADR-0013）。
    */
   const http = createServer((request, response) => {
     if (options.signIn?.handle(request, response) === true) return
+    if (handlePublicShare(request, response)) return
 
     response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
     response.end('ここには何もありません')
@@ -390,6 +393,86 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     if (poolFaces === undefined) return
 
     send(socket, { kind: 'カードプール', cards: poolFaces })
+  }
+
+  /** 何も無い、と 404 で答える。`handlePublicShare` の断り方を 1 か所にまとめる。 */
+  function noSuchShare(response: ServerResponse): void {
+    response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
+    response.end('その共有はありません')
+  }
+
+  /**
+   * `/share/<鍵>` に答える（ADR-0022、#197）。
+   *
+   * **ここだけ、ログインしていなくても答える。** ほかの口はすべて、ログインの折り返しか
+   * （`signIn.handle`）、WebSocket の認証済みの接続の上にある。ここは SNS に貼られたリンクや
+   * クローラからも直に叩かれる前提の、対戦サーバで唯一の公開 HTTP の口である。
+   *
+   * **CORS を付ける。** 画面と対戦サーバは別の場所に置かれる（ADR-0013）ので、画面からの
+   * `fetch` はクロスオリジンになる。ログインしているかを Cookie で見分けるには資格情報付きの
+   * 要求が要り、`Access-Control-Allow-Origin` に `*` は使えない——**出所を確かめられる先
+   * （`signIn.allowedOrigin`）にしか許可しない。**
+   *
+   * **決まりごとは持たない。** 置き場から引いて `publicShareOf`（`recipe.ts`）に渡すだけで、
+   * 出してよい量を決めるのはあちらである（ADR-0002）。
+   */
+  function handlePublicShare(request: IncomingMessage, response: ServerResponse): boolean {
+    const url = new URL(request.url ?? '/', 'http://placeholder')
+    if (!url.pathname.startsWith(SHARE_PATH_PREFIX)) return false
+
+    const origin = options.signIn?.allowedOrigin
+    if (origin !== undefined) {
+      response.setHeader('access-control-allow-origin', origin)
+      response.setHeader('access-control-allow-credentials', 'true')
+      // **`Origin` ごとに答えが変わる**（許可する先が固定の 1 つであっても）。中継や共有の
+      // キャッシュが、他の出所への答えをそのまま使い回さないようにする。
+      response.setHeader('vary', 'origin')
+    }
+
+    if (request.method !== 'GET') {
+      response.writeHead(405, { 'content-type': 'text/plain; charset=utf-8' })
+      response.end('GET だけ受け付けます')
+      return true
+    }
+
+    // **ログインを持たない立て方では、レシピも共有も無い**（`deckStore`・`poolFaces` と同じ
+    // 前提）。組んでも残す場所が無いので、共有そのものが存在しえない。
+    if (deckStore === undefined || poolFaces === undefined) {
+      noSuchShare(response)
+      return true
+    }
+
+    // **不正な percent-encoding は投げる**（`decodeURIComponent` の仕様）。ここで拾わずに
+    // 投げさせると、この接続だけでなく対戦サーバの全体が落ちる（`http.createServer` の要求
+    // ハンドラの例外は握り潰されない）——知らない鍵と同じ形で断る。
+    let key: string
+    try {
+      key = decodeURIComponent(url.pathname.slice(SHARE_PATH_PREFIX.length))
+    } catch {
+      noSuchShare(response)
+      return true
+    }
+
+    const share = deckStore.shareByPublicKey(key)
+    if (share === undefined) {
+      noSuchShare(response)
+      return true
+    }
+
+    const cards = deckStore.recipeCards(share.recipe)
+    if (cards === undefined) {
+      // 共有はあるのにレシピが無い状態は起こらないはずだが、知らない鍵と同じ形で断る
+      // （`recipeKeyOf` の呼び出し口と同じ考え方）。
+      noSuchShare(response)
+      return true
+    }
+
+    const authenticated = options.signIn?.holderOf(request.headers.cookie) !== undefined
+    const body = publicShareOf(share, cards, poolFaces, names, options.decks.restrictions, authenticated)
+
+    response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+    response.end(JSON.stringify(body))
+    return true
   }
 
   /**
