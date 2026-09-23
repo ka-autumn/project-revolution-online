@@ -6,22 +6,26 @@ import type {
   DuelFormat,
   LegalAction,
   OpponentKind,
+  PublicShare,
+  PublicShareCard,
   RecipeKey,
   RecipeListOrder,
   RestrictionChoice,
   RoomCode,
   ShareId,
+  ShareKey,
   ShareVisibility,
   Square,
   WireCardPosition,
   WireDeck,
   WireRestrictionList,
 } from '@revolution/engine'
+import { printedDetailsOf } from './deck-builder.js'
 import type { CardDetail, CheckView, ConfirmView, DeckRow, OwnedDeckRow, PoolRow } from './deck-builder.js'
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import { emptyFilter, isFiltering, toggled } from './pool-filter.js'
 import type { FilterChoices, NumberRange, PoolFilter } from './pool-filter.js'
-import type { MyShareRow, RecipeCardRow, RecipeSummaryRow, ShareDraft, ShareRow, SharingState } from './recipe.js'
+import type { CopyState, MyShareRow, PublicCardSection, RecipeCardRow, RecipeSummaryRow, ShareDraft, ShareRow, SharingState } from './recipe.js'
 import type {
   AbilityView,
   BattleView,
@@ -1103,7 +1107,7 @@ export interface MyShareHandlers {
  * **取り消したものも並べる**——取り消した本人には、取り消したことが見えたままでよい
  * （`Session.myShares`）。
  */
-export function myShareListElement(rows: readonly MyShareRow[], linkOf: (recipe: RecipeKey) => string, handlers: MyShareHandlers): HTMLElement {
+export function myShareListElement(rows: readonly MyShareRow[], linkOf: (key: ShareKey) => string, handlers: MyShareHandlers): HTMLElement {
   const node = element('section', 'decks')
   const head = element('div', 'decks__head')
   head.append(element('h2', 'decks__title', '自分の共有'), button('デッキの一覧に戻る', handlers.onClose))
@@ -1121,7 +1125,7 @@ export function myShareListElement(rows: readonly MyShareRow[], linkOf: (recipe:
       continue
     }
 
-    item.append(button('リンクをコピーする', () => handlers.onCopyLink(linkOf(row.recipe))))
+    item.append(button('リンクをコピーする', () => handlers.onCopyLink(linkOf(row.key))))
 
     const visibility = document.createElement('select')
     visibility.className = 'share__visibility-select'
@@ -1232,6 +1236,138 @@ export function recipeElement(
   node.append(shareList)
 
   return node
+}
+
+/** カード 1 種の行。`detail` があれば表記の全部を出し、無ければレベル・色だけの要約にする。 */
+function publicShareCardElement(card: PublicShareCard): HTMLElement {
+  const item = element('div', 'decks__row public-share__card')
+  item.append(element('span', 'decks__name', card.name), element('span', 'decks__count', `${card.count} 枚`))
+
+  if (card.detail !== undefined) {
+    // 能力テキストとその他の表記は、ログインした人にだけ入る（ADR-0022）。`deck-builder.ts`
+    // の `printedDetailsOf`・`fillDetail` と同じ書き出し方に揃える——詳しく出す形をここで
+    // 作り直さない。
+    const detail = element('div', 'public-share__detail')
+    const rows = element('dl', 'card__panel-rows')
+    for (const row of printedDetailsOf(card.detail)) {
+      rows.append(element('dt', 'card__panel-label', row.label), element('dd', 'card__panel-value', row.value))
+    }
+    detail.append(rows)
+    // 改行ごとに別の能力になる（総合ルール 第2部 第10章 1、第4部 第1章 3）ので、1 行ずつ出す。
+    if (card.detail.text.length > 0) {
+      const text = element('div', 'card__panel-text')
+      for (const line of card.detail.text) text.append(element('p', 'card__panel-line', line))
+      detail.append(text)
+    }
+    item.append(detail)
+  } else if (card.type !== undefined) {
+    const colors = card.colors.length === 0 ? '無色' : card.colors.join('・')
+    item.append(element('span', 'public-share__summary', `Lv.${card.level}・${colors}`))
+  }
+
+  return item
+}
+
+/**
+ * 「コピーする」の進み具合を出す（ADR-0022、#197）。
+ *
+ * 押すまでは `onCopy` を呼ぶだけのボタンで、繋ぐのは呼ぶ側（`public-share.ts`）の仕事。
+ * ここは `CopyState` をそのまま描き分けるだけで、いつ繋ぐかの判断は持たない。
+ */
+function publicShareCopyElement(copyState: CopyState, onCopy: () => void): HTMLElement {
+  const node = element('div', 'public-share__copy')
+
+  if (copyState.kind === 'コピーできた') {
+    node.append(element('p', 'public-share__copy-done', 'コピーしました。自分のデッキに入っています'))
+    return node
+  }
+  if (copyState.kind === '名前が要る') {
+    // この公開ページの中に名前を決める口は作らない。名前は ADR-0020 の持ち物で、入口を
+    // 増やすと決め方が 2 か所になる。ふだんの画面（`/`）への導線だけを添える。
+    node.append(element('p', 'public-share__copy-refusal', 'コピーするには、まず表示名を決めてください'))
+    const link = document.createElement('a')
+    link.className = 'public-share__copy-link'
+    link.href = '/'
+    link.textContent = 'ふだんの画面を開く'
+    node.append(link)
+    return node
+  }
+  if (copyState.kind === '行えなかった') {
+    node.append(element('p', 'public-share__copy-refusal', copyState.reason))
+    return node
+  }
+
+  const copyButton = button(copyState.kind === '繋いでいます' ? '繋いでいます…' : 'コピーする', onCopy)
+  copyButton.toggleAttribute('disabled', copyState.kind === '繋いでいます')
+  node.append(copyButton)
+  return node
+}
+
+/**
+ * `/share/<鍵>` の公開ページ（ADR-0022、#197）。ここだけ、ログインしていなくても開ける。
+ *
+ * 未ログインでは、名前・枚数・色・レベル・種別と、共有者・解説までしか出ない
+ * （`PublicShareCard.detail` が無い）。ログインしていれば、能力テキストとその他の表記まで
+ * 出る——出してよい量を決めるのは対戦サーバ（`server` の `recipe.ts` の `publicShareOf`）で、
+ * ここは届いた形をそのまま描くだけである。
+ */
+export function publicShareElement(
+  share: PublicShare,
+  sections: readonly PublicCardSection[],
+  signInUrl: string,
+  onLogin: () => void,
+  copyState: CopyState,
+  onCopy: () => void,
+): HTMLElement {
+  const node = element('section', 'decks public-share')
+  const head = element('div', 'decks__head')
+  head.append(element('h2', 'decks__title', share.name))
+  node.append(head)
+
+  node.append(element('p', 'public-share__sharer', `共有者: ${share.sharer}`))
+  if (share.description !== '') node.append(element('p', 'public-share__description', share.description))
+
+  const rules = share.restriction === undefined ? share.format : `${share.format}・${share.restriction.name}`
+  node.append(element('p', 'public-share__rules', `確かめた規定: ${rules}`))
+
+  if (!share.authenticated) {
+    const invite = element('div', 'public-share__invite')
+    invite.append(element('p', 'public-share__invite-text', 'ログインすると、能力テキストまで見られます'))
+    const link = document.createElement('a')
+    link.className = 'public-share__invite-link'
+    link.href = signInUrl
+    link.textContent = 'ログインする'
+    // 移る前に、開いている共有の鍵を預ける（ADR-0022、#197）。既定のナビゲーションは
+    // 止めない——`href` どおりに Google へ移りつつ、`onLogin` は同期で先に済ませる。
+    link.addEventListener('click', onLogin)
+    invite.append(link)
+    node.append(invite)
+  }
+
+  // 未ログインには出ない（`share.share` が無い）。「コピーする」はログインした人にだけ出す。
+  if (share.share !== undefined) node.append(publicShareCopyElement(copyState, onCopy))
+
+  for (const section of sections) {
+    node.append(element('h3', 'decks__title', section.type ?? '取り下げられたカード'))
+    const list = element('div', 'decks__list')
+    for (const card of section.cards) list.append(publicShareCardElement(card))
+    node.append(list)
+  }
+
+  return node
+}
+
+/** `/share/<鍵>` を読んでいる間（`public-share.ts` の `mountPublicShare`）。 */
+export function publicShareLoadingElement(): HTMLElement {
+  return element('section', 'decks public-share', '読み込んでいます…')
+}
+
+/**
+ * `/share/<鍵>` が開けなかった時（ADR-0022、#197）。取り消された共有と、知らない鍵は同じ形で
+ * 出す——対戦サーバの返事（404）の時点ですでに見分けが付かない（`serve.ts`）。
+ */
+export function publicShareNotFoundElement(): HTMLElement {
+  return element('section', 'decks public-share', 'この共有は見つかりませんでした。取り消されたか、URL が違います。')
 }
 
 /**

@@ -693,6 +693,63 @@ body {
   color: #666;
 }
 
+/*
+ * `/share/<鍵>` の公開ページ（ADR-0022、#197）。**`.decks` の上に重ねる**——`.share__` と同じ
+ * 考え方で、名前・枚数のような共通の見た目は `.decks__name` などに任せる。
+ */
+.public-share__sharer,
+.public-share__rules {
+  margin: 0 0 var(--gap);
+  color: #666;
+}
+
+.public-share__description {
+  margin: 0 0 var(--gap);
+  white-space: pre-wrap;
+}
+
+/* 未ログインへの誘い。押せる範囲は控えめに、目立ちすぎないようにする。 */
+.public-share__invite {
+  margin-bottom: calc(var(--gap) * 2);
+  padding: var(--gap);
+  border: 1px solid var(--line);
+}
+
+.public-share__invite-text {
+  margin: 0 0 4px;
+  color: #666;
+}
+
+/* 「コピーする」の進み具合（ADR-0022、#197）。 */
+.public-share__copy {
+  margin-bottom: calc(var(--gap) * 2);
+}
+
+.public-share__copy-done {
+  margin: 0;
+}
+
+.public-share__copy-refusal {
+  margin: 0 0 4px;
+  color: #b00;
+}
+
+/* カードの行は詳細を畳まず、種別の枠の中に縦に並べる。 */
+.public-share__card {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.public-share__summary {
+  color: #666;
+}
+
+.public-share__detail {
+  flex-basis: 100%;
+  padding-top: 4px;
+  font-size: 0.85rem;
+}
+
 /* 絵文字だけのボタン（`render.ts` の `iconButton`）。文字のボタンと並んでも高さが揃うようにする。 */
 .icon-button {
   min-width: 2.2em;

@@ -1,5 +1,15 @@
 import { createHash } from 'node:crypto'
-import type { RecipeKey, RecipeListOrder, ShareVisibility, WireRecipeSummary, WireShare } from '@revolution/engine'
+import type {
+  PublicShare,
+  PublicShareCard,
+  RecipeKey,
+  RecipeListOrder,
+  ShareKey,
+  ShareVisibility,
+  WirePoolCard,
+  WireRecipeSummary,
+  WireShare,
+} from '@revolution/engine'
 import type { CardKey, RestrictionList } from './deck.js'
 import { DECK_DESCRIPTION_LIMIT, DECK_NAME_LIMIT, sortCards } from './owned-deck.js'
 import { breaksDisplay } from './name.js'
@@ -96,6 +106,8 @@ export function readShareRequest(raw: {
 /** 置き場に残す共有 1 つ（`store.ts` の行そのもの）。 */
 export interface StoredShare {
   readonly id: string
+  /** ログインしていない人にも渡せる、この共有の URL の鍵（ADR-0022、#197）。`id` とは別に持つ。 */
+  readonly key: ShareKey
   readonly recipe: RecipeKey
   readonly owner: ParticipantId
   readonly name: string
@@ -144,10 +156,21 @@ function wireRestrictionOf(
  * **確かめた形式とリストも出す。** 書き込むだけで読み出す経路が無いと、残っていることを
  * 確かめる手立てが無い。`restrictions` は立てる時に渡されたもの（`options.decks.restrictions`）
  * で、識別子から名前を引くのに使う。
+ *
+ * 公開の鍵（`key`）は、持ち主向けの返事にしか載せない（`ownerFacing`、#197）。
+ * `/recipe/<鍵>` に並ぶ他人の共有にまで載せると、レシピの鍵を知っている人なら誰でも他人の
+ * 共有鍵を未ログインの世界へ再配布できてしまう——`ShareKey` は「渡す相手を選ぶのは共有した
+ * 本人」という位置づけ（`protocol.ts`）を崩す。呼ぶ側が、その返事が誰に向いているかを決める。
  */
-export function wireShareOf(share: StoredShare, names: Names, restrictions: readonly RestrictionList[]): WireShare {
+export function wireShareOf(
+  share: StoredShare,
+  names: Names,
+  restrictions: readonly RestrictionList[],
+  ownerFacing: boolean,
+): WireShare {
   return {
     id: share.id,
+    key: ownerFacing ? share.key : undefined,
     recipe: share.recipe,
     sharer: names(share.owner),
     name: share.name,
@@ -162,4 +185,58 @@ export function wireShareOf(share: StoredShare, names: Names, restrictions: read
 /** 置き場の要約を、通信に載せる形にする。 */
 export function wireRecipeSummaryOf(summary: StoredRecipeSummary): WireRecipeSummary {
   return { key: summary.key, name: summary.name, description: summary.description, copies: summary.copies }
+}
+
+/**
+ * 共有 1 つを、`/share/<鍵>` が返す公開ページの形にする（ADR-0022、#197）。
+ *
+ * 決まりごとだけで、I/O を持たない。その共有が取り消されているかどうかは呼ぶ側
+ * （`store.ts` の `shareByPublicKey`）がすでに確かめている——ここに来た時点で生きている共有だと
+ * 前提してよい。ログインしているかどうかも呼ぶ側が決める（Cookie を見るのは `serve.ts` の
+ * 仕事である、ADR-0002）。`authenticated` の値どおりに `detail` を出すか出さないかを分けるだけ
+ * である。
+ *
+ * 未ログインに渡す量は、この形そのものが決める。`PublicShareCard` はカード名・枚数・色・
+ * レベル・種別を常に持ち、能力テキストとその他の表記は `detail`（`authenticated` の時だけ入る）
+ * にしか無い（ADR-0022 の「未ログインに開く口は、識別子からカード名まで」を、色・レベル・種別
+ * まで緩めた線）。
+ */
+export function publicShareOf(
+  share: StoredShare,
+  cards: readonly string[],
+  pool: readonly WirePoolCard[],
+  names: Names,
+  restrictions: readonly RestrictionList[],
+  authenticated: boolean,
+): PublicShare {
+  const faces = new Map(pool.map((card) => [card.key, card.face] as const))
+  const counts = new Map<string, number>()
+  for (const card of cards) counts.set(card, (counts.get(card) ?? 0) + 1)
+
+  const cardRows: PublicShareCard[] = [...counts]
+    .map(([key, count]) => {
+      const face = faces.get(key)
+      return {
+        count,
+        name: face?.name ?? '（取り下げられたカード）',
+        type: face?.type,
+        level: face?.level ?? 0,
+        colors: face?.colors ?? [],
+        detail: authenticated ? face : undefined,
+      }
+    })
+    .sort((left, right) => left.name.localeCompare(right.name, 'ja'))
+
+  return {
+    sharer: names(share.owner),
+    name: share.name,
+    description: share.description,
+    format: share.format as PublicShare['format'],
+    restriction: wireRestrictionOf(share.restriction, restrictions),
+    cards: cardRows,
+    authenticated,
+    // `ShareId` は認証済みの接続の上でしか使わない値なので、未ログインには渡さない
+    // （ADR-0022、#197）。「コピーする」を出すかどうかも、これがあるかどうかで決まる。
+    share: authenticated ? share.id : undefined,
+  }
 }

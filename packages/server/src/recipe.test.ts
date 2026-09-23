@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
+import type { WirePoolCard } from '@revolution/engine'
 import type { RestrictionList } from './deck.js'
 import { DECK_DESCRIPTION_LIMIT, DECK_NAME_LIMIT } from './owned-deck.js'
-import { isRecipeListOrder, isShareVisibility, recipeKeyOf, readShareRequest, wireShareOf } from './recipe.js'
+import {
+  isRecipeListOrder,
+  isShareVisibility,
+  publicShareOf,
+  recipeKeyOf,
+  readShareRequest,
+  wireShareOf,
+} from './recipe.js'
 import type { StoredShare } from './recipe.js'
 
 /**
@@ -146,6 +154,7 @@ describe('共有を通信に載せる形にする', () => {
   function share(overrides: Partial<StoredShare> = {}): StoredShare {
     return {
       id: '共有1',
+      key: '公開鍵1',
       recipe: 'かぎ1',
       owner: 'ぬし',
       name: 'わたしのレシピ',
@@ -160,15 +169,30 @@ describe('共有を通信に載せる形にする', () => {
   }
 
   it('確かめた形式が出る', () => {
-    expect(wireShareOf(share(), () => 'ぬし', RESTRICTIONS).format).toBe('構築戦')
+    expect(wireShareOf(share(), () => 'ぬし', RESTRICTIONS, true).format).toBe('構築戦')
+  })
+
+  /** `id` とは別の、公開してよい鍵（ADR-0022、#197）。持ち主向けの返事にしか出さない。 */
+  describe('公開の鍵', () => {
+    it('持ち主向けの返事には出る', () => {
+      expect(wireShareOf(share({ key: '公開鍵2' }), () => 'ぬし', RESTRICTIONS, true).key).toBe('公開鍵2')
+    })
+
+    /**
+     * レシピの画面（`/recipe/<鍵>`）に並ぶ他人の共有には載せない。載せると、レシピの鍵を
+     * 知っている人なら誰でも他人の共有鍵を未ログインの世界へ再配布できてしまう。
+     */
+    it('持ち主向けでない返事には出ない', () => {
+      expect(wireShareOf(share({ key: '公開鍵2' }), () => 'ぬし', RESTRICTIONS, false).key).toBeUndefined()
+    })
   })
 
   it('制限なしで確かめたなら、リストは無い', () => {
-    expect(wireShareOf(share({ restriction: undefined }), () => 'ぬし', RESTRICTIONS).restriction).toBeUndefined()
+    expect(wireShareOf(share({ restriction: undefined }), () => 'ぬし', RESTRICTIONS, true).restriction).toBeUndefined()
   })
 
   it('当てたリストは、識別子と名前で出る', () => {
-    expect(wireShareOf(share({ restriction: 'リスト1' }), () => 'ぬし', RESTRICTIONS).restriction).toEqual({
+    expect(wireShareOf(share({ restriction: 'リスト1' }), () => 'ぬし', RESTRICTIONS, true).restriction).toEqual({
       id: 'リスト1',
       name: 'テストのリスト',
     })
@@ -176,6 +200,147 @@ describe('共有を通信に載せる形にする', () => {
 
   /** ADR-0021 の `rulesRestored` と同じ理由。立てる時にリストを差し替えた後は、指す先が無い。 */
   it('渡された一覧に無い識別子は、リストが無いものとして出る', () => {
-    expect(wireShareOf(share({ restriction: 'しらないリスト' }), () => 'ぬし', RESTRICTIONS).restriction).toBeUndefined()
+    expect(wireShareOf(share({ restriction: 'しらないリスト' }), () => 'ぬし', RESTRICTIONS, true).restriction).toBeUndefined()
+  })
+})
+
+/**
+ * `/share/<鍵>` が返す公開ページの形にする（ADR-0022、#197）。
+ *
+ * 未ログインに渡す量と、ログインした人に渡す量の境目がここにある。カード名・枚数・色・
+ * レベル・種別は常に出て、能力テキストとその他の表記（`detail`）はログインした時だけ出る。
+ */
+describe('共有を公開ページの形にする', () => {
+  const RESTRICTIONS: readonly RestrictionList[] = [{ id: 'リスト1', name: 'テストのリスト', limits: {} }]
+
+  const UNIT: WirePoolCard = {
+    key: 'TEST-UNIT',
+    expansions: [],
+    face: {
+      type: 'ユニット',
+      name: 'テスト・ユニット',
+      level: 2,
+      colors: ['赤'],
+      stars: 0,
+      reverseStars: 0,
+      attributes: [],
+      text: ['能力テキスト。'],
+      bp: 100,
+      sp: 100,
+      moveIcon: [],
+    },
+  }
+  const STRATEGY: WirePoolCard = {
+    key: 'TEST-STRATEGY',
+    expansions: [],
+    face: {
+      type: 'ストラテジー',
+      name: 'テスト・ストラテジー',
+      level: 1,
+      colors: [],
+      stars: 0,
+      reverseStars: 0,
+      attributes: [],
+      text: ['効果テキスト。'],
+    },
+  }
+  const POOL: readonly WirePoolCard[] = [UNIT, STRATEGY]
+
+  function share(overrides: Partial<StoredShare> = {}): StoredShare {
+    return {
+      id: '共有1',
+      key: '公開鍵1',
+      recipe: 'かぎ1',
+      owner: 'ぬし',
+      name: 'わたしのレシピ',
+      description: 'かいせつ',
+      visibility: 'リンクを知っている人だけ',
+      sharedAt: 0,
+      revoked: false,
+      format: '構築戦',
+      restriction: undefined,
+      ...overrides,
+    }
+  }
+
+  /** 完了条件: 未ログインでも、カード名・枚数・共有者の解説までは見える。 */
+  it('未ログインでも、名前・枚数・色・レベル・種別・共有者・解説は出る', () => {
+    const result = publicShareOf(share(), ['TEST-UNIT', 'TEST-UNIT'], POOL, () => 'きょうこ', RESTRICTIONS, false)
+
+    expect(result.sharer).toBe('きょうこ')
+    expect(result.name).toBe('わたしのレシピ')
+    expect(result.description).toBe('かいせつ')
+    expect(result.authenticated).toBe(false)
+    expect(result.cards).toEqual([
+      { count: 2, name: 'テスト・ユニット', type: 'ユニット', level: 2, colors: ['赤'], detail: undefined },
+    ])
+  })
+
+  /** 完了条件: 能力テキストとその他の表記は、ログインした人にしか出ない。 */
+  it('未ログインには、能力テキストとその他の表記（detail）が無い', () => {
+    const result = publicShareOf(share(), ['TEST-UNIT'], POOL, () => 'きょうこ', RESTRICTIONS, false)
+
+    expect(result.cards[0]?.detail).toBeUndefined()
+  })
+
+  it('ログインしていれば、detail に能力テキストまで含めた表記が入る', () => {
+    const result = publicShareOf(share(), ['TEST-UNIT'], POOL, () => 'きょうこ', RESTRICTIONS, true)
+
+    expect(result.authenticated).toBe(true)
+    expect(result.cards[0]?.detail).toEqual(UNIT.face)
+  })
+
+  it('複数種のカードは、名前の順に並ぶ', () => {
+    const result = publicShareOf(
+      share(),
+      ['TEST-UNIT', 'TEST-STRATEGY'],
+      POOL,
+      () => 'きょうこ',
+      RESTRICTIONS,
+      false,
+    )
+
+    expect(result.cards.map((card) => card.name)).toEqual(['テスト・ストラテジー', 'テスト・ユニット'])
+  })
+
+  /** ADR-0021 の「取り下げられたカードを含むデッキ」と同じ扱い（`recipeCardRows` と同じ）。 */
+  it('プールに無い識別子は、取り下げられたカードとして出る。ログインしていても detail は無い', () => {
+    const result = publicShareOf(share(), ['TEST-なくなった'], POOL, () => 'きょうこ', RESTRICTIONS, true)
+
+    expect(result.cards).toEqual([
+      { count: 1, name: '（取り下げられたカード）', type: undefined, level: 0, colors: [], detail: undefined },
+    ])
+  })
+
+  it('共有する時に確かめた形式とリストも出る', () => {
+    const result = publicShareOf(
+      share({ format: '構築戦', restriction: 'リスト1' }),
+      [],
+      POOL,
+      () => 'きょうこ',
+      RESTRICTIONS,
+      false,
+    )
+
+    expect(result.format).toBe('構築戦')
+    expect(result.restriction).toEqual({ id: 'リスト1', name: 'テストのリスト' })
+  })
+
+  /**
+   * 「コピーする」を出すかどうかの元になる（ADR-0022、#197）。`ShareId` は認証済みの接続の
+   * 上でしか使わない値なので、未ログインには渡さない。
+   */
+  describe('共有を指す識別子（コピーする用）', () => {
+    it('ログインしていれば入る', () => {
+      const result = publicShareOf(share({ id: '共有9' }), [], POOL, () => 'きょうこ', RESTRICTIONS, true)
+
+      expect(result.share).toBe('共有9')
+    })
+
+    it('未ログインには入らない', () => {
+      const result = publicShareOf(share({ id: '共有9' }), [], POOL, () => 'きょうこ', RESTRICTIONS, false)
+
+      expect(result.share).toBeUndefined()
+    })
   })
 })

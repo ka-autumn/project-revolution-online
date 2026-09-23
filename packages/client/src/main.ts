@@ -1,7 +1,8 @@
 import './style.css'
 import { SIGN_IN_PATH } from '@revolution/engine'
 import { mount } from './index.js'
-import { recipeKeyFromPath, takePendingRecipe } from './recipe.js'
+import { mountPublicShare } from './public-share.js'
+import { recipeKeyFromPath, shareKeyFromPath, takePendingRecipe, takePendingShare } from './recipe.js'
 
 /**
  * ブラウザで開いた時の入口。`index.html` が読み込む。
@@ -39,16 +40,20 @@ function serverUrl(params: URLSearchParams): string {
 }
 
 /**
- * ログインを始める先（ADR-0019）。**サーバと同じところにある。**
- *
- * WebSocket の URL から作る。同じポートに HTTP が同居している（`server` の `serve.ts`）ので、
- * 向き先をもう 1 つ設定に持つ必要が無い。**2 つ持つと、片方だけ直した時に食い違う。**
+ * 対戦サーバの HTTP の置き場（ADR-0019）。WebSocket の URL から作る——同じポートに HTTP が
+ * 同居している（`server` の `serve.ts`）ので、向き先をもう 1 つ設定に持つ必要が無い。
+ * 2 つ持つと、片方だけ直した時に食い違う。
  */
-function signInUrl(server: string): string {
+function httpOrigin(server: string): string {
   const url = new URL(server)
   url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
+  return url.origin
+}
+
+/** ログインを始める先（ADR-0019）。サーバと同じところにある（`httpOrigin`）。 */
+function signInUrl(server: string): string {
+  const url = new URL(httpOrigin(server))
   url.pathname = SIGN_IN_PATH
-  url.search = ''
   return url.toString()
 }
 
@@ -86,32 +91,53 @@ const params = new URLSearchParams(location.search)
 const root = document.getElementById('board')
 if (root === null) throw new Error('#board が無い')
 
-const named = params.get('participant')
-const room = params.get('room')
-/**
- * 開くべきレシピの鍵（ADR-0022）。
- *
- * **`/recipe/<鍵>` を直に開いた時が主だが、未ログインでそこへ来てログインへ送られた後もここに
- * 来る。** 後者は Google の画面を経由して戻ってくるので、`location.pathname` はもう
- * `SIGN_IN_RETURN_TO`（ふつうはサイトの根）になっており、そちらからは鍵が読めない。
- * `index.ts` の `mount` がログインへ送る前に `sessionStorage` へ預けておいたものを、ここで
- * 拾う（`recipe.ts` の `rememberPendingRecipe` / `takePendingRecipe`）。
- *
- * **`takePendingRecipe` は先に呼び、必ず取り出して忘れる。** `??` の右側に直に書いて短絡させると、
- * URL に鍵がある間は預けたものを消さないままになり、次に無関係な理由でログインへ送られた時に
- * 古い鍵を誤って開いてしまう。
- */
-const pendingRecipe = takePendingRecipe(sessionStorage)
-const recipe = recipeKeyFromPath(location.pathname) ?? pendingRecipe
-
 const server = serverUrl(params)
 
-mount(root, {
-  url: server,
-  signInUrl: signInUrl(server),
-  participant: named === null || named === '' ? participantId() : named,
-  // 指していなければロビーから始める。合言葉を知っている相手と待ち合わせる時だけ要る。
-  ...(room === null || room === '' ? {} : { room }),
-  // レシピの画面を直に開いた時だけ渡す。ふだんはロビーから始める。
-  ...(recipe === undefined ? {} : { recipe }),
-})
+/**
+ * ログインへ送られて戻ってきた時、`location.pathname` はもう `SIGN_IN_RETURN_TO`（ふつうは
+ * サイトの根）になっており、そこからは開こうとしていた先の鍵が読めない（ADR-0022）。
+ * `sessionStorage` に預けておいたものを、ここで拾う（`recipe.ts` の `rememberPendingRecipe` /
+ * `takePendingRecipe`、`rememberPendingShare` / `takePendingShare`）。
+ *
+ * どちらも先に、無条件で呼ぶ。必ず取り出して忘れる。下の分岐の中に置いて片方だけ呼ぶと、
+ * 呼ばれなかったほうの預かりものが残り続け、次に無関係な理由でログインへ送られた時に古い鍵を
+ * 誤って開いてしまう。
+ */
+const pendingRecipe = takePendingRecipe(sessionStorage)
+const pendingShare = takePendingShare(sessionStorage)
+
+/**
+ * `/share/<鍵>` は、ふだんの画面（`mount`）とは別の、軽い公開ページである（ADR-0022、#197）。
+ *
+ * 読み込みは WebSocket を張らず、名乗りも部屋も要らない。ログインしていない人にも開ける
+ * ——対戦サーバの公開 HTTP の口（`serve.ts`）へ 1 回 `fetch` するだけで完結する
+ * （`public-share.ts`）。「コピーする」を押した時だけ繋ぐ——見るだけで満足する人にまで、
+ * カードプール・既製デッキ・表示名の確認を引き受けさせないため。指していれば、ふだんの
+ * `mount` の手前でここに分岐して終える。
+ */
+const named = params.get('participant')
+const participant = named === null || named === '' ? participantId() : named
+
+const shareKey = shareKeyFromPath(location.pathname) ?? pendingShare
+if (shareKey !== undefined) {
+  void mountPublicShare(root, {
+    serverOrigin: httpOrigin(server),
+    wsUrl: server,
+    participant,
+    key: shareKey,
+    signInUrl: signInUrl(server),
+  })
+} else {
+  const room = params.get('room')
+  const recipe = recipeKeyFromPath(location.pathname) ?? pendingRecipe
+
+  mount(root, {
+    url: server,
+    signInUrl: signInUrl(server),
+    participant,
+    // 指していなければロビーから始める。合言葉を知っている相手と待ち合わせる時だけ要る。
+    ...(room === null || room === '' ? {} : { room }),
+    // レシピの画面を直に開いた時だけ渡す。ふだんはロビーから始める。
+    ...(recipe === undefined ? {} : { recipe }),
+  })
+}

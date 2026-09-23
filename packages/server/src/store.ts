@@ -1,5 +1,6 @@
+import { randomBytes } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import type { DeckId, RecipeKey, RecipeListOrder, RoomCode, ShareId, ShareVisibility } from '@revolution/engine'
+import type { DeckId, RecipeKey, RecipeListOrder, RoomCode, ShareId, ShareKey, ShareVisibility } from '@revolution/engine'
 import type { DeckDraft, OwnedDeck } from './owned-deck.js'
 import type { StoredRecipeSummary, StoredShare } from './recipe.js'
 import type { DuelRecord, ParticipantId, StoredDuel } from './room.js'
@@ -215,6 +216,30 @@ function addMissingColumns(db: DatabaseSync): void {
   // ——当時は形式という値が無く、禁止／制限リストはどこにも当てていなかった。
   addMissingColumn(db, 'duels', 'format', "text not null default '構築戦'")
   addMissingColumn(db, 'duels', 'restriction', 'text')
+  // 共有ごとに、ログインしていない人にも渡せる URL の鍵を持たせる（ADR-0022、#197）。行番号
+  // （`shares.id`）とは別の、言い当てられない値である。行番号は認証済みの接続でしか使わない
+  // （取り消す・公開範囲を変える）ので連番のままでよいが、こちらは未ログインにも渡す URL に
+  // 載るので、総当たりに耐えなければならない。
+  addMissingColumn(db, 'shares', 'public_key', 'text')
+  backfillSharePublicKeys(db)
+  // 列を足した直後は同じ行に 2 度当てられない保証が無い（`addMissingColumn` は列を足すだけ）。
+  // 一意にするのはここで確実に埋めた後——先に張ると、埋め終わるまでの間に重ねて書き込む余地が
+  // 生まれる。
+  db.exec('create unique index if not exists shares_by_public_key on shares (public_key)')
+}
+
+/** 推測できない値を作る（`sign-in.ts` の `newToken` と同じ作り方）。 */
+function newSharePublicKey(): ShareKey {
+  return randomBytes(32).toString('base64url')
+}
+
+/** `public_key` を持たない行（列を足した直後の既存の共有）に、1 行ずつ値を埋める。 */
+function backfillSharePublicKeys(db: DatabaseSync): void {
+  const rows = db.prepare('select id from shares where public_key is null').all()
+  if (rows.length === 0) return
+
+  const set = db.prepare('update shares set public_key = ? where id = ?')
+  for (const row of rows) set.run(newSharePublicKey(), int(row as Row, 'id'))
 }
 
 function addMissingColumn(db: DatabaseSync, table: string, column: string, definition: string): void {
@@ -332,6 +357,13 @@ export interface Store {
   ): ShareId
   /** 識別子から共有を引く。**持ち主を見ない**——他人の共有もコピーできる（ADR-0022）。無ければ `undefined`。 */
   shareById(share: ShareId): StoredShare | undefined
+  /**
+   * 公開の鍵から共有を引く（ADR-0022、#197）。`/share/<鍵>` の口が使う。
+   *
+   * 取り消されていれば `undefined`。知らない鍵の場合と同じ形で返す——見分けても、開けない
+   * ことは変わらない。
+   */
+  shareByPublicKey(key: ShareKey): StoredShare | undefined
   /** その人の共有全部（ADR-0022）。**取り消したものも含む**——共有した順。 */
   sharesOf(owner: ParticipantId): readonly StoredShare[]
   /** そのレシピにぶら下がる、取り消されていない共有。共有した順。 */
@@ -413,10 +445,13 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
   const insertRecipe = db.prepare('insert or ignore into recipes (key, cards) values (?, ?)')
   const recipeRow = db.prepare('select cards from recipes where key = ?')
   const insertShare = db.prepare(
-    `insert into shares (recipe, owner, name, description, format, restriction, visibility, shared_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `insert into shares (recipe, owner, name, description, format, restriction, visibility, shared_at, public_key)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const shareRow = db.prepare('select * from shares where id = ?')
+  // 取り消されていないことも条件に入れる。取り消された共有の URL は、公開の鍵からは何も
+  // 返らない決まり（ADR-0022、#197）——持ち主に見せる `shareById` とはここで分かれる。
+  const shareByPublicKeyRow = db.prepare('select * from shares where public_key = ? and revoked_at is null')
   const sharesByOwner = db.prepare('select * from shares where owner = ? order by id')
   const openSharesByRecipe = db.prepare('select * from shares where recipe = ? and revoked_at is null order by id')
   // **持ち主も条件に入れる。** 識別子だけで引くと、他人の共有を取り消せてしまう。
@@ -506,6 +541,7 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
   function shareOf(row: Row): StoredShare {
     return {
       id: String(int(row, 'id')),
+      key: text(row, 'public_key'),
       recipe: text(row, 'recipe'),
       owner: seatedAs(int(row, 'owner')),
       name: text(row, 'name'),
@@ -686,6 +722,7 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
         draft.restriction ?? null,
         draft.visibility,
         now(),
+        newSharePublicKey(),
       )
       return String(result.lastInsertRowid)
     },
@@ -694,6 +731,10 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
       if (row === undefined) return undefined
 
       const found = shareRow.get(row)
+      return found === undefined ? undefined : shareOf(found as Row)
+    },
+    shareByPublicKey: (key) => {
+      const found = shareByPublicKeyRow.get(key)
       return found === undefined ? undefined : shareOf(found as Row)
     },
     sharesOf: (owner) => sharesByOwner.all(identityOf(owner)).map((row) => shareOf(row as Row)),
