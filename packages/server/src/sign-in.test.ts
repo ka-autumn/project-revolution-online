@@ -314,4 +314,12 @@ describe('ログインの道筋', () => {
 
     expect(store.sessionHolder(digest(token), Date.now() + 1)).toBeUndefined()
   })
+
+  /**
+   * ADR-0022、#197。`/share/<鍵>` の CORS が使う——**戻り先（`returnTo`）から作る**ので、
+   * 向き先をもう 1 つ設定に持たない。
+   */
+  it('画面の置き場は、戻り先の設定から作る', () => {
+    expect(signIn.allowedOrigin).toBe('https://app.example.com')
+  })
 })

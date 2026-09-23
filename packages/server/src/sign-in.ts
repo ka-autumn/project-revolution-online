@@ -88,6 +88,15 @@ export interface SignIn {
   handle(request: IncomingMessage, response: ServerResponse): boolean
   /** 握手に付いてきた Cookie の持ち主。ログインしていなければ `undefined`。 */
   holderOf(cookie: string | undefined): ParticipantId | undefined
+  /**
+   * 画面の置き場（ADR-0022、#197）。**`config.returnTo` から作る**——戻り先として画面の URL を
+   * すでに持っている（ADR-0019）ので、向き先をもう 1 つ設定に持つ必要が無い。
+   *
+   * `/share/<鍵>` の HTTP の口（`serve.ts`）が、CORS の `Access-Control-Allow-Origin` に使う。
+   * Cookie 付きで fetch させる以上、`*` は使えない——ここでしか出所を持たないので、判断もここに
+   * 置く。
+   */
+  readonly allowedOrigin: string
 }
 
 /**
@@ -312,5 +321,6 @@ export function createSignIn(options: SignInOptions): SignIn {
       const token = cookieValue(header, SESSION_COOKIE)
       return token === undefined ? undefined : store.sessionHolder(digest(token), Date.now() - SESSION_LIFE_MS)
     },
+    allowedOrigin: new URL(config.returnTo).origin,
   }
 }
