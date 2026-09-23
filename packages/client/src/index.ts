@@ -11,6 +11,7 @@ import type {
   RecipeListOrder,
   RestrictionChoice,
   RoomCode,
+  WireShare,
 } from '@revolution/engine'
 import {
   applyToBuilder,
@@ -386,6 +387,19 @@ function controls(): HTMLElement {
 }
 
 /**
+ * 共有した本人に渡すリンク（ADR-0022、#197）。
+ *
+ * `共有した` は共有した本人にだけ届く返事で、サーバが必ず公開の鍵を添える
+ * （`server` の `wireShareOf` の `ownerFacing`）。届かないのは通信の形が壊れている場合だけ
+ * なので、投げて気付けるようにする（`recipe.ts` の `myShareRows` と同じ考え方）。
+ */
+function ownShareLinkOf(share: WireShare): string {
+  if (share.key === undefined) throw new Error('自分の共有に公開の鍵がありません')
+
+  return shareLinkOf(location.origin, share.key)
+}
+
+/**
  * いまの状態を丸ごと描き直す。
  *
  * 差分を当てずに毎回作り直している。盤面も差分ではなくまるごと届く（`wire.ts`）ので、
@@ -531,7 +545,7 @@ function draw(
       shareDialogElement(
         sharing,
         stage.restrictions,
-        sharing.kind === '共有した' ? shareLinkOf(location.origin, sharing.share.key) : undefined,
+        sharing.kind === '共有した' ? ownShareLinkOf(sharing.share) : undefined,
         building.sharing,
       ),
     )
@@ -1155,7 +1169,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   }
 
   /**
-   * リンクをコピーする（ADR-0022）。**組み立てるのは呼ぶ側**（`recipe.ts` の `shareLinkOf`）——
+   * リンクをコピーする（ADR-0022）。組み立てるのは呼ぶ側（`recipe.ts` の `shareLinkOf`）——
    * ここはブラウザに渡すだけである。
    *
    * コピーの手立てが無い（対応していないブラウザ、`https` でない）場合は諦める。押した人には

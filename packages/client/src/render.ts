@@ -25,7 +25,7 @@ import type { CardDetail, CheckView, ConfirmView, DeckRow, OwnedDeckRow, PoolRow
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import { emptyFilter, isFiltering, toggled } from './pool-filter.js'
 import type { FilterChoices, NumberRange, PoolFilter } from './pool-filter.js'
-import type { MyShareRow, PublicCardSection, RecipeCardRow, RecipeSummaryRow, ShareDraft, ShareRow, SharingState } from './recipe.js'
+import type { CopyState, MyShareRow, PublicCardSection, RecipeCardRow, RecipeSummaryRow, ShareDraft, ShareRow, SharingState } from './recipe.js'
 import type {
   AbilityView,
   BattleView,
@@ -1238,13 +1238,13 @@ export function recipeElement(
   return node
 }
 
-/** カード 1 種の行。**`detail` があれば表記の全部を出し、無ければレベル・色だけの要約にする。** */
+/** カード 1 種の行。`detail` があれば表記の全部を出し、無ければレベル・色だけの要約にする。 */
 function publicShareCardElement(card: PublicShareCard): HTMLElement {
   const item = element('div', 'decks__row public-share__card')
   item.append(element('span', 'decks__name', card.name), element('span', 'decks__count', `${card.count} 枚`))
 
   if (card.detail !== undefined) {
-    // **能力テキストとその他の表記は、ログインした人にだけ入る**（ADR-0022）。`deck-builder.ts`
+    // 能力テキストとその他の表記は、ログインした人にだけ入る（ADR-0022）。`deck-builder.ts`
     // の `printedDetailsOf`・`fillDetail` と同じ書き出し方に揃える——詳しく出す形をここで
     // 作り直さない。
     const detail = element('div', 'public-share__detail')
@@ -1269,14 +1269,56 @@ function publicShareCardElement(card: PublicShareCard): HTMLElement {
 }
 
 /**
- * `/share/<鍵>` の公開ページ（ADR-0022、#197）。**ここだけ、ログインしていなくても開ける。**
+ * 「コピーする」の進み具合を出す（ADR-0022、#197）。
  *
- * **未ログインでは、名前・枚数・色・レベル・種別と、共有者・解説までしか出ない**
+ * 押すまでは `onCopy` を呼ぶだけのボタンで、繋ぐのは呼ぶ側（`public-share.ts`）の仕事。
+ * ここは `CopyState` をそのまま描き分けるだけで、いつ繋ぐかの判断は持たない。
+ */
+function publicShareCopyElement(copyState: CopyState, onCopy: () => void): HTMLElement {
+  const node = element('div', 'public-share__copy')
+
+  if (copyState.kind === 'コピーできた') {
+    node.append(element('p', 'public-share__copy-done', 'コピーしました。自分のデッキに入っています'))
+    return node
+  }
+  if (copyState.kind === '名前が要る') {
+    // この公開ページの中に名前を決める口は作らない。名前は ADR-0020 の持ち物で、入口を
+    // 増やすと決め方が 2 か所になる。ふだんの画面（`/`）への導線だけを添える。
+    node.append(element('p', 'public-share__copy-refusal', 'コピーするには、まず表示名を決めてください'))
+    const link = document.createElement('a')
+    link.className = 'public-share__copy-link'
+    link.href = '/'
+    link.textContent = 'ふだんの画面を開く'
+    node.append(link)
+    return node
+  }
+  if (copyState.kind === '行えなかった') {
+    node.append(element('p', 'public-share__copy-refusal', copyState.reason))
+    return node
+  }
+
+  const copyButton = button(copyState.kind === '繋いでいます' ? '繋いでいます…' : 'コピーする', onCopy)
+  copyButton.toggleAttribute('disabled', copyState.kind === '繋いでいます')
+  node.append(copyButton)
+  return node
+}
+
+/**
+ * `/share/<鍵>` の公開ページ（ADR-0022、#197）。ここだけ、ログインしていなくても開ける。
+ *
+ * 未ログインでは、名前・枚数・色・レベル・種別と、共有者・解説までしか出ない
  * （`PublicShareCard.detail` が無い）。ログインしていれば、能力テキストとその他の表記まで
  * 出る——出してよい量を決めるのは対戦サーバ（`server` の `recipe.ts` の `publicShareOf`）で、
  * ここは届いた形をそのまま描くだけである。
  */
-export function publicShareElement(share: PublicShare, sections: readonly PublicCardSection[], signInUrl: string): HTMLElement {
+export function publicShareElement(
+  share: PublicShare,
+  sections: readonly PublicCardSection[],
+  signInUrl: string,
+  onLogin: () => void,
+  copyState: CopyState,
+  onCopy: () => void,
+): HTMLElement {
   const node = element('section', 'decks public-share')
   const head = element('div', 'decks__head')
   head.append(element('h2', 'decks__title', share.name))
@@ -1295,9 +1337,15 @@ export function publicShareElement(share: PublicShare, sections: readonly Public
     link.className = 'public-share__invite-link'
     link.href = signInUrl
     link.textContent = 'ログインする'
+    // 移る前に、開いている共有の鍵を預ける（ADR-0022、#197）。既定のナビゲーションは
+    // 止めない——`href` どおりに Google へ移りつつ、`onLogin` は同期で先に済ませる。
+    link.addEventListener('click', onLogin)
     invite.append(link)
     node.append(invite)
   }
+
+  // 未ログインには出ない（`share.share` が無い）。「コピーする」はログインした人にだけ出す。
+  if (share.share !== undefined) node.append(publicShareCopyElement(copyState, onCopy))
 
   for (const section of sections) {
     node.append(element('h3', 'decks__title', section.type ?? '取り下げられたカード'))

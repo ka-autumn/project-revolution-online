@@ -720,6 +720,20 @@ body {
   color: #666;
 }
 
+/* 「コピーする」の進み具合（ADR-0022、#197）。 */
+.public-share__copy {
+  margin-bottom: calc(var(--gap) * 2);
+}
+
+.public-share__copy-done {
+  margin: 0;
+}
+
+.public-share__copy-refusal {
+  margin: 0 0 4px;
+  color: #b00;
+}
+
 /* カードの行は詳細を畳まず、種別の枠の中に縦に並べる。 */
 .public-share__card {
   flex-direction: column;
