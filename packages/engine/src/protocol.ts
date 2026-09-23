@@ -1,4 +1,5 @@
 import type { Square } from './board.js'
+import type { CardType, Color } from './card.js'
 import type { DeckViolation, DuelFormat } from './deck.js'
 import { cardsIn } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
@@ -146,6 +147,16 @@ export type RecipeKey = string
 export type ShareId = string
 
 /**
+ * 共有 1 つを指す、ログインしていない人にも渡してよい識別子（ADR-0022、#197）。
+ *
+ * **`ShareId` とは別のものである。** `ShareId` は認証済みの接続の上でしか使わない
+ * （共有を取り消す・公開範囲を変える。持ち主を確かめてから当てるので、連番のままで構わない）。
+ * こちらは `/share/<鍵>` として未ログインの人にも渡る URL に載るので、総当たりで踏み当てられ
+ * ない値でなければならない。作り方はサーバの `store.ts` に 1 か所だけ閉じる。
+ */
+export type ShareKey = string
+
+/**
  * 共有の公開の段階（ADR-0022）。**共有ごとに持ち、あとから変えられる。**
  *
  * - `リンクを知っている人だけ` — URL を知っている人だけが開ける。一覧には出ない
@@ -208,6 +219,13 @@ export interface WireRoom {
  */
 export interface WireShare {
   readonly id: ShareId
+  /**
+   * `/share/<鍵>` として、ログインしていない人にも渡せるこの共有の URL の鍵（ADR-0022、#197）。
+   *
+   * **`id` とは別に持つ。** `id` は認証済みの接続の上でしか使わない値なので、連番のままでも
+   * 問題ないが、`key` はそのまま公開の URL に載るので、総当たりで踏み当てられない値である。
+   */
+  readonly key: ShareKey
   readonly recipe: RecipeKey
   /**
    * 共有した人のいまの表示名（ADR-0020、ADR-0022）。
@@ -253,6 +271,47 @@ export interface WireRecipe {
   readonly cards: readonly string[]
   /** 取り消されていない共有全部。新着順。 */
   readonly shares: readonly WireShare[]
+}
+
+/**
+ * `/share/<鍵>` が返す、共有 1 つの中身（ADR-0022、#197）。
+ *
+ * **`WireRecipe` とは別の形である。** `WireRecipe` はその鍵で繋いだ WebSocket の上で読む——
+ * ログインしている人にしか届かない前提で、能力テキストまで出しても線を破らない。こちらは
+ * ログインしていない人にも答える口（`serve.ts` の HTTP）が返す形なので、**出してよい量が形
+ * そのものに書かれていなければならない。** カード名・枚数・色・レベル・種別と、共有者・解説
+ * までは常に載る。**能力テキストとその他の表記は `PublicShareCard.detail` にしか無く**、
+ * それはログインした人への返事にしか入らない。
+ */
+export interface PublicShare {
+  readonly sharer: string
+  readonly name: string
+  readonly description: string
+  readonly format: DuelFormat
+  readonly restriction: { readonly id: RestrictionListId; readonly name: string } | undefined
+  readonly cards: readonly PublicShareCard[]
+  /** ログインした人からの要求だったか。`cards[].detail` が入っているかどうかと対応する。 */
+  readonly authenticated: boolean
+}
+
+/**
+ * `PublicShare` にぶら下がるカード 1 種（ADR-0022、#197）。
+ *
+ * **取り下げられたカードは `type`・`level`・`colors` を持たない**（`recipeCardRows` と同じ
+ * 扱い）——プールに無い識別子は、何が書かれていたかをもう引けない。
+ */
+export interface PublicShareCard {
+  readonly count: number
+  readonly name: string
+  readonly type: CardType | undefined
+  readonly level: number
+  readonly colors: readonly Color[]
+  /**
+   * 能力テキストとその他の表記（ADR-0022）。**ログインした人にだけ入る**——未ログインへ渡す
+   * 口は、識別子からここまでの項目までである。取り下げられたカードでは、ログインしていても
+   * `undefined`（表記を引く先が無い）。
+   */
+  readonly detail: WireCardFace | undefined
 }
 
 /** 一覧の並べ方（ADR-0022）。 */
@@ -734,6 +793,16 @@ export const NOT_SIGNED_IN = 'ログインしていない'
  * 断る理由（`NOT_SIGNED_IN`）と同じくここに置く。
  */
 export const SIGN_IN_PATH = '/auth/google'
+
+/**
+ * 共有 1 つの公開ページが叩く先の道筋（ADR-0022、#197）。`SIGN_IN_PATH` と同じ理由でここに
+ * 置く——**サーバと画面の両方が指す同じ 1 つの文字列**である。
+ *
+ * `${SHARE_PATH_PREFIX}${key}` が実際に叩く URL（`GET`）になる。**`SIGN_IN_PATH` と違い、
+ * ログインしていなくても答える。** Cookie を見て、載せる量（`PublicShare.authenticated`）を
+ * 変えるだけである。
+ */
+export const SHARE_PATH_PREFIX = '/share/'
 
 /** 行動を適用しようとした結果（ADR-0008）。 */
 export type ActionProgress =
