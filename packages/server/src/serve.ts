@@ -269,8 +269,8 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   /**
    * HTTP と WebSocket を同じポートに同居させる（ADR-0019）。
    *
-   * 引き受け先の無い要求は断る。**ここに置くのはログインの道筋と、`/share/<鍵>` の公開の口
-   * だけ**で、画面を配るのは別のところである（ADR-0013）。
+   * 引き受け先の無い要求は断る。ここに置くのはログインの道筋と、`/share/<鍵>` の公開の口
+   * だけで、画面を配るのは別のところである（ADR-0013）。
    */
   const http = createServer((request, response) => {
     if (options.signIn?.handle(request, response) === true) return

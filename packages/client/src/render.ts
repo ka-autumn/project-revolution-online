@@ -1363,8 +1363,8 @@ export function publicShareLoadingElement(): HTMLElement {
 }
 
 /**
- * `/share/<鍵>` が開けなかった時（ADR-0022、#197）。**取り消された共有と、知らない鍵は同じ形で
- * 出す**——対戦サーバの返事（404）の時点ですでに見分けが付かない（`serve.ts`）。
+ * `/share/<鍵>` が開けなかった時（ADR-0022、#197）。取り消された共有と、知らない鍵は同じ形で
+ * 出す——対戦サーバの返事（404）の時点ですでに見分けが付かない（`serve.ts`）。
  */
 export function publicShareNotFoundElement(): HTMLElement {
   return element('section', 'decks public-share', 'この共有は見つかりませんでした。取り消されたか、URL が違います。')

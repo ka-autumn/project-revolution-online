@@ -4,7 +4,7 @@ import { loadPublicShare } from './public-share.js'
 /**
  * `/share/<鍵>` を尋ねる `loadPublicShare`（ADR-0022、#197）。
  *
- * **DOM には触れない関数なので、`fetch` を差し替えるだけで確かめられる。** 描くところ
+ * DOM には触れない関数なので、`fetch` を差し替えるだけで確かめられる。描くところ
  * （`mountPublicShare`・`render.ts`）はこのリポジトリの流儀どおりテストしない——判断のある
  * ロジックはここまでに切り出してある（`recipe.ts` の `copyOutcomeOf` と同じ考え方）。
  */

@@ -2654,8 +2654,8 @@ describe('ログインの設定があるとき', () => {
     /**
      * `decodeURIComponent` は不正な percent-encoding に対して投げる。ここで拾わずに投げさせる
      * と、この接続だけでなく `http.createServer` の要求ハンドラごと落ち、対戦サーバの全体が
-     * 落ちる（進行中の対戦も一緒に消える、ADR-0009）。**サーバが生きていることを、続けて別の
-     * 要求が通ることで確かめる。**
+     * 落ちる（進行中の対戦も一緒に消える、ADR-0009）。サーバが生きていることは、続けて別の
+     * 要求が通ることで確かめる。
      */
     it('壊れた percent-encoding が来ても、対戦サーバは落ちずに 404 で答える', async () => {
       const response = await fetch(`http://localhost:${server.port}${SHARE_PATH_PREFIX}%zz`)
