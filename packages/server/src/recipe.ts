@@ -94,6 +94,7 @@ export function readShareRequest(raw: {
 
   if (typeof raw.description !== 'string') return { kind: '断る', reason: '共有する解説が読めません' }
   const description = raw.description.normalize('NFC')
+  if (breaksDisplay(description)) return { kind: '断る', reason: '共有する解説に使えない文字が入っています' }
   if ([...description].length > DECK_DESCRIPTION_LIMIT) {
     return { kind: '断る', reason: `共有する解説は ${DECK_DESCRIPTION_LIMIT} 文字までです` }
   }

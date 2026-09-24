@@ -93,6 +93,7 @@ export function readDeck(
 
   if (typeof raw.description !== 'string') return { kind: '断る', reason: 'デッキの解説が読めません' }
   const description = raw.description.normalize('NFC')
+  if (breaksDisplay(description)) return { kind: '断る', reason: 'デッキの解説に使えない文字が入っています' }
   if (codePoints(description) > DECK_DESCRIPTION_LIMIT) {
     return { kind: '断る', reason: `デッキの解説は ${DECK_DESCRIPTION_LIMIT} 文字までです` }
   }

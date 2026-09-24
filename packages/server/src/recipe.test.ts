@@ -96,6 +96,14 @@ describe('共有の下書きを読む', () => {
     })
   })
 
+  /** デッキの解説（`owned-deck.ts`）と同じ抜け穴。判定は `breaksDisplay` を共有している。 */
+  it('解説にペアになっていないサロゲートが入っていたら断る', () => {
+    expect(readShareRequest(request({ description: `メモ${String.fromCodePoint(0xdc00)}` }))).toEqual({
+      kind: '断る',
+      reason: '共有する解説に使えない文字が入っています',
+    })
+  })
+
   it('公開の段階が読めなければ断る', () => {
     expect(readShareRequest(request({ visibility: 'こうかい' }))).toEqual({
       kind: '断る',
