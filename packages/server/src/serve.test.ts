@@ -920,18 +920,35 @@ describe('ログインの設定があるとき', () => {
     return client
   }
 
+  /**
+   * デッキの操作への返事のあと、必ず届くものが来るまで待つ（ADR-0026）。
+   *
+   * **`デッキを確かめる` は、送りさえすれば断られない。** 同じ接続の上で送った順に処理される
+   * ので、これへの返事が届いた時点で、直前の操作が返したものは（`自分のデッキ` を余分に
+   * 送り直していたとしても）すべて届き終えている。`received` と `bytesReceived()` を、
+   * 取りこぼしなく締めるための境目に使う。
+   */
+  async function settledAfterDeckChange(client: Client): Promise<void> {
+    client.send({ kind: 'デッキを確かめる', cards: [], format: undefined, restriction: undefined })
+    await client.waitFor('デッキを確かめた')
+  }
+
   /** 送ったあと、保存の返事（変わった 1 件、ADR-0026）が届くまで待つ。 */
   async function savedAfter(client: Client, message: FromClient): Promise<ToClient> {
     client.received.length = 0
     client.send(message)
-    return client.waitFor('デッキを保存した')
+    const saved = await client.waitFor('デッキを保存した')
+    await settledAfterDeckChange(client)
+    return saved
   }
 
   /** 送ったあと、削除の返事（ADR-0026）が届くまで待つ。 */
   async function deletedAfter(client: Client, message: FromClient): Promise<ToClient> {
     client.received.length = 0
     client.send(message)
-    return client.waitFor('デッキを消した')
+    const deleted = await client.waitFor('デッキを消した')
+    await settledAfterDeckChange(client)
+    return deleted
   }
 
   /** ADR-0021。60 枚を選び切るまで対戦できない、という入口にしない。 */
@@ -990,6 +1007,8 @@ describe('ログインの設定があるとき', () => {
       description: '',
       cards: ['TEST-0', 'TEST-1'],
     })
+    // **ほかのデッキは送られない。** `自分のデッキ` を送り直すと、変わった 1 件だけを送る意味が無い。
+    expect(client.received.some((message) => message.kind === '自分のデッキ')).toBe(false)
     await client.close()
   })
 
@@ -1005,9 +1024,16 @@ describe('ログインの設定があるとき', () => {
 
   /**
    * 完了条件（#200）。上限いっぱい（1,000 枚・名前 40 文字・解説 1,000 文字）のデッキ 100 個を
-   * 持っていても、1 回の保存で送られる量が全件分（約 1.6MB）にならないこと。
+   * 持っていても、1 回の保存で送られる量が全件分にならないこと。
+   *
+   * 識別子はテストでは `TEST-0` のように短い（6 文字）ので、全件は約 1.2MB、変わった 1 件は
+   * 約 12KB になる。実際の置き場の識別子はもっと長く、Issue #200 の見積もり（約 1.6MB・約 16KB）は
+   * そちらを仮定したものである。
    *
    * **変わった 1 件だけが乗る**（ADR-0026）ので、99 個の中身がどれだけ大きくても関わらない。
+   * **閾値は、実際に送った 1 件を JSON にしたバイト数の 2 倍未満とする。** 全件分（100 件）なら
+   * これよりずっと大きくなる一方、ほかのデッキが送られていないこと自体は、別に `自分のデッキ` が
+   * 届いていないことで確かめる。
    */
   it('上限いっぱいのデッキを 100 個持っていても、1 回の保存で送られる量は全件分にならない', async () => {
     const client = await enteredAsMe()
@@ -1023,7 +1049,7 @@ describe('ログインの設定があるとき', () => {
     if (overwriting === undefined) throw new Error('デッキがあるはずだった')
 
     const before = client.bytesReceived()
-    await savedAfter(client, {
+    const saved = await savedAfter(client, {
       kind: 'デッキを保存する',
       deck: overwriting.id,
       name: bigName,
@@ -1032,9 +1058,11 @@ describe('ログインの設定があるとき', () => {
     })
     const sent = client.bytesReceived() - before
 
-    // 上限いっぱいのデッキ 100 個分（約 1.6MB）どころか、変わった 1 件（約 16KB）よりだいぶ
-    // 余裕を持たせても、なお 1 桁小さい。
-    expect(sent).toBeLessThan(100_000)
+    // ほかのデッキの中身は送られない。
+    expect(client.received.some((message) => message.kind === '自分のデッキ')).toBe(false)
+    // 送った 1 件（約 12KB）の 2 倍未満。全件分（約 1.2MB）ならこれの 100 倍近くになる。
+    const oneDeckBytes = Buffer.byteLength(JSON.stringify(saved))
+    expect(sent).toBeLessThan(oneDeckBytes * 2)
     await client.close()
   })
 
@@ -1615,6 +1643,8 @@ describe('ログインの設定があるとき', () => {
 
     expect(saved.kind === 'デッキを保存した' && saved.deck.name).toBe('ひとつめ')
     expect(store.decksOf(me).map((deck) => deck.name)).toEqual(['ひとつめ', 'ひとつめ'])
+    // **ほかのデッキは送られない。** `自分のデッキ` を送り直すと、変わった 1 件だけを送る意味が無い。
+    expect(client.received.some((message) => message.kind === '自分のデッキ')).toBe(false)
     await client.close()
   })
 
@@ -1628,6 +1658,8 @@ describe('ログインの設定があるとき', () => {
 
     expect(removed.kind === 'デッキを消した' && removed.deck).toBe(first.id)
     expect(store.decksOf(me)).toHaveLength(1)
+    // **ほかのデッキは送られない。** 消した後の一覧は、届いた識別子で手元から取り除いて作る。
+    expect(client.received.some((message) => message.kind === '自分のデッキ')).toBe(false)
     await client.close()
   })
 
@@ -1658,6 +1690,71 @@ describe('ログインの設定があるとき', () => {
     })
     expect(store.decksOf(me)).toHaveLength(OWNED_DECK_LIMIT)
     await client.close()
+  })
+
+  /**
+   * ADR-0026。同じ本人が 2 つの接続を持つ場面（同じ Google ログインで 2 つのタブを開く）。
+   *
+   * **差分は、操作した接続にしか届かない。** もう一方の接続の一覧は、そちらで置き場を直接
+   * ずらすような操作をするまでずれたままになる。ずれた一覧のまま操作して断られた時だけ、
+   * その断りに続けて `自分のデッキ` が全件届き直し、繋ぎ直さずに揃い直る。
+   */
+  describe('同じ本人の 2 つの接続', () => {
+    it('もう一方の接続が消したデッキには、断られるまで気付かない', async () => {
+      const first = await enteredAsMe()
+      const second = new Client(server.port, 'なのっても無駄', signedIn)
+      await second.waitFor('自分のデッキ')
+      await second.waitFor('ロビー')
+      second.received.length = 0
+
+      const [deck] = store.decksOf(me)
+      if (deck === undefined) throw new Error('デッキがあるはずだった')
+      // 最後の 1 つは消せないので、先にもう 1 つ作っておく。
+      await savedAfter(second, { kind: 'デッキをコピーする', origin: { kind: '既製デッキ', id: '既製1' } })
+
+      first.received.length = 0
+      await deletedAfter(second, { kind: 'デッキを消す', deck: deck.id })
+
+      // **first には何も届かない。** 差分は操作した接続（second）にしか届かない。
+      expect(first.received).toEqual([])
+
+      // first は、もう置き場に無いその同じデッキを保存しようとして断られる。
+      first.send({ kind: 'デッキを保存する', deck: deck.id, name: '編集し直した', description: '', cards: [] })
+      expect(await first.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'そのデッキはありません' })
+
+      // 断りに続けて、自分のデッキが全件届き直し、置き場と揃い直す。
+      const resynced = await first.waitFor('自分のデッキ')
+      expect(resynced.kind === '自分のデッキ' && resynced.decks.map((each) => each.id).sort()).toEqual(
+        store.decksOf(me).map((each) => each.id).sort(),
+      )
+      await first.close()
+      await second.close()
+    })
+
+    it('置き場に無いデッキを消そうとしても、断りに続けて全件届き直す', async () => {
+      const first = await enteredAsMe()
+      const second = new Client(server.port, 'なのっても無駄', signedIn)
+      await second.waitFor('自分のデッキ')
+      await second.waitFor('ロビー')
+      second.received.length = 0
+
+      const [deck] = store.decksOf(me)
+      if (deck === undefined) throw new Error('デッキがあるはずだった')
+      await savedAfter(second, { kind: 'デッキをコピーする', origin: { kind: '既製デッキ', id: '既製1' } })
+
+      first.received.length = 0
+      await deletedAfter(second, { kind: 'デッキを消す', deck: deck.id })
+
+      first.send({ kind: 'デッキを消す', deck: deck.id })
+      expect(await first.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: 'そのデッキはありません' })
+
+      const resynced = await first.waitFor('自分のデッキ')
+      expect(resynced.kind === '自分のデッキ' && resynced.decks.map((each) => each.id).sort()).toEqual(
+        store.decksOf(me).map((each) => each.id).sort(),
+      )
+      await first.close()
+      await second.close()
+    })
   })
 
   /**

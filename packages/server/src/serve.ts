@@ -727,7 +727,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
      * 決まらないこと——持てる数の上限と、最後の 1 つかどうか——だけである。
      *
      * **変わった 1 件だけを送る**（ADR-0026）。`自分のデッキ` を送り直すと、上限いっぱいまで
-     * 埋めた人は保存を 1 回押すたびに約 1.6MB が流れる（#200）。全件は繋いだ時にしか送らない。
+     * 埋めた人は保存を 1 回押すたびに約 1.6MB が流れる（#200）。全件は繋いだ時にしか送らない——
+     * ただし、**手元の一覧が置き場とずれている兆しの断りだけは例外**で、断りに続けて `自分のデッキ`
+     * を全件送り直す（`refuseAndResync`、ADR-0026 の「ADR-0016 との関係」）。同じ本人が別のタブで
+     * 消したり足したりしたデッキは、ここまで届かない限り繋ぎ直すまで揃わない。
      */
     function changeDecks(message: DeckRequest): void {
       if (deckStore === undefined) {
@@ -735,6 +738,12 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         return
       }
       const refuse = (reason: string): void => send(socket, { kind: '行えなかった', reason })
+      // **数え違い（上限・最後の1つ）と、無いデッキを指す断りだけが対象。** 送られてきた中身
+      // そのものが規則を満たさない（`readDeck` の断り）は、一覧のずれとは関係が無いので送り直さない。
+      const refuseAndResync = (reason: string): void => {
+        refuse(reason)
+        sendOwnDecks(socket, participant)
+      }
       const full = (): boolean => deckStore.decksOf(participant).length >= OWNED_DECK_LIMIT
       const { pool, presets } = options.supply
 
@@ -742,10 +751,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         case 'デッキを保存する': {
           const reading = readDeck(message, pool)
           if (reading.kind === '断る') return refuse(reading.reason)
-          if (message.deck === undefined && full()) return refuse(`デッキは ${OWNED_DECK_LIMIT} 個までです`)
+          if (message.deck === undefined && full()) return refuseAndResync(`デッキは ${OWNED_DECK_LIMIT} 個までです`)
 
           const saved = deckStore.saveDeck(participant, message.deck, reading.deck)
-          if (saved === undefined) return refuse('そのデッキはありません')
+          if (saved === undefined) return refuseAndResync('そのデッキはありません')
 
           // **置き場を読み直さない。** 保存した中身は `reading.deck`（読んで揃えたもの）が持って
           // いるので、識別子を添えるだけで返す形が組み上がる。
@@ -758,10 +767,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         }
         case 'デッキを消す': {
           const decks = deckStore.decksOf(participant)
-          if (!decks.some((deck) => deck.id === message.deck)) return refuse('そのデッキはありません')
+          if (!decks.some((deck) => deck.id === message.deck)) return refuseAndResync('そのデッキはありません')
           // **最後の 1 つは消せない。** 消せると、次に繋いだ時に既製デッキが配られ直して、消した
           // はずのところに知らないデッキが湧いて出る（`sendOwnDecks`）。
-          if (decks.length === 1) return refuse('最後のデッキは消せません')
+          if (decks.length === 1) return refuseAndResync('最後のデッキは消せません')
 
           deckStore.deleteDeck(participant, message.deck)
           send(socket, { kind: 'デッキを消した', deck: message.deck })
@@ -771,8 +780,8 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           // **コピー元の種類は数え上げる**（ADR-0022）——既製デッキと共有レシピのどちらも、
           // ここでは同じ形に揃えてから写す。
           const source = copySourceOf(message.origin, presets, deckStore)
-          if (source === undefined) return refuse('そのデッキはありません')
-          if (full()) return refuse(`デッキは ${OWNED_DECK_LIMIT} 個までです`)
+          if (source === undefined) return refuseAndResync('そのデッキはありません')
+          if (full()) return refuseAndResync(`デッキは ${OWNED_DECK_LIMIT} 個までです`)
 
           const cards = sortCards(source.cards)
           const saved = deckStore.saveDeck(participant, undefined, {
@@ -780,7 +789,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
             description: source.description,
             cards,
           })
-          if (saved === undefined) return refuse('そのデッキはありません')
+          if (saved === undefined) return refuseAndResync('そのデッキはありません')
 
           // **コピー数はレシピ単位で数える**（ADR-0022）。既製デッキのコピーは数えない——一覧に
           // 並ぶのはレシピだけである。
