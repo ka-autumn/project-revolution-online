@@ -99,6 +99,24 @@ describe('デッキを読む', () => {
     })
   })
 
+  /**
+   * ペアになっていないサロゲートは、書き込む先（`node:sqlite`）が U+FFFD に置き換えて保存する。
+   * 読む段階で断れば、返事や一覧に載る値が置き場の値と食い違うことがない。
+   */
+  it('名前にペアになっていないサロゲートが入っていたら断る', () => {
+    expect(readDeck(draft({ name: `わたしの${String.fromCodePoint(0xd800)}デッキ` }), POOL)).toEqual({
+      kind: '断る',
+      reason: 'デッキの名前に使えない文字が入っています',
+    })
+  })
+
+  it('解説にペアになっていないサロゲートが入っていたら断る', () => {
+    expect(readDeck(draft({ description: `メモ${String.fromCodePoint(0xdc00)}` }), POOL)).toEqual({
+      kind: '断る',
+      reason: 'デッキの解説に使えない文字が入っています',
+    })
+  })
+
   it(`カードは ${DECK_CARD_LIMIT} 枚まで`, () => {
     expect(readDeck(draft({ cards: Array.from({ length: DECK_CARD_LIMIT }, () => 'TEST-0') }), POOL).kind).toBe(
       '決まった',

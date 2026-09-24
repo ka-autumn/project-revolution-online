@@ -21,16 +21,21 @@ export const NAME_LIMIT = 20
  * U+2066–2069）である。向きを操られると、名前の外に出ているものまで並びが変わる。**閉じ忘れた
  * 向きは、その後ろ全部にかかる。**
  *
+ * ペアになっていない**サロゲート単体**（U+D800–DFFF）も弾く。置き場（`node:sqlite`）はこれを
+ * U+FFFD に書き換えて保存するので、通してしまうと返事と一覧に載る値が置き場の値と食い違う。
+ *
  * **見た目が似た別の文字（ホモグリフ）は弾かない**（ADR-0020）。弾き始めると際限が無く、
  * それは迷惑対策である。
  *
  * デッキの名前も同じもので見る（`owned-deck.ts`）。**人に見せる名前の決まりを 2 つ持たない。**
+ * デッキの解説（`owned-deck.ts`）と共有の解説（`recipe.ts`）も同じ判定を通す。
  */
 export function breaksDisplay(name: string): boolean {
   for (const character of name) {
     const code = character.codePointAt(0) ?? 0
     if (code < 0x20 || code === 0x7f) return true
     if ((code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)) return true
+    if (code >= 0xd800 && code <= 0xdfff) return true
   }
 
   return false

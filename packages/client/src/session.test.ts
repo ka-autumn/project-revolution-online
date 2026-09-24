@@ -408,9 +408,43 @@ describe('デッキを組むのに要るもの', () => {
     // 総合ルール 第3部 第1章 3-1（ADR-0006）
     const violations = [{ kind: '枚数不足', count: 1, minimum: 60 }] as const
 
-    const session = fold({ kind: 'デッキを保存した', deck: 'デッキ1', violations })
+    const session = fold({ kind: 'デッキを保存した', deck: DECKS[0], violations })
 
-    expect(session.saved).toEqual({ deck: 'デッキ1', violations })
+    expect(session.saved).toEqual({ deck: DECKS[0].id, violations })
+  })
+
+  /** ADR-0026。保存した 1 件だけが差し替わり、他のデッキの内容には触らない。 */
+  it('保存すると、その 1 件だけが自分のデッキに反映される', () => {
+    const other = { id: 'デッキ2', name: 'べつのデッキ', description: '', cards: [] } as const
+    const changed = { ...DECKS[0], name: 'なおしたくみかけ' }
+
+    const session = fold(
+      { kind: '自分のデッキ', decks: [DECKS[0], other] },
+      { kind: 'デッキを保存した', deck: changed, violations: [] },
+    )
+
+    expect(session.ownedDecks).toEqual([changed, other])
+  })
+
+  /** ADR-0026。新しく作った時は、届いている一覧の末尾に足す。 */
+  it('新しく作ったデッキは、自分のデッキの末尾に足される', () => {
+    const created = { id: 'デッキ2', name: 'あたらしいデッキ', description: '', cards: [] } as const
+
+    const session = fold(
+      { kind: '自分のデッキ', decks: DECKS },
+      { kind: 'デッキを保存した', deck: created, violations: [] },
+    )
+
+    expect(session.ownedDecks).toEqual([...DECKS, created])
+  })
+
+  /** ADR-0026。消した 1 件だけが自分のデッキから抜け、他のデッキは残る。 */
+  it('消すと、その 1 件だけが自分のデッキから消える', () => {
+    const other = { id: 'デッキ2', name: 'べつのデッキ', description: '', cards: [] } as const
+
+    const session = fold({ kind: '自分のデッキ', decks: [DECKS[0], other] }, { kind: 'デッキを消した', deck: DECKS[0].id })
+
+    expect(session.ownedDecks).toEqual([other])
   })
 
   it('確かめた結果は、最後に届いたものになる', () => {
@@ -429,7 +463,7 @@ describe('デッキを組むのに要るもの', () => {
     const after = fold(
       LOBBY,
       { kind: 'デッキを確かめた', violations: [] },
-      { kind: 'デッキを保存した', deck: 'デッキ1', violations: [] },
+      { kind: 'デッキを保存した', deck: DECKS[0], violations: [] },
     )
 
     expect(after.stage).toEqual(before.stage)

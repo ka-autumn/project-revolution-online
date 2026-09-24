@@ -163,7 +163,9 @@ export interface Session {
   /**
    * いま持っている自分のデッキ全部（ADR-0021）。届いていなければ `undefined`。
    *
-   * `pool` と同じ理由でここに持つ。保存・コピー・削除のたびに、まるごと届き直す。
+   * `pool` と同じ理由でここに持つ。**まるごと届くのは繋いだ時だけ**（ADR-0026）。保存・コピー・
+   * 削除のたびには、変わった 1 件（`デッキを保存した`・`デッキを消した`）が届くので、ここで
+   * 差分を当てる（`withSavedDeck`、`デッキを消した` は `applyMessage` の中で直接取り除く）。
    */
   readonly ownedDecks: readonly WireOwnedDeck[] | undefined
   /**
@@ -224,6 +226,24 @@ export function roomOf(session: Session): RoomCode | undefined {
   const stage = session.stage
 
   return stage.kind === '相手を待っている' || stage.kind === '打っている' ? stage.room : undefined
+}
+
+/**
+ * 保存した 1 件を、覚えている自分のデッキに当てる（ADR-0026）。
+ *
+ * **同じ識別子があれば置き換え、無ければ末尾に足す。** 置き場の `decksOf` も作った順に並ぶ
+ * （`store.ts`）ので、新しく作ったものは常に末尾になる。まだ何も届いていなければ、この 1 件
+ * だけの並びにする——繋ぐ前にデッキ操作は行えないはずだが、順序を仮定せずに済む形にしておく。
+ */
+function withSavedDeck(
+  owned: readonly WireOwnedDeck[] | undefined,
+  saved: WireOwnedDeck,
+): readonly WireOwnedDeck[] {
+  if (owned === undefined) return [saved]
+
+  return owned.some((deck) => deck.id === saved.id)
+    ? owned.map((deck) => (deck.id === saved.id ? saved : deck))
+    : [...owned, saved]
 }
 
 /**
@@ -327,7 +347,13 @@ export function applyMessage(session: Session, message: ToClient): Session {
     case '自分のデッキ':
       return { ...session, ownedDecks: message.decks }
     case 'デッキを保存した':
-      return { ...session, saved: { deck: message.deck, violations: message.violations } }
+      return {
+        ...session,
+        ownedDecks: withSavedDeck(session.ownedDecks, message.deck),
+        saved: { deck: message.deck.id, violations: message.violations },
+      }
+    case 'デッキを消した':
+      return { ...session, ownedDecks: session.ownedDecks?.filter((deck) => deck.id !== message.deck) }
     case 'デッキを確かめた':
       return { ...session, checked: message.violations }
     case '共有した':
