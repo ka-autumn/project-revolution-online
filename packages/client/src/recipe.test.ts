@@ -419,7 +419,11 @@ describe('公開ページのカードを種類ごとの枠に分ける', () => {
  */
 describe('コピーの結果を読む', () => {
   it('デッキを保存した → コピーできた', () => {
-    const message: ToClient = { kind: 'デッキを保存した', deck: 'デッキ1', violations: [] }
+    const message: ToClient = {
+      kind: 'デッキを保存した',
+      deck: { id: 'デッキ1', name: 'くみかけ', description: '', cards: [] },
+      violations: [],
+    }
 
     expect(copyOutcomeOf(message)).toEqual({ kind: 'コピーできた' })
   })

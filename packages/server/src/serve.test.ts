@@ -65,13 +65,23 @@ const CODE = 'あいことば'
 class Client {
   readonly received: ToClient[] = []
   private readonly socket: WebSocket
+  /** 届いたものの生バイト数の合計（ADR-0026、#200）。**中身は数えず、通信量だけを測る。** */
+  private totalBytes = 0
 
   constructor(port: number, participant: string, cookie?: string) {
     this.socket = new WebSocket(`ws://localhost:${port}/?participant=${encodeURIComponent(participant)}`, {
       // 握手の HTTP リクエストに載る（ADR-0019）。ブラウザなら自動で載せるところである。
       ...(cookie === undefined ? {} : { headers: { cookie } }),
     })
-    this.socket.on('message', (data) => this.received.push(JSON.parse(String(data)) as ToClient))
+    this.socket.on('message', (data) => {
+      this.totalBytes += Buffer.byteLength(data as Buffer)
+      this.received.push(JSON.parse(String(data)) as ToClient)
+    })
+  }
+
+  /** ここまでに届いた生バイト数の合計。2 回呼んで差を取れば、その間に届いた量が分かる。 */
+  bytesReceived(): number {
+    return this.totalBytes
   }
 
   opened(): Promise<void> {
@@ -910,11 +920,18 @@ describe('ログインの設定があるとき', () => {
     return client
   }
 
-  /** 送ったあと、自分のデッキが送り直されるまで待つ。 */
-  async function decksAfter(client: Client, message: FromClient): Promise<ToClient> {
+  /** 送ったあと、保存の返事（変わった 1 件、ADR-0026）が届くまで待つ。 */
+  async function savedAfter(client: Client, message: FromClient): Promise<ToClient> {
     client.received.length = 0
     client.send(message)
-    return client.waitFor('自分のデッキ')
+    return client.waitFor('デッキを保存した')
+  }
+
+  /** 送ったあと、削除の返事（ADR-0026）が届くまで待つ。 */
+  async function deletedAfter(client: Client, message: FromClient): Promise<ToClient> {
+    client.received.length = 0
+    client.send(message)
+    return client.waitFor('デッキを消した')
   }
 
   /** ADR-0021。60 枚を選び切るまで対戦できない、という入口にしない。 */
@@ -948,11 +965,14 @@ describe('ログインの設定があるとき', () => {
     await client.close()
   })
 
-  /** ADR-0021。不備があっても保存でき、並びは揃って残る。 */
+  /**
+   * ADR-0021、ADR-0026。不備があっても保存でき、並びは揃って残る。**中身をまるごと添えるので、
+   * `自分のデッキ` を待たずに、これ 1 通で分かる。**
+   */
   it('保存すると並びが揃って残り、構築戦の規定を満たしていない点が届く', async () => {
     const client = await enteredAsMe()
 
-    const decks = await decksAfter(client, {
+    const saved = await savedAfter(client, {
       kind: 'デッキを保存する',
       deck: undefined,
       name: 'くみかけ',
@@ -960,13 +980,12 @@ describe('ログインの設定があるとき', () => {
       cards: ['TEST-1', 'TEST-0'],
     })
 
-    const saved = client.latest('デッキを保存した')
     // 総合ルール 第3部 第1章 3-1（ADR-0006）
-    expect(saved?.kind === 'デッキを保存した' && saved.violations).toEqual([
+    expect(saved.kind === 'デッキを保存した' && saved.violations).toEqual([
       { kind: '枚数不足', count: 2, minimum: 60 },
     ])
-    expect(decks.kind === '自分のデッキ' && decks.decks[1]).toEqual({
-      id: saved?.kind === 'デッキを保存した' ? saved.deck : undefined,
+    expect(saved.kind === 'デッキを保存した' && saved.deck).toEqual({
+      id: expect.any(String),
       name: 'くみかけ',
       description: '',
       cards: ['TEST-0', 'TEST-1'],
@@ -981,6 +1000,41 @@ describe('ログインの設定があるとき', () => {
 
     expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: '使えないカードが入っています' })
     expect(store.decksOf(me)).toHaveLength(1)
+    await client.close()
+  })
+
+  /**
+   * 完了条件（#200）。上限いっぱい（1,000 枚・名前 40 文字・解説 1,000 文字）のデッキ 100 個を
+   * 持っていても、1 回の保存で送られる量が全件分（約 1.6MB）にならないこと。
+   *
+   * **変わった 1 件だけが乗る**（ADR-0026）ので、99 個の中身がどれだけ大きくても関わらない。
+   */
+  it('上限いっぱいのデッキを 100 個持っていても、1 回の保存で送られる量は全件分にならない', async () => {
+    const client = await enteredAsMe()
+    const bigCards = Array.from({ length: 1000 }, () => 'TEST-0')
+    const bigName = 'あ'.repeat(40)
+    const bigDescription = 'い'.repeat(1000)
+    // enteredAsMe が最初に 1 件配っている（ADR-0021）ので、上限まであと 99 個埋める。
+    for (let count = store.decksOf(me).length; count < OWNED_DECK_LIMIT; count += 1) {
+      store.saveDeck(me, undefined, { name: bigName, description: bigDescription, cards: bigCards })
+    }
+    expect(store.decksOf(me)).toHaveLength(OWNED_DECK_LIMIT)
+    const [overwriting] = store.decksOf(me)
+    if (overwriting === undefined) throw new Error('デッキがあるはずだった')
+
+    const before = client.bytesReceived()
+    await savedAfter(client, {
+      kind: 'デッキを保存する',
+      deck: overwriting.id,
+      name: bigName,
+      description: bigDescription,
+      cards: bigCards,
+    })
+    const sent = client.bytesReceived() - before
+
+    // 上限いっぱいのデッキ 100 個分（約 1.6MB）どころか、変わった 1 件（約 16KB）よりだいぶ
+    // 余裕を持たせても、なお 1 桁小さい。
+    expect(sent).toBeLessThan(100_000)
     await client.close()
   })
 
@@ -1182,7 +1236,7 @@ describe('ログインの設定があるとき', () => {
       client.received.length = 0
       client.send({ kind: 'ロビーに戻る' })
       await client.waitFor('ロビー')
-      await decksAfter(client, { kind: 'デッキを消す', deck: second })
+      await deletedAfter(client, { kind: 'デッキを消す', deck: second })
       const lobby = await client.waitFor('ロビー')
       client.received.length = 0
       client.send({ kind: '部屋を作る', name: 'へや', against: 'CPU', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
@@ -1275,7 +1329,7 @@ describe('ログインの設定があるとき', () => {
       const waiting = await client.waitFor('相手を待っている')
       const code = waiting.kind === '相手を待っている' ? waiting.room : ''
       // 待っている間に、選んでいたデッキを消す。ここで既定は決まらなくなる（`fallbackFor`）。
-      await decksAfter(client, { kind: 'デッキを消す', deck: second })
+      await deletedAfter(client, { kind: 'デッキを消す', deck: second })
 
       client.send({ kind: '部屋に入る', room: code, deck: undefined })
       await client.waitFor('相手を待っている')
@@ -1557,21 +1611,22 @@ describe('ログインの設定があるとき', () => {
   it('既製デッキをコピーして、自分のデッキにできる', async () => {
     const client = await enteredAsMe()
 
-    const decks = await decksAfter(client, { kind: 'デッキをコピーする', origin: { kind: '既製デッキ', id: '既製1' } })
+    const saved = await savedAfter(client, { kind: 'デッキをコピーする', origin: { kind: '既製デッキ', id: '既製1' } })
 
-    expect(decks.kind === '自分のデッキ' && decks.decks.map((deck) => deck.name)).toEqual(['ひとつめ', 'ひとつめ'])
+    expect(saved.kind === 'デッキを保存した' && saved.deck.name).toBe('ひとつめ')
+    expect(store.decksOf(me).map((deck) => deck.name)).toEqual(['ひとつめ', 'ひとつめ'])
     await client.close()
   })
 
   it('デッキを消せる', async () => {
     const client = await enteredAsMe()
-    await decksAfter(client, { kind: 'デッキをコピーする', origin: { kind: '既製デッキ', id: '既製1' } })
+    await savedAfter(client, { kind: 'デッキをコピーする', origin: { kind: '既製デッキ', id: '既製1' } })
     const [first] = store.decksOf(me)
     if (first === undefined) throw new Error('デッキがあるはずだった')
 
-    const decks = await decksAfter(client, { kind: 'デッキを消す', deck: first.id })
+    const removed = await deletedAfter(client, { kind: 'デッキを消す', deck: first.id })
 
-    expect(decks.kind === '自分のデッキ' && decks.decks.map((deck) => deck.id)).not.toContain(first.id)
+    expect(removed.kind === 'デッキを消した' && removed.deck).toBe(first.id)
     expect(store.decksOf(me)).toHaveLength(1)
     await client.close()
   })
@@ -2087,8 +2142,8 @@ describe('ログインの設定があるとき', () => {
       })
       const shareId = result.kind === '共有した' ? result.share.id : ''
 
-      const decks = await decksAfter(client, { kind: 'デッキをコピーする', origin: { kind: '共有レシピ', share: shareId } })
-      const copied = decks.kind === '自分のデッキ' ? decks.decks.find((each) => each.name === 'コピーされる名前') : undefined
+      const saved = await savedAfter(client, { kind: 'デッキをコピーする', origin: { kind: '共有レシピ', share: shareId } })
+      const copied = saved.kind === 'デッキを保存した' ? saved.deck : undefined
       expect(copied?.description).toBe('コピーされる解説')
 
       // コピー後は独立している——元のレシピを取り消しても、コピーは残る。

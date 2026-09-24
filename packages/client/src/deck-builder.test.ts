@@ -119,14 +119,16 @@ describe('保存する', () => {
     expect(draftToSave(draftOf(OWNED), []).deck).toBeUndefined()
   })
 
+  /** ADR-0026。中身をまるごと添えて届くので、`自分のデッキ` を待たずにここで識別子が付く。 */
   it('新しく作ったデッキは、保存した返事で識別子が付き、次からは上書きになる', () => {
     const sent = withCard(newDraft(), 'い')
     const waiting: Builder = { ...editing(sent), waiting: { kind: '保存', sent } }
+    const saved: WireOwnedDeck = { id: 'あたらしい', name: sent.name, description: sent.description, cards: sent.cards }
 
-    const saved = applyToBuilder(waiting, { kind: 'デッキを保存した', deck: 'あたらしい', violations: [] })
+    const builder = applyToBuilder(waiting, { kind: 'デッキを保存した', deck: saved, violations: [] })
 
-    expect(saved.draft?.deck).toBe('あたらしい')
-    expect(saved.waiting.kind).toBe('保存したデッキ')
+    expect(builder.draft?.deck).toBe('あたらしい')
+    expect(builder.waiting).toEqual({ kind: '無し' })
   })
 
   /** サーバは名前の前後の空白を落とす。合わせないと、保存した直後から変更があるように見える。 */
@@ -134,24 +136,18 @@ describe('保存する', () => {
     const sent = { ...draftOf(OWNED), name: '  くみかけ  ' }
     const waiting: Builder = { ...editing(sent), waiting: { kind: '保存', sent } }
 
-    const builder = [
-      { kind: 'デッキを保存した', deck: OWNED.id, violations: [] } as const,
-      { kind: '自分のデッキ', decks: [OWNED] } as const,
-    ].reduce(applyToBuilder, waiting)
+    const builder = applyToBuilder(waiting, { kind: 'デッキを保存した', deck: OWNED, violations: [] })
 
     expect(builder.draft).toEqual(draftOf(OWNED))
     expect(builder.waiting).toEqual({ kind: '無し' })
   })
 
-  it('送った後に手を加えていれば、組みかけはそのまま残る', () => {
+  /** 返事が届くまでの間に手を加えていた場合。届いたものに揃え直さず、手を加えた側を残す。 */
+  it('返事が届くまでに手を加えていれば、組みかけはそのまま残る', () => {
     const sent = draftOf(OWNED)
-    const saved = applyToBuilder(
-      { ...editing(sent), waiting: { kind: '保存', sent } },
-      { kind: 'デッキを保存した', deck: OWNED.id, violations: [] },
-    )
-    const changed = { ...saved, draft: withCard(sent, 'う') }
+    const waiting: Builder = { ...editing(withCard(sent, 'う')), waiting: { kind: '保存', sent } }
 
-    const builder = applyToBuilder(changed, { kind: '自分のデッキ', decks: [OWNED] })
+    const builder = applyToBuilder(waiting, { kind: 'デッキを保存した', deck: OWNED, violations: [] })
 
     expect(builder.draft?.cards).toEqual([...OWNED.cards, 'う'])
   })
@@ -233,24 +229,21 @@ describe('レシピを尋ねる', () => {
 })
 
 describe('既製デッキをコピーする', () => {
-  /** ADR-0022。コピーしたものは、そのまま組み始められる。 */
+  /** ADR-0022、ADR-0026。コピーしたものは、中身をまるごと添えて届くので、そのまま組み始められる。 */
   it('コピーしたデッキが届いたら、そのデッキを組み始める', () => {
     const waiting: Builder = { ...closedBuilder(), screen: 'デッキを選ぶ', waiting: { kind: 'コピー' } }
 
-    const builder = [
-      { kind: 'デッキを保存した', deck: OWNED.id, violations: [] } as const,
-      { kind: '自分のデッキ', decks: [OWNED] } as const,
-    ].reduce(applyToBuilder, waiting)
+    const builder = applyToBuilder(waiting, { kind: 'デッキを保存した', deck: OWNED, violations: [] })
 
     expect(builder.screen).toBe('デッキを組む')
     expect(builder.draft).toEqual(draftOf(OWNED))
     expect(builder.waiting).toEqual({ kind: '無し' })
   })
 
-  it('何も待っていなければ、自分のデッキが届いても組むところは変わらない', () => {
+  it('何も待っていなければ、保存した返事が届いても組むところは変わらない', () => {
     const listing: Builder = { ...closedBuilder(), screen: 'デッキを選ぶ' }
 
-    expect(applyToBuilder(listing, { kind: '自分のデッキ', decks: [OWNED] })).toBe(listing)
+    expect(applyToBuilder(listing, { kind: 'デッキを保存した', deck: OWNED, violations: [] })).toBe(listing)
   })
 })
 

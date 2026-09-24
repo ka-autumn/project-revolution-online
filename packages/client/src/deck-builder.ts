@@ -69,12 +69,8 @@ export type BuilderWaiting =
   | { readonly kind: '無し' }
   /** 保存の返事を待っている。`sent` は送った時の組みかけで、返ってきたものと見比べる。 */
   | { readonly kind: '保存'; readonly sent: DeckDraft }
-  /** 保存した。**揃えて残ったもの**が自分のデッキとして届くのを待っている。 */
-  | { readonly kind: '保存したデッキ'; readonly deck: DeckId; readonly sent: DeckDraft }
   /** コピーの返事を待っている。 */
   | { readonly kind: 'コピー' }
-  /** コピーした。そのデッキが自分のデッキとして届いたら、組み始める。 */
-  | { readonly kind: 'コピーしたデッキ'; readonly deck: DeckId }
 
 /**
  * 押す前に尋ねていること。**戻せないことだけを尋ねる。**
@@ -277,41 +273,31 @@ export function draftToSave(draft: DeckDraft, owned: readonly WireOwnedDeck[]): 
  * **返事は送った順に届く**ので、何を待っているか（`waiting`・`checking`）を覚えておけば、届いた
  * ものがどれへの返事かが分かる。断られた（`行えなかった`）ら、待っていたものは全部やめる——どれを
  * 断られたかは添えられていないが、どれも、もう返事は来ない。
+ *
+ * **`デッキを保存した` は中身をまるごと添えて届く**（ADR-0026）ので、`自分のデッキ` を待たずに
+ * ここで組みかけへ反映できる。
  */
 export function applyToBuilder(builder: Builder, message: ToClient): Builder {
   const { waiting } = builder
   switch (message.kind) {
     case 'デッキを保存した':
       if (waiting.kind === '保存') {
-        // 新しく作ったなら、ここで初めて識別子が分かる。**次からは上書きになる。**
-        const draft = builder.draft === undefined ? undefined : { ...builder.draft, deck: message.deck }
-        return {
-          ...builder,
-          draft,
-          waiting: { kind: '保存したデッキ', deck: message.deck, sent: { ...waiting.sent, deck: message.deck } },
-        }
-      }
-      if (waiting.kind === 'コピー') return { ...builder, waiting: { kind: 'コピーしたデッキ', deck: message.deck } }
-      return builder
-    case '自分のデッキ': {
-      if (waiting.kind === '保存したデッキ') {
-        const saved = message.decks.find((deck) => deck.id === waiting.deck)
+        const idAssigned =
+          builder.draft === undefined ? undefined : { ...builder.draft, deck: message.deck.id }
         // **送った後に手を加えていなければ、残ったものに合わせる。** サーバは名前の前後の空白を
-        // 落とすので、合わせないと保存した直後から変更があるように見える。
+        // 落とすので、合わせないと保存した直後から変更があるように見える。手を加えていれば、
+        // 新しく作ったデッキの識別子だけ受け取り、組みかけはそのまま残す——次からは上書きになる。
         const synced =
-          saved !== undefined && builder.draft !== undefined && sameDraft(builder.draft, waiting.sent)
-            ? draftOf(saved)
-            : builder.draft
+          idAssigned !== undefined && sameDraft(idAssigned, { ...waiting.sent, deck: message.deck.id })
+            ? draftOf(message.deck)
+            : idAssigned
         return { ...builder, draft: synced, waiting: { kind: '無し' } }
       }
-      if (waiting.kind === 'コピーしたデッキ') {
-        const copied = message.decks.find((deck) => deck.id === waiting.deck)
-        if (copied === undefined) return { ...builder, waiting: { kind: '無し' } }
-
-        return { ...builder, screen: 'デッキを組む', draft: draftOf(copied), pinned: undefined, waiting: { kind: '無し' } }
+      if (waiting.kind === 'コピー') {
+        // コピーした時点では組みかけを触れないので、届いたものをそのまま組み始める。
+        return { ...builder, screen: 'デッキを組む', draft: draftOf(message.deck), pinned: undefined, waiting: { kind: '無し' } }
       }
       return builder
-    }
     case 'デッキを確かめた':
       return { ...builder, checking: Math.max(0, builder.checking - 1) }
     case '共有した':

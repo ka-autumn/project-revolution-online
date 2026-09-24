@@ -724,8 +724,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
      * 自分のデッキに手を加える（ADR-0021）。
      *
      * **決まりを見るのは `owned-deck.ts` である。** ここが見るのは、置き場の中身を数えないと
-     * 決まらないこと——持てる数の上限と、最後の 1 つかどうか——だけである。通れば、変わった後の
-     * 自分のデッキを送り直す。
+     * 決まらないこと——持てる数の上限と、最後の 1 つかどうか——だけである。
+     *
+     * **変わった 1 件だけを送る**（ADR-0026）。`自分のデッキ` を送り直すと、上限いっぱいまで
+     * 埋めた人は保存を 1 回押すたびに約 1.6MB が流れる（#200）。全件は繋いだ時にしか送らない。
      */
     function changeDecks(message: DeckRequest): void {
       if (deckStore === undefined) {
@@ -745,7 +747,13 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           const saved = deckStore.saveDeck(participant, message.deck, reading.deck)
           if (saved === undefined) return refuse('そのデッキはありません')
 
-          send(socket, { kind: 'デッキを保存した', deck: saved, violations: violationsOf(reading.deck.cards, pool) })
+          // **置き場を読み直さない。** 保存した中身は `reading.deck`（読んで揃えたもの）が持って
+          // いるので、識別子を添えるだけで返す形が組み上がる。
+          send(socket, {
+            kind: 'デッキを保存した',
+            deck: { id: saved, ...reading.deck },
+            violations: violationsOf(reading.deck.cards, pool),
+          })
           break
         }
         case 'デッキを消す': {
@@ -756,6 +764,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           if (decks.length === 1) return refuse('最後のデッキは消せません')
 
           deckStore.deleteDeck(participant, message.deck)
+          send(socket, { kind: 'デッキを消した', deck: message.deck })
           break
         }
         case 'デッキをコピーする': {
@@ -765,10 +774,11 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           if (source === undefined) return refuse('そのデッキはありません')
           if (full()) return refuse(`デッキは ${OWNED_DECK_LIMIT} 個までです`)
 
+          const cards = sortCards(source.cards)
           const saved = deckStore.saveDeck(participant, undefined, {
             name: source.name,
             description: source.description,
-            cards: sortCards(source.cards),
+            cards,
           })
           if (saved === undefined) return refuse('そのデッキはありません')
 
@@ -776,13 +786,16 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           // 並ぶのはレシピだけである。
           if (source.copiedRecipe !== undefined) deckStore.recordCopy(source.copiedRecipe)
 
-          send(socket, { kind: 'デッキを保存した', deck: saved, violations: violationsOf(source.cards, pool) })
+          send(socket, {
+            kind: 'デッキを保存した',
+            deck: { id: saved, name: source.name, description: source.description, cards },
+            violations: violationsOf(cards, pool),
+          })
           break
         }
       }
 
-      sendOwnDecks(socket, participant)
-      // **ロビーも送り直す。** 何も選ばずに座った時のデッキはその人のデッキから決まる（#194）ので、
+      // **ロビーは送り直す。** 何も選ばずに座った時のデッキはその人のデッキから決まる（#194）ので、
       // デッキが増えたり消えたりすると変わりうる。**部屋の様子が変わっていなくても送り直す。**
       pushLobby()
     }
