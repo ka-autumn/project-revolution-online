@@ -165,7 +165,7 @@ export interface Session {
    *
    * `pool` と同じ理由でここに持つ。**まるごと届くのは繋いだ時だけ**（ADR-0026）。保存・コピー・
    * 削除のたびには、変わった 1 件（`デッキを保存した`・`デッキを消した`）が届くので、ここで
-   * 差分を当てる（`foldOwnedDecks`）。
+   * 差分を当てる（`withSavedDeck`、`デッキを消した` は `applyMessage` の中で直接取り除く）。
    */
   readonly ownedDecks: readonly WireOwnedDeck[] | undefined
   /**
