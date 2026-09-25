@@ -2002,8 +2002,12 @@ function resultElement(result: ResultView): HTMLElement {
  *
  * `result` を渡すと、決着の帯も同じ層に重ねる。こちらは溜めない演出とは別で、消えずに
  * 出続ける——決着した後は打てる手が無くなる（ADR-0010）ので、時間で消す理由が無い。
+ *
+ * `onLeave` を渡すと、決着の帯の下、画面の中央下部に「ロビーに戻る」を出す（ADR-0027）。
+ * 決着した後に押すのはこれだけなので、左の列の操作パネルではなく目に入る所に置く。層は
+ * 押せない作りなので、このボタンだけ押せるようにしてある（`style.css` の `.result__leave`）。
  */
-export function overlayElement(overlay: Overlay, result?: ResultView): HTMLElement {
+export function overlayElement(overlay: Overlay, result?: ResultView, onLeave?: () => void): HTMLElement {
   const kind = result === undefined ? '' : ` overlay-layer--結果-${result.kind}`
   const node = element('div', `overlay-layer${kind}`)
   for (const view of overlay.transitions) node.append(transitionElement(view))
@@ -2022,6 +2026,11 @@ export function overlayElement(overlay: Overlay, result?: ResultView): HTMLEleme
   }
 
   if (result !== undefined) node.append(resultElement(result))
+  if (result !== undefined && onLeave !== undefined) {
+    const leave = element('div', 'result__leave')
+    leave.append(button('ロビーに戻る', onLeave, true))
+    node.append(leave)
+  }
 
   return node
 }

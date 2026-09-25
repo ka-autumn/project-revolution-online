@@ -2434,6 +2434,24 @@ body {
 }
 
 /*
+ * 決着した後の「ロビーに戻る」。画面の中央下部に置く。演出の層は押せない作り
+ * （`pointer-events: none`）なので、このボタンだけ押せるようにする。
+ */
+.duel .result__leave {
+  position: absolute;
+  bottom: 3rem;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.duel .result__leave .choice__button {
+  padding: 0.7rem 2.4rem;
+  font-size: 1.15rem;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.35);
+}
+
+/*
  * カードの一覧（捨札・リムーブを見る／効果で山札などから選ぶ）。画面の上に重ね、答えるまで
  * 盤面は押せない。右の列（カードの詳細）は覆わないので、一覧のカードに乗せて詳細を読める。
  */

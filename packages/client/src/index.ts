@@ -746,10 +746,12 @@ function draw(
     // `canLeave`）。決着した後はどちらの対戦でも戻れて、CPU との対戦と、相手が繋がっていない
     // 対戦は途中でも戻れる。**断るのはサーバである。** ここで決めているのは、押す口を出すか
     // どうかだけである。
-    if (connected && (stage.opponent.kind === 'CPU' || !stage.opponentConnected || board.result !== undefined)) {
-      controlsChildren.push(
-        leaveElement(board.result === undefined ? 'やめてロビーに戻る' : 'ロビーに戻る', lobby.onLeave),
-      )
+    //
+    // 決着した後の口は、左の列ではなく決着の帯の下（画面の中央下部）に出す（`overlayElement`、
+    // ADR-0027）。両方に出すと、同じ名前のボタンが 2 つ並び、読み上げで区別がつかない。
+    const leavesAfterResult = connected && board.result !== undefined
+    if (connected && board.result === undefined && (stage.opponent.kind === 'CPU' || !stage.opponentConnected)) {
+      controlsChildren.push(leaveElement('やめてロビーに戻る', lobby.onLeave))
     }
 
     // 選びかけの番号が、いま一覧に並んでいる候補に無ければ、選んでいない扱いにする。前の選択の
@@ -804,7 +806,9 @@ function draw(
 
     // 演出・決着の層。決着は溜めない演出とは別で、消えずに出続ける（`overlayElement`）。
     const overlayNode =
-      showsOverlay(overlay) || boardData.result !== undefined ? overlayElement(overlay, boardData.result) : undefined
+      showsOverlay(overlay) || boardData.result !== undefined
+        ? overlayElement(overlay, boardData.result, leavesAfterResult ? lobby.onLeave : undefined)
+        : undefined
 
     root.append(
       duelElement({
