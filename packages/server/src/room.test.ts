@@ -1355,6 +1355,18 @@ describe('相手が誰か', () => {
       opponent: { kind: '人間', name: 'あいて' },
     })
   })
+
+  /**
+   * `rejoin`（`room.ts`）は `own` を `start` とは別に組み立てているので、
+   * 入り直しの経路にも同じテストが要る。
+   */
+  it('入り直しても、自分の表示名が届く', () => {
+    const outcome = receive(started().rooms, 'あ', entering(CODE), SETUP, DECKS, ALL_LINKED, names)
+
+    expect(to(outcome.deliveries, 'あ').find((message) => message.kind === '席についた')).toMatchObject({
+      own: 'かずお',
+    })
+  })
 })
 
 /** ADR-0021。どのデッキで座るかは、座る人が決める。 */

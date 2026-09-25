@@ -46,6 +46,7 @@ import type {
   CardView,
   Overlay,
   PhaseView,
+  ResultView,
   RoomView,
   SideView,
   SmashJudgmentView,
@@ -61,8 +62,8 @@ import { keyOfPosition, printedSquareLabel, zoneOf } from './view-model.js'
  * **ここに判断を置かない。** 何を出すかはビューモデルがすでに決めていて、ここは要素を作って
  * 並べるだけである。テストがあるのはビューモデルまでで、この層は薄く保つ（#14）。
  *
- * 対戦画面のカードの詳細（`detailElement`）だけは例外で、**乗せた・フォーカスしたカードを
- * 覚えておく**という状態を持つ（ADR-0027）。盤面の外枠を組み立てるたびに作り直すので、
+ * 対戦画面のカードの詳細（`detailElement`）だけは例外で、乗せた・フォーカスしたカードを
+ * 覚えておくという状態を持つ（ADR-0027）。盤面の外枠を組み立てるたびに作り直すので、
  * ビューモデルに状態を持たせる必要は無い。
  */
 
@@ -227,7 +228,8 @@ function triggerIconElement(cells: readonly Square[]): SVGElement {
       svg.append(
         svgElement('rect', {
           x: String(1 + column * 6.2),
-          y: String(1 + row * 6.2),
+          // 印刷の行 0 は支配者の味方エリア（手前）なので、図では下段に描く。
+          y: String(1 + (2 - row) * 6.2),
           width: '5.6',
           height: '5.6',
           rx: '0.6',
@@ -258,11 +260,18 @@ function iconsElement(card: CardView & { readonly kind: '表' }): HTMLElement | 
 
 /**
  * ＢＰ・ＳＰ 1 つ。継続効果で元の値から変わっていれば、上がった・下がったを色と▲▼で示す。
- * 色だけに頼らないので、読み上げには元の値も伝える（#91）。
+ * 色だけに頼らないので、読み上げには元の値も伝える（#91）。上がった・下がったは
+ * `view-model.ts`（`ModifiedData.bpDirection`）がすでに決めており、ここでは受け取った値を
+ * 描くだけである（#207）。
  */
-function statElement(kind: 'bp' | 'sp', label: string, base: number, modified: number | undefined): HTMLElement {
+function statElement(
+  kind: 'bp' | 'sp',
+  label: string,
+  base: number,
+  modified: number | undefined,
+  direction: '上' | '下' | undefined,
+): HTMLElement {
   const value = modified ?? base
-  const direction = modified === undefined || modified === base ? undefined : modified > base ? '上' : '下'
   const node = element('span', `card__${kind}${direction === undefined ? '' : ` card__${kind}--${direction}`}`, String(value))
   node.setAttribute('aria-label', `${label} ${value}${direction === undefined ? '' : `（元は ${base}）`}`)
 
@@ -277,7 +286,10 @@ function appendTraitsAndStats(bottom: HTMLElement, card: CardView & { readonly k
 
   if (card.type === 'ユニット' && card.bp !== undefined && card.sp !== undefined) {
     const stats = element('div', 'card__stats')
-    stats.append(statElement('bp', 'ＢＰ', card.bp, card.modified?.bp), statElement('sp', 'ＳＰ', card.sp, undefined))
+    stats.append(
+      statElement('bp', 'ＢＰ', card.bp, card.modified?.bp, card.modified?.bpDirection),
+      statElement('sp', 'ＳＰ', card.sp, undefined, undefined),
+    )
     bottom.append(stats)
   }
 }
@@ -458,7 +470,7 @@ function pileZoneElement(zone: ZoneView, onOpen: (() => void) | undefined): HTML
  * 山札。プランゾーンにカードがあれば、裏面のかわりにそのカードを表で見せる（ADR-0027）。
  * 有る・無しで山札の位置は動かさない。
  */
-function deckZoneElement(deck: ZoneView, plan: CardView | undefined): HTMLElement {
+function deckZoneElement(deck: ZoneView, plan: CardView | undefined, picking: BoardPicking | undefined): HTMLElement {
   const node = element('section', 'zone zone--山札')
   const title = element('h3', 'zone__title', '山札')
   title.append(element('span', '', `（${deck.count}）`))
@@ -468,13 +480,16 @@ function deckZoneElement(deck: ZoneView, plan: CardView | undefined): HTMLElemen
   const pile = element('div', 'pile')
   // プランゾーンのカードは公開情報だが、念のため見えている時だけ表で見せる。見えていなければ
   // 裏面のままにする（表に出せないものを表として描かない）。
+  const hasCard = plan !== undefined || deck.count > 0
   if (plan !== undefined && plan.kind === '表') {
-    pile.append(cardElement(plan, undefined, { plan: true }))
+    pile.append(cardElement(plan, picking, { plan: true }))
     pile.append(element('span', 'pile__plan', 'プラン（1）'))
-  } else {
+  } else if (hasCard) {
     pile.append(backCardElement())
+  } else {
+    pile.append(element('div', 'zone__empty'))
   }
-  pile.append(element('span', 'pile__count', String(deck.count)))
+  if (hasCard) pile.append(element('span', 'pile__count', String(deck.count)))
   cardsWrap.append(pile)
   node.append(cardsWrap)
 
@@ -591,10 +606,10 @@ function boardGridElement(
   )
   node.append(ownStrip)
 
-  node.append(place(deckZoneElement(zoneOf(view.opponent, '山札'), planOf(view.opponent)), '2 / 1'))
+  node.append(place(deckZoneElement(zoneOf(view.opponent, '山札'), planOf(view.opponent), picking), '2 / 1'))
   node.append(place(zoneElement(zoneOf(view.opponent, 'トラップゾーン'), picking), '2 / 6'))
   node.append(place(zoneElement(zoneOf(view.own, 'トラップゾーン'), picking), '4 / 1'))
-  node.append(place(deckZoneElement(zoneOf(view.own, '山札'), planOf(view.own)), '4 / 6'))
+  node.append(place(deckZoneElement(zoneOf(view.own, '山札'), planOf(view.own), picking), '4 / 6'))
 
   node.append(place(waitingElement('バンク', view.bank), '3 / 1'))
   node.append(place(waitingElement('誘発した能力', view.triggered), '3 / 6'))
@@ -609,8 +624,8 @@ function boardGridElement(
   return node
 }
 
-function button(label: string, onPress: () => void): HTMLElement {
-  const node = element('button', 'choice__button', label)
+function button(label: string, onPress: () => void, primary = false): HTMLElement {
+  const node = element('button', `choice__button${primary ? ' button--primary' : ''}`, label)
   node.addEventListener('click', onPress)
 
   return node
@@ -649,7 +664,7 @@ export function actionsElement(
   }
 
   const list = element('div', 'actions__list')
-  for (const view of views) list.append(button(view.label, () => onAction(view.action)))
+  for (const view of views) list.append(button(view.label, () => onAction(view.action), view.primary))
   node.append(list)
 
   return node
@@ -1826,7 +1841,7 @@ export function pickElement(view: PickView, handlers: PickHandlers, aside?: HTML
 
   const list = element('div', 'actions__list')
   for (const view_ of [...view.direct, ...view.untargeted]) {
-    list.append(button(view_.label, () => handlers.onAction(view_.action)))
+    list.append(button(view_.label, () => handlers.onAction(view_.action), view_.primary))
   }
   node.append(list)
 
@@ -1963,20 +1978,15 @@ function transitionElement(view: TransitionView): HTMLElement {
   return element('p', 'transition-banner', view.heading)
 }
 
-/** 決着の見出し。「勝ち」「引き分け」は金の光条、「負け」は寒色にする（ADR-0027）。 */
-function resultKindOf(result: string): '勝利' | '敗北' {
-  return result === '負け' ? '敗北' : '勝利'
-}
-
 /** 決着。画面全体を暗くし、光条を背負った大きな文字と帯で出す（ADR-0027）。 */
-function resultElement(result: string): HTMLElement {
-  const node = element('div', `result result--${resultKindOf(result)}`)
+function resultElement(result: ResultView): HTMLElement {
+  const node = element('div', `result result--${result.kind}`)
   const burst = element('div', 'result__burst')
   burst.setAttribute('aria-hidden', 'true')
   node.append(burst)
 
   const ribbon = element('div', 'result__ribbon')
-  ribbon.append(element('p', 'result__label', result))
+  ribbon.append(element('p', 'result__label', result.label))
   node.append(ribbon)
 
   return node
@@ -1990,11 +2000,11 @@ function resultElement(result: string): HTMLElement {
  * `index.ts` のタイマーの仕事である——フェイズ・ターンの切り替わりも効果解決のカットインも、
  * 同じ待ち行列を通って出る（`view-model.ts` の `Overlay`）。
  *
- * `result` を渡すと、決着の帯も同じ層に重ねる。**こちらは溜めない演出とは別で、消えずに
- * 出続ける**——決着した後は打てる手が無くなる（ADR-0010）ので、時間で消す理由が無い。
+ * `result` を渡すと、決着の帯も同じ層に重ねる。こちらは溜めない演出とは別で、消えずに
+ * 出続ける——決着した後は打てる手が無くなる（ADR-0010）ので、時間で消す理由が無い。
  */
-export function overlayElement(overlay: Overlay, result?: string): HTMLElement {
-  const kind = result === undefined ? '' : ` overlay-layer--結果-${resultKindOf(result)}`
+export function overlayElement(overlay: Overlay, result?: ResultView): HTMLElement {
+  const kind = result === undefined ? '' : ` overlay-layer--結果-${result.kind}`
   const node = element('div', `overlay-layer${kind}`)
   for (const view of overlay.transitions) node.append(transitionElement(view))
 
@@ -2036,7 +2046,7 @@ function phasesElement(phases: readonly PhaseView[]): HTMLElement {
 /**
  * プレイヤーの枠（ADR-0027）。立ち絵の場所（胸から上のシルエット）・名前・ダメージを置く。
  *
- * `partner` はパートナーゾーンの中身。**空ならパートナーの場所ごと詰める**——パートナー
+ * `partner` はパートナーゾーンの中身。空ならパートナーの場所ごと詰める——パートナー
  * バトルでない対局ではこのゾーンが常に空になるので、渡す側で対局の形式を気にしなくてよい。
  */
 function playerPanelElement(
@@ -2044,6 +2054,7 @@ function playerPanelElement(
   name: string,
   damage: number,
   partner: (CardView & { readonly kind: '表' }) | undefined,
+  picking: BoardPicking | undefined,
 ): HTMLElement {
   const node = element('section', `panel player player--${whose}`)
   node.setAttribute('aria-label', whose)
@@ -2063,7 +2074,7 @@ function playerPanelElement(
   if (partner !== undefined) {
     const wrap = element('div', 'player__partner')
     wrap.append(element('span', 'player__partner-label', 'パートナー'))
-    wrap.append(cardElement(partner))
+    wrap.append(cardElement(partner, picking))
     node.append(wrap)
   }
 
@@ -2112,7 +2123,7 @@ function detailNoteOf(card: CardView & { readonly kind: '表' }): string {
 }
 
 /**
- * カードの詳細（右の列、ADR-0027）。**カードの詳細を浮かせて出す仕組みは要らない**——固定の
+ * カードの詳細（右の列、ADR-0027）。カードの詳細を浮かせて出す仕組みは要らない——固定の
  * 高さで 1 か所に置く。中身の出し入れは `wireCardDetailHover` が行う。
  */
 function detailPanelElement(): HTMLElement {
@@ -2136,11 +2147,11 @@ function fillDetailPanel(node: HTMLElement, card: (CardView & { readonly kind: '
 }
 
 /**
- * 乗せた・フォーカスしたカードをカードの詳細に出す配線（ADR-0027）。**選んでいる間は、
- * 選んでいるカードが既定になる。** 別のカードに乗せる（フォーカスする）とそれに切り替わり、
+ * 乗せた・フォーカスしたカードをカードの詳細に出す配線（ADR-0027）。選んでいる間は、
+ * 選んでいるカードが既定になる。別のカードに乗せる（フォーカスする）とそれに切り替わり、
  * 外れると既定に戻る。
  *
- * **組み終わった DOM 全体から、識別子（`data-card-id`）を頼りに拾う。** 面を組み立てる関数
+ * 組み終わった DOM 全体から、識別子（`data-card-id`）を頼りに拾う。面を組み立てる関数
  * （`cardElement`）ごとに配線すると、盤面・手札・一覧のどこに出てきても同じ動きにするための
  * 配線を何か所にも書くことになる。
  */
@@ -2179,7 +2190,7 @@ function wireCardDetailHover(
 
 /**
  * カードの一覧を包む枠（ADR-0027）。捨札・リムーブを見る一覧と、効果で選ばせる一覧の両方が使う。
- * ブラウザ標準のダイアログは使わず、画面の中に重ねる。**右の列（カードの詳細）は覆わない**
+ * ブラウザ標準のダイアログは使わず、画面の中に重ねる。右の列（カードの詳細）は覆わない
  * ——一覧のカードに乗せて詳細を読みながら選べる（`wireCardDetailHover` が拾う）。
  */
 function pickerElement(
@@ -2230,8 +2241,8 @@ export interface ChoosePickerHandlers {
 }
 
 /**
- * 効果で山札などから選ばせる一覧（ADR-0027）。**盤面に見えていない置き場から選ぶ場面だけに
- * 使う。** 盤面のユニットを選ぶ場合は盤面・ボタンのままである（`showsChoicePicker`）。
+ * 効果で山札などから選ばせる一覧（ADR-0027）。盤面に見えていない置き場から選ぶ場面だけに
+ * 使う。盤面のユニットを選ぶ場合は盤面・ボタンのままである（`showsChoicePicker`）。
  *
  * 見えている候補はカードの面をそのまま並べる。見えていない候補（`WireCandidate` の
  * `見えていない`）は中身を見せられないので、裏面と位置を示す読み上げの文だけにする。
@@ -2243,6 +2254,14 @@ export function choosePickerElement(
   candidates: readonly { readonly index: number; readonly candidate: WireCandidate }[],
   cardOf: (id: CardId) => CardView | undefined,
   picked: number | undefined,
+  /**
+   * この行動でここまでに答えた数（`WireChoice.answered`）。
+   *
+   * 上限は通信に載っていない（`WireChoice` は 1 回に 1 つ答える形なので、載せられるのは
+   * ここまでの数だけである）ので、「/ 3 枚」のような分母は出さない。何枚目を選んでいるかだけを
+   * 出す（#207）。
+   */
+  answered: number,
   mayDecline: boolean,
   mayRewind: boolean,
   mayCancel: boolean,
@@ -2268,14 +2287,22 @@ export function choosePickerElement(
 
     node.classList.add('card--押せる')
     node.classList.toggle('card--選択中', isPicked)
+    node.setAttribute('role', 'button')
     node.tabIndex = 0
-    node.addEventListener('click', () => handlers.onPick(isPicked ? undefined : index))
+    const pick = (): void => handlers.onPick(isPicked ? undefined : index)
+    node.addEventListener('click', pick)
+    // Tab でたどり着けても、Enter・Space が無ければキーボードでは選べない（#207）。
+    node.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      pick()
+    })
 
     return node
   })
 
   const foot = element('div', 'picker__foot')
-  foot.append(element('span', 'picker__count', `${picked === undefined ? 0 : 1} / 1 枚`))
+  foot.append(element('span', 'picker__count', `${answered + 1} 枚目を選んでいます`))
   if (mayDecline) foot.append(button('選ばない', handlers.onDecline))
   if (mayRewind) foot.append(button('ひとつ戻る', handlers.onRewind))
   if (mayCancel) foot.append(button('この行動をやめる', handlers.onCancel))
@@ -2327,7 +2354,7 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   const root = element('main', 'duel')
 
   const left = element('aside', 'duel__left')
-  left.append(playerPanelElement('相手', props.opponentName, view.opponent.damage, partnerOf(view.opponent)))
+  left.append(playerPanelElement('相手', props.opponentName, view.opponent.damage, partnerOf(view.opponent), props.picking))
 
   const controls = element('section', 'panel controls')
   controls.append(element('p', 'controls__turn', view.turnNumber))
@@ -2338,7 +2365,7 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   controls.append(actions)
   left.append(controls)
 
-  left.append(playerPanelElement('自分', props.ownName, view.own.damage, partnerOf(view.own)))
+  left.append(playerPanelElement('自分', props.ownName, view.own.damage, partnerOf(view.own), props.picking))
   root.append(left)
 
   const center = element('section', 'duel__center')

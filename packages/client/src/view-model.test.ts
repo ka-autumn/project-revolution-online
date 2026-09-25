@@ -14,6 +14,7 @@ import type {
   WireRoom,
   WireRoomRules,
 } from '@revolution/engine'
+import type { Opponent } from '@revolution/engine'
 import { emptyBoard, instance, logged, unitFace, withZone } from './test-support.js'
 import {
   boardView,
@@ -21,10 +22,13 @@ import {
   lobbyView,
   logLines,
   opponentLine,
+  opponentName,
   overlayDurationMs,
   priorityReason,
   showsOverlay,
   transitionViews,
+  visibleCardViewsIn,
+  zoneOf as sideZoneOf,
 } from './view-model.js'
 import type { BoardView, CardView, SideView } from './view-model.js'
 
@@ -286,6 +290,19 @@ describe('継続効果を適用した後のデータ', () => {
     expect(view.kind === '表' && view.bp).toBe(1000)
   })
 
+  /**
+   * 上がった・下がったの色と▲▼（対戦画面、ADR-0027）は、この値だけで決まる（render.ts に
+   * 判断を持たせない）。
+   */
+  it.each([
+    ['上がっていれば「上」', 3000, '上'],
+    ['下がっていれば「下」', 200, '下'],
+  ] as const)('%s', (_, bp, expected) => {
+    const view = unitView(withEffective([{ card: unit.id, bp, attributes: [] }]))
+
+    expect(view.kind === '表' && view.modified?.bpDirection).toBe(expected)
+  })
+
   /** 加わった属性はカードに書かれていない（総合ルール 第4部 第12章 5-2 の(3)）ので、分けて出す。 */
   it('加わった属性が、書かれている属性と見分けられる形で出る', () => {
     const attributed = instance('属性を持つ1枚', '先攻', {
@@ -511,11 +528,11 @@ describe('プレイヤーの様子', () => {
   })
 
   it.each([
-    ['勝った', { kind: '勝利', winner: '先攻' }, '勝ち'],
-    ['負けた', { kind: '勝利', winner: '後攻' }, '負け'],
-    ['引き分けた', { kind: '引き分け' }, '引き分け'],
+    ['勝った', { kind: '勝利', winner: '先攻' }, { label: '勝ち', kind: '勝利' }],
+    ['負けた', { kind: '勝利', winner: '後攻' }, { label: '負け', kind: '敗北' }],
+    ['引き分けた', { kind: '引き分け' }, { label: '引き分け', kind: '引き分け' }],
   ] as const)('%sことが出る', (_, result, expected) => {
-    expect(boardView({ ...emptyBoard('先攻'), result }).result).toBe(expected)
+    expect(boardView({ ...emptyBoard('先攻'), result }).result).toEqual(expected)
   })
 
   it('決着していなければ、結果は出ない', () => {
@@ -1797,5 +1814,77 @@ describe('ロビー', () => {
     expect(views[0]?.occupants).toBeUndefined()
     // CPU が座っていることは、そこにいる人が分からなくても分かる。「 が CPU と対戦中」にしない。
     expect(views[1]?.status).toBe('CPU と対戦中')
+  })
+})
+
+/** 対戦画面のプレイヤーの枠に出す、相手の名前だけ（ADR-0027）。`opponentLine` と違って文にしない。 */
+describe('opponentName', () => {
+  it('人間が相手なら、その名前', () => {
+    const opponent: Opponent = { kind: '人間', name: 'かずお' }
+
+    expect(opponentName(opponent)).toBe('かずお')
+  })
+
+  it('CPU が相手なら「CPU」', () => {
+    const opponent: Opponent = { kind: 'CPU' }
+
+    expect(opponentName(opponent)).toBe('CPU')
+  })
+})
+
+/** ゾーンを名前で引く（対戦画面の盤面組み立て、ADR-0027）。 */
+describe('zoneOf（画面から呼ぶ形、`SideView` から直に引く）', () => {
+  it('その名前のゾーンを返す', () => {
+    const board = withZone(emptyBoard('先攻'), '先攻', '手札', [
+      { kind: '見えている', instance: instance('てふだの1枚', '先攻') },
+    ])
+    const own = boardView(board).own
+
+    expect(sideZoneOf(own, '手札').cards).toHaveLength(1)
+  })
+
+  /** `ZONE_ORDER` にある名前しか渡さないので、実際には起きない（`view-model.ts` の説明）。 */
+  it('無い名前を渡すと、それと分かる形で壊れる', () => {
+    const own = boardView(emptyBoard('先攻')).own
+
+    expect(() => sideZoneOf({ ...own, zones: [] }, '手札')).toThrow('ゾーンが無い: 手札')
+  })
+})
+
+/**
+ * 表側が見えているカードを、識別子で引ける形にする（対戦画面のカードの一覧、ADR-0027）。
+ * `zoneOf` だけでは引けない、山札から選ばせる候補の名前を引くのに使う（`view-model.ts` の
+ * 説明）。
+ */
+describe('visibleCardViewsIn', () => {
+  it('山札は枚数しか出さないゾーンだが、そこにいるカードも引ける', () => {
+    const board = withZone(emptyBoard('先攻'), '先攻', '山札', [
+      { kind: '見えている', instance: instance('山札の1枚', '先攻', { card: unitFace('テスト・山札の1枚') }) },
+    ])
+
+    const found = visibleCardViewsIn(board).get('山札の1枚')
+
+    expect(found?.kind === '表' && found.name).toBe('テスト・山札の1枚')
+  })
+
+  it('スクエアのカードも引ける', () => {
+    const unit = instance('スクエアの1枚', '先攻', { card: unitFace('テスト・盤上の1枚') })
+    const board = withSquare(emptyBoard('先攻'), { row: 0, column: 0 }, [unit])
+
+    expect(visibleCardViewsIn(board).get('スクエアの1枚')?.kind).toBe('表')
+  })
+
+  it('裏向きのカードは引けない', () => {
+    const board = withZone(emptyBoard('先攻'), '先攻', '手札', [{ kind: '見えていない', orientation: 'リリース' }])
+
+    expect(visibleCardViewsIn(board).size).toBe(0)
+  })
+
+  it('候補になっていないカードは引けない', () => {
+    const board = withZone(emptyBoard('先攻'), '先攻', '手札', [
+      { kind: '見えている', instance: instance('てふだの1枚', '先攻') },
+    ])
+
+    expect(visibleCardViewsIn(board).get('別のカード')).toBeUndefined()
   })
 })

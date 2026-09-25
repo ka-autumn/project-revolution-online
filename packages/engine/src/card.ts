@@ -320,7 +320,7 @@ export type PlanKeyword = '夢' | '希望' | '幸運' | '苦労'
  * そのカードが持つ、プランゾーンに関わるキーワード能力の並び（`PlanKeyword`）。
  *
  * カード名の下に並べるアイコンのためのもので、判定そのものは `hasDream`・`hopeOf` を使い回す。
- * **新しく判定を作らない。**
+ * 新しく判定を作らない。
  */
 export function planKeywordsOf(card: Card): readonly PlanKeyword[] {
   const keywords: PlanKeyword[] = []

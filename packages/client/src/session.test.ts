@@ -35,7 +35,7 @@ const CHOICE: WireChoice = {
 
 /** 届いたものを順に畳む。 */
 function fold(...messages: readonly ToClient[]): Session {
-  return messages.reduce(applyMessage, connecting())
+  return messages.reduce((session, message) => applyMessage(session, message), connecting())
 }
 
 const ROOM = 'あいことば'
@@ -122,6 +122,34 @@ describe('届いたものを畳む', () => {
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
 
     expect(stage.opponent).toEqual({ kind: '人間', name: 'あいて' })
+  })
+
+  /** ADR-0020・ADR-0027。対戦画面のプレイヤーの枠に出す、自分の表示名。 */
+  it('自分の表示名が届く', () => {
+    const stage = fold(SEATED).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.own).toBe('わたし')
+  })
+
+  /**
+   * `own` は新しく足した項目なので、画面が先に配られた時、古いサーバは
+   * 送らない。届かなければ、この端末が名前を決める画面で入れた名前で補う。
+   */
+  it('own が届かなくても、この端末で決めた名前で補う', () => {
+    const old = { ...SEATED, own: undefined } as unknown as ToClient
+    const session = applyMessage(connecting(), old, 'ローカルの名前')
+    if (session.stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(session.stage.own).toBe('ローカルの名前')
+  })
+
+  it('own も、補う名前も無ければ、空欄のままにする', () => {
+    const old = { ...SEATED, own: undefined } as unknown as ToClient
+    const session = applyMessage(connecting(), old)
+    if (session.stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(session.stage.own).toBe('')
   })
 
   /** #175。席についた時点では相手も繋がっている。変わったらそう届く。 */

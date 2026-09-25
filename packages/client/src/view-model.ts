@@ -49,7 +49,7 @@ import type {
 /**
  * カードの詳細に出す 1 行。
  *
- * **対戦画面のカードでは使わない。** 対戦画面のカードの詳細は項目ごとに構造化した値を持つ
+ * 対戦画面のカードでは使わない。対戦画面のカードの詳細は項目ごとに構造化した値を持つ
  * （`CardView` の `表`、ADR-0027）。この行と値の組は、デッキを組むところ・共有ページのように、
  * 盤面の外でカードの表記を一覧にする画面（`deck-builder.ts` の `printedDetailsOf`）のためのもの
  * として残す。
@@ -69,6 +69,12 @@ export interface DetailRow {
 export interface ModifiedData {
   /** 修整後のＢＰ。書かれている数字と同じなら `undefined`。 */
   readonly bp: number | undefined
+  /**
+   * `bp` が書かれている数字から上がったか、下がったか。`bp` が `undefined` なら、これも
+   * `undefined`。上がった・下がったの色と▲▼（対戦画面、ADR-0027）は、この値だけで決める
+   * （render.ts に判断を持たせない）。
+   */
+  readonly bpDirection: '上' | '下' | undefined
   /** 継続効果によって加わった属性だけ。加わっていなければ空。 */
   readonly addedAttributes: readonly Attribute[]
 }
@@ -127,7 +133,7 @@ export type CardView =
        * カードに印刷されているテキスト（#93）。改行ごとに 1 行（総合ルール 第2部 第10章 1、
        * 第4部 第1章 3）。書かれていなければ空。
        *
-       * **そのまま読ませる文である。** 行の並びのまま渡して、改行を潰さずに出す。
+       * そのまま読ませる文である。行の並びのまま渡して、改行を潰さずに出す。
        */
       readonly text: readonly string[]
       readonly orientation: Orientation
@@ -194,7 +200,7 @@ export interface SideView {
 /**
  * その側の、名前で指した 1 つのゾーン（対戦画面の盤面の並べ方、ADR-0027）。
  *
- * **`ZONE_ORDER` にある名前しか渡さない。** どのプレイヤーもすべての種類のゾーンを持つ
+ * `ZONE_ORDER` にある名前しか渡さない。どのプレイヤーもすべての種類のゾーンを持つ
  * （`sideView`）ので、無い名前を渡さない限り見つからないことは無い。
  */
 export function zoneOf(side: SideView, zone: PlayerZone): ZoneView {
@@ -369,7 +375,7 @@ export function overlayDurationMs(waiting: number): number {
 /**
  * フェイズ 1 つが、いま進行のどこにあるか（対戦画面のフェイズの一覧、ADR-0027）。
  *
- * ターンはこの 6 つを順に進む（`turn.ts` の `PHASES`）。**判定はここでする。** 一覧の並べ方
+ * ターンはこの 6 つを順に進む（`turn.ts` の `PHASES`）。判定はここでする。一覧の並べ方
  * （済んだもの・今のもの・これからのものを見分けられるようにする）は画面の決まりだが、その並びを
  * 決める材料は届いた `Turn.phase` の 1 つだけなので、見比べる判断を `render.ts` に持たせない。
  */
@@ -386,6 +392,12 @@ function phaseViews(current: Phase): readonly PhaseView[] {
     phase,
     status: i < index ? '済み' : i === index ? '今' : 'これから',
   }))
+}
+
+/** 決着の言い方と種類。色や配色は render.ts が種類だけから決める（render.ts に判断を持たせない）。 */
+export interface ResultView {
+  readonly label: string
+  readonly kind: '勝利' | '敗北' | '引き分け'
 }
 
 /** 画面に出す盤面ひととおり。 */
@@ -419,8 +431,8 @@ export interface BoardView {
    * 外側が上から下の行、内側が左から右の列である。
    */
   readonly squares: readonly (readonly SquareView[])[]
-  /** 決着していれば、その 1 行。 */
-  readonly result: string | undefined
+  /** 決着していれば、その言い方と勝敗の種類。まだなら `undefined`。 */
+  readonly result: ResultView | undefined
   /** 起きたできごと。新しいものから並ぶ（#95、#111）。 */
   readonly log: readonly LogLine[]
 }
@@ -440,6 +452,13 @@ const ZONE_ORDER: readonly PlayerZone[] = [
 
 /** 中身を並べず、枚数だけを出すゾーン。 */
 const COUNTED_ZONES: readonly PlayerZone[] = ['山札']
+
+/**
+ * 一番上の 1 枚しか押せない束（ADR-0027）。押すと「見る」一覧が開くので、盤面から答える
+ * 先にはしない（束を押した時に選んだことになると、開く動作と重なってしまう）。2 枚目以降は
+ * そもそも盤面に描かれない。候補になったときは「選ぶ」一覧に回す（`offBoardCandidates`）。
+ */
+const PILE_ZONES: readonly PlayerZone[] = ['捨札', 'リムーブゾーン']
 
 const SQUARE_INDEXES: readonly SquareIndex[] = [0, 1, 2]
 
@@ -471,7 +490,7 @@ function visibleInstances(board: WirePerspective): readonly WireCardInstance[] {
 /**
  * 表側が見えているカードすべてを、識別子で引ける形にする（対戦画面のカードの一覧、ADR-0027）。
  *
- * **`zoneOf` で引けるものだけでは足りない。** 山札は枚数しか出さない（`COUNTED_ZONES`）ので、
+ * `zoneOf` で引けるものだけでは足りない。山札は枚数しか出さない（`COUNTED_ZONES`）ので、
  * 効果で山札から選ばせる候補（`WireCandidate` の `見えている`）はどのゾーンの一覧にも載って
  * いない。`visibleInstances` は `COUNTED_ZONES` を気にせず届いたものをすべて拾うので、そこから
  * 引き直す。
@@ -497,6 +516,8 @@ export interface DrawnOnBoard {
  * リゾルブゾーンまで見ている。押せるかどうかをそこから決めると、**画面のどこにも無いカードが
  * 押せる扱いになる。** 数えるのは実際に描いているところ——スクエア（`squareViews`）と、中身を
  * 並べるゾーン（`zoneView`）——だけである。山札は枚数しか出さない（`COUNTED_ZONES`）ので入らない。
+ * 束（`PILE_ZONES`）は一番上の 1 枚しか描かず、押すと答えではなく「見る」一覧が開くので、
+ * 盤面から答えられる扱いにはしない。
  */
 export function drawnOnBoard(board: WirePerspective): DrawnOnBoard {
   const ids = new Set<CardId>(board.squares.flat().map((instance) => instance.id))
@@ -504,7 +525,7 @@ export function drawnOnBoard(board: WirePerspective): DrawnOnBoard {
 
   for (const player of PLAYERS) {
     for (const zone of ZONE_ORDER) {
-      if (COUNTED_ZONES.includes(zone)) continue
+      if (COUNTED_ZONES.includes(zone) || PILE_ZONES.includes(zone)) continue
       board.zones[player][zone].forEach((card, index) => {
         if (card.kind === '見えている') ids.add(card.instance.id)
         else positions.add(keyOfPosition({ player, zone, index }))
@@ -621,12 +642,14 @@ function modifiedDataOf(
 
   const face = instance.card
   const bp = face.type === 'ユニット' && applied.bp !== face.bp ? applied.bp : undefined
+  const bpDirection: ModifiedData['bpDirection'] =
+    face.type === 'ユニット' && bp !== undefined ? (bp > face.bp ? '上' : '下') : undefined
   const addedAttributes = [...new Set(applied.attributes)].filter(
     (attribute) => !face.attributes.includes(attribute),
   )
   if (bp === undefined && addedAttributes.length === 0) return undefined
 
-  return { bp, addedAttributes }
+  return { bp, bpDirection, addedAttributes }
 }
 
 function faceUpView(
@@ -654,7 +677,9 @@ function faceUpView(
     reverseStars: face.reverseStars,
     moveIcon: face.type === 'ユニット' ? face.moveIcon : [],
     triggerIcon: face.type === 'トラップ' ? face.triggerIcon : [],
-    keywords: face.keywords,
+    // 古いサーバは `keywords` を送らない。届かなければ空として扱う（#207、
+    // `room.occupants ?? []` と同じ備え）。
+    keywords: face.keywords ?? [],
     attributes: face.attributes,
     // 見えていないカードのテキストは、そもそも届かない（`wire.ts` の `WireWrittenCard`）。
     text: face.text,
@@ -810,9 +835,18 @@ function abilityViews(
   }))
 }
 
-/** 決着していれば、その 1 行。 */
-function resultLine(board: WirePerspective): string | undefined {
-  return board.result === undefined ? undefined : resultLabel(board.result, board.viewer)
+/** 決着していれば、その言い方と勝敗の種類。 */
+function resultLine(board: WirePerspective): ResultView | undefined {
+  if (board.result === undefined) return undefined
+
+  return { label: resultLabel(board.result, board.viewer), kind: resultKindOf(board.result, board.viewer) }
+}
+
+/** 決着した勝敗の種類を、見る人から見た言い方にする。勝利は金、敗北は寒色、引き分けは灰色の配色になる（ADR-0027）。 */
+function resultKindOf(result: DuelResult, viewer: Player): ResultView['kind'] {
+  if (result.kind === '引き分け') return '引き分け'
+
+  return result.winner === viewer ? '勝利' : '敗北'
 }
 
 /**

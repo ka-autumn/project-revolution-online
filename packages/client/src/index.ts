@@ -94,7 +94,6 @@ import {
   boardView,
   cutInViews,
   lobbyView,
-  opponentLine,
   opponentName,
   overlayDurationMs,
   priorityReason,
@@ -235,7 +234,7 @@ interface Picking {
 
 /**
  * 対戦画面だけで使う、盤面をまたぐ選び方（ADR-0027）。カードの一覧の開閉と、「選ぶ」一覧での
- * 選びかけを持つ。**盤面をクリックして操作する `Picking` とは別に持つ**——一覧は行える手が
+ * 選びかけを持つ。盤面をクリックして操作する `Picking` とは別に持つ——一覧は行える手が
  * 何であっても（クリック・ボタンのどちらの操作のしかたでも）出るので、その状態を混ぜない。
  */
 interface DuelInteraction {
@@ -405,20 +404,6 @@ function restoreScroll(root: HTMLElement, positions: ReadonlyMap<string, number>
 }
 
 /**
- * 操作するところをひとまとめにする器（#128）。
- *
- * 盤面より上に置き、スクロールしても見えたままにする（`style.css` の `.controls`）。**中身は
- * 場面で入れ替わるが、置き場所は変わらない。** 盤面は 2 人ぶんのゾーンとスクエアで縦に長く、
- * 手が下にあると打つたびに往復することになる。見て確かめるのが盤面で、打つのがここである。
- */
-function controls(): HTMLElement {
-  const node = document.createElement('div')
-  node.className = 'controls'
-
-  return node
-}
-
-/**
  * 共有した本人に渡すリンク（ADR-0022、#197）。
  *
  * `共有した` は共有した本人にだけ届く返事で、サーバが必ず公開の鍵を添える
@@ -458,6 +443,9 @@ function draw(
   const typingName = document.activeElement?.classList.contains('naming__input') === true
   const typingDeck = typingIn(root)
   const scrolled = scrollPositions(root)
+  // 「見る」「選ぶ」一覧の中に居たかどうか。開いた時だけフォーカスを一覧の中へ移す
+  // （#207）——すでに中に居るなら、描き直すたびに奪わない。
+  const wasFocusInPicker = document.activeElement?.closest('.picker') != null
   root.replaceChildren()
 
   const status = statusOf(session, link)
@@ -630,9 +618,12 @@ function draw(
       clicking && stage.choice === undefined
         ? pickView(board, stage.actions, picking.card, stage.passOutcome)
         : undefined
-    // 選ぶのを待たれている間は、盤面に出ている候補を盤面から押せるようにする（#94）。答えるのは
-    // 番号のままで、押したところがどの番号かは `choicePicking` が持っている。
-    const answering = clicking && stage.choice !== undefined ? choicePicking(board, stage.choice) : undefined
+    // 盤面に出ている候補がどれかは、操作のしかた・演出・繋がりとは関係なく決まる（#207）。
+    // 一覧を出すかどうか（`offBoard` 以下）はここから決める。
+    const structuralPicking = stage.choice !== undefined ? choicePicking(board, stage.choice) : undefined
+    // クリックで選ぶのを待たれている間は、盤面に出ている候補を盤面から押せるようにする（#94）。
+    // 答えるのは番号のままで、押したところがどの番号かは `choicePicking` が持っている。
+    const answering = clicking ? structuralPicking : undefined
     const answer = (found: number | undefined): void => {
       if (found !== undefined) connection.send({ kind: '選ぶ', answer: found })
     }
@@ -690,8 +681,10 @@ function draw(
 
     // 選ぶのを待たれている間、盤面に見えていない置き場から選ぶ候補だけなら、番号のボタンの
     // かわりにカードの一覧を出す（ADR-0027）。一覧は盤面の上に重ねるので、ここには積まない。
-    const offBoard = stage.choice !== undefined ? offBoardCandidates(stage.choice, answering) : []
-    const showsPicker = stage.choice !== undefined && showsChoicePicker(offBoard)
+    const offBoard = stage.choice !== undefined ? offBoardCandidates(stage.choice, structuralPicking) : []
+    // 繋がっていない間は「選ぶ」一覧も出さない。「繋がっていない間は手を出さない」と同じ決まりを、
+    // 一覧にも適用する。
+    const showsPicker = connected && stage.choice !== undefined && showsChoicePicker(stage.choice, offBoard)
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (!connected) {
@@ -759,15 +752,21 @@ function draw(
       )
     }
 
+    // 選びかけの番号が、いま一覧に並んでいる候補に無ければ、選んでいない扱いにする。前の選択の
+    // 番号が残っていても、「これに決める」で無効な番号を送らせない（#207）。
+    const pickerPicked = offBoard.some(({ index }) => index === duel.pickerPicked) ? duel.pickerPicked : undefined
+
     const choosePicker =
       showsPicker && stage.choice !== undefined
         ? (() => {
-            const meta = choiceView(board, stage.choice as NonNullable<typeof stage.choice>, answering)
+            const choice = stage.choice as NonNullable<typeof stage.choice>
+            const meta = choiceView(board, choice, answering)
             return choosePickerElement(
               meta.asking,
               offBoard,
               (id) => cardsById.get(id),
-              duel.pickerPicked,
+              pickerPicked,
+              choice.answered,
               meta.mayDecline,
               meta.mayRewind,
               meta.mayCancel,
@@ -830,6 +829,12 @@ function draw(
 
   restoreScroll(root, scrolled)
   restoreTyping(root, typingDeck)
+
+  // 一覧が新しく開いたら、フォーカスをその中へ移す。閉じている間は何もしない。
+  if (!wasFocusInPicker) {
+    const picker = root.querySelector<HTMLElement>('.picker')
+    picker?.querySelector<HTMLElement>('[tabindex], button')?.focus()
+  }
 }
 
 /** 組みかけのデッキを覚えておく先の名前（#193）。 */
@@ -1492,7 +1497,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         forgetSignIn()
       }
 
-      session = applyMessage(session, message)
+      session = applyMessage(session, message, nameDraft)
       const wasEditing = builder.screen === 'デッキを組む'
       updateBuilder(applyToBuilder(builder, message))
       // コピーしたデッキが届いて組み始めたなら、そこから確かめる。
@@ -1516,6 +1521,30 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       if (message.kind === '名前を決めてほしい' && nameDraft === '') nameDraft = message.current ?? ''
       // 盤面が入れ替わったら、選びかけは捨てる（#94）。
       pickedCard = undefined
+      // 「見る」「選ぶ」の状態は、席についた時点（入り直しを含む）で前の対局のものを持ち越さない。
+      // 席は覚えているだけの値なので、次の対局で入れ替わると別の置き場を指してしまう（#207）。
+      if (message.kind === '席についた') {
+        viewingPile = undefined
+        pickerPicked = undefined
+      }
+      // 新しい選択が届いたら、選びかけの番号は前の選択のものなので捨てる。番号は選択ごとに
+      // 振り直される（ADR-0008）ので、残すと範囲外や別の候補を指しうる。
+      if (message.kind === '選んでほしい') pickerPicked = undefined
+      // 決着したら、どちらの状態も残さない。決着後は答えることも束を開くこともできる意味が
+      // 無くなる（ADR-0010）うえ、次の対局に持ち越させないための重ねの備えでもある。
+      if (message.kind === '盤面' && message.perspective.result !== undefined) {
+        viewingPile = undefined
+        pickerPicked = undefined
+      }
+      // 開いている束が空になったら、見るものが無いので閉じる。
+      if (
+        viewingPile !== undefined &&
+        session.stage.kind === '打っている' &&
+        session.stage.board !== undefined &&
+        session.stage.board.zones[viewingPile.player][viewingPile.zone].length === 0
+      ) {
+        viewingPile = undefined
+      }
       enqueueOverlays()
       redraw()
 
