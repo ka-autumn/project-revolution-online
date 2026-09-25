@@ -105,6 +105,8 @@ describe('通信に載せる形', () => {
       stars: 1,
       reverseStars: 0,
       attributes: ['テスト属性'],
+      // 「夢」を持つので、キーワードにも載る（対戦画面のカードの面のアイコン、ADR-0027）。
+      keywords: ['夢'],
       // テキストは engine が読まないデータだが、印刷されている表記として載る（#93）。
       text: ['夢（プランゾーンからプレイできる）'],
       bp: 1000,
@@ -125,6 +127,7 @@ describe('通信に載せる形', () => {
       stars: 0,
       reverseStars: 0,
       attributes: [],
+      keywords: [],
       // テキストを書いていないカードは、空のまま載る。
       text: [],
       triggerIcon: [{ row: 1, column: 1 }],

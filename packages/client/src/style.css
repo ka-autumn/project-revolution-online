@@ -31,244 +31,6 @@ body {
   color: #b00;
 }
 
-.board__result {
-  margin: var(--gap) 0;
-  font-size: 1.4rem;
-  font-weight: bold;
-}
-
-.board__battle,
-.board__smash-judgment {
-  margin: var(--gap) 0;
-  padding: 2px 6px;
-  border-left: 3px solid #b00;
-  font-weight: bold;
-}
-
-/* スマッシュ判定はバトルと同じ扱いだが、別の進行なので線の色を分ける（#102）。 */
-.board__smash-judgment {
-  border-left-color: #06a;
-}
-
-.board__waiting {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--gap);
-  margin: var(--gap) 0;
-}
-
-.bank {
-  padding: 2px 6px;
-  border: 1px solid var(--line);
-}
-
-.bank__title {
-  margin: 0;
-  font-size: 0.8rem;
-}
-
-.bank__list {
-  margin: 2px 0 0;
-  padding-left: 1.2em;
-  font-size: 0.75rem;
-}
-
-/* 味方エリアが下、敵エリアが上（`view-model.ts` の `squareViews`）。 */
-.battle-space {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-  margin: calc(var(--gap) * 2) 0;
-}
-
-.battle-space__row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--gap);
-}
-
-/* カードは枠の真ん中に置く。1 枚のときに左へ寄っていると、スクエアの当たりが読みにくい。 */
-.square {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-content: center;
-  gap: 2px;
-  min-height: 5rem;
-  padding: 2px;
-  border: 1px solid var(--line);
-}
-
-.square--味方エリア {
-  border-color: var(--own);
-}
-
-.square--敵エリア {
-  border-color: var(--opponent);
-}
-
-.side__title {
-  margin: var(--gap) 0;
-  font-size: 1rem;
-}
-
-.side__zones {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--gap);
-}
-
-.zone {
-  min-width: 6rem;
-  padding: 2px 4px;
-  border: 1px solid var(--line);
-}
-
-.zone__title {
-  margin: 0 0 2px;
-  font-size: 0.75rem;
-  font-weight: normal;
-}
-
-.zone__cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-}
-
-/*
- * カードが場所を取る枠。**回らない**——回るのは中の `card__face` だけで、詳細の札はこの枠を
- * 基準に置く（`render.ts` の `placePanel`）。
- */
-.card {
-  position: relative;
-  box-sizing: border-box;
-  width: var(--card-width);
-  aspect-ratio: 2 / 3;
-}
-
-/* カードの見える面。実物と同じ縦 3 : 横 2 の比率にする。 */
-.card__face {
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  padding: 3px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  font-size: 0.62rem;
-  line-height: 1.25;
-}
-
-/*
- * フリーズは横倒し（総合ルール 第2部 第24章）。
- *
- * 回しても場所の取り方は変わらないので、はみ出すぶんを左右に空ける。縦 3 : 横 2 なので、
- * 片側にカードの幅の 1/4 ずつはみ出す。
- *
- * **回すのは見える面だけである。** 枠ごと回すと、その中にある詳細の札まで寝てしまう（#93）。
- */
-.card--フリーズ {
-  margin: 0 calc(var(--card-width) / 4);
-}
-
-.card--フリーズ .card__face {
-  transform: rotate(90deg);
-}
-
-.card--back .card__face {
-  background: repeating-linear-gradient(45deg, #6663, #6663 4px, transparent 4px, transparent 8px);
-}
-
-/*
- * 支配者で色を分ける（総合ルール 第2部 第21章 8-2 の「味方」「敵」）。
- *
- * スクエアはどちらのユニットも同じ枠に並ぶので、色が無いと見分けが付かない。**色だけに
- * 頼らない**ため、`card__whose` で文字も出している。
- */
-.card--自分 .card__face {
-  border-color: var(--own);
-  border-left-width: 4px;
-}
-
-.card--相手 .card__face {
-  border-color: var(--opponent);
-  border-left-width: 4px;
-}
-
-/* 地が濃いので、文字は白で固定する。テーマで反転させると読めなくなる。 */
-.card__whose {
-  align-self: flex-end;
-  padding: 0 2px;
-  border-radius: 2px;
-  color: #fff;
-  font-size: 0.55rem;
-}
-
-.card--自分 .card__whose {
-  background: var(--own);
-}
-
-.card--相手 .card__whose {
-  background: var(--opponent);
-}
-
-.card__name {
-  font-weight: bold;
-}
-
-/*
- * 継続効果でデータが変わっているユニット（#91）。**色だけに頼らない**——変わったことは
- * `BP1000→2000`・`+夢` という文字にも出ている（`view-model.ts` の `summaryOf`）。
- */
-.card--修整あり .card__detail {
-  font-weight: bold;
-  text-decoration: underline;
-}
-
-.card__damage {
-  margin-top: auto;
-  color: #b00;
-}
-
-/*
- * 詳細。マウスを乗せるかフォーカスすると出る（`render.ts` の `panelElement`）。
- *
- * カードの枠から `--card-width / 4` 離す。フリーズが横にはみ出す量と同じにしてあるので、
- * **リリースでもフリーズでも同じところに出る**（#93）。
- *
- * 幅は `placePanel` が読んで、右に出すか左に出すかを決める。枠・余白まで含んだ幅で測れる
- * ように `border-box` にしてある。
- */
-.card__panel {
-  position: absolute;
-  top: 0;
-  left: calc(100% + var(--card-width) / 4);
-  z-index: 10;
-  box-sizing: border-box;
-  display: none;
-  width: 12rem;
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  background: Canvas;
-  box-shadow: 0 2px 8px #0004;
-  font-size: 0.72rem;
-}
-
-/* 右に入りきらないときは左に出す（`render.ts` の `panelSide`）。 */
-.card__panel--左 {
-  right: calc(100% + var(--card-width) / 4);
-  left: auto;
-}
-
-.card:hover .card__panel,
-.card:focus-within .card__panel {
-  display: block;
-}
-
 .card__panel-name {
   margin-bottom: 4px;
   font-weight: bold;
@@ -298,91 +60,6 @@ body {
 
 .card__panel-line {
   margin: 0 0 2px;
-}
-
-/*
- * 盤面をクリックして操作する（#94）。
- *
- * **色だけに頼らない**——押せるカードと置き先は `aria-label` にもそう出ている
- * （`render.ts` の `cardElement` / `squareElement`）。
- *
- * 枠線を付けるのは見える面（`card__face`）である。回るのは面だけなので、外枠に付けると
- * フリーズしたカードだけ枠線が寝たカードとずれる（#93）。押す対象は外枠のままでよい。
- */
-.card--押せる {
-  cursor: pointer;
-}
-
-/*
- * 枠線だけでは、カード 1 枚が小さいぶん埋もれる。**地の色も変える**——枠線は 1px の枠と
- * 重なって見分けにくいが、面ごと色が変わればカードの並びの中で浮く。
- *
- * 地の色は `background-color` で置く。裏向きのカードの地模様（`.card--back`）は
- * `background-image` なので、上に重なって残る。
- */
-.card--押せる .card__face {
-  outline: 3px solid var(--own);
-  outline-offset: -1px;
-  background-color: color-mix(in srgb, var(--own) 22%, Canvas);
-}
-
-/* 選んでいる 1 枚は、押せるだけのカードより濃くする。 */
-.card--選択中 .card__face {
-  outline: 3px solid var(--own);
-  outline-offset: 2px;
-  background-color: color-mix(in srgb, var(--own) 45%, Canvas);
-}
-
-.square--置き先 {
-  cursor: pointer;
-  border-style: dashed;
-  border-width: 3px;
-  border-color: var(--own);
-}
-
-/* 操作のしかたの切り替え（#94）。 */
-/*
- * 操作するところ（#128）。盤面より上に置き、スクロールしても見えたままにする。
- *
- * 盤面は 2 人ぶんのゾーンとスクエアで縦に長い。手が下にあると、打つたびに下まで往復する
- * ことになっていた。**見て確かめるのが盤面で、打つのがここ**なので、打つところを動かさない。
- *
- * 高さを決め打ちにしているのは、中身が場面で入れ替わる（候補・演出待ち・クリック時の手・
- * ボタンの手）ためである。手の数で高さが変わると、その分だけ下の盤面が上下に飛ぶ。**器の
- * 高さは変えず、収まらない分は中でスクロールさせる。**
- */
-.controls {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  box-sizing: border-box;
-  /* 中身が入れ替わっても同じ高さにする。低い画面では画面のほうを優先し、中でスクロールさせる。 */
-  height: 11rem;
-  max-height: 30vh;
-  overflow-y: auto;
-  /* 下を盤面が通るので、地を敷く。テーマは既定のまま両対応にしている（`:root`）。 */
-  background: Canvas;
-  border-bottom: 1px solid var(--line);
-}
-
-/*
- * いまの進行（#128）。打つ前に見るものなので、操作するところの一番上に置く。
- *
- * 手が多い場面では器の中がスクロールする（`.controls`）。その時も流れていかないよう、
- * 器の中でも上端に貼り付ける。
- */
-.controls__turn {
-  position: sticky;
-  top: 0;
-  margin: 0 0 var(--gap);
-  background: Canvas;
-  font-weight: bold;
-}
-
-/* 誰と打っているか（ADR-0020）。部屋が続く限り変わらないので、優先権より控えめに出す。 */
-.controls__opponent {
-  margin: 0 0 var(--gap);
-  color: #666;
 }
 
 /* 見出しの行。添えるもの（操作のしかた）を同じ行の右端に置く（#128）。 */
@@ -1073,176 +750,1716 @@ body {
   color: #666;
 }
 
-/* 行える手と選ぶ候補。並べるのは届いたものだけ（ADR-0010）。 */
-.actions,
-.choice {
-  margin: calc(var(--gap) * 2) 0;
-  padding: var(--gap);
-  border: 1px solid var(--line);
-}
-
-.actions__title,
-.choice__title {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.actions__none,
-.choice__none {
-  margin: 0;
-  color: #666;
-}
-
-.actions__list,
-.choice__list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--gap);
-}
-
 .choice__button {
   padding: 4px 8px;
   font: inherit;
   cursor: pointer;
 }
 
-.choice {
-  border-color: var(--own);
+/*
+ * 対戦画面（ADR-0027）。
+ *
+ * ここから下は `.duel` の内側にだけ効く。`:root` の変数と共通のクラス（`.choice__button` や
+ * `button` 要素そのもの）には触らず、新しい色・余白・部品の見た目は `.duel` に置いた変数と
+ * クラスで作る——他の画面（ロビー・デッキ構築など）は今の見た目のまま残る。
+ *
+ * `--own` / `--opponent` は `:root` にも同じ名前がある。ここで**わざと同じ名前で上書きする**
+ * ——対戦画面の中だけ新しい色に差し替わり、外へは漏れない（CSS のカスケードそのもの）。
+ */
+.duel {
+  --ink: #3b2a12;
+  --ink-dim: #7d6848;
+  --heading: #8a4700;
+  --gold: #dca640;
+  --gold-bright: #f7c956;
+  --gold-deep: #b07a1c;
+  --own: #2a6fd6;
+  --own-soft: #e4eeff;
+  --opponent: #d3364a;
+  --opponent-soft: #ffe6e6;
+  --panel: rgb(255 252 244 / 0.88);
+  --panel-edge: #e2b252;
+  --radius: 12px;
+  --radius-small: 7px;
+  --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
+
+  /* 明るい・暗いの切り替えは持たない（ADR-0027）。将来プレイヤーごとに背景を差し替える余地の
+     ために、色は変数から引く。 */
+  color-scheme: light;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr) 18rem;
+  gap: 0.75rem;
+  /* `body` の余白（`:root` の `--gap`）を打ち消して、画面いっぱいに広げる。 */
+  margin: calc(var(--gap) * -1);
+  min-height: 100vh;
+  padding: 0.75rem;
+  overflow: hidden;
+  color: var(--ink);
+  background:
+    repeating-conic-gradient(from 8deg at 50% 46%, rgb(255 255 255 / 0.3) 0deg 3deg, transparent 3deg 9deg, rgb(255 255 255 / 0.14) 9deg 11deg, transparent 11deg 17deg),
+    radial-gradient(ellipse 60% 55% at 50% 46%, #fffdf6 0%, #ffeec2 30%, #fbc766 65%, #ee9a2c 100%);
 }
 
-/* 戻る側は答える側と離す。押し間違えると選びかけたものが消える。 */
-.choice__back {
+.duel *,
+.duel *::before,
+.duel *::after {
+  box-sizing: border-box;
+}
+
+/* ---------- 共通の部品 ---------- */
+
+.duel .panel {
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgb(150 80 0 / 0.22), inset 0 1px 0 #fff;
+}
+
+.duel .panel__head {
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.45);
+}
+
+.duel .actions__title,
+.duel .choice__title {
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.duel button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: linear-gradient(180deg, #fffefa, #fbefd4);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgb(150 80 0 / 0.25);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.duel button:hover {
+  border-color: var(--gold-deep);
+  box-shadow: inset 0 1px 0 #fff, 0 0 10px rgb(247 201 86 / 0.8);
+}
+
+.duel button:focus-visible {
+  outline: 2px solid var(--own);
+  outline-offset: 2px;
+}
+
+.duel button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.duel .button--primary {
+  border-color: var(--gold-deep);
+  color: #3a1f00;
+  background: linear-gradient(180deg, #ffd96b, #f3a024);
+  font-weight: 700;
+}
+
+/* ---------- 左の列：プレイヤーと操作 ---------- */
+
+.duel__left {
   display: flex;
-  gap: var(--gap);
-  margin-top: calc(var(--gap) * 2);
-  padding-top: var(--gap);
-  border-top: 1px dashed var(--line);
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
 }
 
-.choice__back .choice__button {
-  color: #666;
+.duel .player {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
 }
+
+.duel .player--相手 {
+  border-color: var(--opponent);
+  background: linear-gradient(120deg, #ffe0e0, rgb(255 252 244 / 0.92) 70%);
+}
+
+.duel .player--自分 {
+  border-color: var(--own);
+  background: linear-gradient(120deg, #dde9ff, rgb(255 252 244 / 0.92) 70%);
+}
+
+.duel .player__portrait {
+  flex: none;
+  width: 4.2rem;
+  height: 4.2rem;
+  overflow: hidden;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px #fff, 0 2px 10px rgb(150 80 0 / 0.35);
+}
+
+.duel .player--相手 .player__portrait {
+  background: radial-gradient(circle at 50% 30%, #fff, #f6c9c9);
+}
+
+.duel .player--自分 .player__portrait {
+  background: radial-gradient(circle at 50% 30%, #fff, #c9dbf6);
+}
+
+.duel .player__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.duel .player__whose {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.7rem;
+}
+
+.duel .player--相手 .player__whose {
+  background: var(--opponent);
+}
+
+.duel .player--自分 .player__whose {
+  background: var(--own);
+}
+
+.duel .player__name {
+  margin: 0.15rem 0 0.1rem;
+  overflow: hidden;
+  font-family: var(--heading-font);
+  font-size: 1.05rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.duel .player__damage {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+}
+
+.duel .player__damage strong {
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* パートナー。1 枚しかないので枚数は出さない。パートナーバトル以外では、この場所ごと詰める。 */
+.duel .player__partner {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.duel .player__partner-label {
+  color: var(--heading);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.duel .player__partner .card {
+  --card-width: 3rem;
+}
+
+/* 操作パネル：進行と手 */
+.duel .controls {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.duel .controls__turn {
+  margin: 0;
+  padding: 0.7rem 0.9rem 0.2rem;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.duel .controls__priority {
+  margin: 0 0.9rem 0.5rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--own);
+  border-radius: var(--radius-small);
+  background: linear-gradient(90deg, var(--own-soft), transparent);
+  font-weight: 700;
+}
+
+.duel .phases {
+  margin: 0 0 0.4rem;
+  padding: 0;
+  list-style: none;
+}
+
+.duel .phases__item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.22rem 0.9rem;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+}
+
+.duel .phases__item::before {
+  content: '';
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.duel .phases__item--済み {
+  color: rgb(125 104 72 / 0.55);
+}
+
+.duel .phases__item--済み::before {
+  background: currentColor;
+}
+
+.duel .phases__item--今 {
+  color: var(--ink);
+  font-weight: 700;
+  background: linear-gradient(90deg, rgb(247 201 86 / 0.6), transparent);
+}
+
+.duel .phases__item--今::before {
+  border-color: var(--gold-deep);
+  background: #ffb02e;
+  box-shadow: 0 0 8px #ffb02e;
+}
+
+.duel .phases__now {
+  margin-left: auto;
+  color: var(--heading);
+  font-size: 0.7rem;
+}
+
+.duel .controls__actions {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid rgb(220 166 64 / 0.45);
+}
+
+.duel .actions,
+.duel .choice {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.duel .actions__none,
+.duel .choice__none {
+  margin: 0.5rem 0.9rem;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+}
+
+.duel .controls__reason {
+  margin: 0 0.9rem 0.4rem;
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+}
+
+.duel .controls__offline {
+  margin: 0 0.9rem 0.4rem;
+  color: #a00;
+  font-size: 0.85rem;
+}
+
+.duel .actions__list,
+.duel .choice__list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-height: 0;
+  padding: 0.2rem 0.9rem 0.8rem;
+  overflow-y: auto;
+}
+
+.duel .actions__list .choice__button,
+.duel .choice__list .choice__button {
+  text-align: left;
+}
+
+.duel .choice__back {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0 0.9rem 0.6rem;
+  padding: 0;
+  border: 0;
+}
+
+.duel .leave {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border-top: 1px dashed rgb(125 104 72 / 0.3);
+}
+
+.duel .leave .choice__button {
+  color: var(--ink-dim);
+}
+
+/* ---------- 真ん中の列：盤面 ---------- */
 
 /*
- * 操作ログ（#95）。新しいものが上に増える（#111）ので、上端を見せたまま中でスクロール
- * させる。盤面より下に置いて、画面の高さを押し上げないようにしている。
+ * 進行中の手順の帯は、出ていないときも高さを取っておく。出た瞬間に盤面が上下に飛ばないように
+ * するためと、盤面を常に縦いっぱいに広げるため。
  */
-.log {
-  margin-top: calc(var(--gap) * 2);
-  padding: 2px 6px;
-  border: 1px solid var(--line);
+.duel__center {
+  display: grid;
+  grid-template-rows: 3.2rem 1.9rem minmax(0, 1fr) 5.2rem;
+  gap: 0.4rem;
+  min-height: 0;
 }
 
-.log__title {
-  margin: 0;
-  font-size: 0.9rem;
+/* 手札：画面の端から上半分（レベル・種別・名前）だけ出ている扇。乗せると全体が飛び出す */
+.hand {
+  position: relative;
+  display: flex;
+  justify-content: center;
 }
 
-.log__list {
-  max-height: 12rem;
-  margin: 2px 0 0;
-  /*
-   * 番号（`<ol>` の既定のマーカー）の分。2 桁分しか確保していないと、100 件を超えた時に
-   * `overflow-y: auto` に引きずられて `overflow-x` も `auto` になり、はみ出した桁が
-   * 横スクロールの外側へ切れて見える（#111）。4 桁分を確保し、念のため `overflow-x` も
-   * 明示して切れないようにする。
-   */
-  padding-left: 2.8em;
-  overflow-x: hidden;
-  overflow-y: auto;
+.hand__label {
+  position: absolute;
+  z-index: 40;
+  padding: 0.1rem 1.2rem;
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  color: var(--heading);
+  background: #fffaf0;
+  font-family: var(--heading-font);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.hand--相手 {
+  align-items: flex-end;
+}
+
+/* 見出しは手札の中央、画面の端に置く（`.duel` の余白のぶん外へ出す） */
+.hand__label {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.hand--相手 .hand__label {
+  top: -0.55rem;
+}
+
+.hand--自分 {
+  align-items: flex-start;
+}
+
+.hand--自分 .hand__label {
+  bottom: -0.55rem;
+}
+
+.hand .card {
+  margin: 0 -0.9rem;
+  transform-origin: 50% 100%;
+  transition: transform 0.15s;
+}
+
+.hand--相手 .card {
+  --card-width: 3.6rem;
+  margin: 0 -0.5rem;
+  transform-origin: 50% 0;
+  transform: rotate(var(--r, 0deg)) translateY(calc(0rem - var(--y, 0rem)));
+}
+
+.hand--自分 .card {
+  --card-width: 6rem;
+  transform: rotate(var(--r, 0deg)) translateY(var(--y, 0rem));
+}
+
+.hand--自分 .card:hover,
+.hand--自分 .card:focus-within,
+.hand--自分 .card--選択中 {
+  z-index: 30;
+  transform: translateY(-48%) scale(1.1);
+}
+
+.hand--自分 .card--選択中:not(:hover) {
+  transform: translateY(-25%);
+}
+
+.procedure {
+  display: flex;
+  visibility: hidden;
+  align-items: center;
+  gap: 0.6rem;
+  justify-self: center;
+  padding: 0.2rem 0.9rem;
+  border: 1px solid var(--opponent);
+  border-radius: 999px;
+  background: #fff3f3;
+  font-weight: 700;
+}
+
+.procedure--出ている {
+  visibility: visible;
+}
+
+.procedure__kind {
+  padding: 0 0.45rem;
+  border-radius: 4px;
+  color: #fff;
+  background: var(--opponent);
   font-size: 0.75rem;
 }
 
 /*
- * 入れ子になった手順の中を字下げする（#133）。手順が 1 つ進行しているだけなら進行の本筋
- * なので字下げしない（`view-model.ts` の `depthOf`）。
+ * 盤面。自分から見て（相手側は点対称）:
+ *
+ *   行1   [相手：リムーブ｜捨札] [相手：スマッシュ｜エネルギー]
+ *   行2   相手山札     敵    □□□   相手トラップ
+ *   行3                中央  □□□
+ *   行4   自分トラップ 味方  □□□   自分山札
+ *   行5   [自分：エネルギー｜スマッシュ] [自分：捨札｜リムーブ]
  */
-.log__item {
-  padding-inline-start: calc(var(--log-depth, 0) * 1em);
+.board {
+  display: grid;
+  grid-template-columns: 6rem 1.8rem repeat(3, minmax(0, 10.5rem)) 6rem;
+  grid-template-rows: auto repeat(3, minmax(0, 1fr)) auto;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 0;
 }
 
-.log__item--自分 {
+.strip {
+  display: grid;
+  grid-column: 1 / 7;
+  gap: 0.4rem;
+}
+
+.strip--自分 {
+  grid-row: 5;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.strip--相手 {
+  grid-row: 1;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+/* 置き場のまとまりを囲む枠 */
+.group {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  border-radius: var(--radius);
+}
+
+.group--相手 {
+  border: 1.5px solid var(--opponent);
+  background: rgb(255 225 225 / 0.85);
+}
+
+.group--自分 {
+  border: 1.5px solid var(--own);
+  background: rgb(222 234 255 / 0.85);
+}
+
+.group--自分.group--エネルギーゾーン {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.group--相手.group--エネルギーゾーン {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+
+.group--捨札 {
+  grid-template-columns: 5.4rem 5.4rem;
+}
+
+.zone {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.25rem 0.35rem 0.35rem;
+  border: 1px solid rgb(220 166 64 / 0.55);
+  border-radius: var(--radius-small);
+  background: rgb(255 255 255 / 0.72);
+}
+
+.zone__title {
+  margin: 0 0 0.25rem;
+  color: var(--heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.zone__title span {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
+.zone__cards {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 0;
+}
+
+.zone .card {
+  --card-width: 3.2rem;
+}
+
+/* エネルギー・スマッシュは重ねて並べる。フリーズしたカードは横にはみ出すぶん空く */
+.zone--エネルギーゾーン .zone__cards,
+.zone--スマッシュゾーン .zone__cards {
+  gap: 0;
+}
+
+.zone--エネルギーゾーン .zone__cards .card + .card,
+.zone--スマッシュゾーン .zone__cards .card + .card {
+  margin-left: calc(var(--card-width) * -0.5);
+}
+
+.zone--エネルギーゾーン .zone__cards .card--フリーズ + .card,
+.zone--スマッシュゾーン .zone__cards .card--フリーズ + .card {
+  margin-left: calc(var(--card-width) * -0.25);
+}
+
+/* バンク・誘発した能力（中央エリアの両脇に置く） */
+.waiting {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.3rem 0.4rem;
+  border: 1px dashed rgb(176 122 28 / 0.6);
+  border-radius: var(--radius-small);
+  background: rgb(255 255 255 / 0.6);
+  font-size: 0.72rem;
+}
+
+.waiting__title {
+  margin: 0 0 0.2rem;
+  color: var(--heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.waiting__list {
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.waiting__list li {
+  margin-bottom: 0.2rem;
+  padding: 0.15rem 0.3rem;
+  border-left: 3px solid var(--ink-dim);
+  border-radius: 3px;
+  background: #fff;
+  line-height: 1.3;
+}
+
+.waiting__list .waiting--相手 {
+  border-left-color: var(--opponent);
+}
+
+.waiting__list .waiting--自分 {
+  border-left-color: var(--own);
+}
+
+.waiting__none {
+  margin: 0;
+  color: var(--ink-dim);
+  text-align: center;
+}
+
+/* 束（山札・捨札・リムーブ）。見せるのは一番上の 1 枚だけで、プランがあっても位置は変わらない */
+.pile {
+  position: relative;
+}
+
+.pile > .card {
+  margin: 0;
+}
+
+.pile__count {
+  position: absolute;
+  right: -0.35rem;
+  bottom: -0.3rem;
+  z-index: 3;
+  min-width: 1.6rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--gold-deep);
+  border-radius: 6px;
+  color: #fff;
+  background: #6b3e00;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pile__plan {
+  position: absolute;
+  left: 50%;
+  top: -0.45rem;
+  z-index: 3;
+  padding: 0 0.35rem;
+  border-radius: 4px;
+  color: #fff;
+  background: #7a4bc2;
+  font-size: 0.65rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.zone__empty {
+  width: 3.2rem;
+  aspect-ratio: 2 / 3;
+  border: 1px dashed rgb(176 122 28 / 0.5);
+  border-radius: 5px;
+}
+
+/* 捨札・リムーブの束は押すと一覧が開く */
+.pile--開ける {
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.pile--開ける:hover,
+.pile--開ける:focus-visible {
+  outline: 2px solid var(--gold-deep);
+  outline-offset: 3px;
+}
+
+.area-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-small);
+  color: #fff;
+  font-family: var(--heading-font);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  writing-mode: vertical-rl;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.2);
+}
+
+.area-label--敵エリア {
+  background: linear-gradient(180deg, #e8505f, #b3202f);
+}
+
+.area-label--中央エリア {
+  background: linear-gradient(180deg, #d9a441, #a8701a);
+}
+
+.area-label--味方エリア {
+  background: linear-gradient(180deg, #4a8ef0, #1f56b3);
+}
+
+.square {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: center;
+  gap: 0.4rem;
+  min-height: 0;
+  padding: 0.25rem;
+  border: 1px solid rgb(220 166 64 / 0.7);
+  border-radius: var(--radius-small);
+  background: rgb(255 253 246 / 0.75);
+  box-shadow: inset 0 0 12px rgb(255 255 255 / 0.8);
+}
+
+.square--敵エリア {
+  border-color: rgb(211 54 74 / 0.6);
+  background: rgb(255 232 232 / 0.8);
+}
+
+.square--味方エリア {
+  border-color: rgb(42 111 214 / 0.6);
+  background: rgb(228 238 255 / 0.8);
+}
+
+/* バトルが起きているスクエア。上端に「バトル中」の帯を出し、枠を赤く光らせる */
+.square--バトル中 {
+  padding-top: 1.3rem;
+  border: 2px solid #e0303c;
+  box-shadow: inset 0 0 14px rgb(224 48 60 / 0.35), 0 0 12px rgb(224 48 60 / 0.55);
+}
+
+.square__battle {
+  position: absolute;
+  inset: 0 0 auto 0;
+  padding: 0.1rem 0;
+  border-radius: 5px 5px 0 0;
+  color: #fff;
+  background: linear-gradient(90deg, #b3121e, #ef3b45 50%, #b3121e);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-indent: 0.3em;
+  text-shadow: 0 1px 2px rgb(80 0 0 / 0.7);
+}
+
+.square--置き先 {
+  border: 2px dashed #e07b00;
+  background: rgb(255 214 120 / 0.55);
+  box-shadow: inset 0 0 16px rgb(255 180 40 / 0.5);
+  cursor: pointer;
+}
+
+.square .card {
+  --card-width: 4.6rem;
+}
+
+/* ---------- カード ---------- */
+
+.duel .card {
+  position: relative;
+  flex: none;
+  width: var(--card-width);
+  aspect-ratio: 2 / 3;
+  font-size: calc(var(--card-width) * 0.12);
+}
+
+/*
+ * 色ごとの値。種別の地・名前の地・SP の地・面の下側に使う。複数の色を持つカード・無色の
+ * カードは、いまのカードプールに無いので考えない（ADR-0027）。
+ */
+.card--色-青 {
+  --lv-light: #80ceec;
+  --lv-deep: #009cd9;
+  --on-color: #fff;
+}
+
+.card--色-赤 {
+  --lv-light: #ff8080;
+  --lv-deep: #ee1c1c;
+  --on-color: #fff;
+}
+
+.card--色-緑 {
+  --lv-light: #80d680;
+  --lv-deep: #0a960a;
+  --on-color: #fff;
+}
+
+.card--色-黒 {
+  --lv-light: #808080;
+  --lv-deep: #1c1c1c;
+  --on-color: #fff;
+}
+
+.card--色-白 {
+  --lv-light: #ffffff;
+  --lv-deep: #dddddd;
+  --on-color: #111;
+}
+
+/*
+ * 面の地は上が白、下がカードの色。白のカードは下を薄い灰色にする。将来はこの下にカードの
+ * イラストを敷き、このグラデーションを半透明で重ねる想定。
+ */
+.card__face {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  width: 100%;
+  height: 100%;
+  padding: 0.25em;
+  overflow: hidden;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  color: var(--ink);
+  background: linear-gradient(180deg, #fff 18%, color-mix(in srgb, var(--lv-deep) 55%, #fff) 62%, var(--lv-deep) 100%);
+  box-shadow: 0 2px 6px rgb(80 40 0 / 0.4);
+  line-height: 1.2;
+}
+
+.card--色-白 .card__face {
+  background: linear-gradient(180deg, #fff 18%, #ececec 62%, #cfcfcf 100%);
+}
+
+/* 支配者の色：面の外周 */
+.card--自分 .card__face {
+  border-color: var(--own);
+}
+
+.card--相手 .card__face {
+  border-color: var(--opponent);
+}
+
+.card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.2em;
+}
+
+.card__level {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.9em;
+  height: 1.9em;
+  font-weight: 800;
+}
+
+.card__level img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.card__level span {
+  position: relative;
+  color: #fff;
+  text-shadow: 0 0 2px #000, 0 0 2px #000;
+}
+
+.card--色-白 .card__level span {
+  color: #000;
+  text-shadow: 0 0 2px #fff;
+}
+
+.card__kind {
+  padding: 0.05em 0.4em;
+  border-radius: 999px;
+  color: var(--on-color);
+  background: radial-gradient(circle at 40% 30%, var(--lv-light), var(--lv-deep));
+  font-size: 0.85em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.card--色-白 .card__kind {
+  box-shadow: 0 0 0 1px #000 inset;
+}
+
+/*
+ * 名前の行：スター・名前・（詳細では）キーワード能力のアイコン。地の枠はアイコンまで含め、
+ * アイコンは枠から上下にはみ出させる。
+ */
+.card__title {
+  display: flex;
+  align-items: center;
+  gap: 0.15em;
+  min-width: 0;
+  margin-block: 0.25em;
+  padding: 0 0.2em;
+  border-radius: 3px;
+  color: var(--on-color);
+  background: var(--lv-deep);
+}
+
+.card--色-白 .card__title {
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35) inset;
+}
+
+.card__title .star,
+.card__title .keywords {
+  margin-block: -0.35em;
+}
+
+.star {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.8em;
+  height: 1.8em;
+  font-weight: 900;
+}
+
+.star img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.4));
+}
+
+/* ダブルスター：★ の中に赤い数字 */
+.star span {
+  position: relative;
+  top: 0.1em;
+  color: #d0101a;
+  font-size: 1em;
+  line-height: 1;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff;
+}
+
+.keywords {
+  display: flex;
+  flex: none;
+  gap: 0.15em;
+}
+
+/* リバーススター：緑を基調にした逆さの ★ */
+.star--reverse img {
+  transform: rotate(180deg);
+}
+
+.star--reverse span {
+  top: -0.1em;
+  color: #0b4a22;
+}
+
+/*
+ * キーワード能力のアイコン：半透明の宝石の球に字。夢＝サファイア、希望＝ルビー、幸運＝
+ * トパーズ、苦労＝暗いエメラルド（ADR-0027。幸運・苦労はまだ実装していないキーワード）。
+ */
+.keyword {
+  display: grid;
+  place-items: center;
+  width: 2.1em;
+  height: 2.1em;
+  border: 1px solid rgb(255 255 255 / 0.7);
+  border-radius: 50%;
+  color: #fff;
+  background:
+    radial-gradient(circle at 34% 28%, rgb(255 255 255 / 0.95) 0 7%, rgb(255 255 255 / 0) 24%),
+    radial-gradient(circle at 60% 75%, rgb(255 255 255 / 0.35) 0 10%, rgb(255 255 255 / 0) 30%),
+    radial-gradient(circle at 50% 55%, var(--gem-light) 0%, var(--gem) 55%, var(--gem-deep) 100%);
+  box-shadow:
+    inset 0 -0.2em 0.35em rgb(0 0 0 / 0.35),
+    inset 0 0.12em 0.25em rgb(255 255 255 / 0.45),
+    0 1px 3px rgb(0 0 0 / 0.45);
+  font-family: 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 0 2px rgb(0 0 0 / 0.8), 0 1px 1px rgb(0 0 0 / 0.6);
+}
+
+.keyword--夢 {
+  --gem-light: rgb(80 130 220 / 0.8);
+  --gem: rgb(16 52 150 / 0.86);
+  --gem-deep: rgb(4 16 70 / 0.95);
+}
+
+.keyword--希望 {
+  --gem-light: rgb(220 80 100 / 0.8);
+  --gem: rgb(150 8 32 / 0.86);
+  --gem-deep: rgb(70 0 10 / 0.95);
+}
+
+.keyword--幸運 {
+  --gem-light: rgb(230 190 80 / 0.85);
+  --gem: rgb(185 125 8 / 0.88);
+  --gem-deep: rgb(95 55 0 / 0.95);
+}
+
+.keyword--苦労 {
+  --gem-light: rgb(80 170 115 / 0.7);
+  --gem: rgb(8 100 55 / 0.85);
+  --gem-deep: rgb(0 42 22 / 0.95);
+}
+
+/* 字の大きさだけ変える（球の大きさは揃える） */
+.keyword span {
+  font-size: 0.95em;
+}
+
+.keyword--希望 span,
+.keyword--幸運 span,
+.keyword--苦労 span {
+  font-size: 0.62em;
+}
+
+/* プランのカード（山札の上）だけ、夢・希望・幸運を名前の下の行に出す */
+.card__keywords-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.card__keywords-row .keyword {
+  width: 1.9em;
+  height: 1.9em;
+}
+
+.card__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.1em 0.1em;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.card__bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  margin-top: auto;
+}
+
+/* ムーブアイコン（ユニット）・トリガーアイコン（侵入のトラップ）は右側 */
+.card__icons {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+}
+
+.move-icon,
+.trigger-icon {
+  display: block;
+  width: 2.2em;
+  height: 2.2em;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.4));
+}
+
+.trigger-icon {
+  margin-left: auto;
+}
+
+.card__traits {
+  overflow: hidden;
+  color: var(--on-color);
+  font-size: 0.8em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 2px rgb(0 0 0 / 0.5);
+}
+
+.card--色-白 .card__traits {
+  text-shadow: none;
+}
+
+.card__stats {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.card__bp {
+  padding: 0 0.3em;
+  border-radius: 3px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.55);
+}
+
+.card__sp {
+  padding: 0 0.3em;
+  border-radius: 3px;
+  color: var(--on-color);
+  background: var(--lv-deep);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.6);
+}
+
+.card--色-白 .card__sp {
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
+}
+
+/*
+ * 継続効果で元の値から変わった BP・SP。上がったら赤、下がったら青。地はそのまま。地の色
+ * （SP はカードの色）と文字の色が重なっても読めるよう、文字に白い縁を付ける。色だけに頼らず、
+ * 末尾に ▲▼ も添える（#91）。
+ */
+.card__bp--上,
+.card__sp--上,
+.card__bp--下,
+.card__sp--下 {
+  text-shadow:
+    1px 0 0 #fff, -1px 0 0 #fff, 0 1px 0 #fff, 0 -1px 0 #fff,
+    1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff;
+}
+
+.card__bp--上,
+.card__sp--上 {
+  color: #d4101c;
+}
+
+.card__bp--下,
+.card__sp--下 {
+  color: #1553c8;
+}
+
+.card__bp--上::after,
+.card__sp--上::after {
+  content: '▲';
+  font-size: 0.7em;
+}
+
+.card__bp--下::after,
+.card__sp--下::after {
+  content: '▼';
+  font-size: 0.7em;
+}
+
+.card__damage {
+  position: absolute;
+  inset: 45% 0 auto 0;
+  padding: 0.05em 0;
+  color: #fff;
+  background: rgb(200 20 30 / 0.88);
+  font-weight: 700;
+  text-align: center;
+}
+
+/*
+ * 自分・相手の札。バトルスペースのカードにだけ出す（ほかの置き場は、置き場の側で誰のものか
+ * 分かる）。面の外に付けるので、フリーズで面が寝ても札は寝ない。
+ */
+.duel .card__whose {
+  position: absolute;
+  top: -0.55em;
+  right: -0.45em;
+  z-index: 2;
+  display: none;
+  padding: 0 0.35em;
+  border: 1px solid #fff;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.8em;
+  font-weight: 700;
+  line-height: 1.4;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  background: none;
+}
+
+.square .card__whose {
+  display: block;
+}
+
+.card--自分 .card__whose {
+  background: var(--own);
+}
+
+.card--相手 .card__whose {
+  background: var(--opponent);
+}
+
+/* フリーズしたカードは、寝た面の右肩に札を付け直す（面は枠の中心で 90 度回る） */
+.card--フリーズ .card__whose {
+  top: calc(var(--card-width) * 0.25 - 0.55em);
+  right: calc(var(--card-width) * -0.25 - 0.45em);
+}
+
+.card--フリーズ {
+  margin: 0 calc(var(--card-width) / 4);
+}
+
+.card--フリーズ .card__face {
+  transform: rotate(90deg);
+}
+
+/* 裏面：金・橙の光条（実物の裏面の雰囲気。ロゴは使わない） */
+.card--back .card__face {
+  border-color: #fff;
+  background:
+    radial-gradient(circle at 50% 46%, transparent 0 17%, rgb(176 110 20 / 0.9) 17.5% 21%, transparent 21.5%),
+    radial-gradient(circle at 50% 46%, #fff 0 10%, #ffe79a 18%, transparent 42%),
+    repeating-conic-gradient(from 12deg at 50% 46%, rgb(255 255 255 / 0.5) 0deg 5deg, transparent 5deg 16deg),
+    linear-gradient(160deg, #ffe38a, #f5a623 55%, #df7410);
+}
+
+/* 裏面の丸の中の R */
+.card--back .card__face::after {
+  content: 'R';
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  color: #fff6d0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: calc(var(--card-width) * 0.3);
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 1px #6b3e00, 0 0 2px #6b3e00, 0 1px 3px rgb(120 60 0 / 0.8);
+  transform: translate(-50%, -52%);
+}
+
+.duel .card--押せる {
+  cursor: pointer;
+}
+
+.duel .card--押せる .card__face {
+  outline: 3px solid #ff9d00;
+  outline-offset: 1px;
+  box-shadow: 0 0 12px 3px rgb(255 170 0 / 0.75);
+}
+
+.duel .card--選択中 .card__face {
+  outline: 3px solid #e05a00;
+  outline-offset: 2px;
+  box-shadow: 0 0 18px 6px rgb(255 140 0 / 0.9);
+}
+
+.duel .card--詳細中:not(.card--選択中) .card__face {
+  outline: 2px solid var(--heading);
+  outline-offset: 2px;
+}
+
+/* 選べないカード（一覧で条件に合わないもの）。色だけに頼らず、読み上げでも断る。 */
+.duel .card--選べない {
+  opacity: 0.4;
+}
+
+/* ---------- 右の列：操作ログ・カードの詳細 ---------- */
+
+.duel__right {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.duel .log {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.duel .log__title {
+  margin: 0;
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.45);
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.duel .log__list {
+  flex: 1;
+  margin: 0;
+  padding: 0.3rem 0;
+  overflow-y: auto;
+  list-style: none;
+  font-size: 0.8rem;
+}
+
+.duel .log__item {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.4rem 0.9rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.25);
+  padding-inline-start: calc(0.9rem + var(--log-depth, 0) * 1em);
+}
+
+.duel .log__item::before {
+  content: '';
+  flex: none;
+  width: 3px;
+  border-radius: 2px;
+  background: rgb(125 104 72 / 0.3);
+}
+
+.duel .log__item--自分::before {
+  background: var(--own);
+}
+
+.duel .log__item--相手::before {
+  background: var(--opponent);
+}
+
+.duel .log__whose {
+  flex: none;
+  font-weight: 700;
+}
+
+.duel .log__item--自分 .log__whose {
   color: var(--own);
 }
 
-.log__item--相手 {
+.duel .log__item--相手 .log__whose {
   color: var(--opponent);
 }
 
 /* 誰のできごとかを色だけで区別させない。 */
-.log__whose::after {
+.duel .log__whose::after {
   content: '：';
 }
 
+/* 区切りの行（進行の切れ目）は、中央寄せの見た目にする。 */
+.duel .log__item--区切り {
+  justify-content: center;
+  color: var(--heading);
+  background: rgb(247 201 86 / 0.18);
+  font-size: 0.75rem;
+}
+
+.duel .log__item--区切り::before {
+  display: none;
+}
+
 /*
- * 演出の層（#96・#104）。フェイズ・ターンの切り替わりと効果解決のカットインを、盤面より
- * 上に重ねて出す。**押せる場所は塞がない**（`pointer-events: none`）。`index.ts` が毎回
- * 作り直すので、`animation` も `transition` プロパティもここには置かない。無関係な再描画
- * （`選んでほしい` の到着など）で走り直してちらつく。
- *
- * **画面の真ん中に出す。** 上端に出していた頃は、操作するところ（`.controls`）に重なる位置で、
- * 手札を見ている間は視線の外だった。覆われていたわけではない（この層が一番上に立っている）が、
- * 見落とされる。出ている時間は短い（`view-model.ts` の `overlayDurationMs`）ので、見る場所を
- * 探させない。
+ * カードの詳細。カードをそのまま拡大し、テキストの枠を足したもの。高さは固定し、出し入れで
+ * ログが上下しないようにする（ADR-0027、カードの詳細を浮かせて出す仕組みは要らない）。
  */
-.overlay-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
+.detail {
+  flex: none;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--gap);
+  height: calc(14.5rem * 1.5 + 2.6rem);
+  padding: 0.6rem;
+}
+
+.detail__none {
+  margin: 0;
+  padding: 0 1rem;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.detail__note {
+  margin: 0.35rem 0 0;
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+}
+
+.card--拡大 {
+  --card-width: 14.5rem;
+  font-size: 0.8rem;
+}
+
+.card--拡大 .card__face {
+  border-width: 3px;
+  border-radius: 10px;
+  padding: 0.4rem;
+  gap: 0.3rem;
+}
+
+.card--拡大 .card__title {
+  font-size: 1.05rem;
+  padding: 0 0.3rem;
+}
+
+.card--拡大 .card__name {
+  padding: 0.15rem 0.2rem;
+}
+
+.card--拡大 .card__kind {
+  font-size: 0.8rem;
+}
+
+.card--拡大 .card__level {
+  font-size: 0.95rem;
+}
+
+.card--拡大 .card__stats {
+  font-size: 1.1rem;
+}
+
+.card--拡大 .card__traits {
+  font-size: 0.75rem;
+}
+
+.card--拡大 .move-icon,
+.card--拡大 .trigger-icon {
+  width: 2.4rem;
+  height: 2.4rem;
+}
+
+.card--拡大 .star {
+  font-size: 1.3rem;
+}
+
+.card--拡大 .keyword {
+  font-size: 0.9rem;
+}
+
+.card--拡大 .card__damage {
+  inset: 30% 0 auto 0;
+  font-size: 0.9rem;
+}
+
+/*
+ * 詳細のテキストの枠。ムーブアイコン・トリガーアイコンは枠の中の右に置き、テキストが無くても
+ * アイコンのぶんの高さを取る。
+ */
+.card__text {
+  display: flex;
+  gap: 0.4rem;
+  min-height: calc(2.4rem + 0.7rem);
+  max-height: 8.5rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 6px;
+  color: var(--ink);
+  background: rgb(255 255 255 / 0.9);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.15);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.card__text p {
+  margin: 0 0 0.2rem;
+}
+
+.card__lines {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.card__text .card__icons {
+  flex: none;
+  align-items: flex-start;
+}
+
+/* ---------- 演出の層 ---------- */
+
+.overlay-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
   pointer-events: none;
 }
 
-/* フェイズ・ターンの切り替わり（#96）。どちらのプレイヤーのものでもないので色を持たない。 */
 .transition-banner {
+  width: 100%;
   margin: 0;
-  padding: var(--gap) calc(var(--gap) * 3);
-  border: 2px solid var(--line);
-  border-radius: 4px;
-  background: Canvas;
-  box-shadow: 0 2px 10px #0006;
-  font-size: 1.3rem;
-  font-weight: bold;
+  padding: 0.9rem 0;
+  border-block: 2px solid #fff;
+  color: #fff;
+  background: linear-gradient(90deg, transparent, rgb(238 140 20 / 0.95) 20%, rgb(238 140 20 / 0.95) 80%, transparent);
+  font-family: var(--heading-font);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-align: center;
+  text-shadow: 0 2px 6px rgb(120 50 0 / 0.7);
 }
 
 .cut-in {
-  width: max-content;
-  max-width: 20rem;
-  padding: var(--gap) calc(var(--gap) * 2);
-  border: 2px solid var(--line);
-  border-radius: 4px;
-  background: Canvas;
-  box-shadow: 0 2px 10px #0006;
-}
-
-.cut-in--自分 {
-  border-color: var(--own);
+  width: 100%;
+  padding: 1rem 0;
+  color: #fff;
+  text-align: center;
 }
 
 .cut-in--相手 {
-  border-color: var(--opponent);
+  border-block: 2px solid #fff;
+  background: linear-gradient(90deg, transparent, rgb(211 54 74 / 0.95) 18%, rgb(211 54 74 / 0.95) 82%, transparent);
 }
 
-/* 誰の効果かを色だけで区別させない。 */
-.cut-in__whose::after {
-  content: '：';
+.cut-in--自分 {
+  border-block: 2px solid #fff;
+  background: linear-gradient(90deg, transparent, rgb(42 111 214 / 0.95) 18%, rgb(42 111 214 / 0.95) 82%, transparent);
+}
+
+.cut-in__whose {
+  padding: 0 0.5rem;
+  border-radius: 4px;
+  color: var(--ink);
+  background: #fff;
+  font-size: 0.8rem;
 }
 
 .cut-in__heading {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: bold;
+  margin: 0.3rem 0 0.2rem;
+  font-family: var(--heading-font);
+  font-size: 1.7rem;
+  font-weight: 700;
+  text-shadow: 0 2px 6px rgb(0 0 0 / 0.35);
 }
 
 .cut-in__lines {
   margin-top: 2px;
-  font-size: 0.85rem;
 }
 
 .cut-in__line {
   margin: 0;
+}
+
+/*
+ * 決着。画面全体を暗くし、光条を背負った大きな文字と帯で出す。演出の層は描き直されるたびに
+ * 作り直されるので、ここでも `animation` は使わない。
+ */
+.overlay-layer--結果-勝利 {
+  background: radial-gradient(ellipse at center, rgb(40 20 0 / 0.25), rgb(40 20 0 / 0.65));
+}
+
+.overlay-layer--結果-敗北 {
+  background: radial-gradient(ellipse at center, rgb(0 10 30 / 0.3), rgb(0 10 30 / 0.7));
+}
+
+.result {
+  position: relative;
+  width: 100%;
+  padding: 2.5rem 0 2rem;
+  text-align: center;
+}
+
+.result__burst {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46rem;
+  height: 46rem;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgb(255 255 255 / 0.95) 0 8%, rgb(255 230 140 / 0.7) 18%, transparent 58%),
+    repeating-conic-gradient(from 0deg, rgb(255 236 150 / 0.85) 0deg 6deg, transparent 6deg 15deg);
+  -webkit-mask: radial-gradient(circle, #000 30%, transparent 70%);
+  mask: radial-gradient(circle, #000 30%, transparent 70%);
+  transform: translate(-50%, -50%);
+}
+
+.result__ribbon {
+  position: relative;
+  padding: 0.6rem 0 0.8rem;
+  border-block: 3px solid #fff3c4;
+  background: linear-gradient(90deg, transparent, rgb(214 120 0 / 0.95) 15%, rgb(255 190 40 / 0.98) 50%, rgb(214 120 0 / 0.95) 85%, transparent);
+  box-shadow: 0 0 30px rgb(255 190 60 / 0.8);
+}
+
+.result__label {
+  margin: 0;
+  color: #fff;
+  font-family: var(--heading-font);
+  font-size: 5.5rem;
+  font-weight: 900;
+  letter-spacing: 0.35em;
+  line-height: 1.1;
+  text-indent: 0.35em;
+  text-shadow:
+    0 0 2px #7a3a00, 0 0 4px #7a3a00,
+    0 4px 0 #b45a00, 0 8px 18px rgb(90 30 0 / 0.7),
+    0 0 40px rgb(255 240 180 / 0.9);
+}
+
+/* 敗北は寒色で、光条を弱める */
+.result--敗北 .result__burst {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
+.result--敗北 .result__ribbon {
+  border-color: #d8e4ff;
+  background: linear-gradient(90deg, transparent, rgb(40 60 110 / 0.95) 15%, rgb(80 105 160 / 0.98) 50%, rgb(40 60 110 / 0.95) 85%, transparent);
+  box-shadow: 0 0 30px rgb(60 90 160 / 0.6);
+}
+
+.result--敗北 .result__label {
+  text-shadow: 0 0 2px #0e1c40, 0 4px 0 #26386a, 0 8px 18px rgb(0 0 30 / 0.7);
+}
+
+/*
+ * カードの一覧（捨札・リムーブを見る／効果で山札などから選ぶ）。画面の上に重ね、答えるまで
+ * 盤面は押せない。右の列（カードの詳細）は覆わないので、一覧のカードに乗せて詳細を読める。
+ */
+.picker {
+  position: fixed;
+  inset: 0 19.5rem 0 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgb(60 30 0 / 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.picker__box {
+  display: flex;
+  flex-direction: column;
+  width: min(52rem, 100%);
+  max-height: 100%;
+  border: 2px solid var(--gold);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fffdf6, #fff4dc);
+  box-shadow: 0 16px 50px rgb(80 40 0 / 0.5);
+}
+
+.picker__head {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.5);
+}
+
+.picker__title {
+  flex: 1;
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.picker__lead {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+}
+
+.picker__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.4rem, 1fr));
+  justify-items: center;
+  gap: 1rem 0.6rem;
+  padding: 1.2rem 1rem;
+  overflow-y: auto;
+}
+
+.picker__cards .card {
+  --card-width: 6rem;
+}
+
+.picker__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.7rem 1rem;
+  border-top: 1px solid rgb(220 166 64 / 0.5);
+}
+
+.picker__count {
+  margin-right: auto;
+  font-weight: 700;
 }

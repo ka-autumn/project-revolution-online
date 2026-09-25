@@ -680,6 +680,13 @@ export type ToClient =
        * 決まる（#175）。
        */
       readonly opponent: Opponent
+      /**
+       * 受け取った人自身の表示名（ADR-0020、ADR-0027）。
+       *
+       * 対戦画面のプレイヤーの枠に出す（ADR-0027）。名前を決めた後でなければ席に着けない
+       * （ADR-0020）ので、必ず決まっている。
+       */
+      readonly own: string
     }
   | {
       readonly kind: '盤面'

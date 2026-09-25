@@ -500,3 +500,27 @@ export function choicePicking(board: WirePerspective, choice: WireChoice): Choic
     ].sort((a, b) => a - b),
   }
 }
+
+/** 選ぶ候補のうち、盤面から押せないもの。`picking` が渡されなければ全部が該当する。 */
+export function offBoardCandidates(
+  choice: WireChoice,
+  picking: ChoicePicking | undefined,
+): readonly { readonly index: number; readonly candidate: WireCandidate }[] {
+  return choice.candidates.flatMap((candidate, index) =>
+    picking !== undefined && picking.onBoard.includes(index) ? [] : [{ index, candidate }],
+  )
+}
+
+/**
+ * カードの一覧（`render.ts` の `pickerElement` の「選ぶ」、ADR-0027）を出すべきか。
+ *
+ * 盤面から押せない候補が、カード（見えている・見えていない）だけでできている時に出す。能力や
+ * スクエアが混じる場面は、これまでどおり番号のボタンで並べる——一覧はカードの面を並べるための
+ * ものなので、カードではない候補を描く先が無い。
+ */
+export function showsChoicePicker(offBoard: readonly { readonly candidate: WireCandidate }[]): boolean {
+  return (
+    offBoard.length > 0 &&
+    offBoard.every(({ candidate }) => candidate.kind === '見えている' || candidate.kind === '見えていない')
+  )
+}

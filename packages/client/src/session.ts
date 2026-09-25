@@ -100,6 +100,8 @@ export type Stage =
        * **投げ出せる対戦かがこれで決まる**（#175）。
        */
       readonly opponent: Opponent
+      /** 自分の表示名（ADR-0020、ADR-0027）。対戦画面のプレイヤーの枠に出す。 */
+      readonly own: string
       /**
        * 相手が繋がっているか（#175）。決めているのはサーバである（`server` の `serve.ts`）。
        *
@@ -295,6 +297,7 @@ export function applyMessage(session: Session, message: ToClient): Session {
           kind: '打っている',
           room: message.room,
           opponent: message.opponent,
+          own: message.own,
           opponentConnected: true,
           seat: message.seat,
           board: undefined,

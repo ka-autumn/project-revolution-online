@@ -463,6 +463,7 @@ describe('自動で送る手', () => {
       seat: '先攻',
       room: 'あいことば',
       opponent: { kind: '人間', name: 'あいて' },
+      own: 'わたし',
     })
     return applyMessage(seated, { kind: '盤面', perspective: board(), actions, passOutcome: undefined })
   }

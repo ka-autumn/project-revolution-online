@@ -40,7 +40,13 @@ function fold(...messages: readonly ToClient[]): Session {
 
 const ROOM = 'あいことば'
 
-const SEATED: ToClient = { kind: '席についた', seat: '先攻', room: ROOM, opponent: { kind: '人間', name: 'あいて' } }
+const SEATED: ToClient = {
+  kind: '席についた',
+  seat: '先攻',
+  room: ROOM,
+  opponent: { kind: '人間', name: 'あいて' },
+  own: 'わたし',
+}
 
 describe('届いたものを畳む', () => {
   it('繋いだ直後は、まだ何も届いていない', () => {
@@ -353,6 +359,7 @@ describe('デッキを組むのに要るもの', () => {
         stars: 0,
         reverseStars: 0,
         attributes: [],
+        keywords: [],
         text: [],
       },
       expansions: [],

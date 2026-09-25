@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CARD_TYPES, COLORS, defineStrategy, defineTrap, defineUnit, isStrategy } from './index.js'
+import { CARD_TYPES, COLORS, defineStrategy, defineTrap, defineUnit, dream, hope, isStrategy, planKeywordsOf } from './index.js'
 import type { Square } from './index.js'
 
 // 総合ルール 第2部 第4章 2（ADR-0006）
@@ -56,5 +56,26 @@ describe('トリガーアイコン', () => {
     const trap = defineTrap({ name: 'テストトラップ', level: 1 })
 
     expect(trap.triggerIcon).toEqual([])
+  })
+})
+
+// 総合ルール 第5部 第1章 2・第3章 2（ADR-0006）。対戦画面のカードの面のアイコン（ADR-0027）。
+describe('プランゾーンに関わるキーワード能力', () => {
+  it('「夢」「希望」を持つカードは、その名前が並ぶ', () => {
+    const card = defineUnit({
+      name: 'テストユニット',
+      level: 1,
+      bp: 1000,
+      sp: 1000,
+      abilities: [dream, hope(function* () {})],
+    })
+
+    expect(planKeywordsOf(card)).toEqual(['夢', '希望'])
+  })
+
+  it('持たなければ空', () => {
+    const card = defineUnit({ name: 'テストユニット', level: 1, bp: 1000, sp: 1000 })
+
+    expect(planKeywordsOf(card)).toEqual([])
   })
 })

@@ -7,6 +7,7 @@ import type {
   DuelFormat,
   LoggedEvent,
   OpponentKind,
+  Player,
   RecipeKey,
   RecipeListOrder,
   RestrictionChoice,
@@ -33,7 +34,15 @@ import {
   withoutCard,
 } from './deck-builder.js'
 import type { Builder, DeckDraft } from './deck-builder.js'
-import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
+import {
+  actionViews,
+  automaticAction,
+  choicePicking,
+  choiceView,
+  offBoardCandidates,
+  pickView,
+  showsChoicePicker,
+} from './input-model.js'
 import { filterChoicesOf, filterPool } from './pool-filter.js'
 import {
   closedRecipeUrlOf,
@@ -51,11 +60,12 @@ import {
   KEEP_FOCUS,
   KEEP_SCROLL,
   actionsElement,
-  boardElement,
   choiceElement,
+  choosePickerElement,
   confirmElement,
   deckEditorElement,
   deckListElement,
+  duelElement,
   leaveElement,
   lobbyElement,
   myShareListElement,
@@ -65,9 +75,11 @@ import {
   recipeElement,
   recipeListElement,
   shareDialogElement,
+  viewPileElement,
   waitingForOverlayElement,
 } from './render.js'
 import type {
+  BoardPicking,
   ChosenRules,
   DeckEditorHandlers,
   DeckListHandlers,
@@ -83,10 +95,13 @@ import {
   cutInViews,
   lobbyView,
   opponentLine,
+  opponentName,
   overlayDurationMs,
   priorityReason,
   showsOverlay,
   transitionViews,
+  visibleCardViewsIn,
+  zoneOf,
 } from './view-model.js'
 import type { Overlay } from './view-model.js'
 
@@ -216,6 +231,23 @@ interface Picking {
   /** 選びかけをやめる。 */
   readonly onCancel: () => void
   readonly onMode: (mode: PickMode) => void
+}
+
+/**
+ * 対戦画面だけで使う、盤面をまたぐ選び方（ADR-0027）。カードの一覧の開閉と、「選ぶ」一覧での
+ * 選びかけを持つ。**盤面をクリックして操作する `Picking` とは別に持つ**——一覧は行える手が
+ * 何であっても（クリック・ボタンのどちらの操作のしかたでも）出るので、その状態を混ぜない。
+ */
+interface DuelInteraction {
+  /** 開いている「見る」一覧（捨札・リムーブの中身を見る）。無ければ何も開いていない。 */
+  readonly viewingPile: { readonly player: Player; readonly zone: '捨札' | 'リムーブゾーン' } | undefined
+  readonly onOpenPile: (player: Player, zone: '捨札' | 'リムーブゾーン') => void
+  readonly onClosePile: () => void
+  /** 「選ぶ」一覧で選びかけている候補の番号。まだ無ければ `undefined`。 */
+  readonly pickerPicked: number | undefined
+  readonly onPickerPick: (index: number | undefined) => void
+  /** 答えて（選ばない・これに決める・戻る・取り消す）次の状況に移る。選びかけを捨てる。 */
+  readonly onPickerAnswered: () => void
 }
 
 /** 操作のしかたを切り替えるところ。 */
@@ -419,6 +451,7 @@ function draw(
   lobby: Lobby,
   naming: Naming,
   building: DeckBuilding,
+  duel: DuelInteraction,
 ): void {
   // 打ち込みかけの場所は描き直すと消える。打っていた人には返す（`lobbyElement`）。
   const typing = document.activeElement?.classList.contains('lobby__name') === true
@@ -604,8 +637,8 @@ function draw(
       if (found !== undefined) connection.send({ kind: '選ぶ', answer: found })
     }
     const boardData = boardView(board)
-    const boardNode = boardElement(
-      boardData,
+    const cardsById = visibleCardViewsIn(board)
+    const boardPicking: BoardPicking | undefined =
       view !== undefined
         ? {
             pickable: view.pickable,
@@ -630,22 +663,18 @@ function draw(
               onSquare: (square) => answer(answering.answerOfSquare(square)),
               onHidden: (at) => answer(answering.answerOfHidden(at)),
             }
-          : undefined,
-    )
+          : undefined
 
-    const controlArea = controls()
-    // どのフェイズの誰の優先権かは、打つ前に見るものなので操作するところの一番上に置く。
-    controlArea.append(line('controls__turn', boardData.turn))
-    // 誰と打っているか（ADR-0020）。**上には置かない**——部屋が続く限り変わらないもので、毎手
-    // 見るのは優先権のほうである。盤面の見出しに混ぜないのは、`boardView` を盤面だけから
-    // 組み立てる切り分けを崩さないためである（相手が誰かは `席についた` から来る）。
-    controlArea.append(line('controls__opponent', opponentLine(stage.opponent)))
+    // 操作のしかたの切り替えは、行える手の見出しに添える（`render.ts` の `titleRow`）。
+    const mode = modeElement(picking)
+
+    const controlsChildren: HTMLElement[] = []
 
     // 相手が閉じたまま戻らないと、画面は相手の優先権のまま動かなくなる（#175）。**止まって
     // いる理由を読めるようにする。** 回線が切れただけなら戻ってくる（ADR-0016）ので、待つか
     // やめるかは人が決める。
     if (connected && !stage.opponentConnected) {
-      controlArea.append(line('controls__offline', '相手の繋がりが切れています。戻るのを待つか、やめてロビーに戻れます'))
+      controlsChildren.push(line('controls__offline', '相手の繋がりが切れています。戻るのを待つか、やめてロビーに戻れます'))
     }
 
     // 相手が何をして優先権が回ってきたのかを、打つところに 1 行で出す（#147）。
@@ -657,19 +686,21 @@ function draw(
       stage.choice === undefined && !showsOverlay(overlay) && automaticAction(session) === undefined
         ? priorityReason(board, stage.fresh)
         : undefined
-    if (reason !== undefined) controlArea.append(line('controls__reason', reason))
+    if (reason !== undefined) controlsChildren.push(line('controls__reason', reason))
 
-    // 操作のしかたの切り替えは、行える手の見出しに添える（`render.ts` の `titleRow`）。
-    const mode = modeElement(picking)
+    // 選ぶのを待たれている間、盤面に見えていない置き場から選ぶ候補だけなら、番号のボタンの
+    // かわりにカードの一覧を出す（ADR-0027）。一覧は盤面の上に重ねるので、ここには積まない。
+    const offBoard = stage.choice !== undefined ? offBoardCandidates(stage.choice, answering) : []
+    const showsPicker = stage.choice !== undefined && showsChoicePicker(offBoard)
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (!connected) {
       // 繋がっていない間は手を出さない。**押せなくするだけでは足りない。** 出ている手は切れる
       // 前の盤面のもので、繋ぎ直した先でまだ行えるとは限らない（ADR-0016）。何が起きているかは
       // 一番上の 1 行に出ている（`statusOf`）。
-      controlArea.append(line('controls__offline', '繋がるまで打てません'))
-    } else if (stage.choice !== undefined) {
-      controlArea.append(
+      controlsChildren.push(line('controls__offline', '繋がるまで打てません'))
+    } else if (stage.choice !== undefined && !showsPicker) {
+      controlsChildren.push(
         choiceElement(
           // 盤面から押せる候補は、ここに二重に出さない（#150）。押せるかどうかを決めているのは
           // `answering` そのものなので、演出が出ている間（`clicking` が false）は渡らず、
@@ -683,17 +714,17 @@ function draw(
           mode,
         ),
       )
-    } else if (showsOverlay(overlay)) {
+    } else if (stage.choice === undefined && showsOverlay(overlay)) {
       // 演出が出ている間は行える手を出さない（#115）。**待ち行列は実際の盤面より遅れている**
       // ので、出ている演出のフェイズと、行える手が指すフェイズが食い違う。押せなくするだけ
       // では食い違いが画面に残るので、手そのものを出さない。
       //
       // 選んでいる途中（`stage.choice`）は止めない。あれはすでに始まっている行動の中の選択
       // であって、待ち行列の遅れとは関係が無い。止めると、演出が消えるまで解決が進まなくなる。
-      controlArea.append(waitingForOverlayElement(mode))
-    } else if (view !== undefined) {
+      controlsChildren.push(waitingForOverlayElement(mode))
+    } else if (stage.choice === undefined && view !== undefined) {
       // クリックで操作する（#94）。盤面の上で示せない手だけをここに出す。
-      controlArea.append(
+      controlsChildren.push(
         pickElement(
           view,
           {
@@ -706,8 +737,8 @@ function draw(
           mode,
         ),
       )
-    } else {
-      controlArea.append(
+    } else if (stage.choice === undefined) {
+      controlsChildren.push(
         actionsElement(
           actionViews(board, stage.actions, stage.passOutcome),
           (action) => connection.send({ kind: '行動する', action }),
@@ -715,24 +746,81 @@ function draw(
         ),
       )
     }
+    // `showsPicker` の間、行える手のかわりに一覧が出るので、ここには何も積まない。一覧は
+    // 盤面・操作パネルの上に重なり、その中に戻る・取り消す口も持つ（`choosePickerElement`）。
 
     // ロビーに戻る口を出すのは、投げ出せる対戦の間だけである（`server` の `room.ts` の
     // `canLeave`）。決着した後はどちらの対戦でも戻れて、CPU との対戦と、相手が繋がっていない
     // 対戦は途中でも戻れる。**断るのはサーバである。** ここで決めているのは、押す口を出すか
     // どうかだけである。
     if (connected && (stage.opponent.kind === 'CPU' || !stage.opponentConnected || board.result !== undefined)) {
-      controlArea.append(
+      controlsChildren.push(
         leaveElement(board.result === undefined ? 'やめてロビーに戻る' : 'ロビーに戻る', lobby.onLeave),
       )
     }
 
-    // 操作するところを盤面より上に置く（#128）。盤面は縦に長いので、下にあると打つたびに
-    // 往復することになる。
-    root.append(controlArea)
-    root.append(boardNode)
+    const choosePicker =
+      showsPicker && stage.choice !== undefined
+        ? (() => {
+            const meta = choiceView(board, stage.choice as NonNullable<typeof stage.choice>, answering)
+            return choosePickerElement(
+              meta.asking,
+              offBoard,
+              (id) => cardsById.get(id),
+              duel.pickerPicked,
+              meta.mayDecline,
+              meta.mayRewind,
+              meta.mayCancel,
+              {
+                onPick: duel.onPickerPick,
+                onConfirm: (index) => {
+                  duel.onPickerAnswered()
+                  connection.send({ kind: '選ぶ', answer: index })
+                },
+                onDecline: () => {
+                  duel.onPickerAnswered()
+                  connection.send({ kind: '選ぶ', answer: '選ばない' })
+                },
+                onRewind: () => {
+                  duel.onPickerAnswered()
+                  connection.send({ kind: 'ひとつ戻る' })
+                },
+                onCancel: () => {
+                  duel.onPickerAnswered()
+                  connection.send({ kind: '取り消す' })
+                },
+              },
+            )
+          })()
+        : undefined
 
-    // 盤面より上に重ねる層なので最後に足す。押せる場所は塞がない（`style.css`）。
-    if (showsOverlay(overlay)) root.append(overlayElement(overlay))
+    // 捨札・リムーブの中身を見る一覧（ADR-0027）。押す前に選んでいる（`duel.viewingPile`）ものだけ出す。
+    const viewingPileElement =
+      duel.viewingPile !== undefined
+        ? viewPileElement(
+            zoneOf(duel.viewingPile.player === stage.seat ? boardData.own : boardData.opponent, duel.viewingPile.zone),
+            duel.onClosePile,
+          )
+        : undefined
+
+    // 演出・決着の層。決着は溜めない演出とは別で、消えずに出続ける（`overlayElement`）。
+    const overlayNode =
+      showsOverlay(overlay) || boardData.result !== undefined ? overlayElement(overlay, boardData.result) : undefined
+
+    root.append(
+      duelElement({
+        view: boardData,
+        ownName: stage.own,
+        opponentName: opponentName(stage.opponent),
+        controlsChildren,
+        picking: boardPicking,
+        onOpenPile: duel.onOpenPile,
+        viewingPile: viewingPileElement,
+        choosePicker,
+        overlay: overlayNode,
+        cardsById,
+      }),
+    )
   }
 
   // 組むところは、断られた理由を自分で持って出す（`Builder.refusal`）。二重に出さない。
@@ -843,6 +931,14 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let mode: PickMode = 'クリック'
   let pickedCard: CardId | undefined
 
+  /** 開いている「見る」一覧（捨札・リムーブの中身を見る、ADR-0027）。無ければ何も開いていない。 */
+  let viewingPile: { readonly player: Player; readonly zone: '捨札' | 'リムーブゾーン' } | undefined
+  /**
+   * 「選ぶ」一覧で、いま選びかけている候補の番号（ADR-0027）。まだ何も選んでいなければ
+   * `undefined`。答えて（選ばない・これに決める）次の状況に移るたびに捨てる。
+   */
+  let pickerPicked: number | undefined
+
   // いま出している演出と、後から出す分の待ち行列（#96・#104）。フェイズ・ターンの切り替わりと
   // 効果解決のカットインは、出す中身は別だが同じ待ち行列を通る（`view-model.ts` の
   // `Overlay`）。`fresh` は盤面が届くたびに新しい配列で届く（`session.ts`）ので、参照を
@@ -875,6 +971,28 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       mode = next
       pickedCard = undefined
       redraw()
+    },
+  })
+
+  const duelInteraction = (): DuelInteraction => ({
+    viewingPile,
+    onOpenPile: (player, zone) => {
+      viewingPile = { player, zone }
+      redraw()
+    },
+    onClosePile: () => {
+      viewingPile = undefined
+      redraw()
+    },
+    pickerPicked,
+    onPickerPick: (index) => {
+      pickerPicked = index
+      redraw()
+    },
+    // 答えは送るだけで、描き直さない。届いた返事（新しい盤面か選んでほしい）が redraw を呼ぶ
+    // （`applyMessage` 経由）——ここで呼ぶと、答えが届く前の古い状態のまま一瞬描き直される。
+    onPickerAnswered: () => {
+      pickerPicked = undefined
     },
   })
 
@@ -1300,7 +1418,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    */
   const redraw = (): void => {
     try {
-      draw(root, session, link, connection, overlay, picking(), lobby(), naming(), building())
+      draw(root, session, link, connection, overlay, picking(), lobby(), naming(), building(), duelInteraction())
     } catch (error) {
       console.error('画面を組み立てられませんでした:', error)
       root.replaceChildren(line('status', '画面を組み立てられませんでした。ページを再読み込みしてください'))
