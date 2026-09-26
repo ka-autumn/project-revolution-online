@@ -1033,7 +1033,13 @@ function rejoin(
     deliveries: [
       {
         to: participant,
-        message: { kind: '席についた', seat, room: room.code, opponent: opponentOf(room, facing, names) },
+        message: {
+          kind: '席についた',
+          seat,
+          room: room.code,
+          opponent: opponentOf(room, facing, names),
+          own: names(participant),
+        },
       },
       ...boards(duel, pendingProgress(duel)?.board).filter((delivery) => delivery.to === participant),
       ...pendingChoice(duel, seat),
@@ -1150,6 +1156,7 @@ function start(
           room: room.code,
           // 相手は、もう一方の席にいる人である。**2 人ぶんで別のものになる。**
           opponent: opponentOf(seated, duel.seats[player === '先攻' ? '後攻' : '先攻'], names),
+          own: names(to),
         } as const,
       })),
       ...boards(duel),

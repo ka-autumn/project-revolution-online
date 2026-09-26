@@ -310,6 +310,27 @@ export function hopeOf(card: Card): HopeAbility | undefined {
 }
 
 /**
+ * プランゾーンにあることが効果に関わるキーワード能力（対戦画面のカードの面に宝石のアイコンで
+ * 出す、ADR-0027）。「幸運」「苦労」はまだ実装していないキーワードで、`hasKeyword` では検出
+ * できない。実装され次第、ここに判定を足す。
+ */
+export type PlanKeyword = '夢' | '希望' | '幸運' | '苦労'
+
+/**
+ * そのカードが持つ、プランゾーンに関わるキーワード能力の並び（`PlanKeyword`）。
+ *
+ * カード名の下に並べるアイコンのためのもので、判定そのものは `hasDream`・`hopeOf` を使い回す。
+ * 新しく判定を作らない。
+ */
+export function planKeywordsOf(card: Card): readonly PlanKeyword[] {
+  const keywords: PlanKeyword[] = []
+  if (hasDream(card)) keywords.push('夢')
+  if (hopeOf(card) !== undefined) keywords.push('希望')
+
+  return keywords
+}
+
+/**
  * そのカードが持つ起動型能力（総合ルール 第4部 第2章）。
  *
  * 並びの順に意味は無いが、**どれを起動するかは位置で指す**（`legal-action.ts` の

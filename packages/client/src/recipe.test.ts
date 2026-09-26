@@ -293,12 +293,12 @@ describe('レシピの画面', () => {
   const POOL: readonly WirePoolCard[] = [
     {
       key: 'TEST-0',
-      face: { type: 'ユニット', name: 'テスト・カードＡ', level: 0, colors: [], stars: 0, reverseStars: 0, attributes: [], text: [], bp: 0, sp: 0, moveIcon: [] },
+      face: { type: 'ユニット', name: 'テスト・カードＡ', level: 0, colors: [], stars: 0, reverseStars: 0, attributes: [], keywords: [], text: [], bp: 0, sp: 0, moveIcon: [] },
       expansions: [],
     },
     {
       key: 'TEST-1',
-      face: { type: 'ユニット', name: 'テスト・カードＢ', level: 0, colors: [], stars: 0, reverseStars: 0, attributes: [], text: [], bp: 0, sp: 0, moveIcon: [] },
+      face: { type: 'ユニット', name: 'テスト・カードＢ', level: 0, colors: [], stars: 0, reverseStars: 0, attributes: [], keywords: [], text: [], bp: 0, sp: 0, moveIcon: [] },
       expansions: [],
     },
   ]

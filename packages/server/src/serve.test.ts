@@ -886,6 +886,7 @@ describe('ログインの設定があるとき', () => {
       stars: 0,
       reverseStars: 0,
       attributes: [],
+      keywords: [],
       text: [],
     })
     await client.close()

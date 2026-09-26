@@ -1,18 +1,23 @@
-import { areaOf, indexOfSquare, lineOf, PLAYERS, squareFromView } from '@revolution/engine'
+import { areaOf, indexOfSquare, lineOf, PHASES, PLAYERS, squareFromView } from '@revolution/engine'
 import type {
   Area,
   Attribute,
   BattleStep,
   CardId,
+  CardType,
+  Color,
   EffectiveUnitData,
   DuelEvent,
   DuelResult,
   LegalAction,
   LoggedEvent,
   LoggedInstruction,
+  MoveDirection,
   Opponent,
   Orientation,
   OrientedZone,
+  Phase,
+  PlanKeyword,
   Player,
   PlayerZone,
   Procedure,
@@ -41,7 +46,14 @@ import type {
  * から画面に出ない。
  */
 
-/** カードの詳細に出す 1 行。 */
+/**
+ * カードの詳細に出す 1 行。
+ *
+ * 対戦画面のカードでは使わない。対戦画面のカードの詳細は項目ごとに構造化した値を持つ
+ * （`CardView` の `表`、ADR-0027）。この行と値の組は、デッキを組むところ・共有ページのように、
+ * 盤面の外でカードの表記を一覧にする画面（`deck-builder.ts` の `printedDetailsOf`）のためのもの
+ * として残す。
+ */
 export interface DetailRow {
   readonly label: string
   readonly value: string
@@ -57,6 +69,12 @@ export interface DetailRow {
 export interface ModifiedData {
   /** 修整後のＢＰ。書かれている数字と同じなら `undefined`。 */
   readonly bp: number | undefined
+  /**
+   * `bp` が書かれている数字から上がったか、下がったか。`bp` が `undefined` なら、これも
+   * `undefined`。上がった・下がったの色と▲▼（対戦画面、ADR-0027）は、この値だけで決める
+   * （render.ts に判断を持たせない）。
+   */
+  readonly bpDirection: '上' | '下' | undefined
   /** 継続効果によって加わった属性だけ。加わっていなければ空。 */
   readonly addedAttributes: readonly Attribute[]
 }
@@ -79,24 +97,43 @@ export type CardView =
        * ので、スクエア単位では決まらない。
        */
       readonly controlledBy: '自分' | '相手'
-      /** 小さいカードに添える 1 行。「Lv1 赤 BP1000 SP1000」のような形。 */
-      readonly summary: string
+      /**
+       * 持ち主が支配者と違う時だけ、その持ち主（総合ルール 第4部 第7章 1）。同じなら `undefined`。
+       *
+       * 支配者と食い違うのは稀な場面（`duel.ts` の `instantiate`）なので、いつも出す項目にはせず、
+       * 違う時だけ画面に出す（対戦画面ではカードの詳細の補足の 1 行に添える、ADR-0027）。
+       */
+      readonly ownedBy: '自分' | '相手' | undefined
+      readonly level: number
+      readonly colors: readonly Color[]
+      readonly type: CardType
+      /** ユニットだけが持つ（総合ルール 第2部 第14章 1）。ユニットでなければ `undefined`。 */
+      readonly bp: number | undefined
+      /** ユニットだけが持つ（総合ルール 第2部 第15章 1）。ユニットでなければ `undefined`。 */
+      readonly sp: number | undefined
       /**
        * 継続効果を適用した後のＢＰと属性（#91）。修整を受けていなければ `undefined`。
        *
        * **持つのはスクエアにいるユニットだけである。** 継続効果がデータを変えるのはそこに
        * いるユニットで（総合ルール 第4部 第12章）、盤面もその分だけを送ってくる
-       * （`perspective.ts` の `EffectiveUnitData`）。
+       * （`perspective.ts` の `EffectiveUnitData`）。ＳＰを修整する規定は無いので、`bp` だけ持つ。
        */
       readonly modified: ModifiedData | undefined
-      /** 詳しく見たときに出す全部。行と値の組で書けるものだけがここに入る。 */
-      readonly details: readonly DetailRow[]
+      readonly stars: number
+      readonly reverseStars: number
+      /** ユニットだけが持つ（総合ルール 第2部 第11章）。持たなければ空。 */
+      readonly moveIcon: readonly MoveDirection[]
+      /** トラップだけが持つ（同 第12章）。持たなければ空。 */
+      readonly triggerIcon: readonly Square[]
+      /** プランゾーンに関わるキーワード能力（対戦画面のカードの面のアイコン、ADR-0027）。 */
+      readonly keywords: readonly PlanKeyword[]
+      /** カードに書かれている属性（総合ルール 第2部 第13章）。持たなければ空。 */
+      readonly attributes: readonly Attribute[]
       /**
        * カードに印刷されているテキスト（#93）。改行ごとに 1 行（総合ルール 第2部 第10章 1、
        * 第4部 第1章 3）。書かれていなければ空。
        *
-       * `details` に入れていないのは、これが「項目と値」ではなく**そのまま読ませる文**だから
-       * である。行の並びのまま渡して、改行を潰さずに出す。
+       * そのまま読ませる文である。行の並びのまま渡して、改行を潰さずに出す。
        */
       readonly text: readonly string[]
       readonly orientation: Orientation
@@ -161,6 +198,19 @@ export interface SideView {
 }
 
 /**
+ * その側の、名前で指した 1 つのゾーン（対戦画面の盤面の並べ方、ADR-0027）。
+ *
+ * `ZONE_ORDER` にある名前しか渡さない。どのプレイヤーもすべての種類のゾーンを持つ
+ * （`sideView`）ので、無い名前を渡さない限り見つからないことは無い。
+ */
+export function zoneOf(side: SideView, zone: PlayerZone): ZoneView {
+  const found = side.zones.find((each) => each.zone === zone)
+  if (found === undefined) throw new Error(`ゾーンが無い: ${zone}`)
+
+  return found
+}
+
+/**
  * 解決を待っている能力 1 つ（総合ルール 第2部 第21章 11）。
  *
  * **何をする能力かは出せない。** 効果は関数なので射影の時点で落としてある
@@ -176,6 +226,12 @@ export interface AbilityView {
 
 /** 発生しているバトル（総合ルール 第3部 第11章）。 */
 export interface BattleView {
+  /**
+   * 発生しているスクエア（見る人の向きに直した後、`squareViews` と同じ座標）。
+   *
+   * 進行中の手順の帯をどのスクエアに重ねて出すか（ADR-0027）を、盤面の側で結び付けるために持つ。
+   */
+  readonly square: Square
   /** 見る人から見たスクエアの呼び名。 */
   readonly where: string
   readonly step: BattleStep
@@ -316,11 +372,43 @@ export function overlayDurationMs(waiting: number): number {
   return Math.min(FULL_MS, Math.max(SHORTEST_MS, share))
 }
 
+/**
+ * フェイズ 1 つが、いま進行のどこにあるか（対戦画面のフェイズの一覧、ADR-0027）。
+ *
+ * ターンはこの 6 つを順に進む（`turn.ts` の `PHASES`）。判定はここでする。一覧の並べ方
+ * （済んだもの・今のもの・これからのものを見分けられるようにする）は画面の決まりだが、その並びを
+ * 決める材料は届いた `Turn.phase` の 1 つだけなので、見比べる判断を `render.ts` に持たせない。
+ */
+export interface PhaseView {
+  readonly phase: Phase
+  readonly status: '済み' | '今' | 'これから'
+}
+
+/** フェイズの一覧。いまのフェイズより前を「済み」、同じものを「今」、後を「これから」にする。 */
+function phaseViews(current: Phase): readonly PhaseView[] {
+  const index = PHASES.indexOf(current)
+
+  return PHASES.map((phase, i): PhaseView => ({
+    phase,
+    status: i < index ? '済み' : i === index ? '今' : 'これから',
+  }))
+}
+
+/** 決着の言い方と種類。色や配色は render.ts が種類だけから決める（render.ts に判断を持たせない）。 */
+export interface ResultView {
+  readonly label: string
+  readonly kind: '勝利' | '敗北' | '引き分け'
+}
+
 /** 画面に出す盤面ひととおり。 */
 export interface BoardView {
   readonly seat: Player
-  /** 「第 3 ターン・メインフェイズ・自分の優先権」のような 1 行。 */
-  readonly turn: string
+  /** 「第 3 ターン」の 1 行。 */
+  readonly turnNumber: string
+  /** 「自分のターン・相手の優先権」のような 1 行。 */
+  readonly priority: string
+  /** フェイズの一覧（ADR-0027）。 */
+  readonly phases: readonly PhaseView[]
   /** 発生しているバトル。無ければ `undefined`。 */
   readonly battle: BattleView | undefined
   /**
@@ -343,8 +431,8 @@ export interface BoardView {
    * 外側が上から下の行、内側が左から右の列である。
    */
   readonly squares: readonly (readonly SquareView[])[]
-  /** 決着していれば、その 1 行。 */
-  readonly result: string | undefined
+  /** 決着していれば、その言い方と勝敗の種類。まだなら `undefined`。 */
+  readonly result: ResultView | undefined
   /** 起きたできごと。新しいものから並ぶ（#95、#111）。 */
   readonly log: readonly LogLine[]
 }
@@ -364,6 +452,13 @@ const ZONE_ORDER: readonly PlayerZone[] = [
 
 /** 中身を並べず、枚数だけを出すゾーン。 */
 const COUNTED_ZONES: readonly PlayerZone[] = ['山札']
+
+/**
+ * 一番上の 1 枚しか押せない束（ADR-0027）。押すと「見る」一覧が開くので、盤面から答える
+ * 先にはしない（束を押した時に選んだことになると、開く動作と重なってしまう）。2 枚目以降は
+ * そもそも盤面に描かれない。候補になったときは「選ぶ」一覧に回す（`offBoardCandidates`）。
+ */
+const PILE_ZONES: readonly PlayerZone[] = ['捨札', 'リムーブゾーン']
 
 const SQUARE_INDEXES: readonly SquareIndex[] = [0, 1, 2]
 
@@ -392,6 +487,20 @@ function visibleInstances(board: WirePerspective): readonly WireCardInstance[] {
   ]
 }
 
+/**
+ * 表側が見えているカードすべてを、識別子で引ける形にする（対戦画面のカードの一覧、ADR-0027）。
+ *
+ * `zoneOf` で引けるものだけでは足りない。山札は枚数しか出さない（`COUNTED_ZONES`）ので、
+ * 効果で山札から選ばせる候補（`WireCandidate` の `見えている`）はどのゾーンの一覧にも載って
+ * いない。`visibleInstances` は `COUNTED_ZONES` を気にせず届いたものをすべて拾うので、そこから
+ * 引き直す。
+ */
+export function visibleCardViewsIn(board: WirePerspective): ReadonlyMap<CardId, CardView> {
+  return new Map(
+    visibleInstances(board).map((instance) => [instance.id, faceUpView(instance, board.viewer, board.effective)]),
+  )
+}
+
 /** 盤面が実際に描いているもの（#150）。 */
 export interface DrawnOnBoard {
   /** 表側が見えていて、押すところが盤面にあるカード。 */
@@ -407,6 +516,8 @@ export interface DrawnOnBoard {
  * リゾルブゾーンまで見ている。押せるかどうかをそこから決めると、**画面のどこにも無いカードが
  * 押せる扱いになる。** 数えるのは実際に描いているところ——スクエア（`squareViews`）と、中身を
  * 並べるゾーン（`zoneView`）——だけである。山札は枚数しか出さない（`COUNTED_ZONES`）ので入らない。
+ * 束（`PILE_ZONES`）は一番上の 1 枚しか描かず、押すと答えではなく「見る」一覧が開くので、
+ * 盤面から答えられる扱いにはしない。
  */
 export function drawnOnBoard(board: WirePerspective): DrawnOnBoard {
   const ids = new Set<CardId>(board.squares.flat().map((instance) => instance.id))
@@ -414,7 +525,7 @@ export function drawnOnBoard(board: WirePerspective): DrawnOnBoard {
 
   for (const player of PLAYERS) {
     for (const zone of ZONE_ORDER) {
-      if (COUNTED_ZONES.includes(zone)) continue
+      if (COUNTED_ZONES.includes(zone) || PILE_ZONES.includes(zone)) continue
       board.zones[player][zone].forEach((card, index) => {
         if (card.kind === '見えている') ids.add(card.instance.id)
         else positions.add(keyOfPosition({ player, zone, index }))
@@ -477,7 +588,7 @@ export function squareLabel(viewer: Player, square: Square): string {
  * なので、先攻から見た呼び名がそのまま「カードに描かれている位置」の呼び名になる。**盤面の
  * どこかを指しているのではない**ので、見る人が誰かとは関係しない。
  */
-function printedSquareLabel(printed: Square): string {
+export function printedSquareLabel(printed: Square): string {
   return squareLabel('先攻', printed)
 }
 
@@ -515,54 +626,6 @@ export function summaryOf(face: WireCardFace, modified: ModifiedData | undefined
 }
 
 /**
- * 詳しく見たときに出す全部。
- *
- * 持っていない項目は行ごと出さない（スターを持たないカードに「スター 0」と書かない）。
- * **能力テキストはここに無い。** 通信に載っていないためで、載せるのは #93。
- */
-function detailsOf(
-  instance: WireCardInstance,
-  viewer: Player,
-  modified: ModifiedData | undefined,
-): readonly DetailRow[] {
-  const face = instance.card
-  const rows: DetailRow[] = [
-    { label: '種別', value: face.type },
-    { label: 'レベル', value: String(face.level) },
-    { label: '色', value: colorsOf(face) },
-    { label: '支配者', value: whoseLabel(viewer, instance.controller) },
-  ]
-
-  // 持ち主と支配者は食い違いうる。同じなら 1 行で足りる。
-  if (instance.owner !== instance.controller) {
-    rows.push({ label: '持ち主', value: whoseLabel(viewer, instance.owner) })
-  }
-
-  if (face.type === 'ユニット') {
-    rows.push({ label: 'ＢＰ', value: String(face.bp) })
-    // 印刷された数字の次に置く。同じ「ＢＰ」でも別のものなので、行を分けて両方出す（#91）。
-    if (modified?.bp !== undefined) rows.push({ label: 'ＢＰ（修整後）', value: String(modified.bp) })
-    rows.push({ label: 'ＳＰ', value: String(face.sp) })
-    if (face.moveIcon.length > 0) rows.push({ label: 'ムーブアイコン', value: face.moveIcon.join('・') })
-  }
-  if (face.type === 'トラップ' && face.triggerIcon.length > 0) {
-    rows.push({ label: 'トリガーアイコン', value: face.triggerIcon.map(printedSquareLabel).join('・') })
-  }
-  if (face.stars > 0) rows.push({ label: 'スター', value: String(face.stars) })
-  if (face.reverseStars > 0) rows.push({ label: 'リバーススター', value: String(face.reverseStars) })
-  if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join('・') })
-  // 加わった属性もカードには書かれていない（総合ルール 第4部 第12章 5-2 の(3)）ので分ける。
-  if (modified !== undefined && modified.addedAttributes.length > 0) {
-    rows.push({ label: '加わった属性', value: modified.addedAttributes.join('・') })
-  }
-
-  rows.push({ label: '向き', value: instance.orientation })
-  if (instance.damage > 0) rows.push({ label: 'ダメージ', value: String(instance.damage) })
-
-  return rows
-}
-
-/**
  * 継続効果によって、カードに書かれているのとは違うデータになっているところ（#91）。
  * 違いが無ければ `undefined`。
  *
@@ -579,12 +642,14 @@ function modifiedDataOf(
 
   const face = instance.card
   const bp = face.type === 'ユニット' && applied.bp !== face.bp ? applied.bp : undefined
+  const bpDirection: ModifiedData['bpDirection'] =
+    face.type === 'ユニット' && bp !== undefined ? (bp > face.bp ? '上' : '下') : undefined
   const addedAttributes = [...new Set(applied.attributes)].filter(
     (attribute) => !face.attributes.includes(attribute),
   )
   if (bp === undefined && addedAttributes.length === 0) return undefined
 
-  return { bp, addedAttributes }
+  return { bp, bpDirection, addedAttributes }
 }
 
 function faceUpView(
@@ -593,17 +658,31 @@ function faceUpView(
   effective: readonly EffectiveUnitData[] = [],
 ): CardView {
   const modified = modifiedDataOf(instance, effective)
+  const face = instance.card
 
   return {
     kind: '表',
     id: instance.id,
-    name: instance.card.name,
+    name: face.name,
     controlledBy: whoseLabel(viewer, instance.controller),
-    summary: summaryOf(instance.card, modified),
+    // 持ち主と支配者は食い違いうる。同じなら出さない（#91 と同じ「変わったところだけ出す」考え方）。
+    ownedBy: instance.owner === instance.controller ? undefined : whoseLabel(viewer, instance.owner),
+    level: face.level,
+    colors: face.colors,
+    type: face.type,
+    bp: face.type === 'ユニット' ? face.bp : undefined,
+    sp: face.type === 'ユニット' ? face.sp : undefined,
     modified,
-    details: detailsOf(instance, viewer, modified),
+    stars: face.stars,
+    reverseStars: face.reverseStars,
+    moveIcon: face.type === 'ユニット' ? face.moveIcon : [],
+    triggerIcon: face.type === 'トラップ' ? face.triggerIcon : [],
+    // 古いサーバは `keywords` を送らない。届かなければ空として扱う（#207、
+    // `room.occupants ?? []` と同じ備え）。
+    keywords: face.keywords ?? [],
+    attributes: face.attributes,
     // 見えていないカードのテキストは、そもそも届かない（`wire.ts` の `WireWrittenCard`）。
-    text: instance.card.text,
+    text: face.text,
     orientation: instance.orientation,
     damage: instance.damage,
   }
@@ -689,13 +768,20 @@ function squareViews(board: WirePerspective): readonly (readonly SquareView[])[]
   )
 }
 
-/** ターンの様子を 1 行にする。 */
-function turnLine(board: WirePerspective): string {
+/** 「第 3 ターン」の 1 行。 */
+function turnNumberLine(board: WirePerspective): string {
+  return `第 ${board.turn.number} ターン`
+}
+
+/**
+ * 「自分のターン・相手の優先権」のような 1 行。
+ *
+ * フェイズの名前は一覧（`phaseViews`）のほうに出るので、ここでは重ねて言わない。
+ */
+function priorityLine(board: WirePerspective): string {
   const whose = (player: Player): string => whoseOf(board, player)
 
-  return `第 ${board.turn.number} ターン・${whose(board.turn.active)}のターン・${board.turn.phase}・${whose(
-    board.turn.priority,
-  )}の優先権`
+  return `${whose(board.turn.active)}のターン・${whose(board.turn.priority)}の優先権`
 }
 
 /**
@@ -709,6 +795,7 @@ function battleView(board: WirePerspective, names: ReadonlyMap<CardId, string>):
   if (battle === undefined) return undefined
 
   return {
+    square: battle.square,
     where: squareLabel(board.viewer, battle.square),
     step: battle.step,
     attacker: nameOf(names, battle.attacker),
@@ -748,9 +835,18 @@ function abilityViews(
   }))
 }
 
-/** 決着していれば、その 1 行。 */
-function resultLine(board: WirePerspective): string | undefined {
-  return board.result === undefined ? undefined : resultLabel(board.result, board.viewer)
+/** 決着していれば、その言い方と勝敗の種類。 */
+function resultLine(board: WirePerspective): ResultView | undefined {
+  if (board.result === undefined) return undefined
+
+  return { label: resultLabel(board.result, board.viewer), kind: resultKindOf(board.result, board.viewer) }
+}
+
+/** 決着した勝敗の種類を、見る人から見た言い方にする。勝利は金、敗北は寒色、引き分けは灰色の配色になる（ADR-0027）。 */
+function resultKindOf(result: DuelResult, viewer: Player): ResultView['kind'] {
+  if (result.kind === '引き分け') return '引き分け'
+
+  return result.winner === viewer ? '勝利' : '敗北'
 }
 
 /**
@@ -1341,6 +1437,11 @@ export function opponentLine(opponent: Opponent): string {
   return opponent.kind === 'CPU' ? 'CPU と対戦中' : `${opponent.name} と対戦中`
 }
 
+/** 相手の表示名だけ（対戦画面のプレイヤーの枠、ADR-0027）。`opponentLine` と違って文にしない。 */
+export function opponentName(opponent: Opponent): string {
+  return opponent.kind === 'CPU' ? 'CPU' : opponent.name
+}
+
 /**
  * CPU との対戦の 1 行（#195）。**誰の CPU 戦かが分かる**ように、打っている人の名前を添える。
  * 名前が届かなければ（古いサーバ、`occupantsLine` と同じ理由）、名前を除いた形にする。
@@ -1404,7 +1505,9 @@ export function boardView(board: WirePerspective): BoardView {
 
   return {
     seat: board.viewer,
-    turn: turnLine(board),
+    turnNumber: turnNumberLine(board),
+    priority: priorityLine(board),
+    phases: phaseViews(board.turn.phase),
     battle: battleView(board, names),
     smashJudgments: smashJudgmentViews(board, names),
     bank: abilityViews(board, board.bank, names),

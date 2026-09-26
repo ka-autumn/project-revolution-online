@@ -27,6 +27,8 @@ export interface ActionView {
   /** 押したときにサーバへ送る手。届いたものをそのまま返す。 */
   readonly action: LegalAction
   readonly label: string
+  /** 一番よく押す「フェイズ・ステップを進める」手か。金の地で目立たせる（ADR-0027）。 */
+  readonly primary: boolean
 }
 
 /** 選ぶ候補 1 つ。 */
@@ -142,7 +144,16 @@ export function actionViews(
 ): readonly ActionView[] {
   const names = namesIn(board)
 
-  return actions.map((action) => ({ action, label: labelOf(action, board.viewer, names, passOutcome) }))
+  return actions.map((action) => ({
+    action,
+    label: labelOf(action, board.viewer, names, passOutcome),
+    primary: isPrimaryAction(action),
+  }))
+}
+
+/** 一番よく押す「フェイズ・ステップを進める」手か（ADR-0027）。優先権の放棄がそれにあたる。 */
+function isPrimaryAction(action: LegalAction): boolean {
+  return action.kind === '優先権を放棄する'
 }
 
 /**
@@ -383,6 +394,7 @@ export function pickView(
   const view = (action: LegalAction): ActionView => ({
     action,
     label: labelOf(action, board.viewer, names, passOutcome),
+    primary: isPrimaryAction(action),
   })
 
   const targeted = actions.filter((action) => targetOf(action) !== undefined)
@@ -499,4 +511,36 @@ export function choicePicking(board: WirePerspective, choice: WireChoice): Choic
       ...[...byPosition.values()].map((each) => each.answer),
     ].sort((a, b) => a - b),
   }
+}
+
+/** 選ぶ候補のうち、盤面から押せないもの。`picking` が渡されなければ全部が該当する。 */
+export function offBoardCandidates(
+  choice: WireChoice,
+  picking: ChoicePicking | undefined,
+): readonly { readonly index: number; readonly candidate: WireCandidate }[] {
+  return choice.candidates.flatMap((candidate, index) =>
+    picking !== undefined && picking.onBoard.includes(index) ? [] : [{ index, candidate }],
+  )
+}
+
+/**
+ * カードの一覧（`render.ts` の `pickerElement` の「選ぶ」、ADR-0027）を出すべきか。
+ *
+ * ADR の「盤面に見えていない置き場から選ぶときだけ使う」のとおり、候補が 1 つでも盤面から
+ * 押せるなら出さない。盤面の候補と一覧の候補が混ざると、盤面の候補を押す場所が一覧に
+ * 覆われてしまう（#207）。混ざる場合は、これまでどおり番号のボタンで並べる
+ * （盤面から押せる分は `choiceView` が二重に出さない、#150）。
+ *
+ * 候補が全部盤面の外にあるとしても、能力やスクエアが混じる場面は番号のボタンのままにする。
+ * 一覧はカードの面を並べるためのものなので、カードではない候補を描く先が無い。
+ */
+export function showsChoicePicker(
+  choice: WireChoice,
+  offBoard: readonly { readonly candidate: WireCandidate }[],
+): boolean {
+  return (
+    offBoard.length > 0 &&
+    offBoard.length === choice.candidates.length &&
+    offBoard.every(({ candidate }) => candidate.kind === '見えている' || candidate.kind === '見えていない')
+  )
 }

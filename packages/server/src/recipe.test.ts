@@ -232,6 +232,7 @@ describe('共有を公開ページの形にする', () => {
       stars: 0,
       reverseStars: 0,
       attributes: [],
+      keywords: [],
       text: ['能力テキスト。'],
       bp: 100,
       sp: 100,
@@ -249,6 +250,7 @@ describe('共有を公開ページの形にする', () => {
       stars: 0,
       reverseStars: 0,
       attributes: [],
+      keywords: [],
       text: ['効果テキスト。'],
     },
   }

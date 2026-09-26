@@ -426,8 +426,8 @@ export function cardDetailOf(pool: readonly WirePoolCard[], key: string): CardDe
 /**
  * カードに書かれていることの全部（詳しく出すところ）。
  *
- * 盤面の詳細（`view-model.ts` の `detailsOf`）から、盤面に置かれて初めて決まるもの——支配者・
- * 向き・ダメージ・修整——を除いたものである。持っていない項目は行ごと出さない。
+ * 印刷されている表記だけを持つ。盤面に置かれて初めて決まるもの——支配者・向き・ダメージ・
+ * 修整——は持たない。持っていない項目は行ごと出さない。
  */
 export function printedDetailsOf(face: WireCardFace): readonly DetailRow[] {
   const rows: DetailRow[] = [

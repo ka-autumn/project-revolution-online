@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { CHOICE_PURPOSES, indexOfSquare } from '@revolution/engine'
 import type { LegalAction, PassOutcome, Player, WireChoice, WirePerspective } from '@revolution/engine'
-import { actionViews, automaticAction, choicePicking, choiceView, pickView } from './input-model.js'
+import {
+  actionViews,
+  automaticAction,
+  choicePicking,
+  choiceView,
+  offBoardCandidates,
+  pickView,
+  showsChoicePicker,
+} from './input-model.js'
 import { applyMessage, connecting } from './session.js'
 import type { Session } from './session.js'
 import { emptyBoard, instance, unitFace, withZone } from './test-support.js'
@@ -61,6 +69,19 @@ describe('行える手', () => {
 
   it('何も届かなければ、何も並ばない', () => {
     expect(actionViews(board(), [], undefined)).toEqual([])
+  })
+
+  /**
+   * 一番よく押す「フェイズ・ステップを進める」手（ADR-0027）。金の地で
+   * 目立たせるかどうかは、この値だけで決まる（render.ts に判断を持たせない）。
+   */
+  it('優先権を放棄する手だけが、目立たせる手になる', () => {
+    const actions: readonly LegalAction[] = [
+      { kind: '優先権を放棄する' },
+      { kind: 'プランする' },
+    ]
+
+    expect(actionViews(board(), actions, undefined).map((view) => view.primary)).toEqual([true, false])
   })
 
   it.each([
@@ -463,6 +484,7 @@ describe('自動で送る手', () => {
       seat: '先攻',
       room: 'あいことば',
       opponent: { kind: '人間', name: 'あいて' },
+      own: 'わたし',
     })
     return applyMessage(seated, { kind: '盤面', perspective: board(), actions, passOutcome: undefined })
   }
@@ -918,5 +940,121 @@ describe('盤面から押せる候補は、ボタンに出さない', () => {
     expect(view.asking).toBe('プレイのコストとしてフリーズするエネルギーを選んでください')
     expect(view.mayRewind).toBe(true)
     expect(view.mayCancel).toBe(true)
+  })
+})
+
+/**
+ * 束（捨札・リムーブ）は一番上の 1 枚しか盤面に描かず、押しても「見る」一覧が開くだけで
+ * 答えたことにはならない。盤面から答えられる扱いにすると、実際にはクリックの手当てが無い
+ * ので、候補は盤面ではなく「選ぶ」一覧（`offBoardCandidates`）に回す。
+ */
+describe('束（捨札・リムーブ）は盤面から押せない', () => {
+  const choice = (candidates: WireChoice['candidates']): WireChoice => ({
+    player: '先攻',
+    purpose: 'プレイのコスト',
+    mayDecline: false,
+    answered: 0,
+    mayGoBack: true,
+    candidates,
+  })
+
+  const withDiscard = (): WirePerspective =>
+    withZone(board(), '先攻', '捨札', [
+      { kind: '見えている', instance: instance('捨札の1枚', '先攻', { card: unitFace('テスト・捨札の1枚') }) },
+    ])
+
+  it.each(['捨札', 'リムーブゾーン'] as const)('%s の一番上の札も押せない', (zone) => {
+    const withPile = (): WirePerspective =>
+      withZone(board(), '先攻', zone, [
+        { kind: '見えている', instance: instance('束の1枚', '先攻', { card: unitFace('テスト・束の1枚') }) },
+      ])
+    const picking = choicePicking(withPile(), choice([{ kind: '見えている', card: '束の1枚' }]))
+
+    expect(picking.pickable).toEqual([])
+    expect(picking.answerOf('束の1枚')).toBeUndefined()
+  })
+
+  it('候補としては、「選ぶ」一覧に回る', () => {
+    const asked = choice([{ kind: '見えている', card: '捨札の1枚' }])
+    const picking = choicePicking(withDiscard(), asked)
+
+    expect(offBoardCandidates(asked, picking)).toEqual([{ index: 0, candidate: asked.candidates[0] }])
+  })
+})
+
+/**
+ * 「選ぶ」一覧（`showsChoicePicker`）を出すかどうかは、盤面のどこに何があるかだけで決まる。
+ * 操作のしかた（クリック・ボタン）や演出・繋がりの状態とは関係が無い——それらは `choicePicking` を渡すかどうかで区別するもので、渡す判断そのものは
+ * `index.ts` の役目である。ここで確かめるのは、渡された `choicePicking` の結果から一覧を
+ * 出すかどうかを決める部分だけである。
+ */
+describe('offBoardCandidates・showsChoicePicker', () => {
+  const choice = (candidates: WireChoice['candidates']): WireChoice => ({
+    player: '先攻',
+    purpose: 'プレイのコスト',
+    mayDecline: false,
+    answered: 0,
+    mayGoBack: true,
+    candidates,
+  })
+
+  it('候補が空なら、一覧は出さない', () => {
+    const asked = choice([])
+
+    expect(offBoardCandidates(asked, choicePicking(board(), asked))).toEqual([])
+    expect(showsChoicePicker(asked, [])).toBe(false)
+  })
+
+  it('候補が全部盤面にあるなら、一覧は出さない', () => {
+    const asked = choice([{ kind: '見えている', card: 'スクエアの1枚' }])
+    const picking = choicePicking(board(), asked)
+
+    expect(offBoardCandidates(asked, picking)).toEqual([])
+    expect(showsChoicePicker(asked, offBoardCandidates(asked, picking))).toBe(false)
+  })
+
+  it('候補が全部盤面の外（カードだけ）なら、一覧を出す', () => {
+    const asked = choice([{ kind: '見えていない', at: undefined }])
+    const picking = choicePicking(board(), asked)
+    const offBoard = offBoardCandidates(asked, picking)
+
+    expect(offBoard).toEqual([{ index: 0, candidate: asked.candidates[0] }])
+    expect(showsChoicePicker(asked, offBoard)).toBe(true)
+  })
+
+  /**
+   * 盤面の候補と盤面の外の候補が混ざる場面。一覧を出すと、盤面の候補を押す場所が一覧に
+   * 覆われてしまうので、
+   * 候補が全部盤面の外にあるのでない限り出さない。
+   */
+  it('盤面の候補と盤面の外の候補が混ざるなら、一覧は出さない', () => {
+    const asked = choice([
+      { kind: '見えている', card: 'スクエアの1枚' },
+      { kind: '見えていない', at: undefined },
+    ])
+    const picking = choicePicking(board(), asked)
+    const offBoard = offBoardCandidates(asked, picking)
+
+    expect(offBoard).toEqual([{ index: 1, candidate: asked.candidates[1] }])
+    expect(showsChoicePicker(asked, offBoard)).toBe(false)
+  })
+
+  it('盤面の外でも、能力やスクエアが混じるなら、一覧は出さない（描く先が無い）', () => {
+    const asked = choice([{ kind: '見えていない', at: undefined }, { kind: '能力', source: undefined }])
+    const picking = choicePicking(board(), asked)
+    const offBoard = offBoardCandidates(asked, picking)
+
+    expect(showsChoicePicker(asked, offBoard)).toBe(false)
+  })
+
+  /**
+   * `choicePicking` が渡らない場面（ボタン操作・演出中・繋がっていない間）でも、候補が全部
+   * 盤面の外にあるかどうかの判定そのものは変わらない。`picking` が無ければ、`offBoardCandidates`
+   * は全部を返す——その全部が盤面の外にあるべき候補と一致していれば、一覧は出る。
+   */
+  it('picking を渡さなくても、候補の中身から一覧の要否が決まる', () => {
+    const asked = choice([{ kind: '見えていない', at: undefined }])
+
+    expect(showsChoicePicker(asked, offBoardCandidates(asked, undefined))).toBe(true)
   })
 })

@@ -1319,6 +1319,25 @@ describe('相手が誰か', () => {
     expect(seatedOf('い')).toMatchObject({ opponent: { kind: '人間', name: 'かずお' } })
   })
 
+  /** 対戦画面のプレイヤーの枠に出す（ADR-0027）。相手とは別に、受け取った人自身の名前が届く。 */
+  it('自分の表示名も届く', () => {
+    const outcome = receive(
+      receive(emptyRooms(), 'あ', entering(CODE), SETUP, DECKS, ALL_LINKED).rooms,
+      'い',
+      entering(CODE),
+      SETUP,
+      DECKS,
+      ALL_LINKED,
+      names,
+    )
+
+    const seatedOf = (participant: ParticipantId): ToClient | undefined =>
+      to(outcome.deliveries, participant).find((message) => message.kind === '席についた')
+
+    expect(seatedOf('あ')).toMatchObject({ own: 'かずお' })
+    expect(seatedOf('い')).toMatchObject({ own: 'あいて' })
+  })
+
   it('CPU が相手なら、名前は付かない', () => {
     const against: FromClient = making('ひとり', 'CPU')
     const outcome = receive(emptyRooms(), 'あ', against, SETUP, DECKS, ALL_LINKED, names)
@@ -1334,6 +1353,18 @@ describe('相手が誰か', () => {
 
     expect(to(outcome.deliveries, 'あ').find((message) => message.kind === '席についた')).toMatchObject({
       opponent: { kind: '人間', name: 'あいて' },
+    })
+  })
+
+  /**
+   * `rejoin`（`room.ts`）は `own` を `start` とは別に組み立てているので、
+   * 入り直しの経路にも同じテストが要る。
+   */
+  it('入り直しても、自分の表示名が届く', () => {
+    const outcome = receive(started().rooms, 'あ', entering(CODE), SETUP, DECKS, ALL_LINKED, names)
+
+    expect(to(outcome.deliveries, 'あ').find((message) => message.kind === '席についた')).toMatchObject({
+      own: 'かずお',
     })
   })
 })

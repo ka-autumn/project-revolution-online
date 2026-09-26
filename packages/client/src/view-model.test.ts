@@ -14,6 +14,7 @@ import type {
   WireRoom,
   WireRoomRules,
 } from '@revolution/engine'
+import type { Opponent } from '@revolution/engine'
 import { emptyBoard, instance, logged, unitFace, withZone } from './test-support.js'
 import {
   boardView,
@@ -21,10 +22,13 @@ import {
   lobbyView,
   logLines,
   opponentLine,
+  opponentName,
   overlayDurationMs,
   priorityReason,
   showsOverlay,
   transitionViews,
+  visibleCardViewsIn,
+  zoneOf as sideZoneOf,
 } from './view-model.js'
 import type { BoardView, CardView, SideView } from './view-model.js'
 
@@ -73,7 +77,10 @@ describe('カード 1 枚', () => {
       kind: '表',
       id: 'じぶんの1枚',
       name: 'テスト・戦士',
-      summary: 'Lv2 赤・白 BP3000 SP2000',
+      level: 2,
+      colors: ['赤', '白'],
+      bp: 3000,
+      sp: 2000,
       orientation: 'リリース',
       damage: 0,
     })
@@ -98,12 +105,12 @@ describe('カード 1 枚', () => {
     expect(card).toMatchObject({ kind: '表', damage: 1000 })
   })
 
-  it('色の無いカードは無色と出る', () => {
+  it('色の無いカードは、空の並びで出る（無色）', () => {
     const colorless = instance('無色の1枚', '先攻', { card: unitFace('テスト・無色', { colors: [] }) })
     const view = boardView(withZone(emptyBoard('先攻'), '先攻', '手札', [{ kind: '見えている', instance: colorless }]))
     const [card] = zoneOf(view, '自分', '手札').cards
 
-    expect(card).toMatchObject({ summary: 'Lv1 無色 BP1000 SP1000' })
+    expect(card).toMatchObject({ colors: [], bp: 1000, sp: 1000 })
   })
 })
 
@@ -151,18 +158,25 @@ describe('カードのテキスト', () => {
   })
 })
 
-describe('カードの詳細', () => {
-  /** 詳細に出る 1 行を引く。 */
-  function detailOf(view: BoardView, label: string): string | undefined {
-    const [card] = zoneOf(view, '自分', '手札').cards
-    if (card?.kind !== '表') throw new Error('自分の手札は見えるはずだった')
-
-    return card.details.find((row) => row.label === label)?.value
-  }
-
+/**
+ * カードの面に出す構造化した値（対戦画面のカードのアイコン、ADR-0027）。
+ *
+ * 以前は行と値の組（`DetailRow`）にまとめて渡していたが、面にアイコンとして描けるように
+ * 項目ごとの値のまま渡す。呼び名（トリガーアイコンの図の読み上げなど）を文にするのは
+ * `render.ts` の仕事なので、ここでは値がそのまま渡ることだけを見る。
+ */
+describe('カードの構造化した値', () => {
   /** その 1 枚を自分の手札に置いた盤面。 */
   function inHand(card: WireCardInstance): BoardView {
     return boardView(withZone(emptyBoard('先攻'), '先攻', '手札', [{ kind: '見えている', instance: card }]))
+  }
+
+  /** 自分の手札の 1 枚目。 */
+  function cardOf(view: BoardView): CardView & { readonly kind: '表' } {
+    const [card] = zoneOf(view, '自分', '手札').cards
+    if (card?.kind !== '表') throw new Error('自分の手札は見えるはずだった')
+
+    return card
   }
 
   it('ユニットはＢＰ・ＳＰ・ムーブアイコンが出る', () => {
@@ -170,16 +184,15 @@ describe('カードの詳細', () => {
       instance('ゆにっと', '先攻', { card: unitFace('テスト・戦士', { bp: 3000, sp: 2000, moveIcon: ['上', '右'] }) }),
     )
 
-    expect(detailOf(view, 'ＢＰ')).toBe('3000')
-    expect(detailOf(view, 'ＳＰ')).toBe('2000')
-    expect(detailOf(view, 'ムーブアイコン')).toBe('上・右')
+    expect(cardOf(view)).toMatchObject({ bp: 3000, sp: 2000, moveIcon: ['上', '右'] })
   })
 
   /**
    * トリガーアイコンは**カードに印刷された図**であって、盤面のどこかを指してはいない
-   * （`board.ts` の `squareFromView`）。支配者の手前を基準にした呼び名で出す。
+   * （`board.ts` の `squareFromView`）。呼び名にするのは `render.ts`（`printedSquareLabel`）
+   * なので、ここでは印刷されたスクエアがそのまま渡ることだけを見る。
    */
-  it('トラップはトリガーアイコンが、支配者から見た呼び名で出る', () => {
+  it('トラップはトリガーアイコンが出る', () => {
     const trap: WireCardInstance = {
       ...instance('とらっぷ', '先攻'),
       card: {
@@ -191,39 +204,34 @@ describe('カードの詳細', () => {
         stars: 0,
         reverseStars: 0,
         attributes: [],
+        keywords: [],
         triggerIcon: [{ row: 0, column: 0 }],
       },
     }
 
-    expect(detailOf(inHand(trap), 'トリガーアイコン')).toBe('味方エリアの左ライン')
+    expect(cardOf(inHand(trap)).triggerIcon).toEqual([{ row: 0, column: 0 }])
   })
 
-  /** 持っていない項目は行ごと出さない。「スター 0」と書いても読む人の役に立たない。 */
-  it('持っていない項目は出ない', () => {
+  /** 持っていなければ、空・0 のまま出る。ユニットのトリガーアイコンは常に空。 */
+  it('持っていない項目は空・0 のまま出る', () => {
     const plain = instance('すたーなし', '先攻', { card: unitFace('テスト・素', { stars: 0, attributes: [] }) })
     const view = inHand(plain)
 
-    expect(detailOf(view, 'スター')).toBeUndefined()
-    expect(detailOf(view, '属性')).toBeUndefined()
-    expect(detailOf(view, 'トリガーアイコン')).toBeUndefined()
+    expect(cardOf(view)).toMatchObject({ stars: 0, attributes: [], triggerIcon: [] })
   })
 
-  /** 持ち主と支配者が同じなら 1 行で足りる。 */
-  it('支配者が出る。持ち主が同じなら、持ち主の行は出ない', () => {
+  /** 持ち主と支配者が同じなら、持ち主は出ない（`undefined`）。 */
+  it('支配者が出る。持ち主が同じなら、持ち主は出ない', () => {
     const view = inHand(instance('じぶんの1枚', '先攻'))
 
-    expect(detailOf(view, '支配者')).toBe('自分')
-    expect(detailOf(view, '持ち主')).toBeUndefined()
+    expect(cardOf(view)).toMatchObject({ controlledBy: '自分', ownedBy: undefined })
   })
 
   it('持ち主と支配者が食い違えば、両方出る', () => {
     const taken: WireCardInstance = { ...instance('とられた1枚', '後攻'), controller: '先攻' }
     const view = boardView(withZone(emptyBoard('先攻'), '先攻', '手札', [{ kind: '見えている', instance: taken }]))
-    const [card] = zoneOf(view, '自分', '手札').cards
-    if (card?.kind !== '表') throw new Error('自分の手札は見えるはずだった')
 
-    expect(card.details.find((row) => row.label === '支配者')?.value).toBe('自分')
-    expect(card.details.find((row) => row.label === '持ち主')?.value).toBe('相手')
+    expect(cardOf(view)).toMatchObject({ controlledBy: '自分', ownedBy: '相手' })
   })
 
   it('スターと属性は、持っていれば出る', () => {
@@ -232,27 +240,7 @@ describe('カードの詳細', () => {
     })
     const view = inHand(starred)
 
-    expect(detailOf(view, 'スター')).toBe('2')
-    expect(detailOf(view, 'リバーススター')).toBe('1')
-    expect(detailOf(view, '属性')).toBe('属性ア・属性イ')
-  })
-
-  /**
-   * 能力テキストは通信に載っていない（#93）。**無いものを作り出していない**ことを見る。
-   * 載るようになったらこのテストは書き換わる。
-   */
-  it('能力テキストは出ない', () => {
-    const view = inHand(instance('てきすとなし', '先攻'))
-
-    expect(detailOf(view, 'テキスト')).toBeUndefined()
-  })
-
-  it('見えていないカードは詳細を持たない', () => {
-    const view = boardView(
-      withZone(emptyBoard('先攻'), '後攻', '手札', [{ kind: '見えていない', orientation: 'リリース' }]),
-    )
-
-    expect(zoneOf(view, '相手', '手札').cards[0]).not.toHaveProperty('details')
+    expect(cardOf(view)).toMatchObject({ stars: 2, reverseStars: 1, attributes: ['属性ア', '属性イ'] })
   })
 })
 
@@ -287,18 +275,32 @@ describe('継続効果を適用した後のデータ', () => {
     expect(view.kind === '表' && view.modified?.bp).toBe(3000)
   })
 
-  /** 印刷された数字を消さない。どちらがカードに書かれている値かも要る。 */
+  /** 印刷された数字を消さない。どちらがカードに書かれている値かも要る（別の項目として持つ）。 */
   it('印刷された数字と、修整後の数字が、どちらも出る', () => {
     const view = unitView(withEffective([{ card: unit.id, bp: 3000, attributes: [] }]))
 
-    expect(view.kind === '表' && view.summary).toContain('BP1000→3000')
+    expect(view.kind === '表' && view.bp).toBe(1000)
+    expect(view.kind === '表' && view.modified?.bp).toBe(3000)
   })
 
   it('修整を受けていなければ、修整後のＢＰを出さない', () => {
     const view = unitView(withEffective([{ card: unit.id, bp: 1000, attributes: [] }]))
 
     expect(view.kind === '表' && view.modified).toBeUndefined()
-    expect(view.kind === '表' && view.summary).toContain('BP1000 ')
+    expect(view.kind === '表' && view.bp).toBe(1000)
+  })
+
+  /**
+   * 上がった・下がったの色と▲▼（対戦画面、ADR-0027）は、この値だけで決まる（render.ts に
+   * 判断を持たせない）。
+   */
+  it.each([
+    ['上がっていれば「上」', 3000, '上'],
+    ['下がっていれば「下」', 200, '下'],
+  ] as const)('%s', (_, bp, expected) => {
+    const view = unitView(withEffective([{ card: unit.id, bp, attributes: [] }]))
+
+    expect(view.kind === '表' && view.modified?.bpDirection).toBe(expected)
   })
 
   /** 加わった属性はカードに書かれていない（総合ルール 第4部 第12章 5-2 の(3)）ので、分けて出す。 */
@@ -312,17 +314,8 @@ describe('継続効果を適用した後のデータ', () => {
     }
     const view = unitView(board)
 
+    expect(view.kind === '表' && view.attributes).toEqual(['目印'])
     expect(view.kind === '表' && view.modified?.addedAttributes).toEqual(['夢'])
-    expect(view.kind === '表' && view.summary).toContain('《目印・+夢》')
-  })
-
-  /** 詳細でも、印刷された値と修整後の値を別の行にする。 */
-  it('詳細に、修整後のＢＰが別の行として出る', () => {
-    const view = unitView(withEffective([{ card: unit.id, bp: 3000, attributes: [] }]))
-    const details = view.kind === '表' ? view.details : []
-
-    expect(details.find((row) => row.label === 'ＢＰ')?.value).toBe('1000')
-    expect(details.find((row) => row.label === 'ＢＰ（修整後）')?.value).toBe('3000')
   })
 
   /** 相手のユニットについても同じように見える（スクエアは公開情報、同 第2部 第23章 1-1）。 */
@@ -438,7 +431,10 @@ describe('スクエア', () => {
       kind: '表',
       id: 'まんなかの1枚',
       name: 'テスト・まんなかの1枚',
-      summary: 'Lv1 赤 BP1000 SP1000',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
       orientation: 'リリース',
       damage: 0,
     })
@@ -506,19 +502,37 @@ describe('プレイヤーの様子', () => {
     expect(view.opponent).toMatchObject({ player: '先攻', whose: '相手' })
   })
 
-  it('ターンの様子が 1 行になる', () => {
+  it('ターンの番号と、誰のターン・優先権かが出る', () => {
     const empty = emptyBoard('後攻')
     const board = { ...empty, turn: { ...empty.turn, number: 3, active: '先攻', priority: '後攻' } } as const
+    const view = boardView(board)
 
-    expect(boardView(board).turn).toBe('第 3 ターン・相手のターン・メインフェイズ・自分の優先権')
+    expect(view.turnNumber).toBe('第 3 ターン')
+    expect(view.priority).toBe('相手のターン・自分の優先権')
+  })
+
+  /** フェイズの一覧（ADR-0027）。済んだもの・今のもの・これからのものを見分けられる。 */
+  it('フェイズの一覧で、済んだもの・今のものが分かる', () => {
+    const empty = emptyBoard('先攻')
+    const board = { ...empty, turn: { ...empty.turn, phase: 'エネルギーフェイズ' } } as const
+    const view = boardView(board)
+
+    expect(view.phases).toEqual([
+      { phase: 'リリースフェイズ', status: '済み' },
+      { phase: 'ドローフェイズ', status: '済み' },
+      { phase: 'エネルギーフェイズ', status: '今' },
+      { phase: 'メインフェイズ', status: 'これから' },
+      { phase: 'スマッシュフェイズ', status: 'これから' },
+      { phase: 'リカバリーフェイズ', status: 'これから' },
+    ])
   })
 
   it.each([
-    ['勝った', { kind: '勝利', winner: '先攻' }, '勝ち'],
-    ['負けた', { kind: '勝利', winner: '後攻' }, '負け'],
-    ['引き分けた', { kind: '引き分け' }, '引き分け'],
+    ['勝った', { kind: '勝利', winner: '先攻' }, { label: '勝ち', kind: '勝利' }],
+    ['負けた', { kind: '勝利', winner: '後攻' }, { label: '負け', kind: '敗北' }],
+    ['引き分けた', { kind: '引き分け' }, { label: '引き分け', kind: '引き分け' }],
   ] as const)('%sことが出る', (_, result, expected) => {
-    expect(boardView({ ...emptyBoard('先攻'), result }).result).toBe(expected)
+    expect(boardView({ ...emptyBoard('先攻'), result }).result).toEqual(expected)
   })
 
   it('決着していなければ、結果は出ない', () => {
@@ -554,6 +568,7 @@ describe('バトル', () => {
 
   it('どのステップかと、どのユニット同士かが出る', () => {
     expect(boardView(inBattle('先攻')).battle).toEqual({
+      square: { row: 1, column: 1 },
       where: '中央エリアの中央ライン',
       step: '第１ダメージステップ',
       attacker: 'テスト・攻め手',
@@ -1799,5 +1814,77 @@ describe('ロビー', () => {
     expect(views[0]?.occupants).toBeUndefined()
     // CPU が座っていることは、そこにいる人が分からなくても分かる。「 が CPU と対戦中」にしない。
     expect(views[1]?.status).toBe('CPU と対戦中')
+  })
+})
+
+/** 対戦画面のプレイヤーの枠に出す、相手の名前だけ（ADR-0027）。`opponentLine` と違って文にしない。 */
+describe('opponentName', () => {
+  it('人間が相手なら、その名前', () => {
+    const opponent: Opponent = { kind: '人間', name: 'かずお' }
+
+    expect(opponentName(opponent)).toBe('かずお')
+  })
+
+  it('CPU が相手なら「CPU」', () => {
+    const opponent: Opponent = { kind: 'CPU' }
+
+    expect(opponentName(opponent)).toBe('CPU')
+  })
+})
+
+/** ゾーンを名前で引く（対戦画面の盤面組み立て、ADR-0027）。 */
+describe('zoneOf（画面から呼ぶ形、`SideView` から直に引く）', () => {
+  it('その名前のゾーンを返す', () => {
+    const board = withZone(emptyBoard('先攻'), '先攻', '手札', [
+      { kind: '見えている', instance: instance('てふだの1枚', '先攻') },
+    ])
+    const own = boardView(board).own
+
+    expect(sideZoneOf(own, '手札').cards).toHaveLength(1)
+  })
+
+  /** `ZONE_ORDER` にある名前しか渡さないので、実際には起きない（`view-model.ts` の説明）。 */
+  it('無い名前を渡すと、それと分かる形で壊れる', () => {
+    const own = boardView(emptyBoard('先攻')).own
+
+    expect(() => sideZoneOf({ ...own, zones: [] }, '手札')).toThrow('ゾーンが無い: 手札')
+  })
+})
+
+/**
+ * 表側が見えているカードを、識別子で引ける形にする（対戦画面のカードの一覧、ADR-0027）。
+ * `zoneOf` だけでは引けない、山札から選ばせる候補の名前を引くのに使う（`view-model.ts` の
+ * 説明）。
+ */
+describe('visibleCardViewsIn', () => {
+  it('山札は枚数しか出さないゾーンだが、そこにいるカードも引ける', () => {
+    const board = withZone(emptyBoard('先攻'), '先攻', '山札', [
+      { kind: '見えている', instance: instance('山札の1枚', '先攻', { card: unitFace('テスト・山札の1枚') }) },
+    ])
+
+    const found = visibleCardViewsIn(board).get('山札の1枚')
+
+    expect(found?.kind === '表' && found.name).toBe('テスト・山札の1枚')
+  })
+
+  it('スクエアのカードも引ける', () => {
+    const unit = instance('スクエアの1枚', '先攻', { card: unitFace('テスト・盤上の1枚') })
+    const board = withSquare(emptyBoard('先攻'), { row: 0, column: 0 }, [unit])
+
+    expect(visibleCardViewsIn(board).get('スクエアの1枚')?.kind).toBe('表')
+  })
+
+  it('裏向きのカードは引けない', () => {
+    const board = withZone(emptyBoard('先攻'), '先攻', '手札', [{ kind: '見えていない', orientation: 'リリース' }])
+
+    expect(visibleCardViewsIn(board).size).toBe(0)
+  })
+
+  it('候補になっていないカードは引けない', () => {
+    const board = withZone(emptyBoard('先攻'), '先攻', '手札', [
+      { kind: '見えている', instance: instance('てふだの1枚', '先攻') },
+    ])
+
+    expect(visibleCardViewsIn(board).get('別のカード')).toBeUndefined()
   })
 })

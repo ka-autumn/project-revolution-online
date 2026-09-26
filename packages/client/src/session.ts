@@ -100,6 +100,8 @@ export type Stage =
        * **投げ出せる対戦かがこれで決まる**（#175）。
        */
       readonly opponent: Opponent
+      /** 自分の表示名（ADR-0020、ADR-0027）。対戦画面のプレイヤーの枠に出す。 */
+      readonly own: string
       /**
        * 相手が繋がっているか（#175）。決めているのはサーバである（`server` の `serve.ts`）。
        *
@@ -258,8 +260,13 @@ function withSavedDeck(
  *
  * **どの場面に移っても、カードプールと自分のデッキは持ち越す。** 場面ごとに届くものではない
  * （`Session.pool`）ので、ここで落とすと届き直さない。
+ *
+ * `fallbackOwnName` は、`席についた` に `own` が付いてこなかった時に使う名前（#207）。
+ * 画面は自動で配られ、サーバは手でデプロイするので、サーバより先に画面だけが新しい
+ * 時間が避けられない。古いサーバは `own` を送らないので、この端末が名前を決める画面で入れた
+ * 名前で補う。それも無ければ空欄のままにする。
  */
-export function applyMessage(session: Session, message: ToClient): Session {
+export function applyMessage(session: Session, message: ToClient, fallbackOwnName?: string): Session {
   const stage = session.stage
   switch (message.kind) {
     case 'ロビー':
@@ -295,6 +302,7 @@ export function applyMessage(session: Session, message: ToClient): Session {
           kind: '打っている',
           room: message.room,
           opponent: message.opponent,
+          own: (message.own as string | undefined) ?? fallbackOwnName ?? '',
           opponentConnected: true,
           seat: message.seat,
           board: undefined,

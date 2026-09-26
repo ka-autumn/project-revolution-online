@@ -1,5 +1,6 @@
 import type { MoveDirection, Square } from './board.js'
-import type { Attribute, Card, CardType, Color, UnitCard } from './card.js'
+import type { Attribute, Card, CardType, Color, PlanKeyword, UnitCard } from './card.js'
+import { planKeywordsOf } from './card.js'
 import type { CardId, CardInstance, DuelResult } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
 import type { LoggedEvent } from './log.js'
@@ -33,6 +34,14 @@ interface WireWrittenCard {
   readonly stars: number
   readonly reverseStars: number
   readonly attributes: readonly Attribute[]
+  /**
+   * プランゾーンにあることが効果に関わるキーワード能力（対戦画面のカードの面のアイコン、
+   * ADR-0027）。持たなければ空。
+   *
+   * 能力そのものは送らない（`WirePerspective` の説明どおり）が、どのキーワードを持つかは
+   * カードに書かれている表記であって、能力の効果ではないので、名前だけをここに載せる。
+   */
+  readonly keywords: readonly PlanKeyword[]
   /**
    * カードに印刷されているテキスト（総合ルール 第2部 第10章）。#93
    *
@@ -188,6 +197,7 @@ function written(card: Card): WireWrittenCard & { readonly type: CardType } {
     stars: card.stars,
     reverseStars: card.reverseStars,
     attributes: card.attributes,
+    keywords: planKeywordsOf(card),
     text: card.text,
   }
 }

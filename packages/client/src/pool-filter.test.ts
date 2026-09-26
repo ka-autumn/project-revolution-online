@@ -33,6 +33,7 @@ const STRATEGY = card(
     stars: 0,
     reverseStars: 1,
     attributes: [],
+    keywords: [],
     text: ['カードを１枚引く。'],
   },
   ['テストの第2弾'],
@@ -45,6 +46,7 @@ const TRAP = card('ほ', {
   stars: 0,
   reverseStars: 0,
   attributes: [],
+  keywords: [],
   text: [],
   triggerIcon: [{ row: 1, column: 1 }],
 })

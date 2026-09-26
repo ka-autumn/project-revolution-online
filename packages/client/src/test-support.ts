@@ -67,6 +67,7 @@ export function unitFace(name: string, values: Partial<WireUnitFace> = {}): Wire
     stars: 0,
     reverseStars: 0,
     attributes: [],
+    keywords: [],
     text: [],
     bp: 1000,
     sp: 1000,
