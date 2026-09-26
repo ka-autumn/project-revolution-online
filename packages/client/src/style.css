@@ -2445,10 +2445,34 @@ body {
   pointer-events: auto;
 }
 
+/*
+ * 下にあるのは光条・暗い幕・盤面と、決着の種類によって明るさが変わる。どれの上でも紛れない
+ * ように、濃い地に白い字を載せ、金の縁の外側を白い輪で囲む（明るい所では濃い地が、暗い所では
+ * 白い輪が輪郭になる）。
+ */
 .duel .result__leave .choice__button {
-  padding: 0.7rem 2.4rem;
-  font-size: 1.15rem;
-  box-shadow: 0 4px 14px rgb(0 0 0 / 0.35);
+  padding: 0.75rem 2.6rem;
+  border: 2px solid #ffd96b;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(180deg, #4a2a0c, #24130a);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
+  box-shadow:
+    0 0 0 3px rgb(255 255 255 / 0.9),
+    0 6px 20px rgb(0 0 0 / 0.55);
+}
+
+.duel .result__leave .choice__button:hover,
+.duel .result__leave .choice__button:focus-visible {
+  background: linear-gradient(180deg, #6a3c12, #3a200c);
+  outline: none;
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 0 6px #f3a024,
+    0 6px 20px rgb(0 0 0 / 0.55);
 }
 
 /*
