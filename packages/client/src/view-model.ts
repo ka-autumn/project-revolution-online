@@ -600,6 +600,50 @@ export function primaryColorOf(colors: readonly Color[]): Color {
   return colors[0] ?? '黒'
 }
 
+/**
+ * カードの面のうち、面を描くのに要る項目だけを取り出した形（ADR-0028）。
+ *
+ * 盤面のカード（`CardView`）と、デッキ構築のプール・デッキのカードの両方がここから作れる
+ * ——`render.ts` の `faceElement`・`poolFaceElement` はこの形だけを見て、面の規則を共有する。
+ * ユニット・トラップだけが持つ項目（ＢＰ・ＳＰ・移動方向・トリガーアイコン）は、持たない種別
+ * では空・`undefined` にする。
+ */
+export interface FaceFields {
+  readonly name: string
+  readonly level: number
+  readonly colors: readonly Color[]
+  readonly type: CardType
+  readonly bp: number | undefined
+  readonly sp: number | undefined
+  readonly stars: number
+  readonly reverseStars: number
+  readonly moveIcon: readonly MoveDirection[]
+  readonly triggerIcon: readonly Square[]
+  readonly keywords: readonly PlanKeyword[]
+  readonly attributes: readonly Attribute[]
+  readonly text: readonly string[]
+}
+
+export function faceFieldsOf(face: WireCardFace): FaceFields {
+  return {
+    name: face.name,
+    level: face.level,
+    colors: face.colors,
+    type: face.type,
+    bp: face.type === 'ユニット' ? face.bp : undefined,
+    sp: face.type === 'ユニット' ? face.sp : undefined,
+    stars: face.stars,
+    reverseStars: face.reverseStars,
+    moveIcon: face.type === 'ユニット' ? face.moveIcon : [],
+    triggerIcon: face.type === 'トラップ' ? face.triggerIcon : [],
+    // 古いサーバは `keywords` を送らない。届かなければ空として扱う（#207、
+    // `room.occupants ?? []` と同じ備え）。
+    keywords: face.keywords ?? [],
+    attributes: face.attributes,
+    text: face.text,
+  }
+}
+
 const COLORLESS = '無色'
 
 function colorsOf(face: WireCardFace): string {
@@ -671,26 +715,11 @@ function faceUpView(
   return {
     kind: '表',
     id: instance.id,
-    name: face.name,
     controlledBy: whoseLabel(viewer, instance.controller),
     // 持ち主と支配者は食い違いうる。同じなら出さない（#91 と同じ「変わったところだけ出す」考え方）。
     ownedBy: instance.owner === instance.controller ? undefined : whoseLabel(viewer, instance.owner),
-    level: face.level,
-    colors: face.colors,
-    type: face.type,
-    bp: face.type === 'ユニット' ? face.bp : undefined,
-    sp: face.type === 'ユニット' ? face.sp : undefined,
     modified,
-    stars: face.stars,
-    reverseStars: face.reverseStars,
-    moveIcon: face.type === 'ユニット' ? face.moveIcon : [],
-    triggerIcon: face.type === 'トラップ' ? face.triggerIcon : [],
-    // 古いサーバは `keywords` を送らない。届かなければ空として扱う（#207、
-    // `room.occupants ?? []` と同じ備え）。
-    keywords: face.keywords ?? [],
-    attributes: face.attributes,
-    // 見えていないカードのテキストは、そもそも届かない（`wire.ts` の `WireWrittenCard`）。
-    text: face.text,
+    ...faceFieldsOf(face),
     orientation: instance.orientation,
     damage: instance.damage,
   }

@@ -22,6 +22,7 @@ import type {
   ShareVisibility,
   Square,
   WireCandidate,
+  WireCardFace,
   WireCardPosition,
   WireDeck,
   WireRestrictionList,
@@ -44,6 +45,8 @@ import type {
   BattleView,
   BoardView,
   CardView,
+  FaceFields,
+  ModifiedData,
   Overlay,
   PhaseView,
   ResultView,
@@ -54,7 +57,7 @@ import type {
   TransitionView,
   ZoneView,
 } from './view-model.js'
-import { keyOfPosition, primaryColorOf, printedSquareLabel, zoneOf } from './view-model.js'
+import { faceFieldsOf, keyOfPosition, primaryColorOf, printedSquareLabel, zoneOf } from './view-model.js'
 
 /**
  * 画面に出す値（`view-model.ts`）を DOM にする。
@@ -235,7 +238,7 @@ function triggerIconElement(cells: readonly Square[]): SVGElement {
 }
 
 /** ムーブアイコン（ユニット）・トリガーアイコン（トラップ）を、右寄せの枠に入れる。どちらも無ければ `undefined`。 */
-function iconsElement(card: CardView & { readonly kind: '表' }): HTMLElement | undefined {
+function iconsElement(card: Pick<FaceFields, 'moveIcon' | 'triggerIcon'>): HTMLElement | undefined {
   const icon =
     card.moveIcon.length > 0
       ? moveIconElement(card.moveIcon)
@@ -271,7 +274,10 @@ function statElement(
 }
 
 /** 属性（継続効果で加わった分は `+` を付ける、#91）とＢＰ・ＳＰを面の下段に足す。 */
-function appendTraitsAndStats(bottom: HTMLElement, card: CardView & { readonly kind: '表' }): void {
+function appendTraitsAndStats(
+  bottom: HTMLElement,
+  card: Pick<FaceFields, 'attributes' | 'type' | 'bp' | 'sp'> & { readonly modified: ModifiedData | undefined },
+): void {
   const added = (card.modified?.addedAttributes ?? []).map((attribute) => `+${attribute}`)
   const traits = [...card.attributes, ...added]
   if (traits.length > 0) bottom.append(element('span', 'card__traits', traits.join(' | ')))
@@ -299,15 +305,19 @@ interface FaceOptions {
 }
 
 /**
- * カードの見える面。**詳細の札はこの外側に置く**（`cardElement`）。
- *
- * フリーズを横倒しにする（総合ルール 第2部 第24章）のはこの要素で、外枠の `card` は回らない。
- * 裏向きなら中身は空にする（裏面の絵柄は CSS が受け持つ）。
+ * 面を組み立てるのに要る項目（ADR-0028）。盤面のカード（`CardView`）と、デッキ構築の
+ * プール・デッキのカード（`poolFaceElement`）の両方がここから作れる。
  */
-function faceElement(card: CardView, options: FaceOptions = {}): HTMLElement {
-  const node = element('div', 'card__face')
-  if (card.kind === '裏') return node
+type FaceCard = FaceFields & {
+  readonly modified: ModifiedData | undefined
+  readonly damage: number
+}
 
+/**
+ * カードの見える面の中身を組み立てる。盤面（`faceElement`）とデッキ構築（`poolFaceElement`）で
+ * 共有する（ADR-0028）。
+ */
+function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptions): void {
   const top = element('div', 'card__top')
   const level = element('span', 'card__level')
   const levelIconImg = document.createElement('img')
@@ -354,6 +364,32 @@ function faceElement(card: CardView, options: FaceOptions = {}): HTMLElement {
   }
 
   if (card.damage > 0) node.append(element('span', 'card__damage', `ダメージ ${card.damage}`))
+}
+
+/**
+ * カードの見える面。**詳細の札はこの外側に置く**（`cardElement`）。
+ *
+ * フリーズを横倒しにする（総合ルール 第2部 第24章）のはこの要素で、外枠の `card` は回らない。
+ * 裏向きなら中身は空にする（裏面の絵柄は CSS が受け持つ）。
+ */
+function faceElement(card: CardView, options: FaceOptions = {}): HTMLElement {
+  const node = element('div', 'card__face')
+  if (card.kind === '裏') return node
+
+  appendFaceContent(node, card, options)
+
+  return node
+}
+
+/**
+ * デッキ構築のプール・デッキの一覧で使う、盤面に関わらないカードの面（ADR-0028）。
+ *
+ * 盤面のカードと規則を共有する（`appendFaceContent`）。継続効果・ダメージは盤面でしか
+ * 起きないので、修整なし・ダメージ 0 として渡す。
+ */
+function poolFaceElement(face: WireCardFace, options: FaceOptions = {}): HTMLElement {
+  const node = element('div', 'card__face')
+  appendFaceContent(node, { ...faceFieldsOf(face), modified: undefined, damage: 0 }, options)
 
   return node
 }
