@@ -475,242 +475,6 @@ body {
   line-height: 1.2;
 }
 
-/* デッキを組むところ（#193）。左にプール、右にデッキ、その右に詳しく出すところを並べる。 */
-.builder {
-  margin: calc(var(--gap) * 2) 0;
-}
-
-.builder__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--gap);
-  margin-bottom: var(--gap);
-}
-
-.builder__deck-name {
-  flex: 1 1 12rem;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  font: inherit;
-}
-
-.builder__unsaved {
-  color: #b00;
-}
-
-.builder__description {
-  box-sizing: border-box;
-  width: 100%;
-  margin-bottom: var(--gap);
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  font: inherit;
-  resize: vertical;
-}
-
-/* 確かめた結果（ADR-0021）。満たしていなくても保存できるので、止める色ではなく読ませる色にする。 */
-.builder__check {
-  margin-bottom: var(--gap);
-  padding: var(--gap);
-  border: 1px solid var(--line);
-}
-
-.builder__check--満たしている {
-  border-color: var(--own);
-}
-
-.builder__check--満たしていない,
-.builder__check--確かめられない {
-  border-color: #b00;
-}
-
-.builder__check-line {
-  margin: 0;
-}
-
-.builder__check--確かめている .builder__check-line {
-  color: #666;
-}
-
-.builder__columns {
-  display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(12rem, 1fr);
-  align-items: start;
-  gap: calc(var(--gap) * 2);
-}
-
-/* 幅が足りなければ縦に積む。詳しく出すところは一番下になる。 */
-@media (max-width: 56rem) {
-  .builder__columns {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.builder__title {
-  margin: 0 0 var(--gap);
-  font-size: 1rem;
-}
-
-/*
- * 一覧はその中でスクロールする。**ページごとスクロールすると、入れたカードを右の一覧で確かめる
- * たびに、選んでいた場所を見失う。** 描き直しても位置は戻る（`render.ts` の `KEEP_SCROLL`）。
- */
-.builder__list {
-  max-height: 65vh;
-  overflow-y: auto;
-  border: 1px solid var(--line);
-}
-
-.builder__none {
-  margin: var(--gap);
-  color: #666;
-}
-
-.builder__row {
-  display: flex;
-  align-items: center;
-  gap: var(--gap);
-  padding: 2px var(--gap);
-  border-bottom: 1px solid #ddd;
-}
-
-.builder__row--入っている {
-  background: #2f6fb014;
-}
-
-.builder__row--使えない {
-  color: #b00;
-}
-
-/* 名前は押すと詳しく出したままにする。ボタンだが、一覧として読めるように飾りを落とす。 */
-.builder__name {
-  /* 狭い列では要約から先に縮める。名前が読めないと、どのカードの行かが分からない。 */
-  flex: 1 0 8rem;
-  min-width: 0;
-  overflow: hidden;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.builder__name--選択中 {
-  font-weight: bold;
-  text-decoration: underline;
-}
-
-.builder__summary {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  color: #666;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.builder__count {
-  min-width: 1.5em;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-/* プールを絞り込むところ（#193）。一覧の真上に置く。 */
-.filter {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: var(--gap);
-}
-
-.filter__top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--gap);
-}
-
-.filter__search {
-  flex: 1 1 12rem;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  font: inherit;
-}
-
-.filter__count {
-  color: #666;
-  font-variant-numeric: tabular-nums;
-}
-
-.filter__row {
-  display: flex;
-  align-items: baseline;
-  gap: var(--gap);
-}
-
-/* 軸の名前の幅を揃える。一番長い「エキスパンション」に合わせる。 */
-.filter__label {
-  flex: 0 0 8em;
-  color: #666;
-}
-
-.filter__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.filter__range {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.filter__number {
-  width: 6em;
-  padding: 2px 6px;
-  border: 1px solid var(--line);
-  font: inherit;
-}
-
-.filter__more {
-  align-self: flex-start;
-}
-
-/* 絞り込みの値 1 つ。選んでいるものは、色だけでなく太さでも分かるようにする（`aria-pressed` にも出る）。 */
-.chip {
-  padding: 1px 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: none;
-}
-
-.chip--選択中 {
-  border-color: var(--own);
-  background: #2f6fb026;
-  font-weight: bold;
-}
-
-/* 詳しく出すところ。一覧をスクロールしても見えたままにする。 */
-.builder__detail {
-  position: sticky;
-  top: var(--gap);
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-}
-
-.builder__detail-none {
-  margin: 0;
-  color: #666;
-}
-
-/* 押す前に尋ねるところ（#193）。画面の上に重ね、答えるまで下を押せなくする。 */
 /*
  * 押す前に尋ねるところ（ADR-0028）。デッキ構築の流れ（削除・変更を捨てる・共有）だけで使い、
  * 対戦画面は使わない。画面の上に重ね、答えるまで下を押せなくする。
@@ -774,6 +538,29 @@ body {
   border-color: #b00;
   color: #b00;
   font-weight: bold;
+}
+
+/* 解説を読む・書く窓（ADR-0028）のような、見出し・本文を持つ重ねる窓で使う。 */
+.confirm__title {
+  margin: 0 0 var(--gap-lg);
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.confirm__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  margin-bottom: var(--gap-lg);
+}
+
+.confirm__hint {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+  text-align: right;
 }
 
 /* 表示名を決めるところ（ADR-0020）。決まるまでほかへは進めないので、ここだけが出る。 */
@@ -2602,4 +2389,1150 @@ body {
 .duel .picker__count {
   margin-right: auto;
   font-weight: 700;
+}
+
+/*
+ * デッキ構築（デッキを組むところ・デッキ一覧、ADR-0028）。
+ *
+ * ここから下は `.deckbuild` の内側にだけ効く。`:root` の見た目の基準の変数と、カードの面の
+ * 共有した規則（`.card` 系）は使うが、`:root` の変数と共通のクラス（`.choice__button` や
+ * `button` 要素そのもの）には触らない——他の画面（ロビー・名前を決める画面）は今の見た目のまま
+ * 残る。形式・禁止／制限リストの選択（`.lobby__rules` 系）は、ロビーと同じ構造を流用しつつ、
+ * ここだけ見た目を上書きする。
+ */
+.deckbuild {
+  --card-width: 7.4rem;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--gap-lg);
+  height: 100vh;
+  padding: var(--gap-lg);
+  overflow: hidden;
+  color: var(--ink);
+  color-scheme: light;
+  background:
+    repeating-conic-gradient(from 8deg at 50% 38%, rgb(255 255 255 / 0.3) 0deg 3deg, transparent 3deg 9deg, rgb(255 255 255 / 0.14) 9deg 11deg, transparent 11deg 17deg),
+    radial-gradient(ellipse 65% 60% at 50% 38%, #fffdf6 0%, #ffeec2 30%, #fbc766 65%, #ee9a2c 100%);
+}
+
+.deckbuild *,
+.deckbuild *::before,
+.deckbuild *::after {
+  box-sizing: border-box;
+}
+
+.deckbuild .panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgb(150 80 0 / 0.22), inset 0 1px 0 #fff;
+}
+
+.deckbuild .panel__head {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  row-gap: 0.35rem;
+  min-height: 2.6rem;
+  padding: 0.45rem 0.9rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.45);
+}
+
+.deckbuild .panel__title {
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.deckbuild .panel__aside {
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.deckbuild .panel__aside strong {
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.deckbuild .panel__aside--tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.deckbuild .panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.7rem 0.9rem;
+}
+
+/* ---------- ボタン・入力欄（対戦画面の .duel button と同じ見た目） ---------- */
+
+.deckbuild button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: linear-gradient(180deg, #fffefa, #fbefd4);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgb(150 80 0 / 0.25);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.deckbuild button:hover {
+  border-color: var(--gold-deep);
+  box-shadow: inset 0 1px 0 #fff, 0 0 10px rgb(247 201 86 / 0.8);
+}
+
+.deckbuild button:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 2px;
+}
+
+.deckbuild button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.deckbuild .button--primary {
+  border-color: var(--gold-deep);
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  font-weight: 700;
+}
+
+.deckbuild .button--small {
+  padding: 0.25rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+.deckbuild input[type='text'],
+.deckbuild input[type='search'],
+.deckbuild input[type='number'],
+.deckbuild textarea,
+.deckbuild select {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: #fffef9;
+  font: inherit;
+}
+
+.deckbuild textarea {
+  resize: vertical;
+}
+
+.deckbuild input:focus-visible,
+.deckbuild textarea:focus-visible,
+.deckbuild select:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 1px;
+}
+
+/* 絵文字だけのボタン（`.icon-button`）。ここだけ見た目を整える。 */
+.deckbuild .icon-button {
+  min-width: 2.2rem;
+  padding: 0.3rem 0.45rem;
+}
+
+/* ---------- 上の帯 ---------- */
+
+.deckbuild .topbar {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem;
+  row-gap: 0.4rem;
+  padding: 0.55rem 0.9rem;
+}
+
+.deckbuild .topbar__title {
+  flex: none;
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 0 #fff;
+}
+
+.deckbuild .topbar__sub {
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+}
+
+.deckbuild .topbar__divider {
+  flex: none;
+  width: 1px;
+  height: 1.8rem;
+  background: rgb(220 166 64 / 0.6);
+}
+
+.deckbuild .topbar__spacer {
+  flex: 1;
+}
+
+.deckbuild .deckname {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.deckbuild .deckname__text {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 1.15rem;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.deckbuild .deckname input {
+  width: 18rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+/* 形式・禁止／制限リストの選択。ロビーと同じ構造（`.lobby__rules`）を流用し、見た目だけ整える。 */
+.deckbuild .lobby__rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.deckbuild .lobby__rule {
+  flex: none;
+  gap: 0.35rem;
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.deckbuild .lobby__rule-select {
+  flex: none;
+  width: auto;
+  min-width: 7.5rem;
+  padding: 0.3rem 0.5rem;
+}
+
+/* ---------- 3 列 ---------- */
+
+.deckbuild .columns {
+  display: grid;
+  grid-template-columns: 21rem minmax(0, 1fr) 25rem;
+  gap: var(--gap-lg);
+  min-height: 0;
+}
+
+.deckbuild--list .columns {
+  grid-template-columns: 21rem minmax(0, 1fr);
+}
+
+.deckbuild .column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ---------- 左：絞り込み ---------- */
+
+.deckbuild .panel--filter {
+  flex: 1;
+}
+
+.deckbuild .panel--filter .panel__body {
+  overflow-y: auto;
+}
+
+/* 項目名と選択肢を同じ行に。項目名の幅は揃える（一番長い「移動方向」に合わせる）。 */
+.deckbuild .filter__row {
+  display: grid;
+  grid-template-columns: 4.6em minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.deckbuild .filter__label {
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.deckbuild .filter__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.deckbuild .filter__range {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.deckbuild .filter__range input {
+  width: 6.2em;
+}
+
+.deckbuild .filter__more {
+  align-self: stretch;
+  font-size: 0.85rem;
+}
+
+.deckbuild .fold {
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-small);
+  background: rgb(255 255 255 / 0.55);
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.45) inset;
+}
+
+.deckbuild .fold > summary {
+  display: grid;
+  grid-template-columns: 1em auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.3rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.deckbuild .fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.deckbuild .fold > summary::before {
+  content: '▸';
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+}
+
+.deckbuild .fold[open] > summary::before {
+  content: '▾';
+}
+
+.deckbuild .fold__picked {
+  overflow: hidden;
+  color: var(--heading);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.deckbuild .fold__picked--すべて {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
+.deckbuild .fold[open] .fold__picked {
+  visibility: hidden;
+}
+
+.deckbuild .fold__body {
+  margin-top: 0.45rem;
+}
+
+.deckbuild .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.2rem 0.65rem;
+  border-color: var(--panel-edge);
+  border-radius: 999px;
+  background: #fffef9;
+  box-shadow: none;
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+
+.deckbuild .chip--選択中 {
+  border-color: var(--gold-deep);
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  font-weight: 700;
+}
+
+.deckbuild .chip--すべて {
+  padding-inline: 0.8rem;
+}
+
+.deckbuild .chip__color {
+  width: 1.15em;
+  height: 1.15em;
+}
+
+.deckbuild .chip .star {
+  width: 1.5em;
+  height: 1.5em;
+  font-size: 0.85em;
+}
+
+.deckbuild .chip__move {
+  width: 1.6em;
+  height: 1.6em;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.3));
+}
+
+/* ---------- 左：カードの詳細（下へ畳める） ---------- */
+
+.deckbuild .panel--detail {
+  flex: none;
+  overflow: hidden;
+}
+
+.deckbuild .panel--detail-閉 .panel__head {
+  border-bottom: none;
+}
+
+.deckbuild .detail__toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+
+.deckbuild .detail__toggle:hover {
+  box-shadow: none;
+}
+
+.deckbuild .detail__chevron {
+  color: var(--ink-dim);
+  font-size: 0.9rem;
+}
+
+.deckbuild .detail {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.7rem;
+  height: calc(8rem * 1.5 + 1.2rem);
+  padding: 0.6rem 0.8rem;
+  overflow: hidden;
+  transition: height 0.24s ease, padding 0.24s ease, transform 0.24s ease, opacity 0.24s ease;
+}
+
+/* 畳むと中身は下へ沈み、パネルは見出しだけになる。開くときは下からせり上がる。 */
+.deckbuild .panel--detail-閉 .detail {
+  height: 0;
+  padding-block: 0;
+  transform: translateY(40%);
+  opacity: 0;
+  visibility: hidden;
+  transition-property: height, padding, transform, opacity, visibility;
+}
+
+.deckbuild .detail .card--拡大 {
+  --card-width: 8rem;
+  font-size: 0.6rem;
+}
+
+.deckbuild .detail .card--拡大 .card__face {
+  padding: 0.28rem;
+  gap: 0.2rem;
+  border-width: 2px;
+  border-radius: 8px;
+}
+
+.deckbuild .detail .card--拡大 .card__title {
+  font-size: 0.8rem;
+}
+
+.deckbuild .detail .card--拡大 .card__stats {
+  font-size: 0.8rem;
+}
+
+/* 面のテキスト欄はアイコン 1 つ分の高さに固定し、はみ出すぶんは省略する（右に全文がある）。 */
+.deckbuild .detail .card--拡大 .card__text {
+  height: 2.6rem;
+  min-height: 0;
+  max-height: none;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.55rem;
+  line-height: 1.35;
+}
+
+.deckbuild .detail .card--拡大 .card__lines {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.deckbuild .detail .card--拡大 .move-icon,
+.deckbuild .detail .card--拡大 .trigger-icon {
+  width: 2rem;
+  height: 2rem;
+}
+
+.deckbuild .detail__none {
+  grid-column: 1 / -1;
+  align-self: center;
+  margin: 0;
+  padding: 0 1rem;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.deckbuild .detail__info {
+  min-width: 0;
+  overflow-y: auto;
+  font-size: 0.78rem;
+}
+
+.deckbuild .detail__name {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-bottom: 0.3rem;
+  color: var(--heading);
+  font-size: 0.98rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.deckbuild .detail__name .star {
+  width: 1.3rem;
+  height: 1.3rem;
+  font-size: 0.7rem;
+}
+
+.deckbuild .detail__rows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.1rem 0.5rem;
+  margin: 0;
+}
+
+.deckbuild .detail__rows dt {
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.deckbuild .detail__rows dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.deckbuild .detail__text {
+  margin-top: 0.4rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgb(220 166 64 / 0.5);
+  line-height: 1.5;
+}
+
+.deckbuild .detail__text p {
+  margin: 0 0 0.2rem;
+}
+
+/* ---------- 真ん中：カードプール ---------- */
+
+.deckbuild .column--center .panel {
+  flex: 1;
+}
+
+.deckbuild .viewswitch {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-small);
+  overflow: hidden;
+}
+
+.deckbuild .viewswitch button {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+  background: #fffef9;
+}
+
+.deckbuild .viewswitch button + button {
+  border-left: 1px solid var(--panel-edge);
+}
+
+.deckbuild .viewswitch button[aria-pressed='true'] {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  font-weight: 700;
+}
+
+.deckbuild .pool {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.6rem 0.9rem 1rem;
+}
+
+.deckbuild .pool__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-width), 1fr));
+  gap: 0.9rem 0.8rem;
+  justify-items: center;
+}
+
+.deckbuild .pool__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.deckbuild .pool__item .card {
+  cursor: pointer;
+}
+
+.deckbuild .pool__item--入っている .card__face {
+  box-shadow: 0 0 0 2px var(--gold-bright), 0 2px 6px rgb(80 40 0 / 0.4);
+}
+
+.deckbuild .pool__none,
+.deckbuild .pool__more {
+  margin: 1rem 0 0;
+  color: var(--ink-dim);
+  text-align: center;
+}
+
+.deckbuild .rows {
+  border-radius: var(--radius-small);
+  background: #fffefb;
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset;
+}
+
+/*
+ * 1 行表示は、狭くなっても行の部品を隠さない。行に最小の幅を持たせ、それより狭ければ一覧ごと
+ * 横にスクロールさせる。−・枚数・＋が枠の外にはみ出すことはない（枠の中でスクロールする）。
+ */
+.deckbuild .pool .rows {
+  min-width: 30rem;
+}
+
+/* 1 種ぶんの増やす・減らす口。 */
+.deckbuild .counter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.deckbuild .counter button {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.deckbuild .counter__count {
+  min-width: 2.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  color: var(--ink-dim);
+  background: rgb(255 255 255 / 0.7);
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.deckbuild .counter__count--入っている {
+  color: #fff;
+  background: linear-gradient(180deg, #e59a1a, #b8650a);
+  box-shadow: none;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 0.35);
+}
+
+/* 1 行の形（プールの一覧表示・デッキの列で共通）。 */
+.deckbuild .cardrow {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.3);
+}
+
+.deckbuild .cardrow:last-child {
+  border-bottom: none;
+}
+
+.deckbuild .cardrow:hover,
+.deckbuild .cardrow--詳細中 {
+  background: rgb(247 201 86 / 0.18);
+}
+
+.deckbuild .cardrow .card__level {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.85rem;
+}
+
+.deckbuild .cardrow .card__kind {
+  flex: none;
+  min-width: 4.2rem;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.deckbuild .cardrow .star {
+  width: 1.4rem;
+  height: 1.4rem;
+  font-size: 0.75rem;
+}
+
+.deckbuild .cardrow__name {
+  flex: 1 1 5rem;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.deckbuild .cardrow__name:hover {
+  box-shadow: none;
+}
+
+.deckbuild .cardrow__meta {
+  flex: none;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.deckbuild .cardrow .counter button {
+  width: 1.6rem;
+  height: 1.6rem;
+  font-size: 0.95rem;
+}
+
+.deckbuild .cardrow .counter__count {
+  min-width: 1.9rem;
+}
+
+.deckbuild .cardrow--使えない,
+.deckbuild .cardrow--使えない .cardrow__name {
+  color: var(--accent-opponent);
+  cursor: default;
+}
+
+/* ---------- 右：デッキ ---------- */
+
+.deckbuild .panel--deck {
+  flex: 1;
+}
+
+.deckbuild .breakdown {
+  display: grid;
+  flex: none;
+  grid-template-columns: minmax(0, 1fr) 8.5rem;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem 0.2rem;
+}
+
+.deckbuild .levels {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0.4rem 0.5rem 0.3rem;
+  border-radius: var(--radius-small);
+  background: #fffef9;
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset;
+}
+
+.deckbuild .levels__caption {
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+}
+
+.deckbuild .levels__bars {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  align-items: end;
+  gap: 0.3rem;
+  height: 4.6rem;
+}
+
+.deckbuild .levels__bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 色ごとに積み上げる。下から COLORS の順（赤・黒・青・白・緑）。 */
+.deckbuild .levels__stack {
+  display: flex;
+  flex-direction: column-reverse;
+  width: 72%;
+  min-height: 2px;
+  overflow: hidden;
+  border-radius: 3px 3px 0 0;
+}
+
+.deckbuild .levels__seg {
+  flex-basis: 0;
+  background: var(--lv-deep);
+}
+
+.deckbuild .levels__seg + .levels__seg {
+  border-bottom: 1px solid rgb(255 255 255 / 0.7);
+}
+
+.deckbuild .levels__seg.card--色-白 {
+  background: #e8e8e8;
+  box-shadow: inset 0 0 0 1px #b5b5b5;
+}
+
+.deckbuild .levels__axis {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  border-top: 1px solid rgb(125 104 72 / 0.4);
+  color: var(--ink-dim);
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.deckbuild .types {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-small);
+  background: #fffef9;
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset;
+  font-size: 0.78rem;
+  list-style: none;
+}
+
+.deckbuild .types li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.3rem;
+  padding: 0.1rem 0;
+}
+
+.deckbuild .types li span:last-child {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.deckbuild .types li.types__zero {
+  color: var(--ink-dim);
+}
+
+.deckbuild .types li.types__zero span:last-child {
+  font-weight: 400;
+}
+
+.deckbuild .types li.types__stars {
+  margin-top: 0.25rem;
+  padding-top: 0.3rem;
+  border-top: 1px dashed rgb(220 166 64 / 0.6);
+}
+
+.deckbuild .types li.types__stars > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.deckbuild .types .star {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.deckbuild .check {
+  flex: none;
+  margin: 0.4rem 0.9rem 0;
+  padding: 0.4rem 0.7rem;
+  border-left: 4px solid var(--ink-dim);
+  border-radius: var(--radius-small);
+  font-size: 0.85rem;
+}
+
+.deckbuild .check p {
+  margin: 0;
+}
+
+.deckbuild .check--満たしている {
+  border-left-color: var(--accent-own);
+  background: var(--accent-own-soft);
+}
+
+.deckbuild .check--満たしている p::before {
+  content: '✓ ';
+  color: var(--accent-own);
+  font-weight: 700;
+}
+
+.deckbuild .check--満たしていない,
+.deckbuild .check--確かめられない {
+  border-left-color: var(--accent-opponent);
+  background: var(--accent-opponent-soft);
+}
+
+.deckbuild .decklist__head {
+  display: flex;
+  flex: none;
+  justify-content: space-between;
+  margin: 0.55rem 0.9rem 0.25rem;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+}
+
+.deckbuild .decklist {
+  flex: 1;
+  min-height: 0;
+  margin: 0 0.9rem;
+  overflow-y: auto;
+}
+
+.deckbuild .savebar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  border-top: 1px solid rgb(220 166 64 / 0.45);
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: rgb(255 248 228 / 0.9);
+}
+
+.deckbuild .savebar__state {
+  flex: 1;
+  color: var(--ink-dim);
+  font-size: 0.82rem;
+}
+
+.deckbuild .savebar__state--未保存 {
+  color: var(--accent-opponent);
+  font-weight: 700;
+}
+
+.deckbuild .savebar__state--未保存::before {
+  content: '● ';
+}
+
+.deckbuild .savebar .button--primary {
+  min-width: 8rem;
+  font-size: 1.02rem;
+}
+
+/* ---------- デッキ一覧 ---------- */
+
+.deckbuild .decks {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.8rem 0.9rem 1rem;
+}
+
+.deckbuild .decks__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr));
+  gap: 0.8rem;
+}
+
+.deckbuild .deckcard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 0.55rem 0.8rem;
+  padding: 0.75rem;
+  border: 1px solid rgb(220 166 64 / 0.7);
+  border-radius: var(--radius-small);
+  background: #fffef9;
+  box-shadow: 0 2px 6px rgb(150 80 0 / 0.12);
+}
+
+.deckbuild .deckcard .card {
+  --card-width: 6rem;
+}
+
+.deckbuild .deckcard__face {
+  position: relative;
+}
+
+.deckbuild .deckcard__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.deckbuild .deckcard__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.deckbuild .deckcard__name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 1.1rem;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.deckbuild .deckcard__desc {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-size: 0.82rem;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.deckbuild .deckcard__count {
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.deckbuild .deckcard__count small {
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.deckbuild .colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.deckbuild .colors span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.deckbuild .colors img {
+  width: 1.05em;
+  height: 1.05em;
+}
+
+.deckbuild .deckcard__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.deckbuild .deckcard__actions button {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.deckbuild .deckcard__actions .icon-button {
+  flex: none;
+}
+
+.deckbuild .presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+}
+
+.deckbuild .preset {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem;
+  border: 1px solid rgb(220 166 64 / 0.6);
+  border-radius: var(--radius-small);
+  background: #fffef9;
+}
+
+.deckbuild .preset .card {
+  --card-width: 3rem;
+}
+
+.deckbuild .preset__name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+}
+
+/* ---------- ラベル ---------- */
+
+.deckbuild .taglist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.deckbuild .taglist--bar {
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 自動で付いたか選んだかで見た目を分けない。中身は先頭の絵文字（色の構成は色のアイコン）で表す。 */
+.deckbuild .tag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.1rem 0.6rem 0.1rem 0.45rem;
+  border-radius: 999px;
+  color: var(--heading);
+  background: linear-gradient(180deg, #fffaf0, #fcecc8);
+  box-shadow: 0 0 0 1px rgb(176 122 28 / 0.5) inset;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.deckbuild .tag__emoji {
+  font-size: 0.95em;
+  line-height: 1;
 }

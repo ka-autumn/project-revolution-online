@@ -644,39 +644,6 @@ export function faceFieldsOf(face: WireCardFace): FaceFields {
   }
 }
 
-const COLORLESS = '無色'
-
-function colorsOf(face: WireCardFace): string {
-  return face.colors.length === 0 ? COLORLESS : face.colors.join('・')
-}
-
-/**
- * 属性の並び。継続効果によって加わった分（#91）は `+` を付けて区別する。
- *
- * 加わった属性はカードに書かれていない（総合ルール 第4部 第12章 5-2 の(3)）。並べて出すだけ
- * だと、どれが印刷されている属性かが分からなくなる。
- */
-function attributesLabel(face: WireCardFace, modified: ModifiedData | undefined): string {
-  const added = (modified?.addedAttributes ?? []).map((attribute) => `+${attribute}`)
-  const all = [...face.attributes, ...added]
-
-  return all.length === 0 ? '' : ` 《${all.join('・')}》`
-}
-
-/**
- * カードに書かれていることを 1 行にする。
- *
- * 継続効果を適用した後のＢＰ（#91）は、印刷された数字を消さずに `BP1000→2000` と続けて出す。
- * バトルで比べられるのは後ろの数字（`card.ts` の `bpOf`）だが、**どちらがカードに書かれて
- * いる値かも要る**。
- */
-export function summaryOf(face: WireCardFace, modified: ModifiedData | undefined = undefined): string {
-  const bp = modified?.bp === undefined ? '' : `→${modified.bp}`
-  const body = face.type === 'ユニット' ? `BP${face.bp}${bp} SP${face.sp}` : face.type
-
-  return `Lv${face.level} ${colorsOf(face)} ${body}${attributesLabel(face, modified)}`
-}
-
 /**
  * 継続効果によって、カードに書かれているのとは違うデータになっているところ（#91）。
  * 違いが無ければ `undefined`。

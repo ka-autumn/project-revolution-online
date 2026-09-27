@@ -15,7 +15,7 @@ import { emptyFilter } from './pool-filter.js'
 import type { PoolFilter } from './pool-filter.js'
 import type { SharingState } from './recipe.js'
 import type { ChosenRules } from './render.js'
-import { primaryColorOf, squareLabel, summaryOf } from './view-model.js'
+import { primaryColorOf, squareLabel } from './view-model.js'
 import type { DetailRow } from './view-model.js'
 
 /**
@@ -173,7 +173,41 @@ export interface Builder {
    * ためにここで待っているかを覚える。
    */
   readonly viewingRecipeLoading: boolean
+  /** カード一覧の表示の形（ADR-0028）。 */
+  readonly poolView: PoolView
+  /**
+   * カード一覧で、面を描いている枚数（ADR-0028）。**最初の数十枚だけ描き、スクロールで描き足す**
+   * ——1000 種になったとき、描き直すたびに全部の面を作ると重いため。絞り込みを変えたり表示の形を
+   * 切り替えたりしたら、`POOL_BATCH` まで戻す。
+   */
+  readonly poolShown: number
+  /** カードの詳細を開いているか（ADR-0028）。畳んでも中身は保つ——描き直さず class を切り替えるだけ。 */
+  readonly detailOpen: boolean
+  /** 折りたためる絞り込みの項目のうち、開いているものの名前（ADR-0028）。 */
+  readonly openFilterFolds: ReadonlySet<string>
+  /** デッキの名前をその場で打ち込んでいるか（ADR-0028）。✏️ を押すと入り、Enter で決め、Esc でやめる。 */
+  readonly editingName: boolean
+  /**
+   * 組むところの帯から開いている窓（ADR-0028）。「ラベル」の窓は #229 が済むまで無い。
+   *
+   * `confirming` と同じ理由でここに持つ——画面は丸ごと描き直されるので、開いている窓を状態として持つ。
+   */
+  readonly modal: DeckEditorModal | undefined
 }
+
+/** カード一覧の表示の形（ADR-0028）。 */
+export type PoolView = 'カード' | '一覧'
+
+/** 組むところの帯から開く窓（ADR-0028）。 */
+export type DeckEditorModal = '解説'
+
+/**
+ * カード一覧の表示の形ごとの、一度に描く枚数（ADR-0028）。
+ *
+ * 1 行表示はカード表示より 1 件が軽いので、多めに描く。確定モック
+ * （`temp/mocks/deck-builder/deck-builder.html` の `BATCH`）と同じ値にする。
+ */
+export const POOL_BATCH: Readonly<Record<PoolView, number>> = { カード: 24, 一覧: 60 }
 
 export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder {
   return {
@@ -191,6 +225,12 @@ export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder
     recipeOrder: '新着',
     viewingRecipe: undefined,
     viewingRecipeLoading: false,
+    poolView: 'カード',
+    poolShown: POOL_BATCH.カード,
+    detailOpen: true,
+    openFilterFolds: new Set(),
+    editingName: false,
+    modal: undefined,
   }
 }
 
@@ -325,9 +365,7 @@ export function applyToBuilder(builder: Builder, message: ToClient): Builder {
 /** プールのカード 1 種を、組むところに並べる形。 */
 export interface PoolRow {
   readonly key: string
-  readonly name: string
-  /** 「Lv1 赤 BP1000 SP1000」のような 1 行（盤面の小さいカードと同じ）。 */
-  readonly summary: string
+  readonly face: WireCardFace
   /** いまデッキに入れている枚数。 */
   readonly count: number
 }
@@ -379,8 +417,7 @@ export function poolRows(pool: readonly WirePoolCard[], draft: DeckDraft): reado
 
   return sortedPool(pool).map((card) => ({
     key: card.key,
-    name: card.face.name,
-    summary: summaryOf(card.face),
+    face: card.face,
     count: counts.get(card.key) ?? 0,
   }))
 }
@@ -537,6 +574,8 @@ export function autoLabelsOf(
 /** 詳しく出すカード 1 種。 */
 export interface CardDetail {
   readonly name: string
+  /** 面を描くのに要る項目（ADR-0028）。左に出す面はここから組む。 */
+  readonly face: WireCardFace
   readonly rows: readonly DetailRow[]
   /** 印刷されているテキスト。改行ごとに 1 行（`view-model.ts` の `CardView` と同じ）。 */
   readonly text: readonly string[]
@@ -547,7 +586,7 @@ export function cardDetailOf(pool: readonly WirePoolCard[], key: string): CardDe
   const card = pool.find((each) => each.key === key)
   if (card === undefined) return undefined
 
-  return { name: card.face.name, rows: printedDetailsOf(card.face, card.expansions), text: card.face.text }
+  return { name: card.face.name, face: card.face, rows: printedDetailsOf(card.face, card.expansions), text: card.face.text }
 }
 
 /**

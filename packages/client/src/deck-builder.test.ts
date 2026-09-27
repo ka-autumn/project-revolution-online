@@ -315,7 +315,7 @@ describe('確かめる', () => {
 describe('並べる', () => {
   /** #193。種別 → 色 → レベル → 名前。識別子は使わない（ADR-0021）。 */
   it('プールは、種別・色・レベル・名前の順に並ぶ', () => {
-    expect(poolRows(POOL, newDraft()).map((row) => row.name)).toEqual([
+    expect(poolRows(POOL, newDraft()).map((row) => row.face.name)).toEqual([
       'テスト・赤のユニットLv1',
       'テスト・赤のユニットLv2',
       'テスト・青のユニット',
@@ -342,9 +342,16 @@ describe('並べる', () => {
   it('デッキには入っているカードだけが、プールと同じ順に並ぶ', () => {
     const draft = { ...newDraft(), cards: ['き', 'い', 'き'] }
 
-    expect(deckRows(POOL, draft)).toEqual([
-      { kind: '使える', key: 'い', name: 'テスト・赤のユニットLv1', summary: 'Lv1 赤 BP1000 SP1000', count: 1 },
-      { kind: '使える', key: 'き', name: 'テスト・無色のストラテジー', summary: 'Lv0 無色 ストラテジー', count: 2 },
+    expect(
+      deckRows(POOL, draft).map((row) => ({
+        kind: row.kind,
+        key: row.key,
+        name: row.kind === '使える' ? row.face.name : undefined,
+        count: row.count,
+      })),
+    ).toEqual([
+      { kind: '使える', key: 'い', name: 'テスト・赤のユニットLv1', count: 1 },
+      { kind: '使える', key: 'き', name: 'テスト・無色のストラテジー', count: 2 },
     ])
   })
 
@@ -459,6 +466,7 @@ describe('詳しく出す', () => {
 
     expect(cardDetailOf([{ key: 'く', face, expansions: [] }], 'く')).toEqual({
       name: 'テスト・詳しく',
+      face,
       rows: [
         { label: '種別', value: 'ユニット' },
         { label: 'レベル', value: '3' },

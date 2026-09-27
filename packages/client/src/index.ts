@@ -16,6 +16,7 @@ import type {
 } from '@revolution/engine'
 import {
   applyToBuilder,
+  autoLabelsOf,
   cardDetailOf,
   checkView,
   closedBuilder,
@@ -25,15 +26,19 @@ import {
   draftToSave,
   hasUnsavedChanges,
   hasUnusableCards,
+  levelBreakdownOf,
   newDraft,
   ownedDeckRows,
   poolRows,
+  POOL_BATCH,
   seatableDecks,
   seatedChoice,
+  starTotalOf,
+  typeCountsOf,
   withCard,
   withoutCard,
 } from './deck-builder.js'
-import type { Builder, DeckDraft } from './deck-builder.js'
+import type { Builder, DeckDraft, PoolView } from './deck-builder.js'
 import {
   actionViews,
   automaticAction,
@@ -505,6 +510,7 @@ function draw(
       deckEditorElement(
         {
           name: draft.name,
+          editingName: builder.editingName,
           description: draft.description,
           count: draft.cards.length,
           unsaved: hasUnsavedChanges(draft, owned),
@@ -513,17 +519,24 @@ function draw(
           // 絞り込むのはプールの一覧だけである。デッキに入っているカードは、条件に合わなくても出す。
           pool: poolRows(filterPool(pool, builder.filter), draft),
           poolTotal: pool.length,
+          poolView: builder.poolView,
+          poolShown: builder.poolShown,
           filter: builder.filter,
           filterChoices: filterChoicesOf(pool),
           filterOpen: builder.filterOpen,
+          openFolds: builder.openFilterFolds,
+          detailOpen: builder.detailOpen,
           deck: deckRows(pool, draft),
           detail: (key) => cardDetailOf(pool, key),
           pinned: builder.pinned,
           restrictions: stage.restrictions,
           rules: builder.rules,
           refusal: builder.refusal,
-          // 共有できるのは保存してあるデッキだけである（ADR-0022）。まだ無い識別子は渡せない。
-          canShare: draft.deck !== undefined,
+          labels: autoLabelsOf(pool, draft, undefined),
+          levelBars: levelBreakdownOf(pool, draft),
+          typeCounts: typeCountsOf(pool, draft),
+          starTotal: starTotalOf(pool, draft),
+          modal: builder.modal,
         },
         building.editor,
       ),
@@ -1131,14 +1144,38 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       onRecipeList: () => requestRecipeList(builder.recipeOrder),
     },
     editor: {
-      onName: (name) => {
-        // 描き直さない。入力欄の値はブラウザが持っている（`lobby` の `onName` と同じ）。
-        if (builder.draft !== undefined) updateBuilder({ ...builder, draft: { ...builder.draft, name } })
+      onEditNameStart: () => {
+        updateBuilder({ ...builder, editingName: true })
+        redraw()
+      },
+      onEditNameCommit: (name) => {
+        if (!builder.editingName || builder.draft === undefined) return
+
+        const trimmed = name.trim()
+        updateBuilder({
+          ...builder,
+          editingName: false,
+          draft: { ...builder.draft, name: trimmed === '' ? builder.draft.name : trimmed },
+        })
+        redraw()
+      },
+      onEditNameCancel: () => {
+        updateBuilder({ ...builder, editingName: false })
+        redraw()
       },
       onDescription: (description) => {
+        // 描き直さない。解説の窓の入力欄の値はブラウザが持っている（`lobby` の `onName` と同じ）。
         if (builder.draft !== undefined) updateBuilder({ ...builder, draft: { ...builder.draft, description } })
       },
-      onEdited: () => redraw(),
+      onOpenModal: (modal) => {
+        updateBuilder({ ...builder, modal })
+        redraw()
+      },
+      onCloseModal: () => {
+        // 解説の窓を閉じた時に、打ち込んだ内容を帯の「保存していない変更」に反映する。
+        updateBuilder({ ...builder, modal: undefined })
+        redraw()
+      },
       onAdd: (key) => editCards((draft) => withCard(draft, key)),
       onRemove: (key) => editCards((draft) => withoutCard(draft, key)),
       onFormat: (format) => {
@@ -1167,7 +1204,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       },
       onFilter: (filter) => {
         // 一覧が変わるので、先頭から見せる。**打ち込んでいる手は `draw` が戻す。**
-        updateBuilder({ ...builder, filter })
+        updateBuilder({ ...builder, filter, poolShown: POOL_BATCH[builder.poolView] })
         redraw()
         const list = root.querySelector<HTMLElement>(`[data-keep-scroll="プール"]`)
         if (list !== null) list.scrollTop = 0
@@ -1176,6 +1213,30 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         updateBuilder({ ...builder, filterOpen })
         redraw()
       },
+      onToggleFold: (key) => {
+        const open = new Set(builder.openFilterFolds)
+        if (open.has(key)) open.delete(key)
+        else open.add(key)
+        // 描き直さない。<details> の開閉はブラウザがすでに反映している。
+        updateBuilder({ ...builder, openFilterFolds: open })
+      },
+      onPoolView: (poolView) => {
+        updateBuilder({ ...builder, poolView, poolShown: POOL_BATCH[poolView] })
+        redraw()
+        const list = root.querySelector<HTMLElement>(`[data-keep-scroll="プール"]`)
+        if (list !== null) {
+          list.scrollTop = 0
+          list.scrollLeft = 0
+        }
+      },
+      onShowMorePool: () => {
+        updateBuilder({ ...builder, poolShown: builder.poolShown + POOL_BATCH[builder.poolView] })
+        redraw()
+      },
+      onToggleDetail: () => {
+        // 描き直さない。開閉は render.ts が押した場で class を直接切り替えている。
+        updateBuilder({ ...builder, detailOpen: !builder.detailOpen })
+      },
       onBack: () => {
         const draft = builder.draft
         const owned = session.ownedDecks ?? []
@@ -1183,15 +1244,6 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
         // **保存していない変更は、ここで捨てると戻らない。** 捨てるかどうかは人が決める。
         updateBuilder({ ...builder, confirming: { kind: '変更を捨てる' } })
-        redraw()
-      },
-      onShare: () => {
-        // 共有できるのは保存してあるデッキだけである（`view.canShare`、ADR-0022）。組みかけの
-        // 打ち込みではなく、**いま自分のデッキとして残っているものの名前・解説**を初期値にする。
-        const deck = session.ownedDecks?.find((each) => each.id === builder.draft?.deck)
-        if (deck === undefined) return
-
-        updateBuilder({ ...builder, sharing: { kind: '打ち込み中', draft: shareDraftOf(deck), sending: false, refusal: undefined } })
         redraw()
       },
     },
