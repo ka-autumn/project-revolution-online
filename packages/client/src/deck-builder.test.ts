@@ -3,6 +3,7 @@ import type { WireCardFace, WireOwnedDeck, WirePoolCard } from '@revolution/engi
 import {
   NEW_DECK_NAME,
   applyToBuilder,
+  autoLabelsOf,
   cardDetailOf,
   checkView,
   closedBuilder,
@@ -12,11 +13,14 @@ import {
   draftOf,
   draftToSave,
   hasUnsavedChanges,
+  levelBreakdownOf,
   newDraft,
   poolRows,
   printedDetailsOf,
   seatableDecks,
   seatedChoice,
+  starTotalOf,
+  typeCountsOf,
   violationLine,
   withCard,
   withoutCard,
@@ -348,6 +352,103 @@ describe('並べる', () => {
     const draft = { ...newDraft(), cards: ['どこにもない', 'い'] }
 
     expect(deckRows(POOL, draft).map((row) => row.kind)).toEqual(['使える', '使えない'])
+  })
+})
+
+describe('内訳（ADR-0028）', () => {
+  // い：赤Lv1、う：赤Lv2、え：青Lv1、き：無色（色は黒扱い、レベル0）
+  const draft = { ...newDraft(), cards: ['い', 'い', 'う', 'え', 'き'] }
+
+  it('レベルの段ごとに、色別の枚数を積み上げる', () => {
+    const bars = levelBreakdownOf(POOL, draft)
+
+    expect(bars.find((bar) => bar.label === '2-')).toEqual({
+      label: '2-',
+      total: 5,
+      byColor: [
+        { color: '赤', count: 3 },
+        { color: '黒', count: 1 },
+        { color: '青', count: 1 },
+        { color: '白', count: 0 },
+        { color: '緑', count: 0 },
+      ],
+    })
+    expect(bars.filter((bar) => bar.label !== '2-').every((bar) => bar.total === 0)).toBe(true)
+  })
+
+  it('使えないカードは数えない', () => {
+    const withUnusable = { ...newDraft(), cards: ['どこにもない'] }
+
+    expect(levelBreakdownOf(POOL, withUnusable).every((bar) => bar.total === 0)).toBe(true)
+    expect(typeCountsOf(POOL, withUnusable).every((row) => row.count === 0)).toBe(true)
+    expect(starTotalOf(POOL, withUnusable)).toBe(0)
+  })
+
+  it('種別ごとの枚数を数える。プールに無い種別も0枚で出す', () => {
+    expect(typeCountsOf(POOL, draft)).toEqual([
+      { type: 'ユニット', count: 4 },
+      { type: 'ストラテジー', count: 1 },
+      { type: 'トラップ', count: 0 },
+      { type: '超必殺ストラテジー！', count: 0 },
+    ])
+  })
+
+  it('スターの合計を数える。リバーススターは含めない', () => {
+    const starred: WirePoolCard[] = [
+      { key: 'す', face: unitFace('テスト・スター持ち', { stars: 2 }), expansions: [] },
+      { key: 'り', face: unitFace('テスト・リバーススター持ち', { reverseStars: 1 }), expansions: [] },
+    ]
+    const withStars = { ...newDraft(), cards: ['す', 'す', 'り'] }
+
+    expect(starTotalOf(starred, withStars)).toBe(4)
+  })
+})
+
+describe('自動ラベル（ADR-0028）', () => {
+  it('入っていなければ何も付かない', () => {
+    expect(autoLabelsOf(POOL, newDraft(), undefined)).toEqual([])
+  })
+
+  /** しきい値は仮の値（平均レベル 3.6 以下）。 */
+  it('平均レベルが低ければアグロ', () => {
+    const draft = { ...newDraft(), cards: ['い', 'い'] } // 赤Lv1 のみ、平均1
+
+    expect(autoLabelsOf(POOL, draft, undefined)).toContainEqual({ group: 'アーキタイプ', label: 'アグロ' })
+  })
+
+  /** しきい値は仮の値（平均レベル 4.6 以上）。 */
+  it('平均レベルが高ければコントロール', () => {
+    const highLevel: WirePoolCard[] = [{ key: 'た', face: unitFace('テスト・高レベル', { level: 8 }), expansions: [] }]
+    const draft = { ...newDraft(), cards: ['た'] }
+
+    expect(autoLabelsOf(highLevel, draft, undefined)).toContainEqual({ group: 'アーキタイプ', label: 'コントロール' })
+  })
+
+  it('間なら、ミッドレンジ', () => {
+    const midLevel: WirePoolCard[] = [{ key: 'た', face: unitFace('テスト・中間レベル', { level: 4 }), expansions: [] }]
+    const draft = { ...newDraft(), cards: ['た'] }
+
+    expect(autoLabelsOf(midLevel, draft, undefined)).toContainEqual({ group: 'アーキタイプ', label: 'ミッドレンジ' })
+  })
+
+  it('持ち主がアーキタイプを選んでいれば、自動のアーキタイプは付かない', () => {
+    const draft = { ...newDraft(), cards: ['い'] }
+
+    expect(autoLabelsOf(POOL, draft, 'コンボ')).not.toContainEqual(expect.objectContaining({ group: 'アーキタイプ' }))
+  })
+
+  it('単色なら「◯単」、2色ならその2色、3色以上なら「多色」', () => {
+    const single = { ...newDraft(), cards: ['い', 'う'] } // 赤のみ
+    const double = { ...newDraft(), cards: ['い', 'え'] } // 赤・青
+    const triple: WirePoolCard[] = [
+      ...POOL,
+      { key: 'ら', face: unitFace('テスト・緑', { colors: ['緑'] }), expansions: [] },
+    ]
+    const tripleDraft = { ...newDraft(), cards: ['い', 'え', 'ら'] }
+
+    expect(autoLabelsOf(POOL, single, undefined)).toContainEqual({ group: '色の構成', label: '赤単' })
+    expect(autoLabelsOf(POOL, double, undefined)).toContainEqual({ group: '色の構成', label: '赤青' })
+    expect(autoLabelsOf(triple, tripleDraft, undefined)).toContainEqual({ group: '色の構成', label: '多色' })
   })
 })
 

@@ -592,6 +592,14 @@ export function printedSquareLabel(printed: Square): string {
   return squareLabel('先攻', printed)
 }
 
+/**
+ * カードの面の色。複数の色を持つカード・無色のカードは、いまのカードプールに無いので
+ * 考えない（ADR-0027）。持っている色のうち 1 つ目で決める。
+ */
+export function primaryColorOf(colors: readonly Color[]): Color {
+  return colors[0] ?? '黒'
+}
+
 const COLORLESS = '無色'
 
 function colorsOf(face: WireCardFace): string {

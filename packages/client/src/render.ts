@@ -54,7 +54,7 @@ import type {
   TransitionView,
   ZoneView,
 } from './view-model.js'
-import { keyOfPosition, printedSquareLabel, zoneOf } from './view-model.js'
+import { keyOfPosition, primaryColorOf, printedSquareLabel, zoneOf } from './view-model.js'
 
 /**
  * 画面に出す値（`view-model.ts`）を DOM にする。
@@ -128,14 +128,6 @@ const LEVEL_ICON_URL: Readonly<Record<Color, string>> = {
   青: blueLevelIcon,
   白: whiteLevelIcon,
   緑: greenLevelIcon,
-}
-
-/**
- * カードの面の色。複数の色を持つカード・無色のカードは、いまのカードプールに無いので
- * 考えない（ADR-0027）。持っている色のうち 1 つ目で決める。
- */
-function primaryColorOf(colors: readonly Color[]): Color {
-  return colors[0] ?? '黒'
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg'

@@ -15,7 +15,7 @@ import { emptyFilter } from './pool-filter.js'
 import type { PoolFilter } from './pool-filter.js'
 import type { SharingState } from './recipe.js'
 import type { ChosenRules } from './render.js'
-import { squareLabel, summaryOf } from './view-model.js'
+import { primaryColorOf, squareLabel, summaryOf } from './view-model.js'
 import type { DetailRow } from './view-model.js'
 
 /**
@@ -410,6 +410,128 @@ export function unusableCardCount(pool: readonly WirePoolCard[], draft: DeckDraf
 /** 使えないカードが入っているか。入っていれば、確かめることも保存することもできない。 */
 export function hasUnusableCards(pool: readonly WirePoolCard[], draft: DeckDraft): boolean {
   return unusableCardCount(pool, draft) > 0
+}
+
+/**
+ * デッキに入っている、プールにあるカードの面。枚数ぶん重複する（総合ルール上のカードの実体を
+ * 表す）。使えないカード（プールに無いカード）は、印刷されている項目が分からないため含めない。
+ */
+function usableFacesOf(pool: readonly WirePoolCard[], draft: DeckDraft): readonly WireCardFace[] {
+  const byKey = new Map(pool.map((card) => [card.key, card.face] as const))
+
+  return draft.cards.flatMap((key) => {
+    const face = byKey.get(key)
+    return face === undefined ? [] : [face]
+  })
+}
+
+/** デッキの内訳で使うレベルの段（ADR-0028）。 */
+export const LEVEL_BUCKETS: readonly { readonly label: string; readonly matches: (level: number) => boolean }[] = [
+  { label: '2-', matches: (level) => level <= 2 },
+  { label: '3', matches: (level) => level === 3 },
+  { label: '4', matches: (level) => level === 4 },
+  { label: '5', matches: (level) => level === 5 },
+  { label: '6', matches: (level) => level === 6 },
+  { label: '7+', matches: (level) => level >= 7 },
+]
+
+/** レベルの段 1 つぶんの、色ごとの枚数。 */
+export interface LevelBar {
+  readonly label: string
+  readonly total: number
+  readonly byColor: readonly { readonly color: (typeof COLORS)[number]; readonly count: number }[]
+}
+
+/**
+ * デッキの内訳：レベルの段ごとに、色別の枚数を積み上げグラフにする形で数える（ADR-0028）。
+ * 使えないカードは数えない。
+ */
+export function levelBreakdownOf(pool: readonly WirePoolCard[], draft: DeckDraft): readonly LevelBar[] {
+  const faces = usableFacesOf(pool, draft)
+
+  return LEVEL_BUCKETS.map(({ label, matches }) => {
+    const inBucket = faces.filter((face) => matches(face.level))
+    const byColor = COLORS.map((color) => ({ color, count: inBucket.filter((face) => primaryColorOf(face.colors) === color).length }))
+
+    return { label, total: inBucket.length, byColor }
+  })
+}
+
+/** 種別 1 つぶんの枚数。 */
+export interface TypeCount {
+  readonly type: (typeof CARD_TYPES)[number]
+  readonly count: number
+}
+
+/** デッキの内訳：種別ごとの枚数（ADR-0028）。プールに無い種別も 0 枚として出す。使えないカードは数えない。 */
+export function typeCountsOf(pool: readonly WirePoolCard[], draft: DeckDraft): readonly TypeCount[] {
+  const faces = usableFacesOf(pool, draft)
+
+  return CARD_TYPES.map((type) => ({ type, count: faces.filter((face) => face.type === type).length }))
+}
+
+/** デッキの内訳：スターの合計（ADR-0028）。リバーススターは含めない。使えないカードは数えない。 */
+export function starTotalOf(pool: readonly WirePoolCard[], draft: DeckDraft): number {
+  return usableFacesOf(pool, draft).reduce((sum, face) => sum + face.stars, 0)
+}
+
+/** アーキタイプの自動ラベル（持ち主が選べるのは #229。それまでは自動の分だけ）。 */
+export type Archetype = 'アグロ' | 'ミッドレンジ' | 'コントロール'
+
+/**
+ * アーキタイプを自動で決めるしきい値（仮の値）。
+ *
+ * ADR-0028はしきい値を決めておらず、「実際のデッキを見て調整する」としている。ここでは
+ * デッキの平均レベルで区切る——確定モック（`temp/mocks/deck-builder/deck-builder.html` の
+ * `autoTagsOf`）が仮に置いた値をそのまま引き継ぐ。
+ */
+const ARCHETYPE_AGGRO_MAX_AVERAGE_LEVEL = 3.6
+const ARCHETYPE_CONTROL_MIN_AVERAGE_LEVEL = 4.6
+
+function archetypeOf(faces: readonly WireCardFace[]): Archetype {
+  const average = faces.reduce((sum, face) => sum + face.level, 0) / faces.length
+  if (average <= ARCHETYPE_AGGRO_MAX_AVERAGE_LEVEL) return 'アグロ'
+  if (average >= ARCHETYPE_CONTROL_MIN_AVERAGE_LEVEL) return 'コントロール'
+
+  return 'ミッドレンジ'
+}
+
+/** 色の構成：単色なら「◯単」、2 色なら 2 色を並べた名前、3 色以上は「多色」（ADR-0028）。 */
+function colorCompositionOf(faces: readonly WireCardFace[]): string {
+  const present = COLORS.filter((color) => faces.some((face) => primaryColorOf(face.colors) === color))
+  if (present.length === 1) return `${present[0]}単`
+  if (present.length === 2) return present.join('')
+
+  return '多色'
+}
+
+/** デッキの中身から数えて決まる自動ラベル 1 つ（ADR-0028）。持ち主が選ぶラベル（#229）とは別。 */
+export interface AutoDeckLabel {
+  readonly group: 'アーキタイプ' | '色の構成'
+  readonly label: string
+}
+
+/**
+ * デッキの中身から自動で付くラベル（ADR-0028）。数えるだけで決まるものだけを付け、ルールの
+ * 判断が要るものは付けない。
+ *
+ * `chosenArchetype` は持ち主がアーキタイプを選んでいるか（#229）。選んでいれば、自動の
+ * アーキタイプは付けない。持ち主が選ぶ手段はまだこの画面に無いので、いまは常に `undefined`
+ * を渡すことになる。
+ */
+export function autoLabelsOf(
+  pool: readonly WirePoolCard[],
+  draft: DeckDraft,
+  chosenArchetype: string | undefined,
+): readonly AutoDeckLabel[] {
+  const faces = usableFacesOf(pool, draft)
+  if (faces.length === 0) return []
+
+  const labels: AutoDeckLabel[] = []
+  if (chosenArchetype === undefined) labels.push({ group: 'アーキタイプ', label: archetypeOf(faces) })
+  labels.push({ group: '色の構成', label: colorCompositionOf(faces) })
+
+  return labels
 }
 
 /** 詳しく出すカード 1 種。 */
