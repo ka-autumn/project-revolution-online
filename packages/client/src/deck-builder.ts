@@ -193,6 +193,12 @@ export interface Builder {
    * `confirming` と同じ理由でここに持つ——画面は丸ごと描き直されるので、開いている窓を状態として持つ。
    */
   readonly modal: DeckEditorModal | undefined
+  /** デッキ一覧の「デッキを探す」の打ち込み（ADR-0028）。 */
+  readonly deckSearch: string
+  /** デッキ一覧の「入っている色」の絞り込み。 */
+  readonly deckColorFilter: readonly string[]
+  /** デッキ一覧の「ラベル」の絞り込み。 */
+  readonly deckLabelFilter: readonly string[]
 }
 
 /** カード一覧の表示の形（ADR-0028）。 */
@@ -231,6 +237,9 @@ export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder
     openFilterFolds: new Set(),
     editingName: false,
     modal: undefined,
+    deckSearch: '',
+    deckColorFilter: [],
+    deckLabelFilter: [],
   }
 }
 
@@ -673,16 +682,97 @@ export function violationLine(violation: DeckViolation): string {
   }
 }
 
-/** 自分のデッキを選ぶところに並べる 1 つ。 */
-export interface OwnedDeckRow {
-  readonly id: DeckId
-  readonly name: string
+/** デッキ 1 つの、色ごとの枚数。0 枚の色は持たない。 */
+export interface DeckColorCount {
+  readonly color: (typeof COLORS)[number]
   readonly count: number
 }
 
+/**
+ * デッキの顔にするカード（ADR-0028）。一番多く入れたカード（同じ枚数ならレベルの高いもの）。
+ *
+ * パートナーカードを顔にする分は #228 が済むまで無い——それまではこれだけで決める。使えない
+ * カード（プールに無いカード）は、印刷されている項目が分からないので顔にはしない。
+ */
+function faceCardOf(pool: readonly WirePoolCard[], cards: readonly string[]): WireCardFace | undefined {
+  const byKey = new Map(pool.map((card) => [card.key, card.face] as const))
+  const counted = [...countsOf(cards)]
+    .map(([key, count]): { readonly face: WireCardFace; readonly count: number } | undefined => {
+      const face = byKey.get(key)
+      return face === undefined ? undefined : { face, count }
+    })
+    .filter((each): each is { readonly face: WireCardFace; readonly count: number } => each !== undefined)
+  if (counted.length === 0) return undefined
+
+  return [...counted].sort((left, right) => right.count - left.count || right.face.level - left.face.level)[0]?.face
+}
+
+function colorCountsOf(pool: readonly WirePoolCard[], cards: readonly string[]): readonly DeckColorCount[] {
+  const faces = usableFacesOf(pool, { deck: undefined, name: '', description: '', cards })
+
+  return COLORS.map((color) => ({ color, count: faces.filter((face) => primaryColorOf(face.colors) === color).length })).filter(
+    (each) => each.count > 0,
+  )
+}
+
+/** 自分のデッキを選ぶところに並べる 1 つ（ADR-0028）。 */
+export interface OwnedDeckRow {
+  readonly id: DeckId
+  readonly name: string
+  readonly description: string
+  readonly count: number
+  readonly face: WireCardFace | undefined
+  readonly colorCounts: readonly DeckColorCount[]
+  readonly labels: readonly AutoDeckLabel[]
+}
+
 /** 自分のデッキの一覧。**届いた順のまま並べる。** */
-export function ownedDeckRows(decks: readonly WireOwnedDeck[]): readonly OwnedDeckRow[] {
-  return decks.map((deck) => ({ id: deck.id, name: deck.name, count: deck.cards.length }))
+export function ownedDeckRows(pool: readonly WirePoolCard[], decks: readonly WireOwnedDeck[]): readonly OwnedDeckRow[] {
+  return decks.map((deck) => ({
+    id: deck.id,
+    name: deck.name,
+    description: deck.description,
+    count: deck.cards.length,
+    face: faceCardOf(pool, deck.cards),
+    colorCounts: colorCountsOf(pool, deck.cards),
+    // 持ち主が選ぶアーキタイプは #229 が済むまで無いので、自動の分だけになる。
+    labels: autoLabelsOf(pool, { deck: deck.id, name: deck.name, description: deck.description, cards: deck.cards }, undefined),
+  }))
+}
+
+/** デッキ一覧の「入っている色」で選べるもの。実際にどれかのデッキが持つ色だけを並べる。 */
+export function deckColorChoices(rows: readonly OwnedDeckRow[]): readonly (typeof COLORS)[number][] {
+  return COLORS.filter((color) => rows.some((row) => row.colorCounts.some((each) => each.color === color)))
+}
+
+/** デッキ一覧の「ラベル」で選べるもの。実際にどれかのデッキに付いているラベルだけを並べる。 */
+export function deckLabelChoices(rows: readonly OwnedDeckRow[]): readonly AutoDeckLabel[] {
+  const seen: AutoDeckLabel[] = []
+  for (const label of rows.flatMap((row) => row.labels)) {
+    if (!seen.some((each) => each.label === label.label)) seen.push(label)
+  }
+
+  return seen
+}
+
+/**
+ * デッキ一覧の探す（ADR-0028）。名前・入っている色・自動のラベルで絞り込む。**同じ軸の中は
+ * 「どれか」**（`pool-filter.ts` と同じ考え方）。
+ */
+export function filterOwnedDeckRows(
+  rows: readonly OwnedDeckRow[],
+  search: string,
+  colors: readonly string[],
+  labels: readonly string[],
+): readonly OwnedDeckRow[] {
+  const term = search.trim()
+
+  return rows.filter(
+    (row) =>
+      (term === '' || row.name.includes(term)) &&
+      (colors.length === 0 || row.colorCounts.some((each) => colors.includes(each.color))) &&
+      (labels.length === 0 || row.labels.some((each) => labels.includes(each.label))),
+  )
 }
 
 /**

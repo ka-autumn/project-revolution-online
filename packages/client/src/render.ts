@@ -939,12 +939,16 @@ export function lobbyElement(
   return node
 }
 
-/** デッキを選ぶところで押せるもの（#193）。 */
+/** デッキを選ぶところで押せるもの（#193、ADR-0028）。 */
 export interface DeckListHandlers {
   readonly onOpen: (deck: DeckId) => void
   readonly onNew: () => void
   /** 既製デッキをコピーして、そのまま組み始める（ADR-0022）。 */
   readonly onCopy: (preset: DeckId) => void
+  /** 自分のデッキを、新しいデッキとして保存し直す（ADR-0028）。 */
+  readonly onDuplicate: (deck: DeckId) => void
+  /** 共有する下書きを開く（ADR-0022・ADR-0028）。 */
+  readonly onShare: (deck: DeckId) => void
   /** 自分のデッキを消す。**最後の 1 つは消せない**が、断るのはサーバである。 */
   readonly onDelete: (deck: DeckId, name: string) => void
   readonly onClose: () => void
@@ -952,6 +956,28 @@ export interface DeckListHandlers {
   readonly onMyShares: () => void
   /** 「一覧に載せる」共有があるレシピの一覧を開く（ADR-0022）。 */
   readonly onRecipeList: () => void
+  readonly onSearch: (search: string) => void
+  readonly onColorFilter: (colors: readonly string[]) => void
+  readonly onLabelFilter: (labels: readonly string[]) => void
+}
+
+/** デッキ一覧に出すもの（#193、ADR-0028）。探した後の絞り込み結果と、選べるものの両方を持つ。 */
+export interface DeckListView {
+  /** 探した後のデッキ。並べるのはこれだけ。 */
+  readonly decks: readonly OwnedDeckRow[]
+  /** 探す前のデッキの数。「何件のうち何件」を出す。 */
+  readonly total: number
+  /** 「入っている色」で選べるもの。実際にどれかのデッキが持つ色だけ。 */
+  readonly allColors: readonly string[]
+  /** 「ラベル」で選べるもの。実際にどれかのデッキに付いているラベルだけ。 */
+  readonly allLabels: readonly AutoDeckLabel[]
+  readonly search: string
+  readonly colorFilter: readonly string[]
+  readonly labelFilter: readonly string[]
+  readonly presets: readonly WireDeck[]
+  /** コピー・複製・削除の返事を待っているか。**重ねて押させない**——2 度押すとデッキが 2 つできる。 */
+  readonly waiting: boolean
+  readonly refusal: string | undefined
 }
 
 /**
@@ -969,57 +995,165 @@ function iconButton(icon: string, label: string, onPress: () => void): HTMLEleme
   return node
 }
 
-/**
- * どのデッキを組むかを選ぶところ（#193）。自分のデッキと、コピーできる既製デッキを並べる。
- *
- * `waiting` の間は、コピー・削除の返事を待っている。**重ねて押させない**——コピーを 2 度押すと
- * デッキが 2 つできる。
- */
-export function deckListElement(
-  decks: readonly OwnedDeckRow[],
-  presets: readonly WireDeck[],
-  waiting: boolean,
-  refusal: string | undefined,
-  handlers: DeckListHandlers,
-): HTMLElement {
-  const node = element('section', 'decks')
-  const head = element('div', 'decks__head')
-  head.append(
-    element('h2', 'decks__title', '自分のデッキ'),
+/** デッキ一覧の上の帯（ADR-0028）。 */
+function listTopbarElement(handlers: DeckListHandlers): HTMLElement {
+  const bar = element('header', 'panel topbar')
+  bar.append(
+    button('← ロビーに戻る', handlers.onClose),
+    element('h1', 'topbar__title', 'デッキ一覧'),
+    element('span', 'topbar__sub', '自分のデッキを組む・共有する'),
+    element('span', 'topbar__spacer'),
     button('自分の共有', handlers.onMyShares),
     button('共有されたレシピ', handlers.onRecipeList),
-    button('ロビーに戻る', handlers.onClose),
+    button('＋ 新しく作る', handlers.onNew, true),
   )
-  node.append(head)
 
-  const list = element('div', 'decks__list')
-  for (const deck of decks) {
-    const row = element('div', 'decks__row')
-    row.append(element('span', 'decks__name', deck.name), element('span', 'decks__count', `${deck.count} 枚`))
-    const open = iconButton('✏️', `「${deck.name}」を組む`, () => handlers.onOpen(deck.id))
-    const remove = iconButton('🗑️', `「${deck.name}」を削除する`, () => handlers.onDelete(deck.id, deck.name))
-    remove.toggleAttribute('disabled', waiting)
-    row.append(open, remove)
-    list.append(row)
+  return bar
+}
+
+/** デッキを探すところ（ADR-0028）。名前・入っている色・自動のラベルで絞り込む。 */
+function deckSearchPanelElement(view: DeckListView, handlers: DeckListHandlers): HTMLElement {
+  const panel = sectionPanel('', 'デッキを探す')
+  const body = element('div', 'panel__body')
+
+  const search = document.createElement('input')
+  search.type = 'search'
+  search.placeholder = 'デッキの名前で探す'
+  search.setAttribute('aria-label', 'デッキの名前で探す')
+  search.value = view.search
+  search.dataset[KEEP_FOCUS] = 'デッキ一覧の検索'
+  search.addEventListener('input', (event) => {
+    if (!(event instanceof InputEvent && event.isComposing)) handlers.onSearch(search.value)
+  })
+  search.addEventListener('compositionend', () => handlers.onSearch(search.value))
+  body.append(search)
+
+  const colorRow = filterRow(
+    '入っている色',
+    view.allColors,
+    view.colorFilter,
+    handlers.onColorFilter,
+    (color) => colorChipContent(color as Color),
+  )
+  if (colorRow !== undefined) body.append(colorRow)
+
+  const labelValues = view.allLabels.map((label) => label.label)
+  const labelOf = (value: string): AutoDeckLabel | undefined => view.allLabels.find((label) => label.label === value)
+  const labelRow = filterRow(
+    'ラベル',
+    labelValues,
+    view.labelFilter,
+    handlers.onLabelFilter,
+    (value) => {
+      const label = labelOf(value)
+      const emoji = label === undefined ? undefined : AUTO_LABEL_EMOJI[label.label]
+      return emoji === undefined ? [value] : [emoji, value]
+    },
+    (value) => {
+      const label = labelOf(value)
+      return label === undefined ? value : `${label.group}：${label.label}`
+    },
+  )
+  if (labelRow !== undefined) body.append(labelRow)
+
+  panel.append(body)
+
+  return panel
+}
+
+/** 既製デッキからコピーして作るところ（ADR-0022）。カードのデータを持たないので、面は出さない。 */
+function presetsPanelElement(presets: readonly WireDeck[], waiting: boolean, handlers: DeckListHandlers): HTMLElement | undefined {
+  if (presets.length === 0) return undefined
+
+  const panel = sectionPanel('', '既製デッキからコピーして作る')
+  const body = element('div', 'presets')
+  for (const preset of presets) {
+    const row = element('div', 'preset')
+    row.append(element('span', 'preset__name', preset.name))
+    const copy = smallButton('コピーして組む', () => handlers.onCopy(preset.id))
+    copy.toggleAttribute('disabled', waiting)
+    row.append(copy)
+    body.append(row)
   }
-  node.append(list)
-  node.append(button('新しく作る', handlers.onNew))
+  panel.append(body)
 
-  if (presets.length > 0) {
-    node.append(element('h2', 'decks__title', '既製デッキからコピーして作る'))
-    const presetList = element('div', 'decks__list')
-    for (const preset of presets) {
-      const row = element('div', 'decks__row')
-      row.append(element('span', 'decks__name', preset.name))
-      const copy = button('コピーして組む', () => handlers.onCopy(preset.id))
-      copy.toggleAttribute('disabled', waiting)
-      row.append(copy)
-      presetList.append(row)
-    }
-    node.append(presetList)
+  return panel
+}
+
+/** 自分のデッキ 1 つのカード（ADR-0028）。 */
+function deckCardElement(row: OwnedDeckRow, waiting: boolean, handlers: DeckListHandlers): HTMLElement {
+  const card = element('article', 'deckcard')
+
+  const faceWrap = element('div', 'deckcard__face')
+  if (row.face !== undefined) faceWrap.append(poolCardElement(row.face))
+  card.append(faceWrap)
+
+  const main = element('div', 'deckcard__main')
+  const head = element('div', 'deckcard__head')
+  head.append(element('h3', 'deckcard__name', row.name))
+  main.append(head)
+  main.append(element('p', 'deckcard__desc', row.description === '' ? '（解説はありません）' : row.description))
+  const count = element('span', 'deckcard__count', String(row.count))
+  count.append(element('small', '', ' 枚'))
+  main.append(count)
+
+  const colors = element('div', 'colors')
+  colors.setAttribute('aria-label', '色ごとの枚数')
+  for (const { color, count: colorCount } of row.colorCounts) {
+    const item = element('span', '')
+    const icon = document.createElement('img')
+    icon.src = LEVEL_ICON_URL[color]
+    icon.alt = color
+    item.append(icon, document.createTextNode(String(colorCount)))
+    colors.append(item)
   }
+  main.append(colors, labelListElement(row.labels))
+  card.append(main)
 
-  if (refusal !== undefined) node.append(element('p', 'refusal', `行えませんでした: ${refusal}`))
+  const actions = element('div', 'deckcard__actions')
+  const edit = button('✏️ 編集', () => handlers.onOpen(row.id))
+  const duplicate = button('⧉ 複製', () => handlers.onDuplicate(row.id))
+  duplicate.toggleAttribute('disabled', waiting)
+  const share = button('🔗 共有', () => handlers.onShare(row.id))
+  const remove = iconButton('🗑️', `「${row.name}」を削除する`, () => handlers.onDelete(row.id, row.name))
+  remove.toggleAttribute('disabled', waiting)
+  actions.append(edit, duplicate, share, remove)
+  card.append(actions)
+
+  return card
+}
+
+/**
+ * どのデッキを組むかを選ぶところ（#193、ADR-0028）。上に帯、下に 2 列
+ * （探す・既製デッキ／自分のデッキ）を並べる。
+ */
+export function deckListElement(view: DeckListView, handlers: DeckListHandlers): HTMLElement {
+  const node = element('div', 'deckbuild deckbuild--list')
+  node.append(listTopbarElement(handlers))
+
+  const columns = element('div', 'columns')
+
+  const left = element('div', 'column')
+  left.append(deckSearchPanelElement(view, handlers))
+  const presetsPanel = presetsPanelElement(view.presets, view.waiting, handlers)
+  if (presetsPanel !== undefined) left.append(presetsPanel)
+
+  const center = element('div', 'column column--center')
+  const aside = element('span', 'panel__aside')
+  aside.append(element('strong', '', String(view.decks.length)), ` / ${view.total} 件`)
+  const mine = sectionPanel('', '自分のデッキ', aside)
+  const scroller = element('div', 'decks')
+  const grid = element('div', 'decks__grid')
+  for (const deck of view.decks) grid.append(deckCardElement(deck, view.waiting, handlers))
+  scroller.append(grid)
+  if (view.decks.length === 0) scroller.append(element('p', 'pool__none', '条件に合うデッキがありません'))
+  mine.append(scroller)
+  center.append(mine)
+
+  columns.append(left, center)
+  node.append(columns)
+
+  if (view.refusal !== undefined) node.append(element('p', 'refusal', `行えませんでした: ${view.refusal}`))
 
   return node
 }

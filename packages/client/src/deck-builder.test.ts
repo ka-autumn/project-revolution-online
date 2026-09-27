@@ -9,12 +9,16 @@ import {
   closedBuilder,
   comparePrinted,
   confirmView,
+  deckColorChoices,
+  deckLabelChoices,
   deckRows,
   draftOf,
   draftToSave,
+  filterOwnedDeckRows,
   hasUnsavedChanges,
   levelBreakdownOf,
   newDraft,
+  ownedDeckRows,
   poolRows,
   printedDetailsOf,
   seatableDecks,
@@ -602,5 +606,58 @@ describe('席に着く時に選ぶデッキ', () => {
 
   it('既定が消えていても、自分で選んだものが残っていればそれを選ぶ', () => {
     expect(seatedChoice(SHOWN, '1', '消えた既定')).toBe('1')
+  })
+})
+
+describe('デッキ一覧（ADR-0028）', () => {
+  // い：赤Lv1、う：赤Lv2、き：無色（黒扱い）Lv0
+  const decks: readonly WireOwnedDeck[] = [
+    { id: 'A', name: 'デッキA', description: '', cards: ['い', 'い', 'う'] },
+    { id: 'B', name: 'デッキB', description: '', cards: ['い', 'き'] },
+    { id: 'C', name: '空のデッキ', description: '', cards: [] },
+    { id: 'D', name: '使えないデッキ', description: '', cards: ['どこにもない'] },
+  ]
+
+  it('顔は一番多く入れたカード。同じ枚数ならレベルの高いもの', () => {
+    const rows = ownedDeckRows(POOL, decks)
+
+    expect(rows.find((row) => row.id === 'A')?.face?.name).toBe('テスト・赤のユニットLv1')
+    // B は い(Lv1)・き(Lv0) が同数。レベルの高い い が顔になる。
+    expect(rows.find((row) => row.id === 'B')?.face?.name).toBe('テスト・赤のユニットLv1')
+    expect(rows.find((row) => row.id === 'C')?.face).toBeUndefined()
+    expect(rows.find((row) => row.id === 'D')?.face).toBeUndefined()
+  })
+
+  it('色ごとの枚数を数える。0 枚の色は持たない。使えないカードは数えない', () => {
+    const rows = ownedDeckRows(POOL, decks)
+
+    expect(rows.find((row) => row.id === 'A')?.colorCounts).toEqual([{ color: '赤', count: 3 }])
+    expect(rows.find((row) => row.id === 'C')?.colorCounts).toEqual([])
+    expect(rows.find((row) => row.id === 'D')?.colorCounts).toEqual([])
+  })
+
+  it('名前で探せる', () => {
+    const rows = ownedDeckRows(POOL, decks)
+
+    expect(filterOwnedDeckRows(rows, 'デッキA', [], []).map((row) => row.id)).toEqual(['A'])
+  })
+
+  it('入っている色で絞り込める', () => {
+    const rows = ownedDeckRows(POOL, decks)
+
+    expect(filterOwnedDeckRows(rows, '', ['赤'], []).map((row) => row.id)).toEqual(['A', 'B'])
+  })
+
+  it('自動のラベルで絞り込める', () => {
+    const rows = ownedDeckRows(POOL, decks)
+
+    expect(filterOwnedDeckRows(rows, '', [], ['赤単']).map((row) => row.id)).toEqual(['A'])
+  })
+
+  it('選べる色・ラベルは、実際にどれかのデッキが持つものだけ', () => {
+    const rows = ownedDeckRows(POOL, decks)
+
+    expect(deckColorChoices(rows)).toEqual(['赤', '黒'])
+    expect(deckLabelChoices(rows).map((label) => label.label)).toContain('赤単')
   })
 })

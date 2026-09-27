@@ -21,9 +21,12 @@ import {
   checkView,
   closedBuilder,
   confirmView,
+  deckColorChoices,
+  deckLabelChoices,
   deckRows,
   draftOf,
   draftToSave,
+  filterOwnedDeckRows,
   hasUnsavedChanges,
   hasUnusableCards,
   levelBreakdownOf,
@@ -493,12 +496,21 @@ function draw(
     stage.kind === 'ロビー' && connected && builder.screen === 'レシピ' && pool === undefined
 
   if (builderOpen && builder.screen === 'デッキを選ぶ') {
+    const allRows = ownedDeckRows(pool, owned)
     root.append(
       deckListElement(
-        ownedDeckRows(owned),
-        stage.presets,
-        builder.waiting.kind !== '無し',
-        builder.refusal,
+        {
+          decks: filterOwnedDeckRows(allRows, builder.deckSearch, builder.deckColorFilter, builder.deckLabelFilter),
+          total: allRows.length,
+          allColors: deckColorChoices(allRows),
+          allLabels: deckLabelChoices(allRows),
+          search: builder.deckSearch,
+          colorFilter: builder.deckColorFilter,
+          labelFilter: builder.deckLabelFilter,
+          presets: stage.presets,
+          waiting: builder.waiting.kind !== '無し',
+          refusal: builder.refusal,
+        },
         building.list,
       ),
     )
@@ -1127,6 +1139,33 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         updateBuilder({ ...builder, waiting: { kind: 'コピー' }, refusal: undefined })
         redraw()
       },
+      onDuplicate: (id) => {
+        // 自分のデッキを新しいデッキとして保存し直す（ADR-0028）。`デッキをコピーする` の
+        // `DeckOrigin` は既製デッキ・共有レシピしか指せないので、`デッキを保存する` を
+        // `deck` 無しで送る。届いたら「コピー」した時と同じくそのまま組み始める。
+        if (builder.waiting.kind !== '無し') return
+        const source = session.ownedDecks?.find((each) => each.id === id)
+        if (source === undefined) return
+
+        connection.send({
+          kind: 'デッキを保存する',
+          deck: undefined,
+          name: `${source.name}（コピー）`,
+          description: source.description,
+          cards: source.cards,
+        })
+        updateBuilder({ ...builder, waiting: { kind: 'コピー' }, refusal: undefined })
+        redraw()
+      },
+      onShare: (id) => {
+        // 共有できるのは保存してあるデッキだけである（ADR-0022）。デッキ一覧の各デッキから開く
+        // （ADR-0028。組むところの帯からは外した）。
+        const deck = session.ownedDecks?.find((each) => each.id === id)
+        if (deck === undefined) return
+
+        updateBuilder({ ...builder, sharing: { kind: '打ち込み中', draft: shareDraftOf(deck), sending: false, refusal: undefined } })
+        redraw()
+      },
       onDelete: (deck, name) => {
         // **消したデッキは戻らない。** 押し間違いで消えないように尋ねる。消すのは答えてから。
         updateBuilder({ ...builder, confirming: { kind: 'デッキを消す', deck, name }, refusal: undefined })
@@ -1142,6 +1181,18 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         redraw()
       },
       onRecipeList: () => requestRecipeList(builder.recipeOrder),
+      onSearch: (deckSearch) => {
+        updateBuilder({ ...builder, deckSearch })
+        redraw()
+      },
+      onColorFilter: (deckColorFilter) => {
+        updateBuilder({ ...builder, deckColorFilter })
+        redraw()
+      },
+      onLabelFilter: (deckLabelFilter) => {
+        updateBuilder({ ...builder, deckLabelFilter })
+        redraw()
+      },
     },
     editor: {
       onEditNameStart: () => {
