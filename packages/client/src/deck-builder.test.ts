@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { WireCardFace, WireOwnedDeck, WirePoolCard } from '@revolution/engine'
 import {
+  DECK_NAME_LIMIT,
   NEW_DECK_NAME,
   applyToBuilder,
   autoLabelsOf,
@@ -14,6 +15,7 @@ import {
   deckRows,
   draftOf,
   draftToSave,
+  duplicatedDeckName,
   filterOwnedDeckRows,
   hasUnsavedChanges,
   levelBreakdownOf,
@@ -23,6 +25,7 @@ import {
   printedDetailsOf,
   seatableDecks,
   seatedChoice,
+  startedEditing,
   starTotalOf,
   typeCountsOf,
   violationLine,
@@ -249,10 +252,76 @@ describe('既製デッキをコピーする', () => {
     expect(builder.waiting).toEqual({ kind: '無し' })
   })
 
+  /** ADR-0028。窓と名前の打ち込みは前に開いていたデッキのものなので、持ち越さない。 */
+  it('届いたデッキは、窓と名前の打ち込みを閉じた状態で組み始める', () => {
+    const waiting: Builder = {
+      ...closedBuilder(),
+      screen: 'デッキを選ぶ',
+      waiting: { kind: 'コピー' },
+      modal: '解説',
+      editingName: '打ちかけ',
+    }
+
+    const builder = applyToBuilder(waiting, { kind: 'デッキを保存した', deck: OWNED, violations: [] })
+
+    expect(builder.modal).toBeUndefined()
+    expect(builder.editingName).toBeUndefined()
+  })
+
   it('何も待っていなければ、保存した返事が届いても組むところは変わらない', () => {
     const listing: Builder = { ...closedBuilder(), screen: 'デッキを選ぶ' }
 
     expect(applyToBuilder(listing, { kind: 'デッキを保存した', deck: OWNED, violations: [] })).toBe(listing)
+  })
+})
+
+describe('組み始める', () => {
+  it('どのデッキを開いても、窓と名前の打ち込みを閉じた状態で始める', () => {
+    const before: Builder = { ...editing(draftOf(OWNED)), modal: '解説', editingName: '打ちかけ', pinned: 'い' }
+
+    const builder = startedEditing(before, newDraft())
+
+    expect(builder.screen).toBe('デッキを組む')
+    expect(builder.draft).toEqual(newDraft())
+    expect(builder.modal).toBeUndefined()
+    expect(builder.editingName).toBeUndefined()
+    expect(builder.pinned).toBeUndefined()
+  })
+})
+
+/** ADR-0028。自分のデッキを、名前に「（コピー）」を付けて新しいデッキとして保存し直す。 */
+describe('複製する', () => {
+  it('名前に「（コピー）」を付ける', () => {
+    expect(duplicatedDeckName('くみかけ')).toBe('くみかけ（コピー）')
+  })
+
+  it('付けると上限を超えるなら、元の名前の末尾を削って上限に収める', () => {
+    const name = duplicatedDeckName('あ'.repeat(DECK_NAME_LIMIT))
+
+    expect([...name]).toHaveLength(DECK_NAME_LIMIT)
+    expect(name).toBe(`${'あ'.repeat(DECK_NAME_LIMIT - 5)}（コピー）`)
+  })
+
+  /** サーバはコードポイントで数える（`server` の `owned-deck.ts`）。 */
+  it('長さはコードポイントで数える', () => {
+    const name = duplicatedDeckName('😀'.repeat(DECK_NAME_LIMIT))
+
+    expect([...name]).toHaveLength(DECK_NAME_LIMIT)
+  })
+
+  it('削った末尾が空白なら落とす', () => {
+    const name = duplicatedDeckName(`${'あ'.repeat(DECK_NAME_LIMIT - 6)} いいいいい`)
+
+    expect(name).toBe(`${'あ'.repeat(DECK_NAME_LIMIT - 6)}（コピー）`)
+  })
+
+  it('使えないカードが入っているデッキは複製できない', () => {
+    const rows = ownedDeckRows(POOL, [
+      OWNED,
+      { id: 'デッキ2', name: '使えない', description: '', cards: ['い', 'どこにもない'] },
+    ])
+
+    expect(rows.map((row) => row.hasUnusable)).toEqual([false, true])
   })
 })
 
@@ -495,6 +564,13 @@ describe('詳しく出す', () => {
     const face = unitFace('テスト・キーワード持ち', { keywords: ['夢', '希望'] })
 
     expect(printedDetailsOf(face)).toContainEqual({ label: 'キーワード', value: '夢・希望' })
+  })
+
+  /** 画面は勝手に配られるが、サーバは配り直すまで古いまま残る。古いサーバは `keywords` を送らない。 */
+  it('キーワードが届かなくても、キーワードの行を出さずに済ませる', () => {
+    const { keywords: _, ...face } = unitFace('テスト・古いサーバ')
+
+    expect(printedDetailsOf(face as WireCardFace).map((row) => row.label)).not.toContain('キーワード')
   })
 
   /** 収録（ADR-0028）。エキスパンションは名前で出す（#230が済むまでコードは無い）。 */

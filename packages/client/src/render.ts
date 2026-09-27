@@ -34,7 +34,7 @@ import redLevelIcon from './assets/level-icons/赤.svg'
 import whiteLevelIcon from './assets/level-icons/白.svg'
 import reverseStarIcon from './assets/reverse-star.svg'
 import starIcon from './assets/star.svg'
-import { POOL_BATCH, printedDetailsOf } from './deck-builder.js'
+import { DECK_NAME_LIMIT, POOL_BATCH, printedDetailsOf } from './deck-builder.js'
 import type {
   AutoDeckLabel,
   CardDetail,
@@ -1113,12 +1113,20 @@ function deckCardElement(row: OwnedDeckRow, waiting: boolean, handlers: DeckList
   const actions = element('div', 'deckcard__actions')
   const edit = button('✏️ 編集', () => handlers.onOpen(row.id))
   const duplicate = button('⧉ 複製', () => handlers.onDuplicate(row.id))
-  duplicate.toggleAttribute('disabled', waiting)
+  duplicate.toggleAttribute('disabled', waiting || row.hasUnusable)
   const share = button('🔗 共有', () => handlers.onShare(row.id))
   const remove = iconButton('🗑️', `「${row.name}」を削除する`, () => handlers.onDelete(row.id, row.name))
   remove.toggleAttribute('disabled', waiting)
   actions.append(edit, duplicate, share, remove)
   card.append(actions)
+
+  // 複製できない理由。押せないボタンだけを出すと、何が悪いのか分からない。
+  if (row.hasUnusable) {
+    const note = element('p', 'deckcard__note', '使えなくなったカードが入っているので複製できません。編集で抜いてください')
+    note.id = `deckcard-note-${row.id}`
+    duplicate.setAttribute('aria-describedby', note.id)
+    card.append(note)
+  }
 
   return card
 }
@@ -1162,6 +1170,8 @@ export function deckListElement(view: DeckListView, handlers: DeckListHandlers):
 export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'onRestriction'> {
   /** ✏️ を押して、名前をその場で打ち込めるようにする。 */
   readonly onEditNameStart: () => void
+  /** 名前を 1 文字打った。描き直しても打ちかけが残るように、呼ぶ側が覚えておく。 */
+  readonly onEditName: (name: string) => void
   /** Enter で決める、または入力欄を離れる。 */
   readonly onEditNameCommit: (name: string) => void
   /** Esc でやめる。打ち込みかけは捨てる。 */
@@ -1181,8 +1191,8 @@ export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'on
   readonly onFilter: (filter: PoolFilter) => void
   /** 詳しく絞り込むところを開く・閉じる。 */
   readonly onFilterOpen: (open: boolean) => void
-  /** 折りたためる絞り込みの項目を開く・閉じる。 */
-  readonly onToggleFold: (key: string) => void
+  /** 折りたためる絞り込みの項目が開いた・閉じた。`open` はブラウザが反映した後の開閉。 */
+  readonly onToggleFold: (key: string, open: boolean) => void
   /** カード一覧の表示の形を切り替える。 */
   readonly onPoolView: (view: PoolView) => void
   /** スクロールで一覧の続きを描き足す。 */
@@ -1194,8 +1204,10 @@ export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'on
 /** デッキを組むところに出すもの（#193、ADR-0028）。どれも `deck-builder.ts` がすでに組み立てている。 */
 export interface DeckEditorView {
   readonly name: string
-  /** ✏️ で名前をその場で打ち込んでいるか。 */
-  readonly editingName: boolean
+  /** ✏️ で名前をその場で打ち込んでいる途中の値。打ち込んでいなければ `undefined`。 */
+  readonly editingName: string | undefined
+  /** 一度でも保存したデッキか。保存したことが無ければ「保存しました」とは出さない。 */
+  readonly saved: boolean
   readonly description: string
   readonly count: number
   readonly unsaved: boolean
@@ -1235,8 +1247,6 @@ export interface DeckEditorView {
   readonly modal: DeckEditorModal | undefined
 }
 
-/** デッキの名前として受け取る長さの上限（`server` の `owned-deck.ts` の `DECK_NAME_LIMIT` と同じ）。 */
-const DECK_NAME_LIMIT = 40
 
 /** デッキの解説として受け取る長さの上限（`server` の `owned-deck.ts` の `DECK_DESCRIPTION_LIMIT` と同じ）。 */
 const DECK_DESCRIPTION_LIMIT = 1000
@@ -1327,17 +1337,17 @@ function foldElement(
   values: readonly string[],
   chosen: readonly string[],
   openFolds: ReadonlySet<string>,
-  onToggleFold: (key: string) => void,
+  onToggleFold: (key: string, open: boolean) => void,
   onChoose: (next: readonly string[]) => void,
   shownAs: (value: string) => string = (value) => value,
 ): HTMLElement | undefined {
   if (values.length === 0) return undefined
 
-  const isOpen = openFolds.has(key)
   const node = document.createElement('details')
   node.className = 'fold'
-  node.open = isOpen
-  node.addEventListener('toggle', () => onToggleFold(key))
+  node.open = openFolds.has(key)
+  // 描き直しで `open` を入れたときにも `toggle` は出る。反転させず、いまの開閉をそのまま渡す。
+  node.addEventListener('toggle', () => onToggleFold(key, node.open))
 
   const summary = document.createElement('summary')
   summary.append(element('span', 'filter__label', label))
@@ -1717,10 +1727,20 @@ function poolListElement(view: DeckEditorView, handlers: DeckEditorHandlers, onH
   if (view.pool.length === 0) scroller.append(element('p', 'pool__none', '条件に合うカードがありません'))
   const hasMore = view.pool.length > view.poolShown
   if (hasMore) {
-    scroller.append(element('p', 'pool__more', `続きを表示しています…（${view.poolShown} / ${view.pool.length} 種）`))
-    scroller.addEventListener('scroll', () => {
-      if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 200) handlers.onShowMorePool()
-    })
+    const more = element('p', 'pool__more', `続きを表示しています…（${view.poolShown} / ${view.pool.length} 種）`)
+    scroller.append(more)
+    // 末尾の 1 行が枠の下端に近づいたら描き足す。scroll を待つ形にすると、大きい画面で最初の
+    // 数十枚が枠を埋めきらなかったときにスクロールが起きず、続きが描かれないまま止まる。
+    // 見張るのは 1 回だけにする——描き足すと画面ごと作り直され、この要素は捨てられる。
+    const watcher = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        watcher.disconnect()
+        handlers.onShowMorePool()
+      },
+      { root: scroller, rootMargin: '0px 0px 200px 0px' },
+    )
+    watcher.observe(more)
   }
 
   return scroller
@@ -1864,19 +1884,27 @@ function editorTopbarElement(view: DeckEditorView, handlers: DeckEditorHandlers)
   bar.append(button('← デッキ一覧に戻る', handlers.onBack), element('h1', 'topbar__title', 'デッキ構築'), element('span', 'topbar__divider'))
 
   const name = element('div', 'deckname')
-  if (view.editingName) {
+  if (view.editingName !== undefined) {
     const input = document.createElement('input')
     input.type = 'text'
     input.maxLength = DECK_NAME_LIMIT
-    input.value = view.name
+    input.value = view.editingName
     input.setAttribute('aria-label', 'デッキの名前')
+    input.dataset[KEEP_FOCUS] = 'デッキの名前'
+    input.addEventListener('input', () => handlers.onEditName(input.value))
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') handlers.onEditNameCommit(input.value)
       if (event.key === 'Escape') handlers.onEditNameCancel()
     })
-    input.addEventListener('blur', () => handlers.onEditNameCommit(input.value))
+    // 描き直しで捨てられるときにも blur が出るブラウザがある。画面に残っている欄を離れたときだけ決める。
+    input.addEventListener('blur', () => {
+      if (input.isConnected) handlers.onEditNameCommit(input.value)
+    })
     name.append(input)
-    queueMicrotask(() => input.focus())
+    // ✏️ を押した直後に手を移す。描き直しの後は `index.ts` が打っていた位置ごと戻しているので動かさない。
+    queueMicrotask(() => {
+      if (document.activeElement !== input) input.focus()
+    })
   } else {
     name.append(
       element('span', 'deckname__text', view.name),
@@ -2000,9 +2028,9 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
   deckPanel.append(deckList)
 
   const savebar = element('div', 'savebar')
-  savebar.append(
-    element('span', `savebar__state${view.unsaved ? ' savebar__state--未保存' : ''}`, view.unsaved ? '保存していない変更があります' : '保存しました'),
-  )
+  // 一度も保存していない新しいデッキは、触っていなくても「保存しました」とは言えない。
+  const saveState = view.unsaved ? '保存していない変更があります' : view.saved ? '保存しました' : ''
+  savebar.append(element('span', `savebar__state${view.unsaved ? ' savebar__state--未保存' : ''}`, saveState))
   const save = button('保存する', handlers.onSave, true)
   save.toggleAttribute('disabled', !view.savable)
   savebar.append(save)

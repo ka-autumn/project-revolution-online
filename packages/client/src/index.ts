@@ -26,6 +26,7 @@ import {
   deckRows,
   draftOf,
   draftToSave,
+  duplicatedDeckName,
   filterOwnedDeckRows,
   hasUnsavedChanges,
   hasUnusableCards,
@@ -36,6 +37,7 @@ import {
   POOL_BATCH,
   seatableDecks,
   seatedChoice,
+  startedEditing,
   starTotalOf,
   typeCountsOf,
   withCard,
@@ -526,6 +528,7 @@ function draw(
           description: draft.description,
           count: draft.cards.length,
           unsaved: hasUnsavedChanges(draft, owned),
+          saved: draft.deck !== undefined,
           savable: builder.waiting.kind === '無し' && !hasUnusableCards(pool, draft),
           check: checkView(draft, building.checking, session.checked, pool),
           // 絞り込むのはプールの一覧だけである。デッキに入っているカードは、条件に合わなくても出す。
@@ -1099,7 +1102,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   /** 組み始める。一覧から開いた時も、読み込み直した続きから始める時も通る。 */
   const startEditing = (draft: DeckDraft): void => {
-    updateBuilder({ ...builder, screen: 'デッキを組む', draft, pinned: undefined, refusal: undefined })
+    updateBuilder(startedEditing(builder, draft))
     scheduleCheck()
     redraw()
   }
@@ -1143,6 +1146,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         // 自分のデッキを新しいデッキとして保存し直す（ADR-0028）。`デッキをコピーする` の
         // `DeckOrigin` は既製デッキ・共有レシピしか指せないので、`デッキを保存する` を
         // `deck` 無しで送る。届いたら「コピー」した時と同じくそのまま組み始める。
+        // 使えないカードが入っているデッキはサーバが断るので、画面でも押せない形にしてある。
         if (builder.waiting.kind !== '無し') return
         const source = session.ownedDecks?.find((each) => each.id === id)
         if (source === undefined) return
@@ -1150,7 +1154,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         connection.send({
           kind: 'デッキを保存する',
           deck: undefined,
-          name: `${source.name}（コピー）`,
+          name: duplicatedDeckName(source.name),
           description: source.description,
           cards: source.cards,
         })
@@ -1196,22 +1200,27 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
     editor: {
       onEditNameStart: () => {
-        updateBuilder({ ...builder, editingName: true })
+        if (builder.draft === undefined) return
+        updateBuilder({ ...builder, editingName: builder.draft.name })
         redraw()
       },
+      onEditName: (name) => {
+        // 描き直さない。入力欄の値はブラウザが持っている（`onDescription` と同じ）。
+        if (builder.editingName !== undefined) updateBuilder({ ...builder, editingName: name })
+      },
       onEditNameCommit: (name) => {
-        if (!builder.editingName || builder.draft === undefined) return
+        if (builder.editingName === undefined || builder.draft === undefined) return
 
         const trimmed = name.trim()
         updateBuilder({
           ...builder,
-          editingName: false,
+          editingName: undefined,
           draft: { ...builder.draft, name: trimmed === '' ? builder.draft.name : trimmed },
         })
         redraw()
       },
       onEditNameCancel: () => {
-        updateBuilder({ ...builder, editingName: false })
+        updateBuilder({ ...builder, editingName: undefined })
         redraw()
       },
       onDescription: (description) => {
@@ -1264,12 +1273,14 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         updateBuilder({ ...builder, filterOpen })
         redraw()
       },
-      onToggleFold: (key) => {
-        const open = new Set(builder.openFilterFolds)
-        if (open.has(key)) open.delete(key)
-        else open.add(key)
+      onToggleFold: (key, open) => {
+        // 描き直しで開いた状態を入れ直したときにも届く。覚えている開閉と同じなら何もしない。
+        if (builder.openFilterFolds.has(key) === open) return
+        const folds = new Set(builder.openFilterFolds)
+        if (open) folds.add(key)
+        else folds.delete(key)
         // 描き直さない。<details> の開閉はブラウザがすでに反映している。
-        updateBuilder({ ...builder, openFilterFolds: open })
+        updateBuilder({ ...builder, openFilterFolds: folds })
       },
       onPoolView: (poolView) => {
         updateBuilder({ ...builder, poolView, poolShown: POOL_BATCH[poolView] })
@@ -1405,7 +1416,15 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   function backToList(): void {
     if (checkTimer !== undefined) clearTimeout(checkTimer)
     checkTimer = undefined
-    updateBuilder({ ...builder, screen: 'デッキを選ぶ', draft: undefined, pinned: undefined, refusal: undefined })
+    updateBuilder({
+      ...builder,
+      screen: 'デッキを選ぶ',
+      draft: undefined,
+      pinned: undefined,
+      refusal: undefined,
+      modal: undefined,
+      editingName: undefined,
+    })
     redraw()
   }
 

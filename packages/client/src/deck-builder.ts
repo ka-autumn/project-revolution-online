@@ -185,8 +185,14 @@ export interface Builder {
   readonly detailOpen: boolean
   /** 折りたためる絞り込みの項目のうち、開いているものの名前（ADR-0028）。 */
   readonly openFilterFolds: ReadonlySet<string>
-  /** デッキの名前をその場で打ち込んでいるか（ADR-0028）。✏️ を押すと入り、Enter で決め、Esc でやめる。 */
-  readonly editingName: boolean
+  /**
+   * デッキの名前をその場で打ち込んでいる途中の値（ADR-0028）。打ち込んでいなければ `undefined`。
+   * ✏️ を押すと入り、Enter で決め、Esc でやめる。
+   *
+   * `sharing` と同じ理由でここに持つ——打っている最中にロビーの更新などで描き直されても、
+   * 打ちかけが消えないようにする。
+   */
+  readonly editingName: string | undefined
   /**
    * 組むところの帯から開いている窓（ADR-0028）。「ラベル」の窓は #229 が済むまで無い。
    *
@@ -235,7 +241,7 @@ export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder
     poolShown: POOL_BATCH.カード,
     detailOpen: true,
     openFilterFolds: new Set(),
-    editingName: false,
+    editingName: undefined,
     modal: undefined,
     deckSearch: '',
     deckColorFilter: [],
@@ -243,9 +249,44 @@ export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder
   }
 }
 
+/**
+ * デッキを開いて組み始める。一覧から開く・新しく作る・コピーや複製が届く、のどの経路でも通す。
+ *
+ * 窓と名前の打ち込みは前に開いていたデッキのものなので、閉じた状態で始める。
+ */
+export function startedEditing(builder: Builder, draft: DeckDraft): Builder {
+  return {
+    ...builder,
+    screen: 'デッキを組む',
+    draft,
+    pinned: undefined,
+    refusal: undefined,
+    modal: undefined,
+    editingName: undefined,
+  }
+}
+
 /** 空の新しいデッキ。 */
 export function newDraft(): DeckDraft {
   return { deck: undefined, name: NEW_DECK_NAME, description: '', cards: [] }
+}
+
+/** デッキの名前の長さの上限（`server` の `owned-deck.ts` の `DECK_NAME_LIMIT` と同じ。数えるのはコードポイント）。 */
+export const DECK_NAME_LIMIT = 40
+
+const DUPLICATE_SUFFIX = '（コピー）'
+
+/**
+ * 複製したデッキの名前（ADR-0028）。元の名前に「（コピー）」を付ける。
+ *
+ * 付けると上限を超えるなら、元の名前の末尾を削って収める。利用者は名前を打っていないので、
+ * サーバに「40 文字までです」と断られても何を直せばよいか分からないためである。
+ */
+export function duplicatedDeckName(name: string): string {
+  const room = DECK_NAME_LIMIT - [...DUPLICATE_SUFFIX].length
+  const kept = [...name.normalize('NFC')].slice(0, room).join('').trimEnd()
+
+  return `${kept}${DUPLICATE_SUFFIX}`
 }
 
 /** 自分のデッキを組み直す時の組みかけ。 */
@@ -344,7 +385,7 @@ export function applyToBuilder(builder: Builder, message: ToClient): Builder {
       }
       if (waiting.kind === 'コピー') {
         // コピーした時点では組みかけを触れないので、届いたものをそのまま組み始める。
-        return { ...builder, screen: 'デッキを組む', draft: draftOf(message.deck), pinned: undefined, waiting: { kind: '無し' } }
+        return { ...startedEditing(builder, draftOf(message.deck)), waiting: { kind: '無し' } }
       }
       return builder
     case 'デッキを確かめた':
@@ -622,7 +663,9 @@ export function printedDetailsOf(face: WireCardFace, expansions: readonly string
   }
   if (face.stars > 0) rows.push({ label: 'スター', value: String(face.stars) })
   if (face.reverseStars > 0) rows.push({ label: 'リバーススター', value: String(face.reverseStars) })
-  if (face.keywords.length > 0) rows.push({ label: 'キーワード', value: face.keywords.join('・') })
+  // 古いサーバは `keywords` を送らない（`view-model.ts` の `faceFieldsOf` と同じ備え）。
+  const keywords = (face.keywords as WireCardFace['keywords'] | undefined) ?? []
+  if (keywords.length > 0) rows.push({ label: 'キーワード', value: keywords.join('・') })
   if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join(' | ') })
   if (expansions.length > 0) rows.push({ label: '収録', value: expansions.join('・') })
 
@@ -724,6 +767,11 @@ export interface OwnedDeckRow {
   readonly face: WireCardFace | undefined
   readonly colorCounts: readonly DeckColorCount[]
   readonly labels: readonly AutoDeckLabel[]
+  /**
+   * 使えないカード（プールに無いカード）が入っているか。入っていると、サーバは保存を断るので
+   * 複製できない（`duplicatedDeckName` と同じく ADR-0028 の複製の項）。
+   */
+  readonly hasUnusable: boolean
 }
 
 /** 自分のデッキの一覧。**届いた順のまま並べる。** */
@@ -736,7 +784,8 @@ export function ownedDeckRows(pool: readonly WirePoolCard[], decks: readonly Wir
     face: faceCardOf(pool, deck.cards),
     colorCounts: colorCountsOf(pool, deck.cards),
     // 持ち主が選ぶアーキタイプは #229 が済むまで無いので、自動の分だけになる。
-    labels: autoLabelsOf(pool, { deck: deck.id, name: deck.name, description: deck.description, cards: deck.cards }, undefined),
+    labels: autoLabelsOf(pool, draftOf(deck), undefined),
+    hasUnusable: hasUnusableCards(pool, draftOf(deck)),
   }))
 }
 
