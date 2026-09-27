@@ -1,5 +1,6 @@
 import { CARD_TYPES, COLORS } from '@revolution/engine'
 import type {
+  Color,
   DeckId,
   DeckViolation,
   RecipeKey,
@@ -11,11 +12,11 @@ import type {
   WireOwnedDeck,
   WirePoolCard,
 } from '@revolution/engine'
-import { emptyFilter } from './pool-filter.js'
+import { COLORLESS, emptyFilter } from './pool-filter.js'
 import type { PoolFilter } from './pool-filter.js'
 import type { SharingState } from './recipe.js'
 import type { ChosenRules } from './render.js'
-import { primaryColorOf, squareLabel } from './view-model.js'
+import { squareLabel } from './view-model.js'
 import type { DetailRow } from './view-model.js'
 
 /**
@@ -512,6 +513,22 @@ function usableFacesOf(pool: readonly WirePoolCard[], draft: DeckDraft): readonl
   })
 }
 
+/**
+ * デッキの内訳・色ごとの枚数・色の構成で数える色（ADR-0028）。**無色は黒とは別に数える。**
+ *
+ * 盤面の面の色（`view-model.ts` の `primaryColorOf`）は無色を黒の面で描くが、数えるときに
+ * 黒へ寄せると、赤と無色だけのデッキが「赤黒」になってしまう。
+ */
+export type DeckColor = Color | typeof COLORLESS
+
+/** 数える順。無色は色のあるものの後に置く（`comparePrinted` と同じ）。 */
+const DECK_COLORS: readonly DeckColor[] = [...COLORS, COLORLESS]
+
+/** カード 1 種を数える色。複数の色を持つカードは、いまのカードプールに無いので 1 つ目で決める。 */
+function deckColorOf(face: WireCardFace): DeckColor {
+  return face.colors[0] ?? COLORLESS
+}
+
 /** デッキの内訳で使うレベルの段（ADR-0028）。 */
 export const LEVEL_BUCKETS: readonly { readonly label: string; readonly matches: (level: number) => boolean }[] = [
   { label: '2-', matches: (level) => level <= 2 },
@@ -526,7 +543,7 @@ export const LEVEL_BUCKETS: readonly { readonly label: string; readonly matches:
 export interface LevelBar {
   readonly label: string
   readonly total: number
-  readonly byColor: readonly { readonly color: (typeof COLORS)[number]; readonly count: number }[]
+  readonly byColor: readonly { readonly color: DeckColor; readonly count: number }[]
 }
 
 /**
@@ -538,7 +555,7 @@ export function levelBreakdownOf(pool: readonly WirePoolCard[], draft: DeckDraft
 
   return LEVEL_BUCKETS.map(({ label, matches }) => {
     const inBucket = faces.filter((face) => matches(face.level))
-    const byColor = COLORS.map((color) => ({ color, count: inBucket.filter((face) => primaryColorOf(face.colors) === color).length }))
+    const byColor = DECK_COLORS.map((color) => ({ color, count: inBucket.filter((face) => deckColorOf(face) === color).length }))
 
     return { label, total: inBucket.length, byColor }
   })
@@ -583,9 +600,13 @@ function archetypeOf(faces: readonly WireCardFace[]): Archetype {
   return 'ミッドレンジ'
 }
 
-/** 色の構成：単色なら「◯単」、2 色なら 2 色を並べた名前、3 色以上は「多色」（ADR-0028）。 */
-function colorCompositionOf(faces: readonly WireCardFace[]): string {
-  const present = COLORS.filter((color) => faces.some((face) => primaryColorOf(face.colors) === color))
+/**
+ * 色の構成：単色なら「◯単」、2 色なら 2 色を並べた名前、3 色以上は「多色」（ADR-0028）。
+ * 無色は色に含めない。色のあるカードが 1 枚も無ければ、色の構成は付かない（`undefined`）。
+ */
+function colorCompositionOf(faces: readonly WireCardFace[]): string | undefined {
+  const present = COLORS.filter((color) => faces.some((face) => deckColorOf(face) === color))
+  if (present.length === 0) return undefined
   if (present.length === 1) return `${present[0]}単`
   if (present.length === 2) return present.join('')
 
@@ -616,7 +637,8 @@ export function autoLabelsOf(
 
   const labels: AutoDeckLabel[] = []
   if (chosenArchetype === undefined) labels.push({ group: 'アーキタイプ', label: archetypeOf(faces) })
-  labels.push({ group: '色の構成', label: colorCompositionOf(faces) })
+  const composition = colorCompositionOf(faces)
+  if (composition !== undefined) labels.push({ group: '色の構成', label: composition })
 
   return labels
 }
@@ -727,7 +749,7 @@ export function violationLine(violation: DeckViolation): string {
 
 /** デッキ 1 つの、色ごとの枚数。0 枚の色は持たない。 */
 export interface DeckColorCount {
-  readonly color: (typeof COLORS)[number]
+  readonly color: DeckColor
   readonly count: number
 }
 
@@ -753,7 +775,7 @@ function faceCardOf(pool: readonly WirePoolCard[], cards: readonly string[]): Wi
 function colorCountsOf(pool: readonly WirePoolCard[], cards: readonly string[]): readonly DeckColorCount[] {
   const faces = usableFacesOf(pool, { deck: undefined, name: '', description: '', cards })
 
-  return COLORS.map((color) => ({ color, count: faces.filter((face) => primaryColorOf(face.colors) === color).length })).filter(
+  return DECK_COLORS.map((color) => ({ color, count: faces.filter((face) => deckColorOf(face) === color).length })).filter(
     (each) => each.count > 0,
   )
 }
@@ -790,8 +812,8 @@ export function ownedDeckRows(pool: readonly WirePoolCard[], decks: readonly Wir
 }
 
 /** デッキ一覧の「入っている色」で選べるもの。実際にどれかのデッキが持つ色だけを並べる。 */
-export function deckColorChoices(rows: readonly OwnedDeckRow[]): readonly (typeof COLORS)[number][] {
-  return COLORS.filter((color) => rows.some((row) => row.colorCounts.some((each) => each.color === color)))
+export function deckColorChoices(rows: readonly OwnedDeckRow[]): readonly DeckColor[] {
+  return DECK_COLORS.filter((color) => rows.some((row) => row.colorCounts.some((each) => each.color === color)))
 }
 
 /** デッキ一覧の「ラベル」で選べるもの。実際にどれかのデッキに付いているラベルだけを並べる。 */

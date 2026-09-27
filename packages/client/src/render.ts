@@ -40,6 +40,7 @@ import type {
   CardDetail,
   CheckView,
   ConfirmView,
+  DeckColor,
   DeckEditorModal,
   DeckRow,
   LevelBar,
@@ -49,7 +50,7 @@ import type {
   TypeCount,
 } from './deck-builder.js'
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
-import { emptyFilter, isFiltering, MOVE_SHAPES, toggled } from './pool-filter.js'
+import { COLORLESS, emptyFilter, isFiltering, MOVE_SHAPES, toggled } from './pool-filter.js'
 import type { FilterChoices, MoveShape, NumberRange, PoolFilter, StarChoice } from './pool-filter.js'
 import type { CopyState, MyShareRow, PublicCardSection, RecipeCardRow, RecipeSummaryRow, ShareDraft, ShareRow, SharingState } from './recipe.js'
 import type {
@@ -1033,7 +1034,7 @@ function deckSearchPanelElement(view: DeckListView, handlers: DeckListHandlers):
     view.allColors,
     view.colorFilter,
     handlers.onColorFilter,
-    (color) => colorChipContent(color as Color),
+    (color) => colorChipContent(color as DeckColor),
   )
   if (colorRow !== undefined) body.append(colorRow)
 
@@ -1101,10 +1102,15 @@ function deckCardElement(row: OwnedDeckRow, waiting: boolean, handlers: DeckList
   colors.setAttribute('aria-label', '色ごとの枚数')
   for (const { color, count: colorCount } of row.colorCounts) {
     const item = element('span', '')
-    const icon = document.createElement('img')
-    icon.src = LEVEL_ICON_URL[color]
-    icon.alt = color
-    item.append(icon, document.createTextNode(String(colorCount)))
+    if (color === COLORLESS) {
+      // 無色にはレベルアイコンが無いので、名前で出す。
+      item.append(document.createTextNode(`${color} ${colorCount}`))
+    } else {
+      const icon = document.createElement('img')
+      icon.src = LEVEL_ICON_URL[color]
+      icon.alt = color
+      item.append(icon, document.createTextNode(String(colorCount)))
+    }
     colors.append(item)
   }
   main.append(colors, labelListElement(row.labels))
@@ -1367,8 +1373,12 @@ function foldElement(
   return node
 }
 
-/** 色の絞り込みの中身：色ごとのアイコン（レベルアイコンの形）＋色の名前（ADR-0028）。 */
-function colorChipContent(color: Color): readonly Node[] {
+/**
+ * 色の絞り込みの中身：色ごとのアイコン（レベルアイコンの形）＋色の名前（ADR-0028）。
+ * 無色にはレベルアイコンが無いので、名前だけにする。
+ */
+function colorChipContent(color: DeckColor): readonly Node[] {
+  if (color === COLORLESS) return [document.createTextNode(color)]
   const icon = document.createElement('img')
   icon.className = 'chip__color'
   icon.src = LEVEL_ICON_URL[color]
@@ -1477,7 +1487,7 @@ function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers):
     foldElement('エキスパンション', 'エキスパンション', choices.expansions, filter.expansions, view.openFolds, handlers.onToggleFold, (next) =>
       change({ expansions: next }),
     ),
-    filterRow('色', choices.colors, filter.colors, (next) => change({ colors: next }), (color) => colorChipContent(color as Color)),
+    filterRow('色', choices.colors, filter.colors, (next) => change({ colors: next }), (color) => colorChipContent(color as DeckColor)),
     filterRow('種別', choices.types, filter.types, (next) => change({ types: next })),
     filterRow(
       'レベル',
@@ -1793,7 +1803,8 @@ function levelBreakdownElement(bars: readonly LevelBar[]): HTMLElement {
     stack.style.height = `${(bar.total / max) * 74}%`
     for (const { color, count } of bar.byColor) {
       if (count === 0) continue
-      const seg = element('div', `levels__seg card--色-${color}`)
+      // 無色には面の色が無いので、灰色の段にする（`levels__seg--無色`）。
+      const seg = element('div', `levels__seg ${color === COLORLESS ? 'levels__seg--無色' : `card--色-${color}`}`)
       seg.style.flexGrow = String(count)
       seg.title = `${color} ${count} 枚`
       stack.append(seg)

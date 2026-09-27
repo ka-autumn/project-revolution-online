@@ -437,10 +437,10 @@ describe('並べる', () => {
 })
 
 describe('内訳（ADR-0028）', () => {
-  // い：赤Lv1、う：赤Lv2、え：青Lv1、き：無色（色は黒扱い、レベル0）
+  // い：赤Lv1、う：赤Lv2、え：青Lv1、き：無色Lv0
   const draft = { ...newDraft(), cards: ['い', 'い', 'う', 'え', 'き'] }
 
-  it('レベルの段ごとに、色別の枚数を積み上げる', () => {
+  it('レベルの段ごとに、色別の枚数を積み上げる。無色は黒とは別に数える', () => {
     const bars = levelBreakdownOf(POOL, draft)
 
     expect(bars.find((bar) => bar.label === '2-')).toEqual({
@@ -448,10 +448,11 @@ describe('内訳（ADR-0028）', () => {
       total: 5,
       byColor: [
         { color: '赤', count: 3 },
-        { color: '黒', count: 1 },
+        { color: '黒', count: 0 },
         { color: '青', count: 1 },
         { color: '白', count: 0 },
         { color: '緑', count: 0 },
+        { color: '無色', count: 1 },
       ],
     })
     expect(bars.filter((bar) => bar.label !== '2-').every((bar) => bar.total === 0)).toBe(true)
@@ -530,6 +531,18 @@ describe('自動ラベル（ADR-0028）', () => {
     expect(autoLabelsOf(POOL, single, undefined)).toContainEqual({ group: '色の構成', label: '赤単' })
     expect(autoLabelsOf(POOL, double, undefined)).toContainEqual({ group: '色の構成', label: '赤青' })
     expect(autoLabelsOf(triple, tripleDraft, undefined)).toContainEqual({ group: '色の構成', label: '多色' })
+  })
+
+  it('無色は色の構成に含めない', () => {
+    const redAndColorless = { ...newDraft(), cards: ['い', 'き', 'あ'] } // 赤・無色・無色
+
+    expect(autoLabelsOf(POOL, redAndColorless, undefined)).toContainEqual({ group: '色の構成', label: '赤単' })
+  })
+
+  it('無色のカードだけなら、色の構成は付かない', () => {
+    const colorless = { ...newDraft(), cards: ['き', 'あ'] }
+
+    expect(autoLabelsOf(POOL, colorless, undefined)).not.toContainEqual(expect.objectContaining({ group: '色の構成' }))
   })
 })
 
@@ -686,12 +699,13 @@ describe('席に着く時に選ぶデッキ', () => {
 })
 
 describe('デッキ一覧（ADR-0028）', () => {
-  // い：赤Lv1、う：赤Lv2、き：無色（黒扱い）Lv0
+  // い：赤Lv1、う：赤Lv2、き：無色Lv0
   const decks: readonly WireOwnedDeck[] = [
     { id: 'A', name: 'デッキA', description: '', cards: ['い', 'い', 'う'] },
     { id: 'B', name: 'デッキB', description: '', cards: ['い', 'き'] },
     { id: 'C', name: '空のデッキ', description: '', cards: [] },
     { id: 'D', name: '使えないデッキ', description: '', cards: ['どこにもない'] },
+    { id: 'E', name: '無色のデッキ', description: '', cards: ['き', 'き'] },
   ]
 
   it('顔は一番多く入れたカード。同じ枚数ならレベルの高いもの', () => {
@@ -712,10 +726,26 @@ describe('デッキ一覧（ADR-0028）', () => {
     expect(rows.find((row) => row.id === 'D')?.colorCounts).toEqual([])
   })
 
+  it('無色は黒とは別に数える', () => {
+    const rows = ownedDeckRows(POOL, decks)
+
+    expect(rows.find((row) => row.id === 'B')?.colorCounts).toEqual([
+      { color: '赤', count: 1 },
+      { color: '無色', count: 1 },
+    ])
+  })
+
   it('名前で探せる', () => {
     const rows = ownedDeckRows(POOL, decks)
 
     expect(filterOwnedDeckRows(rows, 'デッキA', [], []).map((row) => row.id)).toEqual(['A'])
+  })
+
+  it('探す文字の前後の空白は無視する', () => {
+    const rows = ownedDeckRows(POOL, decks)
+
+    expect(filterOwnedDeckRows(rows, '  デッキA　', [], []).map((row) => row.id)).toEqual(['A'])
+    expect(filterOwnedDeckRows(rows, '   ', [], []).map((row) => row.id)).toEqual(['A', 'B', 'C', 'D', 'E'])
   })
 
   it('入っている色で絞り込める', () => {
@@ -724,16 +754,32 @@ describe('デッキ一覧（ADR-0028）', () => {
     expect(filterOwnedDeckRows(rows, '', ['赤'], []).map((row) => row.id)).toEqual(['A', 'B'])
   })
 
+  it('無色だけのデッキは、黒で絞り込んでも残らない', () => {
+    const rows = ownedDeckRows(POOL, decks)
+
+    expect(filterOwnedDeckRows(rows, '', ['黒'], []).map((row) => row.id)).toEqual([])
+    expect(filterOwnedDeckRows(rows, '', ['無色'], []).map((row) => row.id)).toEqual(['B', 'E'])
+  })
+
   it('自動のラベルで絞り込める', () => {
     const rows = ownedDeckRows(POOL, decks)
 
-    expect(filterOwnedDeckRows(rows, '', [], ['赤単']).map((row) => row.id)).toEqual(['A'])
+    // B は赤と無色なので、色の構成は赤単になる。
+    expect(filterOwnedDeckRows(rows, '', [], ['赤単']).map((row) => row.id)).toEqual(['A', 'B'])
   })
 
   it('選べる色・ラベルは、実際にどれかのデッキが持つものだけ', () => {
     const rows = ownedDeckRows(POOL, decks)
 
-    expect(deckColorChoices(rows)).toEqual(['赤', '黒'])
+    expect(deckColorChoices(rows)).toEqual(['赤', '無色'])
     expect(deckLabelChoices(rows).map((label) => label.label)).toContain('赤単')
+  })
+
+  it('選べるラベルは、いくつのデッキに付いていても 1 つずつ並べる', () => {
+    const rows = ownedDeckRows(POOL, decks)
+    const labels = deckLabelChoices(rows).map((label) => label.label)
+
+    expect(labels.filter((label) => label === '赤単')).toHaveLength(1)
+    expect(labels.filter((label) => label === 'アグロ')).toHaveLength(1)
   })
 })

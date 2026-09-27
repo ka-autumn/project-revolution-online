@@ -3279,6 +3279,11 @@ body {
   box-shadow: inset 0 0 0 1px #b5b5b5;
 }
 
+/* 無色は面の色を持たないので、黒と見分けられる灰色にする。読み上げと title には「無色」と出る。 */
+.deckbuild .levels__seg--無色 {
+  background: repeating-linear-gradient(135deg, #a8a8a8 0 3px, #c8c8c8 3px 6px);
+}
+
 .deckbuild .levels__axis {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
