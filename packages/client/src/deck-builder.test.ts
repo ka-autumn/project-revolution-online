@@ -269,11 +269,23 @@ describe('確かめる', () => {
     })
   })
 
-  /** サーバは断るだけで、何が足りないかは分からない。 */
+  /** サーバは断るだけで、何が足りないかは分からない。何をすればよいかは文で伝える。 */
   it('使えないカードが入っていれば、確かめられない', () => {
     const draft = withCard(newDraft(), 'どこにもない')
 
-    expect(checkView(draft, false, [], POOL).kind).toBe('確かめられない')
+    expect(checkView(draft, false, [], POOL)).toEqual({
+      kind: '確かめられない',
+      reason: '使えなくなったカードが 1 枚入っています。下の一覧の『抜く』で外すまで、規定を確かめることも保存することもできません',
+    })
+  })
+
+  it('使えないカードの枚数は、重複した識別子もそれぞれ数える', () => {
+    const draft = { ...newDraft(), cards: ['どこにもない', 'どこにもない', 'い'] }
+
+    expect(checkView(draft, false, [], POOL)).toEqual({
+      kind: '確かめられない',
+      reason: '使えなくなったカードが 2 枚入っています。下の一覧の『抜く』で外すまで、規定を確かめることも保存することもできません',
+    })
   })
 
   it('不備はそれぞれ読める文になる', () => {
@@ -357,6 +369,12 @@ describe('詳しく出す', () => {
       ],
       text: ['一行め'],
     })
+  })
+
+  it('属性が複数あれば「 | 」でつなぐ', () => {
+    const face = unitFace('テスト・属性いろいろ', { attributes: ['属性ア', '属性イ'] })
+
+    expect(printedDetailsOf(face)).toContainEqual({ label: '属性', value: '属性ア | 属性イ' })
   })
 
   /** 盤面に置かれて初めて決まるもの（支配者・向き・ダメージ）は、プールのカードには無い。 */

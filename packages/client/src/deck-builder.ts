@@ -400,11 +400,16 @@ export function deckRows(pool: readonly WirePoolCard[], draft: DeckDraft): reado
   return [...usable, ...unusable]
 }
 
-/** 使えないカードが入っているか。入っていれば、確かめることも保存することもできない。 */
-export function hasUnusableCards(pool: readonly WirePoolCard[], draft: DeckDraft): boolean {
+/** プールに無いカード（使えなくなったカード）の枚数。同じ識別子の重複はそれぞれ 1 枚と数える。 */
+export function unusableCardCount(pool: readonly WirePoolCard[], draft: DeckDraft): number {
   const known = new Set(pool.map((card) => card.key))
 
-  return draft.cards.some((key) => !known.has(key))
+  return draft.cards.filter((key) => !known.has(key)).length
+}
+
+/** 使えないカードが入っているか。入っていれば、確かめることも保存することもできない。 */
+export function hasUnusableCards(pool: readonly WirePoolCard[], draft: DeckDraft): boolean {
+  return unusableCardCount(pool, draft) > 0
 }
 
 /** 詳しく出すカード 1 種。 */
@@ -444,7 +449,7 @@ export function printedDetailsOf(face: WireCardFace): readonly DetailRow[] {
   }
   if (face.stars > 0) rows.push({ label: 'スター', value: String(face.stars) })
   if (face.reverseStars > 0) rows.push({ label: 'リバーススター', value: String(face.reverseStars) })
-  if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join('・') })
+  if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join(' | ') })
 
   return rows
 }
@@ -473,8 +478,12 @@ export function checkView(
   checked: readonly DeckViolation[] | undefined,
   pool: readonly WirePoolCard[],
 ): CheckView {
-  if (hasUnusableCards(pool, draft)) {
-    return { kind: '確かめられない', reason: '使えないカードが入っています。抜くと確かめられます' }
+  const unusableCount = unusableCardCount(pool, draft)
+  if (unusableCount > 0) {
+    return {
+      kind: '確かめられない',
+      reason: `使えなくなったカードが ${unusableCount} 枚入っています。下の一覧の『抜く』で外すまで、規定を確かめることも保存することもできません`,
+    }
   }
   if (checking || checked === undefined) return { kind: '確かめている' }
   if (checked.length === 0) return { kind: '満たしている' }

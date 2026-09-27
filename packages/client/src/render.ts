@@ -282,7 +282,7 @@ function statElement(
 function appendTraitsAndStats(bottom: HTMLElement, card: CardView & { readonly kind: '表' }): void {
   const added = (card.modified?.addedAttributes ?? []).map((attribute) => `+${attribute}`)
   const traits = [...card.attributes, ...added]
-  if (traits.length > 0) bottom.append(element('span', 'card__traits', traits.join('・')))
+  if (traits.length > 0) bottom.append(element('span', 'card__traits', traits.join(' | ')))
 
   if (card.type === 'ユニット' && card.bp !== undefined && card.sp !== undefined) {
     const stats = element('div', 'card__stats')
