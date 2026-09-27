@@ -1,4 +1,4 @@
-import { DUEL_FORMATS } from '@revolution/engine'
+import { COLORS, DUEL_FORMATS } from '@revolution/engine'
 import type {
   Area,
   CardId,
@@ -1047,8 +1047,7 @@ function deckSearchPanelElement(view: DeckListView, handlers: DeckListHandlers):
     handlers.onLabelFilter,
     (value) => {
       const label = labelOf(value)
-      const emoji = label === undefined ? undefined : AUTO_LABEL_EMOJI[label.label]
-      return emoji === undefined ? [value] : [emoji, value]
+      return label === undefined ? [value] : [...labelIconNodes(label), value]
     },
     (value) => {
       const label = labelOf(value)
@@ -1540,11 +1539,14 @@ function poolDetailPanelElement(pinnedDetail: CardDetail | undefined, view: Deck
   panel.setAttribute('aria-label', 'カードの詳細')
 
   const head = element('div', 'panel__head')
+  // 見出しの中に開閉のボタンを置く（button の中には見出しを入れられない）。
+  const heading = element('h2', 'panel__title')
   const toggle = document.createElement('button')
   toggle.type = 'button'
   toggle.className = 'detail__toggle'
   const chevron = element('span', 'detail__chevron', view.detailOpen ? '▾' : '▴')
-  toggle.append(element('h2', 'panel__title', 'カードの詳細'), chevron)
+  toggle.append(element('span', '', 'カードの詳細'), chevron)
+  heading.append(toggle)
   toggle.setAttribute('aria-expanded', String(view.detailOpen))
   toggle.addEventListener('click', () => {
     const opening = panel.classList.contains('panel--detail-閉')
@@ -1553,7 +1555,7 @@ function poolDetailPanelElement(pinnedDetail: CardDetail | undefined, view: Deck
     chevron.textContent = opening ? '▾' : '▴'
     handlers.onToggleDetail()
   })
-  head.append(toggle)
+  head.append(heading)
   panel.append(head)
 
   const body = element('div', 'detail')
@@ -1620,11 +1622,14 @@ function levelBadgeElement(face: Pick<FaceFields, 'colors' | 'level'>): HTMLElem
 /** 1 種ぶんの、増やす・減らす口。 */
 function counterElement(key: string, name: string, count: number, handlers: DeckEditorHandlers): HTMLElement {
   const node = element('div', 'counter')
+  // 役割の無い span の aria-label は読まれないことが多いので、枚数は組（group）の名前で伝える。
+  node.setAttribute('role', 'group')
+  node.setAttribute('aria-label', `「${name}」 デッキに ${count} 枚`)
   const minus = button('−', () => handlers.onRemove(key))
   minus.setAttribute('aria-label', `「${name}」を 1 枚抜く`)
   minus.toggleAttribute('disabled', count === 0)
   const badge = element('span', `counter__count${count > 0 ? ' counter__count--入っている' : ''}`, `×${count}`)
-  badge.setAttribute('aria-label', `デッキに ${count} 枚`)
+  badge.setAttribute('aria-hidden', 'true')
   const plus = button('＋', () => handlers.onAdd(key))
   plus.setAttribute('aria-label', `「${name}」を 1 枚入れる`)
   node.append(minus, badge, plus)
@@ -1641,25 +1646,37 @@ function poolCardItemElement(
 ): HTMLElement {
   const item = element('div', `pool__item${row.count > 0 ? ' pool__item--入っている' : ''}`)
   const card = poolCardElement(row.face, { pinned })
+  // 面は div の組み合わせなので button には入れられない。押せることは role で伝え、キー操作も足す
+  // （1 行表示の名前のボタンと同じく、詳細に出したままにしているかを aria-pressed で出す）。
   card.tabIndex = 0
+  card.setAttribute('role', 'button')
+  card.setAttribute('aria-pressed', String(pinned))
   card.setAttribute('aria-label', `${row.face.name}（押すと詳細に出したままにする）`)
   card.addEventListener('mouseenter', () => onHover(row.key))
   card.addEventListener('focus', () => onHover(row.key))
   card.addEventListener('click', () => handlers.onPin(row.key))
+  card.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    handlers.onPin(row.key)
+  })
   item.append(card, counterElement(row.key, row.face.name, row.count, handlers))
 
   return item
 }
 
 /**
- * 1 行表示の 1 種（ADR-0028）。プールでもデッキでも使う——`inDeck` で、ＢＰ・ＳＰの代わりに
- * 使えないカードの案内などを出し分ける。
+ * 1 行表示の 1 種（ADR-0028）。プールでもデッキでも使う。
+ *
+ * ＢＰ／ＳＰはプールの行（`withStats`）にだけ出す。デッキの行はレベル・種別・スター・名前・
+ * 枚数だけにする（パートナーの ♥ は #228 が済んでから）。
  */
 function poolCardRowElement(
   row: PoolRow,
   pinned: boolean,
   handlers: DeckEditorHandlers,
   onHover: (key: string) => void,
+  withStats: boolean,
 ): HTMLElement {
   const face = row.face
   const node = element('div', `cardrow card--色-${primaryColorOf(face.colors)}${pinned ? ' cardrow--詳細中' : ''}`)
@@ -1680,19 +1697,25 @@ function poolCardRowElement(
   node.append(name)
 
   // 属性は出さない（狭い幅でも収まるように、ADR-0028）。ＢＰ・ＳＰはユニットだけ持つ。
-  node.append(element('span', 'cardrow__meta', face.type === 'ユニット' ? `BP ${face.bp} ／ SP ${face.sp}` : ''))
+  if (withStats) {
+    node.append(element('span', 'cardrow__meta', face.type === 'ユニット' ? `BP ${face.bp} ／ SP ${face.sp}` : ''))
+  }
   node.append(counterElement(row.key, face.name, row.count, handlers))
 
   return node
 }
 
-/** 使えないカード（プールに無いカード）の 1 行。 */
-function unusableCardRowElement(key: string, count: number, handlers: DeckEditorHandlers): HTMLElement {
+/**
+ * 使えないカード（プールに無いカード）の 1 行。
+ *
+ * 名前が分からないので、読み上げでは並び順（`ordinal`、使えないカードの中で 1 から数える）と枚数で
+ * どの行の「抜く」かを区別する。識別子は意味の無い文字列なので出さない（ADR-0021）。
+ */
+function unusableCardRowElement(key: string, count: number, ordinal: number, handlers: DeckEditorHandlers): HTMLElement {
   const node = element('div', 'cardrow cardrow--使えない')
-  node.append(
-    element('span', 'cardrow__name', `使えないカード ×${count}`),
-    smallButton('抜く', () => handlers.onRemove(key)),
-  )
+  const remove = smallButton('抜く', () => handlers.onRemove(key))
+  remove.setAttribute('aria-label', `使えないカード ${ordinal} つめ（${count} 枚）を抜く`)
+  node.append(element('span', 'cardrow__name', `使えないカード ×${count}`), remove)
 
   return node
 }
@@ -1731,7 +1754,7 @@ function poolListElement(view: DeckEditorView, handlers: DeckEditorHandlers, onH
     scroller.append(grid)
   } else {
     const rows = element('div', 'rows')
-    for (const row of shown) rows.append(poolCardRowElement(row, row.key === view.pinned, handlers, onHover))
+    for (const row of shown) rows.append(poolCardRowElement(row, row.key === view.pinned, handlers, onHover, true))
     scroller.append(rows)
   }
 
@@ -1846,15 +1869,33 @@ function typeCountsElement(typeCounts: readonly TypeCount[], starTotal: number):
 /** ラベル 1 つ（ADR-0028）。自動で付いたか選んだかは、見た目にも読み上げにも出さない。 */
 function labelChipElement(label: AutoDeckLabel): HTMLElement {
   const node = element('span', 'tag')
-  const emoji = AUTO_LABEL_EMOJI[label.label]
-  if (emoji !== undefined) node.append(element('span', 'tag__emoji', emoji))
-  node.append(document.createTextNode(label.label))
+  node.append(...labelIconNodes(label), document.createTextNode(label.label))
   node.setAttribute('aria-label', `${label.group}：${label.label}`)
 
   return node
 }
 
-/** ラベルの中身を表す絵文字（ADR-0028）。色の構成は色のアイコンで表すので、単色・多色だけここに持つ。 */
+/**
+ * ラベルの先頭に付けるもの（ADR-0028）。色の構成（「赤単」「赤黒」）は、その色のレベルアイコンを
+ * 名前に出てくる順に並べる。ほかは絵文字（`AUTO_LABEL_EMOJI`）。読み上げには出さない（名前で足りる）。
+ */
+function labelIconNodes(label: AutoDeckLabel): readonly Node[] {
+  const emoji = AUTO_LABEL_EMOJI[label.label]
+  if (emoji !== undefined) return [element('span', 'tag__emoji', emoji)]
+  if (label.group !== '色の構成') return []
+
+  return COLORS.filter((color) => label.label.includes(color))
+    .sort((left, right) => label.label.indexOf(left) - label.label.indexOf(right))
+    .map((color) => {
+      const icon = document.createElement('img')
+      icon.className = 'tag__color'
+      icon.src = LEVEL_ICON_URL[color]
+      icon.alt = ''
+      return icon
+    })
+}
+
+/** ラベルの中身を表す絵文字（ADR-0028）。色の構成は色のアイコンで表すので、ここには多色だけを持つ。 */
 const AUTO_LABEL_EMOJI: Readonly<Record<string, string>> = {
   アグロ: '⚡',
   ミッドレンジ: '⚖️',
@@ -2029,12 +2070,14 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
   const deckList = element('div', 'decklist rows')
   deckList.dataset[KEEP_SCROLL] = 'デッキ'
   if (view.deck.length === 0) deckList.append(element('p', 'pool__none', 'まだカードが入っていません'))
+  let unusableOrdinal = 0
   for (const row of view.deck) {
-    deckList.append(
-      row.kind === '使える'
-        ? poolCardRowElement(row, row.key === view.pinned, handlers, hover)
-        : unusableCardRowElement(row.key, row.count, handlers),
-    )
+    if (row.kind === '使える') {
+      deckList.append(poolCardRowElement(row, row.key === view.pinned, handlers, hover, false))
+    } else {
+      unusableOrdinal += 1
+      deckList.append(unusableCardRowElement(row.key, row.count, unusableOrdinal, handlers))
+    }
   }
   deckList.addEventListener('mouseleave', showPinned)
   deckPanel.append(deckList)

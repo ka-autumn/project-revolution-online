@@ -2864,13 +2864,19 @@ body {
   border-bottom: none;
 }
 
+/* 見出し（h2）の中に開閉のボタンを置き、見出しの文字の見た目はボタンにも引き継ぐ。 */
+.deckbuild .panel--detail .panel__title {
+  flex: 1;
+}
+
 .deckbuild .detail__toggle {
   display: flex;
-  flex: 1;
+  width: 100%;
   align-items: center;
   justify-content: space-between;
   padding: 0;
   border: none;
+  color: inherit;
   background: none;
   box-shadow: none;
 }
@@ -3603,4 +3609,10 @@ body {
 .deckbuild .tag__emoji {
   font-size: 0.95em;
   line-height: 1;
+}
+
+/* 色の構成のラベルの色のアイコン。ラベルと、デッキ一覧のラベルの絞り込みの両方で使う。 */
+.deckbuild .tag__color {
+  width: 1.1em;
+  height: 1.1em;
 }
