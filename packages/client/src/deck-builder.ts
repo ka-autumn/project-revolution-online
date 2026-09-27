@@ -482,7 +482,7 @@ export function checkView(
   if (unusableCount > 0) {
     return {
       kind: '確かめられない',
-      reason: `使えなくなったカードが ${unusableCount} 枚入っています。下の一覧の『抜く』で外すまで、規定を確かめることも保存することもできません`,
+      reason: `使えなくなったカードが ${unusableCount} 枚入っています。下の一覧の「抜く」で外すまで、規定を確かめることも保存することもできません`,
     }
   }
   if (checking || checked === undefined) return { kind: '確かめている' }

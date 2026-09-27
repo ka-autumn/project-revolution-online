@@ -381,25 +381,36 @@ function restoreTyping(root: HTMLElement, typing: Typing | undefined): void {
   }
 }
 
+/** 縦・横、それぞれのスクロールした位置。 */
+interface ScrollPosition {
+  readonly top: number
+  readonly left: number
+}
+
 /**
  * 印（`render.ts` の `KEEP_SCROLL`）の付いた一覧の、スクロールした位置。描き直した後に戻す。
  *
  * **一覧を丸ごと作り直す**ので、位置は要素と一緒に消える。印の値で、作り直した後の要素と結び付ける。
+ * 縦（`scrollTop`）だけでなく横（`scrollLeft`）も戻す——1 行表示を狭い幅で横にスクロールした状態で
+ * ＋・−を押すと描き直しが起きるが、横の位置まで戻さないと、そのたびに左端へ戻ってしまう（#207）。
  */
-function scrollPositions(root: HTMLElement): ReadonlyMap<string, number> {
-  const positions = new Map<string, number>()
+function scrollPositions(root: HTMLElement): ReadonlyMap<string, ScrollPosition> {
+  const positions = new Map<string, ScrollPosition>()
   for (const node of root.querySelectorAll<HTMLElement>('[data-keep-scroll]')) {
     const key = node.dataset[KEEP_SCROLL]
-    if (key !== undefined) positions.set(key, node.scrollTop)
+    if (key !== undefined) positions.set(key, { top: node.scrollTop, left: node.scrollLeft })
   }
 
   return positions
 }
 
-function restoreScroll(root: HTMLElement, positions: ReadonlyMap<string, number>): void {
+function restoreScroll(root: HTMLElement, positions: ReadonlyMap<string, ScrollPosition>): void {
   for (const node of root.querySelectorAll<HTMLElement>('[data-keep-scroll]')) {
-    const top = positions.get(node.dataset[KEEP_SCROLL] ?? '')
-    if (top !== undefined) node.scrollTop = top
+    const at = positions.get(node.dataset[KEEP_SCROLL] ?? '')
+    if (at === undefined) continue
+
+    node.scrollTop = at.top
+    node.scrollLeft = at.left
   }
 }
 
