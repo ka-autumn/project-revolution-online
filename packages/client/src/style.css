@@ -469,6 +469,24 @@ body {
   font-size: 0.85rem;
 }
 
+/*
+ * 絞り込みの値 1 つ（レシピの一覧の並べ方など）。選んでいるものは、色だけでなく太さでも分かる
+ * ようにする（`aria-pressed` にも出る）。デッキ構築の画面と共有ダイアログの中では、それぞれの
+ * 規則（`.deckbuild .chip`・`.confirm .chip`）が上書きする。
+ */
+.chip {
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+}
+
+.chip--選択中 {
+  border-color: var(--own);
+  background: #2f6fb026;
+  font-weight: bold;
+}
+
 /* 絵文字だけのボタン（`render.ts` の `iconButton`）。文字のボタンと並んでも高さが揃うようにする。 */
 .icon-button {
   min-width: 2.2em;
@@ -488,6 +506,11 @@ body {
   justify-content: center;
   padding: var(--gap);
   background: rgb(40 20 0 / 0.45);
+  /*
+   * `root` の直下に重ねるので、`.deckbuild` の `color-scheme` は届かない。ここでも明るいテーマに
+   * 固定しないと、OS がダークのときに入力欄だけが暗く描かれる。
+   */
+  color-scheme: light;
 }
 
 .confirm__box {
@@ -534,10 +557,32 @@ body {
   outline-offset: 2px;
 }
 
-.confirm__danger {
+/* `.confirm button` より詳細度を上げないと、枠と文字の色がそちらに負けて赤が消える。 */
+.confirm .confirm__danger,
+.confirm .confirm__danger:hover {
   border-color: #b00;
   color: #b00;
   font-weight: bold;
+}
+
+/*
+ * 共有ダイアログの「公開の段階」の値。選んでいるものは、色だけでなく太さと枠の太さでも分かる
+ * ようにする（`aria-pressed` にも出る）。`.deckbuild` の中の値と同じ見た目にする。
+ */
+.confirm .chip {
+  padding: 0.2rem 0.65rem;
+  border-color: var(--panel-edge);
+  border-radius: 999px;
+  background: #fffef9;
+  box-shadow: none;
+  font-size: 0.85rem;
+}
+
+.confirm .chip--選択中 {
+  border-color: var(--gold-deep);
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  box-shadow: inset 0 0 0 1px var(--gold-deep);
+  font-weight: 700;
 }
 
 /* 解説を読む・書く窓（ADR-0028）のような、見出し・本文を持つ重ねる窓で使う。 */
@@ -630,6 +675,11 @@ body {
 .duel {
   /* 右の列の幅。「選ぶ」一覧が覆わない範囲（`.picker` の `inset`）もここから決める。 */
   --right-column: 18rem;
+  /*
+   * 共通のクラス（`.choice__button--選択中` など）が引く `--own` を、対戦画面の中だけ鮮やかな
+   * ほうの色に差し替える。`:root` の値はロビーなどが使っているので、そちらは変えない。
+   */
+  --own: var(--accent-own);
 
   /* 明るい・暗いの切り替えは持たない（ADR-0027）。将来プレイヤーごとに背景を差し替える余地の
      ために、色は変数から引く。 */
@@ -2405,7 +2455,13 @@ body {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: var(--gap-lg);
-  height: 100vh;
+  /*
+   * 高さは `.duel` と同じく `#board` の残りいっぱいに伸ばして決める。`100vh` で固定すると、
+   * `body` の余白と `.status` の 1 行のぶんだけ画面の高さを超えて、ページ全体がスクロールする。
+   */
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: calc(var(--gap) * -1);
   padding: var(--gap-lg);
   overflow: hidden;
   color: var(--ink);
