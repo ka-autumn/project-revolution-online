@@ -11,6 +11,7 @@ import {
   MOVE_SHAPES,
   STAR_CHOICES,
   toggled,
+  TRIGGER_CONDITIONS,
 } from './pool-filter.js'
 import type { PoolFilter } from './pool-filter.js'
 import { unitFace } from './test-support.js'
@@ -101,11 +102,10 @@ describe('絞り込む', () => {
     expect(keysWith({ sp: { min: 2000, max: 3000 } })).toEqual(['ろ'])
   })
 
-  it('属性・スターアイコン・トリガーアイコンで絞り込める', () => {
+  it('属性・スターアイコンで絞り込める', () => {
     expect(keysWith({ attributes: ['テスト属性'] })).toEqual(['は'])
     expect(keysWith({ stars: ['★1', 'リバーススター'] })).toEqual(['は', 'に'])
     expect(keysWith({ stars: ['なし'] })).toEqual(['い', 'ろ', 'ほ'])
-    expect(keysWith({ triggerIcons: filterChoicesOf([TRAP]).triggerIcons })).toEqual(['ほ'])
   })
 
   /** #193。1 枚が複数のエキスパンションに入りうる。 */
@@ -140,16 +140,31 @@ describe('選べるもの', () => {
     expect(choices.colors).toEqual(['赤', '黒', '青', COLORLESS])
     expect(choices.attributes).toEqual(['テスト属性'])
     expect(choices.expansions).toEqual(['テストの第1弾', 'テストの第2弾'])
-    expect(choices.triggerIcons).toHaveLength(1)
   })
 
-  /** レベル・スター・移動方向は、開いた語彙（色・属性など）と違って範囲が決まっている（ADR-0028）。 */
-  it('レベル・スター・移動方向は、プールの中身に関わらず全部並ぶ', () => {
-    const choices = filterChoicesOf(POOL)
+  /** レベル・スター・移動方向・発動条件は、開いた語彙（色・属性など）と違って範囲が決まっている（ADR-0028）。 */
+  it('レベル・スター・移動方向・発動条件は、プールの中身に関わらず全部並ぶ', () => {
+    const choices = filterChoicesOf([RED_UNIT])
 
     expect(choices.levels).toEqual(LEVELS)
     expect(choices.stars).toEqual(STAR_CHOICES)
     expect(choices.moveIcons).toEqual(MOVE_SHAPES.map((shape) => shape.label))
+    expect(choices.triggerConditions).toEqual(TRIGGER_CONDITIONS)
+  })
+})
+
+/** ADR-0028。ほかの発動条件はカードの表記に載せてから足す（#232）。 */
+describe('発動条件の当たり方（ADR-0028）', () => {
+  it('「侵入された時」には、トリガーアイコンを持つトラップだけが残る', () => {
+    const noTrigger = card('へ', { ...TRAP.face, name: 'テスト・アイコン無しの罠', triggerIcon: [] } as WireCardFace)
+
+    expect(filterPool([...POOL, noTrigger], { ...emptyFilter(), triggerConditions: ['侵入された時'] }).map((each) => each.key)).toEqual([
+      'ほ',
+    ])
+  })
+
+  it('選ばなければ、トラップ以外も残る', () => {
+    expect(keysWith({ triggerConditions: [] })).toEqual(['い', 'ろ', 'は', 'に', 'ほ'])
   })
 })
 

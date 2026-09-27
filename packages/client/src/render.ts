@@ -1517,6 +1517,7 @@ function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers):
         moveShapeChipContent,
         (label) => `移動方向：${label}`,
       ),
+      filterRow('発動条件', choices.triggerConditions, filter.triggerConditions, (next) => change({ triggerConditions: next })),
       foldElement('属性', '属性', choices.attributes, filter.attributes, view.openFolds, handlers.onToggleFold, (next) =>
         change({ attributes: next }),
       ),

@@ -1,6 +1,5 @@
 import { CARD_TYPES, COLORS } from '@revolution/engine'
 import type { CardType, MoveDirection, WireCardFace, WirePoolCard } from '@revolution/engine'
-import { squareLabel } from './view-model.js'
 
 /**
  * デッキを組むところで、プールを絞り込む（#193）。
@@ -28,8 +27,7 @@ export interface NumberRange {
 }
 
 /**
- * スターアイコンで絞り込む時の値（ADR-0028。選択肢と当たり方を変えた。確定モック
- * `temp/mocks/deck-builder/deck-builder.html` の `starOf` と同じ当たり方にする）。
+ * スターアイコンで絞り込む時の値（ADR-0028。選択肢と当たり方を変えた）。
  *
  * 「★1」「★2」はそれぞれの数をぴったり持つカードに絞る（3 つ以上を束ねる選択肢は無い
  * ——今のプールに 3 つ以上のスターを持つカードは無い）。1 枚が複数の値に当たることがある
@@ -56,6 +54,16 @@ export const MOVE_SHAPES: readonly MoveShape[] = [
   { label: '上下左右', directions: ['上', '下', '左', '右'] },
 ]
 
+/**
+ * トラップの発動条件で絞り込む時の値（ADR-0028）。プールの中身に関わらず固定で並べる。
+ *
+ * いまカードの表記から見分けられるのは「侵入された時」（トリガーアイコンを 1 つ以上持つ
+ * トラップ）だけである。ほかの発動条件は、カードの表記に載せてから足す（#232）。
+ */
+export type TriggerCondition = '侵入された時'
+
+export const TRIGGER_CONDITIONS: readonly TriggerCondition[] = ['侵入された時']
+
 /** 絞り込みの条件。何も選んでいない軸は空（数の範囲は両側 `undefined`）。 */
 export interface PoolFilter {
   /** 名前とテキストに含まれる文字。空白で区切ると、どれも含むカードが残る。 */
@@ -71,8 +79,8 @@ export interface PoolFilter {
   readonly attributes: readonly string[]
   readonly stars: readonly StarChoice[]
   readonly moveIcons: readonly string[]
-  /** トリガーアイコンに描かれたスクエアの呼び方（`view-model.ts` の `squareLabel`）。 */
-  readonly triggerIcons: readonly string[]
+  /** トラップの発動条件。トラップ以外のカードはどれにも当たらない。 */
+  readonly triggerConditions: readonly TriggerCondition[]
   readonly expansions: readonly string[]
 }
 
@@ -87,7 +95,7 @@ export function emptyFilter(): PoolFilter {
     attributes: [],
     stars: [],
     moveIcons: [],
-    triggerIcons: [],
+    triggerConditions: [],
     expansions: [],
   }
 }
@@ -140,9 +148,9 @@ function moveShapeLabelsOf(face: WireCardFace): readonly string[] {
   ).map((shape) => shape.label)
 }
 
-function triggerLabelsOf(face: WireCardFace): readonly string[] {
-  // 印刷された図の呼び方で比べる。先攻がその基準の向きである（`view-model.ts` の `printedSquareLabel`）。
-  return face.type === 'トラップ' ? face.triggerIcon.map((square) => squareLabel('先攻', square)) : []
+/** カードが当たる発動条件。「侵入された時」はトリガーアイコンを持つトラップ（`TRIGGER_CONDITIONS`）。 */
+function triggerConditionsOf(face: WireCardFace): readonly TriggerCondition[] {
+  return face.type === 'トラップ' && face.triggerIcon.length > 0 ? ['侵入された時'] : []
 }
 
 /** カード 1 種が条件に合うか。 */
@@ -161,7 +169,7 @@ export function matchesFilter(card: WirePoolCard, filter: PoolFilter): boolean {
     anyOf(filter.attributes, face.attributes) &&
     anyOf(filter.stars, starChoicesOf(face)) &&
     anyOf(filter.moveIcons, moveShapeLabelsOf(face)) &&
-    anyOf(filter.triggerIcons, triggerLabelsOf(face)) &&
+    anyOf(filter.triggerConditions, triggerConditionsOf(face)) &&
     // 古いサーバはエキスパンションを添えてこない。**届かなかったものを、在るものとして扱わない。**
     anyOf(filter.expansions, (card.expansions as readonly string[] | undefined) ?? [])
   )
@@ -184,7 +192,7 @@ export interface FilterChoices {
   readonly attributes: readonly string[]
   readonly stars: readonly StarChoice[]
   readonly moveIcons: readonly string[]
-  readonly triggerIcons: readonly string[]
+  readonly triggerConditions: readonly TriggerCondition[]
   readonly expansions: readonly string[]
 }
 
@@ -195,21 +203,16 @@ function byName(values: Iterable<string>): readonly string[] {
 export function filterChoicesOf(pool: readonly WirePoolCard[]): FilterChoices {
   const faces = pool.map((card) => card.face)
   const colors = new Set(faces.flatMap((face): readonly string[] => (face.colors.length === 0 ? [COLORLESS] : face.colors)))
-  // トリガーアイコンは、盤面の行・列の順（`Square`）で出す。同じ行のスクエアが隣り合う。
-  const triggers = faces
-    .flatMap((face) => (face.type === 'トラップ' ? face.triggerIcon : []))
-    .sort((left, right) => left.row - right.row || left.column - right.column)
-    .map((square) => squareLabel('先攻', square))
 
   return {
     types: CARD_TYPES.filter((type) => faces.some((face) => face.type === type)),
     colors: [...COLORS, COLORLESS].filter((color) => colors.has(color)),
-    // レベル・スター・移動方向は、プールの中身に関わらず全部並べる（ADR-0028、`LEVELS` 等の定義を参照）。
+    // レベル・スター・移動方向・発動条件は、プールの中身に関わらず全部並べる（ADR-0028、`LEVELS` 等の定義を参照）。
     levels: LEVELS,
     attributes: byName(faces.flatMap((face) => face.attributes)),
     stars: STAR_CHOICES,
     moveIcons: MOVE_SHAPES.map((shape) => shape.label),
-    triggerIcons: [...new Set(triggers)],
+    triggerConditions: TRIGGER_CONDITIONS,
     expansions: byName(pool.flatMap((card) => (card.expansions as readonly string[] | undefined) ?? [])),
   }
 }
