@@ -959,6 +959,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let chosenRestriction: RestrictionChoice | undefined
   // 打ち込みかけている表示名（ADR-0020）。尋ねられるたびに、いま付いている名前から始める。
   let nameDraft = ''
+  // 押している最中（pointerdown から pointerup まで）か。押しているうちに描き直すと、押した要素が
+  // click の前に作り直され、押したことが消える。
+  let pointerHeld = false
+  // 押している最中に描き直しを頼まれた。手を離したら描き直す。
+  let redrawOnRelease = false
   /**
    * 入ろうとしている部屋。届いたものがまだ無い間の入り先である（#175）。
    *
@@ -1116,6 +1121,19 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     redraw()
   }
 
+  /** ✏️ で打ち込んでいる名前を決める。空なら元の名前のまま。打ち込んでいなければ何もせず `false`。 */
+  const commitEditingName = (name: string): boolean => {
+    if (builder.editingName === undefined || builder.draft === undefined) return false
+
+    const trimmed = name.trim()
+    updateBuilder({
+      ...builder,
+      editingName: undefined,
+      draft: { ...builder.draft, name: trimmed === '' ? builder.draft.name : trimmed },
+    })
+    return true
+  }
+
   const building = (): DeckBuilding => ({
     builder,
     checking: checkTimer !== undefined || builder.checking > 0,
@@ -1209,15 +1227,18 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         if (builder.editingName !== undefined) updateBuilder({ ...builder, editingName: name })
       },
       onEditNameCommit: (name) => {
-        if (builder.editingName === undefined || builder.draft === undefined) return
+        if (commitEditingName(name)) redraw()
+      },
+      onEditNameLeave: (name) => {
+        if (!commitEditingName(name)) return
 
-        const trimmed = name.trim()
-        updateBuilder({
-          ...builder,
-          editingName: undefined,
-          draft: { ...builder.draft, name: trimmed === '' ? builder.draft.name : trimmed },
-        })
-        redraw()
+        // 欄を離れたのは、ほかのボタンを押したからかもしれない。ここで描き直すとそのボタンが click
+        // の前に作り直され、押したことが消える。押したボタンの操作はいま決めた名前を読み、自分で
+        // 描き直すので、こちらはその後に回す。マウスでは押している最中（mousedown）に離れるので
+        // 手を離すまで待つ。タッチでは pointerup の後に離れ、click は同じ流れで続けて届くので、
+        // 1 拍おけば足りる。
+        if (pointerHeld) redrawOnRelease = true
+        else setTimeout(redraw, 0)
       },
       onEditNameCancel: () => {
         updateBuilder({ ...builder, editingName: undefined })
@@ -1704,12 +1725,30 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
   })
 
+  const onPointerDown = (): void => {
+    pointerHeld = true
+  }
+  const onPointerRelease = (): void => {
+    pointerHeld = false
+    if (!redrawOnRelease) return
+    redrawOnRelease = false
+    // click は pointerup の後に届く。押したボタンの操作が済んでから描き直す（押したのがボタンで
+    // なければ、ここで初めて入力欄が消える）。
+    setTimeout(redraw, 0)
+  }
+
   redraw()
   window.addEventListener('popstate', onPopState)
+  window.addEventListener('pointerdown', onPointerDown, true)
+  window.addEventListener('pointerup', onPointerRelease, true)
+  window.addEventListener('pointercancel', onPointerRelease, true)
 
   return () => {
     if (overlayTimer !== undefined) clearTimeout(overlayTimer)
     window.removeEventListener('popstate', onPopState)
+    window.removeEventListener('pointerdown', onPointerDown, true)
+    window.removeEventListener('pointerup', onPointerRelease, true)
+    window.removeEventListener('pointercancel', onPointerRelease, true)
     connection.close()
   }
 }

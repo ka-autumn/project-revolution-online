@@ -1177,8 +1177,10 @@ export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'on
   readonly onEditNameStart: () => void
   /** 名前を 1 文字打った。描き直しても打ちかけが残るように、呼ぶ側が覚えておく。 */
   readonly onEditName: (name: string) => void
-  /** Enter で決める、または入力欄を離れる。 */
+  /** Enter で決める。 */
   readonly onEditNameCommit: (name: string) => void
+  /** 入力欄を離れて決める。離れたきっかけのボタンの操作が済むまで、描き直しを待つ（呼ぶ側）。 */
+  readonly onEditNameLeave: (name: string) => void
   /** Esc でやめる。打ち込みかけは捨てる。 */
   readonly onEditNameCancel: () => void
   readonly onDescription: (description: string) => void
@@ -1953,7 +1955,7 @@ function editorTopbarElement(view: DeckEditorView, handlers: DeckEditorHandlers)
     // 描き直しが済むのを待ってから、画面に残っている欄を離れたときだけ決める。
     input.addEventListener('blur', () => {
       queueMicrotask(() => {
-        if (input.isConnected) handlers.onEditNameCommit(input.value)
+        if (input.isConnected) handlers.onEditNameLeave(input.value)
       })
     })
     name.append(input)
