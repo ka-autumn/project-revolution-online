@@ -217,8 +217,8 @@ export type DeckEditorModal = '解説'
 /**
  * カード一覧の表示の形ごとの、一度に描く枚数（ADR-0028）。
  *
- * 1 行表示はカード表示より 1 件が軽いので、多めに描く。確定モック
- * （`temp/mocks/deck-builder/deck-builder.html` の `BATCH`）と同じ値にする。
+ * 1 行表示はカード表示より 1 件が軽いので、多めに描く。枠を埋めきらなくてもよい——末尾が見えて
+ * いれば続けて描き足す（`render.ts` の `poolListElement`）。
  */
 export const POOL_BATCH: Readonly<Record<PoolView, number>> = { カード: 24, 一覧: 60 }
 
@@ -514,7 +514,7 @@ function usableFacesOf(pool: readonly WirePoolCard[], draft: DeckDraft): readonl
 }
 
 /**
- * デッキの内訳・色ごとの枚数・色の構成で数える色（ADR-0028）。**無色は黒とは別に数える。**
+ * デッキの内訳・色ごとの枚数・色の構成で数える色（ADR-0028）。無色は黒とは別に数える。
  *
  * 盤面の面の色（`view-model.ts` の `primaryColorOf`）は無色を黒の面で描くが、数えるときに
  * 黒へ寄せると、赤と無色だけのデッキが「赤黒」になってしまう。
@@ -583,11 +583,10 @@ export function starTotalOf(pool: readonly WirePoolCard[], draft: DeckDraft): nu
 export type Archetype = 'アグロ' | 'ミッドレンジ' | 'コントロール'
 
 /**
- * アーキタイプを自動で決めるしきい値（仮の値）。
+ * アーキタイプを自動で決めるしきい値（仮の値、ADR-0028）。
  *
- * ADR-0028はしきい値を決めておらず、「実際のデッキを見て調整する」としている。ここでは
- * デッキの平均レベルで区切る——確定モック（`temp/mocks/deck-builder/deck-builder.html` の
- * `autoTagsOf`）が仮に置いた値をそのまま引き継ぐ。
+ * デッキの平均レベルで区切る。平均が 3.6 以下ならアグロ、4.6 以上ならコントロール、その間は
+ * ミッドレンジ。実際のデッキを見て調整する。
  */
 const ARCHETYPE_AGGRO_MAX_AVERAGE_LEVEL = 3.6
 const ARCHETYPE_CONTROL_MIN_AVERAGE_LEVEL = 4.6
@@ -827,8 +826,8 @@ export function deckLabelChoices(rows: readonly OwnedDeckRow[]): readonly AutoDe
 }
 
 /**
- * デッキ一覧の探す（ADR-0028）。名前・入っている色・自動のラベルで絞り込む。**同じ軸の中は
- * 「どれか」**（`pool-filter.ts` と同じ考え方）。
+ * デッキ一覧の探す（ADR-0028）。名前・入っている色・自動のラベルで絞り込む。同じ軸の中は
+ * 「どれか」（`pool-filter.ts` と同じ考え方）。
  */
 export function filterOwnedDeckRows(
   rows: readonly OwnedDeckRow[],

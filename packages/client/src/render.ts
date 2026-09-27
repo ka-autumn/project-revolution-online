@@ -380,7 +380,7 @@ function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptio
 }
 
 /**
- * カードの見える面。**詳細の札はこの外側に置く**（`cardElement`）。
+ * カードの見える面。詳細の札はこの外側に置く（`cardElement`）。
  *
  * フリーズを横倒しにする（総合ルール 第2部 第24章）のはこの要素で、外枠の `card` は回らない。
  * 裏向きなら中身は空にする（裏面の絵柄は CSS が受け持つ）。
