@@ -1949,9 +1949,12 @@ function editorTopbarElement(view: DeckEditorView, handlers: DeckEditorHandlers)
       if (event.key === 'Enter') handlers.onEditNameCommit(input.value)
       if (event.key === 'Escape') handlers.onEditNameCancel()
     })
-    // 描き直しで捨てられるときにも blur が出るブラウザがある。画面に残っている欄を離れたときだけ決める。
+    // 描き直しで捨てられるときにも blur が出る（Chrome）。そのときは欄がまだ画面に残っているので、
+    // 描き直しが済むのを待ってから、画面に残っている欄を離れたときだけ決める。
     input.addEventListener('blur', () => {
-      if (input.isConnected) handlers.onEditNameCommit(input.value)
+      queueMicrotask(() => {
+        if (input.isConnected) handlers.onEditNameCommit(input.value)
+      })
     })
     name.append(input)
     // ✏️ を押した直後に手を移す。描き直しの後は `index.ts` が打っていた位置ごと戻しているので動かさない。

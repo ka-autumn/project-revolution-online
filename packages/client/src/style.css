@@ -481,7 +481,8 @@ body {
   background: none;
 }
 
-.chip--選択中 {
+/* `.chip` を重ねて詳細度を上げる。下の `.choice__button` の `font: inherit` に太さを消されないため。 */
+.chip.chip--選択中 {
   border-color: var(--own);
   background: #2f6fb026;
   font-weight: bold;
