@@ -547,7 +547,7 @@ export function cardDetailOf(pool: readonly WirePoolCard[], key: string): CardDe
   const card = pool.find((each) => each.key === key)
   if (card === undefined) return undefined
 
-  return { name: card.face.name, rows: printedDetailsOf(card.face), text: card.face.text }
+  return { name: card.face.name, rows: printedDetailsOf(card.face, card.expansions), text: card.face.text }
 }
 
 /**
@@ -555,8 +555,11 @@ export function cardDetailOf(pool: readonly WirePoolCard[], key: string): CardDe
  *
  * 印刷されている表記だけを持つ。盤面に置かれて初めて決まるもの——支配者・向き・ダメージ・
  * 修整——は持たない。持っていない項目は行ごと出さない。
+ *
+ * `expansions` は収録（ADR-0028）。エキスパンションは名前で出す——コードは #230 が済むまで無い。
+ * 呼ぶ側がエキスパンションを持たない場合（公開ページなど）は省いてよい。
  */
-export function printedDetailsOf(face: WireCardFace): readonly DetailRow[] {
+export function printedDetailsOf(face: WireCardFace, expansions: readonly string[] = []): readonly DetailRow[] {
   const rows: DetailRow[] = [
     { label: '種別', value: face.type },
     { label: 'レベル', value: String(face.level) },
@@ -571,7 +574,9 @@ export function printedDetailsOf(face: WireCardFace): readonly DetailRow[] {
   }
   if (face.stars > 0) rows.push({ label: 'スター', value: String(face.stars) })
   if (face.reverseStars > 0) rows.push({ label: 'リバーススター', value: String(face.reverseStars) })
+  if (face.keywords.length > 0) rows.push({ label: 'キーワード', value: face.keywords.join('・') })
   if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join(' | ') })
+  if (expansions.length > 0) rows.push({ label: '収録', value: expansions.join('・') })
 
   return rows
 }

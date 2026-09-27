@@ -44,6 +44,7 @@ function strategyFace(name: string, values: Partial<WireCardFace> = {}): WireCar
     stars: 0,
     reverseStars: 0,
     attributes: [],
+    keywords: [],
     text: [],
     ...values,
   } as WireCardFace
@@ -476,6 +477,28 @@ describe('詳しく出す', () => {
     const face = unitFace('テスト・属性いろいろ', { attributes: ['属性ア', '属性イ'] })
 
     expect(printedDetailsOf(face)).toContainEqual({ label: '属性', value: '属性ア | 属性イ' })
+  })
+
+  it('キーワードがあれば出る', () => {
+    const face = unitFace('テスト・キーワード持ち', { keywords: ['夢', '希望'] })
+
+    expect(printedDetailsOf(face)).toContainEqual({ label: 'キーワード', value: '夢・希望' })
+  })
+
+  /** 収録（ADR-0028）。エキスパンションは名前で出す（#230が済むまでコードは無い）。 */
+  it('収録しているエキスパンションが名前で出る', () => {
+    const face = unitFace('テスト・収録あり')
+
+    expect(printedDetailsOf(face, ['テストの第1弾', 'テストの第2弾'])).toContainEqual({
+      label: '収録',
+      value: 'テストの第1弾・テストの第2弾',
+    })
+  })
+
+  it('呼ぶ側がエキスパンションを渡さなければ、収録の行は出ない（公開ページなど）', () => {
+    const labels = printedDetailsOf(unitFace('テスト・渡さない')).map((row) => row.label)
+
+    expect(labels).not.toContain('収録')
   })
 
   /** 盤面に置かれて初めて決まるもの（支配者・向き・ダメージ）は、プールのカードには無い。 */
