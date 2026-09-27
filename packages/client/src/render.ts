@@ -975,7 +975,7 @@ export interface DeckListView {
   readonly colorFilter: readonly string[]
   readonly labelFilter: readonly string[]
   readonly presets: readonly WireDeck[]
-  /** コピー・複製・削除の返事を待っているか。**重ねて押させない**——2 度押すとデッキが 2 つできる。 */
+  /** コピー・複製・削除の返事を待っているか。重ねて押させない——2 度押すとデッキが 2 つできる。 */
   readonly waiting: boolean
   readonly refusal: string | undefined
 }
@@ -1187,7 +1187,7 @@ export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'on
   readonly onPoolView: (view: PoolView) => void
   /** スクロールで一覧の続きを描き足す。 */
   readonly onShowMorePool: () => void
-  /** カードの詳細を開く・畳む。**描き直さず、押した場でも切り替える**（呼ぶ側）。 */
+  /** カードの詳細を開く・畳む。描き直さず、押した場でも切り替える（呼ぶ側）。 */
   readonly onToggleDetail: () => void
 }
 
@@ -1510,8 +1510,8 @@ function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers):
 }
 
 /**
- * カードの詳細（ADR-0028）。見出しを押すと畳める。**開閉は描き直さず、class を切り替えるだけ**
- * にする——画面は操作のたびに丸ごと作り直されるので、描き直しで開閉すると CSS の transition が
+ * カードの詳細（ADR-0028）。見出しを押すと畳める。開閉は描き直さず、class を切り替えるだけに
+ * する——画面は操作のたびに丸ごと作り直されるので、描き直しで開閉すると CSS の transition が
  * 効かない。
  */
 function poolDetailPanelElement(pinnedDetail: CardDetail | undefined, view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
@@ -1695,7 +1695,7 @@ function viewSwitchElement(current: PoolView, onChoose: (view: PoolView) => void
 }
 
 /**
- * カード一覧（ADR-0028）。**最初の数十枚だけ面を描き、スクロールで描き足す**——1000 種になった時、
+ * カード一覧（ADR-0028）。最初の数十枚だけ面を描き、スクロールで描き足す——1000 種になった時、
  * 描き直すたびに全部の面を作ると重いため。描き足した枚数は状態として持ち（`poolShown`）、
  * 絞り込みを変えたら先頭に戻す（呼ぶ側、`index.ts`）。
  */
