@@ -458,6 +458,24 @@ describe('内訳（ADR-0028）', () => {
     expect(bars.filter((bar) => bar.label !== '2-').every((bar) => bar.total === 0)).toBe(true)
   })
 
+  it('段は「2-」「3」〜「6」「7+」。レベル0は「2-」、7と8は「7+」に入る', () => {
+    const levels: WirePoolCard[] = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((level) => ({
+      key: `Lv${level}`,
+      face: unitFace(`テスト・Lv${level}`, { level }),
+      expansions: [],
+    }))
+    const everyLevel = { ...newDraft(), cards: levels.map((card) => card.key) }
+
+    expect(levelBreakdownOf(levels, everyLevel).map((bar) => [bar.label, bar.total])).toEqual([
+      ['2-', 3],
+      ['3', 1],
+      ['4', 1],
+      ['5', 1],
+      ['6', 1],
+      ['7+', 2],
+    ])
+  })
+
   it('使えないカードは数えない', () => {
     const withUnusable = { ...newDraft(), cards: ['どこにもない'] }
 
@@ -504,6 +522,35 @@ describe('自動ラベル（ADR-0028）', () => {
     const draft = { ...newDraft(), cards: ['た'] }
 
     expect(autoLabelsOf(highLevel, draft, undefined)).toContainEqual({ group: 'アーキタイプ', label: 'コントロール' })
+  })
+
+  /** しきい値ちょうどは、アグロ・コントロールの側に入る（以下・以上）。 */
+  it('平均がちょうど 3.6 ならアグロ、ちょうど 4.6 ならコントロール', () => {
+    const levels: WirePoolCard[] = [3, 4, 5].map((level) => ({
+      key: `Lv${level}`,
+      face: unitFace(`テスト・Lv${level}`, { level }),
+      expansions: [],
+    }))
+    // 3・3・4・4・4 → 18 / 5 = 3.6、4・4・5・5・5 → 23 / 5 = 4.6
+    const aggro = { ...newDraft(), cards: ['Lv3', 'Lv3', 'Lv4', 'Lv4', 'Lv4'] }
+    const control = { ...newDraft(), cards: ['Lv4', 'Lv4', 'Lv5', 'Lv5', 'Lv5'] }
+
+    expect(autoLabelsOf(levels, aggro, undefined)).toContainEqual({ group: 'アーキタイプ', label: 'アグロ' })
+    expect(autoLabelsOf(levels, control, undefined)).toContainEqual({ group: 'アーキタイプ', label: 'コントロール' })
+  })
+
+  it('使えないカードだけのデッキには、何も付かない', () => {
+    expect(autoLabelsOf(POOL, { ...newDraft(), cards: ['どこにもない', 'どこにもない'] }, undefined)).toEqual([])
+  })
+
+  it('使えないカードが混ざっていれば、それを除いて数える', () => {
+    // 使えるのは赤Lv1 の い だけ。使えないカードを数えると平均も色も変わりうる。
+    const mixed = { ...newDraft(), cards: ['い', 'どこにもない', 'どこにもない'] }
+
+    expect(autoLabelsOf(POOL, mixed, undefined)).toEqual([
+      { group: 'アーキタイプ', label: 'アグロ' },
+      { group: '色の構成', label: '赤単' },
+    ])
   })
 
   it('間なら、ミッドレンジ', () => {
