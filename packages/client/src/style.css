@@ -13,6 +13,32 @@
   --own: #2f6fb0;
   --opponent: #b04a4a;
   color-scheme: light dark;
+
+  /*
+   * 対戦画面・デッキ構築の画面で共通の見た目の基準（ADR-0027・ADR-0028）。値を使うセレクタは
+   * これまでどおり画面ごとに書く（`.duel` の外枠の内側など）ので、ここに置いても他の画面
+   * （ロビー・名前を決める画面など）には効かない。揃える番が来た画面から、ここの変数を使う。
+   *
+   * `--accent-own` / `--accent-opponent` は上の `--own` / `--opponent` と役目が重なるが、
+   * こちらのほうが鮮やかな色を使うため、名前を分けて共存させている。
+   */
+  --ink: #3b2a12;
+  --ink-dim: #7d6848;
+  --heading: #8a4700;
+  --gold: #dca640;
+  --gold-bright: #f7c956;
+  --gold-deep: #b07a1c;
+  --accent-own: #2a6fd6;
+  --accent-own-soft: #e4eeff;
+  --accent-opponent: #d3364a;
+  --accent-opponent-soft: #ffe6e6;
+  --panel: rgb(255 252 244 / 0.88);
+  --panel-edge: #e2b252;
+  --radius: 12px;
+  --radius-small: 7px;
+  --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
+  /* 通常の `--gap` より広い、パネル間などの余白の基準値。 */
+  --gap-lg: 0.75rem;
 }
 
 body {
@@ -685,6 +711,10 @@ body {
 }
 
 /* 押す前に尋ねるところ（#193）。画面の上に重ね、答えるまで下を押せなくする。 */
+/*
+ * 押す前に尋ねるところ（ADR-0028）。デッキ構築の流れ（削除・変更を捨てる・共有）だけで使い、
+ * 対戦画面は使わない。画面の上に重ね、答えるまで下を押せなくする。
+ */
 .confirm {
   position: fixed;
   inset: 0;
@@ -693,20 +723,23 @@ body {
   align-items: center;
   justify-content: center;
   padding: var(--gap);
-  background: #0006;
+  background: rgb(40 20 0 / 0.45);
 }
 
 .confirm__box {
   max-width: 28rem;
-  padding: calc(var(--gap) * 3);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  background: Canvas;
-  box-shadow: 0 2px 12px #0006;
+  padding: calc(var(--gap-lg) * 2);
+  border: 2px solid var(--gold);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #fffdf6, #fff4dc);
+  box-shadow: 0 16px 50px rgb(80 40 0 / 0.4);
+  color: var(--ink);
 }
 
 .confirm__message {
-  margin: 0 0 calc(var(--gap) * 2);
+  margin: 0 0 var(--gap-lg);
+  font-size: 0.95rem;
+  line-height: 1.5;
 }
 
 .confirm__buttons {
@@ -715,7 +748,30 @@ body {
   gap: var(--gap);
 }
 
+.confirm button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: linear-gradient(180deg, #fffefa, #fbefd4);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgb(150 80 0 / 0.25);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.confirm button:hover {
+  border-color: var(--gold-deep);
+  box-shadow: inset 0 1px 0 #fff, 0 0 10px rgb(247 201 86 / 0.8);
+}
+
+.confirm button:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 2px;
+}
+
 .confirm__danger {
+  border-color: #b00;
   color: #b00;
   font-weight: bold;
 }
@@ -773,34 +829,20 @@ body {
 }
 
 /*
- * 対戦画面（ADR-0027）。
+ * 対戦画面（ADR-0027。デッキ構築を揃えるときに一部を改めた——ADR-0028）。
  *
  * ここから下は `.duel` の内側にだけ効く。`:root` の変数と共通のクラス（`.choice__button` や
- * `button` 要素そのもの）には触らず、新しい色・余白・部品の見た目は `.duel` に置いた変数と
- * クラスで作る——他の画面（ロビー・デッキ構築など）は今の見た目のまま残る。
+ * `button` 要素そのもの）には触らず、新しい色・余白・部品の見た目は `:root` に置いた見た目の
+ * 基準の変数と、ここに書くクラスで作る——他の画面（ロビー・名前を決める画面など）は今の見た目
+ * のまま残る。
  *
- * `--own` / `--opponent` は `:root` にも同じ名前がある。ここでわざと同じ名前で上書きする
- * ——対戦画面の中だけ新しい色に差し替わり、外へは漏れない（CSS のカスケードそのもの）。
+ * 見た目の基準の値そのものは `:root` にあるが、それを使うセレクタ（このファイルの下のほう）は
+ * これまでどおり `.duel` の内側にだけ書く。カードの面の規則だけは、デッキ構築の画面と共有する
+ * ため、`.duel` を付けずに書く（後述）。
  */
 .duel {
-  --ink: #3b2a12;
-  --ink-dim: #7d6848;
-  --heading: #8a4700;
-  --gold: #dca640;
-  --gold-bright: #f7c956;
-  --gold-deep: #b07a1c;
-  --own: #2a6fd6;
-  --own-soft: #e4eeff;
-  --opponent: #d3364a;
-  --opponent-soft: #ffe6e6;
-  --panel: rgb(255 252 244 / 0.88);
-  --panel-edge: #e2b252;
-  --radius: 12px;
-  --radius-small: 7px;
-  --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
   /* 右の列の幅。「選ぶ」一覧が覆わない範囲（`.picker` の `inset`）もここから決める。 */
   --right-column: 18rem;
-  --duel-gap: 0.75rem;
 
   /* 明るい・暗いの切り替えは持たない（ADR-0027）。将来プレイヤーごとに背景を差し替える余地の
      ために、色は変数から引く。 */
@@ -808,7 +850,7 @@ body {
   box-sizing: border-box;
   display: grid;
   grid-template-columns: 17rem minmax(0, 1fr) var(--right-column);
-  gap: var(--duel-gap);
+  gap: var(--gap-lg);
   /* `body` の余白（`:root` の `--gap`）を打ち消して、画面いっぱいに広げる。 */
   margin: calc(var(--gap) * -1);
   /*
@@ -819,7 +861,7 @@ body {
    */
   flex: 1 1 auto;
   min-height: 0;
-  padding: var(--duel-gap);
+  padding: var(--gap-lg);
   overflow: hidden;
   color: var(--ink);
   background:
@@ -874,7 +916,7 @@ body {
 }
 
 .duel button:focus-visible {
-  outline: 2px solid var(--own);
+  outline: 2px solid var(--accent-own);
   outline-offset: 2px;
 }
 
@@ -908,12 +950,12 @@ body {
 }
 
 .duel .player--相手 {
-  border-color: var(--opponent);
+  border-color: var(--accent-opponent);
   background: linear-gradient(120deg, #ffe0e0, rgb(255 252 244 / 0.92) 70%);
 }
 
 .duel .player--自分 {
-  border-color: var(--own);
+  border-color: var(--accent-own);
   background: linear-gradient(120deg, #dde9ff, rgb(255 252 244 / 0.92) 70%);
 }
 
@@ -949,11 +991,11 @@ body {
 }
 
 .duel .player--相手 .player__whose {
-  background: var(--opponent);
+  background: var(--accent-opponent);
 }
 
 .duel .player--自分 .player__whose {
-  background: var(--own);
+  background: var(--accent-own);
 }
 
 .duel .player__name {
@@ -1021,9 +1063,9 @@ body {
 .duel .controls__priority {
   margin: 0 0.9rem 0.5rem;
   padding: 0.3rem 0.6rem;
-  border: 1px solid var(--own);
+  border: 1px solid var(--accent-own);
   border-radius: var(--radius-small);
-  background: linear-gradient(90deg, var(--own-soft), transparent);
+  background: linear-gradient(90deg, var(--accent-own-soft), transparent);
   font-weight: 700;
 }
 
@@ -1242,7 +1284,7 @@ body {
   gap: 0.6rem;
   justify-self: center;
   padding: 0.2rem 0.9rem;
-  border: 1px solid var(--opponent);
+  border: 1px solid var(--accent-opponent);
   border-radius: 999px;
   background: #fff3f3;
   font-weight: 700;
@@ -1256,7 +1298,7 @@ body {
   padding: 0 0.45rem;
   border-radius: 4px;
   color: #fff;
-  background: var(--opponent);
+  background: var(--accent-opponent);
   font-size: 0.75rem;
 }
 
@@ -1303,12 +1345,12 @@ body {
 }
 
 .duel .group--相手 {
-  border: 1.5px solid var(--opponent);
+  border: 1.5px solid var(--accent-opponent);
   background: rgb(255 225 225 / 0.85);
 }
 
 .duel .group--自分 {
-  border: 1.5px solid var(--own);
+  border: 1.5px solid var(--accent-own);
   background: rgb(222 234 255 / 0.85);
 }
 
@@ -1416,11 +1458,11 @@ body {
 }
 
 .duel .waiting__list .waiting--相手 {
-  border-left-color: var(--opponent);
+  border-left-color: var(--accent-opponent);
 }
 
 .duel .waiting__list .waiting--自分 {
-  border-left-color: var(--own);
+  border-left-color: var(--accent-own);
 }
 
 .duel .waiting__none {
@@ -1573,9 +1615,16 @@ body {
   --card-width: 4.6rem;
 }
 
-/* ---------- カード ---------- */
+/*
+ * ---------- カード ----------
+ *
+ * カードの面の規則は、対戦画面とデッキ構築の画面で共有する（ADR-0028）。`.duel` の内側に
+ * 閉じないよう、ここから下は素のクラス名（`.card` など）に書く。カードをどこに・どんな大きさで
+ * 置くか（`.duel .hand .card` のような文脈ごとの上書き）は、画面ごとの並べ方の一部なので、
+ * これまでどおりそれぞれの画面のセレクタに残す。
+ */
 
-.duel .card {
+.card {
   position: relative;
   flex: none;
   width: var(--card-width);
@@ -1587,31 +1636,31 @@ body {
  * 色ごとの値。種別の地・名前の地・SP の地・面の下側に使う。複数の色を持つカード・無色の
  * カードは、いまのカードプールに無いので考えない（ADR-0027）。
  */
-.duel .card--色-青 {
+.card--色-青 {
   --lv-light: #80ceec;
   --lv-deep: #009cd9;
   --on-color: #fff;
 }
 
-.duel .card--色-赤 {
+.card--色-赤 {
   --lv-light: #ff8080;
   --lv-deep: #ee1c1c;
   --on-color: #fff;
 }
 
-.duel .card--色-緑 {
+.card--色-緑 {
   --lv-light: #80d680;
   --lv-deep: #0a960a;
   --on-color: #fff;
 }
 
-.duel .card--色-黒 {
+.card--色-黒 {
   --lv-light: #808080;
   --lv-deep: #1c1c1c;
   --on-color: #fff;
 }
 
-.duel .card--色-白 {
+.card--色-白 {
   --lv-light: #ffffff;
   --lv-deep: #dddddd;
   --on-color: #111;
@@ -1621,7 +1670,7 @@ body {
  * 面の地は上が白、下がカードの色。白のカードは下を薄い灰色にする。将来はこの下にカードの
  * イラストを敷き、このグラデーションを半透明で重ねる想定。
  */
-.duel .card__face {
+.card__face {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1638,27 +1687,27 @@ body {
   line-height: 1.2;
 }
 
-.duel .card--色-白 .card__face {
+.card--色-白 .card__face {
   background: linear-gradient(180deg, #fff 18%, #ececec 62%, #cfcfcf 100%);
 }
 
 /* 支配者の色：面の外周 */
-.duel .card--自分 .card__face {
-  border-color: var(--own);
+.card--自分 .card__face {
+  border-color: var(--accent-own);
 }
 
-.duel .card--相手 .card__face {
-  border-color: var(--opponent);
+.card--相手 .card__face {
+  border-color: var(--accent-opponent);
 }
 
-.duel .card__top {
+.card__top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.2em;
 }
 
-.duel .card__level {
+.card__level {
   position: relative;
   display: grid;
   flex: none;
@@ -1668,25 +1717,25 @@ body {
   font-weight: 800;
 }
 
-.duel .card__level img {
+.card__level img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
-.duel .card__level span {
+.card__level span {
   position: relative;
   color: #fff;
   text-shadow: 0 0 2px #000, 0 0 2px #000;
 }
 
-.duel .card--色-白 .card__level span {
+.card--色-白 .card__level span {
   color: #000;
   text-shadow: 0 0 2px #fff;
 }
 
-.duel .card__kind {
+.card__kind {
   padding: 0.05em 0.4em;
   border-radius: 999px;
   color: var(--on-color);
@@ -1696,7 +1745,7 @@ body {
   white-space: nowrap;
 }
 
-.duel .card--色-白 .card__kind {
+.card--色-白 .card__kind {
   box-shadow: 0 0 0 1px #000 inset;
 }
 
@@ -1704,7 +1753,7 @@ body {
  * 名前の行：スター・名前・（詳細では）キーワード能力のアイコン。地の枠はアイコンまで含め、
  * アイコンは枠から上下にはみ出させる。
  */
-.duel .card__title {
+.card__title {
   display: flex;
   align-items: center;
   gap: 0.15em;
@@ -1716,16 +1765,16 @@ body {
   background: var(--lv-deep);
 }
 
-.duel .card--色-白 .card__title {
+.card--色-白 .card__title {
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35) inset;
 }
 
-.duel .card__title .star,
-.duel .card__title .keywords {
+.card__title .star,
+.card__title .keywords {
   margin-block: -0.35em;
 }
 
-.duel .star {
+.star {
   position: relative;
   display: grid;
   flex: none;
@@ -1735,7 +1784,7 @@ body {
   font-weight: 900;
 }
 
-.duel .star img {
+.star img {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1744,7 +1793,7 @@ body {
 }
 
 /* ダブルスター：★ の中に赤い数字 */
-.duel .star span {
+.star span {
   position: relative;
   top: 0.1em;
   color: #d0101a;
@@ -1753,18 +1802,18 @@ body {
   text-shadow: 0 0 2px #fff, 0 0 2px #fff;
 }
 
-.duel .keywords {
+.keywords {
   display: flex;
   flex: none;
   gap: 0.15em;
 }
 
 /* リバーススター：緑を基調にした逆さの ★ */
-.duel .star--reverse img {
+.star--reverse img {
   transform: rotate(180deg);
 }
 
-.duel .star--reverse span {
+.star--reverse span {
   top: -0.1em;
   color: #0b4a22;
 }
@@ -1773,7 +1822,7 @@ body {
  * キーワード能力のアイコン：半透明の宝石の球に字。夢＝サファイア、希望＝ルビー、幸運＝
  * トパーズ、苦労＝暗いエメラルド（ADR-0027。幸運・苦労はまだ実装していないキーワード）。
  */
-.duel .keyword {
+.keyword {
   display: grid;
   place-items: center;
   width: 2.1em;
@@ -1795,53 +1844,53 @@ body {
   text-shadow: 0 0 2px rgb(0 0 0 / 0.8), 0 1px 1px rgb(0 0 0 / 0.6);
 }
 
-.duel .keyword--夢 {
+.keyword--夢 {
   --gem-light: rgb(80 130 220 / 0.8);
   --gem: rgb(16 52 150 / 0.86);
   --gem-deep: rgb(4 16 70 / 0.95);
 }
 
-.duel .keyword--希望 {
+.keyword--希望 {
   --gem-light: rgb(220 80 100 / 0.8);
   --gem: rgb(150 8 32 / 0.86);
   --gem-deep: rgb(70 0 10 / 0.95);
 }
 
-.duel .keyword--幸運 {
+.keyword--幸運 {
   --gem-light: rgb(230 190 80 / 0.85);
   --gem: rgb(185 125 8 / 0.88);
   --gem-deep: rgb(95 55 0 / 0.95);
 }
 
-.duel .keyword--苦労 {
+.keyword--苦労 {
   --gem-light: rgb(80 170 115 / 0.7);
   --gem: rgb(8 100 55 / 0.85);
   --gem-deep: rgb(0 42 22 / 0.95);
 }
 
 /* 字の大きさだけ変える（球の大きさは揃える） */
-.duel .keyword span {
+.keyword span {
   font-size: 0.95em;
 }
 
-.duel .keyword--希望 span,
-.duel .keyword--幸運 span,
-.duel .keyword--苦労 span {
+.keyword--希望 span,
+.keyword--幸運 span,
+.keyword--苦労 span {
   font-size: 0.62em;
 }
 
 /* プランのカード（山札の上）だけ、夢・希望・幸運を名前の下の行に出す */
-.duel .card__keywords-row {
+.card__keywords-row {
   display: flex;
   justify-content: flex-end;
 }
 
-.duel .card__keywords-row .keyword {
+.card__keywords-row .keyword {
   width: 1.9em;
   height: 1.9em;
 }
 
-.duel .card__name {
+.card__name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -1851,7 +1900,7 @@ body {
   text-overflow: ellipsis;
 }
 
-.duel .card__bottom {
+.card__bottom {
   display: flex;
   flex-direction: column;
   gap: 0.15em;
@@ -1859,25 +1908,25 @@ body {
 }
 
 /* ムーブアイコン（ユニット）・トリガーアイコン（侵入のトラップ）は右側 */
-.duel .card__icons {
+.card__icons {
   display: flex;
   justify-content: flex-end;
   align-items: flex-end;
 }
 
-.duel .move-icon,
-.duel .trigger-icon {
+.move-icon,
+.trigger-icon {
   display: block;
   width: 2.2em;
   height: 2.2em;
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.4));
 }
 
-.duel .trigger-icon {
+.trigger-icon {
   margin-left: auto;
 }
 
-.duel .card__traits {
+.card__traits {
   overflow: hidden;
   color: var(--on-color);
   font-size: 0.8em;
@@ -1886,25 +1935,25 @@ body {
   text-shadow: 0 0 2px rgb(0 0 0 / 0.5);
 }
 
-.duel .card--色-白 .card__traits {
+.card--色-白 .card__traits {
   text-shadow: none;
 }
 
-.duel .card__stats {
+.card__stats {
   display: flex;
   justify-content: space-between;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
-.duel .card__bp {
+.card__bp {
   padding: 0 0.3em;
   border-radius: 3px;
   color: #fff;
   background: rgb(0 0 0 / 0.55);
 }
 
-.duel .card__sp {
+.card__sp {
   padding: 0 0.3em;
   border-radius: 3px;
   color: var(--on-color);
@@ -1912,7 +1961,7 @@ body {
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.6);
 }
 
-.duel .card--色-白 .card__sp {
+.card--色-白 .card__sp {
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
 }
 
@@ -1921,38 +1970,38 @@ body {
  * （SP はカードの色）と文字の色が重なっても読めるよう、文字に白い縁を付ける。色だけに頼らず、
  * 末尾に ▲▼ も添える（#91）。
  */
-.duel .card__bp--上,
-.duel .card__sp--上,
-.duel .card__bp--下,
-.duel .card__sp--下 {
+.card__bp--上,
+.card__sp--上,
+.card__bp--下,
+.card__sp--下 {
   text-shadow:
     1px 0 0 #fff, -1px 0 0 #fff, 0 1px 0 #fff, 0 -1px 0 #fff,
     1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff;
 }
 
-.duel .card__bp--上,
-.duel .card__sp--上 {
+.card__bp--上,
+.card__sp--上 {
   color: #d4101c;
 }
 
-.duel .card__bp--下,
-.duel .card__sp--下 {
+.card__bp--下,
+.card__sp--下 {
   color: #1553c8;
 }
 
-.duel .card__bp--上::after,
-.duel .card__sp--上::after {
+.card__bp--上::after,
+.card__sp--上::after {
   content: '▲';
   font-size: 0.7em;
 }
 
-.duel .card__bp--下::after,
-.duel .card__sp--下::after {
+.card__bp--下::after,
+.card__sp--下::after {
   content: '▼';
   font-size: 0.7em;
 }
 
-.duel .card__damage {
+.card__damage {
   position: absolute;
   inset: 45% 0 auto 0;
   padding: 0.05em 0;
@@ -1966,7 +2015,7 @@ body {
  * 自分・相手の札。バトルスペースのカードにだけ出す（ほかの置き場は、置き場の側で誰のものか
  * 分かる）。面の外に付けるので、フリーズで面が寝ても札は寝ない。
  */
-.duel .card__whose {
+.card__whose {
   position: absolute;
   top: -0.55em;
   right: -0.45em;
@@ -1983,34 +2032,35 @@ body {
   background: none;
 }
 
+/* バトルスペースのカードにだけ出す。盤面の並べ方は画面ごとの決めごとなので、ここだけ `.duel` に残す。 */
 .duel .square .card__whose {
   display: block;
 }
 
-.duel .card--自分 .card__whose {
-  background: var(--own);
+.card--自分 .card__whose {
+  background: var(--accent-own);
 }
 
-.duel .card--相手 .card__whose {
-  background: var(--opponent);
+.card--相手 .card__whose {
+  background: var(--accent-opponent);
 }
 
 /* フリーズしたカードは、寝た面の右肩に札を付け直す（面は枠の中心で 90 度回る） */
-.duel .card--フリーズ .card__whose {
+.card--フリーズ .card__whose {
   top: calc(var(--card-width) * 0.25 - 0.55em);
   right: calc(var(--card-width) * -0.25 - 0.45em);
 }
 
-.duel .card--フリーズ {
+.card--フリーズ {
   margin: 0 calc(var(--card-width) / 4);
 }
 
-.duel .card--フリーズ .card__face {
+.card--フリーズ .card__face {
   transform: rotate(90deg);
 }
 
 /* 裏面：金・橙の光条（実物の裏面の雰囲気。ロゴは使わない） */
-.duel .card--back .card__face {
+.card--back .card__face {
   border-color: #fff;
   background:
     radial-gradient(circle at 50% 46%, transparent 0 17%, rgb(176 110 20 / 0.9) 17.5% 21%, transparent 21.5%),
@@ -2020,7 +2070,7 @@ body {
 }
 
 /* 裏面の丸の中の R */
-.duel .card--back .card__face::after {
+.card--back .card__face::after {
   content: 'R';
   position: absolute;
   left: 50%;
@@ -2034,29 +2084,29 @@ body {
   transform: translate(-50%, -52%);
 }
 
-.duel .card--押せる {
+.card--押せる {
   cursor: pointer;
 }
 
-.duel .card--押せる .card__face {
+.card--押せる .card__face {
   outline: 3px solid #ff9d00;
   outline-offset: 1px;
   box-shadow: 0 0 12px 3px rgb(255 170 0 / 0.75);
 }
 
-.duel .card--選択中 .card__face {
+.card--選択中 .card__face {
   outline: 3px solid #e05a00;
   outline-offset: 2px;
   box-shadow: 0 0 18px 6px rgb(255 140 0 / 0.9);
 }
 
-.duel .card--詳細中:not(.card--選択中) .card__face {
+.card--詳細中:not(.card--選択中) .card__face {
   outline: 2px solid var(--heading);
   outline-offset: 2px;
 }
 
 /* 選べないカード（一覧で条件に合わないもの）。色だけに頼らず、読み上げでも断る。 */
-.duel .card--選べない {
+.card--選べない {
   opacity: 0.4;
 }
 
@@ -2116,11 +2166,11 @@ body {
 }
 
 .duel .log__item--自分::before {
-  background: var(--own);
+  background: var(--accent-own);
 }
 
 .duel .log__item--相手::before {
-  background: var(--opponent);
+  background: var(--accent-opponent);
 }
 
 .duel .log__whose {
@@ -2129,11 +2179,11 @@ body {
 }
 
 .duel .log__item--自分 .log__whose {
-  color: var(--own);
+  color: var(--accent-own);
 }
 
 .duel .log__item--相手 .log__whose {
-  color: var(--opponent);
+  color: var(--accent-opponent);
 }
 
 /* 誰のできごとかを色だけで区別させない。 */
@@ -2181,58 +2231,58 @@ body {
   font-size: 0.75rem;
 }
 
-.duel .card--拡大 {
+.card--拡大 {
   --card-width: 14.5rem;
   font-size: 0.8rem;
 }
 
-.duel .card--拡大 .card__face {
+.card--拡大 .card__face {
   border-width: 3px;
   border-radius: 10px;
   padding: 0.4rem;
   gap: 0.3rem;
 }
 
-.duel .card--拡大 .card__title {
+.card--拡大 .card__title {
   font-size: 1.05rem;
   padding: 0 0.3rem;
 }
 
-.duel .card--拡大 .card__name {
+.card--拡大 .card__name {
   padding: 0.15rem 0.2rem;
 }
 
-.duel .card--拡大 .card__kind {
+.card--拡大 .card__kind {
   font-size: 0.8rem;
 }
 
-.duel .card--拡大 .card__level {
+.card--拡大 .card__level {
   font-size: 0.95rem;
 }
 
-.duel .card--拡大 .card__stats {
+.card--拡大 .card__stats {
   font-size: 1.1rem;
 }
 
-.duel .card--拡大 .card__traits {
+.card--拡大 .card__traits {
   font-size: 0.75rem;
 }
 
-.duel .card--拡大 .move-icon,
-.duel .card--拡大 .trigger-icon {
+.card--拡大 .move-icon,
+.card--拡大 .trigger-icon {
   width: 2.4rem;
   height: 2.4rem;
 }
 
-.duel .card--拡大 .star {
+.card--拡大 .star {
   font-size: 1.3rem;
 }
 
-.duel .card--拡大 .keyword {
+.card--拡大 .keyword {
   font-size: 0.9rem;
 }
 
-.duel .card--拡大 .card__damage {
+.card--拡大 .card__damage {
   inset: 30% 0 auto 0;
   font-size: 0.9rem;
 }
@@ -2241,7 +2291,7 @@ body {
  * 詳細のテキストの枠。ムーブアイコン・トリガーアイコンは枠の中の右に置き、テキストが無くても
  * アイコンのぶんの高さを取る。
  */
-.duel .card__text {
+.card__text {
   display: flex;
   gap: 0.4rem;
   min-height: calc(2.4rem + 0.7rem);
@@ -2255,17 +2305,17 @@ body {
   line-height: 1.45;
 }
 
-.duel .card__text p {
+.card__text p {
   margin: 0 0 0.2rem;
 }
 
-.duel .card__lines {
+.card__lines {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
 }
 
-.duel .card__text .card__icons {
+.card__text .card__icons {
   flex: none;
   align-items: flex-start;
 }
@@ -2481,9 +2531,9 @@ body {
  */
 .duel .picker {
   position: fixed;
-  /* 右の列（`--right-column`）と、その両側の余白（`--duel-gap` が枠の gap と padding の
+  /* 右の列（`--right-column`）と、その両側の余白（`--gap-lg` が枠の gap と padding の
      両方に付く）ぶんを覆わない。 */
-  inset: 0 calc(var(--right-column) + var(--duel-gap) * 2) 0 0;
+  inset: 0 calc(var(--right-column) + var(--gap-lg) * 2) 0 0;
   z-index: 70;
   display: flex;
   align-items: center;
