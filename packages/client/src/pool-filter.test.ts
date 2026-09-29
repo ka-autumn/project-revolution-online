@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { WireCardFace, WirePoolCard } from '@revolution/engine'
-import { COLORLESS, emptyFilter, filterChoicesOf, filterPool, isFiltering, toggled } from './pool-filter.js'
+import {
+  COLORLESS,
+  emptyFilter,
+  filterChoicesOf,
+  filterPool,
+  isFiltering,
+  LEVELS,
+  matchesFilter,
+  MOVE_SHAPES,
+  STAR_CHOICES,
+  toggled,
+  TRIGGER_CONDITIONS,
+} from './pool-filter.js'
 import type { PoolFilter } from './pool-filter.js'
 import { unitFace } from './test-support.js'
 
@@ -90,12 +102,10 @@ describe('絞り込む', () => {
     expect(keysWith({ sp: { min: 2000, max: 3000 } })).toEqual(['ろ'])
   })
 
-  it('属性・スターアイコン・ムーブアイコン・トリガーアイコンで絞り込める', () => {
+  it('属性・スターアイコンで絞り込める', () => {
     expect(keysWith({ attributes: ['テスト属性'] })).toEqual(['は'])
-    expect(keysWith({ stars: ['スターアイコンあり', 'リバーススターアイコンあり'] })).toEqual(['は', 'に'])
-    expect(keysWith({ stars: ['どちらも無し'] })).toEqual(['い', 'ろ', 'ほ'])
-    expect(keysWith({ moveIcons: ['左'] })).toEqual(['ろ'])
-    expect(keysWith({ triggerIcons: filterChoicesOf([TRAP]).triggerIcons })).toEqual(['ほ'])
+    expect(keysWith({ stars: ['★1', 'リバーススター'] })).toEqual(['は', 'に'])
+    expect(keysWith({ stars: ['なし'] })).toEqual(['い', 'ろ', 'ほ'])
   })
 
   /** #193。1 枚が複数のエキスパンションに入りうる。 */
@@ -128,11 +138,74 @@ describe('選べるもの', () => {
 
     expect(choices.types).toEqual(['ユニット', 'ストラテジー', 'トラップ'])
     expect(choices.colors).toEqual(['赤', '黒', '青', COLORLESS])
-    expect(choices.levels).toEqual([0, 1, 2, 3])
     expect(choices.attributes).toEqual(['テスト属性'])
-    expect(choices.moveIcons).toEqual(['上', '左', '右'])
     expect(choices.expansions).toEqual(['テストの第1弾', 'テストの第2弾'])
-    expect(choices.triggerIcons).toHaveLength(1)
+  })
+
+  /** レベル・スター・移動方向・発動条件は、開いた語彙（色・属性など）と違って範囲が決まっている（ADR-0028）。 */
+  it('レベル・スター・移動方向・発動条件は、プールの中身に関わらず全部並ぶ', () => {
+    const choices = filterChoicesOf([RED_UNIT])
+
+    expect(choices.levels).toEqual(LEVELS)
+    expect(choices.stars).toEqual(STAR_CHOICES)
+    expect(choices.moveIcons).toEqual(MOVE_SHAPES.map((shape) => shape.label))
+    expect(choices.triggerConditions).toEqual(TRIGGER_CONDITIONS)
+  })
+})
+
+/** ADR-0028。ほかの発動条件はカードの表記に載せてから足す（#232）。 */
+describe('発動条件の当たり方（ADR-0028）', () => {
+  it('「侵入された時」には、トリガーアイコンを持つトラップだけが残る', () => {
+    const noTrigger = card('へ', { ...TRAP.face, name: 'テスト・アイコン無しの罠', triggerIcon: [] } as WireCardFace)
+
+    expect(filterPool([...POOL, noTrigger], { ...emptyFilter(), triggerConditions: ['侵入された時'] }).map((each) => each.key)).toEqual([
+      'ほ',
+    ])
+  })
+
+  it('選ばなければ、トラップ以外も残る', () => {
+    expect(keysWith({ triggerConditions: [] })).toEqual(['い', 'ろ', 'は', 'に', 'ほ'])
+  })
+})
+
+describe('スターの当たり方（ADR-0028）', () => {
+  /** 3 つ以上を束ねる選択肢は無い（今のプールに 3 つ以上のスターを持つカードは無い）。 */
+  it('スターが1つなら「★1」、2つなら「★2」に、ぴったりの数だけ当たる', () => {
+    const single = card('a', unitFace('テスト・スター1', { stars: 1 }))
+    const double = card('b', unitFace('テスト・スター2', { stars: 2 }))
+
+    expect(matchesFilter(single, { ...emptyFilter(), stars: ['★1'] })).toBe(true)
+    expect(matchesFilter(single, { ...emptyFilter(), stars: ['★2'] })).toBe(false)
+    expect(matchesFilter(double, { ...emptyFilter(), stars: ['★1'] })).toBe(false)
+    expect(matchesFilter(double, { ...emptyFilter(), stars: ['★2'] })).toBe(true)
+  })
+
+  it('スター・リバーススターのどちらも無ければ「なし」に当たる', () => {
+    const none = card('a', unitFace('テスト・なし'))
+    const both = card('b', unitFace('テスト・両方', { stars: 1, reverseStars: 1 }))
+
+    expect(matchesFilter(none, { ...emptyFilter(), stars: ['なし'] })).toBe(true)
+    // スターとリバーススターの両方を持つカードは、「なし」には当たらない。
+    expect(matchesFilter(both, { ...emptyFilter(), stars: ['なし'] })).toBe(false)
+    expect(matchesFilter(both, { ...emptyFilter(), stars: ['★1'] })).toBe(true)
+    expect(matchesFilter(both, { ...emptyFilter(), stars: ['リバーススター'] })).toBe(true)
+  })
+})
+
+describe('移動方向の当たり方（ADR-0028）', () => {
+  it('ムーブアイコンの形がぴったり一致するカードだけ残る。含んでいるだけでは当たらない', () => {
+    const upOnly = card('a', unitFace('テスト・上のみ', { moveIcon: ['上'] }))
+    const upDown = card('b', unitFace('テスト・上下のみ', { moveIcon: ['上', '下'] }))
+    const upRightLeft = card('c', unitFace('テスト・上右左', { moveIcon: ['上', '右', '左'] }))
+
+    expect(matchesFilter(upOnly, { ...emptyFilter(), moveIcons: ['上のみ'] })).toBe(true)
+    expect(matchesFilter(upDown, { ...emptyFilter(), moveIcons: ['上のみ'] })).toBe(false)
+    expect(matchesFilter(upRightLeft, { ...emptyFilter(), moveIcons: ['上のみ'] })).toBe(false)
+    expect(matchesFilter(upRightLeft, { ...emptyFilter(), moveIcons: ['上・右・左'] })).toBe(true)
+  })
+
+  it('ユニット以外はどの形にも当たらない', () => {
+    expect(matchesFilter(TRAP, { ...emptyFilter(), moveIcons: ['上のみ'] })).toBe(false)
   })
 })
 

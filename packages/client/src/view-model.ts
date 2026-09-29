@@ -592,37 +592,56 @@ export function printedSquareLabel(printed: Square): string {
   return squareLabel('先攻', printed)
 }
 
-const COLORLESS = '無色'
-
-function colorsOf(face: WireCardFace): string {
-  return face.colors.length === 0 ? COLORLESS : face.colors.join('・')
+/**
+ * カードの面の色。複数の色を持つカード・無色のカードは、いまのカードプールに無いので
+ * 考えない（ADR-0027）。持っている色のうち 1 つ目で決める。
+ */
+export function primaryColorOf(colors: readonly Color[]): Color {
+  return colors[0] ?? '黒'
 }
 
 /**
- * 属性の並び。継続効果によって加わった分（#91）は `+` を付けて区別する。
+ * カードの面のうち、面を描くのに要る項目だけを取り出した形（ADR-0028）。
  *
- * 加わった属性はカードに書かれていない（総合ルール 第4部 第12章 5-2 の(3)）。並べて出すだけ
- * だと、どれが印刷されている属性かが分からなくなる。
+ * 盤面のカード（`CardView`）と、デッキ構築のプール・デッキのカードの両方がここから作れる
+ * ——`render.ts` の `faceElement`・`poolFaceElement` はこの形だけを見て、面の規則を共有する。
+ * ユニット・トラップだけが持つ項目（ＢＰ・ＳＰ・移動方向・トリガーアイコン）は、持たない種別
+ * では空・`undefined` にする。
  */
-function attributesLabel(face: WireCardFace, modified: ModifiedData | undefined): string {
-  const added = (modified?.addedAttributes ?? []).map((attribute) => `+${attribute}`)
-  const all = [...face.attributes, ...added]
-
-  return all.length === 0 ? '' : ` 《${all.join('・')}》`
+export interface FaceFields {
+  readonly name: string
+  readonly level: number
+  readonly colors: readonly Color[]
+  readonly type: CardType
+  readonly bp: number | undefined
+  readonly sp: number | undefined
+  readonly stars: number
+  readonly reverseStars: number
+  readonly moveIcon: readonly MoveDirection[]
+  readonly triggerIcon: readonly Square[]
+  readonly keywords: readonly PlanKeyword[]
+  readonly attributes: readonly Attribute[]
+  readonly text: readonly string[]
 }
 
-/**
- * カードに書かれていることを 1 行にする。
- *
- * 継続効果を適用した後のＢＰ（#91）は、印刷された数字を消さずに `BP1000→2000` と続けて出す。
- * バトルで比べられるのは後ろの数字（`card.ts` の `bpOf`）だが、**どちらがカードに書かれて
- * いる値かも要る**。
- */
-export function summaryOf(face: WireCardFace, modified: ModifiedData | undefined = undefined): string {
-  const bp = modified?.bp === undefined ? '' : `→${modified.bp}`
-  const body = face.type === 'ユニット' ? `BP${face.bp}${bp} SP${face.sp}` : face.type
-
-  return `Lv${face.level} ${colorsOf(face)} ${body}${attributesLabel(face, modified)}`
+export function faceFieldsOf(face: WireCardFace): FaceFields {
+  return {
+    name: face.name,
+    level: face.level,
+    colors: face.colors,
+    type: face.type,
+    bp: face.type === 'ユニット' ? face.bp : undefined,
+    sp: face.type === 'ユニット' ? face.sp : undefined,
+    stars: face.stars,
+    reverseStars: face.reverseStars,
+    moveIcon: face.type === 'ユニット' ? face.moveIcon : [],
+    triggerIcon: face.type === 'トラップ' ? face.triggerIcon : [],
+    // 古いサーバは `keywords` を送らない。届かなければ空として扱う（#207、
+    // `room.occupants ?? []` と同じ備え）。
+    keywords: face.keywords ?? [],
+    attributes: face.attributes,
+    text: face.text,
+  }
 }
 
 /**
@@ -663,26 +682,11 @@ function faceUpView(
   return {
     kind: '表',
     id: instance.id,
-    name: face.name,
     controlledBy: whoseLabel(viewer, instance.controller),
     // 持ち主と支配者は食い違いうる。同じなら出さない（#91 と同じ「変わったところだけ出す」考え方）。
     ownedBy: instance.owner === instance.controller ? undefined : whoseLabel(viewer, instance.owner),
-    level: face.level,
-    colors: face.colors,
-    type: face.type,
-    bp: face.type === 'ユニット' ? face.bp : undefined,
-    sp: face.type === 'ユニット' ? face.sp : undefined,
     modified,
-    stars: face.stars,
-    reverseStars: face.reverseStars,
-    moveIcon: face.type === 'ユニット' ? face.moveIcon : [],
-    triggerIcon: face.type === 'トラップ' ? face.triggerIcon : [],
-    // 古いサーバは `keywords` を送らない。届かなければ空として扱う（#207、
-    // `room.occupants ?? []` と同じ備え）。
-    keywords: face.keywords ?? [],
-    attributes: face.attributes,
-    // 見えていないカードのテキストは、そもそも届かない（`wire.ts` の `WireWrittenCard`）。
-    text: face.text,
+    ...faceFieldsOf(face),
     orientation: instance.orientation,
     damage: instance.damage,
   }

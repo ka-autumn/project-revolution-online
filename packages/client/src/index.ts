@@ -16,24 +16,34 @@ import type {
 } from '@revolution/engine'
 import {
   applyToBuilder,
+  autoLabelsOf,
   cardDetailOf,
   checkView,
   closedBuilder,
   confirmView,
+  deckColorChoices,
+  deckLabelChoices,
   deckRows,
   draftOf,
   draftToSave,
+  duplicatedDeckName,
+  filterOwnedDeckRows,
   hasUnsavedChanges,
   hasUnusableCards,
+  levelBreakdownOf,
   newDraft,
   ownedDeckRows,
   poolRows,
+  POOL_BATCH,
   seatableDecks,
   seatedChoice,
+  startedEditing,
+  starTotalOf,
+  typeCountsOf,
   withCard,
   withoutCard,
 } from './deck-builder.js'
-import type { Builder, DeckDraft } from './deck-builder.js'
+import type { Builder, DeckDraft, PoolView } from './deck-builder.js'
 import {
   actionViews,
   automaticAction,
@@ -381,25 +391,36 @@ function restoreTyping(root: HTMLElement, typing: Typing | undefined): void {
   }
 }
 
+/** 縦・横、それぞれのスクロールした位置。 */
+interface ScrollPosition {
+  readonly top: number
+  readonly left: number
+}
+
 /**
  * 印（`render.ts` の `KEEP_SCROLL`）の付いた一覧の、スクロールした位置。描き直した後に戻す。
  *
  * **一覧を丸ごと作り直す**ので、位置は要素と一緒に消える。印の値で、作り直した後の要素と結び付ける。
+ * 縦（`scrollTop`）だけでなく横（`scrollLeft`）も戻す——1 行表示を狭い幅で横にスクロールした状態で
+ * ＋・−を押すと描き直しが起きるが、横の位置まで戻さないと、そのたびに左端へ戻ってしまう（#207）。
  */
-function scrollPositions(root: HTMLElement): ReadonlyMap<string, number> {
-  const positions = new Map<string, number>()
+function scrollPositions(root: HTMLElement): ReadonlyMap<string, ScrollPosition> {
+  const positions = new Map<string, ScrollPosition>()
   for (const node of root.querySelectorAll<HTMLElement>('[data-keep-scroll]')) {
     const key = node.dataset[KEEP_SCROLL]
-    if (key !== undefined) positions.set(key, node.scrollTop)
+    if (key !== undefined) positions.set(key, { top: node.scrollTop, left: node.scrollLeft })
   }
 
   return positions
 }
 
-function restoreScroll(root: HTMLElement, positions: ReadonlyMap<string, number>): void {
+function restoreScroll(root: HTMLElement, positions: ReadonlyMap<string, ScrollPosition>): void {
   for (const node of root.querySelectorAll<HTMLElement>('[data-keep-scroll]')) {
-    const top = positions.get(node.dataset[KEEP_SCROLL] ?? '')
-    if (top !== undefined) node.scrollTop = top
+    const at = positions.get(node.dataset[KEEP_SCROLL] ?? '')
+    if (at === undefined) continue
+
+    node.scrollTop = at.top
+    node.scrollLeft = at.left
   }
 }
 
@@ -477,12 +498,21 @@ function draw(
     stage.kind === 'ロビー' && connected && builder.screen === 'レシピ' && pool === undefined
 
   if (builderOpen && builder.screen === 'デッキを選ぶ') {
+    const allRows = ownedDeckRows(pool, owned)
     root.append(
       deckListElement(
-        ownedDeckRows(owned),
-        stage.presets,
-        builder.waiting.kind !== '無し',
-        builder.refusal,
+        {
+          decks: filterOwnedDeckRows(allRows, builder.deckSearch, builder.deckColorFilter, builder.deckLabelFilter),
+          total: allRows.length,
+          allColors: deckColorChoices(allRows),
+          allLabels: deckLabelChoices(allRows),
+          search: builder.deckSearch,
+          colorFilter: builder.deckColorFilter,
+          labelFilter: builder.deckLabelFilter,
+          presets: stage.presets,
+          waiting: builder.waiting.kind !== '無し',
+          refusal: builder.refusal,
+        },
         building.list,
       ),
     )
@@ -494,25 +524,34 @@ function draw(
       deckEditorElement(
         {
           name: draft.name,
+          editingName: builder.editingName,
           description: draft.description,
           count: draft.cards.length,
           unsaved: hasUnsavedChanges(draft, owned),
+          saved: draft.deck !== undefined,
           savable: builder.waiting.kind === '無し' && !hasUnusableCards(pool, draft),
           check: checkView(draft, building.checking, session.checked, pool),
           // 絞り込むのはプールの一覧だけである。デッキに入っているカードは、条件に合わなくても出す。
           pool: poolRows(filterPool(pool, builder.filter), draft),
           poolTotal: pool.length,
+          poolView: builder.poolView,
+          poolShown: builder.poolShown,
           filter: builder.filter,
           filterChoices: filterChoicesOf(pool),
           filterOpen: builder.filterOpen,
+          openFolds: builder.openFilterFolds,
+          detailOpen: builder.detailOpen,
           deck: deckRows(pool, draft),
           detail: (key) => cardDetailOf(pool, key),
           pinned: builder.pinned,
           restrictions: stage.restrictions,
           rules: builder.rules,
           refusal: builder.refusal,
-          // 共有できるのは保存してあるデッキだけである（ADR-0022）。まだ無い識別子は渡せない。
-          canShare: draft.deck !== undefined,
+          labels: autoLabelsOf(pool, draft, undefined),
+          levelBars: levelBreakdownOf(pool, draft),
+          typeCounts: typeCountsOf(pool, draft),
+          starTotal: starTotalOf(pool, draft),
+          modal: builder.modal,
         },
         building.editor,
       ),
@@ -920,6 +959,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let chosenRestriction: RestrictionChoice | undefined
   // 打ち込みかけている表示名（ADR-0020）。尋ねられるたびに、いま付いている名前から始める。
   let nameDraft = ''
+  // 押している最中（pointerdown から pointerup まで）か。押しているうちに描き直すと、押した要素が
+  // click の前に作り直され、押したことが消える。
+  let pointerHeld = false
+  // 押している最中に描き直しを頼まれた。手を離したら描き直す。
+  let redrawOnRelease = false
   /**
    * 入ろうとしている部屋。届いたものがまだ無い間の入り先である（#175）。
    *
@@ -1063,7 +1107,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   /** 組み始める。一覧から開いた時も、読み込み直した続きから始める時も通る。 */
   const startEditing = (draft: DeckDraft): void => {
-    updateBuilder({ ...builder, screen: 'デッキを組む', draft, pinned: undefined, refusal: undefined })
+    updateBuilder(startedEditing(builder, draft))
     scheduleCheck()
     redraw()
   }
@@ -1075,6 +1119,19 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     updateBuilder({ ...builder, draft: change(builder.draft), refusal: undefined })
     scheduleCheck()
     redraw()
+  }
+
+  /** ✏️ で打ち込んでいる名前を決める。空なら元の名前のまま。打ち込んでいなければ何もせず `false`。 */
+  const commitEditingName = (name: string): boolean => {
+    if (builder.editingName === undefined || builder.draft === undefined) return false
+
+    const trimmed = name.trim()
+    updateBuilder({
+      ...builder,
+      editingName: undefined,
+      draft: { ...builder.draft, name: trimmed === '' ? builder.draft.name : trimmed },
+    })
+    return true
   }
 
   const building = (): DeckBuilding => ({
@@ -1103,6 +1160,34 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         updateBuilder({ ...builder, waiting: { kind: 'コピー' }, refusal: undefined })
         redraw()
       },
+      onDuplicate: (id) => {
+        // 自分のデッキを新しいデッキとして保存し直す（ADR-0028）。`デッキをコピーする` の
+        // `DeckOrigin` は既製デッキ・共有レシピしか指せないので、`デッキを保存する` を
+        // `deck` 無しで送る。届いたら「コピー」した時と同じくそのまま組み始める。
+        // 使えないカードが入っているデッキはサーバが断るので、画面でも押せない形にしてある。
+        if (builder.waiting.kind !== '無し') return
+        const source = session.ownedDecks?.find((each) => each.id === id)
+        if (source === undefined) return
+
+        connection.send({
+          kind: 'デッキを保存する',
+          deck: undefined,
+          name: duplicatedDeckName(source.name),
+          description: source.description,
+          cards: source.cards,
+        })
+        updateBuilder({ ...builder, waiting: { kind: 'コピー' }, refusal: undefined })
+        redraw()
+      },
+      onShare: (id) => {
+        // 共有できるのは保存してあるデッキだけである（ADR-0022）。デッキ一覧の各デッキから開く
+        // （ADR-0028。組むところの帯からは外した）。
+        const deck = session.ownedDecks?.find((each) => each.id === id)
+        if (deck === undefined) return
+
+        updateBuilder({ ...builder, sharing: { kind: '打ち込み中', draft: shareDraftOf(deck), sending: false, refusal: undefined } })
+        redraw()
+      },
       onDelete: (deck, name) => {
         // **消したデッキは戻らない。** 押し間違いで消えないように尋ねる。消すのは答えてから。
         updateBuilder({ ...builder, confirming: { kind: 'デッキを消す', deck, name }, refusal: undefined })
@@ -1118,16 +1203,60 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         redraw()
       },
       onRecipeList: () => requestRecipeList(builder.recipeOrder),
+      onSearch: (deckSearch) => {
+        updateBuilder({ ...builder, deckSearch })
+        redraw()
+      },
+      onColorFilter: (deckColorFilter) => {
+        updateBuilder({ ...builder, deckColorFilter })
+        redraw()
+      },
+      onLabelFilter: (deckLabelFilter) => {
+        updateBuilder({ ...builder, deckLabelFilter })
+        redraw()
+      },
     },
     editor: {
-      onName: (name) => {
-        // 描き直さない。入力欄の値はブラウザが持っている（`lobby` の `onName` と同じ）。
-        if (builder.draft !== undefined) updateBuilder({ ...builder, draft: { ...builder.draft, name } })
+      onEditNameStart: () => {
+        if (builder.draft === undefined) return
+        updateBuilder({ ...builder, editingName: builder.draft.name })
+        redraw()
+      },
+      onEditName: (name) => {
+        // 描き直さない。入力欄の値はブラウザが持っている（`onDescription` と同じ）。
+        if (builder.editingName !== undefined) updateBuilder({ ...builder, editingName: name })
+      },
+      onEditNameCommit: (name) => {
+        if (commitEditingName(name)) redraw()
+      },
+      onEditNameLeave: (name) => {
+        if (!commitEditingName(name)) return
+
+        // 欄を離れたのは、ほかのボタンを押したからかもしれない。ここで描き直すとそのボタンが click
+        // の前に作り直され、押したことが消える。押したボタンの操作はいま決めた名前を読み、自分で
+        // 描き直すので、こちらはその後に回す。マウスでは押している最中（mousedown）に離れるので
+        // 手を離すまで待つ。タッチでは pointerup の後に離れ、click は同じ流れで続けて届くので、
+        // 1 拍おけば足りる。
+        if (pointerHeld) redrawOnRelease = true
+        else setTimeout(redraw, 0)
+      },
+      onEditNameCancel: () => {
+        updateBuilder({ ...builder, editingName: undefined })
+        redraw()
       },
       onDescription: (description) => {
+        // 描き直さない。解説の窓の入力欄の値はブラウザが持っている（`lobby` の `onName` と同じ）。
         if (builder.draft !== undefined) updateBuilder({ ...builder, draft: { ...builder.draft, description } })
       },
-      onEdited: () => redraw(),
+      onOpenModal: (modal) => {
+        updateBuilder({ ...builder, modal })
+        redraw()
+      },
+      onCloseModal: () => {
+        // 解説の窓を閉じた時に、打ち込んだ内容を帯の「保存していない変更」に反映する。
+        updateBuilder({ ...builder, modal: undefined })
+        redraw()
+      },
       onAdd: (key) => editCards((draft) => withCard(draft, key)),
       onRemove: (key) => editCards((draft) => withoutCard(draft, key)),
       onFormat: (format) => {
@@ -1156,7 +1285,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       },
       onFilter: (filter) => {
         // 一覧が変わるので、先頭から見せる。**打ち込んでいる手は `draw` が戻す。**
-        updateBuilder({ ...builder, filter })
+        updateBuilder({ ...builder, filter, poolShown: POOL_BATCH[builder.poolView] })
         redraw()
         const list = root.querySelector<HTMLElement>(`[data-keep-scroll="プール"]`)
         if (list !== null) list.scrollTop = 0
@@ -1165,6 +1294,32 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         updateBuilder({ ...builder, filterOpen })
         redraw()
       },
+      onToggleFold: (key, open) => {
+        // 描き直しで開いた状態を入れ直したときにも届く。覚えている開閉と同じなら何もしない。
+        if (builder.openFilterFolds.has(key) === open) return
+        const folds = new Set(builder.openFilterFolds)
+        if (open) folds.add(key)
+        else folds.delete(key)
+        // 描き直さない。<details> の開閉はブラウザがすでに反映している。
+        updateBuilder({ ...builder, openFilterFolds: folds })
+      },
+      onPoolView: (poolView) => {
+        updateBuilder({ ...builder, poolView, poolShown: POOL_BATCH[poolView] })
+        redraw()
+        const list = root.querySelector<HTMLElement>(`[data-keep-scroll="プール"]`)
+        if (list !== null) {
+          list.scrollTop = 0
+          list.scrollLeft = 0
+        }
+      },
+      onShowMorePool: () => {
+        updateBuilder({ ...builder, poolShown: builder.poolShown + POOL_BATCH[builder.poolView] })
+        redraw()
+      },
+      onToggleDetail: () => {
+        // 描き直さない。開閉は render.ts が押した場で class を直接切り替えている。
+        updateBuilder({ ...builder, detailOpen: !builder.detailOpen })
+      },
       onBack: () => {
         const draft = builder.draft
         const owned = session.ownedDecks ?? []
@@ -1172,15 +1327,6 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
         // **保存していない変更は、ここで捨てると戻らない。** 捨てるかどうかは人が決める。
         updateBuilder({ ...builder, confirming: { kind: '変更を捨てる' } })
-        redraw()
-      },
-      onShare: () => {
-        // 共有できるのは保存してあるデッキだけである（`view.canShare`、ADR-0022）。組みかけの
-        // 打ち込みではなく、**いま自分のデッキとして残っているものの名前・解説**を初期値にする。
-        const deck = session.ownedDecks?.find((each) => each.id === builder.draft?.deck)
-        if (deck === undefined) return
-
-        updateBuilder({ ...builder, sharing: { kind: '打ち込み中', draft: shareDraftOf(deck), sending: false, refusal: undefined } })
         redraw()
       },
     },
@@ -1291,7 +1437,15 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   function backToList(): void {
     if (checkTimer !== undefined) clearTimeout(checkTimer)
     checkTimer = undefined
-    updateBuilder({ ...builder, screen: 'デッキを選ぶ', draft: undefined, pinned: undefined, refusal: undefined })
+    updateBuilder({
+      ...builder,
+      screen: 'デッキを選ぶ',
+      draft: undefined,
+      pinned: undefined,
+      refusal: undefined,
+      modal: undefined,
+      editingName: undefined,
+    })
     redraw()
   }
 
@@ -1571,12 +1725,30 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
   })
 
+  const onPointerDown = (): void => {
+    pointerHeld = true
+  }
+  const onPointerRelease = (): void => {
+    pointerHeld = false
+    if (!redrawOnRelease) return
+    redrawOnRelease = false
+    // click は pointerup の後に届く。押したボタンの操作が済んでから描き直す（押したのがボタンで
+    // なければ、ここで初めて入力欄が消える）。
+    setTimeout(redraw, 0)
+  }
+
   redraw()
   window.addEventListener('popstate', onPopState)
+  window.addEventListener('pointerdown', onPointerDown, true)
+  window.addEventListener('pointerup', onPointerRelease, true)
+  window.addEventListener('pointercancel', onPointerRelease, true)
 
   return () => {
     if (overlayTimer !== undefined) clearTimeout(overlayTimer)
     window.removeEventListener('popstate', onPopState)
+    window.removeEventListener('pointerdown', onPointerDown, true)
+    window.removeEventListener('pointerup', onPointerRelease, true)
+    window.removeEventListener('pointercancel', onPointerRelease, true)
     connection.close()
   }
 }

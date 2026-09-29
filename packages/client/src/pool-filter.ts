@@ -1,6 +1,5 @@
-import { CARD_TYPES, COLORS, MOVE_DIRECTIONS } from '@revolution/engine'
-import type { CardType, WireCardFace, WirePoolCard } from '@revolution/engine'
-import { squareLabel } from './view-model.js'
+import { CARD_TYPES, COLORS } from '@revolution/engine'
+import type { CardType, MoveDirection, WireCardFace, WirePoolCard } from '@revolution/engine'
 
 /**
  * デッキを組むところで、プールを絞り込む（#193）。
@@ -15,6 +14,12 @@ import { squareLabel } from './view-model.js'
 /** 色を持たないカードを選ぶ時の値。`COLORS` には無い。 */
 export const COLORLESS = '無色'
 
+/**
+ * レベルで絞り込む時の値（ADR-0028）。プールの中身に関わらず 1〜8 を固定で並べる
+ * ——色・属性のような開いた語彙と違い、レベルは範囲が決まっているため。
+ */
+export const LEVELS: readonly number[] = [1, 2, 3, 4, 5, 6, 7, 8]
+
 /** 数の範囲。どちらかが `undefined` なら、その側は区切らない。 */
 export interface NumberRange {
   readonly min: number | undefined
@@ -22,13 +27,42 @@ export interface NumberRange {
 }
 
 /**
- * スターアイコンで絞り込む時の値。
+ * スターアイコンで絞り込む時の値（ADR-0028。選択肢と当たり方を変えた）。
  *
- * **数え上げられるので、列挙で持つ。** 何個持っているかより、持っているかどうかで探すことが多い。
+ * 「★1」「★2」はそれぞれの数をぴったり持つカードに絞る（3 つ以上を束ねる選択肢は無い
+ * ——今のプールに 3 つ以上のスターを持つカードは無い）。1 枚が複数の値に当たることがある
+ * （例：スター 1 つとリバーススターの両方を持つカード）。
  */
-export type StarChoice = 'スターアイコンあり' | 'リバーススターアイコンあり' | 'どちらも無し'
+export type StarChoice = 'なし' | '★1' | '★2' | 'リバーススター'
 
-export const STAR_CHOICES: readonly StarChoice[] = ['スターアイコンあり', 'リバーススターアイコンあり', 'どちらも無し']
+export const STAR_CHOICES: readonly StarChoice[] = ['なし', '★1', '★2', 'リバーススター']
+
+/**
+ * 移動方向（ムーブ）で絞り込む時の形（ADR-0028）。カードのムーブアイコンが、向きの組が
+ * ぴったり一致するものだけに絞る——「上」を含むかどうかではなく、形そのもので比べる。
+ * プールの中身に関わらず、この 4 つを固定で並べる。名前は読み上げにそのまま使う。
+ */
+export interface MoveShape {
+  readonly label: string
+  readonly directions: readonly MoveDirection[]
+}
+
+export const MOVE_SHAPES: readonly MoveShape[] = [
+  { label: '上のみ', directions: ['上'] },
+  { label: '上下のみ', directions: ['上', '下'] },
+  { label: '上・右・左', directions: ['上', '右', '左'] },
+  { label: '上下左右', directions: ['上', '下', '左', '右'] },
+]
+
+/**
+ * トラップの発動条件で絞り込む時の値（ADR-0028）。プールの中身に関わらず固定で並べる。
+ *
+ * いまカードの表記から見分けられるのは「侵入された時」（トリガーアイコンを 1 つ以上持つ
+ * トラップ）だけである。ほかの発動条件は、カードの表記に載せてから足す（#232）。
+ */
+export type TriggerCondition = '侵入された時'
+
+export const TRIGGER_CONDITIONS: readonly TriggerCondition[] = ['侵入された時']
 
 /** 絞り込みの条件。何も選んでいない軸は空（数の範囲は両側 `undefined`）。 */
 export interface PoolFilter {
@@ -45,8 +79,8 @@ export interface PoolFilter {
   readonly attributes: readonly string[]
   readonly stars: readonly StarChoice[]
   readonly moveIcons: readonly string[]
-  /** トリガーアイコンに描かれたスクエアの呼び方（`view-model.ts` の `squareLabel`）。 */
-  readonly triggerIcons: readonly string[]
+  /** トラップの発動条件。トラップ以外のカードはどれにも当たらない。 */
+  readonly triggerConditions: readonly TriggerCondition[]
   readonly expansions: readonly string[]
 }
 
@@ -61,7 +95,7 @@ export function emptyFilter(): PoolFilter {
     attributes: [],
     stars: [],
     moveIcons: [],
-    triggerIcons: [],
+    triggerConditions: [],
     expansions: [],
   }
 }
@@ -96,16 +130,27 @@ function anyOf(chosen: readonly string[], has: readonly string[]): boolean {
 
 function starChoicesOf(face: WireCardFace): readonly StarChoice[] {
   const choices: StarChoice[] = []
-  if (face.stars > 0) choices.push('スターアイコンあり')
-  if (face.reverseStars > 0) choices.push('リバーススターアイコンあり')
-  if (choices.length === 0) choices.push('どちらも無し')
+  if (face.stars === 0 && face.reverseStars === 0) choices.push('なし')
+  if (face.stars === 1) choices.push('★1')
+  if (face.stars === 2) choices.push('★2')
+  if (face.reverseStars > 0) choices.push('リバーススター')
 
   return choices
 }
 
-function triggerLabelsOf(face: WireCardFace): readonly string[] {
-  // 印刷された図の呼び方で比べる。先攻がその基準の向きである（`view-model.ts` の `printedSquareLabel`）。
-  return face.type === 'トラップ' ? face.triggerIcon.map((square) => squareLabel('先攻', square)) : []
+/** カードのムーブアイコンの形に一致する `MOVE_SHAPES` の名前。ユニット以外は持たない。 */
+function moveShapeLabelsOf(face: WireCardFace): readonly string[] {
+  if (face.type !== 'ユニット') return []
+  const directions = new Set(face.moveIcon)
+
+  return MOVE_SHAPES.filter(
+    (shape) => shape.directions.length === directions.size && shape.directions.every((direction) => directions.has(direction)),
+  ).map((shape) => shape.label)
+}
+
+/** カードが当たる発動条件。「侵入された時」はトリガーアイコンを持つトラップ（`TRIGGER_CONDITIONS`）。 */
+function triggerConditionsOf(face: WireCardFace): readonly TriggerCondition[] {
+  return face.type === 'トラップ' && face.triggerIcon.length > 0 ? ['侵入された時'] : []
 }
 
 /** カード 1 種が条件に合うか。 */
@@ -123,8 +168,8 @@ export function matchesFilter(card: WirePoolCard, filter: PoolFilter): boolean {
     inRange(face.type === 'ユニット' ? face.sp : undefined, filter.sp) &&
     anyOf(filter.attributes, face.attributes) &&
     anyOf(filter.stars, starChoicesOf(face)) &&
-    anyOf(filter.moveIcons, face.type === 'ユニット' ? face.moveIcon : []) &&
-    anyOf(filter.triggerIcons, triggerLabelsOf(face)) &&
+    anyOf(filter.moveIcons, moveShapeLabelsOf(face)) &&
+    anyOf(filter.triggerConditions, triggerConditionsOf(face)) &&
     // 古いサーバはエキスパンションを添えてこない。**届かなかったものを、在るものとして扱わない。**
     anyOf(filter.expansions, (card.expansions as readonly string[] | undefined) ?? [])
   )
@@ -147,7 +192,7 @@ export interface FilterChoices {
   readonly attributes: readonly string[]
   readonly stars: readonly StarChoice[]
   readonly moveIcons: readonly string[]
-  readonly triggerIcons: readonly string[]
+  readonly triggerConditions: readonly TriggerCondition[]
   readonly expansions: readonly string[]
 }
 
@@ -158,22 +203,16 @@ function byName(values: Iterable<string>): readonly string[] {
 export function filterChoicesOf(pool: readonly WirePoolCard[]): FilterChoices {
   const faces = pool.map((card) => card.face)
   const colors = new Set(faces.flatMap((face): readonly string[] => (face.colors.length === 0 ? [COLORLESS] : face.colors)))
-  const moves = new Set(faces.flatMap((face) => (face.type === 'ユニット' ? face.moveIcon : [])))
-  const stars = new Set(faces.flatMap(starChoicesOf))
-  // トリガーアイコンは、盤面の行・列の順（`Square`）で出す。同じ行のスクエアが隣り合う。
-  const triggers = faces
-    .flatMap((face) => (face.type === 'トラップ' ? face.triggerIcon : []))
-    .sort((left, right) => left.row - right.row || left.column - right.column)
-    .map((square) => squareLabel('先攻', square))
 
   return {
     types: CARD_TYPES.filter((type) => faces.some((face) => face.type === type)),
     colors: [...COLORS, COLORLESS].filter((color) => colors.has(color)),
-    levels: [...new Set(faces.map((face) => face.level))].sort((left, right) => left - right),
+    // レベル・スター・移動方向・発動条件は、プールの中身に関わらず全部並べる（ADR-0028、`LEVELS` 等の定義を参照）。
+    levels: LEVELS,
     attributes: byName(faces.flatMap((face) => face.attributes)),
-    stars: STAR_CHOICES.filter((choice) => stars.has(choice)),
-    moveIcons: MOVE_DIRECTIONS.filter((direction) => moves.has(direction)),
-    triggerIcons: [...new Set(triggers)],
+    stars: STAR_CHOICES,
+    moveIcons: MOVE_SHAPES.map((shape) => shape.label),
+    triggerConditions: TRIGGER_CONDITIONS,
     expansions: byName(pool.flatMap((card) => (card.expansions as readonly string[] | undefined) ?? [])),
   }
 }

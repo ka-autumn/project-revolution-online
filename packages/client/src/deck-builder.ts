@@ -1,5 +1,6 @@
 import { CARD_TYPES, COLORS } from '@revolution/engine'
 import type {
+  Color,
   DeckId,
   DeckViolation,
   RecipeKey,
@@ -11,11 +12,11 @@ import type {
   WireOwnedDeck,
   WirePoolCard,
 } from '@revolution/engine'
-import { emptyFilter } from './pool-filter.js'
+import { COLORLESS, emptyFilter } from './pool-filter.js'
 import type { PoolFilter } from './pool-filter.js'
 import type { SharingState } from './recipe.js'
 import type { ChosenRules } from './render.js'
-import { squareLabel, summaryOf } from './view-model.js'
+import { squareLabel } from './view-model.js'
 import type { DetailRow } from './view-model.js'
 
 /**
@@ -173,7 +174,53 @@ export interface Builder {
    * ためにここで待っているかを覚える。
    */
   readonly viewingRecipeLoading: boolean
+  /** カード一覧の表示の形（ADR-0028）。 */
+  readonly poolView: PoolView
+  /**
+   * カード一覧で、面を描いている枚数（ADR-0028）。最初の数十枚だけ描き、スクロールで描き足す
+   * ——1000 種になったとき、描き直すたびに全部の面を作ると重いため。絞り込みを変えたり表示の形を
+   * 切り替えたりしたら、`POOL_BATCH` まで戻す。
+   */
+  readonly poolShown: number
+  /** カードの詳細を開いているか（ADR-0028）。畳んでも中身は保つ——描き直さず class を切り替えるだけ。 */
+  readonly detailOpen: boolean
+  /** 折りたためる絞り込みの項目のうち、開いているものの名前（ADR-0028）。 */
+  readonly openFilterFolds: ReadonlySet<string>
+  /**
+   * デッキの名前をその場で打ち込んでいる途中の値（ADR-0028）。打ち込んでいなければ `undefined`。
+   * ✏️ を押すと入り、Enter で決め、Esc でやめる。
+   *
+   * `sharing` と同じ理由でここに持つ——打っている最中にロビーの更新などで描き直されても、
+   * 打ちかけが消えないようにする。
+   */
+  readonly editingName: string | undefined
+  /**
+   * 組むところの帯から開いている窓（ADR-0028）。「ラベル」の窓は #229 が済むまで無い。
+   *
+   * `confirming` と同じ理由でここに持つ——画面は丸ごと描き直されるので、開いている窓を状態として持つ。
+   */
+  readonly modal: DeckEditorModal | undefined
+  /** デッキ一覧の「デッキを探す」の打ち込み（ADR-0028）。 */
+  readonly deckSearch: string
+  /** デッキ一覧の「入っている色」の絞り込み。 */
+  readonly deckColorFilter: readonly string[]
+  /** デッキ一覧の「ラベル」の絞り込み。 */
+  readonly deckLabelFilter: readonly string[]
 }
+
+/** カード一覧の表示の形（ADR-0028）。 */
+export type PoolView = 'カード' | '一覧'
+
+/** 組むところの帯から開く窓（ADR-0028）。 */
+export type DeckEditorModal = '解説'
+
+/**
+ * カード一覧の表示の形ごとの、一度に描く枚数（ADR-0028）。
+ *
+ * 1 行表示はカード表示より 1 件が軽いので、多めに描く。枠を埋めきらなくてもよい——末尾が見えて
+ * いれば続けて描き足す（`render.ts` の `poolListElement`）。
+ */
+export const POOL_BATCH: Readonly<Record<PoolView, number>> = { カード: 24, 一覧: 60 }
 
 export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder {
   return {
@@ -191,12 +238,56 @@ export function closedBuilder(draft: DeckDraft | undefined = undefined): Builder
     recipeOrder: '新着',
     viewingRecipe: undefined,
     viewingRecipeLoading: false,
+    poolView: 'カード',
+    poolShown: POOL_BATCH.カード,
+    detailOpen: true,
+    openFilterFolds: new Set(),
+    editingName: undefined,
+    modal: undefined,
+    deckSearch: '',
+    deckColorFilter: [],
+    deckLabelFilter: [],
+  }
+}
+
+/**
+ * デッキを開いて組み始める。一覧から開く・新しく作る・コピーや複製が届く、のどの経路でも通す。
+ *
+ * 窓と名前の打ち込みは前に開いていたデッキのものなので、閉じた状態で始める。
+ */
+export function startedEditing(builder: Builder, draft: DeckDraft): Builder {
+  return {
+    ...builder,
+    screen: 'デッキを組む',
+    draft,
+    pinned: undefined,
+    refusal: undefined,
+    modal: undefined,
+    editingName: undefined,
   }
 }
 
 /** 空の新しいデッキ。 */
 export function newDraft(): DeckDraft {
   return { deck: undefined, name: NEW_DECK_NAME, description: '', cards: [] }
+}
+
+/** デッキの名前の長さの上限（`server` の `owned-deck.ts` の `DECK_NAME_LIMIT` と同じ。数えるのはコードポイント）。 */
+export const DECK_NAME_LIMIT = 40
+
+const DUPLICATE_SUFFIX = '（コピー）'
+
+/**
+ * 複製したデッキの名前（ADR-0028）。元の名前に「（コピー）」を付ける。
+ *
+ * 付けると上限を超えるなら、元の名前の末尾を削って収める。利用者は名前を打っていないので、
+ * サーバに「40 文字までです」と断られても何を直せばよいか分からないためである。
+ */
+export function duplicatedDeckName(name: string): string {
+  const room = DECK_NAME_LIMIT - [...DUPLICATE_SUFFIX].length
+  const kept = [...name.normalize('NFC')].slice(0, room).join('').trimEnd()
+
+  return `${kept}${DUPLICATE_SUFFIX}`
 }
 
 /** 自分のデッキを組み直す時の組みかけ。 */
@@ -295,7 +386,7 @@ export function applyToBuilder(builder: Builder, message: ToClient): Builder {
       }
       if (waiting.kind === 'コピー') {
         // コピーした時点では組みかけを触れないので、届いたものをそのまま組み始める。
-        return { ...builder, screen: 'デッキを組む', draft: draftOf(message.deck), pinned: undefined, waiting: { kind: '無し' } }
+        return { ...startedEditing(builder, draftOf(message.deck)), waiting: { kind: '無し' } }
       }
       return builder
     case 'デッキを確かめた':
@@ -325,9 +416,7 @@ export function applyToBuilder(builder: Builder, message: ToClient): Builder {
 /** プールのカード 1 種を、組むところに並べる形。 */
 export interface PoolRow {
   readonly key: string
-  readonly name: string
-  /** 「Lv1 赤 BP1000 SP1000」のような 1 行（盤面の小さいカードと同じ）。 */
-  readonly summary: string
+  readonly face: WireCardFace
   /** いまデッキに入れている枚数。 */
   readonly count: number
 }
@@ -379,8 +468,7 @@ export function poolRows(pool: readonly WirePoolCard[], draft: DeckDraft): reado
 
   return sortedPool(pool).map((card) => ({
     key: card.key,
-    name: card.face.name,
-    summary: summaryOf(card.face),
+    face: card.face,
     count: counts.get(card.key) ?? 0,
   }))
 }
@@ -400,16 +488,165 @@ export function deckRows(pool: readonly WirePoolCard[], draft: DeckDraft): reado
   return [...usable, ...unusable]
 }
 
-/** 使えないカードが入っているか。入っていれば、確かめることも保存することもできない。 */
-export function hasUnusableCards(pool: readonly WirePoolCard[], draft: DeckDraft): boolean {
+/** プールに無いカード（使えなくなったカード）の枚数。同じ識別子の重複はそれぞれ 1 枚と数える。 */
+export function unusableCardCount(pool: readonly WirePoolCard[], draft: DeckDraft): number {
   const known = new Set(pool.map((card) => card.key))
 
-  return draft.cards.some((key) => !known.has(key))
+  return draft.cards.filter((key) => !known.has(key)).length
+}
+
+/** 使えないカードが入っているか。入っていれば、確かめることも保存することもできない。 */
+export function hasUnusableCards(pool: readonly WirePoolCard[], draft: DeckDraft): boolean {
+  return unusableCardCount(pool, draft) > 0
+}
+
+/**
+ * デッキに入っている、プールにあるカードの面。枚数ぶん重複する（総合ルール上のカードの実体を
+ * 表す）。使えないカード（プールに無いカード）は、印刷されている項目が分からないため含めない。
+ */
+function usableFacesOf(pool: readonly WirePoolCard[], draft: DeckDraft): readonly WireCardFace[] {
+  const byKey = new Map(pool.map((card) => [card.key, card.face] as const))
+
+  return draft.cards.flatMap((key) => {
+    const face = byKey.get(key)
+    return face === undefined ? [] : [face]
+  })
+}
+
+/**
+ * デッキの内訳・色ごとの枚数・色の構成で数える色（ADR-0028）。無色は黒とは別に数える。
+ *
+ * 盤面の面の色（`view-model.ts` の `primaryColorOf`）は無色を黒の面で描くが、数えるときに
+ * 黒へ寄せると、赤と無色だけのデッキが「赤黒」になってしまう。
+ */
+export type DeckColor = Color | typeof COLORLESS
+
+/** 数える順。無色は色のあるものの後に置く（`comparePrinted` と同じ）。 */
+const DECK_COLORS: readonly DeckColor[] = [...COLORS, COLORLESS]
+
+/** カード 1 種を数える色。複数の色を持つカードは、いまのカードプールに無いので 1 つ目で決める。 */
+function deckColorOf(face: WireCardFace): DeckColor {
+  return face.colors[0] ?? COLORLESS
+}
+
+/** デッキの内訳で使うレベルの段（ADR-0028）。 */
+export const LEVEL_BUCKETS: readonly { readonly label: string; readonly matches: (level: number) => boolean }[] = [
+  { label: '2-', matches: (level) => level <= 2 },
+  { label: '3', matches: (level) => level === 3 },
+  { label: '4', matches: (level) => level === 4 },
+  { label: '5', matches: (level) => level === 5 },
+  { label: '6', matches: (level) => level === 6 },
+  { label: '7+', matches: (level) => level >= 7 },
+]
+
+/** レベルの段 1 つぶんの、色ごとの枚数。 */
+export interface LevelBar {
+  readonly label: string
+  readonly total: number
+  readonly byColor: readonly { readonly color: DeckColor; readonly count: number }[]
+}
+
+/**
+ * デッキの内訳：レベルの段ごとに、色別の枚数を積み上げグラフにする形で数える（ADR-0028）。
+ * 使えないカードは数えない。
+ */
+export function levelBreakdownOf(pool: readonly WirePoolCard[], draft: DeckDraft): readonly LevelBar[] {
+  const faces = usableFacesOf(pool, draft)
+
+  return LEVEL_BUCKETS.map(({ label, matches }) => {
+    const inBucket = faces.filter((face) => matches(face.level))
+    const byColor = DECK_COLORS.map((color) => ({ color, count: inBucket.filter((face) => deckColorOf(face) === color).length }))
+
+    return { label, total: inBucket.length, byColor }
+  })
+}
+
+/** 種別 1 つぶんの枚数。 */
+export interface TypeCount {
+  readonly type: (typeof CARD_TYPES)[number]
+  readonly count: number
+}
+
+/** デッキの内訳：種別ごとの枚数（ADR-0028）。プールに無い種別も 0 枚として出す。使えないカードは数えない。 */
+export function typeCountsOf(pool: readonly WirePoolCard[], draft: DeckDraft): readonly TypeCount[] {
+  const faces = usableFacesOf(pool, draft)
+
+  return CARD_TYPES.map((type) => ({ type, count: faces.filter((face) => face.type === type).length }))
+}
+
+/** デッキの内訳：スターの合計（ADR-0028）。リバーススターは含めない。使えないカードは数えない。 */
+export function starTotalOf(pool: readonly WirePoolCard[], draft: DeckDraft): number {
+  return usableFacesOf(pool, draft).reduce((sum, face) => sum + face.stars, 0)
+}
+
+/** アーキタイプの自動ラベル（持ち主が選べるのは #229。それまでは自動の分だけ）。 */
+export type Archetype = 'アグロ' | 'ミッドレンジ' | 'コントロール'
+
+/**
+ * アーキタイプを自動で決めるしきい値（仮の値、ADR-0028）。
+ *
+ * デッキの平均レベルで区切る。平均が 3.6 以下ならアグロ、4.6 以上ならコントロール、その間は
+ * ミッドレンジ。実際のデッキを見て調整する。
+ */
+const ARCHETYPE_AGGRO_MAX_AVERAGE_LEVEL = 3.6
+const ARCHETYPE_CONTROL_MIN_AVERAGE_LEVEL = 4.6
+
+function archetypeOf(faces: readonly WireCardFace[]): Archetype {
+  const average = faces.reduce((sum, face) => sum + face.level, 0) / faces.length
+  if (average <= ARCHETYPE_AGGRO_MAX_AVERAGE_LEVEL) return 'アグロ'
+  if (average >= ARCHETYPE_CONTROL_MIN_AVERAGE_LEVEL) return 'コントロール'
+
+  return 'ミッドレンジ'
+}
+
+/**
+ * 色の構成：単色なら「◯単」、2 色なら 2 色を並べた名前、3 色以上は「多色」（ADR-0028）。
+ * 無色は色に含めない。色のあるカードが 1 枚も無ければ、色の構成は付かない（`undefined`）。
+ */
+function colorCompositionOf(faces: readonly WireCardFace[]): string | undefined {
+  const present = COLORS.filter((color) => faces.some((face) => deckColorOf(face) === color))
+  if (present.length === 0) return undefined
+  if (present.length === 1) return `${present[0]}単`
+  if (present.length === 2) return present.join('')
+
+  return '多色'
+}
+
+/** デッキの中身から数えて決まる自動ラベル 1 つ（ADR-0028）。持ち主が選ぶラベル（#229）とは別。 */
+export interface AutoDeckLabel {
+  readonly group: 'アーキタイプ' | '色の構成'
+  readonly label: string
+}
+
+/**
+ * デッキの中身から自動で付くラベル（ADR-0028）。数えるだけで決まるものだけを付け、ルールの
+ * 判断が要るものは付けない。
+ *
+ * `chosenArchetype` は持ち主がアーキタイプを選んでいるか（#229）。選んでいれば、自動の
+ * アーキタイプは付けない。持ち主が選ぶ手段はまだこの画面に無いので、いまは常に `undefined`
+ * を渡すことになる。
+ */
+export function autoLabelsOf(
+  pool: readonly WirePoolCard[],
+  draft: DeckDraft,
+  chosenArchetype: string | undefined,
+): readonly AutoDeckLabel[] {
+  const faces = usableFacesOf(pool, draft)
+  if (faces.length === 0) return []
+
+  const labels: AutoDeckLabel[] = []
+  if (chosenArchetype === undefined) labels.push({ group: 'アーキタイプ', label: archetypeOf(faces) })
+  const composition = colorCompositionOf(faces)
+  if (composition !== undefined) labels.push({ group: '色の構成', label: composition })
+
+  return labels
 }
 
 /** 詳しく出すカード 1 種。 */
 export interface CardDetail {
   readonly name: string
+  /** 面を描くのに要る項目（ADR-0028）。左に出す面はここから組む。 */
+  readonly face: WireCardFace
   readonly rows: readonly DetailRow[]
   /** 印刷されているテキスト。改行ごとに 1 行（`view-model.ts` の `CardView` と同じ）。 */
   readonly text: readonly string[]
@@ -420,7 +657,7 @@ export function cardDetailOf(pool: readonly WirePoolCard[], key: string): CardDe
   const card = pool.find((each) => each.key === key)
   if (card === undefined) return undefined
 
-  return { name: card.face.name, rows: printedDetailsOf(card.face), text: card.face.text }
+  return { name: card.face.name, face: card.face, rows: printedDetailsOf(card.face, card.expansions), text: card.face.text }
 }
 
 /**
@@ -428,8 +665,11 @@ export function cardDetailOf(pool: readonly WirePoolCard[], key: string): CardDe
  *
  * 印刷されている表記だけを持つ。盤面に置かれて初めて決まるもの——支配者・向き・ダメージ・
  * 修整——は持たない。持っていない項目は行ごと出さない。
+ *
+ * `expansions` は収録（ADR-0028）。エキスパンションは名前で出す——コードは #230 が済むまで無い。
+ * 呼ぶ側がエキスパンションを持たない場合（公開ページなど）は省いてよい。
  */
-export function printedDetailsOf(face: WireCardFace): readonly DetailRow[] {
+export function printedDetailsOf(face: WireCardFace, expansions: readonly string[] = []): readonly DetailRow[] {
   const rows: DetailRow[] = [
     { label: '種別', value: face.type },
     { label: 'レベル', value: String(face.level) },
@@ -444,7 +684,11 @@ export function printedDetailsOf(face: WireCardFace): readonly DetailRow[] {
   }
   if (face.stars > 0) rows.push({ label: 'スター', value: String(face.stars) })
   if (face.reverseStars > 0) rows.push({ label: 'リバーススター', value: String(face.reverseStars) })
-  if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join('・') })
+  // 古いサーバは `keywords` を送らない（`view-model.ts` の `faceFieldsOf` と同じ備え）。
+  const keywords = (face.keywords as WireCardFace['keywords'] | undefined) ?? []
+  if (keywords.length > 0) rows.push({ label: 'キーワード', value: keywords.join('・') })
+  if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join(' | ') })
+  if (expansions.length > 0) rows.push({ label: '収録', value: expansions.join('・') })
 
   return rows
 }
@@ -473,8 +717,12 @@ export function checkView(
   checked: readonly DeckViolation[] | undefined,
   pool: readonly WirePoolCard[],
 ): CheckView {
-  if (hasUnusableCards(pool, draft)) {
-    return { kind: '確かめられない', reason: '使えないカードが入っています。抜くと確かめられます' }
+  const unusableCount = unusableCardCount(pool, draft)
+  if (unusableCount > 0) {
+    return {
+      kind: '確かめられない',
+      reason: `使えなくなったカードが ${unusableCount} 枚入っています。下の一覧の「抜く」で外すまで、規定を確かめることも保存することもできません`,
+    }
   }
   if (checking || checked === undefined) return { kind: '確かめている' }
   if (checked.length === 0) return { kind: '満たしている' }
@@ -498,16 +746,103 @@ export function violationLine(violation: DeckViolation): string {
   }
 }
 
-/** 自分のデッキを選ぶところに並べる 1 つ。 */
-export interface OwnedDeckRow {
-  readonly id: DeckId
-  readonly name: string
+/** デッキ 1 つの、色ごとの枚数。0 枚の色は持たない。 */
+export interface DeckColorCount {
+  readonly color: DeckColor
   readonly count: number
 }
 
+/**
+ * デッキの顔にするカード（ADR-0028）。一番多く入れたカード（同じ枚数ならレベルの高いもの）。
+ *
+ * パートナーカードを顔にする分は #228 が済むまで無い——それまではこれだけで決める。使えない
+ * カード（プールに無いカード）は、印刷されている項目が分からないので顔にはしない。
+ */
+function faceCardOf(pool: readonly WirePoolCard[], cards: readonly string[]): WireCardFace | undefined {
+  const byKey = new Map(pool.map((card) => [card.key, card.face] as const))
+  const counted = [...countsOf(cards)]
+    .map(([key, count]): { readonly face: WireCardFace; readonly count: number } | undefined => {
+      const face = byKey.get(key)
+      return face === undefined ? undefined : { face, count }
+    })
+    .filter((each): each is { readonly face: WireCardFace; readonly count: number } => each !== undefined)
+  if (counted.length === 0) return undefined
+
+  return [...counted].sort((left, right) => right.count - left.count || right.face.level - left.face.level)[0]?.face
+}
+
+function colorCountsOf(pool: readonly WirePoolCard[], cards: readonly string[]): readonly DeckColorCount[] {
+  const faces = usableFacesOf(pool, { deck: undefined, name: '', description: '', cards })
+
+  return DECK_COLORS.map((color) => ({ color, count: faces.filter((face) => deckColorOf(face) === color).length })).filter(
+    (each) => each.count > 0,
+  )
+}
+
+/** 自分のデッキを選ぶところに並べる 1 つ（ADR-0028）。 */
+export interface OwnedDeckRow {
+  readonly id: DeckId
+  readonly name: string
+  readonly description: string
+  readonly count: number
+  readonly face: WireCardFace | undefined
+  readonly colorCounts: readonly DeckColorCount[]
+  readonly labels: readonly AutoDeckLabel[]
+  /**
+   * 使えないカード（プールに無いカード）が入っているか。入っていると、サーバは保存を断るので
+   * 複製できない（`duplicatedDeckName` と同じく ADR-0028 の複製の項）。
+   */
+  readonly hasUnusable: boolean
+}
+
 /** 自分のデッキの一覧。**届いた順のまま並べる。** */
-export function ownedDeckRows(decks: readonly WireOwnedDeck[]): readonly OwnedDeckRow[] {
-  return decks.map((deck) => ({ id: deck.id, name: deck.name, count: deck.cards.length }))
+export function ownedDeckRows(pool: readonly WirePoolCard[], decks: readonly WireOwnedDeck[]): readonly OwnedDeckRow[] {
+  return decks.map((deck) => ({
+    id: deck.id,
+    name: deck.name,
+    description: deck.description,
+    count: deck.cards.length,
+    face: faceCardOf(pool, deck.cards),
+    colorCounts: colorCountsOf(pool, deck.cards),
+    // 持ち主が選ぶアーキタイプは #229 が済むまで無いので、自動の分だけになる。
+    labels: autoLabelsOf(pool, draftOf(deck), undefined),
+    hasUnusable: hasUnusableCards(pool, draftOf(deck)),
+  }))
+}
+
+/** デッキ一覧の「入っている色」で選べるもの。実際にどれかのデッキが持つ色だけを並べる。 */
+export function deckColorChoices(rows: readonly OwnedDeckRow[]): readonly DeckColor[] {
+  return DECK_COLORS.filter((color) => rows.some((row) => row.colorCounts.some((each) => each.color === color)))
+}
+
+/** デッキ一覧の「ラベル」で選べるもの。実際にどれかのデッキに付いているラベルだけを並べる。 */
+export function deckLabelChoices(rows: readonly OwnedDeckRow[]): readonly AutoDeckLabel[] {
+  const seen: AutoDeckLabel[] = []
+  for (const label of rows.flatMap((row) => row.labels)) {
+    if (!seen.some((each) => each.label === label.label)) seen.push(label)
+  }
+
+  return seen
+}
+
+/**
+ * デッキ一覧の探す（ADR-0028）。名前・入っている色・自動のラベルで絞り込む。同じ軸の中は
+ * 「どれか」（`pool-filter.ts` と同じ考え方）。
+ */
+export function filterOwnedDeckRows(
+  rows: readonly OwnedDeckRow[],
+  search: string,
+  colors: readonly string[],
+  labels: readonly string[],
+): readonly OwnedDeckRow[] {
+  const term = search.trim()
+
+  return rows.filter(
+    (row) =>
+      (term === '' || row.name.includes(term)) &&
+      (colors.length === 0 || row.colorCounts.some((each) => colors.includes(each.color))) &&
+      (labels.length === 0 || row.labels.some((each) => labels.includes(each.label))),
+  )
 }
 
 /**

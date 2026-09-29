@@ -1,4 +1,4 @@
-import { DUEL_FORMATS } from '@revolution/engine'
+import { COLORS, DUEL_FORMATS } from '@revolution/engine'
 import type {
   Area,
   CardId,
@@ -22,6 +22,7 @@ import type {
   ShareVisibility,
   Square,
   WireCandidate,
+  WireCardFace,
   WireCardPosition,
   WireDeck,
   WireRestrictionList,
@@ -33,17 +34,32 @@ import redLevelIcon from './assets/level-icons/赤.svg'
 import whiteLevelIcon from './assets/level-icons/白.svg'
 import reverseStarIcon from './assets/reverse-star.svg'
 import starIcon from './assets/star.svg'
-import { printedDetailsOf } from './deck-builder.js'
-import type { CardDetail, CheckView, ConfirmView, DeckRow, OwnedDeckRow, PoolRow } from './deck-builder.js'
+import { DECK_NAME_LIMIT, POOL_BATCH, printedDetailsOf } from './deck-builder.js'
+import type {
+  AutoDeckLabel,
+  CardDetail,
+  CheckView,
+  ConfirmView,
+  DeckColor,
+  DeckEditorModal,
+  DeckRow,
+  LevelBar,
+  OwnedDeckRow,
+  PoolRow,
+  PoolView,
+  TypeCount,
+} from './deck-builder.js'
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
-import { emptyFilter, isFiltering, toggled } from './pool-filter.js'
-import type { FilterChoices, NumberRange, PoolFilter } from './pool-filter.js'
+import { COLORLESS, emptyFilter, isFiltering, MOVE_SHAPES, toggled } from './pool-filter.js'
+import type { FilterChoices, MoveShape, NumberRange, PoolFilter, StarChoice } from './pool-filter.js'
 import type { CopyState, MyShareRow, PublicCardSection, RecipeCardRow, RecipeSummaryRow, ShareDraft, ShareRow, SharingState } from './recipe.js'
 import type {
   AbilityView,
   BattleView,
   BoardView,
   CardView,
+  FaceFields,
+  ModifiedData,
   Overlay,
   PhaseView,
   ResultView,
@@ -54,7 +70,7 @@ import type {
   TransitionView,
   ZoneView,
 } from './view-model.js'
-import { keyOfPosition, printedSquareLabel, zoneOf } from './view-model.js'
+import { faceFieldsOf, keyOfPosition, primaryColorOf, printedSquareLabel, zoneOf } from './view-model.js'
 
 /**
  * 画面に出す値（`view-model.ts`）を DOM にする。
@@ -128,14 +144,6 @@ const LEVEL_ICON_URL: Readonly<Record<Color, string>> = {
   青: blueLevelIcon,
   白: whiteLevelIcon,
   緑: greenLevelIcon,
-}
-
-/**
- * カードの面の色。複数の色を持つカード・無色のカードは、いまのカードプールに無いので
- * 考えない（ADR-0027）。持っている色のうち 1 つ目で決める。
- */
-function primaryColorOf(colors: readonly Color[]): Color {
-  return colors[0] ?? '黒'
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -243,7 +251,7 @@ function triggerIconElement(cells: readonly Square[]): SVGElement {
 }
 
 /** ムーブアイコン（ユニット）・トリガーアイコン（トラップ）を、右寄せの枠に入れる。どちらも無ければ `undefined`。 */
-function iconsElement(card: CardView & { readonly kind: '表' }): HTMLElement | undefined {
+function iconsElement(card: Pick<FaceFields, 'moveIcon' | 'triggerIcon'>): HTMLElement | undefined {
   const icon =
     card.moveIcon.length > 0
       ? moveIconElement(card.moveIcon)
@@ -279,10 +287,13 @@ function statElement(
 }
 
 /** 属性（継続効果で加わった分は `+` を付ける、#91）とＢＰ・ＳＰを面の下段に足す。 */
-function appendTraitsAndStats(bottom: HTMLElement, card: CardView & { readonly kind: '表' }): void {
+function appendTraitsAndStats(
+  bottom: HTMLElement,
+  card: Pick<FaceFields, 'attributes' | 'type' | 'bp' | 'sp'> & { readonly modified: ModifiedData | undefined },
+): void {
   const added = (card.modified?.addedAttributes ?? []).map((attribute) => `+${attribute}`)
   const traits = [...card.attributes, ...added]
-  if (traits.length > 0) bottom.append(element('span', 'card__traits', traits.join('・')))
+  if (traits.length > 0) bottom.append(element('span', 'card__traits', traits.join(' | ')))
 
   if (card.type === 'ユニット' && card.bp !== undefined && card.sp !== undefined) {
     const stats = element('div', 'card__stats')
@@ -307,15 +318,19 @@ interface FaceOptions {
 }
 
 /**
- * カードの見える面。**詳細の札はこの外側に置く**（`cardElement`）。
- *
- * フリーズを横倒しにする（総合ルール 第2部 第24章）のはこの要素で、外枠の `card` は回らない。
- * 裏向きなら中身は空にする（裏面の絵柄は CSS が受け持つ）。
+ * 面を組み立てるのに要る項目（ADR-0028）。盤面のカード（`CardView`）と、デッキ構築の
+ * プール・デッキのカード（`poolFaceElement`）の両方がここから作れる。
  */
-function faceElement(card: CardView, options: FaceOptions = {}): HTMLElement {
-  const node = element('div', 'card__face')
-  if (card.kind === '裏') return node
+type FaceCard = FaceFields & {
+  readonly modified: ModifiedData | undefined
+  readonly damage: number
+}
 
+/**
+ * カードの見える面の中身を組み立てる。盤面（`faceElement`）とデッキ構築（`poolFaceElement`）で
+ * 共有する（ADR-0028）。
+ */
+function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptions): void {
   const top = element('div', 'card__top')
   const level = element('span', 'card__level')
   const levelIconImg = document.createElement('img')
@@ -362,6 +377,32 @@ function faceElement(card: CardView, options: FaceOptions = {}): HTMLElement {
   }
 
   if (card.damage > 0) node.append(element('span', 'card__damage', `ダメージ ${card.damage}`))
+}
+
+/**
+ * カードの見える面。詳細の札はこの外側に置く（`cardElement`）。
+ *
+ * フリーズを横倒しにする（総合ルール 第2部 第24章）のはこの要素で、外枠の `card` は回らない。
+ * 裏向きなら中身は空にする（裏面の絵柄は CSS が受け持つ）。
+ */
+function faceElement(card: CardView, options: FaceOptions = {}): HTMLElement {
+  const node = element('div', 'card__face')
+  if (card.kind === '裏') return node
+
+  appendFaceContent(node, card, options)
+
+  return node
+}
+
+/**
+ * デッキ構築のプール・デッキの一覧で使う、盤面に関わらないカードの面（ADR-0028）。
+ *
+ * 盤面のカードと規則を共有する（`appendFaceContent`）。継続効果・ダメージは盤面でしか
+ * 起きないので、修整なし・ダメージ 0 として渡す。
+ */
+function poolFaceElement(face: WireCardFace, options: FaceOptions = {}): HTMLElement {
+  const node = element('div', 'card__face')
+  appendFaceContent(node, { ...faceFieldsOf(face), modified: undefined, damage: 0 }, options)
 
   return node
 }
@@ -899,12 +940,16 @@ export function lobbyElement(
   return node
 }
 
-/** デッキを選ぶところで押せるもの（#193）。 */
+/** デッキを選ぶところで押せるもの（#193、ADR-0028）。 */
 export interface DeckListHandlers {
   readonly onOpen: (deck: DeckId) => void
   readonly onNew: () => void
   /** 既製デッキをコピーして、そのまま組み始める（ADR-0022）。 */
   readonly onCopy: (preset: DeckId) => void
+  /** 自分のデッキを、新しいデッキとして保存し直す（ADR-0028）。 */
+  readonly onDuplicate: (deck: DeckId) => void
+  /** 共有する下書きを開く（ADR-0022・ADR-0028）。 */
+  readonly onShare: (deck: DeckId) => void
   /** 自分のデッキを消す。**最後の 1 つは消せない**が、断るのはサーバである。 */
   readonly onDelete: (deck: DeckId, name: string) => void
   readonly onClose: () => void
@@ -912,6 +957,28 @@ export interface DeckListHandlers {
   readonly onMyShares: () => void
   /** 「一覧に載せる」共有があるレシピの一覧を開く（ADR-0022）。 */
   readonly onRecipeList: () => void
+  readonly onSearch: (search: string) => void
+  readonly onColorFilter: (colors: readonly string[]) => void
+  readonly onLabelFilter: (labels: readonly string[]) => void
+}
+
+/** デッキ一覧に出すもの（#193、ADR-0028）。探した後の絞り込み結果と、選べるものの両方を持つ。 */
+export interface DeckListView {
+  /** 探した後のデッキ。並べるのはこれだけ。 */
+  readonly decks: readonly OwnedDeckRow[]
+  /** 探す前のデッキの数。「何件のうち何件」を出す。 */
+  readonly total: number
+  /** 「入っている色」で選べるもの。実際にどれかのデッキが持つ色だけ。 */
+  readonly allColors: readonly string[]
+  /** 「ラベル」で選べるもの。実際にどれかのデッキに付いているラベルだけ。 */
+  readonly allLabels: readonly AutoDeckLabel[]
+  readonly search: string
+  readonly colorFilter: readonly string[]
+  readonly labelFilter: readonly string[]
+  readonly presets: readonly WireDeck[]
+  /** コピー・複製・削除の返事を待っているか。重ねて押させない——2 度押すとデッキが 2 つできる。 */
+  readonly waiting: boolean
+  readonly refusal: string | undefined
 }
 
 /**
@@ -929,68 +996,197 @@ function iconButton(icon: string, label: string, onPress: () => void): HTMLEleme
   return node
 }
 
-/**
- * どのデッキを組むかを選ぶところ（#193）。自分のデッキと、コピーできる既製デッキを並べる。
- *
- * `waiting` の間は、コピー・削除の返事を待っている。**重ねて押させない**——コピーを 2 度押すと
- * デッキが 2 つできる。
- */
-export function deckListElement(
-  decks: readonly OwnedDeckRow[],
-  presets: readonly WireDeck[],
-  waiting: boolean,
-  refusal: string | undefined,
-  handlers: DeckListHandlers,
-): HTMLElement {
-  const node = element('section', 'decks')
-  const head = element('div', 'decks__head')
-  head.append(
-    element('h2', 'decks__title', '自分のデッキ'),
+/** デッキ一覧の上の帯（ADR-0028）。 */
+function listTopbarElement(handlers: DeckListHandlers): HTMLElement {
+  const bar = element('header', 'panel topbar')
+  bar.append(
+    button('← ロビーに戻る', handlers.onClose),
+    element('h1', 'topbar__title', 'デッキ一覧'),
+    element('span', 'topbar__sub', '自分のデッキを組む・共有する'),
+    element('span', 'topbar__spacer'),
     button('自分の共有', handlers.onMyShares),
     button('共有されたレシピ', handlers.onRecipeList),
-    button('ロビーに戻る', handlers.onClose),
+    button('＋ 新しく作る', handlers.onNew, true),
   )
-  node.append(head)
 
-  const list = element('div', 'decks__list')
-  for (const deck of decks) {
-    const row = element('div', 'decks__row')
-    row.append(element('span', 'decks__name', deck.name), element('span', 'decks__count', `${deck.count} 枚`))
-    const open = iconButton('✏️', `「${deck.name}」を組む`, () => handlers.onOpen(deck.id))
-    const remove = iconButton('🗑️', `「${deck.name}」を削除する`, () => handlers.onDelete(deck.id, deck.name))
-    remove.toggleAttribute('disabled', waiting)
-    row.append(open, remove)
-    list.append(row)
+  return bar
+}
+
+/** デッキを探すところ（ADR-0028）。名前・入っている色・自動のラベルで絞り込む。 */
+function deckSearchPanelElement(view: DeckListView, handlers: DeckListHandlers): HTMLElement {
+  const panel = sectionPanel('', 'デッキを探す')
+  const body = element('div', 'panel__body')
+
+  const search = document.createElement('input')
+  search.type = 'search'
+  search.placeholder = 'デッキの名前で探す'
+  search.setAttribute('aria-label', 'デッキの名前で探す')
+  search.value = view.search
+  search.dataset[KEEP_FOCUS] = 'デッキ一覧の検索'
+  search.addEventListener('input', (event) => {
+    if (!(event instanceof InputEvent && event.isComposing)) handlers.onSearch(search.value)
+  })
+  search.addEventListener('compositionend', () => handlers.onSearch(search.value))
+  body.append(search)
+
+  const colorRow = filterRow(
+    '入っている色',
+    view.allColors,
+    view.colorFilter,
+    handlers.onColorFilter,
+    (color) => colorChipContent(color as DeckColor),
+  )
+  if (colorRow !== undefined) body.append(colorRow)
+
+  const labelValues = view.allLabels.map((label) => label.label)
+  const labelOf = (value: string): AutoDeckLabel | undefined => view.allLabels.find((label) => label.label === value)
+  const labelRow = filterRow(
+    'ラベル',
+    labelValues,
+    view.labelFilter,
+    handlers.onLabelFilter,
+    (value) => {
+      const label = labelOf(value)
+      return label === undefined ? [value] : [...labelIconNodes(label), value]
+    },
+    (value) => {
+      const label = labelOf(value)
+      return label === undefined ? value : `${label.group}：${label.label}`
+    },
+  )
+  if (labelRow !== undefined) body.append(labelRow)
+
+  panel.append(body)
+
+  return panel
+}
+
+/** 既製デッキからコピーして作るところ（ADR-0022）。カードのデータを持たないので、面は出さない。 */
+function presetsPanelElement(presets: readonly WireDeck[], waiting: boolean, handlers: DeckListHandlers): HTMLElement | undefined {
+  if (presets.length === 0) return undefined
+
+  const panel = sectionPanel('', '既製デッキからコピーして作る')
+  const body = element('div', 'presets')
+  for (const preset of presets) {
+    const row = element('div', 'preset')
+    row.append(element('span', 'preset__name', preset.name))
+    const copy = smallButton('コピーして組む', () => handlers.onCopy(preset.id))
+    copy.toggleAttribute('disabled', waiting)
+    row.append(copy)
+    body.append(row)
   }
-  node.append(list)
-  node.append(button('新しく作る', handlers.onNew))
+  panel.append(body)
 
-  if (presets.length > 0) {
-    node.append(element('h2', 'decks__title', '既製デッキからコピーして作る'))
-    const presetList = element('div', 'decks__list')
-    for (const preset of presets) {
-      const row = element('div', 'decks__row')
-      row.append(element('span', 'decks__name', preset.name))
-      const copy = button('コピーして組む', () => handlers.onCopy(preset.id))
-      copy.toggleAttribute('disabled', waiting)
-      row.append(copy)
-      presetList.append(row)
+  return panel
+}
+
+/** 自分のデッキ 1 つのカード（ADR-0028）。 */
+function deckCardElement(row: OwnedDeckRow, waiting: boolean, handlers: DeckListHandlers): HTMLElement {
+  const card = element('article', 'deckcard')
+
+  const faceWrap = element('div', 'deckcard__face')
+  if (row.face !== undefined) faceWrap.append(poolCardElement(row.face))
+  card.append(faceWrap)
+
+  const main = element('div', 'deckcard__main')
+  const head = element('div', 'deckcard__head')
+  head.append(element('h3', 'deckcard__name', row.name))
+  main.append(head)
+  main.append(element('p', 'deckcard__desc', row.description === '' ? '（解説はありません）' : row.description))
+  const count = element('span', 'deckcard__count', String(row.count))
+  count.append(element('small', '', ' 枚'))
+  main.append(count)
+
+  const colors = element('div', 'colors')
+  colors.setAttribute('aria-label', '色ごとの枚数')
+  for (const { color, count: colorCount } of row.colorCounts) {
+    const item = element('span', '')
+    if (color === COLORLESS) {
+      // 無色にはレベルアイコンが無いので、名前で出す。
+      item.append(document.createTextNode(`${color} ${colorCount}`))
+    } else {
+      const icon = document.createElement('img')
+      icon.src = LEVEL_ICON_URL[color]
+      icon.alt = color
+      item.append(icon, document.createTextNode(String(colorCount)))
     }
-    node.append(presetList)
+    colors.append(item)
+  }
+  main.append(colors, labelListElement(row.labels))
+  card.append(main)
+
+  const actions = element('div', 'deckcard__actions')
+  const edit = button('✏️ 編集', () => handlers.onOpen(row.id))
+  const duplicate = button('⧉ 複製', () => handlers.onDuplicate(row.id))
+  duplicate.toggleAttribute('disabled', waiting || row.hasUnusable)
+  const share = button('🔗 共有', () => handlers.onShare(row.id))
+  const remove = iconButton('🗑️', `「${row.name}」を削除する`, () => handlers.onDelete(row.id, row.name))
+  remove.toggleAttribute('disabled', waiting)
+  actions.append(edit, duplicate, share, remove)
+  card.append(actions)
+
+  // 複製できない理由。押せないボタンだけを出すと、何が悪いのか分からない。
+  if (row.hasUnusable) {
+    const note = element('p', 'deckcard__note', '使えなくなったカードが入っているので複製できません。編集で抜いてください')
+    note.id = `deckcard-note-${row.id}`
+    duplicate.setAttribute('aria-describedby', note.id)
+    card.append(note)
   }
 
-  if (refusal !== undefined) node.append(element('p', 'refusal', `行えませんでした: ${refusal}`))
+  return card
+}
+
+/**
+ * どのデッキを組むかを選ぶところ（#193、ADR-0028）。上に帯、下に 2 列
+ * （探す・既製デッキ／自分のデッキ）を並べる。
+ */
+export function deckListElement(view: DeckListView, handlers: DeckListHandlers): HTMLElement {
+  const node = element('div', 'deckbuild deckbuild--list')
+  node.append(listTopbarElement(handlers))
+
+  const columns = element('div', 'columns')
+
+  const left = element('div', 'column')
+  left.append(deckSearchPanelElement(view, handlers))
+  const presetsPanel = presetsPanelElement(view.presets, view.waiting, handlers)
+  if (presetsPanel !== undefined) left.append(presetsPanel)
+
+  const center = element('div', 'column column--center')
+  const aside = element('span', 'panel__aside')
+  aside.append(element('strong', '', String(view.decks.length)), ` / ${view.total} 件`)
+  const mine = sectionPanel('', '自分のデッキ', aside)
+  const scroller = element('div', 'decklist')
+  const grid = element('div', 'decklist__grid')
+  for (const deck of view.decks) grid.append(deckCardElement(deck, view.waiting, handlers))
+  scroller.append(grid)
+  if (view.decks.length === 0) scroller.append(element('p', 'pool__none', '条件に合うデッキがありません'))
+  mine.append(scroller)
+  center.append(mine)
+
+  columns.append(left, center)
+  node.append(columns)
+
+  if (view.refusal !== undefined) node.append(element('p', 'refusal', `行えませんでした: ${view.refusal}`))
 
   return node
 }
 
-/** デッキを組むところで押せるもの（#193）。 */
+/** デッキを組むところで押せるもの（#193、ADR-0028）。 */
 export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'onRestriction'> {
-  /** 名前を打ち込んだ。**画面は描き直されるので、覚えておくのは呼ぶ側である**（`LobbyHandlers`）。 */
-  readonly onName: (name: string) => void
+  /** ✏️ を押して、名前をその場で打ち込めるようにする。 */
+  readonly onEditNameStart: () => void
+  /** 名前を 1 文字打った。描き直しても打ちかけが残るように、呼ぶ側が覚えておく。 */
+  readonly onEditName: (name: string) => void
+  /** Enter で決める。 */
+  readonly onEditNameCommit: (name: string) => void
+  /** 入力欄を離れて決める。離れたきっかけのボタンの操作が済むまで、描き直しを待つ（呼ぶ側）。 */
+  readonly onEditNameLeave: (name: string) => void
+  /** Esc でやめる。打ち込みかけは捨てる。 */
+  readonly onEditNameCancel: () => void
   readonly onDescription: (description: string) => void
-  /** 打ち終えた（入力欄を離れた）。保存していない変更があるかを出し直すのに使う。 */
-  readonly onEdited: () => void
+  /** 組むところの帯から窓を開く・閉じる。 */
+  readonly onOpenModal: (modal: DeckEditorModal) => void
+  readonly onCloseModal: () => void
   readonly onAdd: (key: string) => void
   readonly onRemove: (key: string) => void
   /** 詳しく出したままにするカードを決める。同じカードをもう一度押したら、やめる。 */
@@ -1002,39 +1198,62 @@ export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'on
   readonly onFilter: (filter: PoolFilter) => void
   /** 詳しく絞り込むところを開く・閉じる。 */
   readonly onFilterOpen: (open: boolean) => void
-  /** 共有する下書きを開く（ADR-0022）。**保存してあるデッキにしか出さない**（`view.canShare`）。 */
-  readonly onShare: () => void
+  /** 折りたためる絞り込みの項目が開いた・閉じた。`open` はブラウザが反映した後の開閉。 */
+  readonly onToggleFold: (key: string, open: boolean) => void
+  /** カード一覧の表示の形を切り替える。 */
+  readonly onPoolView: (view: PoolView) => void
+  /** スクロールで一覧の続きを描き足す。 */
+  readonly onShowMorePool: () => void
+  /** カードの詳細を開く・畳む。描き直さず、押した場でも切り替える（呼ぶ側）。 */
+  readonly onToggleDetail: () => void
 }
 
-/** デッキを組むところに出すもの（#193）。どれも `deck-builder.ts` がすでに組み立てている。 */
+/** デッキを組むところに出すもの（#193、ADR-0028）。どれも `deck-builder.ts` がすでに組み立てている。 */
 export interface DeckEditorView {
   readonly name: string
+  /** ✏️ で名前をその場で打ち込んでいる途中の値。打ち込んでいなければ `undefined`。 */
+  readonly editingName: string | undefined
+  /** 一度でも保存したデッキか。保存したことが無ければ「保存しました」とは出さない。 */
+  readonly saved: boolean
   readonly description: string
   readonly count: number
   readonly unsaved: boolean
   /** 保存できるか。返事を待っている間と、使えないカードが入っている間は押せない。 */
   readonly savable: boolean
   readonly check: CheckView
-  /** 絞り込んだ後のプール。 */
+  /** 絞り込んだ後のプール。並びはそのまま——描く枚数は `poolShown` で絞る。 */
   readonly pool: readonly PoolRow[]
   /** 絞り込む前のプールの種類の数。「何種のうち何種」を出す。 */
   readonly poolTotal: number
+  readonly poolView: PoolView
+  /** カード一覧で、面（または行）を描いている枚数。 */
+  readonly poolShown: number
   readonly filter: PoolFilter
   readonly filterChoices: FilterChoices
   /** 詳しく絞り込むところを開いているか。 */
   readonly filterOpen: boolean
+  /** 折りたためる絞り込みの項目のうち、開いているものの名前。 */
+  readonly openFolds: ReadonlySet<string>
+  /** カードの詳細を開いているか。 */
+  readonly detailOpen: boolean
   readonly deck: readonly DeckRow[]
   readonly detail: (key: string) => CardDetail | undefined
   readonly pinned: string | undefined
   readonly restrictions: readonly WireRestrictionList[]
   readonly rules: ChosenRules
   readonly refusal: string | undefined
-  /** 共有する口を出すか（ADR-0022）。**保存してあるデッキだけ共有できる**——まだ無い識別子は渡せない。 */
-  readonly canShare: boolean
+  /** デッキの中身から自動で付くラベル（ADR-0028）。 */
+  readonly labels: readonly AutoDeckLabel[]
+  /** デッキの内訳：レベルの段ごとの、色別の枚数。 */
+  readonly levelBars: readonly LevelBar[]
+  /** デッキの内訳：種別ごとの枚数。 */
+  readonly typeCounts: readonly TypeCount[]
+  /** デッキの内訳：スターの合計。 */
+  readonly starTotal: number
+  /** 組むところの帯から開いている窓。「ラベル」は #229 が済むまで無い。 */
+  readonly modal: DeckEditorModal | undefined
 }
 
-/** デッキの名前として受け取る長さの上限（`server` の `owned-deck.ts` の `DECK_NAME_LIMIT` と同じ）。 */
-const DECK_NAME_LIMIT = 40
 
 /** デッキの解説として受け取る長さの上限（`server` の `owned-deck.ts` の `DECK_DESCRIPTION_LIMIT` と同じ）。 */
 const DECK_DESCRIPTION_LIMIT = 1000
@@ -1043,7 +1262,9 @@ const DECK_DESCRIPTION_LIMIT = 1000
  * 描き直しても、スクロールした位置を戻す印（`index.ts` の `draw`）。
  *
  * **画面は丸ごと描き直される。** 1 枚入れるたびに、確かめた結果が届くたびに作り直すので、長い
- * 一覧が毎回先頭へ戻ると、続けて入れられない。
+ * 一覧が毎回先頭へ戻ると、続けて入れられない。縦（`scrollTop`）だけでなく横（`scrollLeft`）も
+ * 戻す（`index.ts` の `scrollPositions`）——1 行表示を狭い幅で横にスクロールした状態から
+ * ＋・−を押しても、左端へ戻らないようにするため（ADR-0028）。
  */
 export const KEEP_SCROLL = 'keepScroll'
 
@@ -1055,34 +1276,154 @@ export const KEEP_SCROLL = 'keepScroll'
  */
 export const KEEP_FOCUS = 'keepFocus'
 
-/** 選んでいるかどうかで見た目の変わるボタン。絞り込みの値を 1 つ選ぶのに使う。 */
-function chip(label: string, pressed: boolean, onPress: () => void): HTMLElement {
-  const node = button(label, onPress)
+/** 絞り込みの値 1 つ。選んでいるものは、色だけでなく太さでも分かる（`chip--選択中`、`aria-pressed` にも出る）。 */
+function chip(content: readonly (string | Node)[], pressed: boolean, onPress: () => void): HTMLElement {
+  const node = button('', onPress)
   node.classList.add('chip')
   node.classList.toggle('chip--選択中', pressed)
   node.setAttribute('aria-pressed', String(pressed))
+  node.append(...content)
 
   return node
 }
 
-/** 絞り込みの軸 1 つ。選べるものが無ければ出さない。 */
-function chipRow<T extends string | number>(
-  label: string,
-  choices: readonly T[],
+/**
+ * 「すべて」＋選択肢の並び（ADR-0028）。「すべて」を押すと、その軸で絞らなくなる。
+ *
+ * `render` は 1 つの選択肢の中身（文字・アイコン）を返す。`ariaLabelOf` を渡せば、読み上げと
+ * カーソルを乗せた時の説明にそれを使う（アイコンだけの選択肢のため）。
+ */
+function chipsElement<T>(
+  values: readonly T[],
   chosen: readonly T[],
-  onToggle: (value: T) => void,
+  onChoose: (next: readonly T[]) => void,
+  render: (value: T) => readonly (string | Node)[],
+  ariaLabelOf?: (value: T) => string,
+): HTMLElement {
+  const box = element('div', 'filter__chips')
+  const all = chip(['すべて'], chosen.length === 0, () => onChoose([]))
+  all.classList.add('chip--すべて')
+  box.append(all)
+  for (const value of values) {
+    const node = chip(render(value), chosen.includes(value), () => onChoose(toggled(chosen, value)))
+    if (ariaLabelOf !== undefined) {
+      const label = ariaLabelOf(value)
+      node.setAttribute('aria-label', label)
+      node.title = label
+    }
+    box.append(node)
+  }
+
+  return box
+}
+
+/** 折りたためない絞り込みの軸 1 つ（ADR-0028）。項目名と選択肢を同じ行に並べる。選べるものが無ければ出さない。 */
+function filterRow<T>(
+  label: string,
+  values: readonly T[],
+  chosen: readonly T[],
+  onChoose: (next: readonly T[]) => void,
+  render: (value: T) => readonly (string | Node)[] = (value) => [String(value)],
+  ariaLabelOf?: (value: T) => string,
 ): HTMLElement | undefined {
-  if (choices.length === 0) return undefined
+  if (values.length === 0) return undefined
 
   const row = element('div', 'filter__row')
-  row.append(element('span', 'filter__label', label))
-  const values = element('div', 'filter__chips')
-  for (const value of choices) {
-    values.append(chip(typeof value === 'number' ? `Lv${value}` : value, chosen.includes(value), () => onToggle(value)))
-  }
-  row.append(values)
+  row.append(element('span', 'filter__label', label), chipsElement(values, chosen, onChoose, render, ariaLabelOf))
 
   return row
+}
+
+/**
+ * 折りたためる絞り込みの軸 1 つ（ADR-0028）。閉じている間は、項目名の横に選んでいる値を
+ * 「 | 」でつないで並べる（収まらなければ省略）。選べるものが無ければ出さない。
+ */
+function foldElement(
+  key: string,
+  label: string,
+  values: readonly string[],
+  chosen: readonly string[],
+  openFolds: ReadonlySet<string>,
+  onToggleFold: (key: string, open: boolean) => void,
+  onChoose: (next: readonly string[]) => void,
+  shownAs: (value: string) => string = (value) => value,
+): HTMLElement | undefined {
+  if (values.length === 0) return undefined
+
+  const node = document.createElement('details')
+  node.className = 'fold'
+  node.open = openFolds.has(key)
+  // 描き直しで `open` を入れたときにも `toggle` は出る。反転させず、いまの開閉をそのまま渡す。
+  node.addEventListener('toggle', () => onToggleFold(key, node.open))
+
+  const summary = document.createElement('summary')
+  summary.append(element('span', 'filter__label', label))
+  const picked = element(
+    'span',
+    `fold__picked${chosen.length === 0 ? ' fold__picked--すべて' : ''}`,
+    chosen.length === 0 ? 'すべて' : chosen.map(shownAs).join(' | '),
+  )
+  picked.title = chosen.join('・')
+  summary.append(picked)
+  node.append(summary)
+
+  const body = element('div', 'fold__body')
+  body.append(chipsElement(values, chosen, onChoose, (value) => [shownAs(value)]))
+  node.append(body)
+
+  return node
+}
+
+/**
+ * 色の絞り込みの中身：色ごとのアイコン（レベルアイコンの形）＋色の名前（ADR-0028）。
+ * 無色にはレベルアイコンが無いので、名前だけにする。
+ */
+function colorChipContent(color: DeckColor): readonly Node[] {
+  if (color === COLORLESS) return [document.createTextNode(color)]
+  const icon = document.createElement('img')
+  icon.className = 'chip__color'
+  icon.src = LEVEL_ICON_URL[color]
+  icon.alt = ''
+
+  return [icon, document.createTextNode(color)]
+}
+
+/** スターの絞り込みの中身。「なし」以外はアイコンだけで出す（読み上げは `starChipAriaLabel`）。 */
+function starChipContent(choice: StarChoice): readonly (string | Node)[] {
+  switch (choice) {
+    case 'なし':
+      return ['なし']
+    case '★1':
+      return [starElement(1, false) ?? '★1']
+    case '★2':
+      return [starElement(2, false) ?? '★2']
+    case 'リバーススター':
+      return [starElement(1, true) ?? 'リバーススター']
+  }
+}
+
+function starChipAriaLabel(choice: StarChoice): string {
+  switch (choice) {
+    case 'なし':
+      return 'スターなし'
+    case '★1':
+      return 'スター 1'
+    case '★2':
+      return 'スター 2'
+    case 'リバーススター':
+      return 'リバーススター'
+  }
+}
+
+/** 移動方向の絞り込みの中身：ムーブアイコンの形そのもの（ADR-0028）。読み上げは形の名前を渡す。 */
+function moveShapeChipContent(label: string): readonly Node[] {
+  const shape = MOVE_SHAPES.find((each) => each.label === label)
+  const icon = moveIconElement(shape?.directions ?? [])
+  icon.removeAttribute('role')
+  icon.removeAttribute('aria-label')
+  icon.classList.add('chip__move')
+
+  return [icon]
 }
 
 /** 数の範囲を打ち込むところ（ＢＰ・ＳＰ）。空にすると、その側は区切らない。 */
@@ -1107,25 +1448,29 @@ function rangeRow(label: string, range: NumberRange, focusKey: string, onRange: 
     })
     return node
   }
-  inputs.append(input('min'), element('span', 'filter__between', '〜'), input('max'))
+  inputs.append(input('min'), element('span', '', '〜'), input('max'))
   row.append(inputs)
 
   return row
 }
 
 /**
- * プールを絞り込むところ（#193）。**よく使う軸だけを出しておき、残りは開いて出す。**
+ * プールを絞り込むところ（#193、ADR-0028）。並びは ADR どおり：名前・テキスト → エキスパンション
+ * → 色 → 種別 → レベル →（詳しく絞り込む）ＢＰ → ＳＰ → スター → 移動方向 → 属性。
  *
- * 軸はカードに印刷されている項目と、エキスパンションである（ADR-0021）。何種が残ったかも出す。
+ * キーワード能力・ブロック・作品名の軸は、画面だけでは作れないので出さない（#227・#230）。
  */
-function filterElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
+function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
   const { filter, filterChoices: choices } = view
   const change = (next: Partial<PoolFilter>): void => handlers.onFilter({ ...filter, ...next })
-  const node = element('div', 'filter')
 
-  const top = element('div', 'filter__top')
+  const reset = isFiltering(filter) ? smallButton('すべて外す', () => handlers.onFilter(emptyFilter())) : undefined
+  const panel = sectionPanel('panel--filter', '絞り込み', reset)
+  const body = element('div', 'panel__body')
+  // 選ぶたびに描き直すので、スクロールした位置を戻す（ADR-0028、`KEEP_SCROLL`）。
+  body.dataset[KEEP_SCROLL] = '絞り込み'
+
   const search = document.createElement('input')
-  search.className = 'filter__search'
   search.type = 'search'
   search.placeholder = '名前・テキストで探す'
   search.setAttribute('aria-label', '名前・テキストで探す')
@@ -1137,202 +1482,625 @@ function filterElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTML
     if (!(event instanceof InputEvent && event.isComposing)) change({ text: search.value })
   })
   search.addEventListener('compositionend', () => change({ text: search.value }))
-  top.append(search)
-  top.append(element('span', 'filter__count', `${view.pool.length} / ${view.poolTotal} 種`))
-  if (isFiltering(filter)) top.append(button('絞り込みを外す', () => handlers.onFilter(emptyFilter())))
-  node.append(top)
+  body.append(search)
 
   const rows: (HTMLElement | undefined)[] = [
-    chipRow('種別', choices.types, filter.types, (value) => change({ types: toggled(filter.types, value) })),
-    chipRow('色', choices.colors, filter.colors, (value) => change({ colors: toggled(filter.colors, value) })),
-    chipRow('レベル', choices.levels, filter.levels, (value) => change({ levels: toggled(filter.levels, value) })),
+    foldElement('エキスパンション', 'エキスパンション', choices.expansions, filter.expansions, view.openFolds, handlers.onToggleFold, (next) =>
+      change({ expansions: next }),
+    ),
+    filterRow('色', choices.colors, filter.colors, (next) => change({ colors: next }), (color) => colorChipContent(color as DeckColor)),
+    filterRow('種別', choices.types, filter.types, (next) => change({ types: next })),
+    filterRow(
+      'レベル',
+      choices.levels,
+      filter.levels,
+      (next) => change({ levels: next }),
+      (level) => [`Lv${level}`],
+    ),
   ]
-  for (const row of rows) if (row !== undefined) node.append(row)
+  for (const row of rows) if (row !== undefined) body.append(row)
 
-  const more = button(view.filterOpen ? '詳しい絞り込みを閉じる' : '詳しく絞り込む', () =>
-    handlers.onFilterOpen(!view.filterOpen),
-  )
+  const more = smallButton(view.filterOpen ? '▴ 詳しい絞り込みを閉じる' : '▾ 詳しく絞り込む', () => handlers.onFilterOpen(!view.filterOpen))
   more.classList.add('filter__more')
   more.setAttribute('aria-expanded', String(view.filterOpen))
-  node.append(more)
+  body.append(more)
 
   if (view.filterOpen) {
     const details: (HTMLElement | undefined)[] = [
       rangeRow('ＢＰ', filter.bp, 'ＢＰ', (bp) => change({ bp })),
       rangeRow('ＳＰ', filter.sp, 'ＳＰ', (sp) => change({ sp })),
-      chipRow('属性', choices.attributes, filter.attributes, (value) =>
-        change({ attributes: toggled(filter.attributes, value) }),
+      filterRow('スター', choices.stars, filter.stars, (next) => change({ stars: next }), starChipContent, starChipAriaLabel),
+      filterRow(
+        '移動方向',
+        choices.moveIcons,
+        filter.moveIcons,
+        (next) => change({ moveIcons: next }),
+        moveShapeChipContent,
+        (label) => `移動方向：${label}`,
       ),
-      chipRow('スター', choices.stars, filter.stars, (value) => change({ stars: toggled(filter.stars, value) })),
-      chipRow('ムーブ', choices.moveIcons, filter.moveIcons, (value) =>
-        change({ moveIcons: toggled(filter.moveIcons, value) }),
-      ),
-      chipRow('トリガー', choices.triggerIcons, filter.triggerIcons, (value) =>
-        change({ triggerIcons: toggled(filter.triggerIcons, value) }),
-      ),
-      chipRow('エキスパンション', choices.expansions, filter.expansions, (value) =>
-        change({ expansions: toggled(filter.expansions, value) }),
+      filterRow('発動条件', choices.triggerConditions, filter.triggerConditions, (next) => change({ triggerConditions: next })),
+      foldElement('属性', '属性', choices.attributes, filter.attributes, view.openFolds, handlers.onToggleFold, (next) =>
+        change({ attributes: next }),
       ),
     ]
-    for (const row of details) if (row !== undefined) node.append(row)
+    for (const row of details) if (row !== undefined) body.append(row)
   }
+
+  panel.append(body)
+
+  return panel
+}
+
+/**
+ * カードの詳細（ADR-0028）。見出しを押すと畳める。開閉は描き直さず、class を切り替えるだけに
+ * する——画面は操作のたびに丸ごと作り直されるので、描き直しで開閉すると CSS の transition が
+ * 効かない。
+ */
+function poolDetailPanelElement(pinnedDetail: CardDetail | undefined, view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
+  const panel = element('section', `panel panel--detail${view.detailOpen ? '' : ' panel--detail-閉'}`)
+  panel.setAttribute('aria-label', 'カードの詳細')
+
+  const head = element('div', 'panel__head')
+  // 見出しの中に開閉のボタンを置く（button の中には見出しを入れられない）。
+  const heading = element('h2', 'panel__title')
+  const toggle = document.createElement('button')
+  toggle.type = 'button'
+  toggle.className = 'detail__toggle'
+  const chevron = element('span', 'detail__chevron', view.detailOpen ? '▾' : '▴')
+  toggle.append(element('span', '', 'カードの詳細'), chevron)
+  heading.append(toggle)
+  toggle.setAttribute('aria-expanded', String(view.detailOpen))
+  toggle.addEventListener('click', () => {
+    const opening = panel.classList.contains('panel--detail-閉')
+    panel.classList.toggle('panel--detail-閉', !opening)
+    toggle.setAttribute('aria-expanded', String(opening))
+    chevron.textContent = opening ? '▾' : '▴'
+    handlers.onToggleDetail()
+  })
+  head.append(heading)
+  panel.append(head)
+
+  const body = element('div', 'detail')
+  fillPoolDetail(body, pinnedDetail)
+  panel.append(body)
+
+  return panel
+}
+
+/** カードの詳細の中身を入れ替える。左に面、右に文字で全部を書く（ADR-0028）。 */
+function fillPoolDetail(node: HTMLElement, detail: CardDetail | undefined): void {
+  if (detail === undefined) {
+    node.replaceChildren(
+      element('p', 'detail__none', 'カードにカーソルを合わせると、ここに出ます。押すと出したままにします'),
+    )
+    return
+  }
+
+  const info = element('div', 'detail__info')
+  const title = element('div', 'detail__name')
+  const stars = [starElement(detail.face.stars, false), starElement(detail.face.reverseStars, true)].filter(
+    (each): each is HTMLElement => each !== undefined,
+  )
+  title.append(...stars, document.createTextNode(detail.name))
+  info.append(title)
+
+  const rows = element('dl', 'detail__rows')
+  for (const row of detail.rows) rows.append(element('dt', '', row.label), element('dd', '', row.value))
+  info.append(rows)
+
+  if (detail.text.length > 0) {
+    const text = element('div', 'detail__text')
+    for (const line of detail.text) text.append(element('p', '', line))
+    info.append(text)
+  }
+
+  node.replaceChildren(poolCardElement(detail.face, { big: true }), info)
+}
+
+/** カードの面を、盤面に関わらない場所（プール・デッキ・デッキ一覧）で使う形にする（ADR-0028）。 */
+function poolCardElement(face: WireCardFace, options: { readonly big?: boolean; readonly pinned?: boolean } = {}): HTMLElement {
+  const classes = ['card', `card--色-${primaryColorOf(face.colors)}`]
+  if (options.big) classes.push('card--拡大')
+  if (options.pinned) classes.push('card--詳細中')
+  const node = element('div', classes.join(' '))
+  node.append(poolFaceElement(face, { big: options.big }))
 
   return node
 }
 
-/** 詳しく出すところの中身を入れ替える。 */
-function fillDetail(node: HTMLElement, detail: CardDetail | undefined): void {
-  if (detail === undefined) {
-    node.replaceChildren(element('p', 'builder__detail-none', 'カードの名前にカーソルを合わせると、ここに出ます'))
-    return
-  }
+/** レベルの表示（アイコン＋数字）。1 行表示のように面を出さないところで使う。 */
+function levelBadgeElement(face: Pick<FaceFields, 'colors' | 'level'>): HTMLElement {
+  const node = element('span', 'card__level')
+  node.setAttribute('role', 'img')
+  node.setAttribute('aria-label', `レベル ${face.level}`)
+  const icon = document.createElement('img')
+  icon.src = LEVEL_ICON_URL[primaryColorOf(face.colors)]
+  icon.alt = ''
+  node.append(icon, element('span', '', String(face.level)))
 
-  const rows = element('dl', 'card__panel-rows')
-  for (const row of detail.rows) {
-    rows.append(element('dt', 'card__panel-label', row.label), element('dd', 'card__panel-value', row.value))
-  }
-  const parts: HTMLElement[] = [element('div', 'card__panel-name', detail.name), rows]
-  // 改行ごとに別の能力になる（総合ルール 第2部 第10章 1、第4部 第1章 3）ので、1 行ずつ出す。
-  if (detail.text.length > 0) {
-    const text = element('div', 'card__panel-text')
-    for (const line of detail.text) text.append(element('p', 'card__panel-line', line))
-    parts.push(text)
-  }
-  node.replaceChildren(...parts)
+  return node
 }
 
-/** 1 種ぶんの行。名前・1 行の要約・枚数と、増やす・減らす口。 */
-function cardRow(
+/** 1 種ぶんの、増やす・減らす口。 */
+function counterElement(key: string, name: string, count: number, handlers: DeckEditorHandlers): HTMLElement {
+  const node = element('div', 'counter')
+  // 役割の無い span の aria-label は読まれないことが多いので、枚数は組（group）の名前で伝える。
+  node.setAttribute('role', 'group')
+  node.setAttribute('aria-label', `「${name}」 デッキに ${count} 枚`)
+  const minus = button('−', () => handlers.onRemove(key))
+  minus.setAttribute('aria-label', `「${name}」を 1 枚抜く`)
+  minus.toggleAttribute('disabled', count === 0)
+  const badge = element('span', `counter__count${count > 0 ? ' counter__count--入っている' : ''}`, `×${count}`)
+  badge.setAttribute('aria-hidden', 'true')
+  const plus = button('＋', () => handlers.onAdd(key))
+  plus.setAttribute('aria-label', `「${name}」を 1 枚入れる`)
+  node.append(minus, badge, plus)
+
+  return node
+}
+
+/** カード表示（面を並べる）の 1 枚。 */
+function poolCardItemElement(
   row: PoolRow,
   pinned: boolean,
   handlers: DeckEditorHandlers,
   onHover: (key: string) => void,
 ): HTMLElement {
-  const node = element('div', `builder__row${row.count > 0 ? ' builder__row--入っている' : ''}`)
-  const name = element('button', `builder__name${pinned ? ' builder__name--選択中' : ''}`, row.name)
+  const item = element('div', `pool__item${row.count > 0 ? ' pool__item--入っている' : ''}`)
+  const card = poolCardElement(row.face, { pinned })
+  // 面は div の組み合わせなので button には入れられない。押せることは role で伝え、キー操作も足す
+  // （1 行表示の名前のボタンと同じく、詳細に出したままにしているかを aria-pressed で出す）。
+  card.tabIndex = 0
+  card.setAttribute('role', 'button')
+  card.setAttribute('aria-pressed', String(pinned))
+  card.setAttribute('aria-label', `${row.face.name}（押すと詳細に出したままにする）`)
+  card.addEventListener('mouseenter', () => onHover(row.key))
+  card.addEventListener('focus', () => onHover(row.key))
+  card.addEventListener('click', () => handlers.onPin(row.key))
+  card.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    handlers.onPin(row.key)
+  })
+  item.append(card, counterElement(row.key, row.face.name, row.count, handlers))
+
+  return item
+}
+
+/**
+ * 1 行表示の 1 種（ADR-0028）。プールでもデッキでも使う。
+ *
+ * ＢＰ／ＳＰはプールの行（`withStats`）にだけ出す。デッキの行はレベル・種別・スター・名前・
+ * 枚数だけにする（パートナーの ♥ は #228 が済んでから）。
+ */
+function poolCardRowElement(
+  row: PoolRow,
+  pinned: boolean,
+  handlers: DeckEditorHandlers,
+  onHover: (key: string) => void,
+  withStats: boolean,
+): HTMLElement {
+  const face = row.face
+  const node = element('div', `cardrow card--色-${primaryColorOf(face.colors)}${pinned ? ' cardrow--詳細中' : ''}`)
+  node.addEventListener('mouseenter', () => onHover(row.key))
+  node.append(levelBadgeElement(face), element('span', 'card__kind', face.type))
+  const stars = [starElement(face.stars, false), starElement(face.reverseStars, true)].filter(
+    (each): each is HTMLElement => each !== undefined,
+  )
+  node.append(...stars)
+
+  const name = document.createElement('button')
+  name.type = 'button'
+  name.className = 'cardrow__name'
+  name.textContent = face.name
   name.setAttribute('aria-pressed', String(pinned))
   name.addEventListener('click', () => handlers.onPin(row.key))
-  node.addEventListener('mouseenter', () => onHover(row.key))
-  node.append(name, element('span', 'builder__summary', row.summary), element('span', 'builder__count', String(row.count)))
+  name.addEventListener('focus', () => onHover(row.key))
+  node.append(name)
 
-  const minus = button('−', () => handlers.onRemove(row.key))
-  minus.setAttribute('aria-label', `「${row.name}」を 1 枚抜く`)
-  minus.toggleAttribute('disabled', row.count === 0)
-  const plus = button('＋', () => handlers.onAdd(row.key))
-  plus.setAttribute('aria-label', `「${row.name}」を 1 枚入れる`)
-  node.append(minus, plus)
+  // 属性は出さない（狭い幅でも収まるように、ADR-0028）。ＢＰ・ＳＰはユニットだけ持つ。
+  if (withStats) {
+    node.append(element('span', 'cardrow__meta', face.type === 'ユニット' ? `BP ${face.bp} ／ SP ${face.sp}` : ''))
+  }
+  node.append(counterElement(row.key, face.name, row.count, handlers))
 
   return node
 }
 
-/** 確かめた結果（ADR-0021）。 */
-function checkElement(check: CheckView): HTMLElement {
-  const node = element('div', `builder__check builder__check--${check.kind}`)
-  switch (check.kind) {
-    case '確かめている':
-      node.append(element('p', 'builder__check-line', '確かめています'))
-      break
-    case '確かめられない':
-      node.append(element('p', 'builder__check-line', check.reason))
-      break
-    case '満たしている':
-      node.append(element('p', 'builder__check-line', '規定を満たしています'))
-      break
-    case '満たしていない':
-      for (const line of check.lines) node.append(element('p', 'builder__check-line', line))
-      break
+/**
+ * 使えないカード（プールに無いカード）の 1 行。
+ *
+ * 名前が分からないので、読み上げでは並び順（`ordinal`、使えないカードの中で 1 から数える）と枚数で
+ * どの行の「抜く」かを区別する。識別子は意味の無い文字列なので出さない（ADR-0021）。
+ */
+function unusableCardRowElement(key: string, count: number, ordinal: number, handlers: DeckEditorHandlers): HTMLElement {
+  const node = element('div', 'cardrow cardrow--使えない')
+  const remove = smallButton('抜く', () => handlers.onRemove(key))
+  remove.setAttribute('aria-label', `使えないカード ${ordinal} つめ（${count} 枚）を抜く`)
+  node.append(element('span', 'cardrow__name', `使えないカード ×${count}`), remove)
+
+  return node
+}
+
+/** カード表示・1 行表示の切り替え（ADR-0028）。 */
+function viewSwitchElement(current: PoolView, onChoose: (view: PoolView) => void): HTMLElement {
+  const node = element('div', 'viewswitch')
+  node.setAttribute('role', 'group')
+  node.setAttribute('aria-label', '表示の形')
+  const options: readonly { readonly view: PoolView; readonly label: string }[] = [
+    { view: 'カード', label: '▦ カード' },
+    { view: '一覧', label: '☰ 一覧' },
+  ]
+  for (const { view, label } of options) {
+    const b = button(label, () => onChoose(view))
+    b.setAttribute('aria-pressed', String(current === view))
+    node.append(b)
   }
 
   return node
 }
 
 /**
- * デッキを組むところ（#193）。左にプール、右にデッキを並べ、その上に規定を確かめた結果を出す。
+ * カード一覧（ADR-0028）。最初の数十枚だけ面を描き、スクロールで描き足す——1000 種になった時、
+ * 描き直すたびに全部の面を作ると重いため。描き足した枚数は状態として持ち（`poolShown`）、
+ * 絞り込みを変えたら先頭に戻す（呼ぶ側、`index.ts`）。
+ */
+function poolListElement(view: DeckEditorView, handlers: DeckEditorHandlers, onHover: (key: string) => void): HTMLElement {
+  const scroller = element('div', 'pool')
+  scroller.dataset[KEEP_SCROLL] = 'プール'
+  const shown = view.pool.slice(0, view.poolShown)
+
+  if (view.poolView === 'カード') {
+    const grid = element('div', 'pool__grid')
+    for (const row of shown) grid.append(poolCardItemElement(row, row.key === view.pinned, handlers, onHover))
+    scroller.append(grid)
+  } else {
+    const rows = element('div', 'rows')
+    for (const row of shown) rows.append(poolCardRowElement(row, row.key === view.pinned, handlers, onHover, true))
+    scroller.append(rows)
+  }
+
+  if (view.pool.length === 0) scroller.append(element('p', 'pool__none', '条件に合うカードがありません'))
+  const hasMore = view.pool.length > view.poolShown
+  if (hasMore) {
+    const more = element('p', 'pool__more', `続きを表示しています…（${view.poolShown} / ${view.pool.length} 種）`)
+    scroller.append(more)
+    // 末尾の 1 行が枠の下端に近づいたら描き足す。scroll を待つ形にすると、大きい画面で最初の
+    // 数十枚が枠を埋めきらなかったときにスクロールが起きず、続きが描かれないまま止まる。
+    // 見張るのは 1 回だけにする——描き足すと画面ごと作り直され、この要素は捨てられる。
+    const watcher = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        watcher.disconnect()
+        handlers.onShowMorePool()
+      },
+      { root: scroller, rootMargin: '0px 0px 200px 0px' },
+    )
+    watcher.observe(more)
+  }
+
+  return scroller
+}
+
+/** 確かめた結果（ADR-0021、ADR-0028）。 */
+function checkElement(check: CheckView): HTMLElement {
+  const node = element('div', `check check--${check.kind}`)
+  switch (check.kind) {
+    case '確かめている':
+      node.append(element('p', '', '確かめています'))
+      break
+    case '確かめられない':
+      node.append(element('p', '', check.reason))
+      break
+    case '満たしている':
+      node.append(element('p', '', '規定を満たしています'))
+      break
+    case '満たしていない':
+      for (const line of check.lines) node.append(element('p', '', line))
+      break
+  }
+
+  return node
+}
+
+/** デッキの内訳：レベルの段ごとの、色別の積み上げ棒グラフ（ADR-0028）。 */
+function levelBreakdownElement(bars: readonly LevelBar[]): HTMLElement {
+  const figure = document.createElement('figure')
+  figure.className = 'levels'
+  figure.setAttribute('role', 'img')
+  const max = Math.max(1, ...bars.map((bar) => bar.total))
+  const summary = bars
+    .map((bar) => {
+      const byColor = bar.byColor
+        .filter((each) => each.count > 0)
+        .map((each) => `${each.color} ${each.count}`)
+        .join('・')
+      return `レベル${bar.label} ${bar.total} 枚（${byColor === '' ? 'なし' : byColor}）`
+    })
+    .join('、')
+  figure.setAttribute('aria-label', `レベルごとの枚数：${summary}`)
+  figure.append(element('span', 'levels__caption', 'レベルごとの枚数'))
+
+  const barsNode = element('div', 'levels__bars')
+  for (const bar of bars) {
+    const barNode = element('div', 'levels__bar')
+    barNode.append(element('span', '', String(bar.total)))
+    const stack = element('div', 'levels__stack')
+    stack.style.height = `${(bar.total / max) * 74}%`
+    for (const { color, count } of bar.byColor) {
+      if (count === 0) continue
+      // 無色には面の色が無いので、灰色の段にする（`levels__seg--無色`）。
+      const seg = element('div', `levels__seg ${color === COLORLESS ? 'levels__seg--無色' : `card--色-${color}`}`)
+      seg.style.flexGrow = String(count)
+      seg.title = `${color} ${count} 枚`
+      stack.append(seg)
+    }
+    barNode.append(stack)
+    barsNode.append(barNode)
+  }
+  figure.append(barsNode)
+
+  const axis = element('div', 'levels__axis')
+  for (const bar of bars) axis.append(element('span', '', bar.label))
+  figure.append(axis)
+
+  return figure
+}
+
+/** デッキの内訳：種別ごとの枚数と、その下にスターの合計（ADR-0028）。 */
+function typeCountsElement(typeCounts: readonly TypeCount[], starTotal: number): HTMLElement {
+  const list = element('ul', 'types')
+  list.setAttribute('aria-label', '種別ごとの枚数')
+  for (const { type, count } of typeCounts) {
+    const item = element('li', count === 0 ? 'types__zero' : '')
+    item.append(element('span', '', type), element('span', '', String(count)))
+    list.append(item)
+  }
+  const starItem = element('li', 'types__stars')
+  starItem.setAttribute('aria-label', `スターの合計 ${starTotal} 個`)
+  const label = element('span', '')
+  const icon = starElement(1, false)
+  if (icon !== undefined) label.append(icon)
+  label.append('スター合計')
+  starItem.append(label, element('span', '', String(starTotal)))
+  list.append(starItem)
+
+  return list
+}
+
+/** ラベル 1 つ（ADR-0028）。自動で付いたか選んだかは、見た目にも読み上げにも出さない。 */
+function labelChipElement(label: AutoDeckLabel): HTMLElement {
+  const node = element('span', 'tag')
+  node.append(...labelIconNodes(label), document.createTextNode(label.label))
+  node.setAttribute('aria-label', `${label.group}：${label.label}`)
+
+  return node
+}
+
+/**
+ * ラベルの先頭に付けるもの（ADR-0028）。色の構成（「赤単」「赤黒」）は、その色のレベルアイコンを
+ * 名前に出てくる順に並べる。ほかは絵文字（`AUTO_LABEL_EMOJI`）。読み上げには出さない（名前で足りる）。
+ */
+function labelIconNodes(label: AutoDeckLabel): readonly Node[] {
+  const emoji = AUTO_LABEL_EMOJI[label.label]
+  if (emoji !== undefined) return [element('span', 'tag__emoji', emoji)]
+  if (label.group !== '色の構成') return []
+
+  return COLORS.filter((color) => label.label.includes(color))
+    .sort((left, right) => label.label.indexOf(left) - label.label.indexOf(right))
+    .map((color) => {
+      const icon = document.createElement('img')
+      icon.className = 'tag__color'
+      icon.src = LEVEL_ICON_URL[color]
+      icon.alt = ''
+      return icon
+    })
+}
+
+/** ラベルの中身を表す絵文字（ADR-0028）。色の構成は色のアイコンで表すので、ここには多色だけを持つ。 */
+const AUTO_LABEL_EMOJI: Readonly<Record<string, string>> = {
+  アグロ: '⚡',
+  ミッドレンジ: '⚖️',
+  コントロール: '🛡️',
+  多色: '🌈',
+}
+
+/** ラベルの並び。 */
+function labelListElement(labels: readonly AutoDeckLabel[], extraClass = ''): HTMLElement {
+  const node = element('div', `taglist ${extraClass}`.trim())
+  node.setAttribute('aria-label', 'ラベル')
+  for (const label of labels) node.append(labelChipElement(label))
+
+  return node
+}
+
+/** 見出しの右に添える、小さいボタン。 */
+function smallButton(label: string, onPress: () => void): HTMLElement {
+  const node = button(label, onPress)
+  node.classList.add('button--small')
+
+  return node
+}
+
+/** 見出し（`panel__head`）を持つ、組むところ・デッキ一覧のパネル。 */
+function sectionPanel(extraClass: string, title: string, aside?: HTMLElement): HTMLElement {
+  const node = element('section', `panel ${extraClass}`.trim())
+  const head = element('div', 'panel__head')
+  head.append(element('h2', 'panel__title', title))
+  if (aside !== undefined) head.append(aside)
+  node.append(head)
+
+  return node
+}
+
+/** 組むところの上の帯（ADR-0028）。名前の編集・解説・付いているラベル・形式とリストを並べる。 */
+function editorTopbarElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
+  const bar = element('header', 'panel topbar')
+  bar.append(button('← デッキ一覧に戻る', handlers.onBack), element('h1', 'topbar__title', 'デッキ構築'), element('span', 'topbar__divider'))
+
+  const name = element('div', 'deckname')
+  if (view.editingName !== undefined) {
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.maxLength = DECK_NAME_LIMIT
+    input.value = view.editingName
+    input.setAttribute('aria-label', 'デッキの名前')
+    input.dataset[KEEP_FOCUS] = 'デッキの名前'
+    input.addEventListener('input', () => handlers.onEditName(input.value))
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') handlers.onEditNameCommit(input.value)
+      if (event.key === 'Escape') handlers.onEditNameCancel()
+    })
+    // 描き直しで捨てられるときにも blur が出る（Chrome）。そのときは欄がまだ画面に残っているので、
+    // 描き直しが済むのを待ってから、画面に残っている欄を離れたときだけ決める。
+    input.addEventListener('blur', () => {
+      queueMicrotask(() => {
+        if (input.isConnected) handlers.onEditNameLeave(input.value)
+      })
+    })
+    name.append(input)
+    // ✏️ を押した直後に手を移す。描き直しの後は `index.ts` が打っていた位置ごと戻しているので動かさない。
+    queueMicrotask(() => {
+      if (document.activeElement !== input) input.focus()
+    })
+  } else {
+    name.append(
+      element('span', 'deckname__text', view.name),
+      iconButton('✏️', 'デッキの名前を変える', handlers.onEditNameStart),
+    )
+  }
+  bar.append(name)
+
+  const description = smallButton(view.description ? '📝 解説' : '📝 解説を書く', () => handlers.onOpenModal('解説'))
+  description.setAttribute('aria-haspopup', 'dialog')
+  bar.append(description, labelListElement(view.labels, 'taglist--bar'), element('span', 'topbar__spacer'))
+
+  bar.append(rulesPicker(view.restrictions, view.rules, handlers))
+
+  return bar
+}
+
+/** 解説を読む・書く窓（ADR-0028）。押す前に尋ねるところ（`.confirm`）と同じ見た目にする。 */
+function descriptionModalElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
+  const layer = element('div', 'confirm')
+  const box = element('div', 'confirm__box')
+  box.setAttribute('role', 'dialog')
+  box.setAttribute('aria-modal', 'true')
+  box.setAttribute('aria-label', 'デッキの解説')
+  box.append(element('h2', 'confirm__title', `「${view.name}」の解説`))
+
+  const body = element('div', 'confirm__body')
+  const textarea = document.createElement('textarea')
+  textarea.rows = 8
+  textarea.maxLength = DECK_DESCRIPTION_LIMIT
+  textarea.placeholder = '解説（無くてもかまいません）'
+  textarea.value = view.description
+  textarea.dataset[KEEP_FOCUS] = 'デッキの解説'
+  textarea.addEventListener('input', () => handlers.onDescription(textarea.value))
+  body.append(textarea, element('p', 'confirm__hint', '保存するまで、デッキには残りません（1000 文字まで）'))
+  box.append(body)
+
+  const buttons = element('div', 'confirm__buttons')
+  buttons.append(button('閉じる', handlers.onCloseModal, true))
+  box.append(buttons)
+  layer.append(box)
+
+  layer.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') handlers.onCloseModal()
+  })
+  layer.addEventListener('click', (event) => {
+    if (event.target === layer) handlers.onCloseModal()
+  })
+  queueMicrotask(() => textarea.focus())
+
+  return layer
+}
+
+/**
+ * デッキを組むところ（#193、ADR-0028）。上に帯、下に 3 列（絞り込みとカードの詳細／カード一覧／
+ * デッキ）を並べ、画面の高さに収める。
  *
  * **不備があっても保存できる**（ADR-0021）。確かめた結果は読むためのもので、保存を止めない。
  *
  * 打ち込む欄には `KEEP_FOCUS` を付ける。描き直した後に、打っていた人の手を戻すのは `index.ts` である。
  */
 export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
-  const node = element('section', 'builder')
+  const node = element('div', 'deckbuild')
+  node.append(editorTopbarElement(view, handlers))
 
-  const head = element('div', 'builder__head')
-  head.append(button('デッキの一覧に戻る', handlers.onBack))
-  const name = document.createElement('input')
-  name.className = 'builder__deck-name'
-  name.type = 'text'
-  name.maxLength = DECK_NAME_LIMIT
-  name.placeholder = 'デッキの名前'
-  name.value = view.name
-  name.dataset[KEEP_FOCUS] = 'デッキの名前'
-  name.addEventListener('input', () => handlers.onName(name.value))
-  name.addEventListener('change', handlers.onEdited)
-  head.append(name)
-  const save = button('保存する', handlers.onSave)
-  save.toggleAttribute('disabled', !view.savable)
-  head.append(save)
-  // 保存してあるデッキだけ共有できる（ADR-0022）。まだ無い識別子は渡せない。
-  if (view.canShare) head.append(button('共有する', handlers.onShare))
-  if (view.unsaved) head.append(element('span', 'builder__unsaved', '保存していない変更があります'))
-  node.append(head)
+  const columns = element('div', 'columns')
 
-  const description = document.createElement('textarea')
-  description.className = 'builder__description'
-  description.maxLength = DECK_DESCRIPTION_LIMIT
-  description.placeholder = '解説（無くてもかまいません）'
-  description.rows = 2
-  description.value = view.description
-  description.dataset[KEEP_FOCUS] = 'デッキの解説'
-  description.addEventListener('input', () => handlers.onDescription(description.value))
-  description.addEventListener('change', handlers.onEdited)
-  node.append(description)
+  // 左列：絞り込み（上）とカードの詳細（下）。
+  const left = element('div', 'column')
+  left.append(filterPanelElement(view, handlers))
+  const detailPanel = poolDetailPanelElement(view.pinned === undefined ? undefined : view.detail(view.pinned), view, handlers)
+  left.append(detailPanel)
 
-  node.append(rulesPicker(view.restrictions, view.rules, handlers))
-  node.append(checkElement(view.check))
-  if (view.refusal !== undefined) node.append(element('p', 'refusal', `行えませんでした: ${view.refusal}`))
-
-  const detail = element('div', 'builder__detail')
-  const showPinned = (): void => fillDetail(detail, view.pinned === undefined ? undefined : view.detail(view.pinned))
-  showPinned()
   // カーソルを合わせている間は仮に出し、離れたらクリックで決めたものに戻す。**描き直さない**——
   // 一覧を丸ごと作り直すほどのことではない。
-  const hover = (key: string): void => fillDetail(detail, view.detail(key))
+  const detailBody = detailPanel.querySelector<HTMLElement>('.detail')
+  const showPinned = (): void => {
+    if (detailBody !== null) fillPoolDetail(detailBody, view.pinned === undefined ? undefined : view.detail(view.pinned))
+  }
+  const hover = (key: string): void => {
+    if (detailBody !== null) fillPoolDetail(detailBody, view.detail(key))
+  }
 
-  const columns = element('div', 'builder__columns')
-
-  const poolPane = element('div', 'builder__pane')
-  poolPane.append(element('h2', 'builder__title', 'カードプール'))
-  poolPane.append(filterElement(view, handlers))
-  const poolList = element('div', 'builder__list')
-  poolList.dataset[KEEP_SCROLL] = 'プール'
-  if (view.pool.length === 0) poolList.append(element('p', 'builder__none', '条件に合うカードがありません'))
-  for (const row of view.pool) poolList.append(cardRow(row, row.key === view.pinned, handlers, hover))
+  // 中央列：カード一覧。
+  const center = element('div', 'column column--center')
+  const tools = element('div', 'panel__aside panel__aside--tools')
+  const count = element('span', '')
+  count.append(element('strong', '', String(view.pool.length)), ` / ${view.poolTotal} 種`)
+  tools.append(count, viewSwitchElement(view.poolView, handlers.onPoolView))
+  const poolPanel = sectionPanel('', 'カード一覧', tools)
+  const poolList = poolListElement(view, handlers, hover)
   poolList.addEventListener('mouseleave', showPinned)
-  poolPane.append(poolList)
+  poolPanel.append(poolList)
+  center.append(poolPanel)
 
-  const deckPane = element('div', 'builder__pane')
-  deckPane.append(element('h2', 'builder__title', `デッキ（${view.count} 枚）`))
-  const deckList = element('div', 'builder__list')
+  // 右列：デッキ。
+  const right = element('div', 'column')
+  const deckAside = element('span', 'panel__aside')
+  deckAside.append(element('strong', '', String(view.count)), ' 枚')
+  const deckPanel = sectionPanel('panel--deck', 'デッキ', deckAside)
+  const breakdown = element('div', 'breakdown')
+  breakdown.append(levelBreakdownElement(view.levelBars), typeCountsElement(view.typeCounts, view.starTotal))
+  deckPanel.append(breakdown)
+  deckPanel.append(checkElement(view.check))
+  if (view.refusal !== undefined) deckPanel.append(element('p', 'refusal', `行えませんでした: ${view.refusal}`))
+
+  const deckListHead = element('div', 'decklist__head')
+  deckListHead.append(element('span', '', 'カード'), element('span', '', '枚数'))
+  deckPanel.append(deckListHead)
+  const deckList = element('div', 'decklist rows')
   deckList.dataset[KEEP_SCROLL] = 'デッキ'
-  if (view.deck.length === 0) deckList.append(element('p', 'builder__none', 'まだカードが入っていません'))
+  if (view.deck.length === 0) deckList.append(element('p', 'pool__none', 'まだカードが入っていません'))
+  let unusableOrdinal = 0
   for (const row of view.deck) {
     if (row.kind === '使える') {
-      deckList.append(cardRow(row, row.key === view.pinned, handlers, hover))
-      continue
+      deckList.append(poolCardRowElement(row, row.key === view.pinned, handlers, hover, false))
+    } else {
+      unusableOrdinal += 1
+      deckList.append(unusableCardRowElement(row.key, row.count, unusableOrdinal, handlers))
     }
-    const unusable = element('div', 'builder__row builder__row--使えない')
-    unusable.append(
-      element('span', 'builder__name', '使えないカード'),
-      element('span', 'builder__count', String(row.count)),
-      button('抜く', () => handlers.onRemove(row.key)),
-    )
-    deckList.append(unusable)
   }
   deckList.addEventListener('mouseleave', showPinned)
-  deckPane.append(deckList)
+  deckPanel.append(deckList)
 
-  columns.append(poolPane, deckPane, detail)
+  const savebar = element('div', 'savebar')
+  // 一度も保存していない新しいデッキは、触っていなくても「保存しました」とは言えない。
+  const saveState = view.unsaved ? '保存していない変更があります' : view.saved ? '保存しました' : ''
+  savebar.append(element('span', `savebar__state${view.unsaved ? ' savebar__state--未保存' : ''}`, saveState))
+  const save = button('保存する', handlers.onSave, true)
+  save.toggleAttribute('disabled', !view.savable)
+  savebar.append(save)
+  deckPanel.append(savebar)
+  right.append(deckPanel)
+
+  columns.append(left, center, right)
   node.append(columns)
+
+  if (view.modal === '解説') node.append(descriptionModalElement(view, handlers))
 
   return node
 }
@@ -1342,7 +2110,7 @@ function visibilityPicker(chosen: ShareVisibility, onVisibility: (visibility: Sh
   const node = element('div', 'share__visibility')
   node.append(element('span', 'share__visibility-label', '公開の段階'))
   const options: readonly ShareVisibility[] = ['リンクを知っている人だけ', '一覧に載せる']
-  for (const option of options) node.append(chip(option, option === chosen, () => onVisibility(option)))
+  for (const option of options) node.append(chip([option], option === chosen, () => onVisibility(option)))
 
   return node
 }
@@ -1512,7 +2280,7 @@ export function recipeListElement(rows: readonly RecipeSummaryRow[], order: Reci
 
   const orderRow = element('div', 'share__order')
   const orders: readonly RecipeListOrder[] = ['新着', 'コピー数']
-  for (const option of orders) orderRow.append(chip(option, option === order, () => handlers.onOrder(option)))
+  for (const option of orders) orderRow.append(chip([option], option === order, () => handlers.onOrder(option)))
   node.append(orderRow)
 
   if (rows.length === 0) node.append(element('p', 'decks__none', 'まだ一覧に載っているレシピがありません'))

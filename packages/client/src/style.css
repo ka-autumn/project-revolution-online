@@ -13,6 +13,32 @@
   --own: #2f6fb0;
   --opponent: #b04a4a;
   color-scheme: light dark;
+
+  /*
+   * 対戦画面・デッキ構築の画面で共通の見た目の基準（ADR-0027・ADR-0028）。値を使うセレクタは
+   * これまでどおり画面ごとに書く（`.duel` の外枠の内側など）ので、ここに置いても他の画面
+   * （ロビー・名前を決める画面など）には効かない。揃える番が来た画面から、ここの変数を使う。
+   *
+   * `--accent-own` / `--accent-opponent` は上の `--own` / `--opponent` と役目が重なるが、
+   * こちらのほうが鮮やかな色を使うため、名前を分けて共存させている。
+   */
+  --ink: #3b2a12;
+  --ink-dim: #7d6848;
+  --heading: #8a4700;
+  --gold: #dca640;
+  --gold-bright: #f7c956;
+  --gold-deep: #b07a1c;
+  --accent-own: #2a6fd6;
+  --accent-own-soft: #e4eeff;
+  --accent-opponent: #d3364a;
+  --accent-opponent-soft: #ffe6e6;
+  --panel: rgb(255 252 244 / 0.88);
+  --panel-edge: #e2b252;
+  --radius: 12px;
+  --radius-small: 7px;
+  --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
+  /* 通常の `--gap` より広い、パネル間などの余白の基準値。 */
+  --gap-lg: 0.75rem;
 }
 
 body {
@@ -443,220 +469,11 @@ body {
   font-size: 0.85rem;
 }
 
-/* 絵文字だけのボタン（`render.ts` の `iconButton`）。文字のボタンと並んでも高さが揃うようにする。 */
-.icon-button {
-  min-width: 2.2em;
-  line-height: 1.2;
-}
-
-/* デッキを組むところ（#193）。左にプール、右にデッキ、その右に詳しく出すところを並べる。 */
-.builder {
-  margin: calc(var(--gap) * 2) 0;
-}
-
-.builder__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--gap);
-  margin-bottom: var(--gap);
-}
-
-.builder__deck-name {
-  flex: 1 1 12rem;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  font: inherit;
-}
-
-.builder__unsaved {
-  color: #b00;
-}
-
-.builder__description {
-  box-sizing: border-box;
-  width: 100%;
-  margin-bottom: var(--gap);
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  font: inherit;
-  resize: vertical;
-}
-
-/* 確かめた結果（ADR-0021）。満たしていなくても保存できるので、止める色ではなく読ませる色にする。 */
-.builder__check {
-  margin-bottom: var(--gap);
-  padding: var(--gap);
-  border: 1px solid var(--line);
-}
-
-.builder__check--満たしている {
-  border-color: var(--own);
-}
-
-.builder__check--満たしていない,
-.builder__check--確かめられない {
-  border-color: #b00;
-}
-
-.builder__check-line {
-  margin: 0;
-}
-
-.builder__check--確かめている .builder__check-line {
-  color: #666;
-}
-
-.builder__columns {
-  display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(12rem, 1fr);
-  align-items: start;
-  gap: calc(var(--gap) * 2);
-}
-
-/* 幅が足りなければ縦に積む。詳しく出すところは一番下になる。 */
-@media (max-width: 56rem) {
-  .builder__columns {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.builder__title {
-  margin: 0 0 var(--gap);
-  font-size: 1rem;
-}
-
 /*
- * 一覧はその中でスクロールする。**ページごとスクロールすると、入れたカードを右の一覧で確かめる
- * たびに、選んでいた場所を見失う。** 描き直しても位置は戻る（`render.ts` の `KEEP_SCROLL`）。
+ * 絞り込みの値 1 つ（レシピの一覧の並べ方など）。選んでいるものは、色だけでなく太さでも分かる
+ * ようにする（`aria-pressed` にも出る）。デッキ構築の画面と共有ダイアログの中では、それぞれの
+ * 規則（`.deckbuild .chip`・`.confirm .chip`）が上書きする。
  */
-.builder__list {
-  max-height: 65vh;
-  overflow-y: auto;
-  border: 1px solid var(--line);
-}
-
-.builder__none {
-  margin: var(--gap);
-  color: #666;
-}
-
-.builder__row {
-  display: flex;
-  align-items: center;
-  gap: var(--gap);
-  padding: 2px var(--gap);
-  border-bottom: 1px solid #ddd;
-}
-
-.builder__row--入っている {
-  background: #2f6fb014;
-}
-
-.builder__row--使えない {
-  color: #b00;
-}
-
-/* 名前は押すと詳しく出したままにする。ボタンだが、一覧として読めるように飾りを落とす。 */
-.builder__name {
-  /* 狭い列では要約から先に縮める。名前が読めないと、どのカードの行かが分からない。 */
-  flex: 1 0 8rem;
-  min-width: 0;
-  overflow: hidden;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.builder__name--選択中 {
-  font-weight: bold;
-  text-decoration: underline;
-}
-
-.builder__summary {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  color: #666;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.builder__count {
-  min-width: 1.5em;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-/* プールを絞り込むところ（#193）。一覧の真上に置く。 */
-.filter {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: var(--gap);
-}
-
-.filter__top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--gap);
-}
-
-.filter__search {
-  flex: 1 1 12rem;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  font: inherit;
-}
-
-.filter__count {
-  color: #666;
-  font-variant-numeric: tabular-nums;
-}
-
-.filter__row {
-  display: flex;
-  align-items: baseline;
-  gap: var(--gap);
-}
-
-/* 軸の名前の幅を揃える。一番長い「エキスパンション」に合わせる。 */
-.filter__label {
-  flex: 0 0 8em;
-  color: #666;
-}
-
-.filter__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.filter__range {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.filter__number {
-  width: 6em;
-  padding: 2px 6px;
-  border: 1px solid var(--line);
-  font: inherit;
-}
-
-.filter__more {
-  align-self: flex-start;
-}
-
-/* 絞り込みの値 1 つ。選んでいるものは、色だけでなく太さでも分かるようにする（`aria-pressed` にも出る）。 */
 .chip {
   padding: 1px 8px;
   border: 1px solid var(--line);
@@ -664,27 +481,23 @@ body {
   background: none;
 }
 
-.chip--選択中 {
+/* `.chip` を重ねて詳細度を上げる。下の `.choice__button` の `font: inherit` に太さを消されないため。 */
+.chip.chip--選択中 {
   border-color: var(--own);
   background: #2f6fb026;
   font-weight: bold;
 }
 
-/* 詳しく出すところ。一覧をスクロールしても見えたままにする。 */
-.builder__detail {
-  position: sticky;
-  top: var(--gap);
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: 3px;
+/* 絵文字だけのボタン（`render.ts` の `iconButton`）。文字のボタンと並んでも高さが揃うようにする。 */
+.icon-button {
+  min-width: 2.2em;
+  line-height: 1.2;
 }
 
-.builder__detail-none {
-  margin: 0;
-  color: #666;
-}
-
-/* 押す前に尋ねるところ（#193）。画面の上に重ね、答えるまで下を押せなくする。 */
+/*
+ * 押す前に尋ねるところ（ADR-0028）。デッキ構築の流れ（削除・変更を捨てる・共有）だけで使い、
+ * 対戦画面は使わない。画面の上に重ね、答えるまで下を押せなくする。
+ */
 .confirm {
   position: fixed;
   inset: 0;
@@ -693,20 +506,28 @@ body {
   align-items: center;
   justify-content: center;
   padding: var(--gap);
-  background: #0006;
+  background: rgb(40 20 0 / 0.45);
+  /*
+   * `root` の直下に重ねるので、`.deckbuild` の `color-scheme` は届かない。ここでも明るいテーマに
+   * 固定しないと、OS がダークのときに入力欄だけが暗く描かれる。
+   */
+  color-scheme: light;
 }
 
 .confirm__box {
   max-width: 28rem;
-  padding: calc(var(--gap) * 3);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  background: Canvas;
-  box-shadow: 0 2px 12px #0006;
+  padding: calc(var(--gap-lg) * 2);
+  border: 2px solid var(--gold);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #fffdf6, #fff4dc);
+  box-shadow: 0 16px 50px rgb(80 40 0 / 0.4);
+  color: var(--ink);
 }
 
 .confirm__message {
-  margin: 0 0 calc(var(--gap) * 2);
+  margin: 0 0 var(--gap-lg);
+  font-size: 0.95rem;
+  line-height: 1.5;
 }
 
 .confirm__buttons {
@@ -715,9 +536,77 @@ body {
   gap: var(--gap);
 }
 
-.confirm__danger {
+.confirm button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: linear-gradient(180deg, #fffefa, #fbefd4);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgb(150 80 0 / 0.25);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.confirm button:hover {
+  border-color: var(--gold-deep);
+  box-shadow: inset 0 1px 0 #fff, 0 0 10px rgb(247 201 86 / 0.8);
+}
+
+.confirm button:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 2px;
+}
+
+/* `.confirm button` より詳細度を上げないと、枠と文字の色がそちらに負けて赤が消える。 */
+.confirm .confirm__danger,
+.confirm .confirm__danger:hover {
+  border-color: #b00;
   color: #b00;
   font-weight: bold;
+}
+
+/*
+ * 共有ダイアログの「公開の段階」の値。選んでいるものは、色だけでなく太さと枠の太さでも分かる
+ * ようにする（`aria-pressed` にも出る）。`.deckbuild` の中の値と同じ見た目にする。
+ */
+.confirm .chip {
+  padding: 0.2rem 0.65rem;
+  border-color: var(--panel-edge);
+  border-radius: 999px;
+  background: #fffef9;
+  box-shadow: none;
+  font-size: 0.85rem;
+}
+
+.confirm .chip--選択中 {
+  border-color: var(--gold-deep);
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  box-shadow: inset 0 0 0 1px var(--gold-deep);
+  font-weight: 700;
+}
+
+/* 解説を読む・書く窓（ADR-0028）のような、見出し・本文を持つ重ねる窓で使う。 */
+.confirm__title {
+  margin: 0 0 var(--gap-lg);
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.confirm__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  margin-bottom: var(--gap-lg);
+}
+
+.confirm__hint {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+  text-align: right;
 }
 
 /* 表示名を決めるところ（ADR-0020）。決まるまでほかへは進めないので、ここだけが出る。 */
@@ -773,34 +662,25 @@ body {
 }
 
 /*
- * 対戦画面（ADR-0027）。
+ * 対戦画面（ADR-0027。デッキ構築を揃えるときに一部を改めた——ADR-0028）。
  *
  * ここから下は `.duel` の内側にだけ効く。`:root` の変数と共通のクラス（`.choice__button` や
- * `button` 要素そのもの）には触らず、新しい色・余白・部品の見た目は `.duel` に置いた変数と
- * クラスで作る——他の画面（ロビー・デッキ構築など）は今の見た目のまま残る。
+ * `button` 要素そのもの）には触らず、新しい色・余白・部品の見た目は `:root` に置いた見た目の
+ * 基準の変数と、ここに書くクラスで作る——他の画面（ロビー・名前を決める画面など）は今の見た目
+ * のまま残る。
  *
- * `--own` / `--opponent` は `:root` にも同じ名前がある。ここでわざと同じ名前で上書きする
- * ——対戦画面の中だけ新しい色に差し替わり、外へは漏れない（CSS のカスケードそのもの）。
+ * 見た目の基準の値そのものは `:root` にあるが、それを使うセレクタ（このファイルの下のほう）は
+ * これまでどおり `.duel` の内側にだけ書く。カードの面の規則だけは、デッキ構築の画面と共有する
+ * ため、`.duel` を付けずに書く（後述）。
  */
 .duel {
-  --ink: #3b2a12;
-  --ink-dim: #7d6848;
-  --heading: #8a4700;
-  --gold: #dca640;
-  --gold-bright: #f7c956;
-  --gold-deep: #b07a1c;
-  --own: #2a6fd6;
-  --own-soft: #e4eeff;
-  --opponent: #d3364a;
-  --opponent-soft: #ffe6e6;
-  --panel: rgb(255 252 244 / 0.88);
-  --panel-edge: #e2b252;
-  --radius: 12px;
-  --radius-small: 7px;
-  --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
   /* 右の列の幅。「選ぶ」一覧が覆わない範囲（`.picker` の `inset`）もここから決める。 */
   --right-column: 18rem;
-  --duel-gap: 0.75rem;
+  /*
+   * 共通のクラス（`.choice__button--選択中` など）が引く `--own` を、対戦画面の中だけ鮮やかな
+   * ほうの色に差し替える。`:root` の値はロビーなどが使っているので、そちらは変えない。
+   */
+  --own: var(--accent-own);
 
   /* 明るい・暗いの切り替えは持たない（ADR-0027）。将来プレイヤーごとに背景を差し替える余地の
      ために、色は変数から引く。 */
@@ -808,7 +688,7 @@ body {
   box-sizing: border-box;
   display: grid;
   grid-template-columns: 17rem minmax(0, 1fr) var(--right-column);
-  gap: var(--duel-gap);
+  gap: var(--gap-lg);
   /* `body` の余白（`:root` の `--gap`）を打ち消して、画面いっぱいに広げる。 */
   margin: calc(var(--gap) * -1);
   /*
@@ -819,7 +699,7 @@ body {
    */
   flex: 1 1 auto;
   min-height: 0;
-  padding: var(--duel-gap);
+  padding: var(--gap-lg);
   overflow: hidden;
   color: var(--ink);
   background:
@@ -874,7 +754,7 @@ body {
 }
 
 .duel button:focus-visible {
-  outline: 2px solid var(--own);
+  outline: 2px solid var(--accent-own);
   outline-offset: 2px;
 }
 
@@ -908,12 +788,12 @@ body {
 }
 
 .duel .player--相手 {
-  border-color: var(--opponent);
+  border-color: var(--accent-opponent);
   background: linear-gradient(120deg, #ffe0e0, rgb(255 252 244 / 0.92) 70%);
 }
 
 .duel .player--自分 {
-  border-color: var(--own);
+  border-color: var(--accent-own);
   background: linear-gradient(120deg, #dde9ff, rgb(255 252 244 / 0.92) 70%);
 }
 
@@ -949,11 +829,11 @@ body {
 }
 
 .duel .player--相手 .player__whose {
-  background: var(--opponent);
+  background: var(--accent-opponent);
 }
 
 .duel .player--自分 .player__whose {
-  background: var(--own);
+  background: var(--accent-own);
 }
 
 .duel .player__name {
@@ -1021,9 +901,9 @@ body {
 .duel .controls__priority {
   margin: 0 0.9rem 0.5rem;
   padding: 0.3rem 0.6rem;
-  border: 1px solid var(--own);
+  border: 1px solid var(--accent-own);
   border-radius: var(--radius-small);
-  background: linear-gradient(90deg, var(--own-soft), transparent);
+  background: linear-gradient(90deg, var(--accent-own-soft), transparent);
   font-weight: 700;
 }
 
@@ -1242,7 +1122,7 @@ body {
   gap: 0.6rem;
   justify-self: center;
   padding: 0.2rem 0.9rem;
-  border: 1px solid var(--opponent);
+  border: 1px solid var(--accent-opponent);
   border-radius: 999px;
   background: #fff3f3;
   font-weight: 700;
@@ -1256,7 +1136,7 @@ body {
   padding: 0 0.45rem;
   border-radius: 4px;
   color: #fff;
-  background: var(--opponent);
+  background: var(--accent-opponent);
   font-size: 0.75rem;
 }
 
@@ -1303,12 +1183,12 @@ body {
 }
 
 .duel .group--相手 {
-  border: 1.5px solid var(--opponent);
+  border: 1.5px solid var(--accent-opponent);
   background: rgb(255 225 225 / 0.85);
 }
 
 .duel .group--自分 {
-  border: 1.5px solid var(--own);
+  border: 1.5px solid var(--accent-own);
   background: rgb(222 234 255 / 0.85);
 }
 
@@ -1416,11 +1296,11 @@ body {
 }
 
 .duel .waiting__list .waiting--相手 {
-  border-left-color: var(--opponent);
+  border-left-color: var(--accent-opponent);
 }
 
 .duel .waiting__list .waiting--自分 {
-  border-left-color: var(--own);
+  border-left-color: var(--accent-own);
 }
 
 .duel .waiting__none {
@@ -1573,9 +1453,16 @@ body {
   --card-width: 4.6rem;
 }
 
-/* ---------- カード ---------- */
+/*
+ * ---------- カード ----------
+ *
+ * カードの面の規則は、対戦画面とデッキ構築の画面で共有する（ADR-0028）。`.duel` の内側に
+ * 閉じないよう、ここから下は素のクラス名（`.card` など）に書く。カードをどこに・どんな大きさで
+ * 置くか（`.duel .hand .card` のような文脈ごとの上書き）は、画面ごとの並べ方の一部なので、
+ * これまでどおりそれぞれの画面のセレクタに残す。
+ */
 
-.duel .card {
+.card {
   position: relative;
   flex: none;
   width: var(--card-width);
@@ -1587,31 +1474,31 @@ body {
  * 色ごとの値。種別の地・名前の地・SP の地・面の下側に使う。複数の色を持つカード・無色の
  * カードは、いまのカードプールに無いので考えない（ADR-0027）。
  */
-.duel .card--色-青 {
+.card--色-青 {
   --lv-light: #80ceec;
   --lv-deep: #009cd9;
   --on-color: #fff;
 }
 
-.duel .card--色-赤 {
+.card--色-赤 {
   --lv-light: #ff8080;
   --lv-deep: #ee1c1c;
   --on-color: #fff;
 }
 
-.duel .card--色-緑 {
+.card--色-緑 {
   --lv-light: #80d680;
   --lv-deep: #0a960a;
   --on-color: #fff;
 }
 
-.duel .card--色-黒 {
+.card--色-黒 {
   --lv-light: #808080;
   --lv-deep: #1c1c1c;
   --on-color: #fff;
 }
 
-.duel .card--色-白 {
+.card--色-白 {
   --lv-light: #ffffff;
   --lv-deep: #dddddd;
   --on-color: #111;
@@ -1621,7 +1508,7 @@ body {
  * 面の地は上が白、下がカードの色。白のカードは下を薄い灰色にする。将来はこの下にカードの
  * イラストを敷き、このグラデーションを半透明で重ねる想定。
  */
-.duel .card__face {
+.card__face {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1638,27 +1525,27 @@ body {
   line-height: 1.2;
 }
 
-.duel .card--色-白 .card__face {
+.card--色-白 .card__face {
   background: linear-gradient(180deg, #fff 18%, #ececec 62%, #cfcfcf 100%);
 }
 
 /* 支配者の色：面の外周 */
-.duel .card--自分 .card__face {
-  border-color: var(--own);
+.card--自分 .card__face {
+  border-color: var(--accent-own);
 }
 
-.duel .card--相手 .card__face {
-  border-color: var(--opponent);
+.card--相手 .card__face {
+  border-color: var(--accent-opponent);
 }
 
-.duel .card__top {
+.card__top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.2em;
 }
 
-.duel .card__level {
+.card__level {
   position: relative;
   display: grid;
   flex: none;
@@ -1668,25 +1555,25 @@ body {
   font-weight: 800;
 }
 
-.duel .card__level img {
+.card__level img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
-.duel .card__level span {
+.card__level span {
   position: relative;
   color: #fff;
   text-shadow: 0 0 2px #000, 0 0 2px #000;
 }
 
-.duel .card--色-白 .card__level span {
+.card--色-白 .card__level span {
   color: #000;
   text-shadow: 0 0 2px #fff;
 }
 
-.duel .card__kind {
+.card__kind {
   padding: 0.05em 0.4em;
   border-radius: 999px;
   color: var(--on-color);
@@ -1696,7 +1583,7 @@ body {
   white-space: nowrap;
 }
 
-.duel .card--色-白 .card__kind {
+.card--色-白 .card__kind {
   box-shadow: 0 0 0 1px #000 inset;
 }
 
@@ -1704,7 +1591,7 @@ body {
  * 名前の行：スター・名前・（詳細では）キーワード能力のアイコン。地の枠はアイコンまで含め、
  * アイコンは枠から上下にはみ出させる。
  */
-.duel .card__title {
+.card__title {
   display: flex;
   align-items: center;
   gap: 0.15em;
@@ -1716,16 +1603,16 @@ body {
   background: var(--lv-deep);
 }
 
-.duel .card--色-白 .card__title {
+.card--色-白 .card__title {
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35) inset;
 }
 
-.duel .card__title .star,
-.duel .card__title .keywords {
+.card__title .star,
+.card__title .keywords {
   margin-block: -0.35em;
 }
 
-.duel .star {
+.star {
   position: relative;
   display: grid;
   flex: none;
@@ -1735,7 +1622,7 @@ body {
   font-weight: 900;
 }
 
-.duel .star img {
+.star img {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1744,7 +1631,7 @@ body {
 }
 
 /* ダブルスター：★ の中に赤い数字 */
-.duel .star span {
+.star span {
   position: relative;
   top: 0.1em;
   color: #d0101a;
@@ -1753,18 +1640,18 @@ body {
   text-shadow: 0 0 2px #fff, 0 0 2px #fff;
 }
 
-.duel .keywords {
+.keywords {
   display: flex;
   flex: none;
   gap: 0.15em;
 }
 
 /* リバーススター：緑を基調にした逆さの ★ */
-.duel .star--reverse img {
+.star--reverse img {
   transform: rotate(180deg);
 }
 
-.duel .star--reverse span {
+.star--reverse span {
   top: -0.1em;
   color: #0b4a22;
 }
@@ -1773,7 +1660,7 @@ body {
  * キーワード能力のアイコン：半透明の宝石の球に字。夢＝サファイア、希望＝ルビー、幸運＝
  * トパーズ、苦労＝暗いエメラルド（ADR-0027。幸運・苦労はまだ実装していないキーワード）。
  */
-.duel .keyword {
+.keyword {
   display: grid;
   place-items: center;
   width: 2.1em;
@@ -1795,53 +1682,53 @@ body {
   text-shadow: 0 0 2px rgb(0 0 0 / 0.8), 0 1px 1px rgb(0 0 0 / 0.6);
 }
 
-.duel .keyword--夢 {
+.keyword--夢 {
   --gem-light: rgb(80 130 220 / 0.8);
   --gem: rgb(16 52 150 / 0.86);
   --gem-deep: rgb(4 16 70 / 0.95);
 }
 
-.duel .keyword--希望 {
+.keyword--希望 {
   --gem-light: rgb(220 80 100 / 0.8);
   --gem: rgb(150 8 32 / 0.86);
   --gem-deep: rgb(70 0 10 / 0.95);
 }
 
-.duel .keyword--幸運 {
+.keyword--幸運 {
   --gem-light: rgb(230 190 80 / 0.85);
   --gem: rgb(185 125 8 / 0.88);
   --gem-deep: rgb(95 55 0 / 0.95);
 }
 
-.duel .keyword--苦労 {
+.keyword--苦労 {
   --gem-light: rgb(80 170 115 / 0.7);
   --gem: rgb(8 100 55 / 0.85);
   --gem-deep: rgb(0 42 22 / 0.95);
 }
 
 /* 字の大きさだけ変える（球の大きさは揃える） */
-.duel .keyword span {
+.keyword span {
   font-size: 0.95em;
 }
 
-.duel .keyword--希望 span,
-.duel .keyword--幸運 span,
-.duel .keyword--苦労 span {
+.keyword--希望 span,
+.keyword--幸運 span,
+.keyword--苦労 span {
   font-size: 0.62em;
 }
 
 /* プランのカード（山札の上）だけ、夢・希望・幸運を名前の下の行に出す */
-.duel .card__keywords-row {
+.card__keywords-row {
   display: flex;
   justify-content: flex-end;
 }
 
-.duel .card__keywords-row .keyword {
+.card__keywords-row .keyword {
   width: 1.9em;
   height: 1.9em;
 }
 
-.duel .card__name {
+.card__name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -1851,7 +1738,7 @@ body {
   text-overflow: ellipsis;
 }
 
-.duel .card__bottom {
+.card__bottom {
   display: flex;
   flex-direction: column;
   gap: 0.15em;
@@ -1859,25 +1746,25 @@ body {
 }
 
 /* ムーブアイコン（ユニット）・トリガーアイコン（侵入のトラップ）は右側 */
-.duel .card__icons {
+.card__icons {
   display: flex;
   justify-content: flex-end;
   align-items: flex-end;
 }
 
-.duel .move-icon,
-.duel .trigger-icon {
+.move-icon,
+.trigger-icon {
   display: block;
   width: 2.2em;
   height: 2.2em;
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.4));
 }
 
-.duel .trigger-icon {
+.trigger-icon {
   margin-left: auto;
 }
 
-.duel .card__traits {
+.card__traits {
   overflow: hidden;
   color: var(--on-color);
   font-size: 0.8em;
@@ -1886,25 +1773,25 @@ body {
   text-shadow: 0 0 2px rgb(0 0 0 / 0.5);
 }
 
-.duel .card--色-白 .card__traits {
+.card--色-白 .card__traits {
   text-shadow: none;
 }
 
-.duel .card__stats {
+.card__stats {
   display: flex;
   justify-content: space-between;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
-.duel .card__bp {
+.card__bp {
   padding: 0 0.3em;
   border-radius: 3px;
   color: #fff;
   background: rgb(0 0 0 / 0.55);
 }
 
-.duel .card__sp {
+.card__sp {
   padding: 0 0.3em;
   border-radius: 3px;
   color: var(--on-color);
@@ -1912,7 +1799,7 @@ body {
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.6);
 }
 
-.duel .card--色-白 .card__sp {
+.card--色-白 .card__sp {
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
 }
 
@@ -1921,38 +1808,38 @@ body {
  * （SP はカードの色）と文字の色が重なっても読めるよう、文字に白い縁を付ける。色だけに頼らず、
  * 末尾に ▲▼ も添える（#91）。
  */
-.duel .card__bp--上,
-.duel .card__sp--上,
-.duel .card__bp--下,
-.duel .card__sp--下 {
+.card__bp--上,
+.card__sp--上,
+.card__bp--下,
+.card__sp--下 {
   text-shadow:
     1px 0 0 #fff, -1px 0 0 #fff, 0 1px 0 #fff, 0 -1px 0 #fff,
     1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff;
 }
 
-.duel .card__bp--上,
-.duel .card__sp--上 {
+.card__bp--上,
+.card__sp--上 {
   color: #d4101c;
 }
 
-.duel .card__bp--下,
-.duel .card__sp--下 {
+.card__bp--下,
+.card__sp--下 {
   color: #1553c8;
 }
 
-.duel .card__bp--上::after,
-.duel .card__sp--上::after {
+.card__bp--上::after,
+.card__sp--上::after {
   content: '▲';
   font-size: 0.7em;
 }
 
-.duel .card__bp--下::after,
-.duel .card__sp--下::after {
+.card__bp--下::after,
+.card__sp--下::after {
   content: '▼';
   font-size: 0.7em;
 }
 
-.duel .card__damage {
+.card__damage {
   position: absolute;
   inset: 45% 0 auto 0;
   padding: 0.05em 0;
@@ -1966,7 +1853,7 @@ body {
  * 自分・相手の札。バトルスペースのカードにだけ出す（ほかの置き場は、置き場の側で誰のものか
  * 分かる）。面の外に付けるので、フリーズで面が寝ても札は寝ない。
  */
-.duel .card__whose {
+.card__whose {
   position: absolute;
   top: -0.55em;
   right: -0.45em;
@@ -1983,34 +1870,35 @@ body {
   background: none;
 }
 
+/* バトルスペースのカードにだけ出す。盤面の並べ方は画面ごとの決めごとなので、ここだけ `.duel` に残す。 */
 .duel .square .card__whose {
   display: block;
 }
 
-.duel .card--自分 .card__whose {
-  background: var(--own);
+.card--自分 .card__whose {
+  background: var(--accent-own);
 }
 
-.duel .card--相手 .card__whose {
-  background: var(--opponent);
+.card--相手 .card__whose {
+  background: var(--accent-opponent);
 }
 
 /* フリーズしたカードは、寝た面の右肩に札を付け直す（面は枠の中心で 90 度回る） */
-.duel .card--フリーズ .card__whose {
+.card--フリーズ .card__whose {
   top: calc(var(--card-width) * 0.25 - 0.55em);
   right: calc(var(--card-width) * -0.25 - 0.45em);
 }
 
-.duel .card--フリーズ {
+.card--フリーズ {
   margin: 0 calc(var(--card-width) / 4);
 }
 
-.duel .card--フリーズ .card__face {
+.card--フリーズ .card__face {
   transform: rotate(90deg);
 }
 
 /* 裏面：金・橙の光条（実物の裏面の雰囲気。ロゴは使わない） */
-.duel .card--back .card__face {
+.card--back .card__face {
   border-color: #fff;
   background:
     radial-gradient(circle at 50% 46%, transparent 0 17%, rgb(176 110 20 / 0.9) 17.5% 21%, transparent 21.5%),
@@ -2020,7 +1908,7 @@ body {
 }
 
 /* 裏面の丸の中の R */
-.duel .card--back .card__face::after {
+.card--back .card__face::after {
   content: 'R';
   position: absolute;
   left: 50%;
@@ -2034,29 +1922,29 @@ body {
   transform: translate(-50%, -52%);
 }
 
-.duel .card--押せる {
+.card--押せる {
   cursor: pointer;
 }
 
-.duel .card--押せる .card__face {
+.card--押せる .card__face {
   outline: 3px solid #ff9d00;
   outline-offset: 1px;
   box-shadow: 0 0 12px 3px rgb(255 170 0 / 0.75);
 }
 
-.duel .card--選択中 .card__face {
+.card--選択中 .card__face {
   outline: 3px solid #e05a00;
   outline-offset: 2px;
   box-shadow: 0 0 18px 6px rgb(255 140 0 / 0.9);
 }
 
-.duel .card--詳細中:not(.card--選択中) .card__face {
+.card--詳細中:not(.card--選択中) .card__face {
   outline: 2px solid var(--heading);
   outline-offset: 2px;
 }
 
 /* 選べないカード（一覧で条件に合わないもの）。色だけに頼らず、読み上げでも断る。 */
-.duel .card--選べない {
+.card--選べない {
   opacity: 0.4;
 }
 
@@ -2116,11 +2004,11 @@ body {
 }
 
 .duel .log__item--自分::before {
-  background: var(--own);
+  background: var(--accent-own);
 }
 
 .duel .log__item--相手::before {
-  background: var(--opponent);
+  background: var(--accent-opponent);
 }
 
 .duel .log__whose {
@@ -2129,11 +2017,11 @@ body {
 }
 
 .duel .log__item--自分 .log__whose {
-  color: var(--own);
+  color: var(--accent-own);
 }
 
 .duel .log__item--相手 .log__whose {
-  color: var(--opponent);
+  color: var(--accent-opponent);
 }
 
 /* 誰のできごとかを色だけで区別させない。 */
@@ -2181,58 +2069,58 @@ body {
   font-size: 0.75rem;
 }
 
-.duel .card--拡大 {
+.card--拡大 {
   --card-width: 14.5rem;
   font-size: 0.8rem;
 }
 
-.duel .card--拡大 .card__face {
+.card--拡大 .card__face {
   border-width: 3px;
   border-radius: 10px;
   padding: 0.4rem;
   gap: 0.3rem;
 }
 
-.duel .card--拡大 .card__title {
+.card--拡大 .card__title {
   font-size: 1.05rem;
   padding: 0 0.3rem;
 }
 
-.duel .card--拡大 .card__name {
+.card--拡大 .card__name {
   padding: 0.15rem 0.2rem;
 }
 
-.duel .card--拡大 .card__kind {
+.card--拡大 .card__kind {
   font-size: 0.8rem;
 }
 
-.duel .card--拡大 .card__level {
+.card--拡大 .card__level {
   font-size: 0.95rem;
 }
 
-.duel .card--拡大 .card__stats {
+.card--拡大 .card__stats {
   font-size: 1.1rem;
 }
 
-.duel .card--拡大 .card__traits {
+.card--拡大 .card__traits {
   font-size: 0.75rem;
 }
 
-.duel .card--拡大 .move-icon,
-.duel .card--拡大 .trigger-icon {
+.card--拡大 .move-icon,
+.card--拡大 .trigger-icon {
   width: 2.4rem;
   height: 2.4rem;
 }
 
-.duel .card--拡大 .star {
+.card--拡大 .star {
   font-size: 1.3rem;
 }
 
-.duel .card--拡大 .keyword {
+.card--拡大 .keyword {
   font-size: 0.9rem;
 }
 
-.duel .card--拡大 .card__damage {
+.card--拡大 .card__damage {
   inset: 30% 0 auto 0;
   font-size: 0.9rem;
 }
@@ -2241,7 +2129,7 @@ body {
  * 詳細のテキストの枠。ムーブアイコン・トリガーアイコンは枠の中の右に置き、テキストが無くても
  * アイコンのぶんの高さを取る。
  */
-.duel .card__text {
+.card__text {
   display: flex;
   gap: 0.4rem;
   min-height: calc(2.4rem + 0.7rem);
@@ -2255,17 +2143,17 @@ body {
   line-height: 1.45;
 }
 
-.duel .card__text p {
+.card__text p {
   margin: 0 0 0.2rem;
 }
 
-.duel .card__lines {
+.card__lines {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
 }
 
-.duel .card__text .card__icons {
+.card__text .card__icons {
   flex: none;
   align-items: flex-start;
 }
@@ -2481,9 +2369,9 @@ body {
  */
 .duel .picker {
   position: fixed;
-  /* 右の列（`--right-column`）と、その両側の余白（`--duel-gap` が枠の gap と padding の
+  /* 右の列（`--right-column`）と、その両側の余白（`--gap-lg` が枠の gap と padding の
      両方に付く）ぶんを覆わない。 */
-  inset: 0 calc(var(--right-column) + var(--duel-gap) * 2) 0 0;
+  inset: 0 calc(var(--right-column) + var(--gap-lg) * 2) 0 0;
   z-index: 70;
   display: flex;
   align-items: center;
@@ -2552,4 +2440,1180 @@ body {
 .duel .picker__count {
   margin-right: auto;
   font-weight: 700;
+}
+
+/*
+ * デッキ構築（デッキを組むところ・デッキ一覧、ADR-0028）。
+ *
+ * ここから下は `.deckbuild` の内側にだけ効く。`:root` の見た目の基準の変数と、カードの面の
+ * 共有した規則（`.card` 系）は使うが、`:root` の変数と共通のクラス（`.choice__button` や
+ * `button` 要素そのもの）には触らない——他の画面（ロビー・名前を決める画面）は今の見た目のまま
+ * 残る。形式・禁止／制限リストの選択（`.lobby__rules` 系）は、ロビーと同じ構造を流用しつつ、
+ * ここだけ見た目を上書きする。
+ */
+.deckbuild {
+  --card-width: 7.4rem;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--gap-lg);
+  /*
+   * 高さは `.duel` と同じく `#board` の残りいっぱいに伸ばして決める。`100vh` で固定すると、
+   * `body` の余白と `.status` の 1 行のぶんだけ画面の高さを超えて、ページ全体がスクロールする。
+   */
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: calc(var(--gap) * -1);
+  padding: var(--gap-lg);
+  overflow: hidden;
+  color: var(--ink);
+  color-scheme: light;
+  background:
+    repeating-conic-gradient(from 8deg at 50% 38%, rgb(255 255 255 / 0.3) 0deg 3deg, transparent 3deg 9deg, rgb(255 255 255 / 0.14) 9deg 11deg, transparent 11deg 17deg),
+    radial-gradient(ellipse 65% 60% at 50% 38%, #fffdf6 0%, #ffeec2 30%, #fbc766 65%, #ee9a2c 100%);
+}
+
+.deckbuild *,
+.deckbuild *::before,
+.deckbuild *::after {
+  box-sizing: border-box;
+}
+
+.deckbuild .panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgb(150 80 0 / 0.22), inset 0 1px 0 #fff;
+}
+
+.deckbuild .panel__head {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  row-gap: 0.35rem;
+  min-height: 2.6rem;
+  padding: 0.45rem 0.9rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.45);
+}
+
+.deckbuild .panel__title {
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.deckbuild .panel__aside {
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.deckbuild .panel__aside strong {
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.deckbuild .panel__aside--tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.deckbuild .panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.7rem 0.9rem;
+}
+
+/* ---------- ボタン・入力欄（対戦画面の .duel button と同じ見た目） ---------- */
+
+.deckbuild button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: linear-gradient(180deg, #fffefa, #fbefd4);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgb(150 80 0 / 0.25);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.deckbuild button:hover {
+  border-color: var(--gold-deep);
+  box-shadow: inset 0 1px 0 #fff, 0 0 10px rgb(247 201 86 / 0.8);
+}
+
+.deckbuild button:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 2px;
+}
+
+.deckbuild button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.deckbuild .button--primary {
+  border-color: var(--gold-deep);
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  font-weight: 700;
+}
+
+.deckbuild .button--small {
+  padding: 0.25rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+.deckbuild input[type='text'],
+.deckbuild input[type='search'],
+.deckbuild input[type='number'],
+.deckbuild textarea,
+.deckbuild select {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: #fffef9;
+  font: inherit;
+}
+
+.deckbuild textarea {
+  resize: vertical;
+}
+
+.deckbuild input:focus-visible,
+.deckbuild textarea:focus-visible,
+.deckbuild select:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 1px;
+}
+
+/* 絵文字だけのボタン（`.icon-button`）。ここだけ見た目を整える。 */
+.deckbuild .icon-button {
+  min-width: 2.2rem;
+  padding: 0.3rem 0.45rem;
+}
+
+/* ---------- 上の帯 ---------- */
+
+.deckbuild .topbar {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem;
+  row-gap: 0.4rem;
+  padding: 0.55rem 0.9rem;
+}
+
+.deckbuild .topbar__title {
+  flex: none;
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 0 #fff;
+}
+
+.deckbuild .topbar__sub {
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+}
+
+.deckbuild .topbar__divider {
+  flex: none;
+  width: 1px;
+  height: 1.8rem;
+  background: rgb(220 166 64 / 0.6);
+}
+
+.deckbuild .topbar__spacer {
+  flex: 1;
+}
+
+.deckbuild .deckname {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.deckbuild .deckname__text {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 1.15rem;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.deckbuild .deckname input {
+  width: 18rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+/* 形式・禁止／制限リストの選択。ロビーと同じ構造（`.lobby__rules`）を流用し、見た目だけ整える。 */
+.deckbuild .lobby__rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.deckbuild .lobby__rule {
+  flex: none;
+  gap: 0.35rem;
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.deckbuild .lobby__rule-select {
+  flex: none;
+  width: auto;
+  min-width: 7.5rem;
+  padding: 0.3rem 0.5rem;
+}
+
+/* ---------- 3 列 ---------- */
+
+.deckbuild .columns {
+  display: grid;
+  grid-template-columns: 21rem minmax(0, 1fr) 25rem;
+  gap: var(--gap-lg);
+  min-height: 0;
+}
+
+.deckbuild--list .columns {
+  grid-template-columns: 21rem minmax(0, 1fr);
+}
+
+.deckbuild .column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ---------- 左：絞り込み ---------- */
+
+.deckbuild .panel--filter {
+  flex: 1;
+}
+
+.deckbuild .panel--filter .panel__body {
+  overflow-y: auto;
+}
+
+/* 項目名と選択肢を同じ行に。項目名の幅は揃える（一番長い「移動方向」に合わせる）。 */
+.deckbuild .filter__row {
+  display: grid;
+  grid-template-columns: 4.6em minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.deckbuild .filter__label {
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.deckbuild .filter__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.deckbuild .filter__range {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.deckbuild .filter__range input {
+  width: 6.2em;
+}
+
+.deckbuild .filter__more {
+  align-self: stretch;
+  font-size: 0.85rem;
+}
+
+.deckbuild .fold {
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-small);
+  background: rgb(255 255 255 / 0.55);
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.45) inset;
+}
+
+.deckbuild .fold > summary {
+  display: grid;
+  grid-template-columns: 1em auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.3rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.deckbuild .fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.deckbuild .fold > summary::before {
+  content: '▸';
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+}
+
+.deckbuild .fold[open] > summary::before {
+  content: '▾';
+}
+
+.deckbuild .fold__picked {
+  overflow: hidden;
+  color: var(--heading);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.deckbuild .fold__picked--すべて {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
+.deckbuild .fold[open] .fold__picked {
+  visibility: hidden;
+}
+
+.deckbuild .fold__body {
+  margin-top: 0.45rem;
+}
+
+.deckbuild .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.2rem 0.65rem;
+  border-color: var(--panel-edge);
+  border-radius: 999px;
+  background: #fffef9;
+  box-shadow: none;
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+
+.deckbuild .chip--選択中 {
+  border-color: var(--gold-deep);
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  font-weight: 700;
+}
+
+.deckbuild .chip--すべて {
+  padding-inline: 0.8rem;
+}
+
+.deckbuild .chip__color {
+  width: 1.15em;
+  height: 1.15em;
+}
+
+.deckbuild .chip .star {
+  width: 1.5em;
+  height: 1.5em;
+  font-size: 0.85em;
+}
+
+.deckbuild .chip__move {
+  width: 1.6em;
+  height: 1.6em;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.3));
+}
+
+/* ---------- 左：カードの詳細（下へ畳める） ---------- */
+
+.deckbuild .panel--detail {
+  flex: none;
+  overflow: hidden;
+}
+
+.deckbuild .panel--detail-閉 .panel__head {
+  border-bottom: none;
+}
+
+/* 見出し（h2）の中に開閉のボタンを置き、見出しの文字の見た目はボタンにも引き継ぐ。 */
+.deckbuild .panel--detail .panel__title {
+  flex: 1;
+}
+
+.deckbuild .detail__toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  border: none;
+  color: inherit;
+  background: none;
+  box-shadow: none;
+}
+
+.deckbuild .detail__toggle:hover {
+  box-shadow: none;
+}
+
+.deckbuild .detail__chevron {
+  color: var(--ink-dim);
+  font-size: 0.9rem;
+}
+
+.deckbuild .detail {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.7rem;
+  height: calc(8rem * 1.5 + 1.2rem);
+  padding: 0.6rem 0.8rem;
+  overflow: hidden;
+  transition: height 0.24s ease, padding 0.24s ease, transform 0.24s ease, opacity 0.24s ease;
+}
+
+/* 畳むと中身は下へ沈み、パネルは見出しだけになる。開くときは下からせり上がる。 */
+.deckbuild .panel--detail-閉 .detail {
+  height: 0;
+  padding-block: 0;
+  transform: translateY(40%);
+  opacity: 0;
+  visibility: hidden;
+  transition-property: height, padding, transform, opacity, visibility;
+}
+
+.deckbuild .detail .card--拡大 {
+  --card-width: 8rem;
+  font-size: 0.6rem;
+}
+
+.deckbuild .detail .card--拡大 .card__face {
+  padding: 0.28rem;
+  gap: 0.2rem;
+  border-width: 2px;
+  border-radius: 8px;
+}
+
+.deckbuild .detail .card--拡大 .card__title {
+  font-size: 0.8rem;
+}
+
+.deckbuild .detail .card--拡大 .card__stats {
+  font-size: 0.8rem;
+}
+
+/* 面のテキスト欄はアイコン 1 つ分の高さに固定し、はみ出すぶんは省略する（右に全文がある）。 */
+.deckbuild .detail .card--拡大 .card__text {
+  height: 2.6rem;
+  min-height: 0;
+  max-height: none;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.55rem;
+  line-height: 1.35;
+}
+
+.deckbuild .detail .card--拡大 .card__lines {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.deckbuild .detail .card--拡大 .move-icon,
+.deckbuild .detail .card--拡大 .trigger-icon {
+  width: 2rem;
+  height: 2rem;
+}
+
+.deckbuild .detail__none {
+  grid-column: 1 / -1;
+  align-self: center;
+  margin: 0;
+  padding: 0 1rem;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.deckbuild .detail__info {
+  min-width: 0;
+  overflow-y: auto;
+  font-size: 0.78rem;
+}
+
+.deckbuild .detail__name {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-bottom: 0.3rem;
+  color: var(--heading);
+  font-size: 0.98rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.deckbuild .detail__name .star {
+  width: 1.3rem;
+  height: 1.3rem;
+  font-size: 0.7rem;
+}
+
+.deckbuild .detail__rows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.1rem 0.5rem;
+  margin: 0;
+}
+
+.deckbuild .detail__rows dt {
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.deckbuild .detail__rows dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.deckbuild .detail__text {
+  margin-top: 0.4rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgb(220 166 64 / 0.5);
+  line-height: 1.5;
+}
+
+.deckbuild .detail__text p {
+  margin: 0 0 0.2rem;
+}
+
+/* ---------- 真ん中：カードプール ---------- */
+
+.deckbuild .column--center .panel {
+  flex: 1;
+}
+
+.deckbuild .viewswitch {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-small);
+  overflow: hidden;
+}
+
+.deckbuild .viewswitch button {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+  background: #fffef9;
+}
+
+.deckbuild .viewswitch button + button {
+  border-left: 1px solid var(--panel-edge);
+}
+
+.deckbuild .viewswitch button[aria-pressed='true'] {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  font-weight: 700;
+}
+
+.deckbuild .pool {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.6rem 0.9rem 1rem;
+}
+
+.deckbuild .pool__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-width), 1fr));
+  gap: 0.9rem 0.8rem;
+  justify-items: center;
+}
+
+.deckbuild .pool__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.deckbuild .pool__item .card {
+  cursor: pointer;
+}
+
+.deckbuild .pool__item--入っている .card__face {
+  box-shadow: 0 0 0 2px var(--gold-bright), 0 2px 6px rgb(80 40 0 / 0.4);
+}
+
+.deckbuild .pool__none,
+.deckbuild .pool__more {
+  margin: 1rem 0 0;
+  color: var(--ink-dim);
+  text-align: center;
+}
+
+.deckbuild .rows {
+  border-radius: var(--radius-small);
+  background: #fffefb;
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset;
+}
+
+/*
+ * 1 行表示は、狭くなっても行の部品を隠さない。行に最小の幅を持たせ、それより狭ければ一覧ごと
+ * 横にスクロールさせる。−・枚数・＋が枠の外にはみ出すことはない（枠の中でスクロールする）。
+ */
+.deckbuild .pool .rows {
+  min-width: 30rem;
+}
+
+/* 1 種ぶんの増やす・減らす口。 */
+.deckbuild .counter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.deckbuild .counter button {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.deckbuild .counter__count {
+  min-width: 2.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  color: var(--ink-dim);
+  background: rgb(255 255 255 / 0.7);
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.deckbuild .counter__count--入っている {
+  color: #fff;
+  background: linear-gradient(180deg, #e59a1a, #b8650a);
+  box-shadow: none;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 0.35);
+}
+
+/* 1 行の形（プールの一覧表示・デッキの列で共通）。 */
+.deckbuild .cardrow {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.3);
+}
+
+.deckbuild .cardrow:last-child {
+  border-bottom: none;
+}
+
+.deckbuild .cardrow:hover,
+.deckbuild .cardrow--詳細中 {
+  background: rgb(247 201 86 / 0.18);
+}
+
+.deckbuild .cardrow .card__level {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.85rem;
+}
+
+.deckbuild .cardrow .card__kind {
+  flex: none;
+  min-width: 4.2rem;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.deckbuild .cardrow .star {
+  width: 1.4rem;
+  height: 1.4rem;
+  font-size: 0.75rem;
+}
+
+.deckbuild .cardrow__name {
+  flex: 1 1 5rem;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.deckbuild .cardrow__name:hover {
+  box-shadow: none;
+}
+
+.deckbuild .cardrow__meta {
+  flex: none;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.deckbuild .cardrow .counter button {
+  width: 1.6rem;
+  height: 1.6rem;
+  font-size: 0.95rem;
+}
+
+.deckbuild .cardrow .counter__count {
+  min-width: 1.9rem;
+}
+
+.deckbuild .cardrow--使えない,
+.deckbuild .cardrow--使えない .cardrow__name {
+  color: var(--accent-opponent);
+  cursor: default;
+}
+
+/* ---------- 右：デッキ ---------- */
+
+.deckbuild .panel--deck {
+  flex: 1;
+}
+
+.deckbuild .breakdown {
+  display: grid;
+  flex: none;
+  grid-template-columns: minmax(0, 1fr) 8.5rem;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem 0.2rem;
+}
+
+.deckbuild .levels {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0.4rem 0.5rem 0.3rem;
+  border-radius: var(--radius-small);
+  background: #fffef9;
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset;
+}
+
+.deckbuild .levels__caption {
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+}
+
+.deckbuild .levels__bars {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  align-items: end;
+  gap: 0.3rem;
+  height: 4.6rem;
+}
+
+.deckbuild .levels__bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 色ごとに積み上げる。下から COLORS の順（赤・黒・青・白・緑）。 */
+.deckbuild .levels__stack {
+  display: flex;
+  flex-direction: column-reverse;
+  width: 72%;
+  min-height: 2px;
+  overflow: hidden;
+  border-radius: 3px 3px 0 0;
+}
+
+.deckbuild .levels__seg {
+  flex-basis: 0;
+  background: var(--lv-deep);
+}
+
+.deckbuild .levels__seg + .levels__seg {
+  border-bottom: 1px solid rgb(255 255 255 / 0.7);
+}
+
+.deckbuild .levels__seg.card--色-白 {
+  background: #e8e8e8;
+  box-shadow: inset 0 0 0 1px #b5b5b5;
+}
+
+/* 無色は面の色を持たないので、黒と見分けられる灰色にする。読み上げと title には「無色」と出る。 */
+.deckbuild .levels__seg--無色 {
+  background: repeating-linear-gradient(135deg, #a8a8a8 0 3px, #c8c8c8 3px 6px);
+}
+
+.deckbuild .levels__axis {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  border-top: 1px solid rgb(125 104 72 / 0.4);
+  color: var(--ink-dim);
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.deckbuild .types {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-small);
+  background: #fffef9;
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset;
+  font-size: 0.78rem;
+  list-style: none;
+}
+
+.deckbuild .types li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.3rem;
+  padding: 0.1rem 0;
+}
+
+.deckbuild .types li span:last-child {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.deckbuild .types li.types__zero {
+  color: var(--ink-dim);
+}
+
+.deckbuild .types li.types__zero span:last-child {
+  font-weight: 400;
+}
+
+.deckbuild .types li.types__stars {
+  margin-top: 0.25rem;
+  padding-top: 0.3rem;
+  border-top: 1px dashed rgb(220 166 64 / 0.6);
+}
+
+.deckbuild .types li.types__stars > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.deckbuild .types .star {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.deckbuild .check {
+  flex: none;
+  margin: 0.4rem 0.9rem 0;
+  padding: 0.4rem 0.7rem;
+  border-left: 4px solid var(--ink-dim);
+  border-radius: var(--radius-small);
+  font-size: 0.85rem;
+}
+
+.deckbuild .check p {
+  margin: 0;
+}
+
+.deckbuild .check--満たしている {
+  border-left-color: var(--accent-own);
+  background: var(--accent-own-soft);
+}
+
+.deckbuild .check--満たしている p::before {
+  content: '✓ ';
+  color: var(--accent-own);
+  font-weight: 700;
+}
+
+.deckbuild .check--満たしていない,
+.deckbuild .check--確かめられない {
+  border-left-color: var(--accent-opponent);
+  background: var(--accent-opponent-soft);
+}
+
+.deckbuild .decklist__head {
+  display: flex;
+  flex: none;
+  justify-content: space-between;
+  margin: 0.55rem 0.9rem 0.25rem;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+}
+
+.deckbuild .decklist {
+  flex: 1;
+  min-height: 0;
+  margin: 0 0.9rem;
+  overflow-y: auto;
+}
+
+.deckbuild .savebar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  border-top: 1px solid rgb(220 166 64 / 0.45);
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: rgb(255 248 228 / 0.9);
+}
+
+.deckbuild .savebar__state {
+  flex: 1;
+  color: var(--ink-dim);
+  font-size: 0.82rem;
+}
+
+.deckbuild .savebar__state--未保存 {
+  color: var(--accent-opponent);
+  font-weight: 700;
+}
+
+.deckbuild .savebar__state--未保存::before {
+  content: '● ';
+}
+
+.deckbuild .savebar .button--primary {
+  min-width: 8rem;
+  font-size: 1.02rem;
+}
+
+/* ---------- デッキ一覧 ---------- */
+
+.deckbuild .decklist {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.8rem 0.9rem 1rem;
+}
+
+.deckbuild .decklist__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr));
+  gap: 0.8rem;
+}
+
+.deckbuild .deckcard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 0.55rem 0.8rem;
+  padding: 0.75rem;
+  border: 1px solid rgb(220 166 64 / 0.7);
+  border-radius: var(--radius-small);
+  background: #fffef9;
+  box-shadow: 0 2px 6px rgb(150 80 0 / 0.12);
+}
+
+.deckbuild .deckcard .card {
+  --card-width: 6rem;
+}
+
+.deckbuild .deckcard__face {
+  position: relative;
+}
+
+.deckbuild .deckcard__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.deckbuild .deckcard__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.deckbuild .deckcard__name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 1.1rem;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.deckbuild .deckcard__desc {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-size: 0.82rem;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.deckbuild .deckcard__count {
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.deckbuild .deckcard__count small {
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.deckbuild .colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.deckbuild .colors span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.deckbuild .colors img {
+  width: 1.05em;
+  height: 1.05em;
+}
+
+.deckbuild .deckcard__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.deckbuild .deckcard__actions button {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.deckbuild .deckcard__actions .icon-button {
+  flex: none;
+}
+
+.deckbuild .deckcard__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #b00;
+  font-size: 0.78rem;
+}
+
+.deckbuild .presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+}
+
+.deckbuild .preset {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem;
+  border: 1px solid rgb(220 166 64 / 0.6);
+  border-radius: var(--radius-small);
+  background: #fffef9;
+}
+
+.deckbuild .preset .card {
+  --card-width: 3rem;
+}
+
+.deckbuild .preset__name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+}
+
+/* ---------- ラベル ---------- */
+
+.deckbuild .taglist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.deckbuild .taglist--bar {
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 自動で付いたか選んだかで見た目を分けない。中身は先頭の絵文字（色の構成は色のアイコン）で表す。 */
+.deckbuild .tag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.1rem 0.6rem 0.1rem 0.45rem;
+  border-radius: 999px;
+  color: var(--heading);
+  background: linear-gradient(180deg, #fffaf0, #fcecc8);
+  box-shadow: 0 0 0 1px rgb(176 122 28 / 0.5) inset;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.deckbuild .tag__emoji {
+  font-size: 0.95em;
+  line-height: 1;
+}
+
+/* 色の構成のラベルの色のアイコン。ラベルと、デッキ一覧のラベルの絞り込みの両方で使う。 */
+.deckbuild .tag__color {
+  width: 1.1em;
+  height: 1.1em;
 }
