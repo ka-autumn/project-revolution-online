@@ -8,6 +8,11 @@
 //
 //     pnpm publish:verify --decks private/decks/src/index.ts
 //
+// 画面だけを変えたときは `--client-only` を付ける。サーバを運ばず、alias だけを張り替える
+// （`--decks` / `--host` / `--key` は要らない）。
+//
+//     pnpm publish:verify --client-only
+//
 // 画面側のプレビュー URL は、現在の HEAD の git SHA に対して Vercel（GitHub 連携）が
 // 作った Deployment を `gh` 経由で探す。プレビューがまだビルド中のことがあるため、
 // 見つかる・`success` になるまで待つ。
@@ -27,19 +32,23 @@ const POLL_INTERVAL_MS = 10_000
 const POLL_TIMEOUT_MS = 5 * 60_000
 
 function options(argv) {
+  const clientOnly = argv.includes('--client-only')
   const decks = readFlag(argv, 'decks')
   const host = readFlag(argv, 'host') ?? process.env.REVOLUTION_DEPLOY_HOST_VERIFY
   const key = readFlag(argv, 'key') ?? process.env.REVOLUTION_DEPLOY_KEY_VERIFY
   const domain = readFlag(argv, 'domain') ?? process.env.REVOLUTION_VERIFY_CLIENT_DOMAIN
 
   const missing = []
-  if (decks === undefined || decks === '') missing.push('--decks <モジュールのパス>')
-  if (host === undefined || host === '') missing.push('--host <ユーザ>@<ホスト>（または REVOLUTION_DEPLOY_HOST_VERIFY）')
-  if (key === undefined || key === '') missing.push('--key <秘密鍵>（または REVOLUTION_DEPLOY_KEY_VERIFY）')
+  if (!clientOnly) {
+    if (decks === undefined || decks === '') missing.push('--decks <モジュールのパス>')
+    if (host === undefined || host === '') missing.push('--host <ユーザ>@<ホスト>（または REVOLUTION_DEPLOY_HOST_VERIFY）')
+    if (key === undefined || key === '') missing.push('--key <秘密鍵>（または REVOLUTION_DEPLOY_KEY_VERIFY）')
+  }
   if (domain === undefined || domain === '') missing.push('--domain <ドメイン>（または REVOLUTION_VERIFY_CLIENT_DOMAIN）')
   if (missing.length > 0) throw new Error(`足りません:\n  ${missing.join('\n  ')}`)
 
   return {
+    clientOnly,
     decks,
     host,
     key,
@@ -120,10 +129,14 @@ async function waitForPreviewUrl(repo, sha) {
 }
 
 async function main() {
-  const { decks, host, key, domain, out, remote, unit } = options(process.argv.slice(2))
+  const { clientOnly, decks, host, key, domain, out, remote, unit } = options(process.argv.slice(2))
 
-  console.log('1/2 対戦サーバを検証環境へデプロイしています…')
-  await deployServer({ decks, host, key, out, remote, unit })
+  if (clientOnly) {
+    console.log('1/2 対戦サーバのデプロイは飛ばします（--client-only。検証環境のサーバは今のまま）')
+  } else {
+    console.log('1/2 対戦サーバを検証環境へデプロイしています…')
+    await deployServer({ decks, host, key, out, remote, unit })
+  }
 
   console.log('\n2/2 画面のエイリアスを張り替えています…')
   const repo = repoNameWithOwner()
