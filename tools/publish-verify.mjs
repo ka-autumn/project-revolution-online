@@ -125,7 +125,11 @@ async function waitForPreviewUrl(repo, sha) {
     await sleep(POLL_INTERVAL_MS)
   }
 
-  throw new Error(`画面のプレビューが ${POLL_TIMEOUT_MS / 1000} 秒待っても見つかりませんでした`)
+  throw new Error(
+    `画面のプレビューが ${POLL_TIMEOUT_MS / 1000} 秒待っても見つかりませんでした。` +
+      'このコミットで画面に関係する変更が無いと、Vercel はビルドを飛ばします（vercel.json の ignoreCommand）。' +
+      '画面を変えたコミットを checkout してから実行し直してください',
+  )
 }
 
 async function main() {
