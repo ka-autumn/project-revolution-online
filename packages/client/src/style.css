@@ -3428,6 +3428,9 @@ body {
 /* ---------- デッキ一覧 ---------- */
 
 .deckbuild .decks {
+  /* 旧い `.decks`（40rem に絞る）を打ち消す。絞ると 24rem の列が 2 つ入らず、縦 1 列になる。 */
+  max-width: none;
+  margin: 0;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
