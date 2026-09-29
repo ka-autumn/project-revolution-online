@@ -13,7 +13,13 @@
 //
 //     pnpm publish:verify --client-only
 //
-// 画面側のプレビュー URL は、現在の HEAD の git SHA に対して Vercel（GitHub 連携）が
+// `--client-only` のときだけ `--pr <番号>` で、その PR のヘッドの preview を張れる（手元で
+// checkout していないブランチの画面を確かめたいとき）。サーバも運ぶ通常のモードでは使えない
+// ——サーバは手元の作業ツリーからビルドするので、画面だけ別のコミットにすると食い違う。
+//
+//     pnpm publish:verify --client-only --pr 234
+//
+// 画面側のプレビュー URL は、対象のコミット（既定は現在の HEAD）の git SHA に対して Vercel（GitHub 連携）が
 // 作った Deployment を `gh` 経由で探す。プレビューがまだビルド中のことがあるため、
 // 見つかる・`success` になるまで待つ。
 //
@@ -33,6 +39,7 @@ const POLL_TIMEOUT_MS = 5 * 60_000
 
 function options(argv) {
   const clientOnly = argv.includes('--client-only')
+  const pr = readFlag(argv, 'pr')
   const decks = readFlag(argv, 'decks')
   const host = readFlag(argv, 'host') ?? process.env.REVOLUTION_DEPLOY_HOST_VERIFY
   const key = readFlag(argv, 'key') ?? process.env.REVOLUTION_DEPLOY_KEY_VERIFY
@@ -46,9 +53,12 @@ function options(argv) {
   }
   if (domain === undefined || domain === '') missing.push('--domain <ドメイン>（または REVOLUTION_VERIFY_CLIENT_DOMAIN）')
   if (missing.length > 0) throw new Error(`足りません:\n  ${missing.join('\n  ')}`)
+  if (pr !== undefined && !clientOnly) throw new Error('--pr は --client-only と一緒にだけ使えます（サーバは手元の作業ツリーから運ぶため）')
+  if (pr !== undefined && !/^\d+$/.test(pr)) throw new Error(`--pr には PR の番号を渡してください: ${pr}`)
 
   return {
     clientOnly,
+    pr,
     decks,
     host,
     key,
@@ -87,6 +97,10 @@ function vercel(args) {
 
 function currentSha() {
   return capture('git', ['rev-parse', 'HEAD'])
+}
+
+function prHeadSha(pr) {
+  return capture('gh', ['pr', 'view', pr, '--json', 'headRefOid', '-q', '.headRefOid'])
 }
 
 function repoNameWithOwner() {
@@ -133,7 +147,7 @@ async function waitForPreviewUrl(repo, sha) {
 }
 
 async function main() {
-  const { clientOnly, decks, host, key, domain, out, remote, unit } = options(process.argv.slice(2))
+  const { clientOnly, pr, decks, host, key, domain, out, remote, unit } = options(process.argv.slice(2))
 
   if (clientOnly) {
     console.log('1/2 対戦サーバのデプロイは飛ばします（--client-only。検証環境のサーバは今のまま）')
@@ -144,7 +158,7 @@ async function main() {
 
   console.log('\n2/2 画面のエイリアスを張り替えています…')
   const repo = repoNameWithOwner()
-  const sha = currentSha()
+  const sha = pr === undefined ? currentSha() : prHeadSha(pr)
   const previewUrl = await waitForPreviewUrl(repo, sha)
   console.log(`  ${previewUrl} → ${domain}`)
   vercel(['alias', 'set', previewUrl, domain])
