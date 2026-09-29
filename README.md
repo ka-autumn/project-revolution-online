@@ -183,6 +183,22 @@ Environment=STORE=/var/lib/revolution/revolution.sqlite
 pnpm publish:verify --decks private/decks/src/index.ts
 ```
 
+画面だけを変えたときは `--client-only` を付ける。サーバは運ばず、検証環境のサーバは今のまま、
+alias だけを張り替える（`--decks` / `--host` / `--key` は要らない）。サーバ側のプロトコルや挙動を
+変えたブランチでは付けないこと。
+
+```sh
+pnpm publish:verify --client-only
+```
+
+手元で checkout していないブランチの画面を確かめたいときは、`--client-only` に加えて `--pr <番号>` で
+その PR のヘッドの preview を張れる。サーバも運ぶ通常のモードでは使えない（サーバは手元の作業ツリー
+からビルドするため、画面だけ別のコミットにすると食い違う）。
+
+```sh
+pnpm publish:verify --client-only --pr 234
+```
+
 サーバ側の引数・環境変数は `deploy:server:verify` と共通。画面側の張り先は追加で1つ要る。
 
 | 環境変数 | 意味 |
