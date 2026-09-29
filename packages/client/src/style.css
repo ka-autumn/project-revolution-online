@@ -3427,17 +3427,14 @@ body {
 
 /* ---------- デッキ一覧 ---------- */
 
-.deckbuild .decks {
-  /* 旧い `.decks`（40rem に絞る）を打ち消す。絞ると 24rem の列が 2 つ入らず、縦 1 列になる。 */
-  max-width: none;
-  margin: 0;
+.deckbuild .decklist {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 0.8rem 0.9rem 1rem;
 }
 
-.deckbuild .decks__grid {
+.deckbuild .decklist__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr));
   gap: 0.8rem;
