@@ -31,6 +31,7 @@ import {
   hasUnsavedChanges,
   hasUnusableCards,
   levelBreakdownOf,
+  lobbyDecks,
   newDraft,
   ownedDeckRows,
   poolRows,
@@ -112,7 +113,7 @@ import {
   visibleCardViewsIn,
   zoneOf,
 } from './view-model.js'
-import type { Overlay } from './view-model.js'
+import type { Overlay, RoomTab } from './view-model.js'
 
 /**
  * クライアントの起動点。
@@ -304,6 +305,19 @@ interface Lobby {
   readonly cpuDeck: DeckId | undefined
   /** 作る部屋のルールとして選んでいるもの（ADR-0021）。デッキと同じ理由でここに持つ。 */
   readonly rules: ChosenRules
+  /** 使用するデッキのページ（0 から）。描き直しても動かないよう、ここに持つ。 */
+  readonly deckPage: number
+  /** 「…」のメニューを開いているデッキ。 */
+  readonly menu: DeckId | undefined
+  /** 対戦部屋一覧のタブ・探す文字・ページ。 */
+  readonly roomTab: RoomTab
+  readonly roomQuery: string
+  readonly roomPage: number
+  readonly onDeckPage: (page: number) => void
+  readonly onMenu: (deck: DeckId | undefined) => void
+  readonly onRoomTab: (tab: RoomTab) => void
+  readonly onRoomQuery: (query: string) => void
+  readonly onRoomPage: (page: number) => void
   readonly onName: (name: string) => void
   readonly onDeck: (deck: DeckId) => void
   readonly onCpuDeck: (deck: DeckId) => void
@@ -360,11 +374,12 @@ interface Typing {
 
 function typingIn(root: HTMLElement): Typing | undefined {
   const active = document.activeElement
-  if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) || !root.contains(active)) {
-    return undefined
-  }
+  if (!(active instanceof HTMLElement) || !root.contains(active)) return undefined
+
   const key = active.dataset[KEEP_FOCUS]
   if (key === undefined) return undefined
+  // 押して選ぶ行・「…」・ページ送りのように打ち込む欄でないものは、手を戻すだけにする。
+  if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)) return { key, start: null, end: null }
 
   // 数を打つ欄は、打っている位置を読めない（読むと投げるブラウザがある）。
   try {
@@ -593,13 +608,17 @@ function draw(
     }
   }
 
+  // デッキ構築の窓（確認・共有）は、ロビーのデッキの「…」からも開く（ADR-0029）ので、組むところが
+  // 開いていなくても、ロビーにいて組める立て方なら出す。
+  const buildingDialogs = stage.kind === 'ロビー' && connected && pool !== undefined && owned !== undefined
+
   // 尋ねている間は、組むところの上に重ねる。**ブラウザの確認ダイアログは使わない**（`confirmElement`）。
-  if (builderOpen && builder.confirming !== undefined) {
+  if (buildingDialogs && builder.confirming !== undefined) {
     root.append(confirmElement(confirmView(builder.confirming), building.confirm.onConfirm, building.confirm.onCancel))
   }
 
   // 共有するダイアログも、同じく画面の中に重ねる（ADR-0022）。
-  if (builderOpen && builder.sharing !== undefined && building.sharing !== undefined) {
+  if (buildingDialogs && builder.sharing !== undefined && building.sharing !== undefined) {
     const sharing = builder.sharing
     root.append(
       shareDialogElement(
@@ -618,17 +637,26 @@ function draw(
     const seatable = seatableDecks(session.ownedDecks, stage.presets)
     root.append(
       lobbyElement(
-        lobbyView(stage.rooms),
-        lobby.name,
-        seatable,
-        // 選んでいなければ、サーバが決めた既定を選んだ状態で出す。**どれを既定にするかを決めるのは
-        // サーバである**（ADR-0010）——前に選んだものが残っているかを見るのもそちらで、ここは
-        // もう無いデッキを選んだ状態にしないだけである。
-        seatedChoice(seatable, lobby.deck, stage.chosen),
-        // CPU の席に座らせるデッキも、選べるのは同じ棚である（#195）。
-        seatedChoice(seatable, lobby.cpuDeck, stage.cpuChosen),
-        stage.restrictions,
-        lobby.rules,
+        {
+          own: stage.own,
+          rooms: lobbyView(stage.rooms),
+          name: lobby.name,
+          decks: lobbyDecks(pool, owned, stage.presets),
+          // 選んでいなければ、サーバが決めた既定を選んだ状態で出す。どれを既定にするかを決めるのは
+          // サーバである（ADR-0010）——前に選んだものが残っているかを見るのもそちらで、ここは
+          // もう無いデッキを選んだ状態にしないだけである。
+          chosenDeck: seatedChoice(seatable, lobby.deck, stage.chosen),
+          // CPU の席に座らせるデッキも、選べるのは同じ棚である（#195）。
+          chosenCpuDeck: seatedChoice(seatable, lobby.cpuDeck, stage.cpuChosen),
+          restrictions: stage.restrictions,
+          rules: lobby.rules,
+          deckPage: lobby.deckPage,
+          menu: lobby.menu,
+          roomTab: lobby.roomTab,
+          roomQuery: lobby.roomQuery,
+          roomPage: lobby.roomPage,
+          waiting: builder.waiting.kind !== '無し',
+        },
         {
           onCreate: lobby.onCreate,
           onJoin: lobby.onJoin,
@@ -637,7 +665,23 @@ function draw(
           onCpuDeck: lobby.onCpuDeck,
           onFormat: lobby.onFormat,
           onRestriction: lobby.onRestriction,
+          onDeckPage: lobby.onDeckPage,
+          onMenu: lobby.onMenu,
+          onRoomTab: lobby.onRoomTab,
+          onRoomQuery: lobby.onRoomQuery,
+          onRoomPage: lobby.onRoomPage,
           ...(building.onBuild === undefined ? {} : { onBuild: building.onBuild }),
+          // 「…」のメニューは、デッキ一覧の各デッキの操作と同じもの（ADR-0029）。組めない立て方では出さない。
+          ...(building.onBuild === undefined
+            ? {}
+            : {
+                deckActions: {
+                  onOpen: building.list.onOpen,
+                  onDuplicate: building.list.onDuplicate,
+                  onShare: building.list.onShare,
+                  onDelete: building.list.onDelete,
+                },
+              }),
         },
         typing,
       ),
@@ -957,6 +1001,13 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    */
   let chosenFormat: DuelFormat | undefined
   let chosenRestriction: RestrictionChoice | undefined
+  // ロビーの見え方の状態（ADR-0029）。使用するデッキのページ、開いている「…」のメニュー、
+  // 対戦部屋一覧のタブ・探す文字・ページ。画面は丸ごと描き直されるので、ここに持つ。
+  let lobbyDeckPage = 0
+  let lobbyMenu: DeckId | undefined
+  let lobbyRoomTab: RoomTab = 'すべて'
+  let lobbyRoomQuery = ''
+  let lobbyRoomPage = 0
   // 打ち込みかけている表示名（ADR-0020）。尋ねられるたびに、いま付いている名前から始める。
   let nameDraft = ''
   // 押している最中（pointerdown から pointerup まで）か。押しているうちに描き直すと、押した要素が
@@ -1529,20 +1580,49 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     deck: chosenDeck,
     cpuDeck: chosenCpuDeck,
     rules: { format: chosenFormat, restriction: chosenRestriction },
+    deckPage: lobbyDeckPage,
+    menu: lobbyMenu,
+    roomTab: lobbyRoomTab,
+    roomQuery: lobbyRoomQuery,
+    roomPage: lobbyRoomPage,
+    onDeckPage: (page) => {
+      lobbyDeckPage = page
+      lobbyMenu = undefined
+      redraw()
+    },
+    onMenu: (deck) => {
+      lobbyMenu = deck
+      redraw()
+    },
+    onRoomTab: (tab) => {
+      lobbyRoomTab = tab
+      lobbyRoomPage = 0
+      redraw()
+    },
+    onRoomQuery: (query) => {
+      lobbyRoomQuery = query
+      lobbyRoomPage = 0
+      redraw()
+    },
+    onRoomPage: (page) => {
+      lobbyRoomPage = page
+      redraw()
+    },
     onName: (name) => {
       // 描き直さない。入力欄の値はブラウザが持っていて、覚えるのは描き直しに備えるためである。
       roomName = name
     },
     onDeck: (deck) => {
-      // 描き直さない。選んだものは `select` が持っている（`onName` と同じ）。
-      // 空の選択肢（`render.ts` の `deckPicker`）が選ばれたら、選んでいないことにする。
-      chosenDeck = deck === '' ? undefined : deck
+      // 押して選ぶ行（`render.ts` の `deckRowElement`）は、選んだ印を描き直して出す。
+      chosenDeck = deck
+      redraw()
     },
     onCpuDeck: (deck) => {
-      chosenCpuDeck = deck === '' ? undefined : deck
+      chosenCpuDeck = deck
+      redraw()
     },
     onFormat: (format) => {
-      // 描き直さない。選んだものは `select` が持っている（`onDeck` と同じ）。
+      // 描き直さない。選んだものは `select` が持っている（`onName` と同じ）。
       chosenFormat = format
     },
     onRestriction: (restriction) => {
@@ -1551,6 +1631,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     onCreate: (name, against) => {
       // 合言葉を決めるのはサーバなので、入る先はここで決められない（#175）。届いてから分かる。
       pendingRoom = undefined
+      lobbyMenu = undefined
       connection.send({
         kind: '部屋を作る',
         name,
@@ -1563,6 +1644,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
     onJoin: (code) => {
       pendingRoom = code
+      lobbyMenu = undefined
       connection.send({ kind: '部屋に入る', room: code, deck: chosenDeck })
     },
     onLeave: () => {

@@ -880,3 +880,61 @@ export function seatedChoice(
 
   return alive(standing) ? standing : undefined
 }
+
+/**
+ * ロビーの使用するデッキ・CPUが使用するデッキに並べる 1 つ（ADR-0029）。
+ *
+ * 顔・色・ラベルはデッキ一覧と同じもの（ADR-0028）だが、「色の構成」のラベルは出さない——すぐ横に
+ * 色のアイコンを出していて、同じことを 2 度言うことになるためである。
+ */
+export interface LobbyDeck {
+  readonly id: DeckId
+  readonly name: string
+  /** デッキの顔にするカードの面。`undefined` ならカードの裏面を出す。 */
+  readonly face: WireCardFace | undefined
+  /** 入っている色。色ごとのアイコンで並べる。数は出さない。 */
+  readonly colors: readonly DeckColor[]
+  readonly labels: readonly AutoDeckLabel[]
+  /**
+   * デッキ構築・複製・共有・削除ができるか。デッキを持てない立て方で並ぶ既製デッキは、中身が
+   * 届かず、組んでも残す場所が無い（ADR-0021）のでできない。
+   */
+  readonly manageable: boolean
+  /** 使えないカードが入っているか。入っていると、サーバは保存を断るので複製できない。 */
+  readonly hasUnusable: boolean
+}
+
+/**
+ * ロビーに並べるデッキ（ADR-0029）。並びは `seatableDecks` と同じで、選べるものは届いたものだけ
+ * である（ADR-0021）。
+ *
+ * 中身が届かないデッキ（組めない立て方で並ぶ既製デッキ。ロビーには名前しか届かない）は、
+ * 顔をカードの裏面にし、色・ラベルを出さない。
+ */
+export function lobbyDecks(
+  pool: readonly WirePoolCard[] | undefined,
+  owned: readonly WireOwnedDeck[] | undefined,
+  presets: readonly WireDeck[],
+): readonly LobbyDeck[] {
+  const nameOnly = (deck: WireDeck): LobbyDeck => ({
+    id: deck.id,
+    name: deck.name,
+    face: undefined,
+    colors: [],
+    labels: [],
+    manageable: false,
+    hasUnusable: false,
+  })
+  if (owned === undefined) return presets.map(nameOnly)
+  if (pool === undefined) return owned.map(nameOnly)
+
+  return ownedDeckRows(pool, owned).map((row) => ({
+    id: row.id,
+    name: row.name,
+    face: row.face,
+    colors: row.colorCounts.map((each) => each.color),
+    labels: row.labels.filter((label) => label.group !== '色の構成'),
+    manageable: true,
+    hasUnusable: row.hasUnusable,
+  }))
+}

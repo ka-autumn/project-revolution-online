@@ -44,6 +44,7 @@ import type {
   DeckEditorModal,
   DeckRow,
   LevelBar,
+  LobbyDeck,
   OwnedDeckRow,
   PoolRow,
   PoolView,
@@ -61,8 +62,10 @@ import type {
   FaceFields,
   ModifiedData,
   Overlay,
+  Paged,
   PhaseView,
   ResultView,
+  RoomTab,
   RoomView,
   SideView,
   SmashJudgmentView,
@@ -70,7 +73,17 @@ import type {
   TransitionView,
   ZoneView,
 } from './view-model.js'
-import { faceFieldsOf, keyOfPosition, primaryColorOf, printedSquareLabel, zoneOf } from './view-model.js'
+import {
+  DECKS_PER_PAGE,
+  faceFieldsOf,
+  keyOfPosition,
+  pagedOf,
+  primaryColorOf,
+  printedSquareLabel,
+  ROOM_TABS,
+  roomListView,
+  zoneOf,
+} from './view-model.js'
 
 /**
  * 画面に出す値（`view-model.ts`）を DOM にする。
@@ -711,6 +724,9 @@ export function actionsElement(
   return node
 }
 
+/** ロビーのデッキの「…」メニューで押せるもの（ADR-0029）。デッキ一覧の各デッキの操作と同じもの。 */
+export type LobbyDeckActions = Pick<DeckListHandlers, 'onOpen' | 'onDuplicate' | 'onShare' | 'onDelete'>
+
 /** ロビーで押せるもの（#175）。 */
 export interface LobbyHandlers {
   /** 部屋を作って入る。名前は空でもよい。 */
@@ -719,7 +735,7 @@ export interface LobbyHandlers {
   readonly onJoin: (code: RoomCode) => void
   /** 打ち込んだ名前が変わった。**画面は描き直されるので、覚えておくのは呼ぶ側である。** */
   readonly onName: (name: string) => void
-  /** 持ち込むデッキを選び直した（ADR-0021）。名前と同じく、覚えておくのは呼ぶ側である。 */
+  /** 使用するデッキを選び直した（ADR-0021）。名前と同じく、覚えておくのは呼ぶ側である。 */
   readonly onDeck: (deck: DeckId) => void
   /** CPU の席に座らせるデッキを選び直した（#195）。`onDeck` と同じく、覚えておくのは呼ぶ側である。 */
   readonly onCpuDeck: (deck: DeckId) => void
@@ -728,10 +744,19 @@ export interface LobbyHandlers {
   /** 作る部屋に当てる禁止／制限リストを選び直した（ADR-0021）。覚えておくのは呼ぶ側である。 */
   readonly onRestriction: (restriction: RestrictionChoice) => void
   /**
-   * デッキを組むところを開く（#193）。**組めない立て方では渡さない**——カードプールも自分のデッキも
+   * デッキ一覧を開く（#193、ADR-0029）。組めない立て方では渡さない——カードプールも自分のデッキも
    * 届かず、組んでも残す場所が無い（ADR-0021）。
    */
   readonly onBuild?: () => void
+  /** 「…」のメニューの操作（ADR-0029）。`onBuild` と同じ理由で、組めない立て方では渡さない。 */
+  readonly deckActions?: LobbyDeckActions
+  /** 使用するデッキのページを送った。 */
+  readonly onDeckPage: (page: number) => void
+  /** 「…」のメニューを開いた・閉じた。`undefined` は閉じる。 */
+  readonly onMenu: (deck: DeckId | undefined) => void
+  readonly onRoomTab: (tab: RoomTab) => void
+  readonly onRoomQuery: (query: string) => void
+  readonly onRoomPage: (page: number) => void
 }
 
 /**
@@ -757,8 +782,10 @@ function rulesPicker(
   restrictions: readonly WireRestrictionList[],
   chosen: ChosenRules,
   handlers: Pick<LobbyHandlers, 'onFormat' | 'onRestriction'>,
+  caption?: string,
 ): HTMLElement {
   const node = element('div', 'lobby__rules')
+  if (caption !== undefined) node.append(element('p', 'lobby__rules-caption', caption))
 
   const formatLabel = element('label', 'lobby__rule')
   formatLabel.append(element('span', 'lobby__rule-label', '形式'))
@@ -810,131 +837,560 @@ function rulesPicker(
   return node
 }
 
-/** 持ち込むデッキを選ぶところ（ADR-0021）。**選べるものは届いたものだけである。** */
-function deckPicker(
-  decks: readonly WireDeck[],
-  chosen: DeckId | undefined,
-  onDeck: (deck: DeckId) => void,
-  label = '持ち込むデッキ',
-  className = 'lobby__deck',
-): HTMLElement {
-  const node = element('label', className)
-  node.append(element('span', 'lobby__deck-label', label))
-
-  const select = document.createElement('select')
-  select.className = 'lobby__deck-select'
-  // **どれも選ばれていないなら、選ばれていないことを出す**（#194）。前に選んでいたデッキを消した
-  // 人がここへ来る（`seatedChoice`）。空の選択肢を置かないと、ブラウザが先頭を選んだ形にしてしまい、
-  // **選んだ覚えのないデッキが選ばれて見える。** サーバもこの席を断る（`server` の `room.ts` の
-  // `refusalOfDeck`）ので、出ているものと座れるものがずれない。
-  if (chosen === undefined) {
-    const empty = document.createElement('option')
-    empty.value = ''
-    empty.textContent = 'デッキを選んでください'
-    empty.selected = true
-    select.append(empty)
-  }
-  for (const deck of decks) {
-    const option = document.createElement('option')
-    option.value = deck.id
-    option.textContent = deck.name
-    option.selected = deck.id === chosen
-    select.append(option)
-  }
-  select.addEventListener('change', () => onDeck(select.value))
-  node.append(select)
-
-  return node
-}
-
 /** 部屋の名前として受け取る長さの上限（`server` の `room.ts` の `NAME_LIMIT` と同じ）。 */
 const NAME_LIMIT = 24
 
 /**
- * ロビー（#175）。開いている部屋を並べ、作る口と入る口を出す。
- *
- * **打つ前に相手と合言葉を決めておく必要が無い**のがここの値である。合言葉を決めるのはサーバ
- * で（ADR-0009、#175）、画面が出すのは名前と様子だけである。
- *
- * `name` は打ち込みかけの部屋の名前。**画面は届いたものが変わるたびに丸ごと描き直される**
- * （`index.ts` の `draw`）ので、打ち込みかけを消さないために、呼ぶ側が覚えて渡す。
+ * 押して選ぶデッキの、選んでいるものに付ける印（`KEEP_FOCUS`）。選ぶたびに描き直すので、選んだ行へ
+ * 手を戻したい。矢印で隣へ移った時は、手があった行と選ばれる行が違うが、選んだ行の印は 1 つだけなので、
+ * 手のあった行の印を選んだ行のものに替えてから選べば、選んだ行へ戻る。
  */
-export function lobbyElement(
-  views: readonly RoomView[],
-  name: string,
-  decks: readonly WireDeck[],
-  chosenDeck: DeckId | undefined,
-  chosenCpuDeck: DeckId | undefined,
-  restrictions: readonly WireRestrictionList[],
-  chosenRules: ChosenRules,
-  handlers: LobbyHandlers,
-  focused = false,
-): HTMLElement {
-  const node = element('section', 'lobby')
-  if (handlers.onBuild !== undefined) {
-    const building = element('div', 'lobby__build')
-    building.append(button('デッキを組む', handlers.onBuild))
-    node.append(building)
+const PICKED_DECK_KEY = 'デッキ-選択中'
+const PICKED_CPU_DECK_KEY = 'CPUのデッキ-選択中'
+
+/** 自分の表示名が届いていない間に、上の帯に出す名前（古いサーバは付けてこない）。 */
+const GUEST_NAME = 'ゲスト'
+
+/** ロビーの描き分けに要るもの（ADR-0029）。 */
+export interface LobbyView {
+  /** 自分の表示名。届いていなければ空。 */
+  readonly own: string
+  /** 対戦部屋一覧に並ぶ部屋（`lobbyView`）。タブ・探す文字・ページを当てる前。 */
+  readonly rooms: readonly RoomView[]
+  /** 打ち込みかけの部屋名。画面は丸ごと描き直されるので、呼ぶ側が覚えて渡す。 */
+  readonly name: string
+  readonly decks: readonly LobbyDeck[]
+  readonly chosenDeck: DeckId | undefined
+  readonly chosenCpuDeck: DeckId | undefined
+  readonly restrictions: readonly WireRestrictionList[]
+  readonly rules: ChosenRules
+  readonly deckPage: number
+  /** 「…」のメニューを開いているデッキ。 */
+  readonly menu: DeckId | undefined
+  readonly roomTab: RoomTab
+  readonly roomQuery: string
+  readonly roomPage: number
+  /** コピー・複製・削除の返事を待っているか。重ねて押させない——2 度押すとデッキが 2 つできる。 */
+  readonly waiting: boolean
+}
+
+/** 人型のシルエット。アイコンを選べるようにするのは別の Issue（#235）で、それまではこれを出す。 */
+function avatarElement(): HTMLElement {
+  const node = element('span', 'lobby__avatar')
+  const svg = svgElement('svg', { viewBox: '0 0 40 40', 'aria-hidden': 'true' })
+  svg.append(
+    svgElement('circle', { cx: '20', cy: '15', r: '7', fill: '#c9a36a' }),
+    svgElement('path', { d: 'M6 40c0-9 6-15 14-15s14 6 14 15z', fill: '#c9a36a' }),
+  )
+  node.append(svg)
+
+  return node
+}
+
+/** 上の帯（ADR-0029）。見出し・説明・自分の表示名。 */
+function lobbyTopbarElement(own: string): HTMLElement {
+  const bar = element('header', 'panel topbar')
+  const name = own === '' ? GUEST_NAME : own
+  const me = element('div', 'lobby__me')
+  me.setAttribute('aria-label', `名前：${name}`)
+  me.append(avatarElement(), element('span', 'lobby__me-name', name))
+  bar.append(
+    element('h1', 'topbar__title', '対戦ロビー'),
+    element('span', 'topbar__divider'),
+    element('span', 'topbar__sub', 'デッキを選んで、ほかのプレイヤーやCPUと対戦しましょう'),
+    element('span', 'topbar__spacer'),
+    me,
+  )
+
+  return bar
+}
+
+/** デッキの顔。カードの面か、面が無ければ裏面（ADR-0029）。読み上げにはデッキの名前があるので、隠す。 */
+function deckArtElement(deck: LobbyDeck, size: 'large' | 'thumb' | 'normal'): HTMLElement {
+  const node = element('span', `lobby__art${size === 'normal' ? '' : ` lobby__art--${size}`}`)
+  node.setAttribute('aria-hidden', 'true')
+  if (deck.face !== undefined) {
+    node.append(poolCardElement(deck.face))
+  } else {
+    const back = element('div', 'card card--back')
+    back.append(element('div', 'card__face'))
+    node.append(back)
   }
-  node.append(element('h2', 'lobby__title', '対戦を始める'))
 
-  // **デッキを選ぶところは、作る口と入る口の両方の上に置く。** どちらで座るかはここで決まる
-  // （ADR-0021）ので、どちらか一方に付けると、もう一方から選べないように見える。
-  if (decks.length > 0) node.append(deckPicker(decks, chosenDeck, handlers.onDeck))
+  return node
+}
 
-  // **ルールを選ぶところは、作る口の上にだけ置く。** ルールを決めるのは部屋を作る人で、入る人は
-  // 一覧に出ている部屋のルールを見て選ぶ（ADR-0021）。
-  node.append(rulesPicker(restrictions, chosenRules, handlers))
+/** 入っている色（ADR-0029）。色ごとのアイコンで並べ、数は出さない。 */
+function deckColorsElement(colors: readonly DeckColor[]): HTMLElement {
+  const node = element('span', 'lobby__colors')
+  node.setAttribute('role', 'img')
+  node.setAttribute('aria-label', `色：${colors.join('・')}`)
+  for (const color of colors) {
+    if (color === COLORLESS) {
+      // 無色にはレベルアイコンが無いので、名前で出す。
+      node.append(element('span', 'lobby__colorless', color))
+      continue
+    }
+    const icon = document.createElement('img')
+    icon.src = LEVEL_ICON_URL[color]
+    icon.alt = ''
+    node.append(icon)
+  }
 
-  const making = element('div', 'lobby__make')
+  return node
+}
+
+/** デッキのラベルと色。両方無ければ（中身が届かないデッキ）`undefined`。 */
+function deckMetaElement(deck: LobbyDeck): HTMLElement | undefined {
+  if (deck.labels.length === 0 && deck.colors.length === 0) return undefined
+
+  const node = element('div', 'lobby__deck-meta')
+  if (deck.labels.length > 0) node.append(labelListElement(deck.labels))
+  if (deck.colors.length > 0) node.append(deckColorsElement(deck.colors))
+
+  return node
+}
+
+/** ページ送り。1 ページに収まるなら出さない。 */
+function pagerElement(paged: Paged<unknown>, label: string, onPage: (page: number) => void): HTMLElement | undefined {
+  if (paged.pages <= 1) return undefined
+
+  const node = element('nav', 'lobby__pager')
+  node.setAttribute('aria-label', label)
+  const step = (name: string, text: string, page: number, disabled: boolean): HTMLElement => {
+    const each = button(text, () => onPage(page))
+    each.dataset[KEEP_FOCUS] = `${label}-${name}`
+    each.toggleAttribute('disabled', disabled)
+    return each
+  }
+  const previous = step('前', '‹', paged.page - 1, paged.page === 0)
+  previous.setAttribute('aria-label', '前のページ')
+  node.append(previous)
+  for (let page = 0; page < paged.pages; page += 1) {
+    const each = step(String(page), String(page + 1), page, false)
+    each.setAttribute('aria-label', `${page + 1} ページ`)
+    if (page === paged.page) each.setAttribute('aria-current', 'page')
+    node.append(each)
+  }
+  const next = step('次', '›', paged.page + 1, paged.page >= paged.pages - 1)
+  next.setAttribute('aria-label', '次のページ')
+  node.append(next)
+
+  return node
+}
+
+/** 「…」のメニュー。デッキ一覧の各デッキにある操作と同じもの（ADR-0029）。 */
+function deckMenuElement(deck: LobbyDeck, actions: LobbyDeckActions, waiting: boolean, handlers: LobbyHandlers, opensUp: boolean): HTMLElement {
+  const node = element('div', `lobby__menu${opensUp ? ' lobby__menu--up' : ''}`)
+  node.setAttribute('role', 'menu')
+  node.setAttribute('aria-label', `「${deck.name}」の操作`)
+  const item = (label: string, onPress: () => void, extraClass = ''): HTMLElement => {
+    const each = button(label, () => {
+      handlers.onMenu(undefined)
+      onPress()
+    })
+    each.className = `lobby__menu-item ${extraClass}`.trim()
+    each.setAttribute('role', 'menuitem')
+    return each
+  }
+  const duplicate = item('複製', () => actions.onDuplicate(deck.id))
+  duplicate.toggleAttribute('disabled', waiting || deck.hasUnusable)
+  // 押せない理由を出さないと、何が悪いのか分からない（デッキ一覧と同じ）。
+  if (deck.hasUnusable) duplicate.title = '使えなくなったカードが入っているので複製できません。デッキ構築で抜いてください'
+  node.append(
+    item('デッキ構築', () => actions.onOpen(deck.id)),
+    duplicate,
+    item('共有', () => actions.onShare(deck.id)),
+    element('hr', 'lobby__menu-rule'),
+  )
+  const remove = item('削除', () => actions.onDelete(deck.id, deck.name), 'lobby__menu-danger')
+  remove.toggleAttribute('disabled', waiting)
+  node.append(remove)
+
+  return node
+}
+
+/** 使用するデッキの 1 行。押して選ぶ（ADR-0029）。 */
+function deckRowElement(
+  deck: LobbyDeck,
+  index: number,
+  view: LobbyView,
+  handlers: LobbyHandlers,
+  tabbable: boolean,
+  siblings: readonly LobbyDeck[],
+): HTMLElement {
+  const picked = deck.id === view.chosenDeck
+  const row = element('div', `lobby__deckrow${picked ? ' lobby__deckrow--picked' : ''}`)
+
+  const radio = element('div', 'lobby__deck')
+  radio.setAttribute('role', 'radio')
+  radio.setAttribute('aria-checked', String(picked))
+  radio.setAttribute('aria-label', deck.name)
+  radio.tabIndex = tabbable ? 0 : -1
+  radio.dataset[KEEP_FOCUS] = picked ? PICKED_DECK_KEY : `デッキ-${deck.id}`
+  const choose = (id: DeckId): void => {
+    radio.dataset[KEEP_FOCUS] = PICKED_DECK_KEY
+    handlers.onDeck(id)
+  }
+  radio.addEventListener('click', () => choose(deck.id))
+  radio.addEventListener('keydown', (event) => {
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault()
+      choose(deck.id)
+      return
+    }
+    // ラジオボタンのまとまりと同じく、矢印で隣のデッキへ移って選ぶ。
+    const move = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 0
+    const to = move === 0 ? undefined : siblings[index + move]
+    if (to !== undefined) {
+      event.preventDefault()
+      choose(to.id)
+    }
+  })
+  const main = element('div', 'lobby__deck-main')
+  main.append(element('span', 'lobby__deck-name', deck.name))
+  const meta = deckMetaElement(deck)
+  if (meta !== undefined) main.append(meta)
+  radio.append(deckArtElement(deck, 'normal'), main)
+  row.append(radio)
+
+  if (picked) {
+    const badge = element('span', 'lobby__picked', '選択中')
+    badge.setAttribute('aria-hidden', 'true')
+    row.append(badge)
+  }
+  if (deck.manageable && handlers.deckActions !== undefined) {
+    const open = view.menu === deck.id
+    const more = button('…', () => handlers.onMenu(open ? undefined : deck.id))
+    more.classList.add('icon-button', 'lobby__deck-menu')
+    more.setAttribute('aria-label', `「${deck.name}」の操作`)
+    more.setAttribute('aria-haspopup', 'menu')
+    more.setAttribute('aria-expanded', String(open))
+    more.dataset[KEEP_FOCUS] = `デッキのメニュー-${deck.id}`
+    row.append(more)
+    // 下の方の行は、開いたメニューが一覧の下からはみ出してスクロールが出ないよう、上へ開く。
+    if (open) row.append(deckMenuElement(deck, handlers.deckActions, view.waiting, handlers, index >= 3))
+  }
+
+  return row
+}
+
+/** 左の列：対戦ルールと使用するデッキ（ADR-0029）。 */
+function lobbyDecksPanelElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement {
+  const aside = element('span', 'panel__aside', `${view.decks.length} 個`)
+  const panel = sectionPanel('lobby__decks-panel', '使用するデッキ', aside)
+  // ルールを選ぶところは、デッキと同じ列の上に置く。 選んだルールは、対人戦で作る部屋にも
+  // CPU戦にも当たる（ADR-0021）。入る人は一覧に出ている部屋のルールを見て選ぶ。
+  panel.append(rulesPicker(view.restrictions, view.rules, handlers, '対戦ルール'))
+
+  const list = element('div', 'lobby__decks')
+  list.setAttribute('role', 'radiogroup')
+  list.setAttribute('aria-label', '使用するデッキ')
+  list.dataset[KEEP_SCROLL] = 'ロビーのデッキ'
+  const paged = pagedOf(view.decks, view.deckPage, DECKS_PER_PAGE)
+  if (view.decks.length === 0) {
+    const none = handlers.onBuild === undefined ? 'デッキがありません' : 'デッキがありません。\n「デッキ一覧」から作れます'
+    list.append(element('p', 'lobby__none', none))
+  } else {
+    // どれも選ばれていないなら、選ばれていないことを出す（#194）。前に選んでいたデッキを消した
+    // 人がここへ来る（`seatedChoice`）。サーバもこの席を断る（`server` の `room.ts` の
+    // `refusalOfDeck`）ので、出ているものと座れるものがずれない。
+    if (view.chosenDeck === undefined) list.append(element('p', 'lobby__notice', 'デッキを選んでください'))
+    // 矢印で 1 つずつ移れるよう、選んだもの（無ければ先頭）だけを Tab で止まる場所にする。
+    const stop = paged.items.some((deck) => deck.id === view.chosenDeck) ? view.chosenDeck : paged.items[0]?.id
+    paged.items.forEach((deck, index) => {
+      list.append(deckRowElement(deck, index, view, handlers, deck.id === stop, paged.items))
+    })
+  }
+  panel.append(list)
+
+  const foot = element('div', 'lobby__foot')
+  foot.append(pagerElement(paged, 'デッキのページ', handlers.onDeckPage) ?? element('span', ''))
+  if (handlers.onBuild !== undefined) foot.append(button('デッキ一覧', handlers.onBuild))
+  panel.append(foot)
+
+  // 「…」を開いている間、外を押したら閉じる。
+  panel.addEventListener('click', (event) => {
+    const inside = event.target instanceof Element && event.target.closest('.lobby__menu, .lobby__deck-menu') !== null
+    if (view.menu !== undefined && !inside) handlers.onMenu(undefined)
+  })
+  panel.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && view.menu !== undefined) handlers.onMenu(undefined)
+  })
+
+  return panel
+}
+
+/** 対人戦・CPU戦の枠。見出しの帯の色だけが違う。 */
+function lobbyModeElement(kind: 'human' | 'cpu', title: string, sub: string): { readonly node: HTMLElement; readonly body: HTMLElement } {
+  const node = element('section', `panel lobby__mode lobby__mode--${kind}`)
+  const head = element('div', 'lobby__mode-head')
+  head.append(element('h2', 'lobby__mode-title', title), element('span', 'lobby__mode-sub', sub))
+  const body = element('div', 'lobby__mode-body')
+  node.append(head, body)
+
+  return { node, body }
+}
+
+/** 対人戦：部屋を作る（ADR-0029）。 */
+function lobbyHumanElement(view: LobbyView, handlers: LobbyHandlers): { readonly node: HTMLElement; readonly input: HTMLInputElement } {
+  const { node, body } = lobbyModeElement('human', '対人戦', 'ほかのプレイヤーと対戦する')
+  const label = element('label', 'lobby__label')
+  label.append(document.createTextNode('部屋名'))
   const input = document.createElement('input')
   input.className = 'lobby__name'
   input.type = 'text'
   input.maxLength = NAME_LIMIT
-  input.placeholder = '部屋の名前（無くてもかまいません）'
-  input.value = name
+  input.placeholder = '空欄可'
+  input.value = view.name
   input.addEventListener('input', () => handlers.onName(input.value))
-  making.append(input)
+  label.append(input)
+  body.append(label, element('p', 'lobby__note', '作成した部屋は対戦部屋一覧に出て、ほかのプレイヤーが参加できます。'), element('span', 'lobby__spacer'))
   // 押した時の入力欄の中身を読む。**渡された `name` ではない。** あれは描き直した時点の値で、
   // その後に打ち込まれた分が入っていない（打っている間は描き直さない）。
-  making.append(button('人と対戦する', () => handlers.onCreate(input.value, '人間')))
-  node.append(making)
+  const create = button('対戦部屋を作成する', () => handlers.onCreate(input.value, '人間'))
+  create.classList.add('lobby__go')
+  body.append(create)
 
-  // **CPU 戦は、部屋の名前を付けずに作る**（#195）。相手は 1 人（CPU）で、ロビーに並べて呼び込む
-  // 部屋ではない。代わりに、CPU の席のデッキを選ぶ。選べるのは自分のデッキだけで、持てない立て方では
-  // 既製デッキが並ぶ（`deck.ts` の `withOwnedDecks`）。
-  const againstCpu = element('div', 'lobby__make lobby__make--cpu')
-  if (decks.length > 0) {
-    againstCpu.append(deckPicker(decks, chosenCpuDeck, handlers.onCpuDeck, 'CPU のデッキ', 'lobby__deck lobby__deck--cpu'))
+  return { node, input }
+}
+
+/** CPU戦：CPUが使用するデッキをカルーセルで選ぶ（ADR-0029、#195）。 */
+function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement {
+  const { node, body } = lobbyModeElement('cpu', 'CPU戦', 'CPUと対戦して腕を試す')
+  const label = 'CPUが使用するデッキ'
+  const picker = element('div', 'lobby__picker')
+  picker.append(element('p', 'lobby__picker-label', label))
+
+  const decks = view.decks
+  if (decks.length === 0) {
+    const none = handlers.onBuild === undefined ? 'デッキがありません' : 'デッキがありません。\n「デッキ一覧」から作れます'
+    picker.append(element('p', 'lobby__none', none))
+  } else {
+    const at = decks.findIndex((deck) => deck.id === view.chosenCpuDeck)
+    const step = (by: number): void => {
+      // 選んでいなければ、どちらへ送っても先頭から始める。
+      const to = at < 0 ? 0 : (at + by + decks.length) % decks.length
+      const deck = decks[to]
+      if (deck !== undefined) handlers.onCpuDeck(deck.id)
+    }
+    const carousel = element('div', 'lobby__carousel')
+    const previous = button('‹', () => step(-1))
+    previous.classList.add('lobby__carousel-arrow')
+    previous.setAttribute('aria-label', `${label}：前のデッキ`)
+    previous.dataset[KEEP_FOCUS] = 'CPUのデッキ-前'
+    const next = button('›', () => step(1))
+    next.classList.add('lobby__carousel-arrow')
+    next.setAttribute('aria-label', `${label}：次のデッキ`)
+    next.dataset[KEEP_FOCUS] = 'CPUのデッキ-次'
+
+    const current = element('div', 'lobby__carousel-current')
+    current.setAttribute('aria-live', 'polite')
+    const chosen = at < 0 ? undefined : decks[at]
+    if (chosen === undefined) {
+      current.append(element('span', 'lobby__notice', 'デッキを選んでください'))
+    } else {
+      const main = element('div', 'lobby__carousel-body')
+      main.append(element('span', 'lobby__carousel-name', chosen.name))
+      const meta = deckMetaElement(chosen)
+      if (meta !== undefined) main.append(meta)
+      current.append(deckArtElement(chosen, 'large'), main)
+    }
+    carousel.append(previous, current, next)
+    picker.append(carousel)
+
+    const thumbs = element('div', 'lobby__thumbs')
+    thumbs.setAttribute('role', 'radiogroup')
+    thumbs.setAttribute('aria-label', label)
+    for (const deck of decks) {
+      const thumb = button('', () => {
+        thumb.dataset[KEEP_FOCUS] = PICKED_CPU_DECK_KEY
+        handlers.onCpuDeck(deck.id)
+      })
+      thumb.classList.add('lobby__thumb')
+      thumb.setAttribute('role', 'radio')
+      thumb.setAttribute('aria-checked', String(deck.id === view.chosenCpuDeck))
+      thumb.setAttribute('aria-label', deck.name)
+      thumb.title = deck.name
+      thumb.dataset[KEEP_FOCUS] = deck.id === view.chosenCpuDeck ? PICKED_CPU_DECK_KEY : `CPUのデッキ-${deck.id}`
+      thumb.append(deckArtElement(deck, 'thumb'))
+      thumbs.append(thumb)
+    }
+    picker.append(thumbs)
   }
-  againstCpu.append(button('CPU と対戦する', () => handlers.onCreate('', 'CPU')))
-  node.append(againstCpu)
+  body.append(picker, element('span', 'lobby__spacer'))
 
-  node.append(element('h2', 'lobby__title', 'いま開いている部屋'))
-  if (views.length === 0) {
-    node.append(element('p', 'lobby__none', 'まだ部屋がありません。作ると、ほかの人からも見えます'))
+  const start = button('CPUと対戦する', () => handlers.onCreate('', 'CPU'))
+  start.classList.add('lobby__go')
+  body.append(start)
+
+  return node
+}
+
+/** 部屋のプレイヤー 1 席。空いている席は「? 募集中」。名前が長ければ省略し、アイコンは縮めない。 */
+function seatElement(name: string | undefined): HTMLElement {
+  const node = element('span', 'lobby__seat')
+  if (name === undefined) {
+    node.setAttribute('aria-label', '空いている席')
+    node.append(element('span', 'lobby__seat-empty', '?'), element('span', 'lobby__seat-name', '募集中'))
+
+    return node
   }
+  const label = element('span', 'lobby__seat-name', name)
+  label.title = name
+  node.append(avatarElement(), label)
 
-  const list = element('div', 'lobby__rooms')
-  for (const view of views) {
-    const row = element('div', 'lobby__room')
-    if (view.name !== undefined) row.append(element('span', 'lobby__room-name', view.name))
-    // 誰がいるかを出す（ADR-0020）。名乗りが席に座れる合言葉だった頃は出せなかった（ADR-0009）。
-    if (view.occupants !== undefined) row.append(element('span', 'lobby__room-occupants', view.occupants))
-    // その部屋のルール（ADR-0021）。**入る前に分からなければならない**——選んだデッキが通るかは
-    // 部屋のルールで決まる。
-    if (view.rules !== undefined) row.append(element('span', 'lobby__room-rules', view.rules))
-    row.append(element('span', 'lobby__room-status', view.status))
+  return node
+}
+
+/** 対戦部屋一覧の表。 */
+function lobbyRoomsTableElement(rows: readonly RoomView[], handlers: LobbyHandlers): HTMLElement {
+  const table = document.createElement('table')
+  const head = document.createElement('tr')
+  for (const heading of ['部屋名', 'ステータス', 'ルール', 'プレイヤー']) {
+    const cell = document.createElement('th')
+    cell.textContent = heading
+    head.append(cell)
+  }
+  const action = document.createElement('th')
+  action.append(element('span', 'lobby__hidden', '操作'))
+  head.append(action)
+  const thead = document.createElement('thead')
+  thead.append(head)
+  table.append(thead)
+
+  const body = document.createElement('tbody')
+  for (const view of rows) {
+    const row = document.createElement('tr')
+    const cell = (className: string, ...children: (Node | string)[]): HTMLElement => {
+      const node = document.createElement('td')
+      node.className = className
+      node.append(...children)
+      row.append(node)
+      return node
+    }
+    const name = cell('lobby__room-name', view.name)
+    name.title = view.name
+    cell('lobby__room-status', element('span', `lobby__badge lobby__badge--${view.status}`, view.status))
+    cell('lobby__room-rules', view.rules ?? '')
+    const seated = view.seats.filter((seat) => seat !== undefined).length
+    const players = element('span', 'lobby__players')
+    players.append(seatElement(view.seats[0]), element('span', 'lobby__vs', 'VS'), seatElement(view.seats[1]))
+    cell('lobby__room-players', players, element('small', '', `${seated}/2`))
     // 入れない部屋には押す口を出さない。断られる手を画面に出さないのは盤面と同じである。
-    if (view.joinable) row.append(button('入る', () => handlers.onJoin(view.code)))
-    list.append(row)
+    // 対戦中の部屋の「観戦」は、観戦ができるようになってから出す（#238）。
+    const act = cell('lobby__room-action')
+    if (view.joinable) {
+      const join = button('参加', () => handlers.onJoin(view.code))
+      join.classList.add('button--small', 'lobby__join')
+      join.setAttribute('aria-label', `「${view.name}」に参加する`)
+      act.append(join)
+    }
+    body.append(row)
   }
-  node.append(list)
+  table.append(body)
 
-  // 描き直しで打ち込みかけの場所を見失わないように、打っていた人には返す。
+  return table
+}
+
+/** 真ん中の下：対戦部屋一覧（ADR-0029）。 */
+function lobbyRoomsPanelElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement {
+  const panel = sectionPanel('lobby__rooms-panel', '対戦部屋一覧')
+  const list = roomListView(view.rooms, view.roomTab, view.roomQuery, view.roomPage)
+
+  const tools = element('div', 'lobby__tools')
+  const tabs = element('div', 'lobby__tabs')
+  tabs.setAttribute('role', 'group')
+  tabs.setAttribute('aria-label', 'ステータスで絞り込む')
+  for (const tab of ROOM_TABS) {
+    const each = button(tab, () => handlers.onRoomTab(tab))
+    each.append(element('span', 'lobby__tab-count', String(list.counts[tab])))
+    each.setAttribute('aria-pressed', String(tab === view.roomTab))
+    each.dataset[KEEP_FOCUS] = `部屋のタブ-${tab}`
+    tabs.append(each)
+  }
+  const search = element('label', 'lobby__search')
+  const query = document.createElement('input')
+  query.type = 'search'
+  query.placeholder = '部屋名・プレイヤーで探す'
+  query.setAttribute('aria-label', '部屋を探す')
+  query.value = view.roomQuery
+  query.dataset[KEEP_FOCUS] = 'ロビーの部屋検索'
+  query.addEventListener('input', (event) => {
+    if (!(event instanceof InputEvent && event.isComposing)) handlers.onRoomQuery(query.value)
+  })
+  query.addEventListener('compositionend', () => handlers.onRoomQuery(query.value))
+  search.append(query)
+  tools.append(tabs, search)
+  panel.append(tools)
+
+  const rooms = element('div', 'lobby__rooms')
+  rooms.dataset[KEEP_SCROLL] = 'ロビーの部屋'
+  if (view.rooms.length === 0) {
+    rooms.append(element('p', 'lobby__none', 'まだ部屋がありません'))
+  } else if (list.matched === 0) {
+    rooms.append(element('p', 'lobby__none', '当てはまる部屋がありません'))
+  } else {
+    rooms.append(lobbyRoomsTableElement(list.paged.items, handlers))
+  }
+  panel.append(rooms)
+
+  const pager = pagerElement(list.paged, '部屋のページ', handlers.onRoomPage)
+  if (pager !== undefined) panel.append(pager)
+
+  return panel
+}
+
+/** 右の列：お知らせ。中身を用意して届ける仕組みは別の Issue（#239）で作る。それまでは枠だけ置く。 */
+function lobbyNewsPanelElement(): HTMLElement {
+  const panel = sectionPanel('lobby__news-panel', 'お知らせ')
+  const none = element('div', 'lobby__news-none')
+  const icon = element('span', 'lobby__news-icon', '📣')
+  icon.setAttribute('aria-hidden', 'true')
+  none.append(icon, element('span', '', 'お知らせはまだありません'))
+  panel.append(none)
+
+  return panel
+}
+
+/**
+ * ロビー（#175、ADR-0029）。上の帯の下を 3 列に分ける——使用するデッキ（左）、対人戦・CPU戦と
+ * 対戦部屋一覧（真ん中）、お知らせ（右）。
+ *
+ * 打つ前に相手と合言葉を決めておく必要が無いのがここの値である。合言葉を決めるのはサーバ
+ * で（ADR-0009、#175）、画面が出すのは名前と様子だけである。
+ *
+ * `view.name` は打ち込みかけの部屋の名前。画面は届いたものが変わるたびに丸ごと描き直される
+ * （`index.ts` の `draw`）ので、打ち込みかけを消さないために、呼ぶ側が覚えて渡す。
+ * `focused` なら、描き直した後に部屋名の欄へ手を戻す。
+ */
+export function lobbyElement(view: LobbyView, handlers: LobbyHandlers, focused = false): HTMLElement {
+  const node = element('section', 'lobby')
+  node.append(lobbyTopbarElement(view.own))
+
+  const columns = element('div', 'lobby__columns')
+  const left = element('div', 'lobby__column')
+  left.append(lobbyDecksPanelElement(view, handlers))
+
+  const center = element('div', 'lobby__column')
+  const human = lobbyHumanElement(view, handlers)
+  const modes = element('div', 'lobby__modes')
+  modes.append(human.node, lobbyCpuElement(view, handlers))
+  center.append(modes, lobbyRoomsPanelElement(view, handlers))
+
+  const right = element('div', 'lobby__column')
+  right.append(lobbyNewsPanelElement())
+
+  columns.append(left, center, right)
+  node.append(columns)
+
+  // 描き直しで打ち込みかけの場所を見失わないように、打っていた人には返す。付け終わってから手を置く。
+  // まだ文書に無い要素には置けない。
   if (focused) {
-    input.focus()
-    input.setSelectionRange(input.value.length, input.value.length)
+    queueMicrotask(() => {
+      human.input.focus()
+      human.input.setSelectionRange(human.input.value.length, human.input.value.length)
+    })
   }
 
   return node

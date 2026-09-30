@@ -19,6 +19,7 @@ import {
   filterOwnedDeckRows,
   hasUnsavedChanges,
   levelBreakdownOf,
+  lobbyDecks,
   newDraft,
   ownedDeckRows,
   poolRows,
@@ -828,5 +829,38 @@ describe('デッキ一覧（ADR-0028）', () => {
 
     expect(labels.filter((label) => label === '赤単')).toHaveLength(1)
     expect(labels.filter((label) => label === 'アグロ')).toHaveLength(1)
+  })
+})
+
+/** ADR-0029。ロビーに並べるデッキの顔・色・ラベル。 */
+describe('ロビーに並べるデッキ', () => {
+  const PRESETS = [{ id: '既製1', name: 'トライアルデッキ' }]
+
+  it('自分のデッキは、顔・色・「色の構成」を除いたラベルを持ち、操作できる', () => {
+    const [deck] = lobbyDecks(POOL, [OWNED], PRESETS)
+
+    expect(deck?.face?.name).toBe('テスト・赤のユニットLv1')
+    expect(deck?.colors).toEqual(['赤', '青'])
+    expect(deck?.labels.map((label) => label.group)).not.toContain('色の構成')
+    expect(deck?.manageable).toBe(true)
+  })
+
+  /** ロビーには名前しか届かない。カードの裏面を顔にし、色・ラベルは出さない。 */
+  it('デッキを持てない立て方の既製デッキは、名前だけで、操作できない', () => {
+    expect(lobbyDecks(undefined, undefined, PRESETS)).toEqual([
+      { id: '既製1', name: 'トライアルデッキ', face: undefined, colors: [], labels: [], manageable: false, hasUnusable: false },
+    ])
+  })
+
+  it('自分のデッキの並びは届いた順のまま', () => {
+    const decks = lobbyDecks(POOL, [OWNED, { ...OWNED, id: 'デッキ2', name: 'ふたつめ' }], PRESETS)
+
+    expect(decks.map((deck) => deck.id)).toEqual(['デッキ1', 'デッキ2'])
+  })
+
+  it('使えないカードが入っているデッキは、複製できないと分かる', () => {
+    const [deck] = lobbyDecks(POOL, [{ ...OWNED, cards: ['い', 'どこにもない'] }], PRESETS)
+
+    expect(deck?.hasUnusable).toBe(true)
   })
 })
