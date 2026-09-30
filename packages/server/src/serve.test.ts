@@ -298,6 +298,7 @@ describe('WebSocket で繋ぐ', () => {
       chosen: '既製1',
       cpuChosen: '既製1',
       restrictions,
+      own: 'あ',
     })
     await client.close()
   })

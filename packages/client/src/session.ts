@@ -77,6 +77,8 @@ export type Stage =
        * デッキと同じく、名前も識別子もサーバから届く値である。
        */
       readonly restrictions: readonly WireRestrictionList[]
+      /** 自分の表示名（ADR-0020、ADR-0029）。ロビーの上の帯に出す。古いサーバからは付いてこない。 */
+      readonly own: string
     }
   | {
       /** 部屋に入って、相手が来るのを待っている。 */
@@ -282,6 +284,8 @@ export function applyMessage(session: Session, message: ToClient, fallbackOwnNam
           // **届かなかったものを、在るものとして扱わない**（`view-model.ts` の `occupantsLine`）。
           // サーバが古ければ付いてこない。選べるリストが無いだけで、部屋は作れる。
           restrictions: (message.restrictions as typeof message.restrictions | undefined) ?? [],
+          // `席についた` の `own` と同じ補い方をする。
+          own: (message.own as string | undefined) ?? fallbackOwnName ?? '',
         },
         refusal: undefined,
       }

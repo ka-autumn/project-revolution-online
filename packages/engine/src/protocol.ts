@@ -660,6 +660,12 @@ export type ToClient =
        * ——リストではなく、リストを当てないことである（`RestrictionChoice`）。
        */
       readonly restrictions: readonly WireRestrictionList[]
+      /**
+       * 受け取った人自身の表示名（ADR-0020、ADR-0029）。ロビーの上の帯に出す。
+       *
+       * 名前を決めた後でなければロビーは届かない（ADR-0020）ので、必ず決まっている。
+       */
+      readonly own: string
     }
   /**
    * 部屋に入って、相手が来るのを待っている。
