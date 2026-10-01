@@ -34,7 +34,7 @@ import redLevelIcon from './assets/level-icons/赤.svg'
 import whiteLevelIcon from './assets/level-icons/白.svg'
 import reverseStarIcon from './assets/reverse-star.svg'
 import starIcon from './assets/star.svg'
-import { DECK_NAME_LIMIT, POOL_BATCH, printedDetailsOf } from './deck-builder.js'
+import { DECK_NAME_LIMIT, POOL_BATCH, isChoosable, printedDetailsOf } from './deck-builder.js'
 import type {
   AutoDeckLabel,
   CardDetail,
@@ -848,6 +848,9 @@ const NAME_LIMIT = 24
 const PICKED_DECK_KEY = 'デッキ-選択中'
 const PICKED_CPU_DECK_KEY = 'CPUのデッキ-選択中'
 
+/** 使えないカードが入っていて、選べないデッキに出す札と、読み上げに添える言葉（ADR-0029）。 */
+const UNUSABLE_LABEL = '使用不可'
+
 /** 自分の表示名が届いていない間に、上の帯に出す名前（古いサーバは付けてこない）。 */
 const GUEST_NAME = 'ゲスト'
 
@@ -876,7 +879,9 @@ export interface LobbyView {
 
 /** 人型のシルエット。アイコンを選べるようにするのは別の Issue（#235）で、それまではこれを出す。 */
 function avatarElement(): HTMLElement {
+  // 絵だけで意味を持たない。名前は隣の文字が伝えるので、読み上げからは隠す。
   const node = element('span', 'lobby__avatar')
+  node.setAttribute('aria-hidden', 'true')
   const svg = svgElement('svg', { viewBox: '0 0 40 40', 'aria-hidden': 'true' })
   svg.append(
     svgElement('circle', { cx: '20', cy: '15', r: '7', fill: '#c9a36a' }),
@@ -891,8 +896,8 @@ function avatarElement(): HTMLElement {
 function lobbyTopbarElement(own: string): HTMLElement {
   const bar = element('header', 'panel topbar')
   const name = own === '' ? GUEST_NAME : own
+  // 役割の無い要素には名前を付けられないので、見えている名前の文字で伝える。
   const me = element('div', 'lobby__me')
-  me.setAttribute('aria-label', `名前：${name}`)
   me.append(avatarElement(), element('span', 'lobby__me-name', name))
   bar.append(
     element('h1', 'topbar__title', '対戦ロビー'),
@@ -961,6 +966,8 @@ function pagerElement(paged: Paged<unknown>, label: string, onPage: (page: numbe
     const each = button(text, () => onPage(page))
     each.dataset[KEEP_FOCUS] = `${label}-${name}`
     each.toggleAttribute('disabled', disabled)
+    // 端のページへ移ると、押した「‹」「›」は押せなくなり、手を戻せない。今のページの番号へ移す。
+    if (disabled) each.dataset[KEEP_FOCUS_INSTEAD] = `${label}-${paged.page}`
     return each
   }
   const previous = step('前', '‹', paged.page - 1, paged.page === 0)
@@ -979,10 +986,22 @@ function pagerElement(paged: Paged<unknown>, label: string, onPage: (page: numbe
   return node
 }
 
-/** 「…」のメニュー。デッキ一覧の各デッキにある操作と同じもの（ADR-0029）。 */
+/** 「…」のボタンに付ける、手を戻す印（`KEEP_FOCUS`）。閉じた時、手は「…」へ戻る。 */
+const deckMenuKey = (id: DeckId): string => `デッキのメニュー-${id}`
+
+/** 開いたメニューの、最初の項目に付ける印。「…」を押して開いた時に、手をここへ移す。 */
+const deckMenuFirstKey = (id: DeckId): string => `デッキのメニュー-${id}-最初`
+
+/**
+ * 「…」のメニュー。デッキ一覧の各デッキにある操作と同じもの（ADR-0029）。
+ *
+ * `menu`／`menuitem` の役割は名乗らない。名乗るなら矢印キーで移れなければならないが、これは
+ * 「…」で開閉するボタンの並びである。中の項目は Tab でたどる。
+ * 「ラベル」は #229 が済むまで出さない（デッキの一覧にも、まだラベルを直す操作が無い）。
+ */
 function deckMenuElement(deck: LobbyDeck, actions: LobbyDeckActions, waiting: boolean, handlers: LobbyHandlers, opensUp: boolean): HTMLElement {
   const node = element('div', `lobby__menu${opensUp ? ' lobby__menu--up' : ''}`)
-  node.setAttribute('role', 'menu')
+  node.setAttribute('role', 'group')
   node.setAttribute('aria-label', `「${deck.name}」の操作`)
   const item = (label: string, onPress: () => void, extraClass = ''): HTMLElement => {
     const each = button(label, () => {
@@ -990,15 +1009,17 @@ function deckMenuElement(deck: LobbyDeck, actions: LobbyDeckActions, waiting: bo
       onPress()
     })
     each.className = `lobby__menu-item ${extraClass}`.trim()
-    each.setAttribute('role', 'menuitem')
     return each
   }
   const duplicate = item('複製', () => actions.onDuplicate(deck.id))
   duplicate.toggleAttribute('disabled', waiting || deck.hasUnusable)
   // 押せない理由を出さないと、何が悪いのか分からない（デッキ一覧と同じ）。
   if (deck.hasUnusable) duplicate.title = '使えなくなったカードが入っているので複製できません。デッキ構築で抜いてください'
+  // 使えないカードが入ったデッキでも「デッキ構築」は押せる（カードを抜ける）ので、最初の項目は常に押せる。
+  const open = item('デッキ構築', () => actions.onOpen(deck.id))
+  open.dataset[KEEP_FOCUS] = deckMenuFirstKey(deck.id)
   node.append(
-    item('デッキ構築', () => actions.onOpen(deck.id)),
+    open,
     duplicate,
     item('共有', () => actions.onShare(deck.id)),
     element('hr', 'lobby__menu-rule'),
@@ -1010,6 +1031,34 @@ function deckMenuElement(deck: LobbyDeck, actions: LobbyDeckActions, waiting: bo
   return node
 }
 
+/**
+ * ラジオボタンのまとまりで、矢印キーの向きにある、隣の選べるデッキ（ADR-0029）。選べないデッキは
+ * 飛ばす。端で止まり、一周はしない。矢印でなければ `undefined`。使用するデッキの行と、CPU戦の
+ * サムネイルで同じ動きにするため、ここに 1 つだけ置く。
+ */
+function neighborByArrow(event: KeyboardEvent, decks: readonly LobbyDeck[], index: number): LobbyDeck | undefined {
+  const move = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 0
+  if (move === 0) return undefined
+
+  for (let at = index + move; at >= 0 && at < decks.length; at += move) {
+    const deck = decks[at]
+    if (deck !== undefined && isChoosable(deck)) return deck
+  }
+
+  return undefined
+}
+
+/**
+ * 選べないデッキを示す、膜の上に重ねる 2 つ（ADR-0029）。斜線は、行（サムネイル）の左上の角から
+ * 右下の角へ引く。どちらも絵なので、読み上げからは隠す。
+ */
+function unusableSign(): HTMLElement {
+  const sign = element('span', 'lobby__sign')
+  sign.setAttribute('aria-hidden', 'true')
+
+  return sign
+}
+
 /** 使用するデッキの 1 行。押して選ぶ（ADR-0029）。 */
 function deckRowElement(
   deck: LobbyDeck,
@@ -1019,34 +1068,40 @@ function deckRowElement(
   tabbable: boolean,
   siblings: readonly LobbyDeck[],
 ): HTMLElement {
-  const picked = deck.id === view.chosenDeck
-  const row = element('div', `lobby__deckrow${picked ? ' lobby__deckrow--picked' : ''}`)
+  const choosable = isChoosable(deck)
+  const picked = choosable && deck.id === view.chosenDeck
+  const row = element('div', `lobby__deckrow${picked ? ' lobby__deckrow--picked' : ''}${choosable ? '' : ' lobby__deckrow--unusable'}`)
 
   const radio = element('div', 'lobby__deck')
   radio.setAttribute('role', 'radio')
   radio.setAttribute('aria-checked', String(picked))
   radio.setAttribute('aria-label', deck.name)
-  radio.tabIndex = tabbable ? 0 : -1
+  radio.tabIndex = tabbable && choosable ? 0 : -1
   radio.dataset[KEEP_FOCUS] = picked ? PICKED_DECK_KEY : `デッキ-${deck.id}`
   const choose = (id: DeckId): void => {
     radio.dataset[KEEP_FOCUS] = PICKED_DECK_KEY
     handlers.onDeck(id)
   }
-  radio.addEventListener('click', () => choose(deck.id))
-  radio.addEventListener('keydown', (event) => {
-    if (event.key === ' ' || event.key === 'Enter') {
-      event.preventDefault()
-      choose(deck.id)
-      return
-    }
-    // ラジオボタンのまとまりと同じく、矢印で隣のデッキへ移って選ぶ。
-    const move = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 0
-    const to = move === 0 ? undefined : siblings[index + move]
-    if (to !== undefined) {
-      event.preventDefault()
-      choose(to.id)
-    }
-  })
+  if (choosable) {
+    radio.addEventListener('click', () => choose(deck.id))
+    radio.addEventListener('keydown', (event) => {
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault()
+        choose(deck.id)
+        return
+      }
+      // ラジオボタンのまとまりと同じく、矢印で隣のデッキへ移って選ぶ。選べないデッキは飛ばす。
+      const to = neighborByArrow(event, siblings, index)
+      if (to !== undefined) {
+        event.preventDefault()
+        choose(to.id)
+      }
+    })
+  } else {
+    // 押せない行。読み上げでは、帯の「使用不可」と結び付けて伝える。
+    radio.setAttribute('aria-disabled', 'true')
+    radio.setAttribute('aria-describedby', `lobby-unusable-${deck.id}`)
+  }
   const main = element('div', 'lobby__deck-main')
   main.append(element('span', 'lobby__deck-name', deck.name))
   const meta = deckMetaElement(deck)
@@ -1059,14 +1114,24 @@ function deckRowElement(
     badge.setAttribute('aria-hidden', 'true')
     row.append(badge)
   }
+  if (!choosable) {
+    // 膜（CSS）の上に、斜線と、下に重ねる帯を置く。帯は行の高さを増やさない。
+    const band = element('span', 'lobby__unusable-band', UNUSABLE_LABEL)
+    band.id = `lobby-unusable-${deck.id}`
+    row.append(unusableSign(), band)
+  }
   if (deck.manageable && handlers.deckActions !== undefined) {
     const open = view.menu === deck.id
-    const more = button('…', () => handlers.onMenu(open ? undefined : deck.id))
+    const more = button('…', () => {
+      // 開く時は、手を開いたメニューの最初の項目へ移す。描き直したあと、いまの手の印と同じ印の要素へ
+      // 戻るので、押した「…」の印を替えておく。
+      if (!open) more.dataset[KEEP_FOCUS] = deckMenuFirstKey(deck.id)
+      handlers.onMenu(open ? undefined : deck.id)
+    })
     more.classList.add('icon-button', 'lobby__deck-menu')
     more.setAttribute('aria-label', `「${deck.name}」の操作`)
-    more.setAttribute('aria-haspopup', 'menu')
     more.setAttribute('aria-expanded', String(open))
-    more.dataset[KEEP_FOCUS] = `デッキのメニュー-${deck.id}`
+    more.dataset[KEEP_FOCUS] = deckMenuKey(deck.id)
     row.append(more)
     // 下の方の行は、開いたメニューが一覧の下からはみ出してスクロールが出ないよう、上へ開く。
     if (open) row.append(deckMenuElement(deck, handlers.deckActions, view.waiting, handlers, index >= 3))
@@ -1096,8 +1161,8 @@ function lobbyDecksPanelElement(view: LobbyView, handlers: LobbyHandlers): HTMLE
     // 人がここへ来る（`seatedChoice`）。サーバもこの席を断る（`server` の `room.ts` の
     // `refusalOfDeck`）ので、出ているものと座れるものがずれない。
     if (view.chosenDeck === undefined) list.append(element('p', 'lobby__notice', 'デッキを選んでください'))
-    // 矢印で 1 つずつ移れるよう、選んだもの（無ければ先頭）だけを Tab で止まる場所にする。
-    const stop = paged.items.some((deck) => deck.id === view.chosenDeck) ? view.chosenDeck : paged.items[0]?.id
+    // 矢印で 1 つずつ移れるよう、選んだもの（無ければ先頭の選べるもの）だけを Tab で止まる場所にする。
+    const stop = paged.items.some((deck) => deck.id === view.chosenDeck) ? view.chosenDeck : paged.items.find(isChoosable)?.id
     paged.items.forEach((deck, index) => {
       list.append(deckRowElement(deck, index, view, handlers, deck.id === stop, paged.items))
     })
@@ -1115,7 +1180,12 @@ function lobbyDecksPanelElement(view: LobbyView, handlers: LobbyHandlers): HTMLE
     if (view.menu !== undefined && !inside) handlers.onMenu(undefined)
   })
   panel.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && view.menu !== undefined) handlers.onMenu(undefined)
+    if (event.key !== 'Escape' || view.menu === undefined) return
+
+    // メニューの中の項目に手があれば、閉じたあとは「…」へ戻す（描き直しは、手のある要素の印へ戻る）。
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active.closest('.lobby__menu') !== null) active.dataset[KEEP_FOCUS] = deckMenuKey(view.menu)
+    handlers.onMenu(undefined)
   })
 
   return panel
@@ -1169,10 +1239,15 @@ function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement 
   } else {
     const at = decks.findIndex((deck) => deck.id === view.chosenCpuDeck)
     const step = (by: number): void => {
-      // 選んでいなければ、どちらへ送っても先頭から始める。
-      const to = at < 0 ? 0 : (at + by + decks.length) % decks.length
-      const deck = decks[to]
-      if (deck !== undefined) handlers.onCpuDeck(deck.id)
+      // 選んでいなければ、どちらへ送っても先頭から始める。選べないデッキは飛ばして、端からは一周する。
+      for (let count = 1; count <= decks.length; count += 1) {
+        const to = at < 0 ? count - 1 : (((at + by * count) % decks.length) + decks.length) % decks.length
+        const deck = decks[to]
+        if (deck !== undefined && isChoosable(deck)) {
+          handlers.onCpuDeck(deck.id)
+          return
+        }
+      }
     }
     const carousel = element('div', 'lobby__carousel')
     const previous = button('‹', () => step(-1))
@@ -1202,20 +1277,43 @@ function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement 
     const thumbs = element('div', 'lobby__thumbs')
     thumbs.setAttribute('role', 'radiogroup')
     thumbs.setAttribute('aria-label', label)
-    for (const deck of decks) {
+    // 描き直しても、列の横スクロールの位置は保つ。選び直した時に選んだものを見せるのは `index.ts`。
+    thumbs.dataset[KEEP_SCROLL] = 'ロビーのCPUのデッキ'
+    // 使用するデッキの行と同じく、Tab で止まるのは選んでいるもの（無ければ先頭の選べるもの）だけで、
+    // 矢印で隣へ移って選ぶ。
+    const stop = decks.some((deck) => deck.id === view.chosenCpuDeck) ? view.chosenCpuDeck : decks.find(isChoosable)?.id
+    decks.forEach((deck, index) => {
+      const choosable = isChoosable(deck)
+      const picked = choosable && deck.id === view.chosenCpuDeck
       const thumb = button('', () => {
+        if (!choosable) return
+
         thumb.dataset[KEEP_FOCUS] = PICKED_CPU_DECK_KEY
         handlers.onCpuDeck(deck.id)
       })
       thumb.classList.add('lobby__thumb')
+      thumb.classList.toggle('lobby__thumb--unusable', !choosable)
       thumb.setAttribute('role', 'radio')
-      thumb.setAttribute('aria-checked', String(deck.id === view.chosenCpuDeck))
-      thumb.setAttribute('aria-label', deck.name)
-      thumb.title = deck.name
-      thumb.dataset[KEEP_FOCUS] = deck.id === view.chosenCpuDeck ? PICKED_CPU_DECK_KEY : `CPUのデッキ-${deck.id}`
+      thumb.setAttribute('aria-checked', String(picked))
+      // 帯を出さない小さな顔なので、使えないことは読み上げと `title` に添える。
+      const named = choosable ? deck.name : `${deck.name}（${UNUSABLE_LABEL}）`
+      thumb.setAttribute('aria-label', named)
+      thumb.title = named
+      if (!choosable) thumb.setAttribute('aria-disabled', 'true')
+      thumb.tabIndex = choosable && deck.id === stop ? 0 : -1
+      thumb.dataset[KEEP_FOCUS] = picked ? PICKED_CPU_DECK_KEY : `CPUのデッキ-${deck.id}`
+      thumb.addEventListener('keydown', (event) => {
+        const to = neighborByArrow(event, decks, index)
+        if (to === undefined) return
+
+        event.preventDefault()
+        thumb.dataset[KEEP_FOCUS] = PICKED_CPU_DECK_KEY
+        handlers.onCpuDeck(to.id)
+      })
       thumb.append(deckArtElement(deck, 'thumb'))
+      if (!choosable) thumb.append(unusableSign())
       thumbs.append(thumb)
-    }
+    })
     picker.append(thumbs)
   }
   body.append(picker, element('span', 'lobby__spacer'))
@@ -1231,8 +1329,10 @@ function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement 
 function seatElement(name: string | undefined): HTMLElement {
   const node = element('span', 'lobby__seat')
   if (name === undefined) {
-    node.setAttribute('aria-label', '空いている席')
-    node.append(element('span', 'lobby__seat-empty', '?'), element('span', 'lobby__seat-name', '募集中'))
+    // 「?」は絵なので隠し、「募集中」とだけ読ませる。
+    const mark = element('span', 'lobby__seat-empty', '?')
+    mark.setAttribute('aria-hidden', 'true')
+    node.append(mark, element('span', 'lobby__seat-name', '募集中'))
 
     return node
   }
@@ -1725,12 +1825,21 @@ const DECK_DESCRIPTION_LIMIT = 1000
 export const KEEP_SCROLL = 'keepScroll'
 
 /**
- * 描き直しても、打ち込んでいた入力欄に手を戻す印（`index.ts` の `draw`）。
+ * 描き直しても、手を置いていた要素に手を戻す印（`index.ts` の `draw`）。
  *
- * 絞り込みの文字は 1 文字打つたびに一覧を作り直すので、戻さないと 1 文字ごとに打つ場所を見失う。
- * 値は画面の中で重ならない名前にする。
+ * 付けるのは入力欄だけではない。押して選ぶ行・「…」・タブ・ページ送り・カルーセルのように、押した
+ * あとに画面が作り直される要素にも付ける——戻さないと、押すたびに手が文書の先頭へ落ちる。入力欄なら、
+ * 打っていた位置も戻す。絞り込みの文字は 1 文字打つたびに一覧を作り直すので、戻さないと 1 文字ごとに
+ * 打つ場所を見失う。値は画面の中で重ならない名前にする。
  */
 export const KEEP_FOCUS = 'keepFocus'
+
+/**
+ * 手を戻したい要素が押せなくなっていた時の、代わりの戻し先の `KEEP_FOCUS` の値（`index.ts` の
+ * `restoreTyping`）。端のページへ移ると、押した「‹」「›」は押せなくなる。押せない要素には手を
+ * 置けないので、今のページの番号のボタンへ移す。
+ */
+export const KEEP_FOCUS_INSTEAD = 'keepFocusInstead'
 
 /** 絞り込みの値 1 つ。選んでいるものは、色だけでなく太さでも分かる（`chip--選択中`、`aria-pressed` にも出る）。 */
 function chip(content: readonly (string | Node)[], pressed: boolean, onPress: () => void): HTMLElement {

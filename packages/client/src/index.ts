@@ -19,6 +19,7 @@ import {
   autoLabelsOf,
   cardDetailOf,
   checkView,
+  choosableDecks,
   closedBuilder,
   confirmView,
   deckColorChoices,
@@ -38,6 +39,7 @@ import {
   POOL_BATCH,
   seatableDecks,
   seatedChoice,
+  sentChoice,
   startedEditing,
   starTotalOf,
   typeCountsOf,
@@ -69,6 +71,7 @@ import {
 } from './recipe.js'
 import {
   KEEP_FOCUS,
+  KEEP_FOCUS_INSTEAD,
   KEEP_SCROLL,
   actionsElement,
   choiceElement,
@@ -102,12 +105,15 @@ import type {
 import { applyMessage, connecting, roomOf } from './session.js'
 import type { Session } from './session.js'
 import {
+  DECKS_PER_PAGE,
   boardView,
   cutInViews,
   lobbyView,
   opponentName,
   overlayDurationMs,
+  pagedOf,
   priorityReason,
+  roomListView,
   showsOverlay,
   transitionViews,
   visibleCardViewsIn,
@@ -363,8 +369,11 @@ interface DeckBuilding {
 }
 
 /**
- * 描き直す前に打ち込んでいた入力欄の印（`render.ts` の `KEEP_FOCUS`）と、打っていた位置。
- * 打っていなければ `undefined`。
+ * 描き直す前に手を置いていた要素の印（`render.ts` の `KEEP_FOCUS`）と、打っていた位置。
+ *
+ * 手を置いていたのは入力欄とは限らない。押して選ぶ行・「…」・タブ・ページ送り・カルーセルも
+ * 描き直しで作り直されるので、同じ印で手を戻す。入力欄でなければ、位置は持たない（`null`）。
+ * 手が印の付いた要素に無ければ `undefined`。名前は、入力欄だけだった頃のまま残している。
  */
 interface Typing {
   readonly key: string
@@ -372,6 +381,7 @@ interface Typing {
   readonly end: number | null
 }
 
+/** 手のある要素の印。入力欄なら、打っていた位置も。 */
 function typingIn(root: HTMLElement): Typing | undefined {
   const active = document.activeElement
   if (!(active instanceof HTMLElement) || !root.contains(active)) return undefined
@@ -389,20 +399,32 @@ function typingIn(root: HTMLElement): Typing | undefined {
   }
 }
 
-/** 作り直した入力欄に、打っていた人の手を戻す。 */
+/**
+ * 作り直した要素に、手を戻す。入力欄なら、打っていた位置も戻す。
+ *
+ * 戻し先が押せなくなっていたら（端のページへ移ったあとの「‹」「›」）、その要素が持つ代わりの印
+ * （`KEEP_FOCUS_INSTEAD`）の要素へ移す。押せない要素には手を置けない。
+ */
 function restoreTyping(root: HTMLElement, typing: Typing | undefined): void {
   if (typing === undefined) return
 
-  for (const node of root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-keep-focus]')) {
-    if (node.dataset[KEEP_FOCUS] !== typing.key) continue
+  const find = (key: string): HTMLElement | undefined =>
+    [...root.querySelectorAll<HTMLElement>('[data-keep-focus]')].find((node) => node.dataset[KEEP_FOCUS] === key)
 
-    node.focus()
-    try {
-      if (typing.start !== null && typing.end !== null) node.setSelectionRange(typing.start, typing.end)
-    } catch {
-      // 位置を置けない欄（数を打つ欄）は、手を戻すだけにする。
+  let node = find(typing.key)
+  if (node instanceof HTMLButtonElement && node.disabled) {
+    const instead = node.dataset[KEEP_FOCUS_INSTEAD]
+    node = instead === undefined ? undefined : find(instead)
+  }
+  if (node === undefined) return
+
+  node.focus()
+  try {
+    if (typing.start !== null && typing.end !== null && (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement)) {
+      node.setSelectionRange(typing.start, typing.end)
     }
-    return
+  } catch {
+    // 位置を置けない欄（数を打つ欄）は、手を戻すだけにする。
   }
 }
 
@@ -437,6 +459,38 @@ function restoreScroll(root: HTMLElement, positions: ReadonlyMap<string, ScrollP
     node.scrollTop = at.top
     node.scrollLeft = at.left
   }
+}
+
+/**
+ * 選び直した CPU のデッキのサムネイルが見えるところまで、列を横に送る（ADR-0029）。見えていれば動かさない。
+ *
+ * 描き直したあと（`restoreScroll` で位置を戻したあと）に呼ぶ。先に送ると、戻した位置で上書きされる。
+ * ページ全体や縦の位置は動かさないので、`scrollIntoView` ではなく、列の `scrollLeft` だけを動かす。
+ */
+function revealPickedCpuDeck(root: HTMLElement): void {
+  const strip = root.querySelector<HTMLElement>('.lobby__thumbs')
+  const thumb = strip?.querySelector<HTMLElement>('[aria-checked="true"]')
+  if (strip === null || strip === undefined || thumb === null || thumb === undefined) return
+
+  const area = strip.getBoundingClientRect()
+  const at = thumb.getBoundingClientRect()
+  if (at.left < area.left) strip.scrollLeft -= area.left - at.left
+  else if (at.right > area.right) strip.scrollLeft += at.right - area.right
+}
+
+/**
+ * ロビーを出しているか。組むところ・レシピを開いている間や、繋がっていない間は出さない。
+ * `draw` が出すかどうかを決めるのと、ロビーの見え方の状態を整えるのが、同じ答えを見る。
+ */
+function lobbyIsShown(session: Session, link: Link, builder: Builder): boolean {
+  const stage = session.stage
+  const connected = link.kind === '繋がっている'
+  const loaded = session.pool !== undefined && session.ownedDecks !== undefined
+  const builderOpen = stage.kind === 'ロビー' && connected && builder.screen !== '閉じている' && loaded
+  // `/recipe/<鍵>` を直に開いたが、ログインを持たない立て方だった（ADR-0022）。
+  const viewingRecipeWithoutLogin = stage.kind === 'ロビー' && connected && builder.screen === 'レシピ' && session.pool === undefined
+
+  return stage.kind === 'ロビー' && connected && !builderOpen && !viewingRecipeWithoutLogin
 }
 
 /**
@@ -631,23 +685,27 @@ function draw(
   }
 
   // ロビーは繋がっている間だけ出す。作る・入るは送らないと何も起きないので、押せる形で出さない。
-  if (stage.kind === 'ロビー' && connected && !builderOpen && !viewingRecipeWithoutLogin) {
+  if (stage.kind === 'ロビー' && lobbyIsShown(session, link, builder)) {
     // **席に着くのに選ぶのは自分のデッキである**（ADR-0021、#194）。既製デッキはデッキを組む
     // ところでコピーしてから使う。**デッキを持てない立て方でだけ、既製デッキがここに並ぶ。**
     const seatable = seatableDecks(session.ownedDecks, stage.presets)
+    const shownDecks = lobbyDecks(pool, owned, stage.presets)
+    // 使えないカードが入ったデッキは選べない（ADR-0029）。選んだ状態にもしない——前に選んでいた
+    // デッキや、サーバが既定にしたデッキがそれなら、「デッキを選んでください」を出す。
+    const choosable = choosableDecks(seatable, shownDecks)
     root.append(
       lobbyElement(
         {
           own: stage.own,
           rooms: lobbyView(stage.rooms),
           name: lobby.name,
-          decks: lobbyDecks(pool, owned, stage.presets),
+          decks: shownDecks,
           // 選んでいなければ、サーバが決めた既定を選んだ状態で出す。どれを既定にするかを決めるのは
           // サーバである（ADR-0010）——前に選んだものが残っているかを見るのもそちらで、ここは
           // もう無いデッキを選んだ状態にしないだけである。
-          chosenDeck: seatedChoice(seatable, lobby.deck, stage.chosen),
+          chosenDeck: seatedChoice(choosable, lobby.deck, stage.chosen),
           // CPU の席に座らせるデッキも、選べるのは同じ棚である（#195）。
-          chosenCpuDeck: seatedChoice(seatable, lobby.cpuDeck, stage.cpuChosen),
+          chosenCpuDeck: seatedChoice(choosable, lobby.cpuDeck, stage.cpuChosen),
           restrictions: stage.restrictions,
           rules: lobby.rules,
           deckPage: lobby.deckPage,
@@ -1015,6 +1073,12 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let pointerHeld = false
   // 押している最中に描き直しを頼まれた。手を離したら描き直す。
   let redrawOnRelease = false
+  // 変換中（IME で文字を組み立てている間）か。描き直すと入力欄が作り直され、組み立て中の文字が消える。
+  let composing = false
+  // 変換中に描き直しを頼まれた。確定したら 1 回だけ描き直す。
+  let redrawAfterComposition = false
+  // CPU のデッキを選び直した。次に描いたあと、選んだサムネイルが見えるところまで列を送る。
+  let revealCpuDeck = false
   /**
    * 入ろうとしている部屋。届いたものがまだ無い間の入り先である（#175）。
    *
@@ -1575,6 +1639,35 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     redraw()
   }
 
+  /**
+   * サーバへ送る、選んでいるデッキ。画面に出している選択と揃える（`deck-builder.ts` の `sentChoice`）。
+   * 使えないカードが入ったデッキは選べない（ADR-0029）ので、選んだままなら、選んでいないものとして送る。
+   */
+  const sentDeck = (picked: DeckId | undefined): DeckId | undefined => {
+    const stage = session.stage
+
+    return sentChoice(lobbyDecks(session.pool, session.ownedDecks, stage.kind === 'ロビー' ? stage.presets : []), picked)
+  }
+
+  /**
+   * ロビーの見え方の状態を、いま画面に出るものに合わせる（ADR-0029）。描く前に呼ぶ——`draw` は読むだけにする。
+   *
+   * - ロビーを出していない間は、開いている「…」を閉じる。切断・繋ぎ直して部屋へ戻る・「デッキ一覧」を開く
+   *   でロビーを離れても、戻った時に同じメニューが開いたままにならない。
+   * - ページの番号は、描く時に収まる範囲（`pagedOf`）の値を覚え直す。覚え直さないと、範囲外になったあと
+   *   件数が増えた時に、急に別のページへ飛ぶ。
+   */
+  const settleLobbyView = (): void => {
+    const stage = session.stage
+    if (stage.kind !== 'ロビー' || !lobbyIsShown(session, link, builder)) {
+      lobbyMenu = undefined
+      return
+    }
+
+    lobbyDeckPage = pagedOf(seatableDecks(session.ownedDecks, stage.presets), lobbyDeckPage, DECKS_PER_PAGE).page
+    lobbyRoomPage = roomListView(lobbyView(stage.rooms), lobbyRoomTab, lobbyRoomQuery, lobbyRoomPage).paged.page
+  }
+
   const lobby = (): Lobby => ({
     name: roomName,
     deck: chosenDeck,
@@ -1619,6 +1712,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
     onCpuDeck: (deck) => {
       chosenCpuDeck = deck
+      revealCpuDeck = true
       redraw()
     },
     onFormat: (format) => {
@@ -1636,8 +1730,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         kind: '部屋を作る',
         name,
         against,
-        deck: chosenDeck,
-        cpuDeck: chosenCpuDeck,
+        deck: sentDeck(chosenDeck),
+        cpuDeck: sentDeck(chosenCpuDeck),
         format: chosenFormat,
         restriction: chosenRestriction,
       })
@@ -1645,7 +1739,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     onJoin: (code) => {
       pendingRoom = code
       lobbyMenu = undefined
-      connection.send({ kind: '部屋に入る', room: code, deck: chosenDeck })
+      connection.send({ kind: '部屋に入る', room: code, deck: sentDeck(chosenDeck) })
     },
     onLeave: () => {
       pendingRoom = undefined
@@ -1662,8 +1756,26 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    * 同時には入れ替わらない（ADR-0013、ADR-0015）。
    */
   const redraw = (): void => {
+    // 変換中は描き直さない（すべての入力欄が対象）。作り直した欄は、変換中の文字を持たない。
+    // ほかの人の操作による切り替わり（切断の表示など）も、例外なく待つ。確定したら 1 回描き直す
+    // （`onCompositionEnd`）。変換が終わらないまま手が欄を離れた時（`compositionend` が来なかった時）に
+    // 画面が止まらないよう、手が入力欄に無ければ、変換中とは見なさない。
+    const active = document.activeElement
+    const typingInField = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement
+    if (composing && typingInField) {
+      redrawAfterComposition = true
+      return
+    }
+    composing = false
+    redrawAfterComposition = false
     try {
+      settleLobbyView()
       draw(root, session, link, connection, overlay, picking(), lobby(), naming(), building(), duelInteraction())
+      // 描いたあとに送る。先に送ると、`draw` が戻すスクロールの位置で上書きされる。
+      if (revealCpuDeck) {
+        revealCpuDeck = false
+        revealPickedCpuDeck(root)
+      }
     } catch (error) {
       console.error('画面を組み立てられませんでした:', error)
       root.replaceChildren(line('status', '画面を組み立てられませんでした。ページを再読み込みしてください'))
@@ -1739,7 +1851,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
       session = applyMessage(session, message, nameDraft)
       const wasEditing = builder.screen === 'デッキを組む'
-      updateBuilder(applyToBuilder(builder, message))
+      // コピー・複製の返事は、ロビーにいる時だけ組み始める（ADR-0029）。
+      updateBuilder(applyToBuilder(builder, message, session.stage.kind === 'ロビー'))
       // コピーしたデッキが届いて組み始めたなら、そこから確かめる。
       if (!wasEditing && builder.screen === 'デッキを組む') scheduleCheck()
       // ロビーが届いたなら、どの部屋にもいない。入ろうとしていた先は残さない（#175）。
@@ -1819,11 +1932,29 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     setTimeout(redraw, 0)
   }
 
+  // 変換の始まりと終わり。捕捉段で受ける——欄自身の `compositionend` の処理（確定した値で描き直す）が
+  // 動く時には、すでに「変換中」が解けていなければ、その描き直しまで後に回ってしまう。
+  const onCompositionStart = (): void => {
+    composing = true
+  }
+  const onCompositionEnd = (): void => {
+    composing = false
+    if (!redrawAfterComposition) return
+
+    // 欄自身の処理がこの後すぐ描き直すことがある。それで済めば（`redraw` が印を下ろす）、描き直さない。
+    // `compositionend` の後に `input` が続くブラウザもあるので、1 拍おいてから見る。
+    setTimeout(() => {
+      if (redrawAfterComposition) redraw()
+    }, 0)
+  }
+
   redraw()
   window.addEventListener('popstate', onPopState)
   window.addEventListener('pointerdown', onPointerDown, true)
   window.addEventListener('pointerup', onPointerRelease, true)
   window.addEventListener('pointercancel', onPointerRelease, true)
+  window.addEventListener('compositionstart', onCompositionStart, true)
+  window.addEventListener('compositionend', onCompositionEnd, true)
 
   return () => {
     if (overlayTimer !== undefined) clearTimeout(overlayTimer)
@@ -1831,6 +1962,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     window.removeEventListener('pointerdown', onPointerDown, true)
     window.removeEventListener('pointerup', onPointerRelease, true)
     window.removeEventListener('pointercancel', onPointerRelease, true)
+    window.removeEventListener('compositionstart', onCompositionStart, true)
+    window.removeEventListener('compositionend', onCompositionEnd, true)
     connection.close()
   }
 }
