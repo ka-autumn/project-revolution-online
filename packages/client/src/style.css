@@ -902,6 +902,97 @@ body {
   border-color: var(--accent-own);
 }
 
+/*
+ * 選べないデッキ（使えないカードが入っている。ADR-0029）。使用するデッキの行と、CPU戦のサムネイル。
+ *
+ * 全体に半透明の暗い膜（::after）をかけ、赤い枠（::before。行の縁の角丸に沿って内側へ太く）と、左上の
+ * 角から右下の角への赤い斜線（.lobby__sign）を重ねる。行には、下に濃い灰色の帯「使用不可」も重ねる。
+ * どれも行（サムネイル）の上に重ねるだけで、高さは変えない。顔・名前・ラベル・色は膜の後ろに回り、
+ * 膜より上に出るのは帯・枠・斜線・「…」だけである。重なり順は、膜 1、帯 3、枠 4、斜線 5、「…」6。
+ * 赤は対人戦の見出しと同じ（--accent-opponent）。
+ */
+.lobby .lobby__deckrow--unusable {
+  --unusable-frame: 6px;
+  border-color: var(--accent-opponent);
+  background: #ddd;
+  box-shadow: none;
+}
+
+.lobby .lobby__deckrow--unusable:hover {
+  border-color: var(--accent-opponent);
+  box-shadow: none;
+}
+
+.lobby .lobby__deckrow--unusable .lobby__deck {
+  cursor: not-allowed;
+}
+
+.lobby .lobby__deckrow--unusable::before,
+.lobby .lobby__thumb--unusable::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border: var(--unusable-frame, 3px) solid var(--accent-opponent);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.lobby .lobby__deckrow--unusable::after,
+.lobby .lobby__thumb--unusable::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: rgb(90 90 90 / 0.6);
+  pointer-events: none;
+}
+
+.lobby .lobby__unusable-band {
+  position: absolute;
+  z-index: 3;
+  right: var(--unusable-frame);
+  bottom: var(--unusable-frame);
+  left: var(--unusable-frame);
+  display: grid;
+  place-items: center;
+  height: 1.35rem;
+  color: #fff;
+  background: #3a3a3a;
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.lobby .lobby__sign {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: inherit;
+  background: linear-gradient(
+    to top right,
+    transparent calc(50% - 3px),
+    var(--accent-opponent) calc(50% - 3px) calc(50% + 3px),
+    transparent calc(50% + 3px)
+  );
+  pointer-events: none;
+}
+
+.lobby .lobby__deckrow--unusable .lobby__deck-menu {
+  z-index: 6;
+}
+
+.lobby .lobby__thumb--unusable {
+  position: relative;
+  border-color: transparent;
+  cursor: not-allowed;
+}
+
+.lobby .lobby__thumb--unusable:hover {
+  border-color: transparent;
+}
+
 /* ---------- 真ん中の下：対戦部屋一覧 ---------- */
 
 .lobby .lobby__rooms-panel {
@@ -1072,6 +1163,30 @@ body {
   border-radius: 50%;
   color: rgb(176 122 28 / 0.7);
   font-size: 0.8rem;
+}
+
+/*
+ * 幅が 1500px を下回る時だけ、表を詰める（ADR-0029「保証する幅」）。1366px の幅まで、表を横に
+ * スクロールさせずに「参加」まで見せるため。1600px の見た目は変えない。
+ * 席の幅を縮めても、VS の位置は列ごとに揃ったままである。「1/2」は畳む（席の名前と「? 募集中」から読める）。
+ */
+@media (max-width: 1500px) {
+  .lobby .lobby__players {
+    grid-template-columns: 6rem 1.6rem 6rem;
+  }
+
+  .lobby .lobby__room-players small {
+    display: none;
+  }
+
+  .lobby .lobby__room-name {
+    max-width: 9rem;
+  }
+
+  .lobby .lobby__rooms th,
+  .lobby .lobby__rooms td {
+    padding-inline: 0.35rem;
+  }
 }
 
 .lobby .lobby__room-action {
