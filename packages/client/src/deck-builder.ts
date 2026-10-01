@@ -367,8 +367,13 @@ export function draftToSave(draft: DeckDraft, owned: readonly WireOwnedDeck[]): 
  *
  * **`デッキを保存した` は中身をまるごと添えて届く**（ADR-0026）ので、`自分のデッキ` を待たずに
  * ここで組みかけへ反映できる。
+ *
+ * `inLobby` は、届いた時にロビーにいるか。コピー・複製の返事は、ロビーにいる時だけ組み始める
+ * （ADR-0029）——返事を待つ間に部屋へ入っていると、ロビーへ戻った時にロビーではなく組むところが
+ * 開いてしまう。待っている状態は解く。複製したデッキは `自分のデッキ` として届くので、組み始めなくても
+ * 使用するデッキとデッキの一覧に並ぶ。
  */
-export function applyToBuilder(builder: Builder, message: ToClient): Builder {
+export function applyToBuilder(builder: Builder, message: ToClient, inLobby = true): Builder {
   const { waiting } = builder
   switch (message.kind) {
     case 'デッキを保存した':
@@ -385,6 +390,7 @@ export function applyToBuilder(builder: Builder, message: ToClient): Builder {
         return { ...builder, draft: synced, waiting: { kind: '無し' } }
       }
       if (waiting.kind === 'コピー') {
+        if (!inLobby) return { ...builder, waiting: { kind: '無し' } }
         // コピーした時点では組みかけを触れないので、届いたものをそのまま組み始める。
         return { ...startedEditing(builder, draftOf(message.deck)), waiting: { kind: '無し' } }
       }
@@ -879,6 +885,36 @@ export function seatedChoice(
   if (alive(picked)) return picked
 
   return alive(standing) ? standing : undefined
+}
+
+/**
+ * ロビーで選べるデッキか（ADR-0029）。使えないカードが入っているデッキは選べない。
+ *
+ * どのルールでも、席に着く時にサーバが断る（`server` の `room.ts` の `refusalOfDeck`）。押せる形で
+ * 出すと、押して初めて断られる。中身が届かないデッキ（組めない立て方の既製デッキ）は、
+ * 判定できないので選べるものとして扱う。
+ */
+export function isChoosable(deck: LobbyDeck): boolean {
+  return !deck.hasUnusable
+}
+
+/** `seatableDecks` のうち、ロビーで選べるもの。`seatedChoice` に渡して、選べないデッキを選んだ状態にしない。 */
+export function choosableDecks(shown: readonly WireDeck[], decks: readonly LobbyDeck[]): readonly WireDeck[] {
+  const unchoosable = new Set(decks.filter((deck) => !isChoosable(deck)).map((deck) => deck.id))
+
+  return shown.filter((deck) => !unchoosable.has(deck.id))
+}
+
+/**
+ * サーバへ送る、選んでいるデッキ。画面に出している選択と揃える。
+ *
+ * 選べないデッキを選んだままなら、選んでいないものとして送る（画面は「デッキを選んでください」を
+ * 出している）。そのあとにどのデッキで座るかは、選んでいない時と同じくサーバが決める。
+ */
+export function sentChoice(decks: readonly LobbyDeck[], picked: DeckId | undefined): DeckId | undefined {
+  const deck = decks.find((each) => each.id === picked)
+
+  return deck !== undefined && !isChoosable(deck) ? undefined : picked
 }
 
 /**
