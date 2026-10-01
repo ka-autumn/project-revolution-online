@@ -70,13 +70,14 @@ describe('届いたものを畳む', () => {
 
     const restrictions = [{ id: 'リスト1', name: 'テストのリスト' }] as const
 
-    expect(fold({ kind: 'ロビー', rooms, presets, chosen: 'デッキ1', cpuChosen: 'デッキ2', restrictions }).stage).toEqual({
+    expect(fold({ kind: 'ロビー', rooms, presets, chosen: 'デッキ1', cpuChosen: 'デッキ2', restrictions, own: 'ぬし' }).stage).toEqual({
       kind: 'ロビー',
       rooms,
       presets,
       chosen: 'デッキ1',
       cpuChosen: 'デッキ2',
       restrictions,
+      own: 'ぬし',
     })
   })
 
@@ -87,7 +88,14 @@ describe('届いたものを畳む', () => {
   it('選べる禁止／制限リストが届かなくても、ロビーにいる。選べるものが無いだけである', () => {
     const old = { kind: 'ロビー', rooms: [], presets: [] } as unknown as ToClient
 
-    expect(fold(old).stage).toEqual({ kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [] })
+    expect(fold(old).stage).toEqual({ kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [], own: '' })
+  })
+
+  /** 古いサーバは `own` を送らない。この端末が名前を決める画面で入れた名前で補う。 */
+  it('ロビーに自分の名前が付いてこなければ、この端末で決めた名前で補う', () => {
+    const old = { kind: 'ロビー', rooms: [], presets: [] } as unknown as ToClient
+
+    expect(applyMessage(connecting(), old, 'ここで決めた').stage).toMatchObject({ kind: 'ロビー', own: 'ここで決めた' })
   })
 
   it('相手を待っていると言われたら、待っている', () => {
@@ -104,7 +112,7 @@ describe('届いたものを畳む', () => {
   })
 
   it('ロビーにいる間は、入り直す先が無い', () => {
-    expect(roomOf(fold({ kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [] }))).toBeUndefined()
+    expect(roomOf(fold({ kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [], own: 'ぬし' }))).toBeUndefined()
     expect(roomOf(connecting())).toBeUndefined()
   })
 
@@ -368,9 +376,10 @@ describe('名前を決める', () => {
       chosen: undefined,
       cpuChosen: undefined,
       restrictions: [],
+      own: 'ぬし',
     })
 
-    expect(session.stage).toEqual({ kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [] })
+    expect(session.stage).toEqual({ kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [], own: 'ぬし' })
   })
 })
 
@@ -396,7 +405,7 @@ describe('デッキを組むのに要るもの', () => {
 
   const DECKS = [{ id: 'デッキ1', name: 'くみかけ', description: '', cards: ['テストの識別子'] }] as const
 
-  const LOBBY: ToClient = { kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [] }
+  const LOBBY: ToClient = { kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [], own: 'ぬし' }
 
   /** ログインを持たない立て方では届かない。届いていないことが、組めないことである。 */
   it('繋いだ直後は、プールも自分のデッキも無い', () => {
@@ -572,7 +581,7 @@ describe('共有とレシピ', () => {
   })
 
   it('共有にまつわるものが届いても、いる場面は変わらない', () => {
-    const lobby: ToClient = { kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [] }
+    const lobby: ToClient = { kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [], own: 'ぬし' }
     const before = fold(lobby)
 
     const after = fold(

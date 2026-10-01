@@ -606,6 +606,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         // CPU の席の既定も、座る時に使うものと同じところで決める（`room.ts` の `open`、#195）。
         cpuChosen: decks.cpuFallbackFor(participant),
         restrictions,
+        own: names(participant),
       } as const
       const shown = JSON.stringify(message)
       if (lobbySent.get(participant) === shown) continue

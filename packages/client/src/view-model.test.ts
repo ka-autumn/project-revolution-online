@@ -19,18 +19,21 @@ import { emptyBoard, instance, logged, unitFace, withZone } from './test-support
 import {
   boardView,
   cutInViews,
+  DECKS_PER_PAGE,
   lobbyView,
   logLines,
   opponentLine,
   opponentName,
   overlayDurationMs,
+  pagedOf,
   priorityReason,
+  roomListView,
   showsOverlay,
   transitionViews,
   visibleCardViewsIn,
   zoneOf as sideZoneOf,
 } from './view-model.js'
-import type { BoardView, CardView, SideView } from './view-model.js'
+import type { BoardView, CardView, RoomView, SideView } from './view-model.js'
 
 /**
  * 届いた盤面から画面に出す値を作るところ（#14）。
@@ -1695,7 +1698,7 @@ describe('優先権が回ってきた理由', () => {
   })
 })
 
-/** #175。ロビーに並ぶ部屋。 */
+/** #175、ADR-0029。ロビーの対戦部屋一覧に並ぶ部屋。 */
 describe('ロビー', () => {
   const UNRESTRICTED: WireRoomRules = { format: '構築戦', restriction: { kind: '制限なし' } }
   const RESTRICTED: WireRoomRules = {
@@ -1730,48 +1733,52 @@ describe('ロビー', () => {
 
   /** 一覧を見る人がまずしたいのは、打てる部屋に入ることである。 */
   it('入れる部屋が先に並ぶ', () => {
-    expect(lobbyView([over, playing, waiting]).map((view) => view.code)).toEqual(['ま', 'う', 'お'])
+    expect(lobbyView([playing, waiting]).map((view) => view.code)).toEqual(['ま', 'う'])
   })
 
   it('入れるのは、相手を待っている部屋だけ', () => {
-    expect(lobbyView([waiting, playing, withCpu, over]).map((view) => view.joinable)).toEqual([
-      true,
-      false,
-      false,
-      false,
-    ])
+    expect(lobbyView([waiting, playing]).map((view) => view.joinable)).toEqual([true, false])
   })
 
-  /** #195。CPU 戦は部屋の名前を付けないので、名前の列は出さず、誰が打っているかだけを出す。 */
-  it('CPU との対戦は、部屋の名前・在席者・ルールを出さず、誰の対戦かだけが分かる', () => {
-    expect(lobbyView([withCpu])[0]).toEqual({
-      code: 'し',
-      name: undefined,
-      status: 'ぬし が CPU と対戦中',
-      joinable: false,
-      occupants: undefined,
-      rules: undefined,
-    })
-    expect(lobbyView([playing])[0]?.status).toBe('対戦中')
-  })
-
-  it('終わった CPU との対戦も、部屋の名前を出さず、誰の対戦かが分かる', () => {
-    const view = lobbyView([{ ...withCpu, status: '終わった' }])[0]
-
-    expect(view?.name).toBeUndefined()
-    expect(view?.status).toBe('ぬし の CPU との対戦は終わりました')
+  /** ADR-0029。人が相手を待っている部屋と、人同士で打っている部屋だけを並べる。外すのは画面の側。 */
+  it('CPU との対戦と、終わった部屋は並ばない', () => {
+    expect(lobbyView([withCpu, over, waiting]).map((view) => view.code)).toEqual(['ま'])
+    expect(lobbyView([{ ...withCpu, status: '終わった' }])).toEqual([])
   })
 
   it('部屋が無ければ、並ぶものも無い', () => {
     expect(lobbyView([])).toEqual([])
   })
 
+  /** ADR-0029。通信の値（`相手を待っている`）は変えず、出す文言だけ変える。 */
+  it('状態は「待機中」「対戦中」の札の文言で出る', () => {
+    expect(lobbyView([waiting, playing]).map((view) => view.status)).toEqual(['待機中', '対戦中'])
+  })
+
   /**
-   * ADR-0020。誰がいるかを出す。名乗りが席に座れる合言葉だった頃は出せなかった（ADR-0009）が、
-   * 席はログインから来る身元で決まるようになった（ADR-0019）。
+   * ADR-0020、ADR-0029。誰がいるかを席ごとに出す。名乗りが席に座れる合言葉だった頃は出せなかった
+   * （ADR-0009）が、席はログインから来る身元で決まるようになった（ADR-0019）。1 人目・VS・2 人目の
+   * 位置を行ごとに揃えるために、1 行の文字列ではなく席で分ける。
    */
-  it('そこにいる人の名前が並ぶ', () => {
-    expect(lobbyView([playing])[0]?.occupants).toBe('ぬし、きゃく')
+  it('席ごとの名前が入ってきた順に並び、空いている席は空になる', () => {
+    expect(lobbyView([playing])[0]?.seats).toEqual(['ぬし', 'きゃく'])
+    expect(lobbyView([waiting])[0]?.seats).toEqual(['ぬし', undefined])
+  })
+
+  it('誰もいなければ、どちらの席も空である', () => {
+    expect(lobbyView([{ ...waiting, occupants: [] }])[0]?.seats).toEqual([undefined, undefined])
+  })
+
+  /** ADR-0029。サーバは名前の代わりに部屋を指す符号を入れて送る。符号は人に見せる意味が無い。 */
+  it('名前を付けずに作った部屋は、作った人の名前で「〜の対戦部屋」と出る', () => {
+    const unnamed = { ...waiting, name: waiting.code }
+
+    expect(lobbyView([unnamed])[0]?.name).toBe('ぬしの対戦部屋')
+    expect(lobbyView([{ ...unnamed, status: '対戦中', occupants: ['あ', 'い'] }])[0]?.name).toBe('あの対戦部屋')
+  })
+
+  it('名前を付けた部屋は、付けた名前のまま出る', () => {
+    expect(lobbyView([waiting])[0]?.name).toBe('まっているへや')
   })
 
   /** ADR-0021。部屋がルールを持つので、入る前に分からなければならない。 */
@@ -1790,10 +1797,6 @@ describe('ロビー', () => {
     expect(lobbyView([old])[0]?.rules).toBeUndefined()
   })
 
-  it('誰もいなければ、出すものは無い', () => {
-    expect(lobbyView([{ ...waiting, occupants: [] }])[0]?.occupants).toBeUndefined()
-  })
-
   /** ADR-0020。誰と打っているかは、盤面ではなく席についた時に届いたものから出す。 */
   it('相手が誰かを 1 行で出す', () => {
     expect(opponentLine({ kind: '人間', name: 'かずお' })).toBe('かずお と対戦中')
@@ -1808,12 +1811,63 @@ describe('ロビー', () => {
   it('誰がいるかが届かなくても、部屋は並ぶ', () => {
     const old = { code: 'ふ', name: 'ふるいサーバの部屋', status: '相手を待っている', cpu: false }
 
-    const views = lobbyView([old as unknown as WireRoom, { ...withCpu, occupants: undefined } as unknown as WireRoom])
+    const views = lobbyView([old as unknown as WireRoom])
 
-    expect(views.map((view) => view.code)).toEqual(['ふ', 'し'])
-    expect(views[0]?.occupants).toBeUndefined()
-    // CPU が座っていることは、そこにいる人が分からなくても分かる。「 が CPU と対戦中」にしない。
-    expect(views[1]?.status).toBe('CPU と対戦中')
+    expect(views.map((view) => view.code)).toEqual(['ふ'])
+    expect(views[0]?.seats).toEqual([undefined, undefined])
+    // 作った人が分からなければ、符号を「〜の対戦部屋」にはできないので、届いた名前のまま出す。
+    expect(views[0]?.name).toBe('ふるいサーバの部屋')
+  })
+})
+
+describe('対戦部屋一覧の絞り込みとページ送り', () => {
+  const room = (code: string, status: RoomView['status'], seats: RoomView['seats']): RoomView => ({
+    code,
+    name: `部屋${code}`,
+    status,
+    joinable: status === '待機中',
+    seats,
+    rules: undefined,
+  })
+  const views = [
+    room('1', '待機中', ['ひより', undefined]),
+    room('2', '対戦中', ['そら', 'ゆう']),
+    room('3', '待機中', ['かず', undefined]),
+  ]
+
+  it('タブごとの件数は、探す文字に関わらず数える', () => {
+    expect(roomListView(views, 'すべて', 'そら', 0).counts).toEqual({ すべて: 3, 待機中: 2, 対戦中: 1 })
+  })
+
+  it('タブで状態を絞り込む', () => {
+    expect(roomListView(views, '待機中', '', 0).paged.items.map((view) => view.code)).toEqual(['1', '3'])
+  })
+
+  it('部屋名でもプレイヤーの名前でも探せる', () => {
+    expect(roomListView(views, 'すべて', '部屋3', 0).paged.items.map((view) => view.code)).toEqual(['3'])
+    expect(roomListView(views, 'すべて', ' ゆう ', 0).paged.items.map((view) => view.code)).toEqual(['2'])
+  })
+
+  it('当てはまる部屋が無ければ、0 件と数える', () => {
+    expect(roomListView(views, 'すべて', 'いない', 0).matched).toBe(0)
+  })
+
+  /** ADR-0029。1 ページ 6 件。 */
+  it('6 件ずつのページに分かれ、開いていたページが無くなれば最後のページに収める', () => {
+    const many = Array.from({ length: 13 }, (_, index) => room(String(index), '待機中', ['あ', undefined]))
+
+    const second = roomListView(many, 'すべて', '', 1).paged
+    expect(second.items).toHaveLength(6)
+    expect(second.pages).toBe(3)
+    expect(roomListView(many, 'すべて', '', 9).paged.page).toBe(2)
+    expect(roomListView(many, 'すべて', '', 9).paged.items).toHaveLength(1)
+  })
+
+  it('デッキは 5 件ずつのページに分かれる', () => {
+    const decks = Array.from({ length: 7 }, (_, index) => index)
+
+    expect(pagedOf(decks, 1, DECKS_PER_PAGE)).toEqual({ items: [5, 6], page: 1, pages: 2 })
+    expect(pagedOf([], 0, DECKS_PER_PAGE)).toEqual({ items: [], page: 0, pages: 1 })
   })
 })
 

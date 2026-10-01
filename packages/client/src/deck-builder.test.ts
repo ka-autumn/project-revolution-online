@@ -7,6 +7,7 @@ import {
   autoLabelsOf,
   cardDetailOf,
   checkView,
+  choosableDecks,
   closedBuilder,
   comparePrinted,
   confirmView,
@@ -18,13 +19,16 @@ import {
   duplicatedDeckName,
   filterOwnedDeckRows,
   hasUnsavedChanges,
+  isChoosable,
   levelBreakdownOf,
+  lobbyDecks,
   newDraft,
   ownedDeckRows,
   poolRows,
   printedDetailsOf,
   seatableDecks,
   seatedChoice,
+  sentChoice,
   startedEditing,
   starTotalOf,
   typeCountsOf,
@@ -272,6 +276,26 @@ describe('既製デッキをコピーする', () => {
     const listing: Builder = { ...closedBuilder(), screen: 'デッキを選ぶ' }
 
     expect(applyToBuilder(listing, { kind: 'デッキを保存した', deck: OWNED, violations: [] })).toBe(listing)
+  })
+
+  /** ADR-0029。待つ間に部屋へ入ると、ロビーへ戻った時にロビーではなく組むところが開いてしまう。 */
+  it('ロビーにいない時に届いたら、組み始めずに、待っている状態だけ解く', () => {
+    const waiting: Builder = { ...closedBuilder(), waiting: { kind: 'コピー' } }
+
+    const builder = applyToBuilder(waiting, { kind: 'デッキを保存した', deck: OWNED, violations: [] }, false)
+
+    expect(builder.screen).toBe('閉じている')
+    expect(builder.draft).toBeUndefined()
+    expect(builder.waiting).toEqual({ kind: '無し' })
+  })
+
+  it('ロビーにいない時に届いても、保存の返事は今までどおり組みかけへ反映する', () => {
+    const saving: Builder = { ...editing(draftOf(OWNED)), waiting: { kind: '保存', sent: draftOf(OWNED) } }
+
+    const builder = applyToBuilder(saving, { kind: 'デッキを保存した', deck: OWNED, violations: [] }, false)
+
+    expect(builder.waiting).toEqual({ kind: '無し' })
+    expect(builder.draft).toEqual(draftOf(OWNED))
   })
 })
 
@@ -828,5 +852,77 @@ describe('デッキ一覧（ADR-0028）', () => {
 
     expect(labels.filter((label) => label === '赤単')).toHaveLength(1)
     expect(labels.filter((label) => label === 'アグロ')).toHaveLength(1)
+  })
+})
+
+/** ADR-0029。ロビーに並べるデッキの顔・色・ラベル。 */
+describe('ロビーに並べるデッキ', () => {
+  const PRESETS = [{ id: '既製1', name: 'トライアルデッキ' }]
+
+  it('自分のデッキは、顔・色・「色の構成」を除いたラベルを持ち、操作できる', () => {
+    const [deck] = lobbyDecks(POOL, [OWNED], PRESETS)
+
+    expect(deck?.face?.name).toBe('テスト・赤のユニットLv1')
+    expect(deck?.colors).toEqual(['赤', '青'])
+    expect(deck?.labels.map((label) => label.group)).not.toContain('色の構成')
+    expect(deck?.manageable).toBe(true)
+  })
+
+  /** ロビーには名前しか届かない。カードの裏面を顔にし、色・ラベルは出さない。 */
+  it('デッキを持てない立て方の既製デッキは、名前だけで、操作できない', () => {
+    expect(lobbyDecks(undefined, undefined, PRESETS)).toEqual([
+      { id: '既製1', name: 'トライアルデッキ', face: undefined, colors: [], labels: [], manageable: false, hasUnusable: false },
+    ])
+  })
+
+  it('自分のデッキの並びは届いた順のまま', () => {
+    const decks = lobbyDecks(POOL, [OWNED, { ...OWNED, id: 'デッキ2', name: 'ふたつめ' }], PRESETS)
+
+    expect(decks.map((deck) => deck.id)).toEqual(['デッキ1', 'デッキ2'])
+  })
+
+  it('使えないカードが入っているデッキは、複製できないと分かる', () => {
+    const [deck] = lobbyDecks(POOL, [{ ...OWNED, cards: ['い', 'どこにもない'] }], PRESETS)
+
+    expect(deck?.hasUnusable).toBe(true)
+  })
+})
+
+/** ADR-0029。使えないカードが入ったデッキは、ロビーで選べない。サーバがどのルールでも席に着く時に断る。 */
+describe('ロビーで選べるデッキ', () => {
+  const PRESETS = [{ id: '既製1', name: 'トライアルデッキ' }]
+  const BAD = { ...OWNED, id: 'デッキ2', name: '使えない', cards: ['い', 'どこにもない'] }
+  const decks = lobbyDecks(POOL, [OWNED, BAD], PRESETS)
+  const seatable = seatableDecks([OWNED, BAD], PRESETS)
+
+  it('使えないカードが入っていないデッキだけが選べる', () => {
+    expect(decks.map(isChoosable)).toEqual([true, false])
+  })
+
+  it('組めない立て方の既製デッキは、中身が届かないので判定せず、選べる', () => {
+    expect(lobbyDecks(undefined, undefined, PRESETS).map(isChoosable)).toEqual([true])
+  })
+
+  it('選べないデッキは、選んだ状態にならない（選んでいない状態として出る）', () => {
+    const shown = choosableDecks(seatable, decks)
+
+    expect(shown.map((deck) => deck.id)).toEqual(['デッキ1'])
+    expect(seatedChoice(shown, 'デッキ2', undefined)).toBeUndefined()
+    expect(seatedChoice(shown, undefined, 'デッキ2')).toBeUndefined()
+  })
+
+  it('選べないデッキを選んでいても、選べるデッキが既定にあれば、それを選んだ状態にする', () => {
+    expect(seatedChoice(choosableDecks(seatable, decks), 'デッキ2', 'デッキ1')).toBe('デッキ1')
+  })
+
+  /** 画面は「デッキを選んでください」を出している。送る値は、それと揃える。 */
+  it('選べないデッキを選んだままなら、選んでいないものとして送る', () => {
+    expect(sentChoice(decks, 'デッキ2')).toBeUndefined()
+    expect(sentChoice(decks, 'デッキ1')).toBe('デッキ1')
+    expect(sentChoice(decks, undefined)).toBeUndefined()
+  })
+
+  it('届いていないデッキの識別子は、判定できないので今までどおり送る', () => {
+    expect(sentChoice(decks, 'もう無い')).toBe('もう無い')
   })
 })

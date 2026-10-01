@@ -367,8 +367,13 @@ export function draftToSave(draft: DeckDraft, owned: readonly WireOwnedDeck[]): 
  *
  * **`デッキを保存した` は中身をまるごと添えて届く**（ADR-0026）ので、`自分のデッキ` を待たずに
  * ここで組みかけへ反映できる。
+ *
+ * `inLobby` は、届いた時にロビーにいるか。コピー・複製の返事は、ロビーにいる時だけ組み始める
+ * （ADR-0029）——返事を待つ間に部屋へ入っていると、ロビーへ戻った時にロビーではなく組むところが
+ * 開いてしまう。待っている状態は解く。複製したデッキは `自分のデッキ` として届くので、組み始めなくても
+ * 使用するデッキとデッキの一覧に並ぶ。
  */
-export function applyToBuilder(builder: Builder, message: ToClient): Builder {
+export function applyToBuilder(builder: Builder, message: ToClient, inLobby = true): Builder {
   const { waiting } = builder
   switch (message.kind) {
     case 'デッキを保存した':
@@ -385,6 +390,7 @@ export function applyToBuilder(builder: Builder, message: ToClient): Builder {
         return { ...builder, draft: synced, waiting: { kind: '無し' } }
       }
       if (waiting.kind === 'コピー') {
+        if (!inLobby) return { ...builder, waiting: { kind: '無し' } }
         // コピーした時点では組みかけを触れないので、届いたものをそのまま組み始める。
         return { ...startedEditing(builder, draftOf(message.deck)), waiting: { kind: '無し' } }
       }
@@ -879,4 +885,92 @@ export function seatedChoice(
   if (alive(picked)) return picked
 
   return alive(standing) ? standing : undefined
+}
+
+/**
+ * ロビーで選べるデッキか（ADR-0029）。使えないカードが入っているデッキは選べない。
+ *
+ * どのルールでも、席に着く時にサーバが断る（`server` の `room.ts` の `refusalOfDeck`）。押せる形で
+ * 出すと、押して初めて断られる。中身が届かないデッキ（組めない立て方の既製デッキ）は、
+ * 判定できないので選べるものとして扱う。
+ */
+export function isChoosable(deck: LobbyDeck): boolean {
+  return !deck.hasUnusable
+}
+
+/** `seatableDecks` のうち、ロビーで選べるもの。`seatedChoice` に渡して、選べないデッキを選んだ状態にしない。 */
+export function choosableDecks(shown: readonly WireDeck[], decks: readonly LobbyDeck[]): readonly WireDeck[] {
+  const unchoosable = new Set(decks.filter((deck) => !isChoosable(deck)).map((deck) => deck.id))
+
+  return shown.filter((deck) => !unchoosable.has(deck.id))
+}
+
+/**
+ * サーバへ送る、選んでいるデッキ。画面に出している選択と揃える。
+ *
+ * 選べないデッキを選んだままなら、選んでいないものとして送る（画面は「デッキを選んでください」を
+ * 出している）。そのあとにどのデッキで座るかは、選んでいない時と同じくサーバが決める。
+ */
+export function sentChoice(decks: readonly LobbyDeck[], picked: DeckId | undefined): DeckId | undefined {
+  const deck = decks.find((each) => each.id === picked)
+
+  return deck !== undefined && !isChoosable(deck) ? undefined : picked
+}
+
+/**
+ * ロビーの使用するデッキ・CPUが使用するデッキに並べる 1 つ（ADR-0029）。
+ *
+ * 顔・色・ラベルはデッキ一覧と同じもの（ADR-0028）だが、「色の構成」のラベルは出さない——すぐ横に
+ * 色のアイコンを出していて、同じことを 2 度言うことになるためである。
+ */
+export interface LobbyDeck {
+  readonly id: DeckId
+  readonly name: string
+  /** デッキの顔にするカードの面。`undefined` ならカードの裏面を出す。 */
+  readonly face: WireCardFace | undefined
+  /** 入っている色。色ごとのアイコンで並べる。数は出さない。 */
+  readonly colors: readonly DeckColor[]
+  readonly labels: readonly AutoDeckLabel[]
+  /**
+   * デッキ構築・複製・共有・削除ができるか。デッキを持てない立て方で並ぶ既製デッキは、中身が
+   * 届かず、組んでも残す場所が無い（ADR-0021）のでできない。
+   */
+  readonly manageable: boolean
+  /** 使えないカードが入っているか。入っていると、サーバは保存を断るので複製できない。 */
+  readonly hasUnusable: boolean
+}
+
+/**
+ * ロビーに並べるデッキ（ADR-0029）。並びは `seatableDecks` と同じで、選べるものは届いたものだけ
+ * である（ADR-0021）。
+ *
+ * 中身が届かないデッキ（組めない立て方で並ぶ既製デッキ。ロビーには名前しか届かない）は、
+ * 顔をカードの裏面にし、色・ラベルを出さない。
+ */
+export function lobbyDecks(
+  pool: readonly WirePoolCard[] | undefined,
+  owned: readonly WireOwnedDeck[] | undefined,
+  presets: readonly WireDeck[],
+): readonly LobbyDeck[] {
+  const nameOnly = (deck: WireDeck): LobbyDeck => ({
+    id: deck.id,
+    name: deck.name,
+    face: undefined,
+    colors: [],
+    labels: [],
+    manageable: false,
+    hasUnusable: false,
+  })
+  if (owned === undefined) return presets.map(nameOnly)
+  if (pool === undefined) return owned.map(nameOnly)
+
+  return ownedDeckRows(pool, owned).map((row) => ({
+    id: row.id,
+    name: row.name,
+    face: row.face,
+    colors: row.colorCounts.map((each) => each.color),
+    labels: row.labels.filter((label) => label.group !== '色の構成'),
+    manageable: true,
+    hasUnusable: row.hasUnusable,
+  }))
 }

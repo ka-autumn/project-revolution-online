@@ -1370,24 +1370,25 @@ function resultLabel(result: DuelResult, viewer: Player): string {
   return result.winner === viewer ? '勝ち' : '負け'
 }
 
-/** ロビーに並ぶ部屋 1 つの見え方（#175）。 */
+/** 対戦部屋一覧の状態の札に出す文言（ADR-0029）。通信の値（`相手を待っている`）は変えず、出す文言だけ変える。 */
+export type RoomStatusLabel = '待機中' | '対戦中'
+
+/** 対戦部屋一覧に並ぶ部屋 1 つの見え方（#175、ADR-0029）。CPU 戦と終わった部屋は並ばない。 */
 export interface RoomView {
   readonly code: RoomCode
   /**
-   * 部屋の名前。**CPU との対戦では出さない**（`undefined`、#195）。CPU 戦は名前を付けずに作るので、
-   * 届く名前は合言葉で、人に見せる意味が無い。誰の CPU 戦かは `status` が言う。
+   * 部屋名。名前を付けずに作った部屋は「（作った人）の対戦部屋」と出す（`roomNameOf`）。
    */
-  readonly name: string | undefined
-  /** その部屋の様子を、そのまま出す 1 行。 */
-  readonly status: string
+  readonly name: string
+  readonly status: RoomStatusLabel
   /** 入れるか。**入れない部屋は押せる形で出さない**（ADR-0010）。 */
   readonly joinable: boolean
   /**
-   * そこに誰がいるか、そのまま出す 1 行（ADR-0020）。誰もいなければ `undefined`。
+   * 席ごとの表示名（ADR-0020）。入ってきた順で、空いている席は `undefined`。
    *
-   * **CPU の部屋では出さない**（#195）。誰の CPU 戦かは `status` が言う。
+   * 1 人目・VS・2 人目の位置をどの行でも揃えるために、文字列 1 行ではなく席ごとに分ける。
    */
-  readonly occupants: string | undefined
+  readonly seats: readonly [string | undefined, string | undefined]
   /**
    * その部屋のルール、そのまま出す 1 行（ADR-0021）。届かなければ `undefined`。
    *
@@ -1412,20 +1413,28 @@ function rulesLine(room: WireRoom): string | undefined {
 }
 
 /**
- * そこに誰がいるか、見る人の言い方で（ADR-0020）。
+ * 席ごとの表示名（ADR-0020）。
  *
- * **人の部屋だけが呼ぶ。** CPU の部屋は名前を出さず（`lobbyView`）、誰もいない部屋は残らない
- * （`room.ts`）ので、`undefined` になるのは人がいない形が届いた時だけである。
+ * 届かなかったものを、在るものとして扱わない。 画面とサーバは別々に配られ（ADR-0013、
+ * ADR-0015）、同時には入れ替わらない。サーバが古ければ、この列は付いてこない。 型の上では
+ * 必ずあることになっているが、届いたものは実際には何でもありうる（`connection.ts` の
+ * `JSON.parse` が境目である）。ここで読めないと、ロビーが 1 つでも並んだ時点で画面が真っ白に
+ * なる——`draw` は組み立てる前に中身を捨てるためである。
  */
-function occupantsLine(room: WireRoom): string | undefined {
-  // **届かなかったものを、在るものとして扱わない。** 画面とサーバは別々に配られ（ADR-0013、
-  // ADR-0015）、同時には入れ替わらない。**サーバが古ければ、この列は付いてこない。** 型の上では
-  // 必ずあることになっているが、届いたものは実際には何でもありうる（`connection.ts` の
-  // `JSON.parse` が境目である）。ここで読めないと、ロビーが 1 つでも並んだ時点で画面が真っ白に
-  // なる——`draw` は組み立てる前に中身を捨てるためである。
+function seatsOf(room: WireRoom): RoomView['seats'] {
   const occupants = room.occupants ?? []
 
-  return occupants.length === 0 ? undefined : occupants.join('、')
+  return [occupants[0], occupants[1]]
+}
+
+/**
+ * 部屋名（ADR-0029）。名前を付けずに作った部屋は、サーバが名前の代わりに部屋を指す符号を入れて
+ * 送る（`RoomCode`）。符号は人に見せる意味が無いので、届いた名前が符号と同じなら、作った人
+ * （座っている人の 1 人目）の名前で「〜の対戦部屋」と出す。誰も座っていなければ（古いサーバ）、
+ * 届いたものをそのまま出す。
+ */
+function roomNameOf(room: WireRoom, owner: string | undefined): string {
+  return room.name === room.code && owner !== undefined ? `${owner}の対戦部屋` : room.name
 }
 
 /**
@@ -1447,59 +1456,90 @@ export function opponentName(opponent: Opponent): string {
 }
 
 /**
- * CPU との対戦の 1 行（#195）。**誰の CPU 戦かが分かる**ように、打っている人の名前を添える。
- * 名前が届かなければ（古いサーバ、`occupantsLine` と同じ理由）、名前を除いた形にする。
- */
-function cpuRoomLine(room: WireRoom): string {
-  const owner = (room.occupants as WireRoom['occupants'] | undefined)?.[0]
-  // `相手を待っている` の CPU の部屋は無い（作る時にそのまま始まる、`room.ts` の `open`）。
-  // 数え上げて、増えた時に型が知らせるようにする。
-  switch (room.status) {
-    case '相手を待っている':
-    case '対戦中':
-      return owner === undefined ? 'CPU と対戦中' : `${owner} が CPU と対戦中`
-    case '終わった':
-      return owner === undefined ? 'CPU との対戦は終わりました' : `${owner} の CPU との対戦は終わりました`
-  }
-}
-
-/** その部屋がどうなっているか、見る人の言い方で。 */
-function roomStatusLine(room: WireRoom): string {
-  if (room.cpu) return cpuRoomLine(room)
-
-  switch (room.status) {
-    case '相手を待っている':
-      return '相手を待っています'
-    case '対戦中':
-      return '対戦中'
-    case '終わった':
-      return '終わりました'
-  }
-}
-
-/**
- * ロビーを、画面に出す形にする（#175）。
+ * ロビーの対戦部屋一覧を、画面に出す形にする（#175、ADR-0029）。
+ *
+ * CPU 戦の部屋と、終わった部屋は並べない。 並べるのは、人が相手を待っている部屋と、人同士で
+ * 打っている部屋だけである。外すのは画面の側で行い、サーバは今までどおり全部の部屋を送る。
  *
  * **入れる部屋を先に出す。** 一覧を見る人がまずしたいのは「打てる部屋に入る」ことで、対戦中の
  * 部屋はそのついでに見えていればよい。同じ様子の部屋どうしは届いた順（作られた順）のままにする。
  */
 export function lobbyView(rooms: readonly WireRoom[]): readonly RoomView[] {
-  const order: readonly WireRoom['status'][] = ['相手を待っている', '対戦中', '終わった']
+  const order: readonly WireRoom['status'][] = ['相手を待っている', '対戦中']
 
   return order.flatMap((status) =>
     rooms
-      .filter((room) => room.status === status)
-      .map((room) => ({
-        code: room.code,
-        // **CPU の部屋は入れない**ので、入る前に知る必要のあるもの（誰がいるか・ルール）も出さない。
-        // 判断は画面側で行う（`WireRoom.cpu` は届いている）。
-        name: room.cpu ? undefined : room.name,
-        status: roomStatusLine(room),
-        joinable: room.status === '相手を待っている',
-        occupants: room.cpu ? undefined : occupantsLine(room),
-        rules: room.cpu ? undefined : rulesLine(room),
-      })),
+      .filter((room) => room.status === status && !room.cpu)
+      .map((room) => {
+        const seats = seatsOf(room)
+
+        return {
+          code: room.code,
+          name: roomNameOf(room, seats[0]),
+          status: status === '相手を待っている' ? '待機中' : '対戦中',
+          joinable: status === '相手を待っている',
+          seats,
+          rules: rulesLine(room),
+        }
+      }),
   )
+}
+
+/** 対戦部屋一覧の絞り込みのタブ（ADR-0029）。 */
+export type RoomTab = 'すべて' | RoomStatusLabel
+
+export const ROOM_TABS: readonly RoomTab[] = ['すべて', '待機中', '対戦中']
+
+/** 対戦部屋一覧の 1 ページの件数（ADR-0029）。1600×900 でスクロールが出ない数。 */
+export const ROOMS_PER_PAGE = 6
+
+/** ロビーで使用するデッキの 1 ページの件数（ADR-0029）。 */
+export const DECKS_PER_PAGE = 5
+
+/** 1 ページぶんに切り出したもの。 */
+export interface Paged<T> {
+  readonly items: readonly T[]
+  /** 出しているページ（0 から）。ページ数を超えていたら、最後のページに収める。 */
+  readonly page: number
+  readonly pages: number
+}
+
+/** 並べたものを、1 ページの件数で切り出す。件数が減って、開いていたページが無くなっても最後に収める。 */
+export function pagedOf<T>(items: readonly T[], page: number, perPage: number): Paged<T> {
+  const pages = Math.max(1, Math.ceil(items.length / perPage))
+  const shown = Math.min(Math.max(page, 0), pages - 1)
+
+  return { items: items.slice(shown * perPage, (shown + 1) * perPage), page: shown, pages }
+}
+
+/** 対戦部屋一覧の見え方（タブ・探す・ページ送りを当てた後）。 */
+export interface RoomListView {
+  /** タブごとの件数。探す文字は数えない。 */
+  readonly counts: Readonly<Record<RoomTab, number>>
+  /** タブと探す文字を当てた後に当てはまる部屋の数。 */
+  readonly matched: number
+  readonly paged: Paged<RoomView>
+}
+
+/**
+ * 部屋名・プレイヤーの名前で探す（ADR-0029）。前後の空白は無視する。
+ * 空き席は名前を持たないので、どれとも一致しない。
+ */
+function roomMatches(view: RoomView, query: string): boolean {
+  return query === '' || view.name.includes(query) || view.seats.some((seat) => seat?.includes(query) === true)
+}
+
+/** 並べた部屋に、タブ・探す文字・ページを当てる。 */
+export function roomListView(views: readonly RoomView[], tab: RoomTab, query: string, page: number): RoomListView {
+  const term = query.trim()
+  const counts: Record<RoomTab, number> = {
+    すべて: views.length,
+    待機中: views.filter((view) => view.status === '待機中').length,
+    対戦中: views.filter((view) => view.status === '対戦中').length,
+  }
+  const matched = views.filter((view) => (tab === 'すべて' || view.status === tab) && roomMatches(view, term))
+
+  return { counts, matched: matched.length, paged: pagedOf(matched, page, ROOMS_PER_PAGE) }
 }
 
 /** 届いた盤面を、画面に出す形にする。 */

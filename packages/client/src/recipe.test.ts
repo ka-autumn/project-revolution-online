@@ -441,7 +441,7 @@ describe('コピーの結果を読む', () => {
   })
 
   it('関係ないメッセージ（ロビーなど）は無視する', () => {
-    const message: ToClient = { kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [] }
+    const message: ToClient = { kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [], own: 'ぬし' }
 
     expect(copyOutcomeOf(message)).toBeUndefined()
   })

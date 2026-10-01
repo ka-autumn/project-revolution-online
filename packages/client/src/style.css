@@ -142,33 +142,7 @@ body {
   color: #b00;
 }
 
-/* ロビー（#175）。対戦を始めるところ。盤面より前に出るので、幅を読みやすい長さに抑える。 */
-.lobby {
-  max-width: 40rem;
-  margin: calc(var(--gap) * 2) 0;
-}
-
-.lobby__title {
-  margin: calc(var(--gap) * 2) 0 var(--gap);
-  font-size: 1rem;
-}
-
-/* 持ち込むデッキを選ぶところ（ADR-0021）。作る口と入る口の両方に効くので、その上に置く。 */
-.lobby__deck {
-  display: flex;
-  align-items: center;
-  gap: var(--gap);
-  margin-bottom: var(--gap);
-}
-
-.lobby__deck-select {
-  flex: 1 1 12rem;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  font: inherit;
-}
-
-/* 作る部屋のルールを選ぶところ（ADR-0021）。決めるのは作る人なので、作る口の上に置く。 */
+/* 作る部屋のルールを選ぶところ（ADR-0021）。デッキ構築の画面でも使うので、素のクラス名に書く。ロビーでの見た目は下の `.lobby` の内側にある。 */
 .lobby__rules {
   display: flex;
   flex-wrap: wrap;
@@ -190,82 +164,1089 @@ body {
   font: inherit;
 }
 
-.lobby__make {
+/*
+ * ---------- ロビー（#175、ADR-0029） ----------
+ *
+ * 対戦画面（ADR-0027）・デッキ構築の画面（ADR-0028）と同じ見た目の基準（`:root` の変数）を使う。
+ * 変数を使って見た目を変えるセレクタは、ロビーの外枠（`.lobby`）の内側にだけ書く。素の `button` や
+ * ほかの画面と共有しているクラスには触らないので、名前を決める画面の見た目は変わらない。
+ * カードの面（`.card` 系）は、対戦画面・デッキ構築の画面と共有している。
+ */
+
+.lobby {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--gap-lg);
+  /* 高さは `.deckbuild` と同じく `#board` の残りいっぱいに伸ばして決める（ページ全体はスクロールさせない）。 */
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: calc(var(--gap) * -1);
+  padding: var(--gap-lg);
+  overflow: hidden;
+  color: var(--ink);
+  color-scheme: light;
+  background:
+    repeating-conic-gradient(from 8deg at 50% 38%, rgb(255 255 255 / 0.3) 0deg 3deg, transparent 3deg 9deg, rgb(255 255 255 / 0.14) 9deg 11deg, transparent 11deg 17deg),
+    radial-gradient(ellipse 65% 60% at 50% 38%, #fffdf6 0%, #ffeec2 30%, #fbc766 65%, #ee9a2c 100%);
+}
+
+.lobby *,
+.lobby *::before,
+.lobby *::after {
+  box-sizing: border-box;
+}
+
+.lobby .panel {
   display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgb(150 80 0 / 0.22), inset 0 1px 0 #fff;
+}
+
+.lobby .panel__head {
+  display: flex;
+  flex: none;
   flex-wrap: wrap;
-  gap: var(--gap);
-}
-
-/* CPU と打つ行（#195）。人と打つ行の下に並ぶので行間を空け、ボタンが選ぶ欄の高さに伸びないようにする。 */
-.lobby__make--cpu {
   align-items: center;
-  margin-top: var(--gap);
+  justify-content: space-between;
+  gap: 0.35rem 0.5rem;
+  min-height: 2.6rem;
+  padding: 0.45rem 0.9rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.45);
 }
 
-.lobby__deck--cpu {
-  margin-bottom: 0;
+.lobby .panel__title {
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
 }
 
-.lobby__name {
-  flex: 1 1 12rem;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
+.lobby .panel__aside {
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- ボタン・入力欄（対戦画面・デッキ構築の画面と同じ見た目） ---------- */
+
+.lobby button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: linear-gradient(180deg, #fffefa, #fbefd4);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgb(150 80 0 / 0.25);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.lobby button:hover {
+  border-color: var(--gold-deep);
+  box-shadow: inset 0 1px 0 #fff, 0 0 10px rgb(247 201 86 / 0.8);
+}
+
+.lobby button:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 2px;
+}
+
+.lobby button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.lobby .button--small {
+  padding: 0.25rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+.lobby .icon-button {
+  min-width: 2.1rem;
+  padding: 0.2rem 0.45rem;
+  line-height: 1.2;
+}
+
+.lobby input[type='text'],
+.lobby input[type='search'],
+.lobby select {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: #fffef9;
   font: inherit;
 }
 
-.lobby__none {
-  margin: 0;
-  color: #666;
+.lobby input:focus-visible,
+.lobby select:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 1px;
 }
 
-.lobby__rooms {
+/* 目には出さず、読み上げにだけ伝える。 */
+.lobby .lobby__hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- 上の帯 ---------- */
+
+.lobby .topbar {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.5rem 0.9rem;
+}
+
+.lobby .topbar__title {
+  flex: none;
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 0 #fff;
+}
+
+.lobby .topbar__divider {
+  flex: none;
+  width: 1px;
+  height: 1.8rem;
+  background: rgb(220 166 64 / 0.6);
+}
+
+.lobby .topbar__sub {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-size: 0.88rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lobby .topbar__spacer {
+  flex: 1;
+}
+
+.lobby .lobby__me {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: 16rem;
+  padding: 0.2rem 0.9rem 0.2rem 0.25rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.7);
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.55) inset;
+}
+
+.lobby .lobby__me-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 1rem;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lobby .lobby__avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.3rem;
+  height: 2.3rem;
+  overflow: hidden;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  background: linear-gradient(180deg, #fff6e0, #f3dcae);
+}
+
+.lobby .lobby__avatar svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- 3 列 ---------- */
+
+.lobby .lobby__columns {
+  display: grid;
+  /* 広い画面では 22rem・19rem に落ち着き、狭い画面では真ん中を残すよう、画面の幅に合わせて縮める。 */
+  grid-template-columns: clamp(15rem, 22vw, 22rem) minmax(0, 1fr) clamp(11rem, 19vw, 19rem);
+  gap: var(--gap-lg);
+  min-height: 0;
+}
+
+.lobby .lobby__column {
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
+  gap: var(--gap-lg);
+  min-width: 0;
+  min-height: 0;
 }
 
-.lobby__room {
+/* ---------- 左：対戦ルールと使用するデッキ ---------- */
+
+.lobby .lobby__decks-panel {
+  flex: 1;
+}
+
+/* 形式・禁止／制限リストの選択。デッキ構築の画面と共有する構造（`.lobby__rules`）を、ここでは縦に積む。 */
+.lobby .lobby__rules {
+  display: grid;
+  flex: none;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px dashed rgb(220 166 64 / 0.6);
+}
+
+.lobby .lobby__rules-caption {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--heading);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.lobby .lobby__rule {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+  min-width: 0;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.lobby .lobby__rule-select {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.88rem;
+  font-weight: 400;
+}
+
+.lobby .lobby__decks {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 0;
+  padding: 0.6rem 0.9rem;
+  overflow-y: auto;
+}
+
+.lobby .lobby__notice {
+  margin: 0;
+  padding: 0.4rem 0.7rem;
+  border-left: 4px solid var(--accent-opponent);
+  border-radius: var(--radius-small);
+  background: var(--accent-opponent-soft);
+  font-size: 0.85rem;
+}
+
+.lobby .lobby__none {
+  margin: 1rem 0;
+  color: var(--ink-dim);
+  line-height: 1.6;
+  text-align: center;
+  white-space: pre-line;
+}
+
+.lobby .lobby__deckrow {
+  position: relative;
+  flex: none;
+  border: 1px solid rgb(220 166 64 / 0.55);
+  border-radius: var(--radius-small);
+  background: #fffef9;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.lobby .lobby__deckrow:hover {
+  border-color: var(--gold-deep);
+  box-shadow: 0 0 8px rgb(247 201 86 / 0.7);
+}
+
+/* 選んでいるデッキは、縁の色だけでなく「選択中」の札でも示す。 */
+.lobby .lobby__deckrow--picked {
+  border: 2px solid #ee8a1a;
+  background: linear-gradient(90deg, #fff3d6, #fffef9 70%);
+  box-shadow: 0 2px 8px rgb(238 138 26 / 0.35);
+}
+
+.lobby .lobby__deck {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: var(--gap);
-  padding: var(--gap);
-  border: 1px solid var(--line);
+  gap: 0.65rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: var(--radius-small);
+  cursor: pointer;
 }
 
-.lobby__room-name {
-  flex: 1 1 auto;
-  font-weight: bold;
-  /* 名前は打ち込まれたものなので、長くても行を割らずに収める。 */
+.lobby .lobby__deckrow--picked .lobby__deck {
+  padding: calc(0.45rem - 1px) calc(0.5rem - 1px);
+}
+
+.lobby .lobby__deckrow:has(.lobby__deck-menu) .lobby__deck {
+  padding-right: 3rem;
+}
+
+.lobby .lobby__deck:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 2px;
+}
+
+.lobby .lobby__deck-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.lobby .lobby__deck-name {
   overflow: hidden;
+  font-size: 1rem;
+  font-weight: 800;
+  white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.lobby .lobby__deck-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.5rem;
+}
+
+.lobby .lobby__picked {
+  position: absolute;
+  top: -0.55rem;
+  left: 0.45rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(180deg, #f5a53a, #e07a10);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.lobby .lobby__deck-menu {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+}
+
+/* デッキの顔：デッキ一覧と同じく、カードの面。カードの画像が入れば、面が画像に替わる（別の Issue）。 */
+.lobby .lobby__art {
+  display: block;
+  flex: none;
+  --card-width: 3.3rem;
+}
+
+.lobby .lobby__art--large {
+  --card-width: 3.4rem;
+}
+
+.lobby .lobby__art--thumb {
+  --card-width: 2.2rem;
+}
+
+.lobby .lobby__art .card {
+  pointer-events: none;
+}
+
+/* 「色の構成」を除いたラベルと、入っている色（デッキ構築の画面と同じ見た目） */
+.lobby .taglist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.lobby .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.05rem 0.55rem 0.05rem 0.4rem;
+  border-radius: 999px;
+  color: var(--heading);
+  background: linear-gradient(180deg, #fffaf0, #fcecc8);
+  box-shadow: 0 0 0 1px rgb(176 122 28 / 0.5) inset;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.4;
   white-space: nowrap;
 }
 
-/* そこにいる人（ADR-0020）。名前は打ち込まれたものなので、部屋の名前と同じように収める。 */
-.lobby__room-occupants {
-  flex: 0 1 auto;
+.lobby .tag__emoji {
+  font-size: 0.95em;
+  line-height: 1;
+}
+
+.lobby .tag__color {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+.lobby .lobby__colors {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.lobby .lobby__colors img {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.lobby .lobby__colorless {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* 「…」のメニュー */
+.lobby .lobby__menu {
+  position: absolute;
+  top: 2.4rem;
+  right: 0.4rem;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 9rem;
+  padding: 0.3rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-small);
+  background: #fffef9;
+  box-shadow: 0 6px 18px rgb(120 60 0 / 0.3);
+}
+
+.lobby .lobby__menu--up {
+  top: auto;
+  bottom: 2.4rem;
+}
+
+.lobby .lobby__menu-item {
+  padding: 0.4rem 0.7rem;
+  border: none;
+  background: none;
+  box-shadow: none;
+  text-align: left;
+}
+
+.lobby .lobby__menu-item:hover {
+  background: rgb(247 201 86 / 0.25);
+  box-shadow: none;
+}
+
+.lobby .lobby__menu-danger {
+  color: var(--accent-opponent);
+  font-weight: 700;
+}
+
+.lobby .lobby__menu-rule {
+  width: 100%;
+  margin: 0.2rem 0;
+  border: none;
+  border-top: 1px solid rgb(220 166 64 / 0.45);
+}
+
+/* ページ送り（デッキ・部屋で共通） */
+.lobby .lobby__foot {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.9rem 0.6rem;
+}
+
+.lobby .lobby__pager {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.5rem 0;
+}
+
+.lobby .lobby__pager button {
+  display: grid;
+  place-items: center;
+  min-width: 2.1rem;
+  height: 2.1rem;
+  padding: 0 0.4rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.lobby .lobby__pager button[aria-current='page'] {
+  border-color: #c96a08;
+  color: #fff;
+  background: linear-gradient(180deg, #f5a53a, #e07a10);
+  font-weight: 800;
+}
+
+.lobby .lobby__pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* ---------- 真ん中の上：対人戦（左）・CPU戦（右） ---------- */
+
+.lobby .lobby__modes {
+  display: grid;
+  flex: none;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap-lg);
+}
+
+.lobby .lobby__mode {
   overflow: hidden;
-  color: #666;
+}
+
+.lobby .lobby__mode-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  padding: 0.4rem 0.9rem;
+  color: #fff;
+}
+
+.lobby .lobby__mode-title {
+  flex: none;
+  margin: 0;
+  white-space: nowrap;
+  font-family: var(--heading-font);
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+.lobby .lobby__mode-sub {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.82rem;
+  white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* 対人戦を赤、CPU戦を青にする。ロビーには自分と相手の区別が無いので、対戦画面の赤（相手）・青（自分）とは紛れない。 */
+.lobby .lobby__mode--human .lobby__mode-head {
+  background: linear-gradient(180deg, #ea5a6c, var(--accent-opponent));
+}
+
+.lobby .lobby__mode--cpu .lobby__mode-head {
+  background: linear-gradient(180deg, #4a8ff0, var(--accent-own));
+}
+
+/* 狭い幅では、見出しの添え書きを畳んで、見出しの字が折れないようにする。 */
+@media (max-width: 1300px) {
+  .lobby .lobby__mode-sub {
+    display: none;
+  }
+}
+
+.lobby .lobby__mode-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem 0.8rem;
+}
+
+.lobby .lobby__label {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* ラベルの中に入れた入力欄は、ラベルの小さい字を受け継がず、ほかの入力欄と同じ大きさにする。 */
+.lobby .lobby__label > input {
+  margin-top: 0.2rem;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.lobby .lobby__note {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.lobby .lobby__spacer {
+  flex: 1;
+}
+
+.lobby .lobby__go {
+  width: 100%;
+  padding: 0.45rem;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 0.3);
+}
+
+.lobby .lobby__mode--human .lobby__go {
+  border-color: #a8182a;
+  background: linear-gradient(180deg, #ea5a6c, var(--accent-opponent));
+}
+
+.lobby .lobby__mode--cpu .lobby__go {
+  border-color: #1b54a8;
+  background: linear-gradient(180deg, #4a8ff0, var(--accent-own));
+}
+
+/* CPUが使用するデッキのカルーセル */
+.lobby .lobby__picker {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.lobby .lobby__picker-label {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.lobby .lobby__carousel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.lobby .lobby__carousel-arrow {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1rem;
+}
+
+.lobby .lobby__carousel-current {
+  display: flex;
+  overflow: hidden;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 0.45rem;
+  border-radius: var(--radius-small);
+  background: #fffef9;
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.55) inset;
+}
+
+.lobby .lobby__carousel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.lobby .lobby__carousel-name {
+  overflow: hidden;
+  font-size: 1.05rem;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lobby .lobby__thumbs {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.15rem 0.1rem 0.3rem;
+  overflow-x: auto;
+}
+
+.lobby .lobby__thumb {
+  flex: none;
+  padding: 2px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: none;
+  box-shadow: none;
+}
+
+.lobby .lobby__thumb:hover {
+  border-color: var(--gold);
+  box-shadow: none;
+}
+
+.lobby .lobby__thumb[aria-checked='true'] {
+  border-color: var(--accent-own);
+}
+
+/*
+ * 選べないデッキ（使えないカードが入っている。ADR-0029）。使用するデッキの行と、CPU戦のサムネイル。
+ *
+ * 全体に半透明の暗い膜（::after）をかけ、赤い枠（::before。行の縁の角丸に沿って内側へ太く）と、左上の
+ * 角から右下の角への赤い斜線（.lobby__sign）を重ねる。行には、下に濃い灰色の帯「使用不可」も重ねる。
+ * どれも行（サムネイル）の上に重ねるだけで、高さは変えない。顔・名前・ラベル・色は膜の後ろに回り、
+ * 膜より上に出るのは帯・枠・斜線・「…」だけである。重なり順は、膜 1、帯 3、枠 4、斜線 5、「…」6。
+ * 赤は対人戦の見出しと同じ（--accent-opponent）。
+ */
+.lobby .lobby__deckrow--unusable {
+  --unusable-frame: 6px;
+  border-color: var(--accent-opponent);
+  background: #ddd;
+  box-shadow: none;
+}
+
+.lobby .lobby__deckrow--unusable:hover {
+  border-color: var(--accent-opponent);
+  box-shadow: none;
+}
+
+.lobby .lobby__deckrow--unusable .lobby__deck {
+  cursor: not-allowed;
+}
+
+.lobby .lobby__deckrow--unusable::before,
+.lobby .lobby__thumb--unusable::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border: var(--unusable-frame, 3px) solid var(--accent-opponent);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.lobby .lobby__deckrow--unusable::after,
+.lobby .lobby__thumb--unusable::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: rgb(90 90 90 / 0.6);
+  pointer-events: none;
+}
+
+.lobby .lobby__unusable-band {
+  position: absolute;
+  z-index: 3;
+  right: var(--unusable-frame);
+  bottom: var(--unusable-frame);
+  left: var(--unusable-frame);
+  display: grid;
+  place-items: center;
+  height: 1.35rem;
+  color: #fff;
+  background: #3a3a3a;
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.lobby .lobby__sign {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: inherit;
+  background: linear-gradient(
+    to top right,
+    transparent calc(50% - 3px),
+    var(--accent-opponent) calc(50% - 3px) calc(50% + 3px),
+    transparent calc(50% + 3px)
+  );
+  pointer-events: none;
+}
+
+.lobby .lobby__deckrow--unusable .lobby__deck-menu {
+  z-index: 6;
+}
+
+.lobby .lobby__thumb--unusable {
+  position: relative;
+  border-color: transparent;
+  cursor: not-allowed;
+}
+
+.lobby .lobby__thumb--unusable:hover {
+  border-color: transparent;
+}
+
+/* ---------- 真ん中の下：対戦部屋一覧 ---------- */
+
+.lobby .lobby__rooms-panel {
+  flex: 1;
+}
+
+.lobby .lobby__tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.9rem 0.45rem;
+}
+
+.lobby .lobby__tabs {
+  display: inline-flex;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-small);
+}
+
+.lobby .lobby__tabs button {
+  padding: 0.3rem 0.8rem;
+  border: none;
+  border-radius: 0;
+  background: #fffef9;
+  box-shadow: none;
+  font-size: 0.85rem;
+}
+
+.lobby .lobby__tabs button + button {
+  border-left: 1px solid var(--panel-edge);
+}
+
+.lobby .lobby__tabs button[aria-pressed='true'] {
+  color: #fff;
+  background: linear-gradient(180deg, #f5a53a, #e07a10);
+  font-weight: 700;
+}
+
+.lobby .lobby__tab-count {
+  margin-left: 0.3em;
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.lobby .lobby__search {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.lobby .lobby__search input {
+  padding-left: 1.9rem;
+  background: #fffef9 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='8.5' cy='8.5' r='5.5' fill='none' stroke='%237d6848' stroke-width='2'/%3E%3Cpath d='M13 13l4 4' stroke='%237d6848' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat 0.55rem center / 1rem;
+}
+
+.lobby .lobby__rooms {
+  flex: 1;
+  min-height: 0;
+  margin: 0 0.9rem;
+  overflow-y: auto;
+}
+
+.lobby .lobby__rooms table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.lobby .lobby__rooms th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.6);
+  color: var(--ink-dim);
+  background: #fff8e6;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: left;
   white-space: nowrap;
 }
 
-/* その部屋のルール（ADR-0021）。リストの名前は渡されたものなので、長くても行を割らずに収める。 */
-.lobby__room-rules {
-  flex: 0 1 auto;
+.lobby .lobby__rooms td {
+  padding: 0.32rem 0.5rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.3);
+  vertical-align: middle;
+}
+
+.lobby .lobby__rooms tr:last-child td {
+  border-bottom: none;
+}
+
+.lobby .lobby__rooms tbody tr:hover {
+  background: rgb(247 201 86 / 0.14);
+}
+
+.lobby .lobby__room-name {
+  max-width: 14rem;
   overflow: hidden;
-  color: #666;
+  font-weight: 700;
+  white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.lobby .lobby__room-rules {
+  color: var(--ink-dim);
   white-space: nowrap;
 }
 
-.lobby__room-status {
-  color: #666;
+.lobby .lobby__room-players {
+  white-space: nowrap;
 }
 
-/* デッキを組むところへの入口（#193）。対戦を始める前にすることなので、ロビーの一番上に置く。 */
-.lobby__build {
-  margin-bottom: var(--gap);
+.lobby .lobby__room-players small {
+  display: inline-block;
+  margin-left: 0.4rem;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* VS の位置を行ごとに揃える：席 1・VS・席 2 の幅を決め打ちにし、長い名前は省略する。 */
+.lobby .lobby__players {
+  display: inline-grid;
+  grid-template-columns: 6.8rem 1.6rem 6.8rem;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.lobby .lobby__seat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.lobby .lobby__seat-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 名前が長くても、アイコンは縮めない（省略するのは名前のほう）。 */
+.lobby .lobby__seat .lobby__avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-width: 1.5px;
+}
+
+.lobby .lobby__vs {
+  color: var(--accent-opponent);
+  font-size: 0.72rem;
+  font-style: italic;
+  font-weight: 900;
+  text-align: center;
+}
+
+.lobby .lobby__seat-empty {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1.5px dashed rgb(176 122 28 / 0.55);
+  border-radius: 50%;
+  color: rgb(176 122 28 / 0.7);
+  font-size: 0.8rem;
+}
+
+/*
+ * 幅が 1500px を下回る時だけ、表を詰める（ADR-0029「保証する幅」）。1366px の幅まで、表を横に
+ * スクロールさせずに「参加」まで見せるため。1600px の見た目は変えない。
+ * 席の幅を縮めても、VS の位置は列ごとに揃ったままである。「1/2」は畳む（席の名前と「? 募集中」から読める）。
+ */
+@media (max-width: 1500px) {
+  .lobby .lobby__players {
+    grid-template-columns: 6rem 1.6rem 6rem;
+  }
+
+  .lobby .lobby__room-players small {
+    display: none;
+  }
+
+  .lobby .lobby__room-name {
+    max-width: 9rem;
+  }
+
+  .lobby .lobby__rooms th,
+  .lobby .lobby__rooms td {
+    padding-inline: 0.35rem;
+  }
+}
+
+.lobby .lobby__room-action {
+  width: 5rem;
+  text-align: right;
+}
+
+.lobby .lobby__room-action button {
+  min-width: 4.2rem;
+}
+
+.lobby .lobby__badge {
+  display: inline-block;
+  padding: 0.05rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.lobby .lobby__badge--待機中 {
+  color: #9a4a00;
+  background: #ffe7c2;
+  box-shadow: 0 0 0 1px #f0b060 inset;
+}
+
+.lobby .lobby__badge--対戦中 {
+  color: #1d4f9a;
+  background: var(--accent-own-soft);
+  box-shadow: 0 0 0 1px #9dbdf0 inset;
+}
+
+.lobby .lobby__join {
+  border-color: #c96a08;
+  color: #fff;
+  background: linear-gradient(180deg, #f5a53a, #e07a10);
+  font-weight: 800;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 0.25);
+}
+
+/* ---------- 右：お知らせ（中身は別の Issue。入るまでは枠だけ） ---------- */
+
+.lobby .lobby__news-panel {
+  flex: 1;
+}
+
+.lobby .lobby__news-none {
+  display: grid;
+  flex: 1;
+  place-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  color: var(--ink-dim);
+  line-height: 1.6;
+  text-align: center;
+}
+
+.lobby .lobby__news-icon {
+  font-size: 2rem;
+  opacity: 0.5;
 }
 
 /* どのデッキを組むかを選ぶところ（#193）。ロビーと同じく、読みやすい幅に抑える。 */
