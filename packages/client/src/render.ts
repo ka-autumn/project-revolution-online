@@ -3104,7 +3104,6 @@ export function nameElement(
   draft: string,
   reason: string | undefined,
   handlers: NamingHandlers,
-  focused = false,
 ): HTMLElement {
   const node = element('section', 'naming')
   node.append(element('h1', 'naming__brand', 'プロジェクトレヴォリューション'))
@@ -3152,12 +3151,6 @@ export function nameElement(
   if (reason !== undefined) body.append(element('p', 'naming__refusal', reason))
   panel.append(head, body)
   node.append(panel)
-
-  // 描き直しで打ち込みかけの場所を見失わないように、打っていた人には返す（`lobbyElement`）。
-  if (focused) {
-    input.focus()
-    input.setSelectionRange(input.value.length, input.value.length)
-  }
 
   return node
 }

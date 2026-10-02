@@ -551,9 +551,14 @@ function draw(
   const stage = session.stage
   // 名前を決めるまで、ほかへは進めない（ADR-0020）。ロビーと同じく、送れる間だけ出す。
   if (stage.kind === '名前を決める' && connected) {
-    root.append(
-      nameElement(naming.draft, stage.reason, { onDraft: naming.onDraft, onDecide: naming.onDecide }, typingName),
-    )
+    root.append(nameElement(naming.draft, stage.reason, { onDraft: naming.onDraft, onDecide: naming.onDecide }))
+    // 描き直しで打ち込みかけの場所を見失わないように、打っていた人には返す。
+    // 画面に置いた後でなければ、フォーカスは移らない。
+    const input = root.querySelector<HTMLInputElement>('.naming__input')
+    if (typingName && input !== null) {
+      input.focus()
+      input.setSelectionRange(input.value.length, input.value.length)
+    }
   }
 
   // デッキを組むところはロビーから開く（#193）。**ロビーの代わりに出す。** 部屋に入ったり名前を
