@@ -3107,8 +3107,13 @@ export function nameElement(
   focused = false,
 ): HTMLElement {
   const node = element('section', 'naming')
-  node.append(element('h2', 'naming__title', '名前を決める'))
-  node.append(element('p', 'naming__lead', 'ロビーと対戦相手のところに出る名前です。後から変えられます'))
+  node.append(element('h1', 'naming__brand', 'プロジェクトレヴォリューション'))
+
+  const panel = element('div', 'panel')
+  const head = element('div', 'panel__head')
+  head.append(element('h2', 'panel__title', '名前を決める'))
+  const body = element('div', 'panel__body')
+  body.append(element('p', 'naming__lead', 'ロビーと対戦相手のところに出る名前です。後から変えられます'))
 
   const input = document.createElement('input')
   input.className = 'naming__input'
@@ -3116,17 +3121,37 @@ export function nameElement(
   input.maxLength = DISPLAY_NAME_LIMIT
   input.placeholder = '名前'
   input.value = draft
-  input.addEventListener('input', () => handlers.onDraft(input.value))
+
+  // サーバと同じく 1 文字ずつ数える。入力欄の `maxLength` は UTF-16 の単位なので、絵文字では食い違う。
+  const count = element('span', 'naming__count')
+  count.id = 'naming-count'
+  input.setAttribute('aria-describedby', count.id)
+  const syncCount = (): void => {
+    const length = [...input.value].length
+    count.textContent = `${length} / ${DISPLAY_NAME_LIMIT}`
+    count.classList.toggle('naming__count--full', length >= DISPLAY_NAME_LIMIT)
+  }
+  syncCount()
+
+  input.addEventListener('input', () => {
+    syncCount()
+    handlers.onDraft(input.value)
+  })
   // 打ち終わってそのまま押せるようにする。**押す口も残す**——鍵盤が出ている画面では、
   // Enter が送るものだと読み取れないことがある。
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') handlers.onDecide(input.value)
   })
-  node.append(input)
-  // 押した時の入力欄の中身を読む。渡された `draft` は描き直した時点の値である（`lobbyElement`）。
-  node.append(button('これにする', () => handlers.onDecide(input.value)))
 
-  if (reason !== undefined) node.append(element('p', 'naming__refusal', reason))
+  const field = element('div', 'naming__field')
+  field.append(input)
+  // 押した時の入力欄の中身を読む。渡された `draft` は描き直した時点の値である（`lobbyElement`）。
+  field.append(button('これにする', () => handlers.onDecide(input.value), true))
+  body.append(field, count)
+
+  if (reason !== undefined) body.append(element('p', 'naming__refusal', reason))
+  panel.append(head, body)
+  node.append(panel)
 
   // 描き直しで打ち込みかけの場所を見失わないように、打っていた人には返す（`lobbyElement`）。
   if (focused) {
@@ -3137,7 +3162,25 @@ export function nameElement(
   return node
 }
 
-/** ロビーに戻る口（#175）。相手を待っている間と、投げ出せる対戦の間に出す。 */
+/**
+ * 部屋に入って相手を待っている間の画面（ADR-0030）。待っている間にやめてロビーへ戻れる（#175）。
+ *
+ * 部屋の名前やルールは出さない。この画面の状態が持っているのは部屋の符号だけである。
+ */
+export function awaitingElement(onLeave: () => void): HTMLElement {
+  const node = element('section', 'awaiting')
+  const panel = element('div', 'panel')
+  const body = element('div', 'panel__body')
+  body.append(element('h2', 'awaiting__title', '相手を待っています'))
+  body.append(element('p', 'awaiting__lead', 'この部屋はロビーに出ているので、選んで入ってもらえます'))
+  body.append(button('やめてロビーに戻る', onLeave))
+  panel.append(body)
+  node.append(panel)
+
+  return node
+}
+
+/** ロビーに戻る口（#175）。デッキ構築と、投げ出せる対戦の間に出す。 */
 export function leaveElement(label: string, onLeave: () => void): HTMLElement {
   const node = element('div', 'leave')
   node.append(button(label, onLeave))

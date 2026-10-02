@@ -80,6 +80,7 @@ import {
   deckEditorElement,
   deckListElement,
   duelElement,
+  awaitingElement,
   leaveElement,
   lobbyElement,
   myShareListElement,
@@ -225,7 +226,8 @@ function statusOf(session: Session, link: Link): string | undefined {
       // ロビーは自分で全部を出す（`lobbyElement`）ので、上に足す 1 行は要らない。
       return undefined
     case '相手を待っている':
-      return '相手を待っています。この部屋はロビーに出ているので、選んで入ってもらえます'
+      // 待っている画面が見出しと説明を自分で出す（`awaitingElement`）ので、上に足す 1 行は要らない。
+      return undefined
     case '打っている':
       return session.stage.board === undefined ? '盤面を待っています' : undefined
   }
@@ -748,7 +750,7 @@ function draw(
 
   // 待っている間は、やめて戻れる。相手が来ないまま閉じ込められない（#175）。
   if (stage.kind === '相手を待っている' && connected) {
-    root.append(leaveElement('やめてロビーに戻る', lobby.onLeave))
+    root.append(awaitingElement(lobby.onLeave))
   }
 
   if (stage.kind === '打っている' && stage.board !== undefined) {
