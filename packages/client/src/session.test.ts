@@ -68,7 +68,7 @@ describe('届いたものを畳む', () => {
 
     const presets = [{ id: '既製1', name: 'ひとつめ' }] as const
 
-    const restrictions = [{ id: 'リスト1', name: 'テストのリスト' }] as const
+    const restrictions = [{ id: 'リスト1', name: 'テストのリスト', limits: [{ name: 'テスト・カード', limit: 0 }] }] as const
 
     expect(fold({ kind: 'ロビー', rooms, presets, chosen: 'デッキ1', cpuChosen: 'デッキ2', restrictions, own: 'ぬし' }).stage).toEqual({
       kind: 'ロビー',

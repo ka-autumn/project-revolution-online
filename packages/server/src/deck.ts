@@ -7,8 +7,8 @@ import type {
   DeckViolation,
   RestrictionListId,
   WireDeck,
+  WireLobbyRestrictionList,
   WirePoolCard,
-  WireRestrictionList,
 } from '@revolution/engine'
 import type { OwnedDeck } from './owned-deck.js'
 import type { DeckSource, ParticipantId, RoomSetup, SeatedDeck, SeatedDeckReading } from './room.js'
@@ -405,11 +405,18 @@ export function deckChoicesOf(supply: CardSupply): readonly WireDeck[] {
 }
 
 /**
- * 部屋を作る時に選べる禁止／制限リストとして画面に出すもの（`WireRestrictionList`）。
- * **渡された順のまま並べる。** 中身（どのカードが何枚までか）は出さない。
+ * ロビーに出す禁止／制限リスト（`WireLobbyRestrictionList`）。渡された順のまま並べる。
+ *
+ * 上限の中身も載せる。ロビーが、合わないデッキを押す前に示すため（ADR-0029、#243）。席に着く時に
+ * 当てる判定（`room.ts` の `violationsUnder`）と同じ上限を、同じ値で届ける——別の値を作ると、画面が
+ * 「合わない」とするデッキをサーバが通しうる。
  */
-export function restrictionChoicesOf(supply: CardSupply): readonly WireRestrictionList[] {
-  return supply.restrictions.map((list) => ({ id: list.id, name: list.name }))
+export function restrictionChoicesOf(supply: CardSupply): readonly WireLobbyRestrictionList[] {
+  return supply.restrictions.map((list) => ({
+    id: list.id,
+    name: list.name,
+    limits: Object.entries(list.limits).map(([name, limit]) => ({ name, limit })),
+  }))
 }
 
 /**

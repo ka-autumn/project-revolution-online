@@ -1,29 +1,36 @@
-import { CARD_TYPES, COLORS } from '@revolution/engine'
+import { CARD_TYPES, COLORS, checkCardLimits, checkDeckForFormat } from '@revolution/engine'
 import type {
+  CardLimits,
   Color,
+  DeckCard,
   DeckId,
   DeckViolation,
+  DuelFormat,
   RecipeKey,
   RecipeListOrder,
   ShareId,
+  RestrictionChoice,
   ToClient,
   WireCardFace,
   WireDeck,
+  WireLobbyRestrictionList,
   WireOwnedDeck,
   WirePoolCard,
+  WireRoomRules,
 } from '@revolution/engine'
 import { COLORLESS, emptyFilter } from './pool-filter.js'
 import type { PoolFilter } from './pool-filter.js'
 import type { SharingState } from './recipe.js'
 import type { ChosenRules } from './render.js'
 import { squareLabel } from './view-model.js'
-import type { DetailRow } from './view-model.js'
+import type { DetailRow, HandRefusal } from './view-model.js'
 
 /**
  * デッキを組むところ（ADR-0021、#193）。
  *
- * **ここにルールの判断は無い。** 規定を満たしているかを確かめるのはサーバで（`デッキを確かめる`）、
- * ここは届いた不備を読める形にするだけである。数えるのは「いま何枚入れているか」だけで、それは
+ * 組んでいるデッキに、ルールの判断は無い。規定を満たしているかを確かめるのはサーバで
+ * （`デッキを確かめる`）、ここは届いた不備を読める形にするだけである。保存済みのデッキをロビーで
+ * 押す前に示す判定だけは、画面が当てる（`lobbyDecks`、ADR-0029）。数えるのは「いま何枚入れているか」だけで、それは
  * 画面が自分で組んでいるものだからである。
  *
  * **識別子から何も読み取らない**（ADR-0021）。引く鍵としてだけ使い、並べる順はカードに印刷されて
@@ -888,19 +895,32 @@ export function seatedChoice(
 }
 
 /**
- * ロビーで選べるデッキか（ADR-0029）。使えないカードが入っているデッキは選べない。
+ * ロビーで選べる、自分のデッキか（ADR-0029）。使えないカードが入っているデッキは選べない。
  *
- * どのルールでも、席に着く時にサーバが断る（`server` の `room.ts` の `refusalOfDeck`）。押せる形で
- * 出すと、押して初めて断られる。中身が届かないデッキ（組めない立て方の既製デッキ）は、
+ * どのルールでも、席に着く時にサーバが断る（`server` の `room.ts` の `refusalOfDeck`）。押せる形で出すと、
+ * 押して初めて断られる。選んでいるルールに合わないことは、ここでは理由にしない——自分のデッキは作る時にも
+ * 入る時にも使い、合うかどうかは着く先のルールで変わる。中身が届かないデッキ（組めない立て方の既製デッキ）は、
  * 判定できないので選べるものとして扱う。
  */
 export function isChoosable(deck: LobbyDeck): boolean {
   return !deck.hasUnusable
 }
 
-/** `seatableDecks` のうち、ロビーで選べるもの。`seatedChoice` に渡して、選べないデッキを選んだ状態にしない。 */
-export function choosableDecks(shown: readonly WireDeck[], decks: readonly LobbyDeck[]): readonly WireDeck[] {
-  const unchoosable = new Set(decks.filter((deck) => !isChoosable(deck)).map((deck) => deck.id))
+/**
+ * ロビーで選べる、CPU のデッキか（ADR-0029）。使えないカードが入っているか、選んでいるルールに合わない
+ * デッキは選べない。CPU のデッキは CPU 戦でしか使わず、そのルールは選んでいるルールだけだからである。
+ */
+export function isCpuChoosable(deck: LobbyDeck): boolean {
+  return deck.refusal === undefined
+}
+
+/** `seatableDecks` のうち、`choosable` で選べるもの。`seatedChoice` に渡して、選べないデッキを選んだ状態にしない。 */
+export function choosableDecks(
+  shown: readonly WireDeck[],
+  decks: readonly LobbyDeck[],
+  choosable: (deck: LobbyDeck) => boolean = isChoosable,
+): readonly WireDeck[] {
+  const unchoosable = new Set(decks.filter((deck) => !choosable(deck)).map((deck) => deck.id))
 
   return shown.filter((deck) => !unchoosable.has(deck.id))
 }
@@ -908,13 +928,18 @@ export function choosableDecks(shown: readonly WireDeck[], decks: readonly Lobby
 /**
  * サーバへ送る、選んでいるデッキ。画面に出している選択と揃える。
  *
- * 選べないデッキを選んだままなら、選んでいないものとして送る（画面は「デッキを選んでください」を
- * 出している）。そのあとにどのデッキで座るかは、選んでいない時と同じくサーバが決める。
+ * 選べないデッキ（`choosable` が偽）を選んだままなら、選んでいないものとして送る（画面は選んでいない
+ * ものとして出している）。そのあとにどのデッキで座るかは、選んでいない時と同じくサーバが決める。
+ * ルールに合わない自分のデッキは選べるので、選んでいればそのまま送る。
  */
-export function sentChoice(decks: readonly LobbyDeck[], picked: DeckId | undefined): DeckId | undefined {
+export function sentChoice(
+  decks: readonly LobbyDeck[],
+  picked: DeckId | undefined,
+  choosable: (deck: LobbyDeck) => boolean = isChoosable,
+): DeckId | undefined {
   const deck = decks.find((each) => each.id === picked)
 
-  return deck !== undefined && !isChoosable(deck) ? undefined : picked
+  return deck !== undefined && !choosable(deck) ? undefined : picked
 }
 
 /**
@@ -938,6 +963,138 @@ export interface LobbyDeck {
   readonly manageable: boolean
   /** 使えないカードが入っているか。入っていると、サーバは保存を断るので複製できない。 */
   readonly hasUnusable: boolean
+  /**
+   * 入っているカードの面（枚数ぶん重複する）。部屋のルールで判定し直すために持つ
+   * （`deckRefusal`）。中身が届かないデッキは `undefined`。使えないカードは含まない。
+   */
+  readonly faces: readonly WireCardFace[] | undefined
+  /**
+   * 選んでいるルールで通らない理由 1 つ。通るなら `undefined`（ADR-0029）。使えないカードを先に見て、
+   * そうでなければルールの不備の先頭を出す（`deckRefusal`）。CPU のデッキが選べるかを決める
+   * （`isCpuChoosable`）。自分のデッキの行には出さず、作る・CPU戦の押せない理由に使う。
+   */
+  readonly refusal: string | undefined
+}
+
+/**
+ * ロビーでデッキを判定するルール（ADR-0029、#243）。席に着く時にサーバが当てる判定
+ * （`server` の `room.ts` の `violationsUnder`）の、画面から見える分である。
+ *
+ * サーバが通すデッキを、画面が断らない。材料が足りない時は、判定しないほうへ倒す。
+ * `limits` が `undefined` なのは、当てる上限が無い（制限なし）か、届いていない（古いサーバ・
+ * ロビーに載っていないリスト）時である。
+ */
+export interface JudgedRules {
+  readonly format: DuelFormat
+  readonly limits: CardLimits | undefined
+}
+
+/** 届いた上限の並びを、判定が読む形（カード名 → 枚数）にする。届いていなければ `undefined`。 */
+function limitsOf(list: WireLobbyRestrictionList | undefined): CardLimits | undefined {
+  // 古いサーバは `limits` を付けてこない。型の上では必ずあることになっているが、届いたものは何でもありうる。
+  const limits = list?.limits as WireLobbyRestrictionList['limits'] | undefined
+  if (limits === undefined) return undefined
+
+  return Object.fromEntries(limits.map((each) => [each.name, each.limit]))
+}
+
+/**
+ * ロビーで選んでいるルールを、判定するルールにする。選ばなかったものは、サーバと同じ既定にする
+ * （`room.ts` の `rulesFor`）——形式は構築戦、リストは先頭のもの（無ければ制限なし）。選ぶところ
+ * （`render.ts` の `rulesPicker`）も同じ既定を選んだ形で出すので、出ているものと判定がずれない。
+ */
+export function judgedRulesOf(chosen: ChosenRules, restrictions: readonly WireLobbyRestrictionList[]): JudgedRules {
+  const format = chosen.format ?? '構築戦'
+  const restriction: RestrictionChoice | undefined = chosen.restriction ?? (restrictions[0] === undefined ? undefined : { kind: '禁止／制限リスト', id: restrictions[0].id })
+  if (restriction === undefined || restriction.kind === '制限なし') return { format, limits: undefined }
+
+  return { format, limits: limitsOf(restrictions.find((each) => each.id === restriction.id)) }
+}
+
+/** 部屋のルールを、判定するルールにする。部屋のリストの上限は、ロビーに載っているものから引く。 */
+export function judgedRulesOfRoom(rules: WireRoomRules, restrictions: readonly WireLobbyRestrictionList[]): JudgedRules {
+  if (rules.restriction.kind === '制限なし') return { format: rules.format, limits: undefined }
+
+  const id = rules.restriction.id
+  return { format: rules.format, limits: limitsOf(restrictions.find((each) => each.id === id)) }
+}
+
+/** 使えないカードが入っているデッキの、選べない理由（ADR-0029）。 */
+export const UNUSABLE_REASON = '使えないカードが入っています'
+
+/**
+ * 自分のデッキを選べていないことの理由（ADR-0029）。デッキが 1 つも無ければ無いことを、あっても
+ * 全部が使用不可なら選べるものが無いことを、選べるものがあれば選ぶことを言う。
+ */
+export function noDeckReason(decks: readonly LobbyDeck[]): string {
+  if (decks.length === 0) return 'デッキがありません'
+
+  return decks.some(isChoosable) ? 'デッキを選んでください' : '使えるデッキがありません'
+}
+
+/** CPU のデッキを選べていないことの理由（ADR-0029）。選べるものが無ければ無いことを、あれば選ぶことを言う。 */
+export function noCpuDeckReason(decks: readonly LobbyDeck[]): string {
+  return decks.some(isCpuChoosable) ? 'CPUが使用するデッキを選んでください' : 'CPUが使用できるデッキがありません'
+}
+
+/**
+ * 「対戦部屋を作成する」を押せない理由。押せるなら `undefined`（ADR-0029）。選んでいる自分のデッキを、
+ * 選んでいるルールで判定する（`decks` の `refusal` が、そのルールで当てた結果である）。
+ */
+export function createRefusal(decks: readonly LobbyDeck[], chosenDeck: DeckId | undefined): HandRefusal | undefined {
+  const seated = decks.find((deck) => deck.id === chosenDeck)
+  if (seated === undefined) return { reason: noDeckReason(decks), outOfRules: false }
+
+  return seated.refusal === undefined ? undefined : { reason: seated.refusal, outOfRules: true }
+}
+
+/**
+ * 「CPUと対戦する」を押せない理由 1 つ。押せるなら `undefined`（ADR-0029）。自分のデッキを選べているか、
+ * 選んでいるルールに合うか、CPU のデッキを選べているか、の順に見る。CPU のデッキは選べた時点で選んでいる
+ * ルールに合っているので、ルールは見ない。
+ */
+export function cpuRefusal(
+  decks: readonly LobbyDeck[],
+  chosenDeck: DeckId | undefined,
+  chosenCpuDeck: DeckId | undefined,
+): HandRefusal | undefined {
+  const own = createRefusal(decks, chosenDeck)
+  if (own !== undefined) return own
+
+  return chosenCpuDeck === undefined ? { reason: noCpuDeckReason(decks), outOfRules: false } : undefined
+}
+
+/**
+ * 「参加」を押せない理由。押せるなら `undefined`（ADR-0029）。選んでいる自分のデッキを、その部屋のルールで
+ * 判定する。ロビーで選んでいるルールには左右されない。
+ */
+export function joinRefusal(
+  decks: readonly LobbyDeck[],
+  chosenDeck: DeckId | undefined,
+  rules: JudgedRules,
+): HandRefusal | undefined {
+  const seated = decks.find((deck) => deck.id === chosenDeck)
+  if (seated === undefined) return { reason: noDeckReason(decks), outOfRules: false }
+
+  const reason = deckRefusal(seated, rules)
+
+  return reason === undefined ? undefined : { reason, outOfRules: true }
+}
+
+/**
+ * デッキがルールで通らない理由 1 つ。通るか、判定する材料が無ければ `undefined`（ADR-0029）。
+ *
+ * 使えないカードを先に見る。どのルールでも使えないので、ルールの不備より先に言う。ルールの不備は、
+ * サーバが並べる順（形式の規定、禁止／制限リスト）の先頭を、デッキを組む画面と同じ書き方で出す。
+ */
+export function deckRefusal(deck: Pick<LobbyDeck, 'hasUnusable' | 'faces'>, rules: JudgedRules): string | undefined {
+  if (deck.hasUnusable) return UNUSABLE_REASON
+  if (deck.faces === undefined) return undefined
+
+  const faces: readonly DeckCard[] = deck.faces
+  const [first] = [...checkDeckForFormat(faces, rules.format), ...(rules.limits === undefined ? [] : checkCardLimits(faces, rules.limits))]
+
+  return first === undefined ? undefined : violationLine(first)
 }
 
 /**
@@ -951,6 +1108,7 @@ export function lobbyDecks(
   pool: readonly WirePoolCard[] | undefined,
   owned: readonly WireOwnedDeck[] | undefined,
   presets: readonly WireDeck[],
+  rules: JudgedRules,
 ): readonly LobbyDeck[] {
   const nameOnly = (deck: WireDeck): LobbyDeck => ({
     id: deck.id,
@@ -960,17 +1118,30 @@ export function lobbyDecks(
     labels: [],
     manageable: false,
     hasUnusable: false,
+    faces: undefined,
+    refusal: undefined,
   })
   if (owned === undefined) return presets.map(nameOnly)
   if (pool === undefined) return owned.map(nameOnly)
 
-  return ownedDeckRows(pool, owned).map((row) => ({
-    id: row.id,
-    name: row.name,
-    face: row.face,
-    colors: row.colorCounts.map((each) => each.color),
-    labels: row.labels.filter((label) => label.group !== '色の構成'),
-    manageable: true,
-    hasUnusable: row.hasUnusable,
-  }))
+  const rows = ownedDeckRows(pool, owned)
+
+  return owned.map((deck, index) => {
+    const row = rows[index]
+    // `ownedDeckRows` は届いた順のまま、同じ数だけ返す。
+    if (row === undefined) return nameOnly(deck)
+
+    const judged = { hasUnusable: row.hasUnusable, faces: usableFacesOf(pool, draftOf(deck)) }
+
+    return {
+      id: row.id,
+      name: row.name,
+      face: row.face,
+      colors: row.colorCounts.map((each) => each.color),
+      labels: row.labels.filter((label) => label.group !== '色の構成'),
+      manageable: true,
+      ...judged,
+      refusal: deckRefusal(judged, rules),
+    }
+  })
 }

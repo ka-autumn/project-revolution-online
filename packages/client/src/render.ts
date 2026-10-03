@@ -25,7 +25,9 @@ import type {
   WireCardFace,
   WireCardPosition,
   WireDeck,
+  WireLobbyRestrictionList,
   WireRestrictionList,
+  WireRoomRules,
 } from '@revolution/engine'
 import blackLevelIcon from './assets/level-icons/黒.svg'
 import blueLevelIcon from './assets/level-icons/青.svg'
@@ -34,7 +36,17 @@ import redLevelIcon from './assets/level-icons/赤.svg'
 import whiteLevelIcon from './assets/level-icons/白.svg'
 import reverseStarIcon from './assets/reverse-star.svg'
 import starIcon from './assets/star.svg'
-import { DECK_NAME_LIMIT, POOL_BATCH, isChoosable, printedDetailsOf } from './deck-builder.js'
+import {
+  DECK_NAME_LIMIT,
+  POOL_BATCH,
+  UNUSABLE_REASON,
+  cpuRefusal,
+  createRefusal,
+  isChoosable,
+  isCpuChoosable,
+  noDeckReason,
+  printedDetailsOf,
+} from './deck-builder.js'
 import type {
   AutoDeckLabel,
   CardDetail,
@@ -67,6 +79,7 @@ import type {
   PhaseView,
   ResultView,
   RoomTab,
+  HandRefusal,
   RoomView,
   SideView,
   SmashJudgmentView,
@@ -784,6 +797,7 @@ function rulesPicker(
   chosen: ChosenRules,
   handlers: Pick<LobbyHandlers, 'onFormat' | 'onRestriction'>,
   caption?: string,
+  focusKey?: string,
 ): HTMLElement {
   const node = element('div', 'lobby__rules')
   if (caption !== undefined) node.append(element('p', 'lobby__rules-caption', caption))
@@ -792,6 +806,8 @@ function rulesPicker(
   formatLabel.append(element('span', 'lobby__rule-label', '形式'))
   const formats = document.createElement('select')
   formats.className = 'lobby__rule-select'
+  // 選び直すと描き直す（ロビーは、合わないデッキの表示を追従させる）ので、手を戻す印を付ける。
+  if (focusKey !== undefined) formats.dataset[KEEP_FOCUS] = `${focusKey}-形式`
   for (const format of DUEL_FORMATS) {
     const option = document.createElement('option')
     option.value = format
@@ -811,6 +827,7 @@ function rulesPicker(
   restrictionLabel.append(element('span', 'lobby__rule-label', '禁止／制限リスト'))
   const lists = document.createElement('select')
   lists.className = 'lobby__rule-select'
+  if (focusKey !== undefined) lists.dataset[KEEP_FOCUS] = `${focusKey}-リスト`
   // **渡されたリストを先に、制限なしを後に並べる。** 選ばれていなければ先頭が選ばれた形になり、
   // サーバも選ばれなかった部屋に渡された先頭のリストを当てる（リストが無ければ制限なし）ので、
   // 出ているものと当たるものがずれない。
@@ -849,8 +866,57 @@ const NAME_LIMIT = 24
 const PICKED_DECK_KEY = 'デッキ-選択中'
 const PICKED_CPU_DECK_KEY = 'CPUのデッキ-選択中'
 
-/** 使えないカードが入っていて、選べないデッキに出す札と、読み上げに添える言葉（ADR-0029）。 */
+/**
+ * 選べないデッキに出す札と、読み上げに添える言葉（ADR-0029）。使えないカードが入っているデッキと、
+ * 選んでいるルールに合わないデッキで、札は同じにして、理由だけを添える。
+ */
 const UNUSABLE_LABEL = '使用不可'
+
+/** 札と理由を、読み上げと `title` に出す 1 つの文にする。 */
+function unusableText(reason: string): string {
+  return `${UNUSABLE_LABEL}：${reason}`
+}
+
+/**
+ * 押せない手の、押せない形（ADR-0029）。`disabled` にしない——Tab で飛ばされ、読み上げが理由に
+ * 届かなくなる。理由は `title` と、`aria-describedby` で結ぶ文（ボタンの名前に混ざらないよう、隣に置く）で伝える。
+ * 文は、`visible` なら目に見える形で出し（タッチの端末では `title` が出ない）、そうでなければ読み上げだけにする。
+ * 押された時に何もしないのは、呼ぶ側が決める。
+ */
+function refuseButton(node: HTMLElement, reason: string, id: string): HTMLElement {
+  node.setAttribute('aria-disabled', 'true')
+  node.classList.add('lobby__refused')
+  node.title = reason
+  node.setAttribute('aria-describedby', id)
+  const text = element('span', 'lobby__hidden', reason)
+  text.id = id
+
+  return text
+}
+
+/** 理由がルールに合わないことのとき、ボタンの面に出す文言（ADR-0029）。詳しい理由は `title` と読み上げに付ける。 */
+const OUT_OF_RULES_COVER = '選択したデッキでは対戦できません'
+
+/**
+ * 作成・CPU戦の大きいボタン（ADR-0029）。押せないときは、ボタンの面に半透明の黒を重ねて文言を出す。
+ * 重ねるので枠の高さは変わらず、ほかの部品にも掛からない。重ねたものは押しを妨げない（押しても何も送らない）。
+ * 文言は見せるためだけにあり、読み上げには詳しい理由（`refuseButton`）を渡す。
+ */
+function handButton(label: string, refusal: HandRefusal | undefined, id: string, onPress: () => void): HTMLElement {
+  const go = button(label, () => {
+    if (refusal === undefined) onPress()
+  })
+  go.classList.add('lobby__go')
+  const wrap = element('div', 'lobby__go-wrap')
+  wrap.append(go)
+  if (refusal !== undefined) {
+    const cover = element('span', 'lobby__go-cover', refusal.outOfRules ? OUT_OF_RULES_COVER : refusal.reason)
+    cover.setAttribute('aria-hidden', 'true')
+    wrap.append(cover, refuseButton(go, refusal.reason, id))
+  }
+
+  return wrap
+}
 
 /** 自分の表示名が届いていない間に、上の帯に出す名前（古いサーバは付けてこない）。 */
 const GUEST_NAME = 'ゲスト'
@@ -866,7 +932,7 @@ export interface LobbyView {
   readonly decks: readonly LobbyDeck[]
   readonly chosenDeck: DeckId | undefined
   readonly chosenCpuDeck: DeckId | undefined
-  readonly restrictions: readonly WireRestrictionList[]
+  readonly restrictions: readonly WireLobbyRestrictionList[]
   readonly rules: ChosenRules
   readonly deckPage: number
   /** 「…」のメニューを開いているデッキ。 */
@@ -1099,9 +1165,10 @@ function deckRowElement(
       }
     })
   } else {
-    // 押せない行。読み上げでは、帯の「使用不可」と結び付けて伝える。
+    // 押せない行。読み上げでは、帯の「使用不可」と理由を結び付けて伝える。
     radio.setAttribute('aria-disabled', 'true')
     radio.setAttribute('aria-describedby', `lobby-unusable-${deck.id}`)
+    radio.title = unusableText(UNUSABLE_REASON)
   }
   const main = element('div', 'lobby__deck-main')
   main.append(element('span', 'lobby__deck-name', deck.name))
@@ -1117,8 +1184,10 @@ function deckRowElement(
   }
   if (!choosable) {
     // 膜（CSS）の上に、斜線と、下に重ねる帯を置く。帯は行の高さを増やさない。
+    // 帯の字は「使用不可」だけ。理由は読み上げにだけ添える（`title` は行が持つ）。
     const band = element('span', 'lobby__unusable-band', UNUSABLE_LABEL)
     band.id = `lobby-unusable-${deck.id}`
+    band.append(element('span', 'lobby__hidden', `：${UNUSABLE_REASON}`))
     row.append(unusableSign(), band)
   }
   if (deck.manageable && handlers.deckActions !== undefined) {
@@ -1147,7 +1216,7 @@ function lobbyDecksPanelElement(view: LobbyView, handlers: LobbyHandlers): HTMLE
   const panel = sectionPanel('lobby__decks-panel', '使用するデッキ', aside)
   // ルールを選ぶところは、デッキと同じ列の上に置く。 選んだルールは、対人戦で作る部屋にも
   // CPU戦にも当たる（ADR-0021）。入る人は一覧に出ている部屋のルールを見て選ぶ。
-  panel.append(rulesPicker(view.restrictions, view.rules, handlers, '対戦ルール'))
+  panel.append(rulesPicker(view.restrictions, view.rules, handlers, '対戦ルール', 'ロビーのルール'))
 
   const list = element('div', 'lobby__decks')
   list.setAttribute('role', 'radiogroup')
@@ -1161,7 +1230,7 @@ function lobbyDecksPanelElement(view: LobbyView, handlers: LobbyHandlers): HTMLE
     // どれも選ばれていないなら、選ばれていないことを出す（#194）。前に選んでいたデッキを消した
     // 人がここへ来る（`seatedChoice`）。サーバもこの席を断る（`server` の `room.ts` の
     // `refusalOfDeck`）ので、出ているものと座れるものがずれない。
-    if (view.chosenDeck === undefined) list.append(element('p', 'lobby__notice', 'デッキを選んでください'))
+    if (view.chosenDeck === undefined) list.append(element('p', 'lobby__notice', noDeckReason(view.decks)))
     // 矢印で 1 つずつ移れるよう、選んだもの（無ければ先頭の選べるもの）だけを Tab で止まる場所にする。
     const stop = paged.items.some((deck) => deck.id === view.chosenDeck) ? view.chosenDeck : paged.items.find(isChoosable)?.id
     paged.items.forEach((deck, index) => {
@@ -1219,9 +1288,10 @@ function lobbyHumanElement(view: LobbyView, handlers: LobbyHandlers): { readonly
   body.append(label, element('p', 'lobby__note', '作成した部屋は対戦部屋一覧に出て、ほかのプレイヤーが参加できます。'), element('span', 'lobby__spacer'))
   // 押した時の入力欄の中身を読む。**渡された `name` ではない。** あれは描き直した時点の値で、
   // その後に打ち込まれた分が入っていない（打っている間は描き直さない）。
-  const create = button('対戦部屋を作成する', () => handlers.onCreate(input.value, '人間'))
-  create.classList.add('lobby__go')
-  body.append(create)
+  // 押せない手は出さない（ADR-0029）。使うデッキが選べていないか、選んでいるルールに合わなければ、
+  // 押して断られる前に理由を出す。
+  const refusal = createRefusal(view.decks, view.chosenDeck)
+  body.append(handButton('対戦部屋を作成する', refusal, 'lobby-refusal-create', () => handlers.onCreate(input.value, '人間')))
 
   return { node, input }
 }
@@ -1244,7 +1314,7 @@ function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement 
       for (let count = 1; count <= decks.length; count += 1) {
         const to = at < 0 ? count - 1 : (((at + by * count) % decks.length) + decks.length) % decks.length
         const deck = decks[to]
-        if (deck !== undefined && isChoosable(deck)) {
+        if (deck !== undefined && isCpuChoosable(deck)) {
           handlers.onCpuDeck(deck.id)
           return
         }
@@ -1282,9 +1352,9 @@ function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement 
     thumbs.dataset[KEEP_SCROLL] = 'ロビーのCPUのデッキ'
     // 使用するデッキの行と同じく、Tab で止まるのは選んでいるもの（無ければ先頭の選べるもの）だけで、
     // 矢印で隣へ移って選ぶ。
-    const stop = decks.some((deck) => deck.id === view.chosenCpuDeck) ? view.chosenCpuDeck : decks.find(isChoosable)?.id
+    const stop = decks.some((deck) => deck.id === view.chosenCpuDeck) ? view.chosenCpuDeck : decks.find(isCpuChoosable)?.id
     decks.forEach((deck, index) => {
-      const choosable = isChoosable(deck)
+      const choosable = isCpuChoosable(deck)
       const picked = choosable && deck.id === view.chosenCpuDeck
       const thumb = button('', () => {
         if (!choosable) return
@@ -1297,7 +1367,7 @@ function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement 
       thumb.setAttribute('role', 'radio')
       thumb.setAttribute('aria-checked', String(picked))
       // 帯を出さない小さな顔なので、使えないことは読み上げと `title` に添える。
-      const named = choosable ? deck.name : `${deck.name}（${UNUSABLE_LABEL}）`
+      const named = choosable ? deck.name : `${deck.name}（${unusableText(deck.refusal ?? '')}）`
       thumb.setAttribute('aria-label', named)
       thumb.title = named
       if (!choosable) thumb.setAttribute('aria-disabled', 'true')
@@ -1319,9 +1389,9 @@ function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement 
   }
   body.append(picker, element('span', 'lobby__spacer'))
 
-  const start = button('CPUと対戦する', () => handlers.onCreate('', 'CPU'))
-  start.classList.add('lobby__go')
-  body.append(start)
+  // 自分のデッキが選べていて選んでいるルールに合い、CPU のデッキも選べていなければ、押せない（ADR-0029）。
+  const refusal = cpuRefusal(decks, view.chosenDeck, view.chosenCpuDeck)
+  body.append(handButton('CPUと対戦する', refusal, 'lobby-refusal-cpu', () => handlers.onCreate('', 'CPU')))
 
   return node
 }
@@ -1382,10 +1452,15 @@ function lobbyRoomsTableElement(rows: readonly RoomView[], handlers: LobbyHandle
     // 対戦中の部屋の「観戦」は、観戦ができるようになってから出す（#238）。
     const act = cell('lobby__room-action')
     if (view.joinable) {
-      const join = button('参加', () => handlers.onJoin(view.code))
+      const join = button(view.refusal?.outOfRules === true ? 'ルール外' : '参加', () => {
+        if (view.refusal === undefined) handlers.onJoin(view.code)
+      })
       join.classList.add('button--small', 'lobby__join')
       join.setAttribute('aria-label', `「${view.name}」に参加する`)
       act.append(join)
+      // 選んでいるデッキでは入れない部屋は、押せない形にする（ADR-0029）。ルールに合わないなら、ボタンの文言が
+      // 「ルール外」になる。詳しい理由は `title` と読み上げに添える。
+      if (view.refusal !== undefined) act.append(refuseButton(join, view.refusal.reason, `lobby-refusal-join-${view.code}`))
     }
     body.append(row)
   }

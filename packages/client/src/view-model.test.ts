@@ -1797,6 +1797,29 @@ describe('ロビー', () => {
     expect(lobbyView([old])[0]?.rules).toBeUndefined()
   })
 
+  /** ADR-0029、#243。選んでいるデッキでは入れない部屋は、押す前に理由が分かる。判定は部屋のルールで当てる。 */
+  it('入れない理由は、その部屋のルールで当てた結果が付く', () => {
+    const seen: unknown[] = []
+    const views = lobbyView([waiting, playing], (rules) => {
+      seen.push(rules)
+      return rules.restriction.kind === '制限なし' ? undefined : { reason: '入れない', outOfRules: true }
+    })
+
+    expect(views.map((view) => view.refusal)).toEqual([undefined, { reason: '入れない', outOfRules: true }])
+    expect(seen).toEqual([waiting.rules, playing.rules])
+  })
+
+  it('入れない理由を尋ねなければ、どの部屋にも理由は付かない', () => {
+    expect(lobbyView([waiting, playing]).map((view) => view.refusal)).toEqual([undefined, undefined])
+  })
+
+  /** サーバが古い間はルールが付いてこない。判定する材料が無い部屋は、押せるまま（押して断られる）にする。 */
+  it('ルールが届かない部屋は、判定しない', () => {
+    const old = { ...waiting, rules: undefined } as unknown as WireRoom
+
+    expect(lobbyView([old], () => ({ reason: '入れない', outOfRules: true }))[0]?.refusal).toBeUndefined()
+  })
+
   /** ADR-0020。誰と打っているかは、盤面ではなく席についた時に届いたものから出す。 */
   it('相手が誰かを 1 行で出す', () => {
     expect(opponentLine({ kind: '人間', name: 'かずお' })).toBe('かずお と対戦中')
@@ -1828,6 +1851,7 @@ describe('対戦部屋一覧の絞り込みとページ送り', () => {
     joinable: status === '待機中',
     seats,
     rules: undefined,
+    refusal: undefined,
   })
   const views = [
     room('1', '待機中', ['ひより', undefined]),

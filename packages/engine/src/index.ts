@@ -98,7 +98,7 @@ export {
   checkDeckForFormat,
   sameNameKey,
 } from './deck.js'
-export type { CardLimits, Deck, DeckViolation, DuelFormat } from './deck.js'
+export type { CardLimits, Deck, DeckCard, DeckViolation, DuelFormat } from './deck.js'
 export {
   cardsIn,
   cardsInResolveZone,
@@ -204,9 +204,11 @@ export type {
   ShareVisibility,
   ToClient,
   WireCandidate,
+  WireCardLimit,
   WireCardPosition,
   WireChoice,
   WireDeck,
+  WireLobbyRestrictionList,
   WireOwnedDeck,
   WirePoolCard,
   WireRecipe,

@@ -339,7 +339,9 @@ describe('WebSocket で繋ぐ', () => {
 
     const lobby = await client.waitFor('ロビー')
 
-    expect(lobby.kind === 'ロビー' && lobby.restrictions).toEqual([{ id: 'リスト1', name: 'テストのリスト' }])
+    expect(lobby.kind === 'ロビー' && lobby.restrictions).toEqual([
+      { id: 'リスト1', name: 'テストのリスト', limits: [{ name: 'テスト・どこにもないカード', limit: 0 }] },
+    ])
     await client.close()
   })
 

@@ -181,7 +181,7 @@ describe('渡されたものを読む', () => {
 })
 
 describe('選べる禁止／制限リスト', () => {
-  it('渡された順のまま、識別子と名前だけを並べる。中身は出さない', () => {
+  it('渡された順のまま、識別子・名前・上限を並べる。上限は、席に着く時に当てるものと同じ値である', () => {
     const supply = supplyOf({
       restrictions: [
         { id: 'リスト2', name: '2027年版', limits: { 'テスト・カード0': 0 } },
@@ -190,8 +190,8 @@ describe('選べる禁止／制限リスト', () => {
     })
 
     expect(restrictionChoicesOf(supply)).toEqual([
-      { id: 'リスト2', name: '2027年版' },
-      { id: 'リスト1', name: '2026年版' },
+      { id: 'リスト2', name: '2027年版', limits: [{ name: 'テスト・カード0', limit: 0 }] },
+      { id: 'リスト1', name: '2026年版', limits: [] },
     ])
   })
 })
