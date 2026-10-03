@@ -263,7 +263,8 @@ body {
   outline-offset: 2px;
 }
 
-.lobby button:disabled {
+.lobby button:disabled,
+.lobby button[aria-disabled='true'] {
   opacity: 0.45;
   cursor: not-allowed;
   box-shadow: none;

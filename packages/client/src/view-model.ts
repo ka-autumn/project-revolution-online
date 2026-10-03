@@ -1396,6 +1396,11 @@ export interface RoomView {
    * 別の部屋では通らない。
    */
   readonly rules: string | undefined
+  /**
+   * 選んでいるデッキでは、この部屋に入れない理由 1 つ。入れる（か、判定する材料が無い）なら
+   * `undefined`（ADR-0029、#243）。入れない部屋は「参加」を押せない形で出し、理由を添える。
+   */
+  readonly refusal: string | undefined
 }
 
 /**
@@ -1464,7 +1469,10 @@ export function opponentName(opponent: Opponent): string {
  * **入れる部屋を先に出す。** 一覧を見る人がまずしたいのは「打てる部屋に入る」ことで、対戦中の
  * 部屋はそのついでに見えていればよい。同じ様子の部屋どうしは届いた順（作られた順）のままにする。
  */
-export function lobbyView(rooms: readonly WireRoom[]): readonly RoomView[] {
+export function lobbyView(
+  rooms: readonly WireRoom[],
+  refusalUnder: (rules: WireRoom['rules']) => string | undefined = () => undefined,
+): readonly RoomView[] {
   const order: readonly WireRoom['status'][] = ['相手を待っている', '対戦中']
 
   return order.flatMap((status) =>
@@ -1480,6 +1488,8 @@ export function lobbyView(rooms: readonly WireRoom[]): readonly RoomView[] {
           joinable: status === '相手を待っている',
           seats,
           rules: rulesLine(room),
+          // 届かなかったものを、在るものとして扱わない（`rulesLine`）。ルールが無ければ判定しない。
+          refusal: (room.rules as WireRoom['rules'] | undefined) === undefined ? undefined : refusalUnder(room.rules),
         }
       }),
   )

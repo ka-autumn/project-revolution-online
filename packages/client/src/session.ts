@@ -11,12 +11,12 @@ import type {
   ToClient,
   WireChoice,
   WireDeck,
+  WireLobbyRestrictionList,
   WireOwnedDeck,
   WirePerspective,
   WirePoolCard,
   WireRecipe,
   WireRecipeSummary,
-  WireRestrictionList,
   WireRoom,
   WireShare,
 } from '@revolution/engine'
@@ -76,7 +76,7 @@ export type Stage =
        *
        * デッキと同じく、名前も識別子もサーバから届く値である。
        */
-      readonly restrictions: readonly WireRestrictionList[]
+      readonly restrictions: readonly WireLobbyRestrictionList[]
       /** 自分の表示名（ADR-0020、ADR-0029）。ロビーの上の帯に出す。古いサーバからは付いてこない。 */
       readonly own: string
     }

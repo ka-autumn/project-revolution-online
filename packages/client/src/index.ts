@@ -12,6 +12,7 @@ import type {
   RecipeListOrder,
   RestrictionChoice,
   RoomCode,
+  WireRoomRules,
   WireShare,
 } from '@revolution/engine'
 import {
@@ -24,6 +25,7 @@ import {
   confirmView,
   deckColorChoices,
   deckLabelChoices,
+  deckRefusal,
   deckRows,
   draftOf,
   draftToSave,
@@ -31,9 +33,12 @@ import {
   filterOwnedDeckRows,
   hasUnsavedChanges,
   hasUnusableCards,
+  judgedRulesOf,
+  judgedRulesOfRoom,
   levelBreakdownOf,
   lobbyDecks,
   newDraft,
+  noDeckReason,
   ownedDeckRows,
   poolRows,
   POOL_BATCH,
@@ -700,21 +705,29 @@ function draw(
     // **席に着くのに選ぶのは自分のデッキである**（ADR-0021、#194）。既製デッキはデッキを組む
     // ところでコピーしてから使う。**デッキを持てない立て方でだけ、既製デッキがここに並ぶ。**
     const seatable = seatableDecks(session.ownedDecks, stage.presets)
-    const shownDecks = lobbyDecks(pool, owned, stage.presets)
-    // 使えないカードが入ったデッキは選べない（ADR-0029）。選んだ状態にもしない——前に選んでいた
-    // デッキや、サーバが既定にしたデッキがそれなら、「デッキを選んでください」を出す。
+    // 選んでいるルールに合わないデッキも、使えないカードと同じく選べない（ADR-0029、#243）。
+    const judged = judgedRulesOf(lobby.rules, stage.restrictions)
+    const shownDecks = lobbyDecks(pool, owned, stage.presets, judged)
+    // 使えないカードが入ったデッキと、ルールに合わないデッキは選べない（ADR-0029）。選んだ状態にも
+    // しない——前に選んでいたデッキや、サーバが既定にしたデッキがそれなら、「デッキを選んでください」を出す。
     const choosable = choosableDecks(seatable, shownDecks)
+    const chosenDeck = seatedChoice(choosable, lobby.deck, stage.chosen)
+    // 入れるかは、選んでいるデッキを部屋のルールで判定する。選べていなければ、どの部屋も押して断られる前に
+    // 「デッキを選んでください」と出す。部屋のルールが届いていない（古いサーバ）なら判定しない。
+    const seatedDeck = shownDecks.find((deck) => deck.id === chosenDeck)
+    const refusalUnder = (rules: WireRoomRules): string | undefined =>
+      seatedDeck === undefined ? noDeckReason(shownDecks) : deckRefusal(seatedDeck, judgedRulesOfRoom(rules, stage.restrictions))
     root.append(
       lobbyElement(
         {
           own: stage.own,
-          rooms: lobbyView(stage.rooms),
+          rooms: lobbyView(stage.rooms, refusalUnder),
           name: lobby.name,
           decks: shownDecks,
           // 選んでいなければ、サーバが決めた既定を選んだ状態で出す。どれを既定にするかを決めるのは
           // サーバである（ADR-0010）——前に選んだものが残っているかを見るのもそちらで、ここは
           // もう無いデッキを選んだ状態にしないだけである。
-          chosenDeck: seatedChoice(choosable, lobby.deck, stage.chosen),
+          chosenDeck,
           // CPU の席に座らせるデッキも、選べるのは同じ棚である（#195）。
           chosenCpuDeck: seatedChoice(choosable, lobby.cpuDeck, stage.cpuChosen),
           restrictions: stage.restrictions,
@@ -1665,7 +1678,12 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   const sentDeck = (picked: DeckId | undefined): DeckId | undefined => {
     const stage = session.stage
 
-    return sentChoice(lobbyDecks(session.pool, session.ownedDecks, stage.kind === 'ロビー' ? stage.presets : []), picked)
+    const presets = stage.kind === 'ロビー' ? stage.presets : []
+    const restrictions = stage.kind === 'ロビー' ? stage.restrictions : []
+    // 画面に出している選択と同じ判定で揃える（選んでいるルールに合わないデッキも選べない）。
+    const judged = judgedRulesOf({ format: chosenFormat, restriction: chosenRestriction }, restrictions)
+
+    return sentChoice(lobbyDecks(session.pool, session.ownedDecks, presets, judged), picked)
   }
 
   /**
@@ -1735,11 +1753,13 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       redraw()
     },
     onFormat: (format) => {
-      // 描き直さない。選んだものは `select` が持っている（`onName` と同じ）。
       chosenFormat = format
+      // 選んだルールに合わないデッキの表示が変わるので、描き直す（ADR-0029）。
+      redraw()
     },
     onRestriction: (restriction) => {
       chosenRestriction = restriction
+      redraw()
     },
     onCreate: (name, against) => {
       // 合言葉を決めるのはサーバなので、入る先はここで決められない（#175）。届いてから分かる。
