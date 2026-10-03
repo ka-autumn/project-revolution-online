@@ -409,7 +409,15 @@ export interface PickView {
    * 送れる手が減るわけではない（ADR-0010）。選択を外せば戻る。
    */
   readonly untargeted: readonly ActionView[]
+  /**
+   * パネルに出す案内文。出すことが無ければ `undefined`（ダイアログが聞いている間は、ダイアログ自身が
+   * 聞いているので出さない）。
+   */
+  readonly guide: string | undefined
 }
+
+/** 案内文を添える前の `PickView`。 */
+type PickBody = Omit<PickView, 'guide'>
 
 /** 行き先を押して行う手の種類。聞くダイアログで「この手にする」と決めた後に、行き先を絞るのに使う。 */
 export type AimKind = LegalAction['kind']
@@ -499,6 +507,38 @@ export function pickView(
   selection: PickSelection,
   passOutcome: PassOutcome | undefined,
 ): PickView {
+  const body = arrange(board, actions, selection, passOutcome)
+
+  return { ...body, guide: guideOf(body, board) }
+}
+
+/**
+ * パネルの案内文。「押す」ではなく「選択」で書く。
+ *
+ * 押せるものが何も無いときに、相手が優先権を持っていれば、待っていることを言う。`board.turn.priority`
+ * は届いた盤面の値を読んでいるだけで、優先権の判断はここでしない。
+ */
+function guideOf(view: PickBody, board: WirePerspective): string | undefined {
+  if (view.ask !== undefined) return undefined
+  if (view.picked !== undefined) {
+    return view.destinations.length > 0 || view.trapZone !== undefined ? '置く場所を選択してください' : undefined
+  }
+
+  const cards = view.pickable.length > 0
+  if (cards && view.deckPickable) return '操作するカードを選択してください。プランするには、山札を選択してください'
+  if (cards) return '操作するカードを選択してください'
+  if (view.deckPickable) return 'プランするには、山札を選択してください'
+
+  return board.turn.priority === board.viewer ? '選択できるカードがありません' : '相手の操作を待っています'
+}
+
+/** 行き先とダイアログを組む。案内文は `pickView` が添える。 */
+function arrange(
+  board: WirePerspective,
+  actions: readonly LegalAction[],
+  selection: PickSelection,
+  passOutcome: PassOutcome | undefined,
+): PickBody {
   const names = namesIn(board)
   const view = (action: LegalAction): ActionView => ({
     action,
@@ -520,7 +560,7 @@ export function pickView(
     ]),
   ]
   const deckPickable = planAction !== undefined && planCard === undefined
-  const idle: PickView = {
+  const idle: PickBody = {
     pickable,
     picked: undefined,
     deckPickable,
@@ -569,7 +609,7 @@ export function pickView(
   }
 
   const selected = { ...idle, picked: deck ? undefined : picked, deck, untargeted: [] }
-  const light = (lit: readonly LegalAction[]): PickView => {
+  const light = (lit: readonly LegalAction[]): PickBody => {
     const trap = lit.find((action) => action.kind === 'トラップとしてプレイする')
 
     return {

@@ -3353,15 +3353,7 @@ export function pickElement(view: PickView, handlers: PickHandlers, aside?: HTML
   const node = element('section', 'actions')
   node.append(titleRow('actions__title', '行える手', aside))
 
-  const guide =
-    view.picked === undefined
-      ? view.pickable.length > 0
-        ? 'カードを押すと、そのカードで行える手が出ます'
-        : '押せるカードがありません'
-      : view.destinations.length > 0 || view.trapZone !== undefined
-        ? '光っているところを押すと、そこへ置きます'
-        : 'このカードで行える手を選んでください'
-  node.append(element('p', 'actions__none', guide))
+  if (view.guide !== undefined) node.append(element('p', 'actions__none', view.guide))
 
   const list = element('div', 'actions__list')
   for (const view_ of view.untargeted) {
