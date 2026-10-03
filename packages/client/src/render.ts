@@ -169,17 +169,27 @@ export interface BoardPicking {
 }
 
 /**
- * 押されたものが、カードを選んでいる間の「押せるもの」か。そうなら選びかけを外さない。
+ * カードを選んでいる間の「押せるもの」の目印。押されたものがこれらの中にあれば、選びかけを外さない。
  *
- * 押せるものは、押せるカード・光っているスクエア・ボタン（ボタンのように振る舞う要素を含む）・
- * ダイアログである。どれが押せるかはここで決めず、描いた側の目印に頼る——押せるかどうかを
- * 2 か所で決めない（ADR-0010、`input-model.ts` の `choicePicking` と同じ考え方）。
+ * 中身は ADR-0031 の「押せるもの」の一覧と 1 対 1 で対応する。どれが押せるかはここで決めず、
+ * 描いた側の目印に頼る——押せるかどうかを 2 か所で決めない（ADR-0010、`input-model.ts` の
+ * `choicePicking` と同じ考え方）。
  */
+const KEEPS_PICKING = [
+  'button', // ボタン
+  '[role="button"]', // ボタンのように振る舞うもの全般（捨札・リムーブの束を開くもの、山札、トラップゾーン）
+  '.card--押せる', // 押せるカード
+  '.square--置き先', // 光っている行き先（スクエア）
+  '.zone--置き先', // 光っている行き先（自分のトラップゾーン）
+  '.pile--押せる', // 押せる山札
+  '.picker', // カードの一覧（捨札・リムーブを見る一覧と、効果で選ぶ一覧）
+  '.dialog', // 手を聞くダイアログ
+  '.duel__right', // 右の列（カードの詳細）
+].join(', ')
+
+/** 押されたものが、カードを選んでいる間の「押せるもの」か。そうなら選びかけを外さない。 */
 function keepsPicking(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    target.closest('button, [role="button"], .card--押せる, .square--置き先, .zone--置き先, .pile--押せる, .dialog, .picker, .duel__right') !== null
-  )
+  return target instanceof Element && target.closest(KEEPS_PICKING) !== null
 }
 
 /** そのスクエアが押せるなら、その 1 つ。押せなければ `undefined`。 */
@@ -3390,7 +3400,7 @@ export interface AskHandlers {
  *
  * 手を送ったあとは、返事（盤面など）が届いて描き直されるまで、このダイアログは古い画面のまま残る。
  * その間に押されると 2 通目が送られ、サーバに断られて「行えませんでした」が出るので、送った時点で
- * すべてのボタンを押せなくし、送っていることを出す。送った手は取り消せないので、キャンセルも
+ * すべてのボタンを押せなくし、通信中であることを出す。送った手は取り消せないので、キャンセルも
  * Esc も効かせない。アニメーションは使わない（描き直しで作り直されるため、ADR-0027）。
  */
 export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
@@ -3413,7 +3423,7 @@ export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
   const onSent = (): void => {
     sent = true
     box.setAttribute('aria-busy', 'true')
-    sending.textContent = '送っています…'
+    sending.textContent = '通信中…'
     for (const each of box.querySelectorAll('button')) each.disabled = true
   }
   const choose = (option: AskOption): HTMLElement =>
