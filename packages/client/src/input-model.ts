@@ -373,7 +373,12 @@ export interface PickView {
   readonly direct: readonly ActionView[]
   /** 光らせるスクエア。選んだカードの手が指しているところだけ。 */
   readonly destinations: readonly DestinationView[]
-  /** カードに紐づかない手（優先権の放棄・プラン）。いつでも押せる。 */
+  /**
+   * カードに紐づかない手（優先権の放棄・プラン）。**カードを選んでいない間だけ**出す（#249）。
+   *
+   * 選んでいる間は、そのカードに関係ない手は出さない。画面に出すかどうかだけを変えていて、
+   * 送れる手が減るわけではない（ADR-0010）。選択を外せば戻る。
+   */
   readonly untargeted: readonly ActionView[]
 }
 
@@ -424,7 +429,7 @@ export function pickView(
     picked,
     direct: mine.filter((action) => !decided.includes(action)).map(view),
     destinations,
-    untargeted,
+    untargeted: [],
   }
 }
 

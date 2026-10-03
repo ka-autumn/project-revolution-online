@@ -638,9 +638,30 @@ describe('クリックで操作する', () => {
     expect(view.pickable).toEqual(['スクエアの1枚'])
   })
 
-  it('カードに紐づかない手は、カードを選んでいる間も押せる', () => {
+  /**
+   * 反転した決まり（#249）。以前は「カードに紐づかない手は、カードを選んでいる間も押せる」
+   * だった（#94）が、選んでいる間は、そのカードに関係ない手を出さない。優先権の放棄のボタンも
+   * 出さない。選んでいる間に出ていると、押すつもりのないものが目に入り、選びかけの手と
+   * 見分けにくい。送れる手が減るわけではなく、選択を外せば戻る（ルールの判断ではない、
+   * ADR-0010）。
+   */
+  it('カードを選んでいる間は、カードに紐づかない手を出さない', () => {
     const view = pick([PASS, PLACE], 'てふだの1枚')
 
+    expect(view.untargeted).toEqual([])
+  })
+
+  it('カードを選んでいなければ、カードに紐づかない手が出る', () => {
+    const view = pick([PASS, PLACE])
+
+    expect(view.untargeted.map((each) => each.action)).toEqual([PASS])
+  })
+
+  /** 選んだカードの手が無くなって選んでいない状態に戻れば、放棄のボタンも戻る。 */
+  it('選んだカードに手が無くなれば、カードに紐づかない手も戻る', () => {
+    const view = pick([PASS, SMASH], 'てふだの1枚')
+
+    expect(view.picked).toBeUndefined()
     expect(view.untargeted.map((each) => each.action)).toEqual([PASS])
   })
 })

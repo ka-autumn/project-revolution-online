@@ -149,6 +149,25 @@ export interface BoardPicking {
   readonly onCard: (card: CardId) => void
   readonly onSquare?: (square: Square) => void
   readonly onHidden?: (at: WireCardPosition) => void
+  /**
+   * 押せるもの以外のところが押された。カードを選んでいる間だけ渡され、選びかけを外す（#249）。
+   * 何を押せるかはここで決めない（`keepsPicking` が DOM の目印で見分ける）。
+   */
+  readonly onBlank?: () => void
+}
+
+/**
+ * 押されたものが、カードを選んでいる間の「押せるもの」か。そうなら選びかけを外さない。
+ *
+ * 押せるものは、押せるカード・光っているスクエア・ボタン（ボタンのように振る舞う要素を含む）・
+ * ダイアログである。**どれが押せるかはここで決めず、描いた側の目印に頼る**——押せるかどうかを
+ * 2 か所で決めない（ADR-0010、`input-model.ts` の `choicePicking` と同じ考え方）。
+ */
+function keepsPicking(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest('button, [role="button"], .card--押せる, .square--置き先, .dialog, .picker') !== null
+  )
 }
 
 /** そのスクエアが押せるなら、その 1 つ。押せなければ `undefined`。 */
@@ -3288,7 +3307,9 @@ export function pickElement(view: PickView, handlers: PickHandlers, aside?: HTML
 
   if (view.picked !== undefined) {
     const back = element('div', 'choice__back')
-    back.append(button('選ぶのをやめる', handlers.onCancel))
+    // 選択中の「この行動をやめる」（始めた行動を取り消す）と区別する。こちらは押す前の選びかけを
+    // 外すだけで、何も送らない。
+    back.append(button('カードの選択をやめる', handlers.onCancel))
     node.append(back)
   }
 
@@ -3837,6 +3858,15 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   if (props.choosePicker !== undefined) root.append(props.choosePicker)
 
   wireCardDetailHover(root, detail, props.cardsById, props.picking?.picked)
+
+  // 押せるもの以外のところを押したら、選びかけを外す（#249）。押せるカードを押した時は、その
+  // カードが次の選択になるので外さない。
+  const onBlank = props.picking?.onBlank
+  if (onBlank !== undefined) {
+    root.addEventListener('click', (event) => {
+      if (!keepsPicking(event.target)) onBlank()
+    })
+  }
 
   return root
 }

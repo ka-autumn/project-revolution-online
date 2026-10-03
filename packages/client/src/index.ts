@@ -252,8 +252,13 @@ interface Picking {
   readonly mode: PickMode
   readonly card: CardId | undefined
   readonly onCard: (card: CardId) => void
-  /** 選びかけをやめる。 */
+  /** 選びかけを捨てる。手を送る時に呼ぶ。描き直さない（届く盤面が描き直す）。 */
   readonly onCancel: () => void
+  /**
+   * 選びかけを外して描き直す（#249）。「カードの選択をやめる」・押せるもの以外を押す・Esc の
+   * 共通の出口。何も送らない。
+   */
+  readonly onDeselect: () => void
   readonly onMode: (mode: PickMode) => void
 }
 
@@ -801,6 +806,7 @@ function draw(
             picked: view.picked,
             squares: view.destinations,
             onCard: (card) => picking.onCard(card),
+            ...(view.picked === undefined ? {} : { onBlank: picking.onDeselect }),
             onSquare: (square) => {
               const destination = view.destinations.find((each) => indexOfSquare(each.square) === indexOfSquare(square))
               if (destination === undefined) return
@@ -890,7 +896,7 @@ function draw(
               picking.onCancel()
               connection.send({ kind: '行動する', action })
             },
-            onCancel: () => picking.onCancel(),
+            onCancel: picking.onDeselect,
           },
           mode,
         ),
@@ -1150,6 +1156,12 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let overlayTimer: ReturnType<typeof setTimeout> | undefined
   let lastFresh: readonly LoggedEvent[] | undefined
 
+  const deselect = (): void => {
+    if (pickedCard === undefined) return
+    pickedCard = undefined
+    redraw()
+  }
+
   const picking = (): Picking => ({
     mode,
     card: pickedCard,
@@ -1161,6 +1173,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     onCancel: () => {
       pickedCard = undefined
     },
+    onDeselect: deselect,
     onMode: (next) => {
       mode = next
       pickedCard = undefined
@@ -1990,7 +2003,14 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     }, 0)
   }
 
+  // Esc で、選びかけのカードを外す（#249）。何も選んでいなければ何もしない。ダイアログなどが
+  // 自分の Esc を持つ場合も、行き着く先は同じ（選んでいない状態）なので、重ねて呼んでも困らない。
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') deselect()
+  }
+
   redraw()
+  window.addEventListener('keydown', onKeyDown)
   window.addEventListener('popstate', onPopState)
   window.addEventListener('pointerdown', onPointerDown, true)
   window.addEventListener('pointerup', onPointerRelease, true)
@@ -2000,6 +2020,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   return () => {
     if (overlayTimer !== undefined) clearTimeout(overlayTimer)
+    window.removeEventListener('keydown', onKeyDown)
     window.removeEventListener('popstate', onPopState)
     window.removeEventListener('pointerdown', onPointerDown, true)
     window.removeEventListener('pointerup', onPointerRelease, true)
