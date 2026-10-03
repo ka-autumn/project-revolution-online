@@ -1162,8 +1162,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    */
   let pendingRecipe: RecipeKey | undefined = options.recipe
 
-  // 盤面をクリックして操作する（#94）。選びかけているカードは**盤面が届くたびに捨てる**。
-  // 届いた手は入れ替わっており、選びかけの手がまだ行えるとは限らないためである。
+  // 盤面をクリックして操作する（#94）。選びかけは、行える手が入れ替わる時（盤面が届いた時など）に
+  // 捨てる。届いた手は入れ替わっており、選びかけの手がまだ行えるとは限らないためである。
   let mode: PickMode = 'クリック'
   let selection: PickSelection = {}
 
@@ -1971,8 +1971,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // 消えてしまう。
       if (message.kind === '名前を決めてほしい' && nameDraft === '') nameDraft = message.current ?? ''
       if (message.kind === '名前を決めてほしい' && message.reason !== undefined) nameRefusalArrived = true
-      // 盤面が入れ替わったら、選びかけは捨てる（#94）。
-      selection = {}
+      // 行える手が入れ替わる時（盤面・選んでほしい・席についた）は、選びかけを捨てる（#94）。届いた
+      // 手が変わると、選びかけの手がまだ行えるとは限らない。`相手の繋がり` のような、行える手を変えない
+      // ものでは捨てない——ダイアログを読んでいる途中で閉じてしまう。
+      if (message.kind === '盤面' || message.kind === '選んでほしい' || message.kind === '席についた') selection = {}
       // 「見る」「選ぶ」の状態は、席についた時点（入り直しを含む）で前の対局のものを持ち越さない。
       // 席は覚えているだけの値なので、次の対局で入れ替わると別の置き場を指してしまう（#207）。
       if (message.kind === '席についた') {

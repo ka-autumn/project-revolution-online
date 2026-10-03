@@ -178,7 +178,7 @@ export interface BoardPicking {
 function keepsPicking(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
-    target.closest('button, [role="button"], .card--押せる, .square--置き先, .zone--置き先, .pile--押せる, .dialog, .picker') !== null
+    target.closest('button, [role="button"], .card--押せる, .square--置き先, .zone--置き先, .pile--押せる, .dialog, .picker, .duel__right') !== null
   )
 }
 
@@ -545,8 +545,17 @@ function ownTrapZoneElement(zone: ZoneView, picking: BoardPicking | undefined): 
   node.classList.add('zone--置き先')
   node.setAttribute('role', 'button')
   node.tabIndex = 0
-  node.setAttribute('aria-label', `自分のトラップゾーン（${lit.label}）`)
+  node.setAttribute('aria-label', `自分のトラップゾーン（押せます: ${lit.label}）`)
+  // 光るのは、トラップとしてプレイする手が届いている間だけで、その手はトラップゾーンが空の時にしか
+  // 行えない（総合ルール 第2部 第20章 3-1）。ゾーンの中に押せるカードは無いので、カードの click との
+  // 重なりは考えない。
   node.addEventListener('click', onTrapZone)
+  node.addEventListener('keydown', (event) => {
+    // 中のカードにフォーカスがある時の Enter は、そのカードのものである。
+    if (event.target !== node || (event.key !== 'Enter' && event.key !== ' ')) return
+    event.preventDefault()
+    onTrapZone()
+  })
 
   return node
 }
@@ -611,7 +620,14 @@ function deckZoneElement(
     pile.setAttribute('role', 'button')
     pile.tabIndex = 0
     pile.setAttribute('aria-label', `山札（${picking.deck?.picked === true ? '選択中' : '押せます'}）`)
-    if (onDeck !== undefined) pile.addEventListener('click', onDeck)
+    if (onDeck !== undefined) {
+      pile.addEventListener('click', onDeck)
+      pile.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onDeck()
+      })
+    }
   }
   // プランゾーンのカードは公開情報だが、念のため見えている時だけ表で見せる。見えていなければ
   // 裏面のままにする（表に出せないものを表として描かない）。
@@ -678,7 +694,7 @@ function squareElement(square: SquareView, picking: BoardPicking | undefined, ba
   )
   if (inBattle) node.append(element('span', 'square__battle', 'バトル中'))
   // 押せることを色だけで区別させない。読み上げにも出す。
-  const where = pickable === undefined ? '' : `（${pickable.label}）`
+  const where = pickable === undefined ? '' : `（押せます: ${pickable.label}）`
   node.setAttribute('aria-label', `${square.area} ${square.square.row}-${square.square.column}${where}`)
   const onSquare = picking?.onSquare
   if (pickable !== undefined && onSquare !== undefined) {
