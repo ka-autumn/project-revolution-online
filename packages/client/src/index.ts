@@ -812,6 +812,17 @@ function draw(
             squares: view.destinations,
             onCard: (card) => picking.onCard(card),
             ...(view.picked === undefined ? {} : { onBlank: picking.onDeselect }),
+            ...(view.trapZone === undefined
+              ? {}
+              : {
+                  trapZone: { label: view.trapZone.label },
+                  onTrapZone: () => {
+                    const zone = view.trapZone
+                    if (zone === undefined) return
+                    picking.onCancel()
+                    connection.send({ kind: '行動する', action: zone.action })
+                  },
+                }),
             onSquare: (square) => {
               const destination = view.destinations.find((each) => indexOfSquare(each.square) === indexOfSquare(square))
               if (destination === undefined) return

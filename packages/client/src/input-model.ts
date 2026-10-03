@@ -352,6 +352,17 @@ export interface DestinationView extends PickableSquare {
   readonly action: LegalAction
 }
 
+/**
+ * 光らせる自分のトラップゾーンと、そこを押した時に送る手（#249）。
+ *
+ * スクエアと違って行と列を持たない。置き先が自分のトラップゾーンに決まっている手
+ * （`トラップとしてプレイする`）だけが指すので、ゾーンの名前は持たない。
+ */
+export interface TrapZoneView {
+  readonly action: LegalAction
+  readonly label: string
+}
+
 /** クリックで操作する時に、画面に出すもの。 */
 export interface PickView {
   /**
@@ -371,6 +382,11 @@ export interface PickView {
    * 混じるなら、先に `ask` で聞くので、聞き終えるまでは空である。
    */
   readonly destinations: readonly DestinationView[]
+  /**
+   * 光らせる自分のトラップゾーン。`トラップとしてプレイする` を行えるときだけ（#249）。
+   * 光らせる条件は `destinations` と同じ（聞くことがあれば、聞き終えるまでは `undefined`）。
+   */
+  readonly trapZone: TrapZoneView | undefined
   /**
    * 聞くダイアログ。聞くことが無ければ `undefined`（#249）。
    *
@@ -467,7 +483,7 @@ export function pickView(
   // 届いていないカードは選べない。選んだ後に手が届かなくなることは起こる（盤面が入れ替わる）
   // ので、その時は選んでいない状態と同じ扱いになる。
   if (picked === undefined || !pickable.includes(picked)) {
-    return { pickable, picked: undefined, destinations: [], ask: undefined, untargeted }
+    return { pickable, picked: undefined, destinations: [], trapZone: undefined, ask: undefined, untargeted }
   }
 
   const mine = targeted.filter((action) => targetOf(action) === picked)
@@ -477,8 +493,11 @@ export function pickView(
     const square = destinationOf(action)
     return square !== undefined && placing.filter((other) => sameSquare(destinationOf(other), square)).length > 1
   }
-  // 行き先を押して行える手。残りは、ダイアログで聞く手。
-  const aimable = placing.filter((action) => !ambiguous(action))
+  // 行き先を押して行える手（スクエアを指す手と、自分のトラップゾーンを指す手）。残りは、
+  // ダイアログで聞く手。
+  const aimable = mine.filter((action) =>
+    action.kind === 'トラップとしてプレイする' ? true : placing.includes(action) && !ambiguous(action),
+  )
   const asked = mine.filter((action) => !aimable.includes(action))
 
   // 聞く選択肢。行き先を押して行う手は、種類ごとに 1 つにまとめる。届いた並びの順に出す。
@@ -493,32 +512,34 @@ export function pickView(
     }
   }
 
-  const light = (lit: readonly LegalAction[]): readonly DestinationView[] =>
-    lit.flatMap((action): readonly DestinationView[] => {
-      const square = destinationOf(action)
-      return square === undefined ? [] : [{ square, action, label: view(action).label }]
-    })
+  const light = (
+    lit: readonly LegalAction[],
+  ): { readonly destinations: readonly DestinationView[]; readonly trapZone: TrapZoneView | undefined } => {
+    const trap = lit.find((action) => action.kind === 'トラップとしてプレイする')
+
+    return {
+      destinations: lit.flatMap((action): readonly DestinationView[] => {
+        const square = destinationOf(action)
+        return square === undefined ? [] : [{ square, action, label: view(action).label }]
+      }),
+      trapZone: trap === undefined ? undefined : { action: trap, label: view(trap).label },
+    }
+  }
 
   // 聞くことが無ければ、行き先を全部光らせる。聞くことがあっても、行き先を押して行う手を選び終えて
   // いれば、その種類の行き先だけを光らせる（聞き直さない）。
   if (asked.length === 0) {
-    return { pickable, picked, destinations: light(aimable), ask: undefined, untargeted: [] }
+    return { pickable, picked, ...light(aimable), ask: undefined, untargeted: [] }
   }
   if (aim !== undefined && aimable.some((action) => action.kind === aim)) {
-    return {
-      pickable,
-      picked,
-      destinations: light(aimable.filter((action) => action.kind === aim)),
-      ask: undefined,
-      untargeted: [],
-    }
+    return { pickable, picked, ...light(aimable.filter((action) => action.kind === aim)), ask: undefined, untargeted: [] }
   }
 
   const heading = nameOf(names, picked)
   const lead =
     options.length === 1 ? `「${options[0]?.label ?? ''}」を行いますか？` : 'どの手を行いますか？'
 
-  return { pickable, picked, destinations: [], ask: { heading, lead, options }, untargeted: [] }
+  return { pickable, picked, destinations: [], trapZone: undefined, ask: { heading, lead, options }, untargeted: [] }
 }
 
 function sameSquare(square: Square | undefined, other: Square): boolean {

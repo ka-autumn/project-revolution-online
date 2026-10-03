@@ -146,6 +146,12 @@ export interface BoardPicking {
    * 置き場所で引く。**どれが押せるかはここで決めない**のは、表向きのカードと同じである。
    */
   readonly hidden?: readonly WireCardPosition[]
+  /**
+   * 光らせる自分のトラップゾーン（#249）。`トラップとしてプレイする` を行える時だけ渡される。
+   * 押した時に何を送るかはここに無い（`onTrapZone`）。
+   */
+  readonly trapZone?: { readonly label: string }
+  readonly onTrapZone?: () => void
   readonly onCard: (card: CardId) => void
   readonly onSquare?: (square: Square) => void
   readonly onHidden?: (at: WireCardPosition) => void
@@ -166,7 +172,7 @@ export interface BoardPicking {
 function keepsPicking(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
-    target.closest('button, [role="button"], .card--押せる, .square--置き先, .dialog, .picker') !== null
+    target.closest('button, [role="button"], .card--押せる, .square--置き先, .zone--置き先, .dialog, .picker') !== null
   )
 }
 
@@ -521,6 +527,25 @@ function zoneElement(zone: ZoneView, picking?: BoardPicking, options: FaceOption
 }
 
 /**
+ * 自分のトラップゾーン。`トラップとしてプレイする` を行える間は、ここが行き先として光り、押すと
+ * その手を行う（#249）。スクエアと同じく、押せることを色だけで区別させず、読み上げにも出す。
+ */
+function ownTrapZoneElement(zone: ZoneView, picking: BoardPicking | undefined): HTMLElement {
+  const node = zoneElement(zone, picking)
+  const lit = picking?.trapZone
+  const onTrapZone = picking?.onTrapZone
+  if (lit === undefined || onTrapZone === undefined) return node
+
+  node.classList.add('zone--置き先')
+  node.setAttribute('role', 'button')
+  node.tabIndex = 0
+  node.setAttribute('aria-label', `自分のトラップゾーン（${lit.label}）`)
+  node.addEventListener('click', onTrapZone)
+
+  return node
+}
+
+/**
  * 束（捨札・リムーブ）。見せるのは一番上の 1 枚と枚数だけ（ADR-0027）。中身があれば押せ、
  * 押すと中身の一覧が開く（`pickerElement` の「見る」）。
  */
@@ -695,7 +720,7 @@ function boardGridElement(
 
   node.append(place(deckZoneElement(zoneOf(view.opponent, '山札'), planOf(view.opponent), picking), '2 / 1'))
   node.append(place(zoneElement(zoneOf(view.opponent, 'トラップゾーン'), picking), '2 / 6'))
-  node.append(place(zoneElement(zoneOf(view.own, 'トラップゾーン'), picking), '4 / 1'))
+  node.append(place(ownTrapZoneElement(zoneOf(view.own, 'トラップゾーン'), picking), '4 / 1'))
   node.append(place(deckZoneElement(zoneOf(view.own, '山札'), planOf(view.own), picking), '4 / 6'))
 
   node.append(place(waitingElement('バンク', view.bank), '3 / 1'))
@@ -3294,8 +3319,8 @@ export function pickElement(view: PickView, handlers: PickHandlers, aside?: HTML
       ? view.pickable.length > 0
         ? 'カードを押すと、そのカードで行える手が出ます'
         : '押せるカードがありません'
-      : view.destinations.length > 0
-        ? '光っているスクエアを押すと、そこへ置きます'
+      : view.destinations.length > 0 || view.trapZone !== undefined
+        ? '光っているところを押すと、そこへ置きます'
         : 'このカードで行える手を選んでください'
   node.append(element('p', 'actions__none', guide))
 

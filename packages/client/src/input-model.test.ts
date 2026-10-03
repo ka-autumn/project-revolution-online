@@ -723,6 +723,66 @@ describe('クリックで操作する', () => {
     expect(view.ask?.options).toEqual([{ label: 'エネルギーとして置く', send: PLACE }])
   })
 
+  /**
+   * 「トラップとしてプレイする」は、自分のトラップゾーンを行き先にする（#249）。行える手が
+   * それだけなら、聞かずにトラップゾーンを光らせる。
+   */
+  describe('トラップとしてプレイする', () => {
+    const TRAP: LegalAction = { kind: 'トラップとしてプレイする', card: 'てふだの1枚' }
+    const PLAY_STRATEGY: LegalAction = { kind: 'カードをプレイする', declaration: { card: 'てふだの1枚' } }
+
+    it('それだけなら、聞かずに自分のトラップゾーンが光る', () => {
+      const view = pick([TRAP], 'てふだの1枚')
+
+      expect(view.ask).toBeUndefined()
+      expect(view.trapZone?.action).toBe(TRAP)
+      expect(view.destinations).toEqual([])
+    })
+
+    /** 手札のユニットは、スクエアにプレイするかトラップとしてプレイするかだけなら、同時に光らせる。 */
+    it('スクエアにプレイする手と並ぶなら、聞かずに、スクエアとトラップゾーンが同時に光る', () => {
+      const view = pick([PLAY_LEFT, PLAY_RIGHT, TRAP], 'てふだの1枚')
+
+      expect(view.ask).toBeUndefined()
+      expect(view.destinations.map((each) => each.square)).toEqual([
+        { row: 0, column: 0 },
+        { row: 0, column: 2 },
+      ])
+      expect(view.trapZone?.action).toBe(TRAP)
+    })
+
+    /** 行き先の無いプレイ（ストラテジー）と並ぶなら、選ぶダイアログで聞く。光るのはその後。 */
+    it('行き先の無いプレイと並ぶなら、選ぶダイアログで聞き、選ぶまでは光らせない', () => {
+      const view = pick([PLAY_STRATEGY, TRAP], 'てふだの1枚')
+
+      expect(view.ask?.options).toEqual([
+        { label: 'プレイする', send: PLAY_STRATEGY },
+        { label: 'トラップとしてプレイする', aim: 'トラップとしてプレイする' },
+      ])
+      expect(view.trapZone).toBeUndefined()
+    })
+
+    it('トラップとしてプレイすると決めたら、トラップゾーンだけが光る', () => {
+      const view = pickView(board(), [PLAY_STRATEGY, TRAP], 'てふだの1枚', undefined, 'トラップとしてプレイする')
+
+      expect(view.ask).toBeUndefined()
+      expect(view.trapZone?.action).toBe(TRAP)
+    })
+
+    /** ほかの手が混じるなら、ユニットでも選ぶダイアログを出す。 */
+    it('エネルギーを置く手などが混じるなら、ユニットでも選ぶダイアログで聞く', () => {
+      const view = pick([PLACE, PLAY_LEFT, TRAP], 'てふだの1枚')
+
+      expect(view.ask?.options.map((each) => each.label)).toEqual([
+        'エネルギーとして置く',
+        'スクエアにプレイする',
+        'トラップとしてプレイする',
+      ])
+      expect(view.destinations).toEqual([])
+      expect(view.trapZone).toBeUndefined()
+    })
+  })
+
   /** 選んだカードの手が無くなって選んでいない状態に戻れば、放棄のボタンも戻る。 */
   it('選んだカードに手が無くなれば、カードに紐づかない手も戻る', () => {
     const view = pick([PASS, SMASH], 'てふだの1枚')
