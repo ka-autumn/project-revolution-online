@@ -62,7 +62,7 @@ import {
   pickView,
   showsChoicePicker,
 } from './input-model.js'
-import type { AimKind } from './input-model.js'
+import type { AimKind, PickSelection } from './input-model.js'
 import { filterChoicesOf, filterPool } from './pool-filter.js'
 import {
   closedRecipeUrlOf,
@@ -252,11 +252,12 @@ type PickMode = 'クリック' | 'ボタン'
 /** いま盤面をどう操作しているか。`card` は選びかけのカード。 */
 interface Picking {
   readonly mode: PickMode
-  readonly card: CardId | undefined
-  /** 聞くダイアログで「行き先を押して行う手」を選び終えた、その手の種類（#249）。 */
-  readonly aim: AimKind | undefined
+  /** 選びかけ（カード・山札・聞いて選び終えた手）。何も選んでいなければ空。 */
+  readonly selection: PickSelection
   readonly onAim: (aim: AimKind) => void
   readonly onCard: (card: CardId) => void
+  /** 山札を押した（#249）。もう一度押したら外す。 */
+  readonly onDeck: () => void
   /** 選びかけを捨てる。手を送る時に呼ぶ。描き直さない（届く盤面が描き直す）。 */
   readonly onCancel: () => void
   /**
@@ -791,7 +792,7 @@ function draw(
     const clicking = connected && picking.mode === 'クリック' && !showsOverlay(overlay)
     const view =
       clicking && stage.choice === undefined
-        ? pickView(board, stage.actions, picking.card, stage.passOutcome, picking.aim)
+        ? pickView(board, stage.actions, picking.selection, stage.passOutcome)
         : undefined
     // 盤面に出ている候補がどれかは、操作のしかた・演出・繋がりとは関係なく決まる（#207）。
     // 一覧を出すかどうか（`offBoard` 以下）はここから決める。
@@ -811,7 +812,8 @@ function draw(
             picked: view.picked,
             squares: view.destinations,
             onCard: (card) => picking.onCard(card),
-            ...(view.picked === undefined ? {} : { onBlank: picking.onDeselect }),
+            ...(view.picked === undefined && !view.deck ? {} : { onBlank: picking.onDeselect }),
+            ...(view.deckPickable ? { deck: { picked: view.deck }, onDeck: picking.onDeck } : {}),
             ...(view.trapZone === undefined
               ? {}
               : {
@@ -1163,8 +1165,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   // 盤面をクリックして操作する（#94）。選びかけているカードは**盤面が届くたびに捨てる**。
   // 届いた手は入れ替わっており、選びかけの手がまだ行えるとは限らないためである。
   let mode: PickMode = 'クリック'
-  let pickedCard: CardId | undefined
-  let pickedAim: AimKind | undefined
+  let selection: PickSelection = {}
 
   /** 開いている「見る」一覧（捨札・リムーブの中身を見る、ADR-0027）。無ければ何も開いていない。 */
   let viewingPile: { readonly player: Player; readonly zone: '捨札' | 'リムーブゾーン' } | undefined
@@ -1192,35 +1193,34 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let lastFresh: readonly LoggedEvent[] | undefined
 
   const deselect = (): void => {
-    if (pickedCard === undefined) return
-    pickedCard = undefined
-    pickedAim = undefined
+    if (selection.card === undefined && selection.deck !== true) return
+    selection = {}
     redraw()
   }
 
   const picking = (): Picking => ({
     mode,
-    card: pickedCard,
-    aim: pickedAim,
+    selection,
     onAim: (aim) => {
-      pickedAim = aim
+      selection = { ...selection, aim }
       redraw()
     },
     onCard: (card) => {
       // 同じカードをもう一度押したら、選ぶのをやめる。選び直したら、聞いた答えも捨てる。
-      pickedCard = pickedCard === card ? undefined : card
-      pickedAim = undefined
+      selection = selection.card === card ? {} : { card }
+      redraw()
+    },
+    onDeck: () => {
+      selection = selection.deck === true ? {} : { deck: true }
       redraw()
     },
     onCancel: () => {
-      pickedCard = undefined
-      pickedAim = undefined
+      selection = {}
     },
     onDeselect: deselect,
     onMode: (next) => {
       mode = next
-      pickedCard = undefined
-      pickedAim = undefined
+      selection = {}
       redraw()
     },
   })
@@ -1972,8 +1972,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       if (message.kind === '名前を決めてほしい' && nameDraft === '') nameDraft = message.current ?? ''
       if (message.kind === '名前を決めてほしい' && message.reason !== undefined) nameRefusalArrived = true
       // 盤面が入れ替わったら、選びかけは捨てる（#94）。
-      pickedCard = undefined
-      pickedAim = undefined
+      selection = {}
       // 「見る」「選ぶ」の状態は、席についた時点（入り直しを含む）で前の対局のものを持ち越さない。
       // 席は覚えているだけの値なので、次の対局で入れ替わると別の置き場を指してしまう（#207）。
       if (message.kind === '席についた') {
@@ -2014,10 +2013,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       link = value
       // 切れたら、聞いている途中のダイアログは何も送らずに閉じる（#249）。繋ぎ直した先で、その手が
       // まだ行えるとは限らない（ADR-0016）。
-      if (value.kind !== '繋がっている') {
-        pickedCard = undefined
-        pickedAim = undefined
-      }
+      if (value.kind !== '繋がっている') selection = {}
       // **切れている間に送ったものは届いていない**（`connection.ts`）ので、返事も来ない。待つのを
       // やめて、繋がり直したら確かめ直す。組みかけは画面が持っているので消えない。
       if (value.kind !== '繋がっている') updateBuilder({ ...builder, waiting: { kind: '無し' }, checking: 0 })

@@ -2555,6 +2555,20 @@ body {
   border-radius: 5px;
 }
 
+/* 山札は、プランを始められる間、押せる（#249）。スクエア・トラップゾーンの行き先と同じ見せ方 */
+.duel .pile--押せる {
+  cursor: pointer;
+  border-radius: 6px;
+  outline: 2px dashed #e07b00;
+  outline-offset: 3px;
+  box-shadow: 0 0 14px 2px rgb(255 180 40 / 0.6);
+}
+
+.duel .pile--選択中 {
+  outline: 3px solid #e05a00;
+  box-shadow: 0 0 18px 6px rgb(255 140 0 / 0.9);
+}
+
 /* 捨札・リムーブの束は押すと一覧が開く */
 .duel .pile--開ける {
   cursor: pointer;

@@ -152,6 +152,12 @@ export interface BoardPicking {
    */
   readonly trapZone?: { readonly label: string }
   readonly onTrapZone?: () => void
+  /**
+   * 山札を押せる（#249）。プランゾーンにカードが無く、プランする手が届いている時だけ渡される。
+   * プランゾーンにカードがあれば、山札の場所に見えているそのカードを押す（`pickable`）。
+   */
+  readonly deck?: { readonly picked: boolean }
+  readonly onDeck?: () => void
   readonly onCard: (card: CardId) => void
   readonly onSquare?: (square: Square) => void
   readonly onHidden?: (at: WireCardPosition) => void
@@ -172,7 +178,7 @@ export interface BoardPicking {
 function keepsPicking(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
-    target.closest('button, [role="button"], .card--押せる, .square--置き先, .zone--置き先, .dialog, .picker') !== null
+    target.closest('button, [role="button"], .card--押せる, .square--置き先, .zone--置き先, .pile--押せる, .dialog, .picker') !== null
   )
 }
 
@@ -582,7 +588,12 @@ function pileZoneElement(zone: ZoneView, onOpen: (() => void) | undefined): HTML
  * 山札。プランゾーンにカードがあれば、裏面のかわりにそのカードを表で見せる（ADR-0027）。
  * 有る・無しで山札の位置は動かさない。
  */
-function deckZoneElement(deck: ZoneView, plan: CardView | undefined, picking: BoardPicking | undefined): HTMLElement {
+function deckZoneElement(
+  deck: ZoneView,
+  plan: CardView | undefined,
+  picking: BoardPicking | undefined,
+  own: boolean,
+): HTMLElement {
   const node = element('section', 'zone zone--山札')
   const title = element('h3', 'zone__title', '山札')
   title.append(element('span', '', `（${deck.count}）`))
@@ -590,6 +601,18 @@ function deckZoneElement(deck: ZoneView, plan: CardView | undefined, picking: Bo
 
   const cardsWrap = element('div', 'zone__cards')
   const pile = element('div', 'pile')
+  // プランゾーンにカードが無い間の山札は、押してプランを始められる（#249）。カードがあれば、
+  // そのカードを押す（`cardElement`）。
+  const pressable = own && plan === undefined && picking?.deck !== undefined && picking.onDeck !== undefined
+  if (pressable) {
+    const onDeck = picking.onDeck
+    pile.classList.add('pile--押せる')
+    if (picking.deck?.picked === true) pile.classList.add('pile--選択中')
+    pile.setAttribute('role', 'button')
+    pile.tabIndex = 0
+    pile.setAttribute('aria-label', `山札（${picking.deck?.picked === true ? '選択中' : '押せます'}）`)
+    if (onDeck !== undefined) pile.addEventListener('click', onDeck)
+  }
   // プランゾーンのカードは公開情報だが、念のため見えている時だけ表で見せる。見えていなければ
   // 裏面のままにする（表に出せないものを表として描かない）。
   const hasCard = plan !== undefined || deck.count > 0
@@ -718,10 +741,10 @@ function boardGridElement(
   )
   node.append(ownStrip)
 
-  node.append(place(deckZoneElement(zoneOf(view.opponent, '山札'), planOf(view.opponent), picking), '2 / 1'))
+  node.append(place(deckZoneElement(zoneOf(view.opponent, '山札'), planOf(view.opponent), picking, false), '2 / 1'))
   node.append(place(zoneElement(zoneOf(view.opponent, 'トラップゾーン'), picking), '2 / 6'))
   node.append(place(ownTrapZoneElement(zoneOf(view.own, 'トラップゾーン'), picking), '4 / 1'))
-  node.append(place(deckZoneElement(zoneOf(view.own, '山札'), planOf(view.own), picking), '4 / 6'))
+  node.append(place(deckZoneElement(zoneOf(view.own, '山札'), planOf(view.own), picking, true), '4 / 6'))
 
   node.append(place(waitingElement('バンク', view.bank), '3 / 1'))
   node.append(place(waitingElement('誘発した能力', view.triggered), '3 / 6'))
