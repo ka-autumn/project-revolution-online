@@ -35,11 +35,21 @@ function credentials(header: string | null): string | undefined {
   }
 }
 
+/**
+ * 通す。**preview（本番でないデプロイ）には、検索に載せない印を付ける。** 検証環境は preview に別名を
+ * 張ったもので、保護を外すと誰でも開ける。本番には付けない。
+ */
+function pass(): Response {
+  if (process.env.VERCEL_ENV === 'preview') return next({ headers: { 'x-robots-tag': 'noindex' } })
+
+  return next()
+}
+
 export default function proxy(request: Request): Response {
   const expected = process.env.BASIC_AUTH
-  if (expected === undefined || expected === '') return next()
+  if (expected === undefined || expected === '') return pass()
 
-  if (credentials(request.headers.get('authorization')) === expected) return next()
+  if (credentials(request.headers.get('authorization')) === expected) return pass()
 
   return new Response('合言葉が要ります', {
     status: 401,
