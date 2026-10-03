@@ -249,7 +249,7 @@ function statusOf(session: Session, link: Link): string | undefined {
  */
 type PickMode = 'クリック' | 'ボタン'
 
-/** いま盤面をどう操作しているか。`card` は選びかけのカード。 */
+/** いま盤面をどう操作しているか。`selection` が選びかけ。 */
 interface Picking {
   readonly mode: PickMode
   /** 選びかけ（カード・山札・聞いて選び終えた手）。何も選んでいなければ空。 */
@@ -905,7 +905,7 @@ function draw(
       // であって、待ち行列の遅れとは関係が無い。止めると、演出が消えるまで解決が進まなくなる。
       controlsChildren.push(waitingForOverlayElement(mode))
     } else if (stage.choice === undefined && view !== undefined) {
-      // クリックで操作する（#94）。盤面の上で示せない手だけをここに出す。
+      // クリックで操作する（#94）。パネルには、優先権の放棄と案内文だけを出す。
       controlsChildren.push(
         pickElement(
           view,
@@ -2052,7 +2052,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     }, 0)
   }
 
-  // Esc で、選びかけのカードを外す（#249）。何も選んでいなければ何もしない。ダイアログなどが
+  // Esc で、選びかけを外す（#249）。何も選んでいなければ何もしない。ダイアログなどが
   // 自分の Esc を持つ場合も、行き着く先は同じ（選んでいない状態）なので、重ねて呼んでも困らない。
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') deselect()

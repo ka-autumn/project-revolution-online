@@ -3346,8 +3346,8 @@ export interface PickHandlers {
 /**
  * クリックで操作する時の、行える手のところ（#94）。
  *
- * 盤面の上で示せない手だけをここに出す。**カードを選ぶ前は、対象を持たない手だけ**が並び、
- * カードを選んだ後はその 1 枚の手が並ぶ。置き先を選ぶ手は盤面の上にあるので、ここには出ない。
+ * パネルに出す手のボタンは、カードを選んでいない間の優先権の放棄だけである。カードを選んだ後の手は、
+ * 行き先（盤面）とダイアログ（`askElement`）で出す。
  */
 export function pickElement(view: PickView, handlers: PickHandlers, aside?: HTMLElement): HTMLElement {
   const node = element('section', 'actions')
