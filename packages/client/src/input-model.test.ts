@@ -11,6 +11,7 @@ import {
   showsChoicePicker,
 } from './input-model.js'
 import { applyMessage, connecting } from './session.js'
+import { squareLabel } from './view-model.js'
 import type { Session } from './session.js'
 import { emptyBoard, instance, unitFace, withZone } from './test-support.js'
 
@@ -556,7 +557,8 @@ describe('クリックで操作する', () => {
   }
   const SMASH: LegalAction = { kind: 'スマッシュする', unit: 'スクエアの1枚' }
 
-  const pick = (actions: readonly LegalAction[], picked?: string) => pickView(board(), actions, picked, undefined)
+  const pick = (actions: readonly LegalAction[], picked?: string) =>
+    pickView(board(), actions, { card: picked }, undefined)
 
   it('手が紐づいているカードだけが押せる', () => {
     expect(pick([PASS, PLACE, PLAY_LEFT]).pickable).toEqual(['てふだの1枚'])
@@ -577,7 +579,7 @@ describe('クリックで操作する', () => {
     const view = pick([PLACE, SMASH], 'てふだの1枚')
 
     expect(view.picked).toBe('てふだの1枚')
-    expect(view.direct.map((each) => each.action)).toEqual([PLACE])
+    expect(view.ask?.options).toEqual([{ label: 'エネルギーとして置く', send: PLACE }])
   })
 
   /**
@@ -597,8 +599,8 @@ describe('クリックで操作する', () => {
       { row: 0, column: 0 },
       { row: 0, column: 2 },
     ])
-    // 盤面の上で示せるので、ボタンとしては出ない。
-    expect(view.direct).toEqual([])
+    // 盤面の上で示せるので、ダイアログでは聞かない。
+    expect(view.ask).toBeUndefined()
   })
 
   /** 光らせた場所を押したら、その手をそのまま送る。組み立て直さない。 */
@@ -620,14 +622,20 @@ describe('クリックで操作する', () => {
   })
 
   /**
-   * 同じスクエアを指す手が 2 つ以上あるなら、押した場所だけでは決まらない。ボタンとして出す。
+   * 同じスクエアを指す手が 2 つ以上あるなら、押した場所だけでは決まらない。選ぶダイアログで
+   * 聞く。見分けがつくよう、行き先を添える。
    */
-  it('同じ場所を指す手が 2 つあれば、盤面では示さない', () => {
+  it('同じ場所を指す手が 2 つあれば、盤面では示さず、選ぶダイアログで聞く', () => {
     const move: LegalAction = { kind: 'ユニットを移動する', unit: 'てふだの1枚', destination: { row: 0, column: 0 } }
     const view = pick([PLAY_LEFT, move], 'てふだの1枚')
 
     expect(view.destinations).toEqual([])
-    expect(view.direct.map((each) => each.action)).toEqual([PLAY_LEFT, move])
+    expect(view.ask?.options.map((each) => ('send' in each ? each.send : undefined))).toEqual([PLAY_LEFT, move])
+    // 行き先が呼び名に添わなければ、同じ種類の手が並んだときに見分けがつかない。
+    expect(view.ask?.options.map((each) => each.label)).toEqual([
+      `スクエアにプレイする（${squareLabel('先攻', { row: 0, column: 0 })}へ）`,
+      `移動する（${squareLabel('先攻', { row: 0, column: 0 })}へ）`,
+    ])
   })
 
   /** 選んだカードの手が届かなくなったら、選んでいない状態と同じになる。 */
@@ -638,9 +646,415 @@ describe('クリックで操作する', () => {
     expect(view.pickable).toEqual(['スクエアの1枚'])
   })
 
-  it('カードに紐づかない手は、カードを選んでいる間も押せる', () => {
+  /**
+   * 反転した決まり（#249）。以前は「カードに紐づかない手は、カードを選んでいる間も押せる」
+   * だった（#94）が、選んでいる間は、そのカードに関係ない手を出さない。優先権の放棄のボタンも
+   * 出さない。選んでいる間に出ていると、押すつもりのないものが目に入り、選びかけの手と
+   * 見分けにくい。送れる手が減るわけではなく、選択を外せば戻る（ルールの判断ではない、
+   * ADR-0010）。
+   */
+  it('カードを選んでいる間は、カードに紐づかない手を出さない', () => {
     const view = pick([PASS, PLACE], 'てふだの1枚')
 
+    expect(view.untargeted).toEqual([])
+  })
+
+  it('カードを選んでいなければ、カードに紐づかない手が出る', () => {
+    const view = pick([PASS, PLACE])
+
+    expect(view.untargeted.map((each) => each.action)).toEqual([PASS])
+  })
+
+  /**
+   * 行き先の無い手が 1 つだけなら、確認ダイアログで聞く（#249）。見出しは何のカードの話かで、
+   * 読み上げに結び付く。
+   */
+  it('行き先の無い手が 1 つだけなら、その手を確認する', () => {
+    const view = pick([PLACE], 'てふだの1枚')
+
+    expect(view.ask).toEqual({
+      heading: 'テスト・手札の戦士',
+      lead: '「エネルギーとして置く」を行いますか？',
+      options: [{ label: 'エネルギーとして置く', send: PLACE }],
+    })
+    expect(view.destinations).toEqual([])
+  })
+
+  it('行き先の無い手が 2 つ以上あれば、選ぶダイアログで聞く', () => {
+    const courage: LegalAction = { kind: '「勇気」を起動する', card: 'てふだの1枚' }
+    const view = pick([PLACE, courage], 'てふだの1枚')
+
+    expect(view.ask?.lead).toBe('どの手を行いますか？')
+    expect(view.ask?.options).toEqual([
+      { label: 'エネルギーとして置く', send: PLACE },
+      { label: '「勇気」を起動する', send: courage },
+    ])
+  })
+
+  /** 何も選んでいなければ、聞くことは無い。 */
+  it('カードを選ぶまでは、聞かない', () => {
+    expect(pick([PLACE, PLAY_LEFT]).ask).toBeUndefined()
+  })
+
+  /**
+   * 行き先のある手と無い手が混じるなら、先に聞く。行き先を押して行う手は、種類ごとに 1 つの
+   * 選択肢にまとめる（スクエアごとに並べない）。
+   */
+  it('行き先のある手と無い手が混じれば、先に聞き、行き先は光らせない', () => {
+    const view = pick([PLACE, PLAY_LEFT, PLAY_RIGHT], 'てふだの1枚')
+
+    expect(view.ask?.options).toEqual([
+      { label: 'エネルギーとして置く', send: PLACE },
+      { label: 'スクエアにプレイする', aim: 'カードをプレイする' },
+    ])
+    expect(view.destinations).toEqual([])
+  })
+
+  /** 聞いたあと、行き先を押して行う手を選んだなら、その種類の行き先だけが光る。聞き直さない。 */
+  it('行き先を押して行う手を選び終えたら、その行き先だけが光る', () => {
+    const view = pickView(board(), [PLACE, PLAY_LEFT, PLAY_RIGHT], { card: 'てふだの1枚', aim: 'カードをプレイする' }, undefined)
+
+    expect(view.ask).toBeUndefined()
+    expect(view.destinations.map((each) => each.square)).toEqual([
+      { row: 0, column: 0 },
+      { row: 0, column: 2 },
+    ])
+  })
+
+  /** 選び終えた手が、盤面が新しく届いて無くなっていたら、また聞く。無い手の行き先は光らせない。 */
+  it('選び終えた手が届いていなければ、聞き直す', () => {
+    const view = pickView(board(), [PLACE, SMASH], { card: 'てふだの1枚', aim: 'カードをプレイする' }, undefined)
+
+    expect(view.destinations).toEqual([])
+    expect(view.ask?.options).toEqual([{ label: 'エネルギーとして置く', send: PLACE }])
+  })
+
+  /**
+   * 「トラップとしてプレイする」は、自分のトラップゾーンを行き先にする（#249）。行える手が
+   * それだけなら、聞かずにトラップゾーンを光らせる。
+   */
+  describe('トラップとしてプレイする', () => {
+    const TRAP: LegalAction = { kind: 'トラップとしてプレイする', card: 'てふだの1枚' }
+    const PLAY_STRATEGY: LegalAction = { kind: 'カードをプレイする', declaration: { card: 'てふだの1枚' } }
+
+    it('それだけなら、聞かずに自分のトラップゾーンが光る', () => {
+      const view = pick([TRAP], 'てふだの1枚')
+
+      expect(view.ask).toBeUndefined()
+      expect(view.trapZone?.action).toBe(TRAP)
+      expect(view.destinations).toEqual([])
+    })
+
+    /** 手札のユニットは、スクエアにプレイするかトラップとしてプレイするかだけなら、同時に光らせる。 */
+    it('スクエアにプレイする手と並ぶなら、聞かずに、スクエアとトラップゾーンが同時に光る', () => {
+      const view = pick([PLAY_LEFT, PLAY_RIGHT, TRAP], 'てふだの1枚')
+
+      expect(view.ask).toBeUndefined()
+      expect(view.destinations.map((each) => each.square)).toEqual([
+        { row: 0, column: 0 },
+        { row: 0, column: 2 },
+      ])
+      expect(view.trapZone?.action).toBe(TRAP)
+    })
+
+    /** 行き先の無いプレイ（ストラテジー）と並ぶなら、選ぶダイアログで聞く。光るのはその後。 */
+    it('行き先の無いプレイと並ぶなら、選ぶダイアログで聞き、選ぶまでは光らせない', () => {
+      const view = pick([PLAY_STRATEGY, TRAP], 'てふだの1枚')
+
+      expect(view.ask?.options).toEqual([
+        { label: 'プレイする', send: PLAY_STRATEGY },
+        { label: 'トラップとしてプレイする', aim: 'トラップとしてプレイする' },
+      ])
+      expect(view.trapZone).toBeUndefined()
+    })
+
+    it('トラップとしてプレイすると決めたら、トラップゾーンだけが光る', () => {
+      const view = pickView(board(), [PLAY_STRATEGY, TRAP], { card: 'てふだの1枚', aim: 'トラップとしてプレイする' }, undefined)
+
+      expect(view.ask).toBeUndefined()
+      expect(view.trapZone?.action).toBe(TRAP)
+    })
+
+    /** ほかの手が混じるなら、ユニットでも選ぶダイアログを出す。 */
+    it('エネルギーを置く手などが混じるなら、ユニットでも選ぶダイアログで聞く', () => {
+      const view = pick([PLACE, PLAY_LEFT, TRAP], 'てふだの1枚')
+
+      expect(view.ask?.options.map((each) => each.label)).toEqual([
+        'エネルギーとして置く',
+        'スクエアにプレイする',
+        'トラップとしてプレイする',
+      ])
+      expect(view.destinations).toEqual([])
+      expect(view.trapZone).toBeUndefined()
+    })
+  })
+
+  /**
+   * プランは、山札（プランゾーンにカードがあればそのカード）を押して始める（#249）。
+   * 「プランする」はボタンとしては出ない。
+   */
+  describe('プラン', () => {
+    const PLAN: LegalAction = { kind: 'プランする' }
+    const PLAY_PLANNED: LegalAction = { kind: 'カードをプレイする', declaration: { card: 'プランの1枚' } }
+    const PLAY_PLANNED_AT: LegalAction = {
+      kind: 'カードをプレイする',
+      declaration: { card: 'プランの1枚', square: { row: 0, column: 0 } },
+    }
+
+    /** プランゾーンにカードが 1 枚ある盤面。山札の場所にはそのカードが見える（ADR-0027）。 */
+    const withPlanCard = (): WirePerspective =>
+      withZone(board(), '先攻', 'プランゾーン', [
+        { kind: '見えている', instance: instance('プランの1枚', '先攻', { card: unitFace('テスト・プランの戦士') }) },
+      ])
+
+    it('プランする手は、ボタンとしては出ない', () => {
+      expect(pick([PASS, PLAN]).untargeted.map((each) => each.action)).toEqual([PASS])
+    })
+
+    it('プランゾーンにカードが無ければ、山札が押せる', () => {
+      const view = pick([PASS, PLAN])
+
+      expect(view.deckPickable).toBe(true)
+      expect(view.pickable).toEqual([])
+    })
+
+    it('プランする手が届いていなければ、山札は押せない', () => {
+      expect(pick([PASS]).deckPickable).toBe(false)
+    })
+
+    /** 押した瞬間に実行されないよう、毎回確認する。コストが自動で選ばれるかは届く手から分からない。 */
+    it('山札を押したら、プランするかを確認する', () => {
+      const view = pickView(board(), [PASS, PLAN], { deck: true }, undefined)
+
+      expect(view.ask).toEqual({
+        heading: '山札',
+        lead: '「プランする」を行いますか？',
+        options: [{ label: 'プランする', send: PLAN }],
+      })
+      expect(view.untargeted).toEqual([])
+    })
+
+    /** 山札を押せるのは、プランする手が届いている時だけ。無い手を聞かない。 */
+    it('プランする手が無ければ、山札を選んでいても何も聞かない', () => {
+      const view = pickView(board(), [PASS], { deck: true }, undefined)
+
+      expect(view.deck).toBe(false)
+      expect(view.ask).toBeUndefined()
+    })
+
+    it('プランゾーンにカードがあれば、山札のかわりにそのカードが押せる', () => {
+      const view = pickView(withPlanCard(), [PASS, PLAN], {}, undefined)
+
+      expect(view.deckPickable).toBe(false)
+      expect(view.pickable).toEqual(['プランの1枚'])
+    })
+
+    it('プランゾーンのカードをプレイできないなら、プランするかを確認する', () => {
+      const view = pickView(withPlanCard(), [PASS, PLAN], { card: 'プランの1枚' }, undefined)
+
+      expect(view.ask?.heading).toBe('テスト・プランの戦士')
+      expect(view.ask?.options).toEqual([{ label: 'プランする', send: PLAN }])
+    })
+
+    /** プランゾーンのカードをプレイすることもできるなら、選ぶダイアログで聞く。 */
+    it('プランゾーンのカードをプレイすることもできるなら、プレイするかプランするかを選ばせる', () => {
+      const view = pickView(withPlanCard(), [PASS, PLAN, PLAY_PLANNED], { card: 'プランの1枚' }, undefined)
+
+      expect(view.ask?.lead).toBe('どの手を行いますか？')
+      expect(view.ask?.options).toEqual([
+        { label: 'プレイする', send: PLAY_PLANNED },
+        { label: 'プランする', send: PLAN },
+      ])
+    })
+
+    it('ユニットのプランゾーンのカードなら、スクエアにプレイするかプランするかを選ばせ、選んだあとに光らせる', () => {
+      const asking = pickView(withPlanCard(), [PASS, PLAN, PLAY_PLANNED_AT], { card: 'プランの1枚' }, undefined)
+
+      expect(asking.ask?.options).toEqual([
+        { label: 'スクエアにプレイする', aim: 'カードをプレイする' },
+        { label: 'プランする', send: PLAN },
+      ])
+      expect(asking.destinations).toEqual([])
+
+      const aimed = pickView(
+        withPlanCard(),
+        [PASS, PLAN, PLAY_PLANNED_AT],
+        { card: 'プランの1枚', aim: 'カードをプレイする' },
+        undefined,
+      )
+      expect(aimed.ask).toBeUndefined()
+      expect(aimed.destinations.map((each) => each.square)).toEqual([{ row: 0, column: 0 }])
+    })
+
+    /**
+     * 相手のプランゾーンのカードは、山札の場所に見えていても、押せない。自分の山札は押せる。
+     * 自分の側のプランゾーンだけを見ていることを押さえる。
+     */
+    it('相手のプランゾーンにカードがあっても、それは押せず、自分の山札は押せる', () => {
+      const opponentPlans = withZone(board(), '後攻', 'プランゾーン', [
+        { kind: '見えている', instance: instance('あいてのプラン', '後攻', { card: unitFace('テスト・相手の戦士') }) },
+      ])
+      const view = pickView(opponentPlans, [PASS, PLAN], {}, undefined)
+
+      expect(view.pickable).toEqual([])
+      expect(view.deckPickable).toBe(true)
+    })
+
+    /**
+     * 山札を選んだあと、盤面が入れ替わってプランゾーンにカードが入ると、山札は押せなくなる。
+     * 残った選びかけは、何も選んでいない状態に戻る。
+     */
+    it('プランゾーンにカードがあるのに山札を選んでいても、何も選んでいないことになる', () => {
+      const view = pickView(withPlanCard(), [PASS, PLAN], { deck: true }, undefined)
+
+      expect(view.deck).toBe(false)
+      expect(view.picked).toBeUndefined()
+      expect(view.ask).toBeUndefined()
+      expect(view.pickable).toEqual(['プランの1枚'])
+    })
+
+    /** プランゾーンのカードと関係ない手札のカードに、プランの手は混じらない。 */
+    it('プランゾーンのカード以外を選んだなら、プランの手は混じらない', () => {
+      const view = pickView(withPlanCard(), [PASS, PLAN, PLACE], { card: 'てふだの1枚' }, undefined)
+
+      expect(view.ask?.options).toEqual([{ label: 'エネルギーとして置く', send: PLACE }])
+    })
+  })
+
+  /**
+   * 行き先の無い手の聞き方（#249）。見出しは何のカードの話か、選択肢の呼び名は手の種類ごとに決まる。
+   * 手が 1 つなら確認で、「その手」を行うかを聞く。
+   */
+  describe('行き先の無い手の聞き方', () => {
+    const cases: readonly { readonly action: LegalAction; readonly card: string; readonly heading: string; readonly label: string }[] = [
+      { action: PLACE, card: 'てふだの1枚', heading: 'テスト・手札の戦士', label: 'エネルギーとして置く' },
+      {
+        action: { kind: 'カードをプレイする', declaration: { card: 'てふだの1枚' } },
+        card: 'てふだの1枚',
+        heading: 'テスト・手札の戦士',
+        label: 'プレイする',
+      },
+      {
+        action: { kind: '「勇気」を起動する', card: 'てふだの1枚' },
+        card: 'てふだの1枚',
+        heading: 'テスト・手札の戦士',
+        label: '「勇気」を起動する',
+      },
+      { action: SMASH, card: 'スクエアの1枚', heading: 'テスト・盤上の戦士', label: 'スマッシュする' },
+      {
+        action: { kind: 'トラップを発動する', card: 'てふだの1枚' },
+        card: 'てふだの1枚',
+        heading: 'テスト・手札の戦士',
+        label: 'トラップを発動する',
+      },
+      {
+        action: { kind: 'トラップを廃棄する', card: 'てふだの1枚' },
+        card: 'てふだの1枚',
+        heading: 'テスト・手札の戦士',
+        label: 'トラップを廃棄する',
+      },
+      {
+        action: { kind: '起動型能力を起動する', unit: 'スクエアの1枚', ability: 0 },
+        card: 'スクエアの1枚',
+        heading: 'テスト・盤上の戦士',
+        label: '能力を起動する（1 個目）',
+      },
+    ]
+
+    it.each(cases)('$label は、1 つだけなら確認ダイアログで聞く', ({ action, card, heading, label }) => {
+      const view = pick([PASS, action], card)
+
+      expect(view.ask).toEqual({ heading, lead: `「${label}」を行いますか？`, options: [{ label, send: action }] })
+      expect(view.destinations).toEqual([])
+      expect(view.trapZone).toBeUndefined()
+    })
+
+    /** 1 枚が起動型能力を 2 つ持つなら、何個目かで見分ける（`legal-action.ts`）。 */
+    it('起動型能力が 2 つあれば、何個目かを添えて選ばせる', () => {
+      const first: LegalAction = { kind: '起動型能力を起動する', unit: 'スクエアの1枚', ability: 0 }
+      const second: LegalAction = { kind: '起動型能力を起動する', unit: 'スクエアの1枚', ability: 1 }
+      const view = pick([PASS, first, second], 'スクエアの1枚')
+
+      expect(view.ask?.lead).toBe('どの手を行いますか？')
+      expect(view.ask?.options).toEqual([
+        { label: '能力を起動する（1 個目）', send: first },
+        { label: '能力を起動する（2 個目）', send: second },
+      ])
+    })
+
+    /** ユニットの移動は行き先を押して行い、スマッシュは聞いて行う。混じるなら、先に聞く。 */
+    describe('移動とスマッシュが混じるとき', () => {
+      const move: LegalAction = { kind: 'ユニットを移動する', unit: 'スクエアの1枚', destination: { row: 0, column: 0 } }
+
+      it('先に聞き、行き先は光らせない', () => {
+        const view = pick([PASS, SMASH, move], 'スクエアの1枚')
+
+        expect(view.ask?.options).toEqual([
+          { label: 'スマッシュする', send: SMASH },
+          { label: '移動する', aim: 'ユニットを移動する' },
+        ])
+        expect(view.destinations).toEqual([])
+      })
+
+      it('移動すると決めたら、移動先だけが光る', () => {
+        const view = pickView(board(), [PASS, SMASH, move], { card: 'スクエアの1枚', aim: 'ユニットを移動する' }, undefined)
+
+        expect(view.ask).toBeUndefined()
+        expect(view.destinations.map((each) => each.square)).toEqual([{ row: 0, column: 0 }])
+      })
+    })
+  })
+
+  /**
+   * パネルの案内文。「押す」ではなく「選択」で書く。山札は、「プランする」ボタンをやめたので、
+   * 案内文が入口を示す。
+   */
+  describe('案内文', () => {
+    const PLAN: LegalAction = { kind: 'プランする' }
+    const opponentHasPriority = (): WirePerspective => {
+      const own = board()
+      return { ...own, turn: { ...own.turn, priority: '後攻' } }
+    }
+
+    it('押せるカードだけなら、カードを選ぶよう案内する', () => {
+      expect(pick([PASS, PLACE]).guide).toBe('操作するカードを選択してください')
+    })
+
+    /** 手札にプレイできるカードが無くても、山札が押せることを案内する。 */
+    it('山札だけが押せるなら、山札を選ぶよう案内する', () => {
+      expect(pick([PASS, PLAN]).guide).toBe('プランするには、山札を選択してください')
+    })
+
+    it('カードと山札の両方が押せるなら、両方を案内する', () => {
+      expect(pick([PASS, PLAN, PLACE]).guide).toBe(
+        '操作するカードを選択してください。プランするには、山札を選択してください',
+      )
+    })
+
+    it('押せるものが無く、自分に優先権があるなら、選択できるものが無いと案内する', () => {
+      expect(pick([PASS]).guide).toBe('選択できるカードがありません')
+    })
+
+    /** 相手が優先権を持つ間は、自分の手は空で届く（サーバ）。詰んでいるのではなく、待っている。 */
+    it('押せるものが無く、相手に優先権があるなら、待っていると案内する', () => {
+      expect(pickView(opponentHasPriority(), [], {}, undefined).guide).toBe('相手の操作を待っています')
+    })
+
+    it('行き先が光っているなら、置く場所を選ぶよう案内する', () => {
+      expect(pick([PLAY_LEFT], 'てふだの1枚').guide).toBe('置く場所を選択してください')
+    })
+
+    /** ダイアログが聞いている間は、ダイアログ自身が聞くので、案内文は出さない。 */
+    it('ダイアログが聞いている間は、案内文を出さない', () => {
+      expect(pick([PLACE], 'てふだの1枚').guide).toBeUndefined()
+    })
+  })
+
+  /** 選んだカードの手が無くなって選んでいない状態に戻れば、放棄のボタンも戻る。 */
+  it('選んだカードに手が無くなれば、カードに紐づかない手も戻る', () => {
+    const view = pick([PASS, SMASH], 'てふだの1枚')
+
+    expect(view.picked).toBeUndefined()
     expect(view.untargeted.map((each) => each.action)).toEqual([PASS])
   })
 })
@@ -849,7 +1263,7 @@ describe('候補を盤面から押す', () => {
 
 /**
  * #150。クリックで操作している間、盤面から押せる候補は操作パネルに出さない。行える手のほうは
- * すでにそうなっている（`pickView`、盤面の上で示せない手だけがパネルに出る）。
+ * すでにそうなっている（`pickView`、盤面の上で示せない手は、パネルの優先権の放棄とダイアログに出る）。
  *
  * **押せるかどうかを決めるのは `choicePicking` である。** ここで確かめるのは、その結果どおりに
  * ボタンが消えることと、**番号が元のまま**であること（ADR-0008）である。
