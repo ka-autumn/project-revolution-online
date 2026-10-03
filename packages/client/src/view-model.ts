@@ -1397,10 +1397,20 @@ export interface RoomView {
    */
   readonly rules: string | undefined
   /**
-   * 選んでいるデッキでは、この部屋に入れない理由 1 つ。入れる（か、判定する材料が無い）なら
+   * 選んでいるデッキでは、この部屋に入れない理由。入れる（か、判定する材料が無い）なら
    * `undefined`（ADR-0029、#243）。入れない部屋は「参加」を押せない形で出し、理由を添える。
    */
-  readonly refusal: string | undefined
+  readonly refusal: RoomRefusal | undefined
+}
+
+/**
+ * 部屋に入れない理由（ADR-0029）。`outOfRules` は、選んでいるデッキがその部屋のルールに合わないことが
+ * 理由か。デッキを選べていないのが理由なら偽で、全部の部屋が一斉に押せなくなるだけなので、
+ * 「参加」の文言を替えない。
+ */
+export interface RoomRefusal {
+  readonly reason: string
+  readonly outOfRules: boolean
 }
 
 /**
@@ -1471,7 +1481,7 @@ export function opponentName(opponent: Opponent): string {
  */
 export function lobbyView(
   rooms: readonly WireRoom[],
-  refusalUnder: (rules: WireRoom['rules']) => string | undefined = () => undefined,
+  refusalUnder: (rules: WireRoom['rules']) => RoomRefusal | undefined = () => undefined,
 ): readonly RoomView[] {
   const order: readonly WireRoom['status'][] = ['相手を待っている', '対戦中']
 

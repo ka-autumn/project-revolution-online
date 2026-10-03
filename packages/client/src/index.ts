@@ -33,12 +33,13 @@ import {
   filterOwnedDeckRows,
   hasUnsavedChanges,
   hasUnusableCards,
+  isCpuChoosable,
+  joinRefusal,
   judgedRulesOf,
   judgedRulesOfRoom,
   levelBreakdownOf,
   lobbyDecks,
   newDraft,
-  noDeckReason,
   ownedDeckRows,
   poolRows,
   POOL_BATCH,
@@ -51,7 +52,7 @@ import {
   withCard,
   withoutCard,
 } from './deck-builder.js'
-import type { Builder, DeckDraft, PoolView } from './deck-builder.js'
+import type { Builder, DeckDraft, LobbyDeck, PoolView } from './deck-builder.js'
 import {
   actionViews,
   automaticAction,
@@ -125,13 +126,13 @@ import {
   visibleCardViewsIn,
   zoneOf,
 } from './view-model.js'
-import type { Overlay, RoomTab } from './view-model.js'
+import type { Overlay, RoomRefusal, RoomTab } from './view-model.js'
 
 /**
  * クライアントの起動点。
  *
- * 受け取った盤面を描き、選んだものを送るだけで、**ルールの判断は持たない**（ADR-0010）。
- * 行える手はサーバが盤面と一緒に送る。
+ * 受け取った盤面を描き、選んだものを送るだけで、対戦のルールの判断は持たない（ADR-0010）。
+ * 行える手はサーバが盤面と一緒に送る。ロビーでのデッキの判定は、その範囲の外である（ADR-0029）。
  *
  * 4 つに分けている。届いたものを畳む純粋な関数（`session.ts`）、それを画面に出す値にする
  * 純粋な関数（`view-model.ts`）、DOM にするところ（`render.ts`）、そしてソケットを張って
@@ -705,18 +706,17 @@ function draw(
     // **席に着くのに選ぶのは自分のデッキである**（ADR-0021、#194）。既製デッキはデッキを組む
     // ところでコピーしてから使う。**デッキを持てない立て方でだけ、既製デッキがここに並ぶ。**
     const seatable = seatableDecks(session.ownedDecks, stage.presets)
-    // 選んでいるルールに合わないデッキも、使えないカードと同じく選べない（ADR-0029、#243）。
+    // 選んでいるルールに合わないかは、CPU のデッキの選べる・選べないにだけ効く（ADR-0029、#243）。
     const judged = judgedRulesOf(lobby.rules, stage.restrictions)
     const shownDecks = lobbyDecks(pool, owned, stage.presets, judged)
-    // 使えないカードが入ったデッキと、ルールに合わないデッキは選べない（ADR-0029）。選んだ状態にも
-    // しない——前に選んでいたデッキや、サーバが既定にしたデッキがそれなら、「デッキを選んでください」を出す。
+    // 使用するデッキは、使えないカードが入っていなければ選べる。選べないものは選んだ状態にもしない——
+    // 前に選んでいたデッキや、サーバが既定にしたデッキがそれなら、「デッキを選んでください」を出す。
     const choosable = choosableDecks(seatable, shownDecks)
     const chosenDeck = seatedChoice(choosable, lobby.deck, stage.chosen)
-    // 入れるかは、選んでいるデッキを部屋のルールで判定する。選べていなければ、どの部屋も押して断られる前に
-    // 「デッキを選んでください」と出す。部屋のルールが届いていない（古いサーバ）なら判定しない。
-    const seatedDeck = shownDecks.find((deck) => deck.id === chosenDeck)
-    const refusalUnder = (rules: WireRoomRules): string | undefined =>
-      seatedDeck === undefined ? noDeckReason(shownDecks) : deckRefusal(seatedDeck, judgedRulesOfRoom(rules, stage.restrictions))
+    // 入れるかは、選んでいるデッキをその部屋のルールで判定する。部屋のルールが届いていない（古いサーバ）
+    // なら判定しない。ロビーで選んでいるルールには左右されない。
+    const refusalUnder = (rules: WireRoomRules): RoomRefusal | undefined =>
+      joinRefusal(shownDecks, chosenDeck, judgedRulesOfRoom(rules, stage.restrictions))
     root.append(
       lobbyElement(
         {
@@ -729,7 +729,7 @@ function draw(
           // もう無いデッキを選んだ状態にしないだけである。
           chosenDeck,
           // CPU の席に座らせるデッキも、選べるのは同じ棚である（#195）。
-          chosenCpuDeck: seatedChoice(choosable, lobby.cpuDeck, stage.cpuChosen),
+          chosenCpuDeck: seatedChoice(choosableDecks(seatable, shownDecks, isCpuChoosable), lobby.cpuDeck, stage.cpuChosen),
           restrictions: stage.restrictions,
           rules: lobby.rules,
           deckPage: lobby.deckPage,
@@ -1673,17 +1673,19 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   /**
    * サーバへ送る、選んでいるデッキ。画面に出している選択と揃える（`deck-builder.ts` の `sentChoice`）。
-   * 使えないカードが入ったデッキは選べない（ADR-0029）ので、選んだままなら、選んでいないものとして送る。
+   * 選べないデッキ（自分のデッキは使えないカードが入っているもの、CPU のデッキはそれに加えてルールに
+   * 合わないもの）は、選んだままなら、選んでいないものとして送る（ADR-0029）。ルールに合わない自分のデッキは
+   * 選べるので、選んでいればそのまま送る。
    */
-  const sentDeck = (picked: DeckId | undefined): DeckId | undefined => {
+  const sentDeck = (picked: DeckId | undefined, choosable?: (deck: LobbyDeck) => boolean): DeckId | undefined => {
     const stage = session.stage
 
     const presets = stage.kind === 'ロビー' ? stage.presets : []
     const restrictions = stage.kind === 'ロビー' ? stage.restrictions : []
-    // 画面に出している選択と同じ判定で揃える（選んでいるルールに合わないデッキも選べない）。
+    // 画面に出している選択と同じ判定で揃える。
     const judged = judgedRulesOf({ format: chosenFormat, restriction: chosenRestriction }, restrictions)
 
-    return sentChoice(lobbyDecks(session.pool, session.ownedDecks, presets, judged), picked)
+    return sentChoice(lobbyDecks(session.pool, session.ownedDecks, presets, judged), picked, choosable)
   }
 
   /**
@@ -1754,7 +1756,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
     onFormat: (format) => {
       chosenFormat = format
-      // 選んだルールに合わないデッキの表示が変わるので、描き直す（ADR-0029）。
+      // 選んだルールに合わない CPU のデッキと、押せない手の理由が変わるので、描き直す（ADR-0029）。
       redraw()
     },
     onRestriction: (restriction) => {
@@ -1770,7 +1772,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         name,
         against,
         deck: sentDeck(chosenDeck),
-        cpuDeck: sentDeck(chosenCpuDeck),
+        cpuDeck: sentDeck(chosenCpuDeck, isCpuChoosable),
         format: chosenFormat,
         restriction: chosenRestriction,
       })

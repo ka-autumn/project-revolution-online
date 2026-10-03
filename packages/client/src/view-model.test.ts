@@ -1802,10 +1802,10 @@ describe('ロビー', () => {
     const seen: unknown[] = []
     const views = lobbyView([waiting, playing], (rules) => {
       seen.push(rules)
-      return rules.restriction.kind === '制限なし' ? undefined : '入れない'
+      return rules.restriction.kind === '制限なし' ? undefined : { reason: '入れない', outOfRules: true }
     })
 
-    expect(views.map((view) => view.refusal)).toEqual([undefined, '入れない'])
+    expect(views.map((view) => view.refusal)).toEqual([undefined, { reason: '入れない', outOfRules: true }])
     expect(seen).toEqual([waiting.rules, playing.rules])
   })
 
@@ -1817,7 +1817,7 @@ describe('ロビー', () => {
   it('ルールが届かない部屋は、判定しない', () => {
     const old = { ...waiting, rules: undefined } as unknown as WireRoom
 
-    expect(lobbyView([old], () => '入れない')[0]?.refusal).toBeUndefined()
+    expect(lobbyView([old], () => ({ reason: '入れない', outOfRules: true }))[0]?.refusal).toBeUndefined()
   })
 
   /** ADR-0020。誰と打っているかは、盤面ではなく席についた時に届いたものから出す。 */

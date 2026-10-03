@@ -264,7 +264,7 @@ body {
 }
 
 .lobby button:disabled,
-.lobby button[aria-disabled='true'] {
+.lobby button.lobby__refused {
   opacity: 0.45;
   cursor: not-allowed;
   box-shadow: none;

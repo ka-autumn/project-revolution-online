@@ -407,7 +407,7 @@ export function deckChoicesOf(supply: CardSupply): readonly WireDeck[] {
 /**
  * ロビーに出す禁止／制限リスト（`WireLobbyRestrictionList`）。渡された順のまま並べる。
  *
- * 上限の中身も載せる。 ロビーが、合わないデッキを押す前に示すため（ADR-0029、#243）。席に着く時に
+ * 上限の中身も載せる。ロビーが、合わないデッキを押す前に示すため（ADR-0029、#243）。席に着く時に
  * 当てる判定（`room.ts` の `violationsUnder`）と同じ上限を、同じ値で届ける——別の値を作ると、画面が
  * 「合わない」とするデッキをサーバが通しうる。
  */

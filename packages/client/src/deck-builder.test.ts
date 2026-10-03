@@ -12,6 +12,8 @@ import {
   closedBuilder,
   comparePrinted,
   confirmView,
+  cpuRefusal,
+  createRefusal,
   deckColorChoices,
   deckLabelChoices,
   deckRefusal,
@@ -22,11 +24,15 @@ import {
   filterOwnedDeckRows,
   hasUnsavedChanges,
   isChoosable,
+  isCpuChoosable,
+  joinRefusal,
   judgedRulesOf,
   judgedRulesOfRoom,
   levelBreakdownOf,
   lobbyDecks,
   newDraft,
+  noCpuDeckReason,
+  noDeckReason,
   ownedDeckRows,
   poolRows,
   printedDetailsOf,
@@ -919,14 +925,15 @@ describe('ロビーに並べるデッキ', () => {
   })
 })
 
-/** ADR-0029。使えないカードが入ったデッキは、ロビーで選べない。サーバがどのルールでも席に着く時に断る。 */
+/** ADR-0029。自分のデッキは、使えないカードが入っているときだけロビーで選べない。サーバがどのルールでも席に着く時に断る。 */
 describe('ロビーで選べるデッキ', () => {
   const PRESETS = [{ id: '既製1', name: 'トライアルデッキ' }]
   const BAD = { ...LEGAL, id: 'デッキ2', name: '使えない', cards: [...LEGAL.cards.slice(1), 'どこにもない'] }
   const decks = lobbyDecks(LEGAL_POOL, [LEGAL, BAD], PRESETS, RULES)
   const seatable = seatableDecks([LEGAL, BAD], PRESETS)
+  const strict: JudgedRules = { format: '構築戦', limits: { 'テスト・ユニット0': 0 } }
 
-  it('使えないカードが入っておらず、規定を満たすデッキだけが選べる', () => {
+  it('使えないカードが入っていないデッキだけが選べる', () => {
     expect(decks.map(isChoosable)).toEqual([true, false])
   })
 
@@ -934,15 +941,15 @@ describe('ロビーで選べるデッキ', () => {
     expect(lobbyDecks(undefined, undefined, PRESETS, RULES).map(isChoosable)).toEqual([true])
   })
 
-  /** ADR-0029、#243。選んでいるルールを替えると、同じデッキの選べる・選べないが替わる。 */
-  it('ルールに合わないデッキも選べず、選んでいたなら選んでいない状態に落ちる', () => {
-    const strict = lobbyDecks(LEGAL_POOL, [LEGAL], PRESETS, { format: '構築戦', limits: { 'テスト・ユニット0': 0 } })
-    const shown = choosableDecks(seatableDecks([LEGAL], PRESETS), strict)
+  /** ADR-0029、#243。自分のデッキは作る時にも入る時にも使い、合うかどうかは着く先のルールで変わる。 */
+  it('選んでいるルールに合わない自分のデッキも選べ、選んでいたなら選んだままになる', () => {
+    const strictDecks = lobbyDecks(LEGAL_POOL, [LEGAL], PRESETS, strict)
+    const shown = choosableDecks(seatableDecks([LEGAL], PRESETS), strictDecks)
 
-    expect(decks.map((deck) => deck.refusal === undefined)).toEqual([true, false])
-    expect(strict.map(isChoosable)).toEqual([false])
-    expect(seatedChoice(shown, '合法', undefined)).toBeUndefined()
-    expect(sentChoice(strict, '合法')).toBeUndefined()
+    expect(strictDecks.map((deck) => deck.refusal === undefined)).toEqual([false])
+    expect(strictDecks.map(isChoosable)).toEqual([true])
+    expect(seatedChoice(shown, '合法', undefined)).toBe('合法')
+    expect(sentChoice(strictDecks, '合法')).toBe('合法')
   })
 
   it('選べないデッキは、選んだ状態にならない（選んでいない状態として出る）', () => {
@@ -957,7 +964,7 @@ describe('ロビーで選べるデッキ', () => {
     expect(seatedChoice(choosableDecks(seatable, decks), 'デッキ2', '合法')).toBe('合法')
   })
 
-  /** 画面は「デッキを選んでください」を出している。送る値は、それと揃える。 */
+  /** 画面は選んでいない形を出している。送る値は、それと揃える。 */
   it('選べないデッキを選んだままなら、選んでいないものとして送る', () => {
     expect(sentChoice(decks, 'デッキ2')).toBeUndefined()
     expect(sentChoice(decks, '合法')).toBe('合法')
@@ -966,6 +973,26 @@ describe('ロビーで選べるデッキ', () => {
 
   it('届いていないデッキの識別子は、判定できないので今までどおり送る', () => {
     expect(sentChoice(decks, 'もう無い')).toBe('もう無い')
+  })
+
+  describe('CPU のデッキ', () => {
+    const strictDecks = lobbyDecks(LEGAL_POOL, [LEGAL, BAD], PRESETS, strict)
+
+    /** CPU のデッキは CPU 戦でしか使わず、そのルールは選んでいるルールだけなので、合わなければ使い道が無い。 */
+    it('使えないカードが入っているか、選んでいるルールに合わないデッキは選べない', () => {
+      expect(decks.map(isCpuChoosable)).toEqual([true, false])
+      expect(strictDecks.map(isCpuChoosable)).toEqual([false, false])
+    })
+
+    it('ルールを選び直して合わなくなったら、選んでいた CPU のデッキは選んでいない状態に落ちる', () => {
+      const before = choosableDecks(seatable, decks, isCpuChoosable)
+      const after = choosableDecks(seatable, strictDecks, isCpuChoosable)
+
+      expect(seatedChoice(before, '合法', undefined)).toBe('合法')
+      expect(seatedChoice(after, '合法', undefined)).toBeUndefined()
+      expect(sentChoice(strictDecks, '合法', isCpuChoosable)).toBeUndefined()
+      expect(sentChoice(decks, '合法', isCpuChoosable)).toBe('合法')
+    })
   })
 })
 
@@ -990,7 +1017,8 @@ describe('ルールに合わないデッキ', () => {
     const [deck] = lobbyDecks(POOL, [OWNED], PRESETS, RULES)
 
     expect(deck?.refusal).toBe('あと 57 枚足りません（60 枚以上）')
-    expect(deck === undefined ? true : isChoosable(deck)).toBe(false)
+    expect(deck === undefined ? false : isChoosable(deck)).toBe(true)
+    expect(deck === undefined ? true : isCpuChoosable(deck)).toBe(false)
   })
 
   it('理由は 1 つだけ。形式の規定が複数当たっても、サーバが並べる順の先頭を出す', () => {
@@ -1094,6 +1122,101 @@ describe('ルールに合わないデッキ', () => {
       expect(deckRefusal(deck, judgedRulesOfRoom(room({ kind: '禁止／制限リスト', id: 'リスト2', name: '二番目' }), LISTS))).toBe(
         '禁止カード「テスト・ユニット0」が入っています',
       )
+    })
+  })
+})
+
+/** ADR-0029、#243。押す手ごとに、どのデッキをどのルールで判定するか。 */
+describe('押せない手の理由', () => {
+  const PRESETS = [{ id: '既製1', name: 'トライアルデッキ' }]
+  const FREE: JudgedRules = { format: '構築戦', limits: undefined }
+  const STRICT: JudgedRules = { format: '構築戦', limits: { 'テスト・ユニット0': 0 } }
+  const BAD = { ...LEGAL, id: 'デッキ2', name: '使えない', cards: [...LEGAL.cards.slice(1), 'どこにもない'] }
+  const BANNED_REASON = '禁止カード「テスト・ユニット0」が入っています'
+  const decksUnder = (rules: JudgedRules) => lobbyDecks(LEGAL_POOL, [LEGAL, BAD], PRESETS, rules)
+
+  describe('デッキを選べていない理由', () => {
+    it('デッキが 1 つも無ければ、無いことを言う', () => {
+      expect(noDeckReason([])).toBe('デッキがありません')
+    })
+
+    it('あっても全部が使用不可なら、使えるものが無いことを言う', () => {
+      expect(noDeckReason(lobbyDecks(LEGAL_POOL, [BAD], PRESETS, FREE))).toBe('使えるデッキがありません')
+    })
+
+    it('選べるものがあれば、選ぶことを言う', () => {
+      expect(noDeckReason(decksUnder(FREE))).toBe('デッキを選んでください')
+    })
+
+    it('CPU のデッキは、選べるものが無ければ無いことを、あれば選ぶことを言う', () => {
+      expect(noCpuDeckReason(decksUnder(STRICT))).toBe('CPUが使用できるデッキがありません')
+      expect(noCpuDeckReason(decksUnder(FREE))).toBe('CPUが使用するデッキを選んでください')
+    })
+  })
+
+  describe('対戦部屋を作成する', () => {
+    it('選んでいる自分のデッキが選んでいるルールに合えば、押せる', () => {
+      expect(createRefusal(decksUnder(FREE), '合法')).toBeUndefined()
+    })
+
+    it('選んでいるルールに合わなければ、その理由で押せない', () => {
+      expect(createRefusal(decksUnder(STRICT), '合法')).toBe(BANNED_REASON)
+    })
+
+    it('デッキを選べていなければ、そのことを理由にする', () => {
+      expect(createRefusal(decksUnder(FREE), undefined)).toBe('デッキを選んでください')
+    })
+  })
+
+  describe('CPUと対戦する', () => {
+    it('理由が 1 つも無ければ、押せる', () => {
+      expect(cpuRefusal(decksUnder(FREE), '合法', '合法')).toBeUndefined()
+    })
+
+    it('1 つ目は、自分のデッキを選べていないこと', () => {
+      expect(cpuRefusal(decksUnder(STRICT), undefined, undefined)).toBe('デッキを選んでください')
+    })
+
+    it('2 つ目は、自分のデッキが選んでいるルールに合わないこと。CPU のデッキが選べていなくても、こちらを出す', () => {
+      expect(cpuRefusal(decksUnder(STRICT), '合法', undefined)).toBe(BANNED_REASON)
+    })
+
+    it('3 つ目は、CPU のデッキを選べていないこと', () => {
+      expect(cpuRefusal(decksUnder(FREE), '合法', undefined)).toBe('CPUが使用するデッキを選んでください')
+    })
+  })
+
+  /** 選んでいるルールでは合わないデッキが、部屋のルールでは通る場面。 */
+  describe('参加', () => {
+    const room = (restriction: WireRoomRules['restriction']): WireRoomRules => ({ format: '構築戦', restriction })
+    const LISTS: readonly WireLobbyRestrictionList[] = [{ id: 'X', name: 'X', limits: [{ name: 'テスト・ユニット0', limit: 0 }] }]
+    const free = judgedRulesOfRoom(room({ kind: '制限なし' }), LISTS)
+    const listed = judgedRulesOfRoom(room({ kind: '禁止／制限リスト', id: 'X', name: 'X' }), LISTS)
+
+    it('選んでいるルールに合わないデッキでも、制限なしの部屋には入れる。選択も送る値もそのデッキのまま', () => {
+      // ロビーで選んでいるルールは X（先頭のリスト）。デッキは X の禁止カードを含む。
+      const chosen = judgedRulesOf({ format: undefined, restriction: undefined }, LISTS)
+      const decks = lobbyDecks(LEGAL_POOL, [LEGAL], PRESETS, chosen)
+      const shown = choosableDecks(seatableDecks([LEGAL], PRESETS), decks)
+      const seated = seatedChoice(shown, '合法', undefined)
+
+      expect(decks.map(isChoosable)).toEqual([true])
+      expect(seated).toBe('合法')
+      expect(joinRefusal(decks, seated, free)).toBeUndefined()
+      expect(sentChoice(decks, seated)).toBe('合法')
+    })
+
+    it('部屋のルールに合わなければ、ルール外として、その理由で押せない', () => {
+      expect(joinRefusal(decksUnder(FREE), '合法', listed)).toEqual({ reason: BANNED_REASON, outOfRules: true })
+    })
+
+    it('ロビーで選んでいるルールには左右されない', () => {
+      expect(joinRefusal(decksUnder(STRICT), '合法', free)).toBeUndefined()
+      expect(joinRefusal(decksUnder(FREE), '合法', listed)?.outOfRules).toBe(true)
+    })
+
+    it('デッキを選べていなければ、ルール外ではなく、選べていないことを理由にする', () => {
+      expect(joinRefusal(decksUnder(FREE), undefined, free)).toEqual({ reason: 'デッキを選んでください', outOfRules: false })
     })
   })
 })

@@ -23,12 +23,12 @@ import type { PoolFilter } from './pool-filter.js'
 import type { SharingState } from './recipe.js'
 import type { ChosenRules } from './render.js'
 import { squareLabel } from './view-model.js'
-import type { DetailRow } from './view-model.js'
+import type { DetailRow, RoomRefusal } from './view-model.js'
 
 /**
  * デッキを組むところ（ADR-0021、#193）。
  *
- * 組んでいるデッキに、ルールの判断は無い。 規定を満たしているかを確かめるのはサーバで
+ * 組んでいるデッキに、ルールの判断は無い。規定を満たしているかを確かめるのはサーバで
  * （`デッキを確かめる`）、ここは届いた不備を読める形にするだけである。保存済みのデッキをロビーで
  * 押す前に示す判定だけは、画面が当てる（`lobbyDecks`、ADR-0029）。数えるのは「いま何枚入れているか」だけで、それは
  * 画面が自分で組んでいるものだからである。
@@ -895,20 +895,32 @@ export function seatedChoice(
 }
 
 /**
- * ロビーで選べるデッキか（ADR-0029）。使えないカードが入っているデッキと、選んでいるルールに合わない
- * デッキは選べない。
+ * ロビーで選べる、自分のデッキか（ADR-0029）。使えないカードが入っているデッキは選べない。
  *
- * どちらも、席に着く時にサーバが断る（`server` の `room.ts` の `refusalOfDeck`）。押せる形で出すと、
- * 押して初めて断られる。中身が届かないデッキ（組めない立て方の既製デッキ）は、判定できないので
- * 選べるものとして扱う。
+ * どのルールでも、席に着く時にサーバが断る（`server` の `room.ts` の `refusalOfDeck`）。押せる形で出すと、
+ * 押して初めて断られる。選んでいるルールに合わないことは、ここでは理由にしない——自分のデッキは作る時にも
+ * 入る時にも使い、合うかどうかは着く先のルールで変わる。中身が届かないデッキ（組めない立て方の既製デッキ）は、
+ * 判定できないので選べるものとして扱う。
  */
 export function isChoosable(deck: LobbyDeck): boolean {
+  return !deck.hasUnusable
+}
+
+/**
+ * ロビーで選べる、CPU のデッキか（ADR-0029）。使えないカードが入っているか、選んでいるルールに合わない
+ * デッキは選べない。CPU のデッキは CPU 戦でしか使わず、そのルールは選んでいるルールだけだからである。
+ */
+export function isCpuChoosable(deck: LobbyDeck): boolean {
   return deck.refusal === undefined
 }
 
-/** `seatableDecks` のうち、ロビーで選べるもの。`seatedChoice` に渡して、選べないデッキを選んだ状態にしない。 */
-export function choosableDecks(shown: readonly WireDeck[], decks: readonly LobbyDeck[]): readonly WireDeck[] {
-  const unchoosable = new Set(decks.filter((deck) => !isChoosable(deck)).map((deck) => deck.id))
+/** `seatableDecks` のうち、`choosable` で選べるもの。`seatedChoice` に渡して、選べないデッキを選んだ状態にしない。 */
+export function choosableDecks(
+  shown: readonly WireDeck[],
+  decks: readonly LobbyDeck[],
+  choosable: (deck: LobbyDeck) => boolean = isChoosable,
+): readonly WireDeck[] {
+  const unchoosable = new Set(decks.filter((deck) => !choosable(deck)).map((deck) => deck.id))
 
   return shown.filter((deck) => !unchoosable.has(deck.id))
 }
@@ -916,13 +928,18 @@ export function choosableDecks(shown: readonly WireDeck[], decks: readonly Lobby
 /**
  * サーバへ送る、選んでいるデッキ。画面に出している選択と揃える。
  *
- * 選べないデッキを選んだままなら、選んでいないものとして送る（画面は「デッキを選んでください」を
- * 出している）。そのあとにどのデッキで座るかは、選んでいない時と同じくサーバが決める。
+ * 選べないデッキ（`choosable` が偽）を選んだままなら、選んでいないものとして送る（画面は選んでいない
+ * ものとして出している）。そのあとにどのデッキで座るかは、選んでいない時と同じくサーバが決める。
+ * ルールに合わない自分のデッキは選べるので、選んでいればそのまま送る。
  */
-export function sentChoice(decks: readonly LobbyDeck[], picked: DeckId | undefined): DeckId | undefined {
+export function sentChoice(
+  decks: readonly LobbyDeck[],
+  picked: DeckId | undefined,
+  choosable: (deck: LobbyDeck) => boolean = isChoosable,
+): DeckId | undefined {
   const deck = decks.find((each) => each.id === picked)
 
-  return deck !== undefined && !isChoosable(deck) ? undefined : picked
+  return deck !== undefined && !choosable(deck) ? undefined : picked
 }
 
 /**
@@ -952,8 +969,9 @@ export interface LobbyDeck {
    */
   readonly faces: readonly WireCardFace[] | undefined
   /**
-   * 選べない理由 1 つ。選べるなら `undefined`（ADR-0029）。使えないカードを先に見て、そうでなければ
-   * ルールの不備の先頭を出す（`deckRefusal`）。
+   * 選んでいるルールで通らない理由 1 つ。通るなら `undefined`（ADR-0029）。使えないカードを先に見て、
+   * そうでなければルールの不備の先頭を出す（`deckRefusal`）。CPU のデッキが選べるかを決める
+   * （`isCpuChoosable`）。自分のデッキの行には出さず、作る・CPU戦の押せない理由に使う。
    */
   readonly refusal: string | undefined
 }
@@ -962,7 +980,7 @@ export interface LobbyDeck {
  * ロビーでデッキを判定するルール（ADR-0029、#243）。席に着く時にサーバが当てる判定
  * （`server` の `room.ts` の `violationsUnder`）の、画面から見える分である。
  *
- * サーバが通すデッキを、画面が断らない。 材料が足りない時は、判定しないほうへ倒す。
+ * サーバが通すデッキを、画面が断らない。材料が足りない時は、判定しないほうへ倒す。
  * `limits` が `undefined` なのは、当てる上限が無い（制限なし）か、届いていない（古いサーバ・
  * ロビーに載っていないリスト）時である。
  */
@@ -1004,15 +1022,68 @@ export function judgedRulesOfRoom(rules: WireRoomRules, restrictions: readonly W
 /** 使えないカードが入っているデッキの、選べない理由（ADR-0029）。 */
 export const UNUSABLE_REASON = '使えないカードが入っています'
 
-/** デッキを選んでいないことの理由（ADR-0029）。選べるデッキが 1 つも無ければ、無いことを言う。 */
+/**
+ * 自分のデッキを選べていないことの理由（ADR-0029）。デッキが 1 つも無ければ無いことを、あっても
+ * 全部が使用不可なら選べるものが無いことを、選べるものがあれば選ぶことを言う。
+ */
 export function noDeckReason(decks: readonly LobbyDeck[]): string {
-  return decks.length === 0 ? 'デッキがありません' : 'デッキを選んでください'
+  if (decks.length === 0) return 'デッキがありません'
+
+  return decks.some(isChoosable) ? 'デッキを選んでください' : '使えるデッキがありません'
+}
+
+/** CPU のデッキを選べていないことの理由（ADR-0029）。選べるものが無ければ無いことを、あれば選ぶことを言う。 */
+export function noCpuDeckReason(decks: readonly LobbyDeck[]): string {
+  return decks.some(isCpuChoosable) ? 'CPUが使用するデッキを選んでください' : 'CPUが使用できるデッキがありません'
+}
+
+/**
+ * 「対戦部屋を作成する」を押せない理由。押せるなら `undefined`（ADR-0029）。選んでいる自分のデッキを、
+ * 選んでいるルールで判定する（`decks` の `refusal` が、そのルールで当てた結果である）。
+ */
+export function createRefusal(decks: readonly LobbyDeck[], chosenDeck: DeckId | undefined): string | undefined {
+  const seated = decks.find((deck) => deck.id === chosenDeck)
+
+  return seated === undefined ? noDeckReason(decks) : seated.refusal
+}
+
+/**
+ * 「CPUと対戦する」を押せない理由 1 つ。押せるなら `undefined`（ADR-0029）。自分のデッキを選べているか、
+ * 選んでいるルールに合うか、CPU のデッキを選べているか、の順に見る。CPU のデッキは選べた時点で選んでいる
+ * ルールに合っているので、ルールは見ない。
+ */
+export function cpuRefusal(
+  decks: readonly LobbyDeck[],
+  chosenDeck: DeckId | undefined,
+  chosenCpuDeck: DeckId | undefined,
+): string | undefined {
+  const own = createRefusal(decks, chosenDeck)
+  if (own !== undefined) return own
+
+  return chosenCpuDeck === undefined ? noCpuDeckReason(decks) : undefined
+}
+
+/**
+ * 「参加」を押せない理由。押せるなら `undefined`（ADR-0029）。選んでいる自分のデッキを、その部屋のルールで
+ * 判定する。ロビーで選んでいるルールには左右されない。
+ */
+export function joinRefusal(
+  decks: readonly LobbyDeck[],
+  chosenDeck: DeckId | undefined,
+  rules: JudgedRules,
+): RoomRefusal | undefined {
+  const seated = decks.find((deck) => deck.id === chosenDeck)
+  if (seated === undefined) return { reason: noDeckReason(decks), outOfRules: false }
+
+  const reason = deckRefusal(seated, rules)
+
+  return reason === undefined ? undefined : { reason, outOfRules: true }
 }
 
 /**
  * デッキがルールで通らない理由 1 つ。通るか、判定する材料が無ければ `undefined`（ADR-0029）。
  *
- * 使えないカードを先に見る。 どのルールでも使えないので、ルールの不備より先に言う。ルールの不備は、
+ * 使えないカードを先に見る。どのルールでも使えないので、ルールの不備より先に言う。ルールの不備は、
  * サーバが並べる順（形式の規定、禁止／制限リスト）の先頭を、デッキを組む画面と同じ書き方で出す。
  */
 export function deckRefusal(deck: Pick<LobbyDeck, 'hasUnusable' | 'faces'>, rules: JudgedRules): string | undefined {
