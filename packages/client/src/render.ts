@@ -79,6 +79,7 @@ import type {
   PhaseView,
   ResultView,
   RoomTab,
+  HandRefusal,
   RoomView,
   SideView,
   SmashJudgmentView,
@@ -882,15 +883,39 @@ function unusableText(reason: string): string {
  * 文は、`visible` なら目に見える形で出し（タッチの端末では `title` が出ない）、そうでなければ読み上げだけにする。
  * 押された時に何もしないのは、呼ぶ側が決める。
  */
-function refuseButton(node: HTMLElement, reason: string, id: string, visible: boolean): HTMLElement {
+function refuseButton(node: HTMLElement, reason: string, id: string): HTMLElement {
   node.setAttribute('aria-disabled', 'true')
   node.classList.add('lobby__refused')
   node.title = reason
   node.setAttribute('aria-describedby', id)
-  const text = element(visible ? 'p' : 'span', visible ? 'lobby__notice' : 'lobby__hidden', reason)
+  const text = element('span', 'lobby__hidden', reason)
   text.id = id
 
   return text
+}
+
+/** 理由がルールに合わないことのとき、ボタンの面に出す文言（ADR-0029）。詳しい理由は `title` と読み上げに付ける。 */
+const OUT_OF_RULES_COVER = '選択したデッキでは対戦できません'
+
+/**
+ * 作成・CPU戦の大きいボタン（ADR-0029）。押せないときは、ボタンの面に半透明の黒を重ねて文言を出す。
+ * 重ねるので枠の高さは変わらず、ほかの部品にも掛からない。重ねたものは押しを妨げない（押しても何も送らない）。
+ * 文言は見せるためだけにあり、読み上げには詳しい理由（`refuseButton`）を渡す。
+ */
+function handButton(label: string, refusal: HandRefusal | undefined, id: string, onPress: () => void): HTMLElement {
+  const go = button(label, () => {
+    if (refusal === undefined) onPress()
+  })
+  go.classList.add('lobby__go')
+  const wrap = element('div', 'lobby__go-wrap')
+  wrap.append(go)
+  if (refusal !== undefined) {
+    const cover = element('span', 'lobby__go-cover', refusal.outOfRules ? OUT_OF_RULES_COVER : refusal.reason)
+    cover.setAttribute('aria-hidden', 'true')
+    wrap.append(cover, refuseButton(go, refusal.reason, id))
+  }
+
+  return wrap
 }
 
 /** 自分の表示名が届いていない間に、上の帯に出す名前（古いサーバは付けてこない）。 */
@@ -1266,12 +1291,7 @@ function lobbyHumanElement(view: LobbyView, handlers: LobbyHandlers): { readonly
   // 押せない手は出さない（ADR-0029）。使うデッキが選べていないか、選んでいるルールに合わなければ、
   // 押して断られる前に理由を出す。
   const refusal = createRefusal(view.decks, view.chosenDeck)
-  const create = button('対戦部屋を作成する', () => {
-    if (refusal === undefined) handlers.onCreate(input.value, '人間')
-  })
-  create.classList.add('lobby__go')
-  body.append(create)
-  if (refusal !== undefined) body.append(refuseButton(create, refusal, 'lobby-refusal-create', true))
+  body.append(handButton('対戦部屋を作成する', refusal, 'lobby-refusal-create', () => handlers.onCreate(input.value, '人間')))
 
   return { node, input }
 }
@@ -1371,12 +1391,7 @@ function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement 
 
   // 自分のデッキが選べていて選んでいるルールに合い、CPU のデッキも選べていなければ、押せない（ADR-0029）。
   const refusal = cpuRefusal(decks, view.chosenDeck, view.chosenCpuDeck)
-  const start = button('CPUと対戦する', () => {
-    if (refusal === undefined) handlers.onCreate('', 'CPU')
-  })
-  start.classList.add('lobby__go')
-  body.append(start)
-  if (refusal !== undefined) body.append(refuseButton(start, refusal, 'lobby-refusal-cpu', true))
+  body.append(handButton('CPUと対戦する', refusal, 'lobby-refusal-cpu', () => handlers.onCreate('', 'CPU')))
 
   return node
 }
@@ -1445,7 +1460,7 @@ function lobbyRoomsTableElement(rows: readonly RoomView[], handlers: LobbyHandle
       act.append(join)
       // 選んでいるデッキでは入れない部屋は、押せない形にする（ADR-0029）。ルールに合わないなら、ボタンの文言が
       // 「ルール外」になる。詳しい理由は `title` と読み上げに添える。
-      if (view.refusal !== undefined) act.append(refuseButton(join, view.refusal.reason, `lobby-refusal-join-${view.code}`, false))
+      if (view.refusal !== undefined) act.append(refuseButton(join, view.refusal.reason, `lobby-refusal-join-${view.code}`))
     }
     body.append(row)
   }

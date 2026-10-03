@@ -126,7 +126,7 @@ import {
   visibleCardViewsIn,
   zoneOf,
 } from './view-model.js'
-import type { Overlay, RoomRefusal, RoomTab } from './view-model.js'
+import type { Overlay, HandRefusal, RoomTab } from './view-model.js'
 
 /**
  * クライアントの起動点。
@@ -715,7 +715,7 @@ function draw(
     const chosenDeck = seatedChoice(choosable, lobby.deck, stage.chosen)
     // 入れるかは、選んでいるデッキをその部屋のルールで判定する。部屋のルールが届いていない（古いサーバ）
     // なら判定しない。ロビーで選んでいるルールには左右されない。
-    const refusalUnder = (rules: WireRoomRules): RoomRefusal | undefined =>
+    const refusalUnder = (rules: WireRoomRules): HandRefusal | undefined =>
       joinRefusal(shownDecks, chosenDeck, judgedRulesOfRoom(rules, stage.restrictions))
     root.append(
       lobbyElement(

@@ -1160,11 +1160,11 @@ describe('押せない手の理由', () => {
     })
 
     it('選んでいるルールに合わなければ、その理由で押せない', () => {
-      expect(createRefusal(decksUnder(STRICT), '合法')).toBe(BANNED_REASON)
+      expect(createRefusal(decksUnder(STRICT), '合法')).toEqual({ reason: BANNED_REASON, outOfRules: true })
     })
 
     it('デッキを選べていなければ、そのことを理由にする', () => {
-      expect(createRefusal(decksUnder(FREE), undefined)).toBe('デッキを選んでください')
+      expect(createRefusal(decksUnder(FREE), undefined)).toEqual({ reason: 'デッキを選んでください', outOfRules: false })
     })
   })
 
@@ -1174,15 +1174,18 @@ describe('押せない手の理由', () => {
     })
 
     it('1 つ目は、自分のデッキを選べていないこと', () => {
-      expect(cpuRefusal(decksUnder(STRICT), undefined, undefined)).toBe('デッキを選んでください')
+      expect(cpuRefusal(decksUnder(STRICT), undefined, undefined)).toEqual({ reason: 'デッキを選んでください', outOfRules: false })
     })
 
     it('2 つ目は、自分のデッキが選んでいるルールに合わないこと。CPU のデッキが選べていなくても、こちらを出す', () => {
-      expect(cpuRefusal(decksUnder(STRICT), '合法', undefined)).toBe(BANNED_REASON)
+      expect(cpuRefusal(decksUnder(STRICT), '合法', undefined)).toEqual({ reason: BANNED_REASON, outOfRules: true })
     })
 
     it('3 つ目は、CPU のデッキを選べていないこと', () => {
-      expect(cpuRefusal(decksUnder(FREE), '合法', undefined)).toBe('CPUが使用するデッキを選んでください')
+      expect(cpuRefusal(decksUnder(FREE), '合法', undefined)).toEqual({
+        reason: 'CPUが使用するデッキを選んでください',
+        outOfRules: false,
+      })
     })
   })
 

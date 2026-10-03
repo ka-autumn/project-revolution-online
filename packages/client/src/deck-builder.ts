@@ -23,7 +23,7 @@ import type { PoolFilter } from './pool-filter.js'
 import type { SharingState } from './recipe.js'
 import type { ChosenRules } from './render.js'
 import { squareLabel } from './view-model.js'
-import type { DetailRow, RoomRefusal } from './view-model.js'
+import type { DetailRow, HandRefusal } from './view-model.js'
 
 /**
  * デッキを組むところ（ADR-0021、#193）。
@@ -1041,10 +1041,11 @@ export function noCpuDeckReason(decks: readonly LobbyDeck[]): string {
  * 「対戦部屋を作成する」を押せない理由。押せるなら `undefined`（ADR-0029）。選んでいる自分のデッキを、
  * 選んでいるルールで判定する（`decks` の `refusal` が、そのルールで当てた結果である）。
  */
-export function createRefusal(decks: readonly LobbyDeck[], chosenDeck: DeckId | undefined): string | undefined {
+export function createRefusal(decks: readonly LobbyDeck[], chosenDeck: DeckId | undefined): HandRefusal | undefined {
   const seated = decks.find((deck) => deck.id === chosenDeck)
+  if (seated === undefined) return { reason: noDeckReason(decks), outOfRules: false }
 
-  return seated === undefined ? noDeckReason(decks) : seated.refusal
+  return seated.refusal === undefined ? undefined : { reason: seated.refusal, outOfRules: true }
 }
 
 /**
@@ -1056,11 +1057,11 @@ export function cpuRefusal(
   decks: readonly LobbyDeck[],
   chosenDeck: DeckId | undefined,
   chosenCpuDeck: DeckId | undefined,
-): string | undefined {
+): HandRefusal | undefined {
   const own = createRefusal(decks, chosenDeck)
   if (own !== undefined) return own
 
-  return chosenCpuDeck === undefined ? noCpuDeckReason(decks) : undefined
+  return chosenCpuDeck === undefined ? { reason: noCpuDeckReason(decks), outOfRules: false } : undefined
 }
 
 /**
@@ -1071,7 +1072,7 @@ export function joinRefusal(
   decks: readonly LobbyDeck[],
   chosenDeck: DeckId | undefined,
   rules: JudgedRules,
-): RoomRefusal | undefined {
+): HandRefusal | undefined {
   const seated = decks.find((deck) => deck.id === chosenDeck)
   if (seated === undefined) return { reason: noDeckReason(decks), outOfRules: false }
 

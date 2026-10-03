@@ -813,6 +813,26 @@ body {
   text-shadow: 0 1px 1px rgb(0 0 0 / 0.3);
 }
 
+/* 押せない時は、ボタンの面に半透明の黒を重ねて文言を出す。重ねるだけなので、枠の高さは変わらない。 */
+.lobby .lobby__go-wrap {
+  position: relative;
+}
+
+.lobby .lobby__go-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-small);
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+
 .lobby .lobby__mode--human .lobby__go {
   border-color: #a8182a;
   background: linear-gradient(180deg, #ea5a6c, var(--accent-opponent));
