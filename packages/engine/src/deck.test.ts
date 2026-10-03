@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DUEL_FORMATS, checkCardLimits, checkConstructedDeck, checkDeckForFormat, defineUnit } from './index.js'
+import { DUEL_FORMATS, checkCardLimits, checkConstructedDeck, checkDeckForFormat, defineUnit, faceOf } from './index.js'
 import type { Card, Deck } from './index.js'
 
 function testUnit(name: string, stars = 0, reverseStars = 0): Card {
@@ -183,5 +183,32 @@ describe('デュエルの形式', () => {
 
     expect(DUEL_FORMATS).toContain('構築戦')
     expect(checkDeckForFormat(deck, '構築戦')).toEqual(checkConstructedDeck(deck))
+  })
+})
+
+/**
+ * ロビーは、保存済みのデッキを押す前に示すために、カードの表記（`faceOf`）に判定を当てる
+ * （ADR-0029）。表記を渡しても、サーバがカードそのものに当てる判定と同じ結果になること。
+ */
+describe('カードの表記に当てる判定', () => {
+  it('形式の規定は、カードを渡した時と同じ結果になる', () => {
+    const decks: readonly Deck[] = [
+      legalDeck(),
+      legalDeck().slice(1),
+      withStars(2, 10),
+      [...legalDeck(), testUnit('おまけ'), testUnit('おまけ'), testUnit('おまけ'), testUnit('おまけ'), testUnit('おまけ')],
+    ]
+
+    for (const deck of decks) {
+      expect(checkDeckForFormat(deck.map(faceOf), '構築戦')).toEqual(checkDeckForFormat(deck, '構築戦'))
+    }
+  })
+
+  it('禁止／制限の上限も、カードを渡した時と同じ結果になる', () => {
+    const deck = [...legalDeck(), testUnit('テスト制限カード'), testUnit('テスト　制限カード')]
+    const limits = { 'テスト 制限カード': 1, テストユニット0: 0 }
+
+    expect(checkCardLimits(deck.map(faceOf), limits)).toEqual(checkCardLimits(deck, limits))
+    expect(checkCardLimits(deck.map(faceOf), limits)).not.toEqual([])
   })
 })

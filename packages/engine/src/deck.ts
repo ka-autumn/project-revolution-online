@@ -9,6 +9,15 @@ import type { Card } from './card.js'
 export type Deck = readonly Card[]
 
 /**
+ * デッキの規定を確かめるのに読む、カードの項目（名前・スター・リバーススター）。
+ *
+ * カードそのものではなく、これだけを受け取る。 画面には能力を持つカードが無く、カードに書かれた
+ * 表記（`WireCardFace`）しか届かない。判定が読む項目だけを型に出しておけば、画面もサーバと同じ
+ * 判定を、同じ入力の形で呼べる（ADR-0029）。判定を画面に写し取ると、食い違いが生まれる。
+ */
+export type DeckCard = Pick<Card, 'name' | 'stars' | 'reverseStars'>
+
+/**
  * デュエルの形式（総合ルール 第3部 第1章 3）。形式ごとに、デッキの規定が決まる。
  *
  * **数え上げられるので、列挙で持つ**（ADR-0021）。いまは構築戦（同 3-1）だけである。限定戦
@@ -58,7 +67,7 @@ export type DeckViolation =
  * **禁止／制限の上限は当てない。** どのリストを使うかは形式ではなく部屋が決める（ADR-0021）ので、
  * 別に当てる（`checkCardLimits`）。
  */
-export function checkDeckForFormat(deck: Deck, format: DuelFormat): readonly DeckViolation[] {
+export function checkDeckForFormat(deck: readonly DeckCard[], format: DuelFormat): readonly DeckViolation[] {
   switch (format) {
     case '構築戦':
       return checkConstructedDeck(deck)
@@ -70,7 +79,7 @@ export function checkDeckForFormat(deck: Deck, format: DuelFormat): readonly Dec
  *
  * 限定戦（総合ルール 第3部 第1章 3-3）は枚数も制限も別なので、ここでは扱わない。
  */
-export function checkConstructedDeck(deck: Deck): readonly DeckViolation[] {
+export function checkConstructedDeck(deck: readonly DeckCard[]): readonly DeckViolation[] {
   const violations: DeckViolation[] = []
 
   if (deck.length < CONSTRUCTED_DECK_MINIMUM) {
@@ -100,7 +109,7 @@ export function checkConstructedDeck(deck: Deck): readonly DeckViolation[] {
  * **同名のカードに違う上限が付いていれば、小さいほうを使う。** 空白の入り方だけが違う名前で
  * 2 行載ることがありうる。どちらかを捨てると、厳しいほうを書いた意図が消える。
  */
-export function checkCardLimits(deck: Deck, limits: CardLimits): readonly DeckViolation[] {
+export function checkCardLimits(deck: readonly DeckCard[], limits: CardLimits): readonly DeckViolation[] {
   const maximums = new Map<string, number>()
   for (const [name, limit] of Object.entries(limits)) {
     const key = sameNameKey(name)
@@ -132,7 +141,7 @@ export function sameNameKey(name: string): string {
   return name.replace(/\s/gu, '')
 }
 
-function total(deck: Deck, count: (card: Card) => number): number {
+function total(deck: readonly DeckCard[], count: (card: DeckCard) => number): number {
   return deck.reduce((sum, card) => sum + count(card), 0)
 }
 
@@ -142,7 +151,7 @@ function total(deck: Deck, count: (card: Card) => number): number {
  * カードの実装が同じかどうかではなく名前で数える（総合ルール 第3部 第1章 3-1）。同じ名前の
  * 別のカードは同じ名前として数える。
  */
-function countByName(deck: Deck): ReadonlyMap<string, { readonly name: string; readonly count: number }> {
+function countByName(deck: readonly DeckCard[]): ReadonlyMap<string, { readonly name: string; readonly count: number }> {
   const counts = new Map<string, { readonly name: string; readonly count: number }>()
   for (const card of deck) {
     const key = sameNameKey(card.name)

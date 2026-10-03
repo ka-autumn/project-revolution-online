@@ -113,6 +113,26 @@ export interface WireRestrictionList {
   readonly name: string
 }
 
+/** 禁止／制限リストの 1 行。カード名と、デッキに入れてよい枚数（`0` が禁止カード）。 */
+export interface WireCardLimit {
+  readonly name: string
+  readonly limit: number
+}
+
+/**
+ * ロビーに載る禁止／制限リスト（ADR-0029）。`WireRestrictionList` に、上限の中身を足したもの。
+ *
+ * 中身を載せるのは、ロビーが選べないデッキを押す前に示すため（#243）。席に着く時にサーバが
+ * 当てる判定と同じもの（engine の `checkCardLimits`）を、画面でも同じ材料で当てる。部屋のルールや
+ * レシピに載るリストは識別子と名前だけのままで、中身は持たない。
+ *
+ * 並びは組にする。 カード名は渡す側が決める任意の文字列で、オブジェクトのキーにすると
+ * `__proto__` のようなものがそのまま鍵になる（`WirePoolCard` と同じ）。
+ */
+export interface WireLobbyRestrictionList extends WireRestrictionList {
+  readonly limits: readonly WireCardLimit[]
+}
+
 /**
  * 部屋を作る人が選ぶ禁止／制限リスト（ADR-0021）。
  *
@@ -576,9 +596,10 @@ export type FromClient =
   /**
    * 組んでいるデッキが、選んだルールで通るかを確かめる（ADR-0021）。**保存はしない。**
    *
-   * **確かめるのはサーバである。** 画面は禁止／制限リストの中身を知らず（`WireRestrictionList`）、
-   * カードの表記から規定を当てることもしない（ADR-0010）。組み替えるたびに送れば、その場で
-   * 不備が分かる。
+   * 確かめるのはサーバである。 組んでいるデッキは保存前のもので、画面が持つ材料は
+   * カードの表記だけである。ここでは画面が規定を当てず（ADR-0010）、組み替えるたびに送れば、その場で
+   * 不備が分かる。ロビーが保存済みのデッキを押す前に示す判定は別で、`ロビー` の `restrictions` に
+   * 載る上限を使って画面が当てる（ADR-0029）。
    *
    * 形式とリストの選び方は `部屋を作る` と同じで、選ばなければ部屋を作る時と同じ既定になる。
    * 使えないカードを含むときと、ログインを持たない立て方では断られる。
@@ -658,8 +679,12 @@ export type ToClient =
        *
        * デッキと同じく、選ぶ場所がここだから部屋の一覧と一緒に届く。`制限なし` はここに入らない
        * ——リストではなく、リストを当てないことである（`RestrictionChoice`）。
+       *
+       * 上限の中身も載る（`WireLobbyRestrictionList`）。ロビーが、選んでいるルールや部屋のルールに
+       * 合わないデッキを押す前に示すため（ADR-0029）。古いサーバは上限を付けてこない（画面は
+       * `limits` が無ければ、禁止／制限の判定をしない）。
        */
-      readonly restrictions: readonly WireRestrictionList[]
+      readonly restrictions: readonly WireLobbyRestrictionList[]
       /**
        * 受け取った人自身の表示名（ADR-0020、ADR-0029）。ロビーの上の帯に出す。
        *
