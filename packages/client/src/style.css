@@ -37,6 +37,8 @@
   --radius: 12px;
   --radius-small: 7px;
   --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
+  /* ゴシック系の見出しの字。明朝の `--heading-font` と対になる（名前を決める画面の題字、待機中の見出し）。 */
+  --heading-font-gothic: 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
   /* 通常の `--gap` より広い、パネル間などの余白の基準値。 */
   --gap-lg: 0.75rem;
 }
@@ -54,8 +56,8 @@ body {
  * `index.html` の唯一のマウント先。`.status`（繋ぎ直しの間の 1 行）と、その時々の画面
  * （`.duel` など）を並べて入れる縦の箱にする。`.duel` はここを埋めるところまで伸びる
  * （`flex: 1`）ので、`.status` が有る時だけ画面の高さが 100vh を超えてページがスクロールする
- * ということが無くなる（#207）。ほかの画面（ロビーなど）は伸縮を指定しない
- * ので、これまでどおり内容の高さのぶんだけ使い、収まらなければページごとスクロールする。
+ * ということが無くなる（#207）。デッキ構築・ロビー・名前を決める画面・待機中の画面も同じく
+ * ここを埋めるまで伸びる（`flex: 1 1 auto`）。
  */
 #board {
   display: flex;
@@ -169,7 +171,8 @@ body {
  *
  * 対戦画面（ADR-0027）・デッキ構築の画面（ADR-0028）と同じ見た目の基準（`:root` の変数）を使う。
  * 変数を使って見た目を変えるセレクタは、ロビーの外枠（`.lobby`）の内側にだけ書く。素の `button` や
- * ほかの画面と共有しているクラスには触らないので、名前を決める画面の見た目は変わらない。
+ * ほかの画面と共有しているクラスには触らないので、ここの規則が名前を決める画面・待機中の画面へ
+ * 及ぶことはない（その見た目は、それぞれの外枠 `.naming`・`.awaiting` の側に書く）。
  * カードの面（`.card` 系）は、対戦画面・デッキ構築の画面と共有している。
  */
 
@@ -1590,40 +1593,233 @@ body {
   text-align: right;
 }
 
-/* 表示名を決めるところ（ADR-0020）。決まるまでほかへは進めないので、ここだけが出る。 */
-.naming {
+/*
+ * 名前を決める画面・相手を待っている間の画面（ADR-0020、ADR-0030）。
+ *
+ * ロビー（ADR-0029）と同じ見た目の基準（`:root` の変数）を使う。変数を使って見た目を変えるセレクタは、
+ * それぞれの外枠（`.naming`・`.awaiting`）の内側にだけ書く。素の `button` やほかの画面と共有している
+ * クラスには触らない。
+ */
+
+.naming,
+.awaiting {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--gap);
+  flex-direction: column;
   align-items: center;
-  margin: calc(var(--gap) * 2) 0;
+  /* 高さは `.lobby` と同じく `#board` の残りいっぱいに伸ばして決める。 */
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: calc(var(--gap) * -1);
+  padding: var(--gap-lg);
+  overflow: auto;
+  color: var(--ink);
+  color-scheme: light;
+  background:
+    repeating-conic-gradient(from 8deg at 50% 38%, rgb(255 255 255 / 0.3) 0deg 3deg, transparent 3deg 9deg, rgb(255 255 255 / 0.14) 9deg 11deg, transparent 11deg 17deg),
+    radial-gradient(ellipse 65% 60% at 50% 38%, #fffdf6 0%, #ffeec2 30%, #fbc766 65%, #ee9a2c 100%);
 }
 
-.naming__title,
-.naming__lead,
-.naming__refusal {
-  flex: 1 0 100%;
+/*
+ * 縦の中央寄せは、`justify-content: center` でなく先頭と末尾の子の自動余白で行う。中身が外枠より
+ * 高いとき、`justify-content: center` は上へもはみ出し、そこへはスクロールで届かなくなる。
+ */
+.naming > :first-child,
+.awaiting > :first-child {
+  margin-top: auto;
+}
+
+.naming > :last-child,
+.awaiting > :last-child {
+  margin-bottom: auto;
+}
+
+.naming *,
+.naming *::before,
+.naming *::after,
+.awaiting *,
+.awaiting *::before,
+.awaiting *::after {
+  box-sizing: border-box;
+}
+
+.naming .panel,
+.awaiting .panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgb(150 80 0 / 0.22), inset 0 1px 0 #fff;
+}
+
+.naming .panel__head {
+  display: flex;
+  align-items: center;
+  min-height: 2.6rem;
   margin: 0;
+  padding: 0.45rem 0.9rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.45);
 }
 
-.naming__title {
+.naming .panel__title {
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
   font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.naming .panel__body,
+.awaiting .panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1rem 1.1rem 1.1rem;
+}
+
+.naming button,
+.awaiting button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: linear-gradient(180deg, #fffefa, #fbefd4);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgb(150 80 0 / 0.25);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.naming button:hover,
+.awaiting button:hover {
+  border-color: var(--gold-deep);
+  box-shadow: inset 0 1px 0 #fff, 0 0 10px rgb(247 201 86 / 0.8);
+}
+
+.naming button:focus-visible,
+.awaiting button:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 2px;
+}
+
+.naming .button--primary {
+  border-color: var(--gold-deep);
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  font-weight: 700;
+}
+
+.naming__brand {
+  margin: 0 0 1.6rem;
+  color: var(--heading);
+  font-family: var(--heading-font-gothic);
+  font-size: 2.6rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-shadow: 0 1px 0 #fff, 0 0 18px rgb(255 255 255 / 0.9);
+}
+
+.naming .panel {
+  width: min(30rem, 100%);
 }
 
 .naming__lead {
-  color: #666;
+  margin: 0;
+  color: var(--ink-dim);
+  line-height: 1.6;
+}
+
+.naming__field {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
 }
 
 .naming__input {
-  flex: 1 1 12rem;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: #fffef9;
   font: inherit;
+  font-size: 1.05rem;
 }
 
-/* 通らなかった理由。**色だけで区別させない**（#91）——文言そのものが理由になっている。 */
+.naming__input:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 1px;
+}
+
+.naming__count {
+  align-self: flex-end;
+  margin-top: -0.4rem;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.naming__count--full {
+  color: var(--heading);
+  font-weight: 700;
+}
+
+/* 通らなかった理由。**色だけで区別させない**（#91）——「!」の印と、理由の文言そのもので伝わる。 */
 .naming__refusal {
-  color: #a00;
+  display: flex;
+  gap: 0.45rem;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgb(211 54 74 / 0.45);
+  border-radius: var(--radius-small);
+  color: #a3192c;
+  background: var(--accent-opponent-soft);
+  font-weight: 600;
+}
+
+.naming__refusal::before {
+  /* 読み上げには「!」を読ませない。代替テキストを空にする。この構文を解釈できない古いブラウザでは、1 行目だけが効く。 */
+  content: '!';
+  content: '!' / '';
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--accent-opponent);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.awaiting .panel {
+  width: min(28rem, 100%);
+}
+
+.awaiting .panel__body {
+  align-items: stretch;
+  gap: 1.1rem;
+  padding: 1.4rem 1.2rem 1.2rem;
+  text-align: center;
+}
+
+.awaiting__title {
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font-gothic);
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.awaiting button {
+  align-self: center;
 }
 
 /* 部屋を出る口。押し間違えたくないので、ほかの操作から離して置く。 */
