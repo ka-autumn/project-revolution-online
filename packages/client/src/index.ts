@@ -347,7 +347,7 @@ interface Naming {
   readonly draft: string
   readonly onDraft: (value: string) => void
   readonly onDecide: (name: string) => void
-  /** 断りの返事が届いて、まだ描き直していないか。**呼ぶと下ろす。** */
+  /** 断りの返事が届いて、まだ描き直していないか。呼ぶと下ろす。 */
   readonly takeRefusalArrived: () => boolean
 }
 
