@@ -3562,6 +3562,69 @@ body {
 }
 
 /*
+ * 選んだカードの手を聞くダイアログ（#249）。確認（手が 1 つ）と、選ぶ（手が 2 つ以上）の 2 つ。
+ * 重ねる範囲は下の一覧と同じで、右の列（カードの詳細）は覆わない——迷ったときに、カードの
+ * テキストを読みながら決められる。ブラウザ標準のダイアログは使わない。
+ */
+.duel .dialog {
+  position: fixed;
+  inset: 0 calc(var(--right-column) + var(--gap-lg) * 2) 0 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgb(60 30 0 / 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.duel .dialog__box {
+  min-width: 18rem;
+  max-width: 24rem;
+  padding: 1.2rem 1.4rem;
+  border: 2px solid var(--gold);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #fffdf6, #fff4dc);
+  box-shadow: 0 16px 50px rgb(80 40 0 / 0.4);
+}
+
+.duel .dialog__title {
+  margin: 0 0 0.25rem;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.15rem;
+}
+
+.duel .dialog__lead {
+  margin: 0 0 var(--gap-lg);
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+}
+
+.duel .dialog__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.duel .dialog__actions button {
+  width: 100%;
+  text-align: left;
+}
+
+/* 確認は、キャンセルを左・手を右に置く。選ぶは、手を縦に並べた後に、キャンセルを右寄せで置く。 */
+.duel .dialog__row,
+.duel .dialog__cancel {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--gap);
+}
+
+.duel .dialog__cancel {
+  margin-top: var(--gap-lg);
+}
+
+/*
  * カードの一覧（捨札・リムーブを見る／効果で山札などから選ぶ）。画面の上に重ね、答えるまで
  * 盤面は押せない。右の列（カードの詳細）は覆わないので、一覧のカードに乗せて詳細を読める。
  */

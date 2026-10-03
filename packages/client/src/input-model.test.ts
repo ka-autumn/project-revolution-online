@@ -577,7 +577,7 @@ describe('クリックで操作する', () => {
     const view = pick([PLACE, SMASH], 'てふだの1枚')
 
     expect(view.picked).toBe('てふだの1枚')
-    expect(view.direct.map((each) => each.action)).toEqual([PLACE])
+    expect(view.ask?.options).toEqual([{ label: 'エネルギーとして置く', send: PLACE }])
   })
 
   /**
@@ -597,8 +597,8 @@ describe('クリックで操作する', () => {
       { row: 0, column: 0 },
       { row: 0, column: 2 },
     ])
-    // 盤面の上で示せるので、ボタンとしては出ない。
-    expect(view.direct).toEqual([])
+    // 盤面の上で示せるので、ダイアログでは聞かない。
+    expect(view.ask).toBeUndefined()
   })
 
   /** 光らせた場所を押したら、その手をそのまま送る。組み立て直さない。 */
@@ -620,14 +620,16 @@ describe('クリックで操作する', () => {
   })
 
   /**
-   * 同じスクエアを指す手が 2 つ以上あるなら、押した場所だけでは決まらない。ボタンとして出す。
+   * 同じスクエアを指す手が 2 つ以上あるなら、押した場所だけでは決まらない。選ぶダイアログで
+   * 聞く。見分けがつくよう、行き先を添える。
    */
-  it('同じ場所を指す手が 2 つあれば、盤面では示さない', () => {
+  it('同じ場所を指す手が 2 つあれば、盤面では示さず、選ぶダイアログで聞く', () => {
     const move: LegalAction = { kind: 'ユニットを移動する', unit: 'てふだの1枚', destination: { row: 0, column: 0 } }
     const view = pick([PLAY_LEFT, move], 'てふだの1枚')
 
     expect(view.destinations).toEqual([])
-    expect(view.direct.map((each) => each.action)).toEqual([PLAY_LEFT, move])
+    expect(view.ask?.options.map((each) => ('send' in each ? each.send : undefined))).toEqual([PLAY_LEFT, move])
+    expect(new Set(view.ask?.options.map((each) => each.label)).size).toBe(2)
   })
 
   /** 選んだカードの手が届かなくなったら、選んでいない状態と同じになる。 */
@@ -655,6 +657,70 @@ describe('クリックで操作する', () => {
     const view = pick([PASS, PLACE])
 
     expect(view.untargeted.map((each) => each.action)).toEqual([PASS])
+  })
+
+  /**
+   * 行き先の無い手が 1 つだけなら、確認ダイアログで聞く（#249）。見出しは何のカードの話かで、
+   * 読み上げに結び付く。
+   */
+  it('行き先の無い手が 1 つだけなら、その手を確認する', () => {
+    const view = pick([PLACE], 'てふだの1枚')
+
+    expect(view.ask).toEqual({
+      heading: 'テスト・手札の戦士',
+      lead: '「エネルギーとして置く」を行いますか？',
+      options: [{ label: 'エネルギーとして置く', send: PLACE }],
+    })
+    expect(view.destinations).toEqual([])
+  })
+
+  it('行き先の無い手が 2 つ以上あれば、選ぶダイアログで聞く', () => {
+    const courage: LegalAction = { kind: '「勇気」を起動する', card: 'てふだの1枚' }
+    const view = pick([PLACE, courage], 'てふだの1枚')
+
+    expect(view.ask?.lead).toBe('どの手を行いますか？')
+    expect(view.ask?.options).toEqual([
+      { label: 'エネルギーとして置く', send: PLACE },
+      { label: '「勇気」を起動する', send: courage },
+    ])
+  })
+
+  /** 何も選んでいなければ、聞くことは無い。 */
+  it('カードを選ぶまでは、聞かない', () => {
+    expect(pick([PLACE, PLAY_LEFT]).ask).toBeUndefined()
+  })
+
+  /**
+   * 行き先のある手と無い手が混じるなら、先に聞く。行き先を押して行う手は、種類ごとに 1 つの
+   * 選択肢にまとめる（スクエアごとに並べない）。
+   */
+  it('行き先のある手と無い手が混じれば、先に聞き、行き先は光らせない', () => {
+    const view = pick([PLACE, PLAY_LEFT, PLAY_RIGHT], 'てふだの1枚')
+
+    expect(view.ask?.options).toEqual([
+      { label: 'エネルギーとして置く', send: PLACE },
+      { label: 'スクエアにプレイする', aim: 'カードをプレイする' },
+    ])
+    expect(view.destinations).toEqual([])
+  })
+
+  /** 聞いたあと、行き先を押して行う手を選んだなら、その種類の行き先だけが光る。聞き直さない。 */
+  it('行き先を押して行う手を選び終えたら、その行き先だけが光る', () => {
+    const view = pickView(board(), [PLACE, PLAY_LEFT, PLAY_RIGHT], 'てふだの1枚', undefined, 'カードをプレイする')
+
+    expect(view.ask).toBeUndefined()
+    expect(view.destinations.map((each) => each.square)).toEqual([
+      { row: 0, column: 0 },
+      { row: 0, column: 2 },
+    ])
+  })
+
+  /** 選び終えた手が、盤面が新しく届いて無くなっていたら、また聞く。無い手の行き先は光らせない。 */
+  it('選び終えた手が届いていなければ、聞き直す', () => {
+    const view = pickView(board(), [PLACE, SMASH], 'てふだの1枚', undefined, 'カードをプレイする')
+
+    expect(view.destinations).toEqual([])
+    expect(view.ask?.options).toEqual([{ label: 'エネルギーとして置く', send: PLACE }])
   })
 
   /** 選んだカードの手が無くなって選んでいない状態に戻れば、放棄のボタンも戻る。 */

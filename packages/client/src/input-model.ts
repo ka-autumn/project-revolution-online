@@ -365,14 +365,20 @@ export interface PickView {
   /** いま選んでいるカード。選んでいなければ `undefined`。 */
   readonly picked: CardId | undefined
   /**
-   * 選んだカードで行える手のうち、置き先を持たないもの。ボタンとして出す。
+   * 光らせるスクエア。選んだカードの手が指しているところだけ。
    *
-   * 置き先を持つ手でも、同じスクエアを指す手が 2 つ以上あるならここに入る。押した場所だけ
-   * では、どちらの手かが決まらないためである。
+   * 選んだカードに、置き先の無い手（確認が要るもの）や、押した場所だけでは決まらない手が
+   * 混じるなら、先に `ask` で聞くので、聞き終えるまでは空である。
    */
-  readonly direct: readonly ActionView[]
-  /** 光らせるスクエア。選んだカードの手が指しているところだけ。 */
   readonly destinations: readonly DestinationView[]
+  /**
+   * 聞くダイアログ。聞くことが無ければ `undefined`（#249）。
+   *
+   * 選んだカードで行える手が、盤面の行き先だけで決まらないときに出す。手が 1 つなら確認、
+   * 2 つ以上なら選ばせる。**手の並びは届いた手から作るだけで、押せない手は並ばない**
+   * （ADR-0010）。
+   */
+  readonly ask: AskView | undefined
   /**
    * カードに紐づかない手（優先権の放棄・プラン）。**カードを選んでいない間だけ**出す（#249）。
    *
@@ -382,18 +388,71 @@ export interface PickView {
   readonly untargeted: readonly ActionView[]
 }
 
+/** 行き先を押して行う手の種類。聞くダイアログで「この手にする」と決めた後に、行き先を絞るのに使う。 */
+export type AimKind = LegalAction['kind']
+
+/** 聞くダイアログの選択肢 1 つ。押したら、手を送るか、行き先を光らせる。 */
+export type AskOption =
+  | { readonly label: string; readonly send: LegalAction }
+  | { readonly label: string; readonly aim: AimKind }
+
+/**
+ * 聞くダイアログ（#249）。選択肢が 1 つなら確認、2 つ以上なら選ばせる。
+ *
+ * `heading` が何のカードの話かで、読み上げでは見出しに結び付く。`lead` は何を聞いているか。
+ */
+export interface AskView {
+  readonly heading: string
+  readonly lead: string
+  readonly options: readonly AskOption[]
+}
+
+/**
+ * ダイアログの選択肢に出す手の呼び名。**何のカードかは見出しに出る**ので、カード名は添えない。
+ *
+ * 行き先で決まらない手（同じスクエアを指す手が 2 つ以上あるとき）は、行き先を添えて見分ける。
+ */
+function optionLabelOf(action: LegalAction, viewer: Player, withDestination: boolean): string {
+  const where = (): string => {
+    const square = destinationOf(action)
+    return withDestination && square !== undefined ? `（${squareLabel(viewer, square)}へ）` : ''
+  }
+  switch (action.kind) {
+    case 'エネルギーを置く':
+      return 'エネルギーとして置く'
+    case 'カードをプレイする':
+      return `${action.declaration.square === undefined ? 'プレイする' : 'スクエアにプレイする'}${where()}`
+    case 'ユニットを移動する':
+      return `移動する${where()}`
+    case '起動型能力を起動する':
+      return `能力を起動する（${action.ability + 1} 個目）`
+    case '優先権を放棄する':
+    case 'プランする':
+    case 'スマッシュする':
+    case 'トラップを廃棄する':
+    case 'トラップとしてプレイする':
+    case 'トラップを発動する':
+    case '「勇気」を起動する':
+      return action.kind
+  }
+}
+
 /**
  * クリックで操作する時の画面。`picked` が選んでいるカード（`undefined` なら選んでいない）。
  *
  * 段は 2 つである。カードを選ぶまでは押せるカードを示すだけで、選んだ後にその 1 枚で行える手
- * だけを出す。**置き先を選ぶ手は盤面の上で示す**ので、そこは押すところが 2 か所（カード →
- * スクエア）になる。
+ * を出す。**置き先を選ぶ手は盤面の上で示す**ので、そこは押すところが 2 か所（カード →
+ * スクエア）になる。それ以外の手は、ダイアログで聞く（`ask`）。
+ *
+ * `aim` は、聞くダイアログで「行き先を押して行う手」を選んだ後に、その種類を渡す。渡すと、
+ * その種類の行き先だけが光る。
  */
 export function pickView(
   board: WirePerspective,
   actions: readonly LegalAction[],
   picked: CardId | undefined,
   passOutcome: PassOutcome | undefined,
+  aim?: AimKind,
 ): PickView {
   const names = namesIn(board)
   const view = (action: LegalAction): ActionView => ({
@@ -408,29 +467,58 @@ export function pickView(
   // 届いていないカードは選べない。選んだ後に手が届かなくなることは起こる（盤面が入れ替わる）
   // ので、その時は選んでいない状態と同じ扱いになる。
   if (picked === undefined || !pickable.includes(picked)) {
-    return { pickable, picked: undefined, direct: [], destinations: [], untargeted }
+    return { pickable, picked: undefined, destinations: [], ask: undefined, untargeted }
   }
 
   const mine = targeted.filter((action) => targetOf(action) === picked)
   const placing = mine.filter((action) => destinationOf(action) !== undefined)
   // 同じスクエアを指す手が 2 つ以上あるなら、押した場所だけでは決まらない。
-  const ambiguous = (square: Square): boolean =>
-    placing.filter((action) => sameSquare(destinationOf(action), square)).length > 1
-
-  const destinations = placing.flatMap((action): readonly DestinationView[] => {
+  const ambiguous = (action: LegalAction): boolean => {
     const square = destinationOf(action)
-    if (square === undefined || ambiguous(square)) return []
-    return [{ square, action, label: view(action).label }]
-  })
-  const decided = destinations.map((each) => each.action)
-
-  return {
-    pickable,
-    picked,
-    direct: mine.filter((action) => !decided.includes(action)).map(view),
-    destinations,
-    untargeted: [],
+    return square !== undefined && placing.filter((other) => sameSquare(destinationOf(other), square)).length > 1
   }
+  // 行き先を押して行える手。残りは、ダイアログで聞く手。
+  const aimable = placing.filter((action) => !ambiguous(action))
+  const asked = mine.filter((action) => !aimable.includes(action))
+
+  // 聞く選択肢。行き先を押して行う手は、種類ごとに 1 つにまとめる。届いた並びの順に出す。
+  const options: AskOption[] = []
+  for (const action of mine) {
+    if (aimable.includes(action)) {
+      if (!options.some((option) => 'aim' in option && option.aim === action.kind)) {
+        options.push({ label: optionLabelOf(action, board.viewer, false), aim: action.kind })
+      }
+    } else {
+      options.push({ label: optionLabelOf(action, board.viewer, ambiguous(action)), send: action })
+    }
+  }
+
+  const light = (lit: readonly LegalAction[]): readonly DestinationView[] =>
+    lit.flatMap((action): readonly DestinationView[] => {
+      const square = destinationOf(action)
+      return square === undefined ? [] : [{ square, action, label: view(action).label }]
+    })
+
+  // 聞くことが無ければ、行き先を全部光らせる。聞くことがあっても、行き先を押して行う手を選び終えて
+  // いれば、その種類の行き先だけを光らせる（聞き直さない）。
+  if (asked.length === 0) {
+    return { pickable, picked, destinations: light(aimable), ask: undefined, untargeted: [] }
+  }
+  if (aim !== undefined && aimable.some((action) => action.kind === aim)) {
+    return {
+      pickable,
+      picked,
+      destinations: light(aimable.filter((action) => action.kind === aim)),
+      ask: undefined,
+      untargeted: [],
+    }
+  }
+
+  const heading = nameOf(names, picked)
+  const lead =
+    options.length === 1 ? `「${options[0]?.label ?? ''}」を行いますか？` : 'どの手を行いますか？'
+
+  return { pickable, picked, destinations: [], ask: { heading, lead, options }, untargeted: [] }
 }
 
 function sameSquare(square: Square | undefined, other: Square): boolean {

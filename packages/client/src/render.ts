@@ -62,7 +62,7 @@ import type {
   PoolView,
   TypeCount,
 } from './deck-builder.js'
-import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
+import type { ActionView, AskOption, AskView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import { countName, DISPLAY_NAME_LIMIT } from './name-count.js'
 import { COLORLESS, emptyFilter, isFiltering, MOVE_SHAPES, toggled } from './pool-filter.js'
 import type { FilterChoices, MoveShape, NumberRange, PoolFilter, StarChoice } from './pool-filter.js'
@@ -3300,7 +3300,7 @@ export function pickElement(view: PickView, handlers: PickHandlers, aside?: HTML
   node.append(element('p', 'actions__none', guide))
 
   const list = element('div', 'actions__list')
-  for (const view_ of [...view.direct, ...view.untargeted]) {
+  for (const view_ of view.untargeted) {
     list.append(button(view_.label, () => handlers.onAction(view_.action), view_.primary))
   }
   node.append(list)
@@ -3314,6 +3314,67 @@ export function pickElement(view: PickView, handlers: PickHandlers, aside?: HTML
   }
 
   return node
+}
+
+/** 聞くダイアログで押せるもの。 */
+export interface AskHandlers {
+  readonly onChoose: (option: AskOption) => void
+  /** やめる。ダイアログを閉じて、カードを選んでいない状態に戻る。何も送らない。 */
+  readonly onCancel: () => void
+}
+
+/**
+ * 選んだカードの手を聞くダイアログ（#249）。画面の中に重ねる。**ブラウザの確認ダイアログは
+ * 使わない**（`confirmElement` と同じ）。
+ *
+ * 手が 1 つなら確認（左にキャンセル、右に手）、2 つ以上なら選ぶ（手を縦に並べ、最後にキャンセル）。
+ * 見出し（カード名）と何を聞いているかは、読み上げに結び付ける。最初の手に手を置く——デッキ構築の
+ * 確認は戻せないことを聞くのでキャンセルに置くが、ここは手を行うために出しているので、Enter で
+ * そのまま進める。Esc・暗くしたところを押すのは、キャンセルと同じ。
+ */
+export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
+  const layer = element('div', 'dialog')
+  const box = element('div', 'dialog__box')
+  box.setAttribute('role', 'dialog')
+  box.setAttribute('aria-modal', 'true')
+  const title = element('h2', 'dialog__title', view.heading)
+  title.id = 'dialog-title'
+  const lead = element('p', 'dialog__lead', view.lead)
+  lead.id = 'dialog-lead'
+  box.setAttribute('aria-labelledby', title.id)
+  box.setAttribute('aria-describedby', lead.id)
+  box.append(title, lead)
+
+  const choose = (option: AskOption): HTMLElement => {
+    const node = button(option.label, () => handlers.onChoose(option), view.options.length === 1)
+    return node
+  }
+  const cancel = button('キャンセル', handlers.onCancel)
+  const first = view.options[0]
+  if (view.options.length === 1 && first !== undefined) {
+    const row = element('div', 'dialog__row')
+    row.append(cancel, choose(first))
+    box.append(row)
+  } else {
+    const actions = element('div', 'dialog__actions')
+    for (const option of view.options) actions.append(choose(option))
+    const foot = element('div', 'dialog__cancel')
+    foot.append(cancel)
+    box.append(actions, foot)
+  }
+  layer.append(box)
+
+  layer.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') handlers.onCancel()
+  })
+  // 重ねた層の外側（暗くしたところ）を押しても、やめる。
+  layer.addEventListener('click', (event) => {
+    if (event.target === layer) handlers.onCancel()
+  })
+  // 付け終わってから手を置く。まだ文書に無い要素には置けない。
+  queueMicrotask(() => layer.querySelector<HTMLElement>('.dialog__actions button, .dialog__row .button--primary')?.focus())
+
+  return layer
 }
 
 /**
@@ -3803,6 +3864,8 @@ export interface DuelElementProps {
   readonly viewingPile?: HTMLElement
   /** 開いている「選ぶ」一覧。無ければ `undefined`。 */
   readonly choosePicker?: HTMLElement
+  /** 選んだカードの手を聞くダイアログ（#249）。無ければ `undefined`。 */
+  readonly dialog?: HTMLElement
   /** 演出・決着の層。出すものが無ければ `undefined`。 */
   readonly overlay?: HTMLElement
   /** 表側が見えているカードすべて（`view-model.ts` の `visibleCardViewsIn`）。詳細の配線に使う。 */
@@ -3856,6 +3919,7 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   if (props.overlay !== undefined) root.append(props.overlay)
   if (props.viewingPile !== undefined) root.append(props.viewingPile)
   if (props.choosePicker !== undefined) root.append(props.choosePicker)
+  if (props.dialog !== undefined) root.append(props.dialog)
 
   wireCardDetailHover(root, detail, props.cardsById, props.picking?.picked)
 
