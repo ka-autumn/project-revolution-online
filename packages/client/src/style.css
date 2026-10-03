@@ -3616,6 +3616,18 @@ body {
   font-size: 0.85rem;
 }
 
+/* 手を送ってから返事が届くまで。何も出ていない間は場所を取らない。 */
+.duel .dialog__sending {
+  margin: 0;
+  color: var(--heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.duel .dialog__sending:not(:empty) {
+  margin-bottom: var(--gap-lg);
+}
+
 .duel .dialog__actions {
   display: flex;
   flex-direction: column;

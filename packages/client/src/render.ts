@@ -3388,13 +3388,18 @@ export interface AskHandlers {
 }
 
 /**
- * 選んだカードの手を聞くダイアログ（#249）。画面の中に重ねる。**ブラウザの確認ダイアログは
- * 使わない**（`confirmElement` と同じ）。
+ * 選んだカードの手を聞くダイアログ（#249）。画面の中に重ねる。ブラウザの確認ダイアログは
+ * 使わない（`confirmElement` と同じ）。
  *
  * 手が 1 つなら確認（左にキャンセル、右に手）、2 つ以上なら選ぶ（手を縦に並べ、最後にキャンセル）。
  * 見出し（カード名）と何を聞いているかは、読み上げに結び付ける。最初の手に手を置く——デッキ構築の
  * 確認は戻せないことを聞くのでキャンセルに置くが、ここは手を行うために出しているので、Enter で
  * そのまま進める。Esc・暗くしたところを押すのは、キャンセルと同じ。
+ *
+ * 手を送ったあとは、返事（盤面など）が届いて描き直されるまで、このダイアログは古い画面のまま残る。
+ * その間に押されると 2 通目が送られ、サーバに断られて「行えませんでした」が出るので、送った時点で
+ * すべてのボタンを押せなくし、送っていることを出す。送った手は取り消せないので、キャンセルも
+ * Esc も効かせない。アニメーションは使わない（描き直しで作り直されるため、ADR-0027）。
  */
 export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
   const layer = element('div', 'dialog')
@@ -3407,13 +3412,33 @@ export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
   lead.id = 'dialog-lead'
   box.setAttribute('aria-labelledby', title.id)
   box.setAttribute('aria-describedby', lead.id)
-  box.append(title, lead)
+  // 送っている間の表示の場所。読み上げに伝わるよう、中身が空のうちから置いておく。
+  const sending = element('p', 'dialog__sending')
+  sending.setAttribute('role', 'status')
+  box.append(title, lead, sending)
 
-  const choose = (option: AskOption): HTMLElement => {
-    const node = button(option.label, () => handlers.onChoose(option), view.options.length === 1)
-    return node
+  let sent = false
+  const onSent = (): void => {
+    sent = true
+    box.setAttribute('aria-busy', 'true')
+    sending.textContent = '送っています…'
+    for (const each of box.querySelectorAll('button')) each.disabled = true
   }
-  const cancel = button('キャンセル', handlers.onCancel)
+  const choose = (option: AskOption): HTMLElement =>
+    button(
+      option.label,
+      () => {
+        if (sent) return
+        // 行き先を絞るだけの選択肢は何も送らず、すぐ描き直されるので、待つことが無い。
+        if ('send' in option) onSent()
+        handlers.onChoose(option)
+      },
+      view.options.length === 1,
+    )
+  const onCancel = (): void => {
+    if (!sent) handlers.onCancel()
+  }
+  const cancel = button('キャンセル', onCancel)
   const first = view.options[0]
   if (view.options.length === 1 && first !== undefined) {
     const row = element('div', 'dialog__row')
@@ -3429,11 +3454,11 @@ export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
   layer.append(box)
 
   layer.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') handlers.onCancel()
+    if (event.key === 'Escape') onCancel()
   })
   // 重ねた層の外側（暗くしたところ）を押しても、やめる。
   layer.addEventListener('click', (event) => {
-    if (event.target === layer) handlers.onCancel()
+    if (event.target === layer) onCancel()
   })
   // 付け終わってから手を置く。まだ文書に無い要素には置けない。
   queueMicrotask(() => layer.querySelector<HTMLElement>('.dialog__actions button, .dialog__row .button--primary')?.focus())
