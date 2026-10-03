@@ -9,8 +9,11 @@ import proxy from './proxy.js'
  */
 
 const before = process.env.BASIC_AUTH
+const beforeEnv = process.env.VERCEL_ENV
 afterEach(() => {
   process.env.BASIC_AUTH = before
+  if (beforeEnv === undefined) delete process.env.VERCEL_ENV
+  else process.env.VERCEL_ENV = beforeEnv
 })
 
 /** ブラウザが送る形。合言葉を UTF-8 のバイト列にしてから base64 に直す。 */
@@ -54,5 +57,33 @@ describe('画面に掛ける鍵', () => {
     process.env.BASIC_AUTH = 'me:secret'
     expect(opened(new Headers({ authorization: 'Basic !!!!' }))).toBe(401)
     expect(opened(new Headers({ authorization: 'Bearer token' }))).toBe(401)
+  })
+})
+
+
+describe('検索に載せない印', () => {
+  function robots(environment: string | undefined): string | null {
+    if (environment === undefined) delete process.env.VERCEL_ENV
+    else process.env.VERCEL_ENV = environment
+    process.env.BASIC_AUTH = ''
+
+    return proxy(new Request('https://example.com/')).headers.get('x-robots-tag')
+  }
+
+  it('preview には付ける', () => {
+    expect(robots('preview')).toBe('noindex')
+  })
+
+  it('本番と手元には付けない', () => {
+    expect(robots('production')).toBeNull()
+    expect(robots('development')).toBeNull()
+    expect(robots(undefined)).toBeNull()
+  })
+
+  it('鍵を通ったときにも付ける', () => {
+    process.env.VERCEL_ENV = 'preview'
+    process.env.BASIC_AUTH = 'me:secret'
+    const response = proxy(new Request('https://example.com/', { headers: named('me:secret') }))
+    expect(response.headers.get('x-robots-tag')).toBe('noindex')
   })
 })
