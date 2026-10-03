@@ -3597,6 +3597,10 @@ body {
 .duel .dialog__box {
   min-width: 18rem;
   max-width: 24rem;
+  /* 手が多い（能力を複数持つユニットなど）と、低い窓では画面より高くなる。層は動かないので、
+     はみ出した上下に届かなくなる。箱の中でスクロールさせる。 */
+  max-height: 100%;
+  overflow-y: auto;
   padding: 1.2rem 1.4rem;
   border: 2px solid var(--gold);
   border-radius: var(--radius);
