@@ -226,7 +226,7 @@ function statusOf(session: Session, link: Link): string | undefined {
       // ロビーは自分で全部を出す（`lobbyElement`）ので、上に足す 1 行は要らない。
       return undefined
     case '相手を待っている':
-      // 待っている画面が見出しと説明を自分で出す（`awaitingElement`）ので、上に足す 1 行は要らない。
+      // 待っている画面が見出しを自分で出す（`awaitingElement`）ので、上に足す 1 行は要らない。
       return undefined
     case '打っている':
       return session.stage.board === undefined ? '盤面を待っています' : undefined
@@ -347,6 +347,8 @@ interface Naming {
   readonly draft: string
   readonly onDraft: (value: string) => void
   readonly onDecide: (name: string) => void
+  /** 断りの返事が届いて、まだ描き直していないか。**呼ぶと下ろす。** */
+  readonly takeRefusalArrived: () => boolean
 }
 
 /**
@@ -532,7 +534,9 @@ function draw(
 ): void {
   // 打ち込みかけの場所は描き直すと消える。打っていた人には返す（`lobbyElement`）。
   const typing = document.activeElement?.classList.contains('lobby__name') === true
-  const typingName = document.activeElement?.classList.contains('naming__input') === true
+  // 「これにする」をマウスで押すと手はボタンにあるので、断りの返事による描き直しでは押した経路によらず返す。
+  const refusalArrived = naming.takeRefusalArrived()
+  const typingName = refusalArrived || document.activeElement?.classList.contains('naming__input') === true
   const typingDeck = typingIn(root)
   const scrolled = scrollPositions(root)
   // 「見る」「選ぶ」一覧の中に居たかどうか。開いた時だけフォーカスを一覧の中へ移す
@@ -1075,6 +1079,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let lobbyRoomPage = 0
   // 打ち込みかけている表示名（ADR-0020）。尋ねられるたびに、いま付いている名前から始める。
   let nameDraft = ''
+  // 名前を断る返事が届いて、まだ描き直していない間は真。描き直しが入力欄へフォーカスを戻す印になる。
+  let nameRefusalArrived = false
   // 押している最中（pointerdown から pointerup まで）か。押しているうちに描き直すと、押した要素が
   // click の前に作り直され、押したことが消える。
   let pointerHeld = false
@@ -1180,6 +1186,12 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     onDecide: (name) => {
       nameDraft = name
       connection.send({ kind: '名前を決める', name })
+    },
+    takeRefusalArrived: () => {
+      const arrived = nameRefusalArrived
+      nameRefusalArrived = false
+
+      return arrived
     },
   })
 
@@ -1879,6 +1891,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // **打ち込みかけがあれば消さない。** 断られて尋ね直された時に、直そうとしていたものが
       // 消えてしまう。
       if (message.kind === '名前を決めてほしい' && nameDraft === '') nameDraft = message.current ?? ''
+      if (message.kind === '名前を決めてほしい' && message.reason !== undefined) nameRefusalArrived = true
       // 盤面が入れ替わったら、選びかけは捨てる（#94）。
       pickedCard = undefined
       // 「見る」「選ぶ」の状態は、席についた時点（入り直しを含む）で前の対局のものを持ち越さない。

@@ -51,6 +51,7 @@ import type {
   TypeCount,
 } from './deck-builder.js'
 import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
+import { countName, DISPLAY_NAME_LIMIT } from './name-count.js'
 import { COLORLESS, emptyFilter, isFiltering, MOVE_SHAPES, toggled } from './pool-filter.js'
 import type { FilterChoices, MoveShape, NumberRange, PoolFilter, StarChoice } from './pool-filter.js'
 import type { CopyState, MyShareRow, PublicCardSection, RecipeCardRow, RecipeSummaryRow, ShareDraft, ShareRow, SharingState } from './recipe.js'
@@ -3083,9 +3084,6 @@ export function confirmElement(view: ConfirmView, onConfirm: () => void, onCance
   return layer
 }
 
-/** 表示名として受け取る長さの上限（`server` の `name.ts` の `NAME_LIMIT` と同じ）。 */
-const DISPLAY_NAME_LIMIT = 20
-
 /** 名前を決めるところで押せるもの（ADR-0020）。 */
 export interface NamingHandlers {
   /** 打ち込んだものが変わった。**画面は描き直されるので、覚えておくのは呼ぶ側である。** */
@@ -3106,13 +3104,13 @@ export function nameElement(
   handlers: NamingHandlers,
 ): HTMLElement {
   const node = element('section', 'naming')
-  node.append(element('h1', 'naming__brand', 'プロジェクトレヴォリューション'))
+  node.append(element('h1', 'naming__brand', 'プロレヴォオンライン'))
 
   const panel = element('div', 'panel')
   const head = element('div', 'panel__head')
-  head.append(element('h2', 'panel__title', '名前を決める'))
+  head.append(element('h2', 'panel__title', 'プレイヤー名'))
   const body = element('div', 'panel__body')
-  body.append(element('p', 'naming__lead', 'ロビーと対戦相手のところに出る名前です。後から変えられます'))
+  body.append(element('p', 'naming__lead', '他のプレイヤーに公開される名前です。後から変えられます'))
 
   const input = document.createElement('input')
   input.className = 'naming__input'
@@ -3121,14 +3119,14 @@ export function nameElement(
   input.placeholder = '名前'
   input.value = draft
 
-  // サーバと同じく 1 文字ずつ数える。入力欄の `maxLength` は UTF-16 の単位なので、絵文字では食い違う。
+  // 数え方はサーバに合わせる（`countName`）。入力欄の `maxLength` は UTF-16 の単位なので、絵文字では食い違う。
   const count = element('span', 'naming__count')
   count.id = 'naming-count'
   input.setAttribute('aria-describedby', count.id)
   const syncCount = (): void => {
-    const length = [...input.value].length
+    const { length, full } = countName(input.value)
     count.textContent = `${length} / ${DISPLAY_NAME_LIMIT}`
-    count.classList.toggle('naming__count--full', length >= DISPLAY_NAME_LIMIT)
+    count.classList.toggle('naming__count--full', full)
   }
   syncCount()
 
@@ -3165,7 +3163,6 @@ export function awaitingElement(onLeave: () => void): HTMLElement {
   const panel = element('div', 'panel')
   const body = element('div', 'panel__body')
   body.append(element('h2', 'awaiting__title', '相手を待っています'))
-  body.append(element('p', 'awaiting__lead', 'この部屋はロビーに出ているので、選んで入ってもらえます'))
   body.append(button('やめてロビーに戻る', onLeave))
   panel.append(body)
   node.append(panel)
@@ -3173,7 +3170,7 @@ export function awaitingElement(onLeave: () => void): HTMLElement {
   return node
 }
 
-/** ロビーに戻る口（#175）。デッキ構築と、投げ出せる対戦の間に出す。 */
+/** ロビーに戻る口（#175）。レシピの画面と、投げ出せる対戦の操作欄に出す。 */
 export function leaveElement(label: string, onLeave: () => void): HTMLElement {
   const node = element('div', 'leave')
   node.append(button(label, onLeave))
