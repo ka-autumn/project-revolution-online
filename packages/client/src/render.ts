@@ -387,12 +387,6 @@ function appendTraitsAndStats(
 interface FaceOptions {
   /** 詳細（拡大）として出すか。テキストの枠が付き、並びが変わる。 */
   readonly big?: boolean
-  /**
-   * 山札の場所に見せているプランのカードか。
-   *
-   * 小さな面では、このカードにだけキーワード能力のアイコンを名前の下の行に出す。
-   */
-  readonly plan?: boolean
 }
 
 /**
@@ -443,11 +437,6 @@ function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptio
     node.append(bottom)
   } else {
     node.append(title)
-    if (options.plan && keywords !== undefined) {
-      const row = element('div', 'card__keywords-row')
-      row.append(keywords)
-      node.append(row)
-    }
 
     if (icons !== undefined) bottom.append(icons)
     appendTraitsAndStats(bottom, card)
@@ -573,6 +562,12 @@ function zoneElement(zone: ZoneView, picking?: BoardPicking, options: FaceOption
 
   const cards = element('div', 'zone__cards')
   if (zone.cards.length === 0) cards.append(element('div', 'zone__empty'))
+  // 重ねて並べるゾーンは、枚数に応じて重なり幅を詰める（`style.css` の `--fit`）ので、枚数と
+  // フリーズしている枚数を渡す。
+  if (CHOOSING_ZONES.includes(zone.zone)) {
+    cards.style.setProperty('--n', String(zone.cards.length))
+    cards.style.setProperty('--nf', String(zone.cards.filter((card) => card.orientation === 'フリーズ').length))
+  }
   for (const card of zone.cards) cards.append(cardElement(card, picking, options))
   node.append(cards)
   if (choosing) node.append(choosingTabElement(picking))
@@ -701,14 +696,19 @@ function deckZoneElement(
   // 裏面のままにする（表に出せないものを表として描かない）。
   const hasCard = plan !== undefined || deck.count > 0
   if (plan !== undefined && plan.kind === '表') {
-    pile.append(cardElement(plan, picking, { plan: true }))
+    pile.append(cardElement(plan, picking))
     pile.append(element('span', 'pile__plan', 'プラン（1）'))
+    // プランのカードのキーワード能力は、カードの下に大きく並べる。枚数は上の見出しに出ている。
+    const keywords = keywordsElement(plan.keywords)
+    if (keywords !== undefined) {
+      keywords.classList.add('pile__keywords')
+      pile.append(keywords)
+    }
   } else if (hasCard) {
     pile.append(backCardElement())
   } else {
     pile.append(element('div', 'zone__empty'))
   }
-  if (hasCard) pile.append(element('span', 'pile__count', String(deck.count)))
   cardsWrap.append(pile)
   node.append(cardsWrap)
 
