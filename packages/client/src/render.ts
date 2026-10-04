@@ -3412,12 +3412,15 @@ export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
   title.id = 'dialog-title'
   const lead = element('p', 'dialog__lead', view.lead)
   lead.id = 'dialog-lead'
+  // 見出しが場所の名前のときだけ、そこにあるカードの名前を見出しと聞く文の間に置く。
+  const subject = view.subject === undefined ? undefined : element('p', 'dialog__subject', view.subject)
+  if (subject !== undefined) subject.id = 'dialog-subject'
   box.setAttribute('aria-labelledby', title.id)
-  box.setAttribute('aria-describedby', lead.id)
+  box.setAttribute('aria-describedby', subject === undefined ? lead.id : `${subject.id} ${lead.id}`)
   // 送っている間の表示の場所。読み上げに伝わるよう、中身が空のうちから置いておく。
   const sending = element('p', 'dialog__sending')
   sending.setAttribute('role', 'status')
-  box.append(title, lead, sending)
+  box.append(title, ...(subject === undefined ? [] : [subject]), lead, sending)
 
   let sent = false
   const onSent = (): void => {

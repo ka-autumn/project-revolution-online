@@ -3615,6 +3615,13 @@ body {
   font-size: 1.15rem;
 }
 
+/* 見出しが場所の名前（プランゾーン）のときの、そこにあるカードの名前。長い名前は折り返す。 */
+.duel .dialog__subject {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
 .duel .dialog__lead {
   margin: 0 0 var(--gap-lg);
   color: var(--ink-dim);

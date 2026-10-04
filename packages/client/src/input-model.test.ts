@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CHOICE_PURPOSES, indexOfSquare } from '@revolution/engine'
-import type { LegalAction, PassOutcome, Player, WireChoice, WirePerspective } from '@revolution/engine'
+import type { LegalAction, PassOutcome, Player, WireCardFace, WireChoice, WirePerspective } from '@revolution/engine'
 import {
   actionViews,
   automaticAction,
@@ -13,7 +13,7 @@ import {
 import { applyMessage, connecting } from './session.js'
 import { squareLabel } from './view-model.js'
 import type { Session } from './session.js'
-import { emptyBoard, instance, unitFace, withZone } from './test-support.js'
+import { emptyBoard, instance, strategyFace, unitFace, withZone } from './test-support.js'
 
 /**
  * 行える手と選ぶ候補を、画面に出す形にするところ（#14）。
@@ -802,9 +802,9 @@ describe('クリックで操作する', () => {
     }
 
     /** プランゾーンにカードが 1 枚ある盤面。山札の場所にはそのカードが見える（ADR-0027）。 */
-    const withPlanCard = (): WirePerspective =>
+    const withPlanCard = (card: WireCardFace = unitFace('テスト・プランの戦士')): WirePerspective =>
       withZone(board(), '先攻', 'プランゾーン', [
-        { kind: '見えている', instance: instance('プランの1枚', '先攻', { card: unitFace('テスト・プランの戦士') }) },
+        { kind: '見えている', instance: instance('プランの1枚', '先攻', { card }) },
       ])
 
     it('プランする手は、ボタンとしては出ない', () => {
@@ -852,26 +852,51 @@ describe('クリックで操作する', () => {
     it('プランゾーンのカードをプレイできないなら、プランするかを確認する', () => {
       const view = pickView(withPlanCard(), [PASS, PLAN], { card: 'プランの1枚' }, undefined)
 
-      expect(view.ask?.heading).toBe('テスト・プランの戦士')
-      expect(view.ask?.options).toEqual([{ label: 'プランする', send: PLAN }])
+      // 見出しは場所の名前、カード名は本文に出す。
+      expect(view.ask).toEqual({
+        heading: 'プランゾーン',
+        subject: 'テスト・プランの戦士',
+        lead: 'プランしますか？',
+        options: [{ label: 'プランする', send: PLAN }],
+      })
     })
 
     /** プランゾーンのカードをプレイすることもできるなら、選ぶダイアログで聞く。 */
     it('プランゾーンのカードをプレイすることもできるなら、プレイするかプランするかを選ばせる', () => {
-      const view = pickView(withPlanCard(), [PASS, PLAN, PLAY_PLANNED], { card: 'プランの1枚' }, undefined)
+      const view = pickView(
+        withPlanCard(strategyFace('テスト・プランの策')),
+        [PASS, PLAN, PLAY_PLANNED],
+        { card: 'プランの1枚' },
+        undefined,
+      )
 
+      expect(view.ask?.heading).toBe('プランゾーン')
+      expect(view.ask?.subject).toBe('テスト・プランの策')
       expect(view.ask?.lead).toBe('どれにしますか？')
       expect(view.ask?.options).toEqual([
-        { label: 'プレイする', send: PLAY_PLANNED },
+        { label: 'ストラテジーをプレイする', send: PLAY_PLANNED },
         { label: 'プランする', send: PLAN },
       ])
     })
 
-    it('ユニットのプランゾーンのカードなら、スクエアにプレイするかプランするかを選ばせ、選んだあとに光らせる', () => {
+    it('超必殺ストラテジー！も、ストラテジーをプレイすると呼ぶ', () => {
+      const view = pickView(
+        withPlanCard(strategyFace('テスト・プランの必殺', '超必殺ストラテジー！')),
+        [PASS, PLAN, PLAY_PLANNED],
+        { card: 'プランの1枚' },
+        undefined,
+      )
+
+      expect(view.ask?.options.map((option) => option.label)).toEqual(['ストラテジーをプレイする', 'プランする'])
+    })
+
+    it('ユニットのプランゾーンのカードなら、ユニットをプレイするかプランするかを選ばせ、選んだあとに光らせる', () => {
       const asking = pickView(withPlanCard(), [PASS, PLAN, PLAY_PLANNED_AT], { card: 'プランの1枚' }, undefined)
 
+      expect(asking.ask?.heading).toBe('プランゾーン')
+      expect(asking.ask?.subject).toBe('テスト・プランの戦士')
       expect(asking.ask?.options).toEqual([
-        { label: 'スクエアにプレイする', aim: 'カードをプレイする' },
+        { label: 'ユニットをプレイする', aim: 'カードをプレイする' },
         { label: 'プランする', send: PLAN },
       ])
       expect(asking.destinations).toEqual([])

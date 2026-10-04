@@ -6,6 +6,7 @@ import type {
   Player,
   Square,
   WireCandidate,
+  WireCardInstance,
   WireCardPosition,
   WireChoice,
   WirePerspective,
@@ -433,9 +434,11 @@ export type AskOption =
  * 聞くダイアログ（#249）。選択肢が 1 つなら確認、2 つ以上なら選ばせる。
  *
  * `heading` が何のカードの話かで、読み上げでは見出しに結び付く。`lead` は何を聞いているか。
+ * `subject` は見出しが場所の名前（プランゾーン）のときに、そこにあるカードの名前を添える。
  */
 export interface AskView {
   readonly heading: string
+  readonly subject?: string | undefined
   readonly lead: string
   readonly options: readonly AskOption[]
 }
@@ -445,7 +448,12 @@ export interface AskView {
  *
  * 行き先で決まらない手（同じスクエアを指す手が 2 つ以上あるとき）は、行き先を添えて見分ける。
  */
-function optionLabelOf(action: LegalAction, viewer: Player, withDestination: boolean): string {
+function optionLabelOf(
+  action: LegalAction,
+  viewer: Player,
+  withDestination: boolean,
+  playLabel?: string | undefined,
+): string {
   const where = (): string => {
     const square = destinationOf(action)
     return withDestination && square !== undefined ? `（${squareLabel(viewer, square)}へ）` : ''
@@ -454,7 +462,7 @@ function optionLabelOf(action: LegalAction, viewer: Player, withDestination: boo
     case 'エネルギーを置く':
       return 'エネルギーとして置く'
     case 'カードをプレイする':
-      return `${action.declaration.square === undefined ? 'プレイする' : 'スクエアにプレイする'}${where()}`
+      return `${playLabel ?? (action.declaration.square === undefined ? 'プレイする' : 'スクエアにプレイする')}${where()}`
     case 'ユニットを移動する':
       return `移動する${where()}`
     case '起動型能力を起動する':
@@ -515,10 +523,31 @@ export interface PickSelection {
 }
 
 /** 自分のプランゾーンにある、見えているカード。無ければ `undefined`。 */
-function ownPlanCardOf(board: WirePerspective): CardId | undefined {
+function ownPlanInstanceOf(board: WirePerspective): WireCardInstance | undefined {
   const [first] = board.zones[board.viewer]['プランゾーン']
 
-  return first?.kind === '見えている' ? first.instance.id : undefined
+  return first?.kind === '見えている' ? first.instance : undefined
+}
+
+function ownPlanCardOf(board: WirePerspective): CardId | undefined {
+  return ownPlanInstanceOf(board)?.id
+}
+
+/**
+ * プランゾーンのカードをプレイする手の呼び名。種別（ユニット・ストラテジー）で呼ぶ。
+ * プランゾーンのダイアログは、見出しが場所の名前でカード名が本文に出るので、ボタンでは何をプレイ
+ * するのかを種別で言う。ユニットとストラテジー以外は、通常の呼び名のままにする（`undefined`）。
+ */
+function planPlayLabelOf(card: WireCardInstance | undefined): string | undefined {
+  switch (card?.card.type) {
+    case 'ユニット':
+      return 'ユニットをプレイする'
+    case 'ストラテジー':
+    case '超必殺ストラテジー！':
+      return 'ストラテジーをプレイする'
+    default:
+      return undefined
+  }
 }
 
 /**
@@ -629,15 +658,26 @@ function arrange(
   )
   const asked = mine.filter((action) => !aimable.includes(action))
 
+  // プランゾーンのカードを押して、プランする手も含めて聞くとき。ダイアログの見出しは場所の名前に
+  // し、カード名は本文に出す。
+  const planZoneCard = !deck && picked !== undefined && picked === planCard && planAction !== undefined ? picked : undefined
+  const playLabelOf = (action: LegalAction): string | undefined =>
+    planZoneCard !== undefined && action.kind === 'カードをプレイする' && action.declaration.card === planCard
+      ? planPlayLabelOf(ownPlanInstanceOf(board))
+      : undefined
+
   // 聞く選択肢。行き先を押して行う手は、種類ごとに 1 つにまとめる。届いた並びの順に出す。
   const options: AskOption[] = []
   for (const action of mine) {
     if (aimable.includes(action)) {
       if (!options.some((option) => 'aim' in option && option.aim === action.kind)) {
-        options.push({ label: optionLabelOf(action, board.viewer, false), aim: action.kind })
+        options.push({ label: optionLabelOf(action, board.viewer, false, playLabelOf(action)), aim: action.kind })
       }
     } else {
-      options.push({ label: optionLabelOf(action, board.viewer, ambiguous(action)), send: action })
+      options.push({
+        label: optionLabelOf(action, board.viewer, ambiguous(action), playLabelOf(action)),
+        send: action,
+      })
     }
   }
 
@@ -662,11 +702,13 @@ function arrange(
     return light(aimable.filter((action) => action.kind === aim))
   }
 
-  const heading = deck || picked === undefined ? '山札' : nameOf(names, picked)
+  const heading =
+    planZoneCard !== undefined ? 'プランゾーン' : deck || picked === undefined ? '山札' : nameOf(names, picked)
+  const subject = planZoneCard !== undefined ? { subject: nameOf(names, planZoneCard) } : {}
   const [only] = options
   const lead = options.length === 1 && only !== undefined && 'send' in only ? confirmOf(only.send) : 'どれにしますか？'
 
-  return { ...selected, ask: { heading, lead, options } }
+  return { ...selected, ask: { heading, ...subject, lead, options } }
 }
 
 function sameSquare(square: Square | undefined, other: Square): boolean {
