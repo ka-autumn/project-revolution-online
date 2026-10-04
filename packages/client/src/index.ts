@@ -289,11 +289,13 @@ interface DuelInteraction {
 function modeElement(picking: Picking): HTMLElement {
   const node = document.createElement('div')
   node.className = 'mode'
-  node.append(line('mode__label', '操作のしかた'))
+  // ラベルは見せず、グループの名前で読ませる（ADR-0027）。
+  node.setAttribute('role', 'group')
+  node.setAttribute('aria-label', '操作のしかた')
 
   for (const mode of ['クリック', 'ボタン'] as const) {
     const button = document.createElement('button')
-    button.className = `choice__button${picking.mode === mode ? ' choice__button--選択中' : ''}`
+    button.className = picking.mode === mode ? 'mode--選択中' : ''
     button.textContent = mode
     button.setAttribute('aria-pressed', String(picking.mode === mode))
     button.addEventListener('click', () => picking.onMode(mode))

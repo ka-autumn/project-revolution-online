@@ -117,20 +117,7 @@ body {
 
 .mode {
   display: flex;
-  align-items: center;
-  gap: var(--gap);
   margin: 0;
-}
-
-.mode__label {
-  margin: 0;
-  font-size: 0.8rem;
-  color: #666;
-}
-
-.choice__button--選択中 {
-  font-weight: bold;
-  outline: 2px solid var(--own);
 }
 
 /* 相手が何をして優先権が回ってきたのか（#147）。打つところの、進行の 1 行のすぐ下に置く。 */
@@ -1926,6 +1913,31 @@ body {
   border-bottom: 1px solid rgb(220 166 64 / 0.45);
 }
 
+/* 操作のしかたの切り替え。金の枠の丸いカプセルで、選んだ側を金で塗る（ADR-0027）。 */
+.duel .mode {
+  overflow: hidden;
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.duel .mode button {
+  padding: 0.15rem 0.6rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.duel .mode .mode--選択中 {
+  color: #3a1f00;
+  background: var(--gold-bright);
+  font-weight: 700;
+}
+
 .duel .actions__title,
 .duel .choice__title {
   color: var(--heading);
@@ -2012,6 +2024,20 @@ body {
 
 .duel .player--自分 .player__portrait {
   background: radial-gradient(circle at 50% 30%, #fff, #c9dbf6);
+}
+
+.duel .player__portrait svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.duel .player--相手 .player__portrait svg {
+  fill: #8a4a52;
+}
+
+.duel .player--自分 .player__portrait svg {
+  fill: #44628f;
 }
 
 .duel .player__body {

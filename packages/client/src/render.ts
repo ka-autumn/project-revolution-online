@@ -551,14 +551,24 @@ function choosingTabElement(picking: BoardPicking | undefined): HTMLElement {
 }
 
 /**
+ * 置き場の見出し。見た目は「ゾーン」を外した呼び名（「リムーブ（0）」）で、読み上げはゾーンの
+ * 正式名のまま（「リムーブゾーン（0）」）にする（ADR-0027）。
+ */
+function zoneTitleElement(zone: ZoneView): HTMLElement {
+  const title = element('h3', 'zone__title', zone.zone.replace(/ゾーン$/, ''))
+  title.append(element('span', '', `（${zone.count}）`))
+  title.setAttribute('aria-label', `${zone.zone}（${zone.count}）`)
+
+  return title
+}
+
+/**
  * ゾーンを 1 つ描く。`framed` が偽のとき、ゾーン単独では強調しない（まとめて囲む枠が強調する）。
  */
 function zoneElement(zone: ZoneView, picking?: BoardPicking, options: FaceOptions = {}, framed = true): HTMLElement {
   const choosing = framed && choosesFrom(zone, picking)
   const node = element('section', `zone zone--${zone.zone}${choosing ? ' zone--候補あり' : ''}`)
-  const title = element('h3', 'zone__title', zone.zone)
-  title.append(element('span', '', `（${zone.count}）`))
-  node.append(title)
+  node.append(zoneTitleElement(zone))
 
   const cards = element('div', 'zone__cards')
   if (zone.cards.length === 0) cards.append(element('div', 'zone__empty'))
@@ -629,9 +639,7 @@ function ownTrapZoneElement(zone: ZoneView, picking: BoardPicking | undefined): 
  */
 function pileZoneElement(zone: ZoneView, onOpen: (() => void) | undefined): HTMLElement {
   const node = element('section', `zone zone--${zone.zone}`)
-  const title = element('h3', 'zone__title', zone.zone)
-  title.append(element('span', '', `（${zone.count}）`))
-  node.append(title)
+  node.append(zoneTitleElement(zone))
 
   const cardsWrap = element('div', 'zone__cards')
   const pile = element('div', 'pile')
@@ -3721,6 +3729,20 @@ function phasesElement(phases: readonly PhaseView[]): HTMLElement {
   return node
 }
 
+/** 立ち絵の場所に置く、胸から上のシルエット（画像は使わない、ADR-0027）。塗りは `style.css` が決める。 */
+function silhouetteElement(): SVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('viewBox', '0 0 100 100')
+  const path = document.createElementNS(SVG_NS, 'path')
+  path.setAttribute(
+    'd',
+    'M50 18c-11 0-19 8-19 19 0 7 3 13 8 16-2 3-5 5-10 6-11 3-17 12-19 24l-1 17h82l-1-17c-2-12-8-21-19-24-5-1-8-3-10-6 5-3 8-9 8-16 0-11-8-19-19-19z',
+  )
+  svg.append(path)
+
+  return svg
+}
+
 /**
  * プレイヤーの枠（ADR-0027）。立ち絵の場所（胸から上のシルエット）・名前・ダメージを置く。
  *
@@ -3729,20 +3751,23 @@ function phasesElement(phases: readonly PhaseView[]): HTMLElement {
  */
 function playerPanelElement(
   whose: '自分' | '相手',
+  seat: Player,
   name: string,
   damage: number,
   partner: (CardView & { readonly kind: '表' }) | undefined,
   picking: BoardPicking | undefined,
 ): HTMLElement {
   const node = element('section', `panel player player--${whose}`)
-  node.setAttribute('aria-label', whose)
+  const tag = `${whose}・${seat}`
+  node.setAttribute('aria-label', tag)
 
   const portrait = element('div', 'player__portrait')
   portrait.setAttribute('aria-hidden', 'true')
+  portrait.append(silhouetteElement())
   node.append(portrait)
 
   const body = element('div', 'player__body')
-  body.append(element('span', 'player__whose', whose))
+  body.append(element('span', 'player__whose', tag))
   body.append(element('p', 'player__name', name))
   const damageLine = element('p', 'player__damage', 'ダメージ ')
   damageLine.append(element('strong', '', String(damage)))
@@ -4034,7 +4059,7 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   const root = element('main', 'duel')
 
   const left = element('aside', 'duel__left')
-  left.append(playerPanelElement('相手', props.opponentName, view.opponent.damage, partnerOf(view.opponent), props.picking))
+  left.append(playerPanelElement('相手', view.seat === '先攻' ? '後攻' : '先攻', props.opponentName, view.opponent.damage, partnerOf(view.opponent), props.picking))
 
   const controls = element('section', 'panel controls')
   controls.append(element('p', 'controls__turn', view.turnNumber))
@@ -4045,7 +4070,7 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   controls.append(actions)
   left.append(controls)
 
-  left.append(playerPanelElement('自分', props.ownName, view.own.damage, partnerOf(view.own), props.picking))
+  left.append(playerPanelElement('自分', view.seat, props.ownName, view.own.damage, partnerOf(view.own), props.picking))
   root.append(left)
 
   const center = element('section', 'duel__center')
