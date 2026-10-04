@@ -7,6 +7,7 @@
 「詳細はフロアルールをご参照ください」と外へ投げたところは、フロアルール（Version 1.12）の第2部で、
 こちらは [`docs/floor-rules/`](docs/floor-rules/) にある。
 用語の正は [`CONTEXT.md`](CONTEXT.md)、設計上の決定は [`docs/adr/`](docs/adr/)。
+各画面の見た目を確かめるための HTML のモックは [`docs/mocks/`](docs/mocks/) にある。
 
 ## 構成
 

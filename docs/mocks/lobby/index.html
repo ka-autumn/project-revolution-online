@@ -1,0 +1,1106 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ロビー モック</title>
+<!-- 見た目の仕様は ADR-0029。カードは架空の見本（../shared/pool-data.js） -->
+<!-- カードの面はデッキ構築のモックと同じもの（card.css は .deckbuild の内側に効く。面を .deckbuild の箱で包んで使う） -->
+<link rel="stylesheet" href="../shared/card.css" />
+<script src="../shared/pool-data.js"></script>
+<style>
+/* ---------- :root（ADR-0027・ADR-0028 で一本化済みの値。本番の style.css と同じ） ---------- */
+:root {
+  --gap: 0.4rem;
+  --ink: #3b2a12;
+  --ink-dim: #7d6848;
+  --heading: #8a4700;
+  --gold: #dca640;
+  --gold-bright: #f7c956;
+  --gold-deep: #b07a1c;
+  --accent-own: #2a6fd6;
+  --accent-own-soft: #e4eeff;
+  --accent-opponent: #d3364a;
+  --accent-opponent-soft: #ffe6e6;
+  --panel: rgb(255 252 244 / 0.9);
+  --panel-edge: #e2b252;
+  --radius: 12px;
+  --radius-small: 7px;
+  --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
+  --gap-lg: 0.75rem;
+  --rays:
+    repeating-conic-gradient(from 8deg at 50% 38%, rgb(255 255 255 / 0.3) 0deg 3deg, transparent 3deg 9deg, rgb(255 255 255 / 0.14) 9deg 11deg, transparent 11deg 17deg),
+    radial-gradient(ellipse 65% 60% at 50% 38%, #fffdf6 0%, #ffeec2 30%, #fbc766 65%, #ee9a2c 100%);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: var(--ink); }
+
+/* ---------- 画面の外枠 ---------- */
+.lobby {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--gap-lg);
+  height: 100vh;
+  padding: var(--gap-lg);
+  overflow: hidden;
+  background: var(--rays);
+}
+.lobby .panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgb(150 80 0 / 0.22), inset 0 1px 0 #fff;
+}
+.lobby .panel__head {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.5rem;
+  min-height: 2.6rem;
+  padding: 0.45rem 0.9rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.45);
+}
+.lobby .panel__title {
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.lobby .panel__aside { color: var(--ink-dim); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+/* ---------- ボタン・入力欄（対戦画面・デッキ構築と同じ見た目。効かせるのは .lobby の内側だけ） ---------- */
+.lobby button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: linear-gradient(180deg, #fffefa, #fbefd4);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgb(150 80 0 / 0.25);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.lobby button:hover { border-color: var(--gold-deep); box-shadow: inset 0 1px 0 #fff, 0 0 10px rgb(247 201 86 / 0.8); }
+.lobby button:focus-visible { outline: 2px solid var(--accent-own); outline-offset: 2px; }
+.lobby button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+.lobby .button--primary { border-color: var(--gold-deep); background: linear-gradient(180deg, var(--gold-bright), var(--gold)); font-weight: 700; }
+.lobby .button--small { padding: 0.25rem 0.65rem; font-size: 0.85rem; }
+.lobby .icon-button { min-width: 2.1rem; padding: 0.2rem 0.45rem; line-height: 1.2; }
+
+.lobby input[type='text'], .lobby input[type='search'], .lobby input[type='password'], .lobby select {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: #fffef9;
+  font: inherit;
+}
+.lobby input:focus-visible, .lobby select:focus-visible { outline: 2px solid var(--accent-own); outline-offset: 1px; }
+
+/* ---------- 上の帯 ---------- */
+.lobby .topbar { flex-direction: row; align-items: center; gap: 0.9rem; padding: 0.5rem 0.9rem; }
+.lobby .topbar__title {
+  flex: none;
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 0 #fff;
+}
+.lobby .topbar__divider { flex: none; width: 1px; height: 1.8rem; background: rgb(220 166 64 / 0.6); }
+.lobby .topbar__sub { min-width: 0; overflow: hidden; color: var(--ink-dim); font-size: 0.88rem; white-space: nowrap; text-overflow: ellipsis; }
+.lobby .topbar__spacer { flex: 1; }
+.lobby .me { display: flex; flex: none; align-items: center; gap: 0.55rem; padding: 0.2rem 0.9rem 0.2rem 0.25rem; border-radius: 999px; background: rgb(255 255 255 / 0.7); box-shadow: 0 0 0 1px rgb(220 166 64 / 0.55) inset; }
+.lobby .avatar { display: grid; place-items: center; width: 2.3rem; height: 2.3rem; overflow: hidden; border: 2px solid var(--gold); border-radius: 50%; background: linear-gradient(180deg, #fff6e0, #f3dcae); }
+.lobby .avatar svg { width: 100%; height: 100%; }
+.lobby .me__name { font-size: 1rem; font-weight: 800; }
+
+/* ---------- 3 列 ---------- */
+.lobby .columns { display: grid; grid-template-columns: clamp(15rem, 22vw, 22rem) minmax(0, 1fr) clamp(11rem, 19vw, 19rem); gap: var(--gap-lg); min-height: 0; }
+
+/* ---------- 対戦：ルールと使用するデッキ（両方の対戦に当たる）＋ 対人戦・CPU戦 ---------- */
+.lobby .panel--battle { flex: none; }
+.lobby .battle__common { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 0.9rem; padding: 0.6rem 0.9rem; border-bottom: 1px dashed rgb(220 166 64 / 0.6); }
+.lobby .battle__common .rules { align-content: start; padding: 0; border: none; grid-template-columns: 1fr; }
+.lobby .picker { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 0.6rem; min-width: 0; }
+.lobby .picker__label { grid-column: 1 / -1; margin: 0; color: var(--heading); font-size: 0.82rem; font-weight: 800; }
+.lobby .picker .thumbs { max-width: 22rem; }
+.lobby .picker .carousel { min-width: 0; }
+.lobby .picker .art--large { --card-width: 3.1rem; }
+.lobby .battle__common { padding-block: 0.5rem; }
+.lobby .panel--battle .modes { padding-block: 0.55rem 0.7rem; }
+.lobby .panel--battle .mode__head { padding-block: 0.3rem; }
+.lobby .panel--battle .mode__title { font-size: 1.1rem; }
+.lobby .panel--battle .mode__go { padding: 0.45rem; font-size: 1rem; }
+.lobby .rooms td { padding-block: 0.32rem; }
+/* CPU戦の枠の中では、カルーセルの下にサムネイルを並べる（v3 の形） */
+.lobby .mode .picker { grid-template-columns: minmax(0, 1fr); }
+.lobby .mode .picker .art--large { --card-width: 3.4rem; }
+.lobby .mode .thumbs { max-width: none; }
+.lobby .mode .art--thumb { --card-width: 2.2rem; }
+.lobby .mode__body { gap: 0.5rem; padding: 0.6rem 0.8rem 0.8rem; }
+.lobby .mode .picker__label { color: var(--ink-dim); font-size: 0.78rem; font-weight: 700; }
+.lobby .panel--battle .modes { padding: 0.7rem 0.9rem 0.9rem; }
+.lobby .panel--battle .mode { display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgb(220 166 64 / 0.7); border-radius: var(--radius-small); background: #fffef9; }
+.lobby .mode__head { padding-block: 0.4rem; }
+.lobby .mode__title { font-size: 1.2rem; }
+.lobby .lock { display: flex; flex-direction: column; gap: 0.35rem; }
+.lobby .lock__check { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; cursor: pointer; }
+.lobby .lock__check input { width: 1rem; height: 1rem; accent-color: var(--accent-opponent); }
+.lobby .room__lock { margin-right: 0.3rem; font-size: 0.85em; }
+.lobby .modal__box--small { width: min(26rem, 100%); }
+
+/* ---------- 下：対人戦・CPU戦のタブ ---------- */
+.lobby .panel--modes { flex: 1; overflow: hidden; }
+.lobby .modetabs { display: grid; flex: none; grid-template-columns: 1fr 1fr; }
+.lobby .modetab {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: 0;
+  color: var(--ink-dim);
+  background: rgb(255 248 228 / 0.9);
+  box-shadow: inset 0 -1px 0 rgb(220 166 64 / 0.6);
+}
+.lobby .modetab:hover { border: none; box-shadow: inset 0 -1px 0 rgb(220 166 64 / 0.6), inset 0 0 0 999px rgb(247 201 86 / 0.15); }
+.lobby .modetab:first-child { border-top-left-radius: var(--radius); }
+.lobby .modetab:last-child { border-top-right-radius: var(--radius); }
+.lobby .modetab__title { font-family: var(--heading-font); font-size: 1.2rem; font-weight: 800; letter-spacing: 0.08em; }
+.lobby .modetab__sub { font-size: 0.8rem; }
+.lobby .modetab[aria-selected='true'] { color: #fff; text-shadow: 0 1px 2px rgb(0 0 0 / 0.3); box-shadow: none; }
+.lobby .modetab--対人戦[aria-selected='true'] { background: linear-gradient(180deg, #ea5a6c, var(--accent-opponent)); }
+.lobby .modetab--CPU戦[aria-selected='true'] { background: linear-gradient(180deg, #4a8ff0, var(--accent-own)); }
+.lobby .panel--対人戦 { border-top: 3px solid var(--accent-opponent); }
+.lobby .panel--CPU戦 { border-top: 3px solid var(--accent-own); }
+.lobby .modes__body { display: grid; flex: 1; grid-template-columns: minmax(15rem, 1fr) minmax(0, 3fr); min-height: 0; }
+.lobby .panel--CPU戦 .modes__body { grid-template-columns: 1fr; }
+.lobby .create { display: flex; flex-direction: column; gap: 0.6rem; padding: 0.8rem 0.9rem; border-right: 1px dashed rgb(220 166 64 / 0.6); background: rgb(255 240 240 / 0.45); }
+.lobby .create__title { margin: 0; color: var(--heading); font-family: var(--heading-font); font-size: 0.98rem; font-weight: 800; letter-spacing: 0.05em; white-space: nowrap; }
+.lobby .roomlist { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.lobby .roomlist .rooms__tools { padding-top: 0.7rem; }
+.lobby .roomlist .create__title { flex: none; margin-right: 0.3rem; }
+.lobby .mode__go--human { border-color: #a8182a; color: #fff; background: linear-gradient(180deg, #ea5a6c, var(--accent-opponent)); }
+.lobby .mode__go--cpu { border-color: #1b54a8; color: #fff; background: linear-gradient(180deg, #4a8ff0, var(--accent-own)); }
+.lobby .cpu { display: grid; place-items: center; padding: 1rem; background: rgb(236 244 255 / 0.5); }
+.lobby .cpu__inner { display: flex; flex-direction: column; gap: 0.8rem; width: min(40rem, 100%); }
+.lobby .cpu .picker__label { color: var(--heading); font-size: 0.9rem; }
+.lobby .cpu .picker .art--large { --card-width: 4.2rem; }
+.lobby .cpu .thumbs { max-width: 16rem; }
+.lobby .modal__warn { color: var(--accent-opponent); font-size: 0.85rem; font-weight: 700; }
+.lobby .column { display: flex; flex-direction: column; gap: var(--gap-lg); min-width: 0; min-height: 0; }
+
+/* ---------- 左：作る部屋のルール・デッキ ---------- */
+.lobby .panel--decks { flex: 1; }
+.lobby .rules { display: grid; flex: none; grid-template-columns: 1fr 1fr; gap: 0.5rem; padding: 0.6rem 0.9rem; border-bottom: 1px dashed rgb(220 166 64 / 0.6); }
+.lobby .rules__caption { grid-column: 1 / -1; margin: 0; color: var(--heading); font-size: 0.82rem; font-weight: 800; }
+.lobby .rule { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; color: var(--ink-dim); font-size: 0.78rem; font-weight: 700; }
+.lobby .rule select { padding: 0.3rem 0.5rem; font-size: 0.88rem; font-weight: 400; }
+
+.lobby .decks { display: flex; flex: 1; flex-direction: column; gap: 0.45rem; min-height: 0; padding: 0.6rem 0.9rem; overflow-y: auto; }
+.lobby .decks__notice { margin: 0; padding: 0.4rem 0.7rem; border-left: 4px solid var(--accent-opponent); border-radius: var(--radius-small); background: var(--accent-opponent-soft); font-size: 0.85rem; }
+.lobby .decks__none { margin: 1rem 0; white-space: pre-line; color: var(--ink-dim); text-align: center; line-height: 1.6; }
+.lobby .deckrow {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid rgb(220 166 64 / 0.55);
+  border-radius: var(--radius-small);
+  background: #fffef9;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.lobby .deckrow:hover { border-color: var(--gold-deep); box-shadow: 0 0 8px rgb(247 201 86 / 0.7); }
+.lobby .deckrow:focus-visible { outline: 2px solid var(--accent-own); outline-offset: 2px; }
+.lobby .deckrow[aria-checked='true'] { border: 2px solid #ee8a1a; padding: calc(0.45rem - 1px) calc(0.5rem - 1px); background: linear-gradient(90deg, #fff3d6, #fffef9 70%); box-shadow: 0 2px 8px rgb(238 138 26 / 0.35); }
+.lobby .deckrow__picked { position: absolute; top: -0.55rem; left: 0.45rem; padding: 0 0.5rem; border-radius: 999px; color: #fff; background: linear-gradient(180deg, #f5a53a, #e07a10); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.05em; }
+.lobby .deckrow__main { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.lobby .deckrow__name { overflow: hidden; font-size: 1rem; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
+.lobby .deckrow__menu { align-self: start; }
+
+/*
+ * デッキの顔：デッキ一覧と同じく、パートナーのカードの面（決めていなければ、いちばん枚数の多いカード）。
+ * カードの画像が入れば、面が画像に替わる（別 Issue）。
+ */
+.lobby .art { display: block; flex: none; --card-width: 3.3rem; }
+.lobby .art--large { --card-width: 4.6rem; }
+.lobby .art--thumb { --card-width: 2.5rem; }
+.lobby .art .card { pointer-events: none; }
+/* 中身の届かないデッキ（組めない立て方の既製デッキ）は、対戦画面と同じカードの裏面を顔にする */
+.lobby .card--back .card__face {
+  position: relative;
+  height: 100%;
+  border-color: #fff;
+  background:
+    radial-gradient(circle at 50% 46%, transparent 0 17%, rgb(176 110 20 / 0.9) 17.5% 21%, transparent 21.5%),
+    radial-gradient(circle at 50% 46%, #fff 0 10%, #ffe79a 18%, transparent 42%),
+    repeating-conic-gradient(from 12deg at 50% 46%, rgb(255 255 255 / 0.5) 0deg 5deg, transparent 5deg 16deg),
+    linear-gradient(160deg, #ffe38a, #f5a623 55%, #df7410);
+}
+.lobby .card--back .card__face::after {
+  content: 'R';
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  color: #fff6d0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: calc(var(--card-width) * 0.3);
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 1px #6b3e00, 0 0 2px #6b3e00, 0 1px 3px rgb(120 60 0 / 0.8);
+  transform: translate(-50%, -52%);
+}
+
+.lobby .deckrow__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.5rem; }
+.lobby .colors { display: inline-flex; gap: 2px; }
+.lobby .colors img { width: 1.05rem; height: 1.05rem; }
+
+/* ラベル（デッキ構築と同じ見た目） */
+.lobby .taglist { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.lobby .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.05rem 0.55rem 0.05rem 0.4rem;
+  border-radius: 999px;
+  color: var(--heading);
+  background: linear-gradient(180deg, #fffaf0, #fcecc8);
+  box-shadow: 0 0 0 1px rgb(176 122 28 / 0.5) inset;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.lobby .tag__colors { display: inline-flex; gap: 1px; }
+.lobby .tag__colors img { width: 1em; height: 1em; }
+
+/* 「…」のメニュー */
+.lobby .menu { position: absolute; top: 2.4rem; right: 0.4rem; z-index: 20; display: flex; flex-direction: column; min-width: 9rem; padding: 0.3rem; border: 1px solid var(--panel-edge); border-radius: var(--radius-small); background: #fffef9; box-shadow: 0 6px 18px rgb(120 60 0 / 0.3); }
+.lobby .menu button { padding: 0.4rem 0.7rem; border: none; background: none; box-shadow: none; text-align: left; }
+.lobby .menu button:hover { background: rgb(247 201 86 / 0.25); box-shadow: none; }
+.lobby .menu .menu__danger { color: var(--accent-opponent); font-weight: 700; }
+.lobby .menu hr { width: 100%; margin: 0.2rem 0; border: none; border-top: 1px solid rgb(220 166 64 / 0.45); }
+
+/* ページ送り（デッキ・部屋で共通） */
+.lobby .pager { display: flex; flex: none; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.5rem 0.9rem; }
+.lobby .pager button { display: grid; place-items: center; min-width: 2.1rem; height: 2.1rem; padding: 0 0.4rem; font-variant-numeric: tabular-nums; }
+.lobby .pager button[aria-current='page'] { border-color: #c96a08; color: #fff; background: linear-gradient(180deg, #f5a53a, #e07a10); font-weight: 800; }
+.lobby .pager button:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+.lobby .foot { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0 0.9rem 0.6rem; }
+.lobby .foot .pager { padding: 0.5rem 0; }
+
+/* ---------- 真ん中：対戦の始め方 ---------- */
+.lobby .modes { display: grid; flex: none; grid-template-columns: 1fr 1fr; gap: var(--gap-lg); }
+.lobby .mode { overflow: hidden; }
+.lobby .mode__head { display: flex; align-items: baseline; gap: 0.7rem; padding: 0.55rem 0.9rem; color: #fff; }
+.lobby .mode__title { margin: 0; font-family: var(--heading-font); font-size: 1.4rem; font-weight: 800; letter-spacing: 0.08em; text-shadow: 0 1px 2px rgb(0 0 0 / 0.3); }
+.lobby .mode__sub { font-size: 0.82rem; opacity: 0.95; }
+.lobby .mode--cpu .mode__head { background: linear-gradient(180deg, #4a8ff0, var(--accent-own)); }
+.lobby .mode--human .mode__head { background: linear-gradient(180deg, #ea5a6c, var(--accent-opponent)); }
+.lobby .mode__body { display: flex; flex: 1; flex-direction: column; gap: 0.6rem; padding: 0.7rem 0.9rem 0.9rem; }
+.lobby .mode__label { margin: 0; color: var(--ink-dim); font-size: 0.78rem; font-weight: 700; }
+/* ラベルの中に入れた入力欄は、ラベルの小さい字を受け継がず、ほかの入力欄と同じ大きさにする */
+.lobby .mode__label > input { margin-top: 0.2rem; font-size: 14px; font-weight: 400; }
+.lobby .mode__spacer { flex: 1; }
+.lobby .mode__go { width: 100%; padding: 0.6rem; font-size: 1.05rem; font-weight: 800; letter-spacing: 0.05em; color: #fff; text-shadow: 0 1px 1px rgb(0 0 0 / 0.3); }
+.lobby .mode--cpu .mode__go { border-color: #1b54a8; background: linear-gradient(180deg, #4a8ff0, var(--accent-own)); }
+.lobby .mode--human .mode__go { border-color: #a8182a; background: linear-gradient(180deg, #ea5a6c, var(--accent-opponent)); }
+.lobby .mode__note { margin: 0; color: var(--ink-dim); font-size: 0.78rem; line-height: 1.5; }
+
+/* CPU のデッキのカルーセル */
+.lobby .carousel { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.4rem; }
+.lobby .carousel__arrow { display: grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border-radius: 50%; font-size: 1rem; }
+.lobby .carousel__current { display: flex; align-items: center; gap: 0.7rem; min-width: 0; padding: 0.45rem; border-radius: var(--radius-small); background: #fffef9; box-shadow: 0 0 0 1px rgb(220 166 64 / 0.55) inset; }
+.lobby .carousel__body { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.lobby .carousel__name { overflow: hidden; font-size: 1.05rem; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
+.lobby .carousel__none { color: var(--ink-dim); font-size: 0.88rem; }
+.lobby .thumbs { display: flex; gap: 0.35rem; padding: 0.15rem 0.1rem 0.3rem; overflow-x: auto; }
+.lobby .thumb { flex: none; padding: 2px; border: 2px solid transparent; border-radius: 8px; background: none; box-shadow: none; }
+.lobby .thumb:hover { box-shadow: none; border-color: var(--gold); }
+.lobby .thumb[aria-pressed='true'] { border-color: var(--accent-own); }
+
+/* ---------- 真ん中：部屋の一覧 ---------- */
+.lobby .panel--rooms { flex: 1; }
+.lobby .rooms__tools { display: flex; flex: none; align-items: center; gap: 0.5rem; padding: 0.55rem 0.9rem 0.45rem; }
+.lobby .tabs { display: inline-flex; flex: none; border: 1px solid var(--panel-edge); border-radius: var(--radius-small); overflow: hidden; }
+.lobby .tabs button { padding: 0.3rem 0.8rem; border: none; border-radius: 0; background: #fffef9; box-shadow: none; font-size: 0.85rem; }
+.lobby .tabs button + button { border-left: 1px solid var(--panel-edge); }
+.lobby .tabs button[aria-pressed='true'] { color: #fff; background: linear-gradient(180deg, #f5a53a, #e07a10); font-weight: 700; }
+.lobby .tabs__count { margin-left: 0.3em; font-size: 0.78em; opacity: 0.8; font-variant-numeric: tabular-nums; }
+.lobby .search { flex: 1; min-width: 8rem; }
+.lobby .search input { padding-left: 1.9rem; background: #fffef9 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='8.5' cy='8.5' r='5.5' fill='none' stroke='%237d6848' stroke-width='2'/%3E%3Cpath d='M13 13l4 4' stroke='%237d6848' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat 0.55rem center / 1rem; }
+
+.lobby .rooms { flex: 1; min-height: 0; margin: 0 0.9rem; overflow-y: auto; }
+.lobby .rooms table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.lobby .rooms th { position: sticky; top: 0; z-index: 1; padding: 0.35rem 0.5rem; border-bottom: 1px solid rgb(220 166 64 / 0.6); color: var(--ink-dim); background: #fff8e6; font-size: 0.75rem; font-weight: 700; text-align: left; white-space: nowrap; }
+.lobby .rooms td { padding: 0.45rem 0.5rem; border-bottom: 1px solid rgb(220 166 64 / 0.3); vertical-align: middle; }
+.lobby .rooms tr:last-child td { border-bottom: none; }
+.lobby .rooms tbody tr:hover { background: rgb(247 201 86 / 0.14); }
+.lobby .room__name { max-width: 14rem; overflow: hidden; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+.lobby .room__rules { color: var(--ink-dim); white-space: nowrap; }
+.lobby .room__players { white-space: nowrap; }
+/* VS の位置を行ごとに揃える：席 1・VS・席 2 の幅を決め打ちにし、長い名前は省略する */
+.lobby { --seat: 6.8rem; }
+.lobby .players { display: inline-grid; grid-template-columns: var(--seat) 1.6rem var(--seat); align-items: center; vertical-align: middle; }
+.lobby .players__vs { text-align: center; }
+.lobby .player { display: inline-flex; align-items: center; gap: 0.25rem; min-width: 0; }
+.lobby .player__name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* 名前が長くても、アイコンは縮めない（省略するのは名前のほう） */
+.lobby .player .avatar { flex: none; width: 1.5rem; height: 1.5rem; border-width: 1.5px; }
+.lobby .players__vs { color: var(--accent-opponent); font-size: 0.72rem; font-weight: 900; font-style: italic; }
+.lobby .players__empty { flex: none; display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border: 1.5px dashed rgb(176 122 28 / 0.55); border-radius: 50%; color: rgb(176 122 28 / 0.7); font-size: 0.8rem; }
+.lobby .room__players small { display: inline-block; margin-left: 0.4rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.lobby .room__watch { color: var(--ink-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lobby .room__watch svg { width: 1em; height: 1em; margin-right: 0.25rem; vertical-align: -0.12em; }
+.lobby .room__action { width: 5rem; text-align: right; }
+.lobby .room__action button { min-width: 4.2rem; }
+.lobby .watch { border-color: #e07a10; color: #c05f00; background: #fffef9; font-weight: 800; }
+.lobby .badge { display: inline-block; padding: 0.05rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+.lobby .badge--待機中 { color: #9a4a00; background: #ffe7c2; box-shadow: 0 0 0 1px #f0b060 inset; }
+.lobby .badge--対戦中 { color: #1d4f9a; background: var(--accent-own-soft); box-shadow: 0 0 0 1px #9dbdf0 inset; }
+.lobby .join { border-color: #c96a08; color: #fff; background: linear-gradient(180deg, #f5a53a, #e07a10); font-weight: 800; text-shadow: 0 1px 1px rgb(0 0 0 / 0.25); }
+.lobby .rooms__none { margin: 1.5rem 0; white-space: pre-line; color: var(--ink-dim); text-align: center; line-height: 1.6; }
+
+/* ---------- 右：お知らせ（中身は別 Issue。入るまでは枠だけ） ---------- */
+.lobby .panel--news { flex: 1; }
+.lobby .news__none { display: grid; flex: 1; place-content: center; gap: 0.5rem; padding: 1rem; color: var(--ink-dim); text-align: center; line-height: 1.6; }
+.lobby .news__icon { font-size: 2rem; opacity: 0.5; }
+.lobby .news { flex: 1; min-height: 0; margin: 0; padding: 0.3rem 0.6rem 0.6rem; overflow-y: auto; list-style: none; }
+.lobby .news__item { border-bottom: 1px solid rgb(220 166 64 / 0.3); }
+.lobby .news__item:last-child { border-bottom: none; }
+.lobby .news__link { width: 100%; border: none; background: none; box-shadow: none; font: inherit; text-align: left; white-space: normal; cursor: pointer; }
+.lobby .news__link:hover { border: none; box-shadow: none; }
+.lobby .news__link { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.4rem; padding: 0.6rem 0.3rem; border-radius: var(--radius-small); color: inherit; text-decoration: none; }
+.lobby .news__link:hover { background: rgb(247 201 86 / 0.16); }
+.lobby .news__link:focus-visible { outline: 2px solid var(--accent-own); outline-offset: 1px; }
+.lobby .news__body { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.lobby .news__meta { display: flex; align-items: center; gap: 0.45rem; color: var(--ink-dim); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.lobby .news__kind { padding: 0 0.5rem; border-radius: 4px; color: #fff; font-size: 0.7rem; font-weight: 800; }
+.lobby .news__kind--更新 { background: var(--accent-own); }
+.lobby .news__kind--修正 { background: #2f9a5a; }
+.lobby .news__kind--お知らせ { background: #e07a10; }
+.lobby .news__version { font-weight: 700; color: var(--heading); }
+.lobby .news__title { font-weight: 800; line-height: 1.35; }
+.lobby .news__summary { display: -webkit-box; overflow: hidden; color: var(--ink-dim); font-size: 0.8rem; line-height: 1.45; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lobby .news__chevron { color: var(--gold-deep); font-size: 1.1rem; }
+.lobby .news__all { padding: 0.1rem 0.3rem; border: none; background: none; box-shadow: none; color: var(--heading); font-size: 0.8rem; font-weight: 700; }
+.lobby .news__all:hover { border: none; box-shadow: none; text-decoration: underline; }
+
+/* 画面の中に重ねる窓（デッキ構築の .modal と同じ見た目） */
+.lobby .modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 1rem; background: rgb(60 30 0 / 0.45); }
+.lobby .modal__box { display: flex; flex-direction: column; width: min(38rem, 100%); max-height: 86vh; background: #fffcf4; }
+.lobby .modal__body { display: flex; flex-direction: column; gap: 0.6rem; padding: 0.9rem 1.1rem; overflow-y: auto; }
+.lobby .modal__body p { margin: 0; line-height: 1.7; }
+.lobby .modal__buttons { display: flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.1rem 0.9rem; border-top: 1px solid rgb(220 166 64 / 0.35); }
+.lobby .modal__spacer { flex: 1; }
+.lobby .modal__box > .news { max-height: none; }
+.lobby .modal__box > .rooms__tools { padding-bottom: 0.2rem; }
+.lobby .newsdetail__title { margin: 0.1rem 0 0.2rem; color: var(--heading); font-family: var(--heading-font); font-size: 1.25rem; line-height: 1.4; }
+.lobby .newsdetail__sub { margin: 0.4rem 0 0; color: var(--heading); font-size: 0.9rem; }
+.lobby .newsdetail__changes { margin: 0; padding-left: 1.3rem; line-height: 1.8; }
+
+/* ---------- 選べないデッキ（使えないカード入り）：押せない形で出し、札と理由を添える ---------- */
+/*
+ * 野暮ったい版（2 回目）：対人戦の見出しと同じ赤。
+ * 外枠は行の縁の角丸に沿って内側へ太く（::before）。「使用不可」は枠の内側の下に帯で重ねる。
+ * ほぼ不透明な灰色の板（::after）を重ね、角から角へ太い赤線を引く。理由・名前・「…」は板の上に出す。
+ */
+.lobby .deckrow--unusable {
+  --unusable: var(--accent-opponent);
+  --frame: 6px;
+  cursor: not-allowed; border-color: var(--unusable); background: #ddd; box-shadow: none;
+}
+.lobby .deckrow--unusable:hover { border-color: var(--unusable); box-shadow: none; }
+.lobby .deckrow--unusable::before, .lobby .thumb--unusable::before { content: ''; position: absolute; inset: 0; z-index: 4; border: var(--frame, 6px) solid var(--unusable, var(--accent-opponent)); border-radius: inherit; pointer-events: none; }
+.lobby .deckrow--unusable::after, .lobby .thumb--unusable::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: rgb(90 90 90 / 0.6); }
+/* 顔・名前・ラベル・色は板（::after）の後ろ。板より上に出すのは、帯・枠・斜線・「…」だけ */
+.lobby .deckrow--unusable > .deckrow__menu { position: relative; z-index: 6; }
+/* 帯：枠の内側の、下いっぱいに重ねる（行の高さは増やさない）。周りの板より濃い灰色 */
+.lobby .deckrow--unusable > .deckrow__no { position: absolute; z-index: 3; bottom: var(--frame); left: var(--frame); right: var(--frame); height: 1.35rem; display: grid; place-items: center; color: #fff; background: #3a3a3a; font-size: 0.8rem; font-weight: 900; letter-spacing: 0.12em; }
+.lobby .deckrow--unusable > .sign, .lobby .thumb--unusable > .sign { position: absolute; inset: 0; z-index: 5; border-radius: inherit; pointer-events: none; background: linear-gradient(to top right, transparent calc(50% - 3px), var(--accent-opponent) calc(50% - 3px) calc(50% + 3px), transparent calc(50% + 3px)); }
+.lobby .thumb--unusable { --frame: 3px; --unusable: var(--accent-opponent); position: relative; cursor: not-allowed; border-color: transparent; }
+.lobby .thumb--unusable:hover { border-color: transparent; }
+
+/* ---------- 狭い幅（1366〜1450）でも、部屋の表を横スクロール無しで収める。1600 の見た目は変えない ---------- */
+@media (max-width: 1500px) {
+  /* A：席の幅を縮める。VS の位置は列ごとに揃ったまま。「1/2」は残す */
+  .lobby[data-fit='A'] { --seat: 5.2rem; }
+  .lobby[data-fit='A'] .room__name { max-width: 9rem; }
+  .lobby[data-fit='A'] .rooms td, .lobby[data-fit='A'] .rooms th { padding-inline: 0.35rem; }
+  /* B：「1/2」を畳み、席の幅は少しだけ縮める */
+  .lobby[data-fit='B'] { --seat: 6rem; }
+  .lobby[data-fit='B'] .room__players small { display: none; }
+  .lobby[data-fit='B'] .room__name { max-width: 9rem; }
+  .lobby[data-fit='B'] .rooms td, .lobby[data-fit='B'] .rooms th { padding-inline: 0.35rem; }
+}
+
+/* ---------- 画面の外に出る 1 行（モックの中だけ。操作の結果を見せる） ---------- */
+.toast { position: fixed; left: 50%; bottom: 1.2rem; z-index: 150; transform: translateX(-50%); padding: 0.5rem 1rem; border-radius: 999px; color: #fff; background: rgb(60 30 0 / 0.85); font-size: 0.85rem; }
+
+/* ---------- モックの切り替え（本番には無い） ---------- */
+.mock-switch { position: fixed; right: 0.75rem; bottom: 0.75rem; z-index: 200; display: flex; flex-wrap: wrap; gap: 0.3rem; max-width: 40rem; padding: 0.35rem; border-radius: 8px; background: rgb(40 30 20 / 0.82); font-size: 12px; opacity: 0.35; transition: opacity 0.2s; }
+.mock-switch:hover { opacity: 1; }
+.mock-switch button { padding: 0.25rem 0.6rem; border: 1px solid #777; border-radius: 5px; color: #eee; background: #333; font: inherit; cursor: pointer; }
+.mock-switch button[aria-pressed='true'] { color: #222; background: #f7c956; border-color: #f7c956; }
+.mock-switch span { align-self: center; color: #ccc; padding: 0 0.3rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.lobby button[aria-disabled='true'] { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="mock-switch" aria-label="モックの切り替え（本番には無い）" id="switch"></div>
+<script>
+// 静的なコピーで開いても出るよう、デッキ構築のモックのレベルアイコンを埋め込んでいる
+const LEVEL_ICON = {"赤":"data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgd2lkdGg9IjI2LjQ1ODMzNG1tIgogICBoZWlnaHQ9IjI2LjQ1ODMzNG1tIgogICB2aWV3Qm94PSIwIDAgMjYuNDU4MzM0IDI2LjQ1ODMzNCIKICAgdmVyc2lvbj0iMS4xIgogICBpZD0ic3ZnODIyIgogICBpbmtzY2FwZTp2ZXJzaW9uPSIwLjkyLjMgKDI0MDU1NDYsIDIwMTgtMDMtMTEpIgogICBzb2RpcG9kaTpkb2NuYW1lPSLjg6zjg5njg6vjgqLjgqTjgrPjg7Nf6LWkLnN2ZyI+CiAgPGRlZnMKICAgICBpZD0iZGVmczgxNiI+CiAgICA8bGluZWFyR3JhZGllbnQKICAgICAgIGlua3NjYXBlOmNvbGxlY3Q9ImFsd2F5cyIKICAgICAgIGlkPSJsaW5lYXJHcmFkaWVudDEzODIiPgogICAgICA8c3RvcAogICAgICAgICBzdHlsZT0ic3RvcC1jb2xvcjojZmY4MDgwO3N0b3Atb3BhY2l0eToxIgogICAgICAgICBvZmZzZXQ9IjAiCiAgICAgICAgIGlkPSJzdG9wMTM3OCIgLz4KICAgICAgPHN0b3AKICAgICAgICAgc3R5bGU9InN0b3AtY29sb3I6I2ZmMDAwMDtzdG9wLW9wYWNpdHk6MSIKICAgICAgICAgb2Zmc2V0PSIxIgogICAgICAgICBpZD0ic3RvcDEzODAiIC8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPHJhZGlhbEdyYWRpZW50CiAgICAgICBpbmtzY2FwZTpjb2xsZWN0PSJhbHdheXMiCiAgICAgICB4bGluazpocmVmPSIjbGluZWFyR3JhZGllbnQxMzgyIgogICAgICAgaWQ9InJhZGlhbEdyYWRpZW50MTM4NCIKICAgICAgIGN4PSI4Ni43MjE5MDkiCiAgICAgICBjeT0iOTcuNTAxMTE0IgogICAgICAgZng9Ijg2LjcyMTkwOSIKICAgICAgIGZ5PSI5Ny41MDExMTQiCiAgICAgICByPSIxMy4yMjkxNjciCiAgICAgICBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgLz4KICA8L2RlZnM+CiAgPHNvZGlwb2RpOm5hbWVkdmlldwogICAgIGlkPSJiYXNlIgogICAgIHBhZ2Vjb2xvcj0iI2ZmZmZmZiIKICAgICBib3JkZXJjb2xvcj0iIzY2NjY2NiIKICAgICBib3JkZXJvcGFjaXR5PSIxLjAiCiAgICAgaW5rc2NhcGU6cGFnZW9wYWNpdHk9IjAuMCIKICAgICBpbmtzY2FwZTpwYWdlc2hhZG93PSIyIgogICAgIGlua3NjYXBlOnpvb209IjMuNjIwMzg2NyIKICAgICBpbmtzY2FwZTpjeD0iMTA4Ljc4NDgxIgogICAgIGlua3NjYXBlOmN5PSI3NC44MDg3NSIKICAgICBpbmtzY2FwZTpkb2N1bWVudC11bml0cz0ibW0iCiAgICAgaW5rc2NhcGU6Y3VycmVudC1sYXllcj0ibGF5ZXIxIgogICAgIHNob3dncmlkPSJmYWxzZSIKICAgICBmaXQtbWFyZ2luLXRvcD0iMCIKICAgICBmaXQtbWFyZ2luLWxlZnQ9IjAiCiAgICAgZml0LW1hcmdpbi1yaWdodD0iMCIKICAgICBmaXQtbWFyZ2luLWJvdHRvbT0iMCIKICAgICBpbmtzY2FwZTp3aW5kb3ctd2lkdGg9IjEzMDQiCiAgICAgaW5rc2NhcGU6d2luZG93LWhlaWdodD0iNzQ1IgogICAgIGlua3NjYXBlOndpbmRvdy14PSI1NCIKICAgICBpbmtzY2FwZTp3aW5kb3cteT0iLTgiCiAgICAgaW5rc2NhcGU6d2luZG93LW1heGltaXplZD0iMSIgLz4KICA8bWV0YWRhdGEKICAgICBpZD0ibWV0YWRhdGE4MTkiPgogICAgPHJkZjpSREY+CiAgICAgIDxjYzpXb3JrCiAgICAgICAgIHJkZjphYm91dD0iIj4KICAgICAgICA8ZGM6Zm9ybWF0PmltYWdlL3N2Zyt4bWw8L2RjOmZvcm1hdD4KICAgICAgICA8ZGM6dHlwZQogICAgICAgICAgIHJkZjpyZXNvdXJjZT0iaHR0cDovL3B1cmwub3JnL2RjL2RjbWl0eXBlL1N0aWxsSW1hZ2UiIC8+CiAgICAgICAgPGRjOnRpdGxlPjwvZGM6dGl0bGU+CiAgICAgIDwvY2M6V29yaz4KICAgIDwvcmRmOlJERj4KICA8L21ldGFkYXRhPgogIDxnCiAgICAgaW5rc2NhcGU6bGFiZWw9IuODrOOCpOODpOODvCAxIgogICAgIGlua3NjYXBlOmdyb3VwbW9kZT0ibGF5ZXIiCiAgICAgaWQ9ImxheWVyMSIKICAgICB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtNzMuNDkyNzQ0LC04NC4yNzE5NSkiPgogICAgPGNpcmNsZQogICAgICAgc3R5bGU9Im9wYWNpdHk6MTtmaWxsOnVybCgjcmFkaWFsR3JhZGllbnQxMzg0KTtmaWxsLW9wYWNpdHk6MTtmaWxsLXJ1bGU6bm9uemVybztzdHJva2U6I2ZmZmZmZjtzdHJva2Utd2lkdGg6MC41MjkxNjY3O3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1saW5lam9pbjptaXRlcjtzdHJva2UtbWl0ZXJsaW1pdDo0O3N0cm9rZS1kYXNoYXJyYXk6bm9uZTtzdHJva2UtZGFzaG9mZnNldDowO3N0cm9rZS1vcGFjaXR5OjE7cGFpbnQtb3JkZXI6bWFya2VycyBzdHJva2UgZmlsbCIKICAgICAgIGlkPSJwYXRoMTM3NiIKICAgICAgIGN4PSI4Ni43MjE5MDkiCiAgICAgICBjeT0iOTcuNTAxMTE0IgogICAgICAgcj0iMTIuOTY0NTgzIiAvPgogIDwvZz4KPC9zdmc+Cg==","黒":"data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgd2lkdGg9IjI2LjQ1ODMzNG1tIgogICBoZWlnaHQ9IjI2LjQ1ODMzNG1tIgogICB2aWV3Qm94PSIwIDAgMjYuNDU4MzM0IDI2LjQ1ODMzNCIKICAgdmVyc2lvbj0iMS4xIgogICBpZD0ic3ZnODIyIgogICBpbmtzY2FwZTp2ZXJzaW9uPSIwLjkyLjMgKDI0MDU1NDYsIDIwMTgtMDMtMTEpIgogICBzb2RpcG9kaTpkb2NuYW1lPSLjg6zjg5njg6vjgqLjgqTjgrPjg7Nf6buSLnN2ZyI+CiAgPGRlZnMKICAgICBpZD0iZGVmczgxNiI+CiAgICA8bGluZWFyR3JhZGllbnQKICAgICAgIGlua3NjYXBlOmNvbGxlY3Q9ImFsd2F5cyIKICAgICAgIGlkPSJsaW5lYXJHcmFkaWVudDE5NzgiPgogICAgICA8c3RvcAogICAgICAgICBzdHlsZT0ic3RvcC1jb2xvcjojODA4MDgwO3N0b3Atb3BhY2l0eToxIgogICAgICAgICBvZmZzZXQ9IjAiCiAgICAgICAgIGlkPSJzdG9wMTk3NCIgLz4KICAgICAgPHN0b3AKICAgICAgICAgc3R5bGU9InN0b3AtY29sb3I6IzAwMDAwMDtzdG9wLW9wYWNpdHk6MSIKICAgICAgICAgb2Zmc2V0PSIxIgogICAgICAgICBpZD0ic3RvcDE5NzYiIC8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPHJhZGlhbEdyYWRpZW50CiAgICAgICBpbmtzY2FwZTpjb2xsZWN0PSJhbHdheXMiCiAgICAgICB4bGluazpocmVmPSIjbGluZWFyR3JhZGllbnQxOTc4IgogICAgICAgaWQ9InJhZGlhbEdyYWRpZW50MTk4MCIKICAgICAgIGN4PSI4NC45ODc0OTUiCiAgICAgICBjeT0iOTcuNTAxMTIyIgogICAgICAgZng9Ijg0Ljk4NzQ5NSIKICAgICAgIGZ5PSI5Ny41MDExMjIiCiAgICAgICByPSIxMS40OTQ3NTMiCiAgICAgICBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KDEsMCwwLDEuMTUwODg3NiwwLC0xNC43MTE3MTEpIgogICAgICAgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiIC8+CiAgPC9kZWZzPgogIDxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0iYmFzZSIKICAgICBwYWdlY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyY29sb3I9IiM2NjY2NjYiCiAgICAgYm9yZGVyb3BhY2l0eT0iMS4wIgogICAgIGlua3NjYXBlOnBhZ2VvcGFjaXR5PSIwLjAiCiAgICAgaW5rc2NhcGU6cGFnZXNoYWRvdz0iMiIKICAgICBpbmtzY2FwZTp6b29tPSIyIgogICAgIGlua3NjYXBlOmN4PSItMTQuNDE5MDQ1IgogICAgIGlua3NjYXBlOmN5PSIxMTQuNDM4NjEiCiAgICAgaW5rc2NhcGU6ZG9jdW1lbnQtdW5pdHM9Im1tIgogICAgIGlua3NjYXBlOmN1cnJlbnQtbGF5ZXI9ImxheWVyMSIKICAgICBzaG93Z3JpZD0iZmFsc2UiCiAgICAgZml0LW1hcmdpbi10b3A9IjAiCiAgICAgZml0LW1hcmdpbi1sZWZ0PSIwIgogICAgIGZpdC1tYXJnaW4tcmlnaHQ9IjAiCiAgICAgZml0LW1hcmdpbi1ib3R0b209IjAiCiAgICAgaW5rc2NhcGU6d2luZG93LXdpZHRoPSIxMzA0IgogICAgIGlua3NjYXBlOndpbmRvdy1oZWlnaHQ9Ijc0NSIKICAgICBpbmtzY2FwZTp3aW5kb3cteD0iNTQiCiAgICAgaW5rc2NhcGU6d2luZG93LXk9Ii04IgogICAgIGlua3NjYXBlOndpbmRvdy1tYXhpbWl6ZWQ9IjEiIC8+CiAgPG1ldGFkYXRhCiAgICAgaWQ9Im1ldGFkYXRhODE5Ij4KICAgIDxyZGY6UkRGPgogICAgICA8Y2M6V29yawogICAgICAgICByZGY6YWJvdXQ9IiI+CiAgICAgICAgPGRjOmZvcm1hdD5pbWFnZS9zdmcreG1sPC9kYzpmb3JtYXQ+CiAgICAgICAgPGRjOnR5cGUKICAgICAgICAgICByZGY6cmVzb3VyY2U9Imh0dHA6Ly9wdXJsLm9yZy9kYy9kY21pdHlwZS9TdGlsbEltYWdlIiAvPgogICAgICAgIDxkYzp0aXRsZSAvPgogICAgICA8L2NjOldvcms+CiAgICA8L3JkZjpSREY+CiAgPC9tZXRhZGF0YT4KICA8ZwogICAgIGlua3NjYXBlOmxhYmVsPSLjg6zjgqTjg6Tjg7wgMSIKICAgICBpbmtzY2FwZTpncm91cG1vZGU9ImxheWVyIgogICAgIGlkPSJsYXllcjEiCiAgICAgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTczLjQ5Mjc0NCwtODQuMjcxOTUpIj4KICAgIDxwYXRoCiAgICAgICBzb2RpcG9kaTp0eXBlPSJzdGFyIgogICAgICAgc3R5bGU9Im9wYWNpdHk6MTtmaWxsOnVybCgjcmFkaWFsR3JhZGllbnQxOTgwKTtmaWxsLW9wYWNpdHk6MTtmaWxsLXJ1bGU6bm9uemVybztzdHJva2U6I2ZmZmZmZjtzdHJva2Utd2lkdGg6MC41MjkxNjk1NjtzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbGluZWpvaW46bWl0ZXI7c3Ryb2tlLW1pdGVybGltaXQ6NDtzdHJva2UtZGFzaGFycmF5Om5vbmU7c3Ryb2tlLWRhc2hvZmZzZXQ6MDtzdHJva2Utb3BhY2l0eToxO3BhaW50LW9yZGVyOm1hcmtlcnMgc3Ryb2tlIGZpbGwiCiAgICAgICBzb2RpcG9kaTpzaWRlcz0iNiIKICAgICAgIHNvZGlwb2RpOmN4PSI4NC45ODc0OTUiCiAgICAgICBzb2RpcG9kaTpjeT0iOTcuNTAxMTIyIgogICAgICAgc29kaXBvZGk6cjE9IjEyLjkyMzg3IgogICAgICAgc29kaXBvZGk6cjI9IjEyLjg4NTQ1OCIKICAgICAgIHNvZGlwb2RpOmFyZzE9IjAuNTE3ODYwNSIKICAgICAgIHNvZGlwb2RpOmFyZzI9IjEuMDQxNDU5MyIKICAgICAgIGlua3NjYXBlOmZsYXRzaWRlZD0idHJ1ZSIKICAgICAgIGlua3NjYXBlOnJvdW5kZWQ9IjAiCiAgICAgICBpbmtzY2FwZTpyYW5kb21pemVkPSIwIgogICAgICAgZD0iTSA5Ni4yMTY3OTEsMTAzLjg5ODczIDg1LjA2MTY1NiwxMTAuNDI0NzggNzMuODMyMzYsMTA0LjAyNzE3IDczLjc1ODIsOTEuMTAzNTE4IDg0LjkxMzMzNSw4NC41Nzc0NjQgOTYuMTQyNjMxLDkwLjk3NTA2OCBaIgogICAgICAgaWQ9InBhdGgxOTcyIgogICAgICAgdHJhbnNmb3JtPSJtYXRyaXgoMC44NjYwMjA3MywwLjQ5OTk5NzMsLTAuNDk5OTk3MywwLjg2NjAyMDczLDYxLjg3MTIwNiwtMjkuMjgzNDE5KSIgLz4KICA8L2c+Cjwvc3ZnPgo=","青":"data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgd2lkdGg9IjI2LjQ1ODMzNG1tIgogICBoZWlnaHQ9IjI2LjQ1ODMzNG1tIgogICB2aWV3Qm94PSIwIDAgMjYuNDU4MzM0IDI2LjQ1ODMzNCIKICAgdmVyc2lvbj0iMS4xIgogICBpZD0ic3ZnODIyIgogICBpbmtzY2FwZTp2ZXJzaW9uPSIwLjkyLjMgKDI0MDU1NDYsIDIwMTgtMDMtMTEpIgogICBzb2RpcG9kaTpkb2NuYW1lPSLjg6zjg5njg6vjgqLjgqTjgrPjg7Nf6Z2SLnN2ZyI+CiAgPGRlZnMKICAgICBpZD0iZGVmczgxNiI+CiAgICA8bGluZWFyR3JhZGllbnQKICAgICAgIGlua3NjYXBlOmNvbGxlY3Q9ImFsd2F5cyIKICAgICAgIGlkPSJsaW5lYXJHcmFkaWVudDE5NzgiPgogICAgICA8c3RvcAogICAgICAgICBzdHlsZT0ic3RvcC1jb2xvcjojODBjZWVjO3N0b3Atb3BhY2l0eToxIgogICAgICAgICBvZmZzZXQ9IjAiCiAgICAgICAgIGlkPSJzdG9wMTk3NCIgLz4KICAgICAgPHN0b3AKICAgICAgICAgc3R5bGU9InN0b3AtY29sb3I6IzAwOWNkOTtzdG9wLW9wYWNpdHk6MSIKICAgICAgICAgb2Zmc2V0PSIxIgogICAgICAgICBpZD0ic3RvcDE5NzYiIC8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPHJhZGlhbEdyYWRpZW50CiAgICAgICBpbmtzY2FwZTpjb2xsZWN0PSJhbHdheXMiCiAgICAgICB4bGluazpocmVmPSIjbGluZWFyR3JhZGllbnQxOTc4IgogICAgICAgaWQ9InJhZGlhbEdyYWRpZW50MTk4MCIKICAgICAgIGN4PSI4NC45ODc0OTUiCiAgICAgICBjeT0iOTcuNTAxMTIyIgogICAgICAgZng9Ijg0Ljk4NzQ5NSIKICAgICAgIGZ5PSI5Ny41MDExMjIiCiAgICAgICByPSIxMS40OTQ3NTMiCiAgICAgICBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KDAuOTcwODYxNywwLjI2MDE0MTYxLC0wLjI5OTM5Mzc1LDEuMTE3MzUyNywzMS43MDU3ODQsLTMzLjQwODA5MSkiCiAgICAgICBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgLz4KICA8L2RlZnM+CiAgPHNvZGlwb2RpOm5hbWVkdmlldwogICAgIGlkPSJiYXNlIgogICAgIHBhZ2Vjb2xvcj0iI2ZmZmZmZiIKICAgICBib3JkZXJjb2xvcj0iIzY2NjY2NiIKICAgICBib3JkZXJvcGFjaXR5PSIxLjAiCiAgICAgaW5rc2NhcGU6cGFnZW9wYWNpdHk9IjAuMCIKICAgICBpbmtzY2FwZTpwYWdlc2hhZG93PSIyIgogICAgIGlua3NjYXBlOnpvb209IjIuODI4NDI3MSIKICAgICBpbmtzY2FwZTpjeD0iMTA1LjU3ODA4IgogICAgIGlua3NjYXBlOmN5PSI5MC4zMTk2ODUiCiAgICAgaW5rc2NhcGU6ZG9jdW1lbnQtdW5pdHM9Im1tIgogICAgIGlua3NjYXBlOmN1cnJlbnQtbGF5ZXI9ImxheWVyMSIKICAgICBzaG93Z3JpZD0iZmFsc2UiCiAgICAgZml0LW1hcmdpbi10b3A9IjAiCiAgICAgZml0LW1hcmdpbi1sZWZ0PSIwIgogICAgIGZpdC1tYXJnaW4tcmlnaHQ9IjAiCiAgICAgZml0LW1hcmdpbi1ib3R0b209IjAiCiAgICAgaW5rc2NhcGU6d2luZG93LXdpZHRoPSIxMzA0IgogICAgIGlua3NjYXBlOndpbmRvdy1oZWlnaHQ9Ijc0NSIKICAgICBpbmtzY2FwZTp3aW5kb3cteD0iNTQiCiAgICAgaW5rc2NhcGU6d2luZG93LXk9Ii04IgogICAgIGlua3NjYXBlOndpbmRvdy1tYXhpbWl6ZWQ9IjEiIC8+CiAgPG1ldGFkYXRhCiAgICAgaWQ9Im1ldGFkYXRhODE5Ij4KICAgIDxyZGY6UkRGPgogICAgICA8Y2M6V29yawogICAgICAgICByZGY6YWJvdXQ9IiI+CiAgICAgICAgPGRjOmZvcm1hdD5pbWFnZS9zdmcreG1sPC9kYzpmb3JtYXQ+CiAgICAgICAgPGRjOnR5cGUKICAgICAgICAgICByZGY6cmVzb3VyY2U9Imh0dHA6Ly9wdXJsLm9yZy9kYy9kY21pdHlwZS9TdGlsbEltYWdlIiAvPgogICAgICAgIDxkYzp0aXRsZT48L2RjOnRpdGxlPgogICAgICA8L2NjOldvcms+CiAgICA8L3JkZjpSREY+CiAgPC9tZXRhZGF0YT4KICA8ZwogICAgIGlua3NjYXBlOmxhYmVsPSLjg6zjgqTjg6Tjg7wgMSIKICAgICBpbmtzY2FwZTpncm91cG1vZGU9ImxheWVyIgogICAgIGlkPSJsYXllcjEiCiAgICAgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTczLjQ5Mjc0NCwtODQuMjcxOTUpIj4KICAgIDxwYXRoCiAgICAgICBzb2RpcG9kaTp0eXBlPSJzdGFyIgogICAgICAgc3R5bGU9Im9wYWNpdHk6MTtmaWxsOnVybCgjcmFkaWFsR3JhZGllbnQxOTgwKTtmaWxsLW9wYWNpdHk6MTtmaWxsLXJ1bGU6bm9uemVybztzdHJva2U6I2ZmZmZmZjtzdHJva2Utd2lkdGg6MC41MzE4NzM1MjtzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbGluZWpvaW46bWl0ZXI7c3Ryb2tlLW1pdGVybGltaXQ6NDtzdHJva2UtZGFzaGFycmF5Om5vbmU7c3Ryb2tlLWRhc2hvZmZzZXQ6MDtzdHJva2Utb3BhY2l0eToxO3BhaW50LW9yZGVyOm1hcmtlcnMgc3Ryb2tlIGZpbGwiCiAgICAgICBzb2RpcG9kaTpzaWRlcz0iOCIKICAgICAgIHNvZGlwb2RpOmN4PSI4NC45ODc0OTUiCiAgICAgICBzb2RpcG9kaTpjeT0iOTcuNTAxMTIyIgogICAgICAgc29kaXBvZGk6cjE9IjEyLjkyMzg3IgogICAgICAgc29kaXBvZGk6cjI9IjkuOTM2NjEwMiIKICAgICAgIHNvZGlwb2RpOmFyZzE9IjAuNTE3ODYwNSIKICAgICAgIHNvZGlwb2RpOmFyZzI9IjAuOTEwNTU5NTgiCiAgICAgICBpbmtzY2FwZTpmbGF0c2lkZWQ9ImZhbHNlIgogICAgICAgaW5rc2NhcGU6cm91bmRlZD0iMCIKICAgICAgIGlua3NjYXBlOnJhbmRvbWl6ZWQ9IjAiCiAgICAgICBkPSJtIDk2LjIxNjc5MSwxMDMuODk4NzMgLTUuMTM1MTM0LDEuNDUwNzkgLTIuNjc3NjQsNC42MTU3IC00LjY1Njk1NywtMi42MDUyMiAtNS4xNTcxNjksMS4zNzA0MiAtMS40NTA3OTgsLTUuMTM1MTQgLTQuNjE1Njk4LC0yLjY3NzY0IDIuNjA1MjE5LC00LjY1Njk1NCAtMS4zNzA0MTQsLTUuMTU3MTY4IDUuMTM1MTM0LC0xLjQ1MDc5OSAyLjY3NzYzOSwtNC42MTU2OTggNC42NTY5NTgsMi42MDUyMTkgNS4xNTcxNjgsLTEuMzcwNDE0IDEuNDUwNzk5LDUuMTM1MTM0IDQuNjE1Njk4LDIuNjc3NjQgLTIuNjA1MjE5LDQuNjU2OTU3IHoiCiAgICAgICBpZD0icGF0aDE5NzIiCiAgICAgICB0cmFuc2Zvcm09Im1hdHJpeCgwLjk2MTAwOTg2LDAuMjU3NTAxODIsLTAuMjU3NTAxODIsMC45NjEwMDk4NiwzMC4xNTQ4MDYsLTE4LjA4Mjg1NykiIC8+CiAgPC9nPgo8L3N2Zz4K","白":"data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgd2lkdGg9IjI2LjQ1ODMzNG1tIgogICBoZWlnaHQ9IjI2LjQ1ODMzNG1tIgogICB2aWV3Qm94PSIwIDAgMjYuNDU4MzM0IDI2LjQ1ODMzNCIKICAgdmVyc2lvbj0iMS4xIgogICBpZD0ic3ZnODIyIgogICBpbmtzY2FwZTp2ZXJzaW9uPSIwLjkyLjMgKDI0MDU1NDYsIDIwMTgtMDMtMTEpIgogICBzb2RpcG9kaTpkb2NuYW1lPSLjg6zjg5njg6vjgqLjgqTjgrPjg7Nf55m9Mi5zdmciPgogIDxkZWZzCiAgICAgaWQ9ImRlZnM4MTYiPgogICAgPGxpbmVhckdyYWRpZW50CiAgICAgICBpbmtzY2FwZTpjb2xsZWN0PSJhbHdheXMiCiAgICAgICBpZD0ibGluZWFyR3JhZGllbnQ4NDEiPgogICAgICA8c3RvcAogICAgICAgICBzdHlsZT0ic3RvcC1jb2xvcjojZmZmZmZmO3N0b3Atb3BhY2l0eToxIgogICAgICAgICBvZmZzZXQ9IjAiCiAgICAgICAgIGlkPSJzdG9wODM3IiAvPgogICAgICA8c3RvcAogICAgICAgICBzdHlsZT0ic3RvcC1jb2xvcjojZGRkZGRkO3N0b3Atb3BhY2l0eToxIgogICAgICAgICBvZmZzZXQ9IjEiCiAgICAgICAgIGlkPSJzdG9wODM5IiAvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxyYWRpYWxHcmFkaWVudAogICAgICAgaW5rc2NhcGU6Y29sbGVjdD0iYWx3YXlzIgogICAgICAgeGxpbms6aHJlZj0iI2xpbmVhckdyYWRpZW50ODQxIgogICAgICAgaWQ9InJhZGlhbEdyYWRpZW50ODQzIgogICAgICAgY3g9IjUwIgogICAgICAgY3k9IjUwLjE5OTIxOSIKICAgICAgIGZ4PSI1MCIKICAgICAgIGZ5PSI1MC4xOTkyMTkiCiAgICAgICByPSI0OS45OTk2NDMiCiAgICAgICBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KDEsMCwwLDAuOTk2MDI0NzcsMCwwLjE5OTU1MzI0KSIKICAgICAgIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIiAvPgogIDwvZGVmcz4KICA8c29kaXBvZGk6bmFtZWR2aWV3CiAgICAgaWQ9ImJhc2UiCiAgICAgcGFnZWNvbG9yPSIjZmZmZmZmIgogICAgIGJvcmRlcmNvbG9yPSIjNjY2NjY2IgogICAgIGJvcmRlcm9wYWNpdHk9IjEuMCIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMC4wIgogICAgIGlua3NjYXBlOnBhZ2VzaGFkb3c9IjIiCiAgICAgaW5rc2NhcGU6em9vbT0iMi44Mjg0MjcxIgogICAgIGlua3NjYXBlOmN4PSI0Mi4xMTUyNDYiCiAgICAgaW5rc2NhcGU6Y3k9IjkwLjMxOTY4NSIKICAgICBpbmtzY2FwZTpkb2N1bWVudC11bml0cz0ibW0iCiAgICAgaW5rc2NhcGU6Y3VycmVudC1sYXllcj0ibGF5ZXIxIgogICAgIHNob3dncmlkPSJmYWxzZSIKICAgICBmaXQtbWFyZ2luLXRvcD0iMCIKICAgICBmaXQtbWFyZ2luLWxlZnQ9IjAiCiAgICAgZml0LW1hcmdpbi1yaWdodD0iMCIKICAgICBmaXQtbWFyZ2luLWJvdHRvbT0iMCIKICAgICBpbmtzY2FwZTp3aW5kb3ctd2lkdGg9IjEzMDQiCiAgICAgaW5rc2NhcGU6d2luZG93LWhlaWdodD0iNzQ1IgogICAgIGlua3NjYXBlOndpbmRvdy14PSI1NCIKICAgICBpbmtzY2FwZTp3aW5kb3cteT0iLTgiCiAgICAgaW5rc2NhcGU6d2luZG93LW1heGltaXplZD0iMSIgLz4KICA8bWV0YWRhdGEKICAgICBpZD0ibWV0YWRhdGE4MTkiPgogICAgPHJkZjpSREY+CiAgICAgIDxjYzpXb3JrCiAgICAgICAgIHJkZjphYm91dD0iIj4KICAgICAgICA8ZGM6Zm9ybWF0PmltYWdlL3N2Zyt4bWw8L2RjOmZvcm1hdD4KICAgICAgICA8ZGM6dHlwZQogICAgICAgICAgIHJkZjpyZXNvdXJjZT0iaHR0cDovL3B1cmwub3JnL2RjL2RjbWl0eXBlL1N0aWxsSW1hZ2UiIC8+CiAgICAgICAgPGRjOnRpdGxlPjwvZGM6dGl0bGU+CiAgICAgIDwvY2M6V29yaz4KICAgIDwvcmRmOlJERj4KICA8L21ldGFkYXRhPgogIDxnCiAgICAgaW5rc2NhcGU6bGFiZWw9IuODrOOCpOODpOODvCAxIgogICAgIGlua3NjYXBlOmdyb3VwbW9kZT0ibGF5ZXIiCiAgICAgaWQ9ImxheWVyMSIKICAgICB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtNzMuNDkyNzQ0LC04NC4yNzE5NSkiPgogICAgPHBhdGgKICAgICAgIHN0eWxlPSJvcGFjaXR5OjE7ZmlsbDp1cmwoI3JhZGlhbEdyYWRpZW50ODQzKTtmaWxsLW9wYWNpdHk6MTtmaWxsLXJ1bGU6bm9uemVybztzdHJva2U6IzAwMDAwMDtzdHJva2Utd2lkdGg6MS45OTk5OTk4ODtzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbGluZWpvaW46bWl0ZXI7c3Ryb2tlLW1pdGVybGltaXQ6NDtzdHJva2UtZGFzaGFycmF5Om5vbmU7c3Ryb2tlLWRhc2hvZmZzZXQ6MDtzdHJva2Utb3BhY2l0eToxO3BhaW50LW9yZGVyOm1hcmtlcnMgc3Ryb2tlIGZpbGwiCiAgICAgICBkPSJNIDUwLDIuMzk4NDM3NSA0My4wNzIyNjYsMTQuMzk4NDM4IEggMS43MzI0MjE5IEwgMjIuNDAyMzQ0LDUwLjE5OTIxOSAxLjczMjQyMTksODYgSCA0My4wNzIyNjYgTCA1MCw5OCA1Ni45Mjc3MzQsODYgSCA5OC4yNjc1NzggTCA3Ny41OTc2NTYsNTAuMTk5MjE5IDk4LjI2NzU3OCwxNC4zOTg0MzggSCA1Ni45Mjc3MzQgWiIKICAgICAgIHRyYW5zZm9ybT0ibWF0cml4KDAuMjY0NTgzMzMsMCwwLDAuMjY0NTgzMzMsNzMuNDkyNzQ0LDg0LjI3MTk1KSIKICAgICAgIGlkPSJwYXRoODE3IgogICAgICAgaW5rc2NhcGU6Y29ubmVjdG9yLWN1cnZhdHVyZT0iMCIgLz4KICA8L2c+Cjwvc3ZnPgo=","緑":"data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgd2lkdGg9IjI2LjQ1ODMzNG1tIgogICBoZWlnaHQ9IjI2LjQ1ODMzNG1tIgogICB2aWV3Qm94PSIwIDAgMjYuNDU4MzM0IDI2LjQ1ODMzNCIKICAgdmVyc2lvbj0iMS4xIgogICBpZD0ic3ZnODIyIgogICBpbmtzY2FwZTp2ZXJzaW9uPSIwLjkyLjMgKDI0MDU1NDYsIDIwMTgtMDMtMTEpIgogICBzb2RpcG9kaTpkb2NuYW1lPSLjg6zjg5njg6vjgqLjgqTjgrPjg7Nf57eRLnN2ZyI+CiAgPGRlZnMKICAgICBpZD0iZGVmczgxNiI+CiAgICA8bGluZWFyR3JhZGllbnQKICAgICAgIGlua3NjYXBlOmNvbGxlY3Q9ImFsd2F5cyIKICAgICAgIGlkPSJsaW5lYXJHcmFkaWVudDE5NzgiPgogICAgICA8c3RvcAogICAgICAgICBzdHlsZT0ic3RvcC1jb2xvcjojODBkNjgwO3N0b3Atb3BhY2l0eToxIgogICAgICAgICBvZmZzZXQ9IjAiCiAgICAgICAgIGlkPSJzdG9wMTk3NCIgLz4KICAgICAgPHN0b3AKICAgICAgICAgc3R5bGU9InN0b3AtY29sb3I6IzAwOTkwMDtzdG9wLW9wYWNpdHk6MSIKICAgICAgICAgb2Zmc2V0PSIxIgogICAgICAgICBpZD0ic3RvcDE5NzYiIC8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPHJhZGlhbEdyYWRpZW50CiAgICAgICBpbmtzY2FwZTpjb2xsZWN0PSJhbHdheXMiCiAgICAgICB4bGluazpocmVmPSIjbGluZWFyR3JhZGllbnQxOTc4IgogICAgICAgaWQ9InJhZGlhbEdyYWRpZW50MTk4MCIKICAgICAgIGN4PSI4NC45ODc0OTUiCiAgICAgICBjeT0iOTcuNTAxMTIyIgogICAgICAgZng9Ijg0Ljk4NzQ5NSIKICAgICAgIGZ5PSI5Ny41MDExMjIiCiAgICAgICByPSIxMS40OTQ3NTMiCiAgICAgICBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KDAuOTQ2OTQ0MzYsMC4wOTI3MjQzMSwtMC4xMDY3MTQzMSwxLjA4OTgyNzMsMTQuNzA4Nzk2LC0xNy4xMDM5MzUpIgogICAgICAgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiIC8+CiAgPC9kZWZzPgogIDxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0iYmFzZSIKICAgICBwYWdlY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyY29sb3I9IiM2NjY2NjYiCiAgICAgYm9yZGVyb3BhY2l0eT0iMS4wIgogICAgIGlua3NjYXBlOnBhZ2VvcGFjaXR5PSIwLjAiCiAgICAgaW5rc2NhcGU6cGFnZXNoYWRvdz0iMiIKICAgICBpbmtzY2FwZTp6b29tPSIyIgogICAgIGlua3NjYXBlOmN4PSItMTA0LjE2OTA0IgogICAgIGlua3NjYXBlOmN5PSIxMTQuNDM4NjEiCiAgICAgaW5rc2NhcGU6ZG9jdW1lbnQtdW5pdHM9Im1tIgogICAgIGlua3NjYXBlOmN1cnJlbnQtbGF5ZXI9ImxheWVyMSIKICAgICBzaG93Z3JpZD0iZmFsc2UiCiAgICAgZml0LW1hcmdpbi10b3A9IjAiCiAgICAgZml0LW1hcmdpbi1sZWZ0PSIwIgogICAgIGZpdC1tYXJnaW4tcmlnaHQ9IjAiCiAgICAgZml0LW1hcmdpbi1ib3R0b209IjAiCiAgICAgaW5rc2NhcGU6d2luZG93LXdpZHRoPSIxMzA0IgogICAgIGlua3NjYXBlOndpbmRvdy1oZWlnaHQ9Ijc0NSIKICAgICBpbmtzY2FwZTp3aW5kb3cteD0iNTQiCiAgICAgaW5rc2NhcGU6d2luZG93LXk9Ii04IgogICAgIGlua3NjYXBlOndpbmRvdy1tYXhpbWl6ZWQ9IjEiIC8+CiAgPG1ldGFkYXRhCiAgICAgaWQ9Im1ldGFkYXRhODE5Ij4KICAgIDxyZGY6UkRGPgogICAgICA8Y2M6V29yawogICAgICAgICByZGY6YWJvdXQ9IiI+CiAgICAgICAgPGRjOmZvcm1hdD5pbWFnZS9zdmcreG1sPC9kYzpmb3JtYXQ+CiAgICAgICAgPGRjOnR5cGUKICAgICAgICAgICByZGY6cmVzb3VyY2U9Imh0dHA6Ly9wdXJsLm9yZy9kYy9kY21pdHlwZS9TdGlsbEltYWdlIiAvPgogICAgICAgIDxkYzp0aXRsZSAvPgogICAgICA8L2NjOldvcms+CiAgICA8L3JkZjpSREY+CiAgPC9tZXRhZGF0YT4KICA8ZwogICAgIGlua3NjYXBlOmxhYmVsPSLjg6zjgqTjg6Tjg7wgMSIKICAgICBpbmtzY2FwZTpncm91cG1vZGU9ImxheWVyIgogICAgIGlkPSJsYXllcjEiCiAgICAgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTczLjQ5Mjc0NCwtODQuMjcxOTUpIj4KICAgIDxwYXRoCiAgICAgICBzb2RpcG9kaTp0eXBlPSJzdGFyIgogICAgICAgc3R5bGU9Im9wYWNpdHk6MTtmaWxsOnVybCgjcmFkaWFsR3JhZGllbnQxOTgwKTtmaWxsLW9wYWNpdHk6MTtmaWxsLXJ1bGU6bm9uemVybztzdHJva2U6I2ZmZmZmZjtzdHJva2Utd2lkdGg6MC41MDM0OTA1NztzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbGluZWpvaW46bWl0ZXI7c3Ryb2tlLW1pdGVybGltaXQ6NDtzdHJva2UtZGFzaGFycmF5Om5vbmU7c3Ryb2tlLWRhc2hvZmZzZXQ6MDtzdHJva2Utb3BhY2l0eToxO3BhaW50LW9yZGVyOm1hcmtlcnMgc3Ryb2tlIGZpbGwiCiAgICAgICBzb2RpcG9kaTpzaWRlcz0iNSIKICAgICAgIHNvZGlwb2RpOmN4PSI4NC45ODc0OTUiCiAgICAgICBzb2RpcG9kaTpjeT0iOTcuNTAxMTIyIgogICAgICAgc29kaXBvZGk6cjE9IjEyLjkyMzg3IgogICAgICAgc29kaXBvZGk6cjI9IjYuNDYxOTM1IgogICAgICAgc29kaXBvZGk6YXJnMT0iMC41MTc4NjA1IgogICAgICAgc29kaXBvZGk6YXJnMj0iMS4xNDYxNzkiCiAgICAgICBpbmtzY2FwZTpmbGF0c2lkZWQ9InRydWUiCiAgICAgICBpbmtzY2FwZTpyb3VuZGVkPSIwIgogICAgICAgaW5rc2NhcGU6cmFuZG9taXplZD0iMCIKICAgICAgIGQ9Im0gOTYuMjE2NzkxLDEwMy44OTg3MyAtMTMuODQzNzM1LDYuMjU5MDUgLTEwLjIzMDY2OSwtMTEuMjMyMDE0IDcuNTIwODM1LC0xMy4yMDA4MjkgMTQuODc4OCwzLjA3MzQ1OCB6IgogICAgICAgaWQ9InBhdGgxOTcyIgogICAgICAgdHJhbnNmb3JtPSJtYXRyaXgoMC45NTcwNjg0MiwwLjQzNDI5NTcyLC0wLjQzNDI5NjE4LDAuOTU3MDY3NDEsNDcuNzIxNTIzLC0zMi4wNDI0MTcpIiAvPgogIDwvZz4KPC9zdmc+Cg=="}
+const COLORS = ['赤', '黒', '青', '白', '緑']
+const TAG_EMOJI = { アグロ: '⚡', ミッドレンジ: '⚖️', コントロール: '🛡️', コンボ: '🧩', 初心者向け: '🔰', 大会用: '🏆', お試し: '🧪', 多色: '🌈' }
+
+// ---- ダミーのデータ（名前・数値はダミー） ----
+// face：デッキの顔にするカード（パートナー。決めていなければ、いちばん枚数の多いカード）
+const OWNED = [
+  { id: 'd1', name: '見本・もちぬい速攻', face: 'MHA-01', colors: ['黒'], tags: [{ label: 'アグロ' }, { label: '黒単', group: '色の構成' }, { label: '初心者向け' }] },
+  { id: 'd2', name: '赤黒ミッドレンジ', face: 'MHA-08', colors: ['赤', '黒'], tags: [{ label: 'ミッドレンジ' }, { label: '赤黒', group: '色の構成' }] },
+  { id: 'd10', name: '組みかけの 30 枚デッキ', face: 'MHA-05', colors: ['緑'], tags: [{ label: 'お試し' }], mismatch: 'あと 30 枚足りません（60 枚以上）' }, // 選んでいるルールに合わない（札は同じ「使用不可」。理由だけが違う）
+  { id: 'd9', name: '旧弾の黒赤ビート', face: 'MHA-03', colors: ['赤', '黒'], tags: [{ label: 'アグロ' }], unusable: true }, // 今のカードプールに無いカードが入っている
+  { id: 'd3', name: '青白コントロール', face: 'MHB-14', colors: ['青', '白'], tags: [{ label: 'コントロール' }, { label: '青白', group: '色の構成' }, { label: '大会用' }] },
+  { id: 'd4', name: '見本作品Ｃ', face: 'MHB-06', colors: ['青', '白', '緑'], tags: [{ label: 'ミッドレンジ' }, { label: '多色' }] },
+  { id: 'd5', name: '緑単ランプ', face: 'MHB-11', colors: ['緑'], tags: [{ label: 'コントロール' }, { label: '緑単', group: '色の構成' }, { label: 'お試し' }] },
+  { id: 'd6', name: 'トラップ多めの実験デッキ', face: 'MHA-05', colors: ['黒', '白'], tags: [{ label: 'コンボ' }, { label: '黒白', group: '色の構成' }] },
+  { id: 'd7', name: '赤単', face: 'MHA-10', colors: ['赤'], tags: [{ label: 'アグロ' }, { label: '赤単', group: '色の構成' }] },
+  { id: 'd8', name: '大会用・調整中', face: 'MHB-08', colors: ['赤', '青'], tags: [{ label: 'ミッドレンジ' }, { label: '赤青', group: '色の構成' }] },
+]
+// 組めない立て方で並ぶ既製デッキ。ロビーに届くのは名前だけなので、色・ラベルは出さず、顔はカードの裏面
+const PRESETS = [
+  { id: 'p1', name: '見本デッキ A', face: undefined, colors: [], tags: [] },
+  { id: 'p2', name: '見本デッキ B', face: undefined, colors: [], tags: [] },
+]
+// リリースノートのような中身（ダミー）。どこから持ってくるかは別 Issue
+const NEWS = [
+  { kind: '更新', version: 'v0.14.0', date: '2026-09-28', title: 'デッキ構築の画面を新しくしました', summary: 'カードの一覧を「カード」「1 行」で切り替えられるようにし、デッキの内訳・パートナーカード・ラベルを足しました。',
+    body: ['デッキ構築の画面の見た目と並べ方を新しくしました。'], changes: ['カードの一覧を「カード」「1 行」で切り替えられるようにしました', 'デッキの内訳（レベルごとの枚数・種別・スターの合計）を出すようにしました', 'デッキにパートナーカードを決められるようにしました', 'デッキにラベルを付けて、一覧で絞り込めるようにしました', 'デッキを複製できるようにしました'] },
+  { kind: '修正', version: 'v0.13.2', date: '2026-09-21', title: '対戦中に繋がりが切れると盤面が止まる不具合を直しました', summary: '繋ぎ直したあと、相手の手番のまま進まなくなることがありました。',
+    body: ['対戦中に繋がりが切れて繋ぎ直したあと、相手の手番のまま進まなくなることがありました。繋ぎ直した時点の盤面から続けられるように直しました。'], changes: [] },
+  { kind: '更新', version: 'v0.13.0', date: '2026-09-14', title: '対戦画面の見た目を新しくしました', summary: '盤面を 3 列に組み直し、カードの詳細と演出を見やすくしました。',
+    body: ['対戦画面の見た目を新しくしました。'], changes: ['盤面を 3 列に組み直しました', 'カードの詳細を大きく出すようにしました', 'バトルや勝敗の演出を足しました'] },
+  { kind: 'お知らせ', date: '2026-09-10', title: '禁止／制限リスト（2026年9月）を入れました', summary: '部屋を作るときに選べます。選ばなければ、このリストが当たります。',
+    body: ['禁止／制限リスト（2026年9月）を入れました。', '対戦部屋を作成するときに「対戦ルール」から選べます。選ばなければ、このリストが当たります。'], changes: [] },
+  { kind: '修正', version: 'v0.12.1', date: '2026-09-02', title: 'CPU戦でCPUが考え込んで止まることがある不具合を直しました', summary: '',
+    body: ['CPU戦で、CPUの手番のまま進まなくなることがありました。'], changes: [] },
+  { kind: '更新', version: 'v0.12.0', date: '2026-08-25', title: 'CPU戦で、CPUが使用するデッキを選べるようにしました', summary: '自分のデッキの中から選べます。',
+    body: ['CPU戦で、CPUが使用するデッキを選べるようにしました。自分のデッキの中から選べます。'], changes: [] },
+  { kind: 'お知らせ', date: '2026-08-20', title: 'プロジェクトレヴォリューション オンラインを公開しました', summary: '',
+    body: ['プロジェクトレヴォリューション オンラインを公開しました。'], changes: [] },
+]
+const STATUS_LABEL = { 相手を待っている: '待機中', 対戦中: '対戦中' }
+const ROOMS = [
+  // watchers：観戦している人数（観戦は別 Issue。モックでは見え方だけ）
+  { code: 'r1', name: 'まったり対戦しましょう', status: '相手を待っている', occupants: ['ヒヨリ'], watchers: 0, rules: '構築戦・2026年9月' },
+  { code: 'r4', name: '大会の練習', status: '対戦中', occupants: ['ソラ', 'ユウ'], watchers: 5, rules: '構築戦・2026年9月' },
+  { code: 'r3', name: 'サークル内の対戦', status: '相手を待っている', occupants: ['カズ'], watchers: 1, rules: '構築戦・2026年9月', locked: true },
+  { code: 'r2', name: '初心者歓迎', status: '相手を待っている', occupants: ['とても長い名前のプレイヤーさん'], watchers: 0, rules: '構築戦・制限なし' },
+  { code: 'r5', name: 'デッキ相談しながら', status: '対戦中', occupants: ['アオイ', 'ナガナガナガナガナガナガ'], watchers: 2, rules: '構築戦・制限なし', locked: true },
+  { code: 'r6', name: '新カードお試し', status: '相手を待っている', occupants: ['ハル'], watchers: 0, rules: '構築戦・制限なし' },
+  { code: 'r7', name: 'フリー対戦', status: '対戦中', occupants: ['ツムギ', 'リク'], watchers: 0, rules: '構築戦・2026年9月' },
+  { code: 'r8', name: 'ゆっくり対戦します', status: '相手を待っている', occupants: ['メイ'], watchers: 0, rules: '構築戦・2026年9月' },
+  { code: 'r9', name: 'イベント練習', status: '対戦中', occupants: ['コタ', 'サキ'], watchers: 12, rules: '構築戦・2026年9月' },
+  { code: 'r10', name: undefined, status: '相手を待っている', occupants: ['ナギ'], watchers: 0, rules: '構築戦・制限なし' },
+]
+const DECKS_PER_PAGE = 5
+const ROOMS_PER_PAGE = 6
+
+const state = {
+  standing: 'ログインあり', // | 'ログインなし'
+  roomsShown: 'あり', // | 'なし'
+  news: 'あり', // | 'なし'
+  newsView: undefined, // お知らせの窓。{ kind: '一覧', filter } | { kind: '詳細', index, from, filter }
+  picked: 'd1', // 使用するデッキ。undefined = 選んでいない（#194）
+  cpuPicked: 'd2',
+  deckPage: 0,
+  unusable: true, // 確認用：使えないカード入りのデッキを並べるか
+  fit: 'B', // 確認用：狭い幅の詰め方（A：席の幅を縮める／B：「1/2」を畳む／なし：今のまま）
+  menu: undefined, // 「…」を開いているデッキ
+  roomPage: 0,
+  tab: 'すべて',
+  query: '',
+  roomName: '',
+  locking: false, // 鍵付きの部屋にするか
+  password: '',
+  joining: undefined, // パスワードを打っている鍵付きの部屋 { code, purpose: '参加' | '観戦', typed, wrong }
+  toast: undefined,
+}
+
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n }
+const btn = (label, onClick, cls) => { const b = el('button', cls, label); b.type = 'button'; b.addEventListener('click', onClick); return b }
+const set = (patch) => { Object.assign(state, patch); render() }
+// 画面の移動は、移った先の画面のモックを開く（移る前の選択は引き継がない）
+const go = (screen) => { location.href = `../${screen}/index.html` }
+const toast = (text) => { set({ toast: text }); clearTimeout(toast.t); toast.t = setTimeout(() => set({ toast: undefined }), 1800) }
+
+const UNUSABLE_LABEL = '使用不可'
+const decks = () => (state.standing === 'ログインあり' ? OWNED.filter((d) => state.unusable || !d.unusable) : PRESETS)
+const usable = (d) => !d.unusable && !d.mismatch
+// 選べない理由は 1 つ。使えないカードを先に言う（どのルールでも使えないため）
+const reasonOf = (d) => (d.unusable ? '使えないカードが入っています' : d.mismatch)
+const unusableText = (d) => `${UNUSABLE_LABEL}：${reasonOf(d)}`
+// 押せない手の理由（aria-disabled。title と、読み上げ用の隠した文で伝える）
+const noDeck = () => (decks().some((d) => usable(d) && d.id === state.picked) ? undefined : 'デッキを選んでください')
+const refuse = (b, reason, id) => { if (!reason) return b; b.setAttribute('aria-disabled', 'true'); b.title = reason; b.setAttribute('aria-describedby', id); const h = el('span', 'sr-only', reason); h.id = id; return [b, h] }
+const canBuild = () => state.standing === 'ログインあり'
+
+function tag(t) {
+  const n = el('span', 'tag')
+  if (t.group === '色の構成') {
+    const box = el('span', 'tag__colors')
+    for (const c of COLORS.filter((c) => t.label.includes(c))) { const i = el('img'); i.src = LEVEL_ICON[c]; i.alt = ''; box.append(i) }
+    n.append(box)
+  } else if (TAG_EMOJI[t.label]) n.append(el('span', '', TAG_EMOJI[t.label]))
+  n.append(el('span', '', t.label))
+  return n
+}
+function taglist(tags) { const n = el('div', 'taglist'); for (const t of tags) n.append(tag(t)); return n }
+function colors(cs) {
+  const n = el('span', 'colors')
+  n.setAttribute('role', 'img'); n.setAttribute('aria-label', `色：${cs.join('・')}`)
+  for (const c of cs) { const i = el('img'); i.src = LEVEL_ICON[c]; i.alt = ''; n.append(i) }
+  return n
+}
+/* ---- カードの面（デッキ構築のモックの face と同じ組み立て。小さく出すので、ブロックのロゴは省く） ---- */
+const pool = window.POOL ?? []
+function svg(tag, attrs) { const n = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n }
+function moveIcon(dirs) {
+  const on = (d) => (dirs.includes(d) ? '#fff' : '#4a4a4a')
+  const s = svg('svg', { class: 'move-icon', viewBox: '0 0 20 20' })
+  s.append(svg('path', { d: 'M10 0.6 19.4 10 10 19.4 0.6 10Z', fill: '#2a2a2a', stroke: '#fff', 'stroke-width': '0.8' }), svg('path', { d: 'M10 2.6 12.4 6H7.6Z', fill: on('上') }), svg('path', { d: 'M10 17.4 12.4 14H7.6Z', fill: on('下') }), svg('path', { d: 'M2.6 10 6 7.6V12.4Z', fill: on('左') }), svg('path', { d: 'M17.4 10 14 7.6V12.4Z', fill: on('右') }), svg('circle', { cx: '10', cy: '10', r: '2.6', fill: '#c81c1c', stroke: '#fff', 'stroke-width': '0.6' }))
+  return s
+}
+function triggerIcon(cells) {
+  const s = svg('svg', { class: 'trigger-icon', viewBox: '0 0 20.6 20.6' })
+  s.append(svg('rect', { x: '0', y: '0', width: '20.6', height: '20.6', rx: '1.4', fill: '#fff', stroke: '#222', 'stroke-width': '0.6' }))
+  for (let row = 0; row < 3; row++) for (let column = 0; column < 3; column++) {
+    const hit = cells.some((q) => q.row === row && q.column === column)
+    s.append(svg('rect', { x: String(1 + column * 6.2), y: String(1 + (2 - row) * 6.2), width: '5.6', height: '5.6', rx: '0.6', fill: hit ? '#e8202a' : '#4d4d4d' }))
+  }
+  return s
+}
+function star(count, reverse) {
+  if (!count) return undefined
+  const n = el('span', `star${reverse ? ' star--reverse' : ''}`)
+  const i = el('img'); i.src = reverse ? '../shared/reverse-star.svg' : '../shared/star.svg'; i.alt = ''; n.append(i)
+  if (count >= 2) n.append(el('span', '', String(count)))
+  return n
+}
+function face(f) {
+  const node = el('div', 'card__face')
+  const top = el('div', 'card__top')
+  const level = el('span', 'card__level'); const li = el('img'); li.src = LEVEL_ICON[f.colors[0] ?? '黒']; li.alt = ''; level.append(li, el('span', '', String(f.level)))
+  top.append(level, el('span', 'card__kind', f.type)); node.append(top)
+  const title = el('div', 'card__title')
+  for (const s of [star(f.stars, false), star(f.reverseStars, true)]) if (s) title.append(s)
+  title.append(el('span', 'card__name', f.name))
+  node.append(title)
+  const bottom = el('div', 'card__bottom')
+  const icon = f.moveIcon?.length ? moveIcon(f.moveIcon) : f.triggerIcon?.length ? triggerIcon(f.triggerIcon) : undefined
+  if (icon) { const d = el('div', 'card__icons'); d.append(icon); bottom.append(d) }
+  if (f.attributes.length) bottom.append(el('span', 'card__traits', f.attributes.join(' | ')))
+  const stats = el('div', `card__stats${f.type === 'ユニット' ? '' : ' card__stats--ロゴだけ'}`)
+  if (f.type === 'ユニット') stats.append(el('span', 'card__bp', String(f.bp)), el('span', 'card__sp', String(f.sp)))
+  bottom.append(stats)
+  node.append(bottom)
+  return node
+}
+/** デッキの顔。card.css の規則は .deckbuild の内側に効くので、その箱で包む（モックだけの都合） */
+function art(deck, size = '') {
+  const n = el('span', `art deckbuild ${size}`)
+  n.setAttribute('aria-hidden', 'true')
+  const c = pool.find((p) => p.key === deck.face)
+  if (c) { const card = el('div', `card card--色-${c.face.colors[0] ?? '黒'}`); card.append(face(c.face)); n.append(card) }
+  else { const back = el('div', 'card card--back'); back.append(el('div', 'card__face')); n.append(back) }
+  return n
+}
+function avatar() {
+  const n = el('span', 'avatar')
+  n.innerHTML = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="15" r="7" fill="#c9a36a"/><path d="M6 40c0-9 6-15 14-15s14 6 14 15z" fill="#c9a36a"/></svg>'
+  return n
+}
+function pager(page, count, onPage, label) {
+  const n = el('nav', 'pager'); n.setAttribute('aria-label', label)
+  const prev = btn('‹', () => onPage(page - 1)); prev.disabled = page === 0; prev.setAttribute('aria-label', '前のページ')
+  n.append(prev)
+  for (let i = 0; i < count; i++) {
+    const b = btn(String(i + 1), () => onPage(i))
+    if (i === page) b.setAttribute('aria-current', 'page')
+    n.append(b)
+  }
+  const next = btn('›', () => onPage(page + 1)); next.disabled = page >= count - 1; next.setAttribute('aria-label', '次のページ')
+  n.append(next)
+  return n
+}
+
+// ---------- 上の帯 ----------
+function topbar() {
+  const n = el('header', 'panel topbar')
+  n.append(el('h1', 'topbar__title', '対戦ロビー'), el('span', 'topbar__divider'), el('span', 'topbar__sub', 'デッキを選んで、ほかのプレイヤーやCPUと対戦しましょう'), el('span', 'topbar__spacer'))
+  const me = el('div', 'me')
+  me.append(avatar(), el('span', 'me__name', 'ヒヨリ'))
+  me.setAttribute('aria-label', '名前：ヒヨリ')
+  n.append(me)
+  return n
+}
+
+// ---------- 対戦：ルールと使用するデッキ（対人戦・CPU戦のどちらにも当たる） ----------
+function rulesPicker() {
+  const n = el('div', 'rules')
+  n.append(el('p', 'rules__caption', '対戦ルール'))
+  const rule = (label, options) => { const l = el('label', 'rule'); l.append(el('span', '', label)); const s = el('select'); for (const o of options) s.append(new Option(o, o)); l.append(s); return l }
+  n.append(rule('形式', ['構築戦']), rule('禁止／制限リスト', ['2026年9月', '制限なし']))
+  return n
+}
+/**
+ * デッキを選ぶカルーセル（使用するデッキ・CPUが使用するデッキで共通）。
+ * 大きく出した 1 つ＋左右の送り＋サムネイルの並び。
+ */
+function deckCarousel(label, key) {
+  const n = el('div', 'picker')
+  n.append(el('p', 'picker__label', label))
+  const all = decks()
+  if (all.length === 0) {
+    n.append(el('p', 'decks__none', canBuild() ? 'デッキがありません。\n「デッキ一覧」から作れます' : 'デッキがありません'))
+    return n
+  }
+  // 選べないデッキ（使えないカード入り）が選ばれていたら、選んでいない状態として出す
+  const index = all.findIndex((d) => d.id === state[key] && usable(d))
+  const car = el('div', 'carousel')
+  // ‹ › は選べないデッキを飛ばす
+  const step = (dir) => {
+    const base = index < 0 ? (dir > 0 ? -1 : 0) : index
+    for (let k = 1; k <= all.length; k++) { const d = all[(base + dir * k + all.length * k) % all.length]; if (usable(d)) { set({ [key]: d.id }); return } }
+  }
+  const prev = btn('‹', () => step(-1), 'carousel__arrow'); prev.setAttribute('aria-label', `${label}：前のデッキ`)
+  const next = btn('›', () => step(1), 'carousel__arrow'); next.setAttribute('aria-label', `${label}：次のデッキ`)
+  const cur = el('div', 'carousel__current'); cur.setAttribute('aria-live', 'polite')
+  if (index < 0) cur.append(el('span', 'decks__notice', 'デッキを選んでください'))
+  else {
+    const d = all[index]
+    cur.append(art(d, 'art--large'))
+    const b = el('div', 'carousel__body'); b.append(el('span', 'carousel__name', d.name))
+    const meta = el('div', 'deckrow__meta')
+    // 色は色のアイコンで出す。ラベルの「色の構成」は同じことを言うので、ここでは並べない
+    const tags = d.tags.filter((t) => t.group !== '色の構成')
+    if (tags.length) meta.append(taglist(tags))
+    if (d.colors.length) meta.append(colors(d.colors))
+    b.append(meta)
+    cur.append(b)
+  }
+  car.append(prev, cur, next)
+  n.append(car)
+  const thumbs = el('div', 'thumbs'); thumbs.setAttribute('role', 'radiogroup'); thumbs.setAttribute('aria-label', label)
+  for (const d of all) {
+    const t = btn('', () => { if (usable(d)) set({ [key]: d.id }) }, 'thumb')
+    t.setAttribute('role', 'radio'); t.setAttribute('aria-checked', String(d.id === state[key] && usable(d))); t.setAttribute('aria-label', usable(d) ? d.name : `${d.name}（${unusableText(d)}）`); t.title = usable(d) ? d.name : `${d.name}（${unusableText(d)}）`
+    t.append(art(d, 'art--thumb'))
+    if (!usable(d)) {
+      t.setAttribute('aria-disabled', 'true'); t.classList.add('thumb--unusable')
+      t.append(el('span', 'sign'))
+    }
+    thumbs.append(t)
+  }
+  n.append(thumbs)
+  return n
+}
+
+// ---------- 左：対戦ルールと使用するデッキ ----------
+function deckMenu(deck) {
+  const n = el('div', 'menu'); n.setAttribute('role', 'menu')
+  const item = (label, cls) => { const b = btn(label, (e) => { e.stopPropagation(); set({ menu: undefined }); toast(`（モック）「${deck.name}」を${label}`) }, cls); b.setAttribute('role', 'menuitem'); return b }
+  // 使えないカード入りのデッキは、複製できない（今どおり）。デッキ構築は開けるので、カードを抜ける
+  const copy = item('複製'); if (deck.unusable) { copy.disabled = true; copy.title = `${UNUSABLE_LABEL}のデッキは複製できません` }
+  const build = btn('デッキ構築', (e) => { e.stopPropagation(); go('deck-builder') }); build.setAttribute('role', 'menuitem')
+  n.append(build, copy, item('ラベル'), item('共有'), el('hr'), item('削除', 'menu__danger'))
+  return n
+}
+function deckRow(deck) {
+  const ok = usable(deck)
+  const picked = ok && deck.id === state.picked
+  const n = el('div', 'deckrow')
+  n.setAttribute('role', 'radio'); n.setAttribute('aria-checked', String(picked)); n.tabIndex = picked || (!decks().some((d) => usable(d) && d.id === state.picked) && deck === decks().find(usable)) ? 0 : -1
+  n.setAttribute('aria-label', deck.name)
+  if (ok) {
+    n.addEventListener('click', () => set({ picked: deck.id, menu: undefined }))
+    n.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); set({ picked: deck.id }) } })
+  } else {
+    // 選べない：aria-disabled（クリックしても何も起きない）。矢印キーでは飛ばす。理由は札の下に出し、読み上げと結び付ける
+    n.setAttribute('aria-disabled', 'true'); n.classList.add('deckrow--unusable'); n.setAttribute('aria-describedby', `unusable-${deck.id}`); n.title = unusableText(deck)
+    n.tabIndex = -1
+  }
+  if (picked) n.append(el('span', 'deckrow__picked', '選択中'))
+  if (!ok) { const band = Object.assign(el('span', 'deckrow__no'), { id: `unusable-${deck.id}` }); band.append(el('b', '', UNUSABLE_LABEL), el('span', 'sr-only', `：${reasonOf(deck)}`)); n.append(band) }
+  n.append(art(deck))
+  if (!ok) { const s = el('span', 'sign'); s.setAttribute('aria-hidden', 'true'); n.append(s) }
+  const main = el('div', 'deckrow__main')
+  main.append(el('span', 'deckrow__name', deck.name))
+  if (deck.tags.length || deck.colors.length) {
+    const meta = el('div', 'deckrow__meta')
+    // 色は色のアイコンで出す。ラベルの「色の構成」は同じことを言うので、ここでは並べない
+    const tags = deck.tags.filter((t) => t.group !== '色の構成')
+    if (tags.length) meta.append(taglist(tags))
+    if (deck.colors.length) meta.append(colors(deck.colors))
+    main.append(meta)
+  }
+  n.append(main)
+  if (canBuild()) {
+    const more = btn('…', (e) => { e.stopPropagation(); set({ menu: state.menu === deck.id ? undefined : deck.id }) }, 'icon-button deckrow__menu')
+    more.setAttribute('aria-label', `${deck.name}の操作`); more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-expanded', String(state.menu === deck.id))
+    n.append(more)
+    if (state.menu === deck.id) n.append(deckMenu(deck))
+  } else n.append(el('span'))
+  return n
+}
+function deckPanel() {
+  const n = el('section', 'panel panel--decks')
+  const head = el('div', 'panel__head')
+  head.append(el('h2', 'panel__title', '使用するデッキ'))
+  const all = decks()
+  head.append(el('span', 'panel__aside', `${all.length} 個`))
+  n.append(head)
+  n.append(rulesPicker())
+
+  const list = el('div', 'decks'); list.setAttribute('role', 'radiogroup'); list.setAttribute('aria-label', '使用するデッキ')
+  if (all.length === 0) {
+    list.append(el('p', 'decks__none', 'デッキがありません。\n「デッキ一覧」から作れます'))
+  } else {
+    if (!all.some((d) => usable(d) && d.id === state.picked)) list.append(el('p', 'decks__notice', 'デッキを選んでください'))
+    const pages = Math.ceil(all.length / DECKS_PER_PAGE)
+    const page = Math.min(state.deckPage, pages - 1)
+    for (const deck of all.slice(page * DECKS_PER_PAGE, (page + 1) * DECKS_PER_PAGE)) list.append(deckRow(deck))
+  }
+  n.append(list)
+
+  const foot = el('div', 'foot')
+  const pages = Math.max(1, Math.ceil(all.length / DECKS_PER_PAGE))
+  foot.append(pages > 1 ? pager(Math.min(state.deckPage, pages - 1), pages, (p) => set({ deckPage: p, menu: undefined }), 'デッキのページ') : el('span'))
+  if (canBuild()) foot.append(btn('デッキ一覧', () => go('deck-list')))
+  n.append(foot)
+  return n
+}
+
+// ---------- 真ん中の上：対人戦（左）・CPU戦（右） ----------
+function humanMode() {
+  const n = el('section', 'panel mode mode--human')
+  const head = el('div', 'mode__head')
+  head.append(el('h2', 'mode__title', '対人戦'), el('span', 'mode__sub', 'ほかのプレイヤーと対戦する'))
+  n.append(head)
+  const body = el('div', 'mode__body')
+  const label = el('label', 'mode__label', '部屋名')
+  const input = el('input'); input.type = 'text'; input.maxLength = 24; input.placeholder = '空欄可'; input.value = state.roomName
+  input.addEventListener('input', () => { state.roomName = input.value })
+  label.append(input)
+  body.append(label)
+  // 鍵付きの部屋（パスワードを確かめるのはサーバ。別 Issue）
+  const lock = el('div', 'lock')
+  const check = el('label', 'lock__check')
+  const box = el('input'); box.type = 'checkbox'; box.checked = state.locking
+  box.addEventListener('change', () => set({ locking: box.checked }))
+  check.append(box, el('span', '', '🔒 鍵付きの部屋にする'))
+  lock.append(check)
+  if (state.locking) {
+    const pw = el('input'); pw.type = 'password'; pw.maxLength = 16; pw.placeholder = 'パスワード'; pw.value = state.password
+    pw.setAttribute('aria-label', 'パスワード'); pw.autocomplete = 'new-password'
+    pw.addEventListener('input', () => { state.password = pw.value })
+    lock.append(pw)
+  }
+  body.append(lock)
+  body.append(el('p', 'mode__note', '作成した部屋は対戦部屋一覧に出て、ほかのプレイヤーが参加できます。'))
+  body.append(el('span', 'mode__spacer'))
+  body.append(...[].concat(refuse(btn('対戦部屋を作成する', () => { if (!noDeck()) go('waiting') }, 'mode__go'), noDeck(), 'refusal-create')))
+  n.append(body)
+  return n
+}
+function cpuMode() {
+  const n = el('section', 'panel mode mode--cpu')
+  const head = el('div', 'mode__head')
+  head.append(el('h2', 'mode__title', 'CPU戦'), el('span', 'mode__sub', 'CPUと対戦して腕を試す'))
+  n.append(head)
+  const body = el('div', 'mode__body')
+  body.append(deckCarousel('CPUが使用するデッキ', 'cpuPicked'))
+  body.append(el('span', 'mode__spacer'))
+  body.append(...[].concat(refuse(btn('CPUと対戦する', () => { if (!noDeck()) go('duel') }, 'mode__go'), noDeck(), 'refusal-cpu')))
+  n.append(body)
+  return n
+}
+
+// ---------- 真ん中の下：対戦部屋一覧 ----------
+function roomsPanel() {
+  const n = el('section', 'panel panel--rooms')
+  const head = el('div', 'panel__head')
+  head.append(el('h2', 'panel__title', '対戦部屋一覧'))
+  n.append(head)
+
+  // CPU 戦の部屋・終わった部屋は並べない（人が入れる・見て分かる部屋だけ）
+  const rooms = state.roomsShown === 'あり' ? ROOMS : []
+  const tools = el('div', 'rooms__tools')
+  const tabs = el('div', 'tabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'ステータスで絞り込む')
+  for (const t of ['すべて', '相手を待っている', '対戦中']) {
+    const count = t === 'すべて' ? rooms.length : rooms.filter((r) => r.status === t).length
+    const b = btn(STATUS_LABEL[t] ?? t, () => set({ tab: t, roomPage: 0 }))
+    b.append(el('span', 'tabs__count', String(count)))
+    b.setAttribute('aria-pressed', String(state.tab === t))
+    tabs.append(b)
+  }
+  const search = el('label', 'search')
+  const q = el('input'); q.type = 'search'; q.placeholder = '部屋名・プレイヤーで探す'; q.value = state.query; q.setAttribute('aria-label', '部屋を探す')
+  q.addEventListener('input', () => { state.query = q.value; state.roomPage = 0; renderRooms() })
+  search.append(q)
+  tools.append(tabs, search)
+  n.append(tools)
+
+  const box = el('div', 'rooms'); box.id = 'rooms'
+  n.append(box)
+  const foot = el('div', 'pager-slot'); foot.id = 'rooms-pager'
+  n.append(foot)
+  queueMicrotask(renderRooms)
+  return n
+}
+function renderRooms() {
+  const box = document.getElementById('rooms'); const foot = document.getElementById('rooms-pager')
+  if (!box) return
+  box.replaceChildren(); foot.replaceChildren()
+  const rooms = state.roomsShown === 'あり' ? ROOMS : []
+  const query = state.query.trim()
+  const shown = rooms
+    .filter((r) => state.tab === 'すべて' || r.status === state.tab)
+    .filter((r) => !query || (r.name ?? '').includes(query) || r.occupants.some((o) => o.includes(query)))
+  if (rooms.length === 0) { box.append(el('p', 'rooms__none', 'まだ部屋がありません')); return }
+  if (shown.length === 0) { box.append(el('p', 'rooms__none', '当てはまる部屋がありません')); return }
+  const pages = Math.ceil(shown.length / ROOMS_PER_PAGE)
+  const page = Math.min(state.roomPage, pages - 1)
+  const table = el('table')
+  const thead = el('thead'); const hr = el('tr')
+  for (const h of ['部屋名', 'ステータス', 'ルール', 'プレイヤー', '観戦', '']) hr.append(el('th', '', h))
+  thead.append(hr); table.append(thead)
+  const tbody = el('tbody')
+  for (const r of shown.slice(page * ROOMS_PER_PAGE, (page + 1) * ROOMS_PER_PAGE)) {
+    const tr = el('tr')
+    const nameCell = el('td', 'room__name')
+    if (r.locked) { const l = el('span', 'room__lock', '🔒'); l.setAttribute('role', 'img'); l.setAttribute('aria-label', '鍵付きの部屋'); l.title = '鍵付きの部屋'; nameCell.append(l) }
+    nameCell.append(r.name ?? `${r.occupants[0]}の対戦部屋`)
+    tr.append(nameCell)
+    const st = el('td'); st.append(el('span', `badge badge--${STATUS_LABEL[r.status]}`, STATUS_LABEL[r.status])); tr.append(st)
+    tr.append(el('td', 'room__rules', r.rules))
+    // プレイヤーのアイコン（アバターを決める機能は別 Issue。それまでは人型のシルエット）。空いている席は点線の丸
+    const pl = el('td', 'room__players')
+    const ps = el('span', 'players')
+    const seat = (o) => {
+      const p = el('span', 'player')
+      if (o === undefined) { const e = el('span', 'players__empty', '?'); p.append(e, el('span', 'player__name', '募集中')); p.setAttribute('aria-label', '空いている席'); return p }
+      const name = el('span', 'player__name', o); name.title = o
+      p.append(avatar(), name)
+      return p
+    }
+    ps.append(seat(r.occupants[0]), el('span', 'players__vs', 'VS'), seat(r.occupants[1]))
+    pl.append(ps, el('small', '', `${r.occupants.length}/2`)); tr.append(pl)
+    // 観戦している人数（観戦は別 Issue）
+    const watch = el('td', 'room__watch')
+    watch.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4C5 4 1.7 8 1 10c.7 2 4 6 9 6s8.3-4 9-6c-.7-2-4-6-9-6z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="10" r="3" fill="currentColor"/></svg>'
+    watch.append(String(r.watchers)); watch.setAttribute('aria-label', `観戦 ${r.watchers} 人`)
+    tr.append(watch)
+    const act = el('td', 'room__action')
+    const roomName = r.name ?? `${r.occupants[0]}の対戦部屋`
+    // 待機中は参加、対戦中は観戦（観戦は別 Issue。入るまでは本番に出さない）
+    // 鍵付きの部屋は、参加を押すとパスワードを打つ窓が出る
+    // 観戦も、鍵付きの部屋ならパスワードが要る
+    const enter = (purpose) => (r.locked ? set({ joining: { code: r.code, purpose, typed: '', wrong: false } }) : (purpose === '参加' ? go('duel') : toast(`（モック）「${roomName}」を${purpose}`)))
+    if (r.status === '相手を待っている') act.append(...[].concat(refuse(btn('参加', () => { if (!noDeck()) enter('参加') }, 'button--small join'), noDeck(), `refusal-join-${r.code}`)))
+    else act.append(btn('観戦', () => enter('観戦'), 'button--small watch'))
+    tr.append(act)
+    tbody.append(tr)
+  }
+  table.append(tbody)
+  box.append(table)
+  if (pages > 1) foot.append(pager(page, pages, (p) => { state.roomPage = p; renderRooms() }, '部屋のページ'))
+}
+
+// ---------- 右：お知らせ ----------
+function newsPanel() {
+  const n = el('section', 'panel panel--news')
+  const head = el('div', 'panel__head'); head.append(el('h2', 'panel__title', 'お知らせ'))
+  n.append(head)
+  if (state.news === 'なし') {
+    const none = el('div', 'news__none')
+    none.append(el('span', 'news__icon', '📣'), el('span', '', 'お知らせはまだありません'))
+    n.append(none)
+    return n
+  }
+  head.append(btn('すべて見る ›', () => set({ newsView: { kind: '一覧', filter: 'すべて' } }), 'news__all'))
+  n.append(newsList(NEWS.slice(0, 5), '窓の外'))
+  return n
+}
+function newsMeta(item) {
+  const meta = el('div', 'news__meta')
+  meta.append(el('span', `news__kind news__kind--${item.kind}`, item.kind))
+  if (item.version) meta.append(el('span', 'news__version', item.version))
+  meta.append(el('time', '', item.date.replaceAll('-', '/')))
+  return meta
+}
+function newsList(items, from) {
+  const list = el('ul', 'news')
+  for (const item of items) {
+    const li = el('li', 'news__item')
+    const a = btn('', () => set({ newsView: { kind: '詳細', index: NEWS.indexOf(item), from, filter: state.newsView?.filter ?? 'すべて' } }), 'news__link')
+    const body = el('div', 'news__body')
+    body.append(newsMeta(item), el('span', 'news__title', item.title))
+    if (item.summary) body.append(el('span', 'news__summary', item.summary))
+    a.append(body, el('span', 'news__chevron', '›'))
+    li.append(a); list.append(li)
+  }
+  return list
+}
+
+// ---------- お知らせの窓（画面の中に重ねる。ブラウザ標準のダイアログは使わない） ----------
+function newsModal() {
+  const v = state.newsView
+  const close = () => set({ newsView: undefined })
+  const back = el('div', 'modal')
+  back.addEventListener('click', (e) => { if (e.target === back) close() })
+  const box = el('section', 'panel modal__box'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true')
+  const head = el('div', 'panel__head')
+  const x = btn('×', close, 'icon-button'); x.setAttribute('aria-label', '閉じる')
+
+  if (v.kind === '一覧') {
+    head.append(el('h2', 'panel__title', 'お知らせ'), x)
+    box.setAttribute('aria-label', 'お知らせ')
+    box.append(head)
+    const tools = el('div', 'rooms__tools')
+    const tabs = el('div', 'tabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', '種別で絞り込む')
+    for (const t of ['すべて', '更新', '修正', 'お知らせ']) {
+      const b = btn(t, () => set({ newsView: { ...v, filter: t } }))
+      b.setAttribute('aria-pressed', String(v.filter === t)); tabs.append(b)
+    }
+    tools.append(tabs); box.append(tools)
+    box.append(newsList(NEWS.filter((i) => v.filter === 'すべて' || i.kind === v.filter), '一覧'))
+  } else {
+    const item = NEWS[v.index]
+    if (v.from === '一覧') { const b = btn('‹ 一覧へ', () => set({ newsView: { kind: '一覧', filter: v.filter } }), 'button--small'); head.append(b) }
+    else head.append(el('h2', 'panel__title', 'お知らせ'))
+    head.append(x)
+    box.setAttribute('aria-label', item.title)
+    box.append(head)
+    const body = el('article', 'modal__body newsdetail')
+    body.append(newsMeta(item), el('h3', 'newsdetail__title', item.title))
+    for (const p of item.body) body.append(el('p', '', p))
+    if (item.changes.length) {
+      body.append(el('h4', 'newsdetail__sub', '変わったこと'))
+      const ul = el('ul', 'newsdetail__changes'); for (const c of item.changes) ul.append(el('li', '', c)); body.append(ul)
+    }
+    box.append(body)
+    const foot = el('div', 'modal__buttons')
+    const prev = NEWS[v.index + 1]; const next = NEWS[v.index - 1]
+    const older = btn('‹ 前のお知らせ', () => set({ newsView: { ...v, index: v.index + 1 } }), 'button--small'); older.disabled = !prev
+    const newer = btn('次のお知らせ ›', () => set({ newsView: { ...v, index: v.index - 1 } }), 'button--small'); newer.disabled = !next
+    foot.append(older, newer, el('span', 'modal__spacer'), btn('閉じる', close, 'button--primary'))
+    box.append(foot)
+  }
+  back.append(box)
+  queueMicrotask(() => x.focus())
+  return back
+}
+
+// ---------- 鍵付きの部屋に参加する窓 ----------
+// モックでは、打ったパスワードが「1234」なら参加できる。それ以外は違うと出す（確かめるのはサーバ）
+function passwordModal() {
+  const j = state.joining
+  const room = ROOMS.find((r) => r.code === j.code)
+  const roomName = room.name ?? `${room.occupants[0]}の対戦部屋`
+  const close = () => set({ joining: undefined })
+  const back = el('div', 'modal')
+  back.addEventListener('click', (e) => { if (e.target === back) close() })
+  const box = el('section', 'panel modal__box modal__box--small'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); const particle = j.purpose === '参加' ? 'に' : 'を'
+  box.setAttribute('aria-label', `鍵付きの部屋${particle}${j.purpose}`)
+  const head = el('div', 'panel__head'); head.append(el('h2', 'panel__title', `🔒 鍵付きの部屋${particle}${j.purpose}`))
+  box.append(head)
+  const body = el('div', 'modal__body')
+  body.append(el('p', '', `「${roomName}」${particle}${j.purpose}するには、部屋を作った人から聞いたパスワードを入力してください。`))
+  const pw = el('input'); pw.type = 'password'; pw.maxLength = 16; pw.placeholder = 'パスワード'; pw.value = j.typed; pw.autocomplete = 'off'; pw.setAttribute('aria-label', 'パスワード')
+  body.append(pw)
+  const warn = el('p', 'modal__warn', 'パスワードが違います'); warn.setAttribute('role', 'alert'); if (!j.wrong) warn.hidden = true
+  body.append(warn)
+  box.append(body)
+  const foot = el('div', 'modal__buttons')
+  const join = btn(j.purpose, () => {
+    if (pw.value === '1234') { set({ joining: undefined }); if (j.purpose === '参加') go('duel'); else toast(`（モック）「${roomName}」${particle}${j.purpose}`) }
+    else set({ joining: { ...j, typed: pw.value, wrong: true } })
+  }, 'join')
+  join.disabled = pw.value === ''
+  pw.addEventListener('input', () => { j.typed = pw.value; join.disabled = pw.value === ''; warn.hidden = true })
+  pw.addEventListener('keydown', (e) => { if (e.key === 'Enter' && pw.value) join.click() })
+  foot.append(el('span', 'modal__spacer'), btn('やめる', close), join)
+  box.append(foot)
+  back.append(box)
+  queueMicrotask(() => { pw.focus(); pw.setSelectionRange(pw.value.length, pw.value.length) })
+  return back
+}
+
+function render() {
+  const app = document.getElementById('app')
+  const lobby = el('main', 'lobby')
+  lobby.dataset.fit = state.fit
+  lobby.append(topbar())
+  const cols = el('div', 'columns')
+  const left = el('div', 'column'); left.append(deckPanel())
+  const center = el('div', 'column')
+  const modes = el('div', 'modes'); modes.append(humanMode(), cpuMode())
+  center.append(modes, roomsPanel())
+  const right = el('div', 'column'); right.append(newsPanel())
+  cols.append(left, center, right)
+  lobby.append(cols)
+  if (state.newsView) lobby.append(newsModal())
+  if (state.joining) lobby.append(passwordModal())
+  app.replaceChildren(lobby)
+  if (state.toast) app.append(el('div', 'toast', state.toast))
+  renderSwitch()
+}
+
+function renderSwitch() {
+  const s = document.getElementById('switch'); s.replaceChildren()
+  const group = (label, key, values, onPick) => {
+    s.append(el('span', '', label))
+    for (const v of values) { const b = btn(v, () => (onPick ? onPick(v) : set({ [key]: v }))); b.setAttribute('aria-pressed', String(state[key] === v)); s.append(b) }
+  }
+  group('立て方', 'standing', ['ログインあり', 'ログインなし'], (v) => set({ standing: v, picked: v === 'ログインあり' ? 'd1' : 'p1', cpuPicked: v === 'ログインあり' ? 'd2' : 'p1', deckPage: 0, menu: undefined }))
+  group('部屋', 'roomsShown', ['あり', 'なし'])
+  group('お知らせ', 'news', ['あり', 'なし'])
+  s.append(el('span', '', 'デッキ'))
+  { const b = btn(state.unusable ? '使えないカード入り：あり' : '使えないカード入り：なし', () => set({ unusable: !state.unusable })); b.setAttribute('aria-pressed', String(state.unusable)); s.append(b) }
+  group('狭い幅の詰め方', 'fit', ['A', 'B', 'なし'])
+  const pickBad = btn('使えないデッキを選んだ状態', () => set({ picked: 'd9', cpuPicked: 'd9', unusable: true })); s.append(pickBad)
+  const unpick = btn('選んでいない', () => set({ picked: undefined, cpuPicked: undefined })); unpick.setAttribute('aria-pressed', String(state.picked === undefined)); s.append(unpick)
+}
+
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.newsView) set({ newsView: undefined }) })
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.joining) set({ joining: undefined }) })
+document.addEventListener('click', (e) => { if (state.menu && !e.target.closest('.menu') && !e.target.closest('.deckrow__menu')) set({ menu: undefined }) })
+render()
+</script>
+</body>
+</html>

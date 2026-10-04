@@ -1,0 +1,107 @@
+/* ---- style.css の :root から写したもの ---- */
+:root {
+  --gap: 0.4rem;
+  --ink: #3b2a12;
+  --ink-dim: #7d6848;
+  --heading: #8a4700;
+  --gold: #dca640;
+  --gold-bright: #f7c956;
+  --gold-deep: #b07a1c;
+  --accent-own: #2a6fd6;
+  --accent-opponent: #d3364a;
+  --accent-opponent-soft: #ffe6e6;
+  --panel: rgb(255 252 244 / 0.88);
+  --panel-edge: #e2b252;
+  --radius: 12px;
+  --radius-small: 7px;
+  --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
+  --heading-font-gothic: 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
+  --gap-lg: 0.75rem;
+}
+html, body { height: 100%; }
+body { box-sizing: border-box; margin: 0; padding: var(--gap); font-family: system-ui, sans-serif; font-size: 14px; }
+#board { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.status { margin: var(--gap) 0; }
+
+/* ---- モックの切り替え（本番には無い） ---- */
+.mockbar { position: fixed; z-index: 9; right: 8px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px; max-width: 46rem; padding: 6px; border-radius: 8px; background: rgb(0 0 0 / 0.72); font: 12px system-ui; }
+.mockbar button { padding: 3px 8px; border: 1px solid #888; border-radius: 4px; color: #fff; background: #333; cursor: pointer; }
+.mockbar button[aria-pressed='true'] { border-color: #ffd36b; background: #7a5a10; }
+.mockbar span { align-self: center; padding: 0 4px; color: #ccc; }
+.mockbar a { align-self: center; padding: 3px 8px; color: #ffd36b; }
+
+/* ---- 共通の外枠（ロビーと同じ地。画面ごとに .naming / .awaiting で書く想定） ---- */
+.frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: calc(var(--gap) * -1);
+  padding: var(--gap-lg);
+  overflow: auto;
+  color: var(--ink);
+  color-scheme: light;
+  background:
+    repeating-conic-gradient(from 8deg at 50% 38%, rgb(255 255 255 / 0.3) 0deg 3deg, transparent 3deg 9deg, rgb(255 255 255 / 0.14) 9deg 11deg, transparent 11deg 17deg),
+    radial-gradient(ellipse 65% 60% at 50% 38%, #fffdf6 0%, #ffeec2 30%, #fbc766 65%, #ee9a2c 100%);
+}
+.frame *, .frame *::before, .frame *::after { box-sizing: border-box; }
+.frame .panel {
+  display: flex; flex-direction: column; min-width: 0;
+  border: 1px solid var(--panel-edge); border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgb(150 80 0 / 0.22), inset 0 1px 0 #fff;
+}
+.frame .panel__head {
+  display: flex; align-items: center; min-height: 2.6rem; padding: 0.45rem 0.9rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.45);
+}
+.frame .panel__title {
+  margin: 0; color: var(--heading); font-family: var(--heading-font);
+  font-size: 1rem; font-weight: 700; letter-spacing: 0.06em;
+}
+.frame .panel__body { display: flex; flex-direction: column; gap: 0.7rem; padding: 1rem 1.1rem 1.1rem; }
+.frame button {
+  padding: 0.45rem 0.9rem; border: 1px solid var(--gold); border-radius: var(--radius-small);
+  color: var(--ink); background: linear-gradient(180deg, #fffefa, #fbefd4);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgb(150 80 0 / 0.25);
+  font: inherit; white-space: nowrap; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.frame button:hover { border-color: var(--gold-deep); box-shadow: inset 0 1px 0 #fff, 0 0 10px rgb(247 201 86 / 0.8); }
+.frame button:focus-visible { outline: 2px solid var(--accent-own); outline-offset: 2px; }
+.frame .button--primary { border-color: var(--gold-deep); background: linear-gradient(180deg, var(--gold-bright), var(--gold)); font-weight: 700; }
+.frame input[type='text'] {
+  width: 100%; padding: 0.5rem 0.7rem; border: 1px solid var(--panel-edge); border-radius: var(--radius-small);
+  color: var(--ink); background: #fffef9; font: inherit; font-size: 1.05rem;
+}
+.frame input:focus-visible { outline: 2px solid var(--accent-own); outline-offset: 1px; }
+.frame .lead { margin: 0; color: var(--ink-dim); line-height: 1.6; }
+
+/* ---- 名前を決める画面 ---- */
+/* 縦の中央寄せは自動余白で行う（justify-content: center だと、低い窓で上が切れて届かない） */
+.naming > :first-child, .awaiting > :first-child { margin-top: auto; }
+.naming > :last-child, .awaiting > :last-child { margin-bottom: auto; }
+.naming { gap: 1.6rem; }
+.naming__brand {
+  margin: 0; color: var(--heading); font-family: var(--heading-font-gothic);
+  font-size: 2.6rem; font-weight: 800; letter-spacing: 0.12em;
+  text-shadow: 0 1px 0 #fff, 0 0 18px rgb(255 255 255 / 0.9);
+}
+.naming .panel { width: min(30rem, 100%); }
+.naming__field { display: flex; gap: 0.5rem; align-items: stretch; }
+.naming__field input { flex: 1 1 auto; min-width: 0; }
+.naming__count { align-self: flex-end; margin-top: -0.4rem; color: var(--ink-dim); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.naming__count--full { color: var(--heading); font-weight: 700; }
+.naming__refusal {
+  display: flex; gap: 0.45rem; align-items: flex-start; margin: 0; padding: 0.5rem 0.7rem;
+  border: 1px solid rgb(211 54 74 / 0.45); border-radius: var(--radius-small);
+  color: #a3192c; background: var(--accent-opponent-soft); font-weight: 600;
+}
+.naming__refusal::before { content: '!' / ''; display: grid; flex: none; place-items: center; width: 1.2rem; height: 1.2rem; border-radius: 50%; color: #fff; background: var(--accent-opponent); font-size: 0.8rem; font-weight: 800; }
+
+/* ---- 対戦待機中画面 ---- */
+.awaiting .panel { width: min(28rem, 100%); }
+.awaiting .panel__body { align-items: stretch; text-align: center; padding: 1.4rem 1.2rem 1.2rem; gap: 1.1rem; }
+.awaiting__title { margin: 0; color: var(--heading); font-family: var(--heading-font-gothic); font-size: 1.5rem; font-weight: 800; letter-spacing: 0.08em; }
+.awaiting__leave { align-self: center; }

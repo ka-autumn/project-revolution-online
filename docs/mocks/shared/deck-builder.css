@@ -1,0 +1,459 @@
+/* ---------- 一本化する共通の値（:root に置く想定） ---------- */
+:root {
+  --gap: 0.4rem;
+  --ink: #3b2a12;
+  --ink-dim: #7d6848;
+  --heading: #8a4700;
+  --gold: #dca640;
+  --gold-bright: #f7c956;
+  --gold-deep: #b07a1c;
+  --own: #2a6fd6;
+  --own-soft: #e4eeff;
+  --opponent: #d3364a;
+  --opponent-soft: #ffe6e6;
+  --panel: rgb(255 252 244 / 0.9);
+  --panel-edge: #e2b252;
+  --radius: 12px;
+  --radius-small: 7px;
+  --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
+  --rays:
+    repeating-conic-gradient(from 8deg at 50% 38%, rgb(255 255 255 / 0.3) 0deg 3deg, transparent 3deg 9deg, rgb(255 255 255 / 0.14) 9deg 11deg, transparent 11deg 17deg),
+    radial-gradient(ellipse 65% 60% at 50% 38%, #fffdf6 0%, #ffeec2 30%, #fbc766 65%, #ee9a2c 100%);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: var(--ink); }
+
+/* ---------- 画面の外枠 ---------- */
+.deckbuild {
+  --card-width: 7.4rem;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  height: 100vh;
+  padding: 0.75rem;
+  overflow: hidden;
+  background: var(--rays);
+}
+
+.deckbuild .panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgb(150 80 0 / 0.22), inset 0 1px 0 #fff;
+}
+.deckbuild .panel__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.6rem;
+  padding: 0.45rem 0.9rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.45);
+}
+.deckbuild .panel__title {
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.deckbuild .panel__aside { color: var(--ink-dim); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.deckbuild .panel__aside strong { color: var(--ink); font-size: 1.05rem; }
+.deckbuild .panel__body { display: flex; flex-direction: column; gap: 0.7rem; padding: 0.7rem 0.9rem; }
+
+/* ---------- ボタン・入力欄（対戦画面の .duel button と同じ見た目） ---------- */
+.deckbuild button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: linear-gradient(180deg, #fffefa, #fbefd4);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgb(150 80 0 / 0.25);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.deckbuild button:hover { border-color: var(--gold-deep); box-shadow: inset 0 1px 0 #fff, 0 0 10px rgb(247 201 86 / 0.8); }
+.deckbuild button:focus-visible { outline: 2px solid var(--own); outline-offset: 2px; }
+.deckbuild button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+.deckbuild .button--primary { border-color: var(--gold-deep); background: linear-gradient(180deg, var(--gold-bright), var(--gold)); font-weight: 700; }
+.deckbuild .button--small { padding: 0.25rem 0.65rem; font-size: 0.85rem; }
+.deckbuild .button--danger { color: #fff; border-color: #a8182a; background: linear-gradient(180deg, #e24a5c, #c0223a); font-weight: 700; }
+
+.deckbuild input[type='text'], .deckbuild input[type='search'], .deckbuild input[type='number'], .deckbuild textarea, .deckbuild select {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-small);
+  color: var(--ink);
+  background: #fffef9;
+  font: inherit;
+}
+.deckbuild textarea { resize: vertical; }
+.deckbuild input:focus-visible, .deckbuild textarea:focus-visible, .deckbuild select:focus-visible { outline: 2px solid var(--own); outline-offset: 1px; }
+
+/* ---------- 上の帯 ---------- */
+.deckbuild .topbar { flex-direction: row; align-items: center; gap: 0.8rem; padding: 0.55rem 0.9rem; }
+.deckbuild .topbar__title {
+  flex: none;
+  margin: 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 0 #fff;
+}
+.deckbuild .topbar__sub { color: var(--ink-dim); font-size: 0.85rem; }
+.deckbuild .topbar__divider { flex: none; width: 1px; height: 1.8rem; background: rgb(220 166 64 / 0.6); }
+.deckbuild .topbar__spacer { flex: 1; }
+.deckbuild .deckname { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+.deckbuild .deckname__text {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 1.15rem;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.deckbuild .deckname input { width: 18rem; font-size: 1.05rem; font-weight: 700; }
+.deckbuild .icon-button { min-width: 2.2rem; padding: 0.3rem 0.45rem; line-height: 1.2; }
+.deckbuild .rule { display: flex; flex: none; align-items: center; gap: 0.35rem; color: var(--ink-dim); font-size: 0.8rem; white-space: nowrap; }
+.deckbuild .rule select { width: auto; min-width: 7.5rem; padding: 0.3rem 0.5rem; }
+
+/* ---------- 3 列 ---------- */
+.deckbuild .columns { display: grid; grid-template-columns: 21rem minmax(0, 1fr) 25rem; gap: 0.75rem; min-height: 0; }
+.deckbuild .column { display: flex; flex-direction: column; gap: 0.75rem; min-height: 0; min-width: 0; }
+/* 中身の幅で列が押し広げられないようにする（横スクロールはパネルの中で起きる） */
+.deckbuild .panel { min-width: 0; }
+.deckbuild button { white-space: nowrap; }
+.deckbuild .topbar { flex-wrap: wrap; row-gap: 0.4rem; }
+
+/* ---------- 左：絞り込み ---------- */
+.deckbuild .panel--filter { flex: 1; }
+.deckbuild .panel--filter .panel__body { overflow-y: auto; }
+/* 項目名と選択肢を同じ行に。項目名の幅は揃える（一番長い「移動方向」に合わせる） */
+.deckbuild .filter__row { display: grid; grid-template-columns: 4.6em minmax(0, 1fr); align-items: baseline; gap: 0.5rem; }
+.deckbuild .filter__label { color: var(--ink-dim); font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+.deckbuild .filter__chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.deckbuild .filter__range { display: flex; align-items: center; gap: 0.35rem; }
+.deckbuild .filter__range input { width: 6.2em; }
+.deckbuild .filter__more { align-self: stretch; font-size: 0.85rem; }
+.deckbuild .fold { padding: 0.35rem 0.5rem; border-radius: var(--radius-small); background: rgb(255 255 255 / 0.55); box-shadow: 0 0 0 1px rgb(220 166 64 / 0.45) inset; }
+.deckbuild .fold > summary {
+  display: grid;
+  grid-template-columns: 1em auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.3rem;
+  cursor: pointer;
+  list-style: none;
+}
+.deckbuild .fold > summary::-webkit-details-marker { display: none; }
+.deckbuild .fold > summary::before { content: '▸'; color: var(--ink-dim); font-size: 0.8rem; }
+.deckbuild .fold[open] > summary::before { content: '▾'; }
+.deckbuild .fold__picked { overflow: hidden; color: var(--heading); font-size: 0.8rem; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+.deckbuild .fold__picked--すべて { color: var(--ink-dim); font-weight: 400; }
+.deckbuild .fold[open] .fold__picked { visibility: hidden; }
+.deckbuild .fold__body { margin-top: 0.45rem; }
+
+.deckbuild .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.2rem 0.65rem;
+  border-color: var(--panel-edge);
+  border-radius: 999px;
+  background: #fffef9;
+  box-shadow: none;
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+.deckbuild .chip--選択中 { border-color: var(--gold-deep); background: linear-gradient(180deg, var(--gold-bright), var(--gold)); font-weight: 700; }
+.deckbuild .chip--すべて { padding-inline: 0.8rem; }
+.deckbuild .chip__color { width: 1.15em; height: 1.15em; }
+.deckbuild .chip .star { width: 1.5em; height: 1.5em; font-size: 0.85em; }
+.deckbuild .chip__move { width: 1.6em; height: 1.6em; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.3)); }
+.deckbuild .chip .star span { font-size: 0.95em; }
+
+/* ---------- 左：カードの詳細（下へ畳める） ---------- */
+.deckbuild .panel--detail { flex: none; overflow: hidden; }
+.deckbuild .panel--detail-閉 .panel__head { border-bottom: none; }
+.deckbuild .detail__toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+.deckbuild .detail__toggle:hover { box-shadow: none; }
+.deckbuild .detail__chevron { color: var(--ink-dim); font-size: 0.9rem; }
+.deckbuild .detail {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.7rem;
+  height: calc(8rem * 1.5 + 1.2rem);
+  padding: 0.6rem 0.8rem;
+  overflow: hidden;
+  transition: height 0.24s ease, padding 0.24s ease, transform 0.24s ease, opacity 0.24s ease;
+}
+/* 畳むと中身は下へ沈み、パネルは見出しだけになる。開くときは下からせり上がる */
+.deckbuild .panel--detail-閉 .detail { height: 0; padding-block: 0; transform: translateY(40%); opacity: 0; visibility: hidden; transition-property: height, padding, transform, opacity, visibility; }
+.deckbuild .detail .card--拡大 { --card-width: 8rem; font-size: 0.6rem; }
+.deckbuild .detail .card--拡大 .card__face { padding: 0.28rem; gap: 0.2rem; border-width: 2px; border-radius: 8px; }
+.deckbuild .detail .card--拡大 .card__title { font-size: 0.8rem; }
+.deckbuild .detail .card--拡大 .card__stats { font-size: 0.8rem; }
+/* 面のテキスト欄はアイコン 1 つ分の高さに固定し、はみ出すぶんは省略する（右に全文がある） */
+.deckbuild .detail .card--拡大 .card__text { height: 2.6rem; min-height: 0; max-height: none; padding: 0.2rem 0.3rem; font-size: 0.55rem; line-height: 1.35; }
+.deckbuild .detail .card--拡大 .card__lines { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.deckbuild .detail .card--拡大 .move-icon, .deckbuild .detail .card--拡大 .trigger-icon { width: 2rem; height: 2rem; }
+.deckbuild .detail__none { grid-column: 1 / -1; align-self: center; margin: 0; padding: 0 1rem; color: var(--ink-dim); font-size: 0.85rem; text-align: center; }
+.deckbuild .detail__info { min-width: 0; overflow-y: auto; font-size: 0.78rem; }
+.deckbuild .detail__name { display: flex; align-items: center; gap: 0.2rem; margin-bottom: 0.3rem; color: var(--heading); font-size: 0.98rem; font-weight: 800; line-height: 1.25; }
+.deckbuild .detail__name .star { width: 1.3rem; height: 1.3rem; font-size: 0.7rem; }
+.deckbuild .detail__rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.1rem 0.5rem; margin: 0; }
+.deckbuild .detail__rows dt { color: var(--ink-dim); white-space: nowrap; }
+.deckbuild .detail__rows dd { margin: 0; font-weight: 600; }
+.deckbuild .detail__text { margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid rgb(220 166 64 / 0.5); line-height: 1.5; }
+.deckbuild .detail__text p { margin: 0 0 0.2rem; }
+
+/* ---------- カードの面：ブロックのロゴ（BP・SP の間） ---------- */
+.deckbuild .card__stats { align-items: center; gap: 0.2em; }
+.deckbuild .card__stats--ロゴだけ { justify-content: center; }
+.deckbuild .block-logo {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.7em;
+  height: 1.7em;
+  border: 1px solid rgb(255 255 255 / 0.85);
+  border-radius: 50%;
+  color: #fff;
+  background: radial-gradient(circle at 35% 30%, var(--logo-light), var(--logo-deep));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
+  font-size: 0.62em;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.deckbuild .block-logo--Ａ { --logo-light: #7fa7e8; --logo-deep: #1d3f8f; }
+.deckbuild .block-logo--Ｂ { --logo-light: #f08a8a; --logo-deep: #8f1d1d; }
+.deckbuild .block-logo--Ｃ { --logo-light: #8fd6a8; --logo-deep: #1d6b3a; }
+.deckbuild .block-logo--Ｄ { --logo-light: #c9a0ec; --logo-deep: #5a2a8f; }
+.deckbuild .block-logo--Ｅ { --logo-light: #f5c46a; --logo-deep: #9a5c00; }
+
+/* ---------- 真ん中：カードプール ---------- */
+.deckbuild .column--center .panel { flex: 1; }
+.deckbuild .panel__aside--tools { display: flex; align-items: center; gap: 0.8rem; }
+/* 見出しの行は折り返さない（狭い幅で「カード一覧」や切り替えのボタンが 2 行に割れないように） */
+/* 狭ければ、枚数と切り替えのボタンは見出しの下の行へ折り返す。ボタンの中の文字は折り返さない */
+.deckbuild .panel__head { flex-wrap: wrap; row-gap: 0.35rem; }
+.deckbuild .panel__aside--tools { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+.deckbuild .panel__title, .deckbuild .viewswitch button, .deckbuild .panel__aside--tools > span { white-space: nowrap; }
+.deckbuild .viewswitch { display: inline-flex; border: 1px solid var(--panel-edge); border-radius: var(--radius-small); overflow: hidden; }
+.deckbuild .viewswitch button { border: none; border-radius: 0; box-shadow: none; padding: 0.3rem 0.75rem; font-size: 0.85rem; background: #fffef9; }
+.deckbuild .viewswitch button + button { border-left: 1px solid var(--panel-edge); }
+.deckbuild .viewswitch button[aria-pressed='true'] { background: linear-gradient(180deg, var(--gold-bright), var(--gold)); font-weight: 700; }
+
+.deckbuild .pool { flex: 1; min-height: 0; overflow: auto; padding: 0.6rem 0.9rem 1rem; }
+.deckbuild .pool__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-width), 1fr)); gap: 0.9rem 0.8rem; justify-items: center; }
+.deckbuild .pool__item { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
+.deckbuild .pool__item .card { cursor: pointer; }
+.deckbuild .pool__item--入っている .card__face { box-shadow: 0 0 0 2px var(--gold-bright), 0 2px 6px rgb(80 40 0 / 0.4); }
+.deckbuild .pool__none, .deckbuild .pool__more { margin: 1rem 0 0; color: var(--ink-dim); text-align: center; }
+.deckbuild .rows { border-radius: var(--radius-small); background: #fffefb; box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset; }
+/*
+ * 一覧表示は、狭くなっても行の部品を隠さない。行に最小の幅を持たせ、それより狭ければ一覧ごと
+ * 横にスクロールさせる。−・枚数・＋が枠の外にはみ出すことはない（枠の中でスクロールする）。
+ */
+.deckbuild .pool .rows { min-width: 30rem; }
+
+/* 1 種ぶんの増やす・減らす口 */
+.deckbuild .counter { display: flex; flex: none; align-items: center; gap: 0.3rem; }
+.deckbuild .counter button { display: grid; place-items: center; width: 1.9rem; height: 1.9rem; padding: 0; border-radius: 50%; font-size: 1.05rem; line-height: 1; }
+.deckbuild .counter__count {
+  min-width: 2.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  color: var(--ink-dim);
+  background: rgb(255 255 255 / 0.7);
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.deckbuild .counter__count--入っている { color: #fff; background: linear-gradient(180deg, #e59a1a, #b8650a); box-shadow: none; text-shadow: 0 1px 1px rgb(0 0 0 / 0.35); }
+
+/* 1 行の形（プールの一覧表示・デッキの列で共通） */
+.deckbuild .cardrow { display: flex; align-items: center; gap: 0.45rem; padding: 0.3rem 0.5rem; border-bottom: 1px solid rgb(220 166 64 / 0.3); cursor: pointer; }
+.deckbuild .cardrow:last-child { border-bottom: none; }
+.deckbuild .cardrow:hover, .deckbuild .cardrow--詳細中 { background: rgb(247 201 86 / 0.18); }
+.deckbuild .cardrow .card__level { width: 1.75rem; height: 1.75rem; font-size: 0.85rem; }
+.deckbuild .cardrow .card__kind { flex: none; min-width: 4.2rem; font-size: 0.72rem; text-align: center; }
+.deckbuild .cardrow .star { width: 1.4rem; height: 1.4rem; font-size: 0.75rem; }
+.deckbuild .cardrow__name { flex: 1 1 5rem; min-width: 0; overflow: hidden; padding: 0; border: none; background: none; box-shadow: none; font-weight: 700; text-align: left; white-space: nowrap; text-overflow: ellipsis; }
+.deckbuild .cardrow__name:hover { box-shadow: none; }
+.deckbuild .cardrow__meta { flex: none; color: var(--ink-dim); font-size: 0.78rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.deckbuild .cardrow .counter button { width: 1.6rem; height: 1.6rem; font-size: 0.95rem; }
+.deckbuild .cardrow .counter__count { min-width: 1.9rem; }
+.deckbuild .cardrow--使えない, .deckbuild .cardrow--使えない .cardrow__name { color: var(--opponent); cursor: default; }
+/* パートナーはハート。王冠はゴミ箱と見間違えやすいので使わない */
+.deckbuild .partner-toggle { flex: none; width: 1.7rem; height: 1.7rem; padding: 0; border-radius: 50%; color: #dcb3bf; font-size: 0.95rem; line-height: 1; }
+.deckbuild .partner-toggle[aria-pressed='true'] { color: #fff; border-color: #c2254d; background: linear-gradient(180deg, #ff7f9f, #e0335a); }
+
+/* ---------- 右：デッキ ---------- */
+.deckbuild .panel--deck { flex: 1; }
+.deckbuild .partner {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.6rem 0.9rem 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-small);
+  background: linear-gradient(90deg, rgb(247 201 86 / 0.35), rgb(255 255 255 / 0.5));
+  box-shadow: 0 0 0 1px rgb(220 166 64 / 0.6) inset;
+}
+.deckbuild .partner .card { --card-width: 3.2rem; }
+.deckbuild .partner__empty { width: 3.2rem; aspect-ratio: 2 / 3; border: 2px dashed rgb(176 122 28 / 0.5); border-radius: 6px; display: grid; place-items: center; color: rgb(224 51 90 / 0.55); font-size: 1.2rem; }
+.deckbuild .partner__body { display: flex; flex: 1; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.deckbuild .partner__label { color: var(--heading); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; }
+.deckbuild .partner__name { overflow: hidden; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
+.deckbuild .partner__note { color: var(--ink-dim); font-size: 0.75rem; }
+.deckbuild .partner__warn { color: var(--opponent); font-size: 0.75rem; font-weight: 700; }
+
+.deckbuild .breakdown { display: grid; flex: none; grid-template-columns: minmax(0, 1fr) 8.5rem; gap: 0.6rem; padding: 0.6rem 0.9rem 0.2rem; }
+.deckbuild .levels { display: flex; flex-direction: column; gap: 0.2rem; margin: 0; padding: 0.4rem 0.5rem 0.3rem; border-radius: var(--radius-small); background: #fffef9; box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset; }
+.deckbuild .levels__caption { color: var(--ink-dim); font-size: 0.75rem; }
+.deckbuild .levels__bars { display: grid; grid-template-columns: repeat(6, 1fr); align-items: end; gap: 0.3rem; height: 4.6rem; }
+.deckbuild .levels__bar { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; font-size: 0.68rem; font-variant-numeric: tabular-nums; }
+/* 色ごとに積み上げる。下から COLORS の順（赤・黒・青・白・緑） */
+.deckbuild .levels__stack { display: flex; flex-direction: column-reverse; width: 72%; min-height: 2px; overflow: hidden; border-radius: 3px 3px 0 0; }
+.deckbuild .levels__seg { flex-basis: 0; background: var(--lv-deep); }
+.deckbuild .levels__seg + .levels__seg { border-bottom: 1px solid rgb(255 255 255 / 0.7); }
+.deckbuild .levels__seg.card--色-白 { background: #e8e8e8; box-shadow: inset 0 0 0 1px #b5b5b5; }
+.deckbuild .levels__axis { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 1px solid rgb(125 104 72 / 0.4); color: var(--ink-dim); font-size: 0.68rem; text-align: center; }
+.deckbuild .types { margin: 0; padding: 0.35rem 0.5rem; border-radius: var(--radius-small); background: #fffef9; box-shadow: 0 0 0 1px rgb(220 166 64 / 0.5) inset; font-size: 0.78rem; list-style: none; }
+.deckbuild .types li { display: flex; justify-content: space-between; gap: 0.3rem; padding: 0.1rem 0; }
+.deckbuild .types li span:last-child { font-weight: 700; font-variant-numeric: tabular-nums; }
+.deckbuild .types li.types__zero { color: var(--ink-dim); }
+.deckbuild .types li.types__zero span:last-child { font-weight: 400; }
+.deckbuild .types li.types__stars { margin-top: 0.25rem; padding-top: 0.3rem; border-top: 1px dashed rgb(220 166 64 / 0.6); }
+.deckbuild .types li.types__stars > span:first-child { display: inline-flex; align-items: center; gap: 0.15rem; }
+.deckbuild .types .star { width: 1.1rem; height: 1.1rem; }
+
+.deckbuild .check { flex: none; margin: 0.4rem 0.9rem 0; padding: 0.4rem 0.7rem; border-left: 4px solid var(--ink-dim); border-radius: var(--radius-small); font-size: 0.85rem; }
+.deckbuild .check p { margin: 0; }
+.deckbuild .check--満たしている { border-left-color: var(--own); background: var(--own-soft); }
+.deckbuild .check--満たしている p::before { content: '✓ '; color: var(--own); font-weight: 700; }
+.deckbuild .check--満たしていない, .deckbuild .check--確かめられない { border-left-color: var(--opponent); background: var(--opponent-soft); }
+
+.deckbuild .decklist__head { display: flex; flex: none; justify-content: space-between; margin: 0.55rem 0.9rem 0.25rem; color: var(--ink-dim); font-size: 0.78rem; }
+.deckbuild .decklist { flex: 1; min-height: 0; margin: 0 0.9rem; overflow-y: auto; }
+.deckbuild .savebar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  border-top: 1px solid rgb(220 166 64 / 0.45);
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: rgb(255 248 228 / 0.9);
+}
+.deckbuild .savebar__state { flex: 1; color: var(--ink-dim); font-size: 0.82rem; }
+.deckbuild .savebar__state--未保存 { color: var(--opponent); font-weight: 700; }
+.deckbuild .savebar__state--未保存::before { content: '● '; }
+.deckbuild .savebar .button--primary { min-width: 8rem; font-size: 1.02rem; }
+
+/* ---------- デッキ一覧 ---------- */
+.deckbuild--list .columns { grid-template-columns: 21rem minmax(0, 1fr); }
+.deckbuild .decks { flex: 1; min-height: 0; overflow-y: auto; padding: 0.8rem 0.9rem 1rem; }
+.deckbuild .decks__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr)); gap: 0.8rem; }
+.deckbuild .deckcard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 0.55rem 0.8rem;
+  padding: 0.75rem;
+  border: 1px solid rgb(220 166 64 / 0.7);
+  border-radius: var(--radius-small);
+  background: #fffef9;
+  box-shadow: 0 2px 6px rgb(150 80 0 / 0.12);
+}
+.deckbuild .deckcard .card { --card-width: 6rem; }
+.deckbuild .deckcard__face { position: relative; }
+.deckbuild .deckcard__facenote { margin-top: 0.2rem; color: var(--ink-dim); font-size: 0.68rem; text-align: center; }
+.deckbuild .deckcard__main { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.deckbuild .deckcard__head { display: flex; align-items: center; gap: 0.4rem; }
+.deckbuild .deckcard__name { flex: 1; min-width: 0; margin: 0; overflow: hidden; font-size: 1.1rem; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
+.deckbuild .deckcard__desc { display: -webkit-box; margin: 0; overflow: hidden; color: var(--ink-dim); font-size: 0.82rem; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.deckbuild .deckcard__count { font-size: 1.05rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.deckbuild .deckcard__count small { color: var(--ink-dim); font-size: 0.75rem; font-weight: 400; }
+.deckbuild .colors { display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.deckbuild .colors span { display: inline-flex; align-items: center; gap: 0.2rem; }
+.deckbuild .colors img { width: 1.05em; height: 1.05em; }
+.deckbuild .deckcard__actions { grid-column: 1 / -1; display: flex; gap: 0.4rem; }
+.deckbuild .deckcard__actions button { flex: 1; padding: 0.35rem 0.5rem; font-size: 0.85rem; }
+.deckbuild .deckcard__actions .icon-button { flex: none; }
+
+.deckbuild .stats { margin: 0; padding: 0.3rem 0.9rem 0.6rem; list-style: none; }
+.deckbuild .stats li { display: flex; justify-content: space-between; padding: 0.45rem 0; border-bottom: 1px solid rgb(220 166 64 / 0.3); }
+.deckbuild .stats li:last-child { border-bottom: none; }
+.deckbuild .stats strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.deckbuild .presets { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.7rem 0.9rem; }
+.deckbuild .preset { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem; border: 1px solid rgb(220 166 64 / 0.6); border-radius: var(--radius-small); background: #fffef9; }
+.deckbuild .preset .card { --card-width: 3rem; }
+.deckbuild .preset__name { flex: 1; min-width: 0; font-weight: 700; }
+
+/* ---------- ラベル ---------- */
+.deckbuild .taglist { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.deckbuild .taglist--bar { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+/* 自動で付いたか選んだかで見た目を分けない。中身は先頭の絵文字（色の構成は色のアイコン）で表す */
+.deckbuild .tag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.1rem 0.6rem 0.1rem 0.45rem;
+  border-radius: 999px;
+  color: var(--heading);
+  background: linear-gradient(180deg, #fffaf0, #fcecc8);
+  box-shadow: 0 0 0 1px rgb(176 122 28 / 0.5) inset;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.deckbuild .tag__emoji { font-size: 0.95em; line-height: 1; }
+.deckbuild .tag__colors { display: inline-flex; gap: 1px; }
+.deckbuild .tag__colors img, .deckbuild .chip .tag__colors img { width: 1em; height: 1em; }
+.deckbuild .tagsec { display: flex; flex-direction: column; gap: 0.3rem; }
+.deckbuild .tagsec + .tagsec { padding-top: 0.7rem; border-top: 1px dashed rgb(220 166 64 / 0.6); }
+.deckbuild .tagsec__title { margin: 0; color: var(--heading); font-size: 0.88rem; font-weight: 800; }
+.deckbuild .tagsec__note { margin: 0; color: var(--ink-dim); font-size: 0.78rem; }
+
+/* ---------- 画面に重ねる窓（解説・確認・共有で共通） ---------- */
+.deckbuild .modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 1rem; background: rgb(60 30 0 / 0.45); }
+.deckbuild .modal__box { display: flex; flex-direction: column; width: min(34rem, 100%); max-height: 90vh; }
+.deckbuild .modal__body { display: flex; flex-direction: column; gap: 0.7rem; padding: 0.9rem; overflow-y: auto; }
+.deckbuild .modal__body p { margin: 0; line-height: 1.6; }
+.deckbuild .modal__buttons { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0 0.9rem 0.9rem; }
+.deckbuild .modal__hint { color: var(--ink-dim); font-size: 0.78rem; text-align: right; }
+
+/* ---------- モックの切り替え（本番には無い） ---------- */
+.mock-switch { position: fixed; right: 0.75rem; bottom: 0.75rem; z-index: 200; display: flex; gap: 0.3rem; padding: 0.35rem; border-radius: 8px; background: rgb(40 30 20 / 0.82); font-size: 12px; opacity: 0.35; transition: opacity 0.2s; }
+.mock-switch:hover { opacity: 1; }
+.mock-switch button { padding: 0.25rem 0.6rem; border: 1px solid #777; border-radius: 5px; color: #eee; background: #333; font: inherit; cursor: pointer; }
+.mock-switch button[aria-pressed='true'] { color: #222; background: #f7c956; border-color: #f7c956; }
+.mock-switch span { align-self: center; color: #ccc; padding: 0 0.3rem; }

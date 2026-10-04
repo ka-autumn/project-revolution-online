@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>対戦のダイアログ モック</title>
+<!-- 見た目の仕様は ADR-0031 -->
+<style>
+:root {
+  --gap: 0.4rem; --gap-lg: 0.75rem;
+  --ink: #3b2a12; --ink-dim: #7d6848; --heading: #8a4700;
+  --gold: #dca640; --gold-bright: #f7c956; --gold-deep: #b07a1c;
+  --accent-own: #2a6fd6; --accent-opponent: #d3364a;
+  --panel: rgb(255 252 244 / 0.88); --panel-edge: #e2b252;
+  --radius: 12px; --radius-small: 7px;
+  --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
+  --right-column: 18rem;
+  color-scheme: light;
+}
+body { margin: 0; font: 14px system-ui, sans-serif; color: var(--ink); background: #eee; }
+.tabs { display: flex; gap: 6px; padding: 8px; background: #333; flex-wrap: wrap; }
+.tabs button { padding: 6px 10px; border: 0; border-radius: 6px; cursor: pointer; }
+.tabs button[aria-pressed="true"] { background: var(--gold-bright); font-weight: 700; }
+.note { padding: 8px 12px; background: #fffbe8; border-bottom: 1px solid #ddd; line-height: 1.6; }
+
+/* 対戦画面の骨組み（中身は省略） */
+.duel { position: relative; height: 560px; display: grid; grid-template-columns: 13rem 1fr var(--right-column); gap: var(--gap-lg); padding: var(--gap-lg);
+  background: radial-gradient(ellipse 60% 55% at 50% 46%, #fffdf6 0%, #ffeec2 30%, #fbc766 65%, #ee9a2c 100%); overflow: hidden; }
+.panel { border: 1px solid var(--panel-edge); border-radius: var(--radius); background: var(--panel); padding: 10px; }
+.col { display: flex; flex-direction: column; gap: var(--gap-lg); min-height: 0; }
+.board { display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 1fr) 90px; gap: 6px; }
+.cell { border: 1px dashed rgb(150 90 0 / 0.4); border-radius: 6px; background: rgb(255 255 255 / 0.35); display: flex; align-items: center; justify-content: center; color: var(--ink-dim); font-size: 12px; }
+.hand { grid-column: 1 / -1; display: flex; gap: 6px; justify-content: center; align-items: center; }
+.card { width: 54px; height: 76px; border-radius: 6px; border: 1px solid var(--gold-deep); background: #fff6df; font-size: 10px; display: flex; align-items: center; justify-content: center; text-align: center; }
+.card.picked { outline: 3px solid var(--accent-own); outline-offset: 2px; }
+.detail h3 { margin: 0 0 6px; font-family: var(--heading-font); color: var(--heading); }
+.detail p { margin: 0 0 6px; font-size: 12px; line-height: 1.6; }
+.title { font-family: var(--heading-font); color: var(--heading); font-weight: 700; margin-bottom: 6px; }
+
+button.b { padding: 0.45rem 0.9rem; border: 1px solid var(--gold); border-radius: var(--radius-small); color: var(--ink);
+  background: linear-gradient(180deg, #fffefa, #fbefd4); box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgb(150 80 0 / 0.25); font: inherit; cursor: pointer; }
+button.b:focus-visible, button.b.focus { outline: 2px solid var(--accent-own); outline-offset: 2px; }
+button.primary { border-color: var(--gold-deep); color: #3a1f00; background: linear-gradient(180deg, #ffd96b, #f3a024); font-weight: 700; }
+button.danger { border-color: #b00; color: #b00; font-weight: 700; }
+
+/* 対戦の .picker（選ぶ一覧）と同じ範囲に重ねる。右の列（カードの詳細）は覆わない（ADR-0031） */
+.dialog { position: absolute; inset: 0 calc(var(--right-column) + var(--gap-lg) * 2) 0 0; z-index: 70; display: flex; align-items: center; justify-content: center; background: rgb(60 30 0 / 0.45); backdrop-filter: blur(2px); }
+.dialog__box { min-width: 18rem; max-width: 24rem; padding: 1.2rem 1.4rem; border: 2px solid var(--gold); border-radius: var(--radius); background: linear-gradient(180deg, #fffdf6, #fff4dc); box-shadow: 0 16px 50px rgb(80 40 0 / 0.4); }
+.dialog__title { margin: 0 0 4px; font-family: var(--heading-font); color: var(--heading); font-size: 1.15rem; }
+/* 見出しが場所の名前（プランゾーン）のときの、そこにあるカードの名前。長い名前は折り返す */
+.dialog__subject { margin: 0 0 0.35rem; font-size: 0.95rem; overflow-wrap: anywhere; }
+.dialog__lead { margin: 0 0 var(--gap-lg); color: var(--ink-dim); font-size: 12px; }
+/* 手を送ってから返事が届くまで。何も出ていない間は場所を取らない */
+.dialog__sending { margin: 0; color: var(--heading); font-size: 0.85rem; font-weight: 700; }
+.dialog__sending:not(:empty) { margin-bottom: var(--gap-lg); }
+button.b:disabled { opacity: 0.5; cursor: default; }
+.dialog__actions { display: flex; flex-direction: column; gap: var(--gap); }
+.dialog__actions button { width: 100%; text-align: left; }
+.dialog__row { display: flex; gap: var(--gap); justify-content: flex-end; }
+.dialog__cancel { margin-top: var(--gap-lg); display: flex; justify-content: flex-end; }
+</style>
+</head>
+<body>
+<div class="tabs" role="group" aria-label="見本">
+  <button data-v="confirm">確認</button>
+  <button data-v="choose">選ぶ</button>
+  <button data-v="plan-zone">プランゾーンのカード</button>
+  <button data-v="deck">山札</button>
+  <button data-v="sending">通信中</button>
+</div>
+<div class="note" id="note"></div>
+
+<div class="duel">
+  <div class="col">
+    <div class="panel"><div class="title">相手</div>ダメージ 3</div>
+    <div class="panel" style="flex:1"><div class="title">行える手</div>
+      <p style="margin:0 0 8px;font-size:12px;color:var(--ink-dim)">このカードで行える手を選んでください</p>
+      <button class="b">カードの選択をやめる</button></div>
+    <div class="panel"><div class="title">自分</div>ダメージ 1</div>
+  </div>
+  <div class="board">
+    <div class="cell">相手の山札</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell">相手のトラップ</div>
+    <div class="cell"></div><div class="cell">敵</div><div class="cell">敵</div><div class="cell">敵</div><div class="cell"></div>
+    <div class="cell"></div><div class="cell">味方</div><div class="cell">味方</div><div class="cell">味方</div><div class="cell"></div>
+    <div class="cell">自分のトラップ</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell">自分の山札</div>
+    <div class="hand"><div class="card">ユニット</div><div class="card picked">見本・ファイアボルト</div><div class="card">ユニット</div><div class="card">ストラテジー</div></div>
+  </div>
+  <div class="col">
+    <div class="panel" style="flex:1">操作ログ…</div>
+    <div class="panel detail"><h3>見本・ファイアボルト</h3><p>ストラテジー／赤／レベル2</p><p>相手のユニット1体に3ダメージを与える。</p><p>【トラップ】相手のユニットが攻撃したとき…</p></div>
+  </div>
+
+  <div id="overlay"></div>
+</div>
+
+<script>
+// 後ろの盤面は簡略な枠のまま（ダイアログの置き方を見るための図。盤面の見た目は ../duel/ を見る）
+const variants = {
+  confirm: {
+    note: '確認ダイアログ（行える手が 1 つ）。見出しはカード名で、何を聞いているかを本文に書く（手ごとの文）。左にキャンセル、右に手（金の主ボタン）。フォーカスは手に置く。',
+    html: `<div class="dialog"><div class="dialog__box" role="dialog" aria-labelledby="t"><h2 class="dialog__title" id="t">見本・ファイアボルト</h2>
+      <p class="dialog__lead">エネルギーとして置きますか？</p><p class="dialog__sending" role="status"></p>
+      <div class="dialog__row"><button class="b">キャンセル</button><button class="b primary focus">エネルギーとして置く</button></div></div></div>`,
+  },
+  choose: {
+    note: '選ぶダイアログ（行える手が 2 つ以上）。手を縦に同じ重みで並べ、キャンセルは最後に右寄せ。フォーカスは先頭の手に置く。',
+    html: `<div class="dialog"><div class="dialog__box" role="dialog" aria-labelledby="t"><h2 class="dialog__title" id="t">見本・ファイアボルト</h2>
+      <p class="dialog__lead">どれにしますか？</p><p class="dialog__sending" role="status"></p>
+      <div class="dialog__actions"><button class="b focus">プレイする</button><button class="b">トラップとしてプレイする</button><button class="b">エネルギーとして置く</button><button class="b">「勇気」を起動する</button></div>
+      <div class="dialog__cancel"><button class="b">キャンセル</button></div></div></div>`,
+  },
+  'plan-zone': {
+    note: 'プランゾーンのカード（「夢」を持つユニット）を押したとき。見出しは「プランゾーン」にし、カード名は本文に出す。「プレイする」を選ぶとスクエアが光り、「プランする」を選ぶとコストの選択に進む。',
+    html: `<div class="dialog"><div class="dialog__box" role="dialog" aria-labelledby="t"><h2 class="dialog__title" id="t">プランゾーン</h2>
+      <p class="dialog__subject">見本・夢見るユニット</p>
+      <p class="dialog__lead">どれにしますか？</p><p class="dialog__sending" role="status"></p>
+      <div class="dialog__actions"><button class="b focus">プレイする</button><button class="b">プランする</button></div>
+      <div class="dialog__cancel"><button class="b">キャンセル</button></div></div></div>`,
+  },
+  deck: {
+    note: '山札を押したとき（プランゾーンが空）。毎回「プランする」の確認ダイアログを出す。見出しは「山札」。',
+    html: `<div class="dialog"><div class="dialog__box" role="dialog" aria-labelledby="t"><h2 class="dialog__title" id="t">山札</h2>
+      <p class="dialog__lead">プランしますか？</p><p class="dialog__sending" role="status"></p>
+      <div class="dialog__row"><button class="b">キャンセル</button><button class="b primary focus">プランする</button></div></div></div>`,
+  },
+  sending: {
+    note: '手を送ったあと、返事が届くまで。ボタンをすべて押せなくし、「通信中…」を出す。送った手は取り消せないので、キャンセル・Esc・暗くしたところを押す、も効かせない。',
+    html: `<div class="dialog"><div class="dialog__box" role="dialog" aria-labelledby="t" aria-busy="true"><h2 class="dialog__title" id="t">見本・ファイアボルト</h2>
+      <p class="dialog__lead">エネルギーとして置きますか？</p><p class="dialog__sending" role="status">通信中…</p>
+      <div class="dialog__row"><button class="b" disabled>キャンセル</button><button class="b primary" disabled>エネルギーとして置く</button></div></div></div>`,
+  },
+}
+const tabs = document.querySelectorAll('.tabs button')
+function show(v) {
+  tabs.forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.v === v)))
+  document.getElementById('overlay').innerHTML = variants[v].html
+  document.getElementById('note').textContent = variants[v].note
+}
+tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.v)))
+show(location.hash.slice(1) in variants ? location.hash.slice(1) : 'confirm')
+</script>
+</body>
+</html>
