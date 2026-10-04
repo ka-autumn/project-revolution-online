@@ -840,6 +840,10 @@ function draw(
               // 裏向きのカードは識別子を持たないので、置き場所で押す（#127）。
               hidden: answering.hidden,
               onCard: (card) => answer(answering.answerOf(card)),
+              // やめられるかは、パネルの「この行動をやめる」と同じ判断（`choiceView` の `mayCancel`）。
+              ...(stage.choice !== undefined && choiceView(board, stage.choice).mayCancel
+                ? { onCancelChoice: () => connection.send({ kind: '取り消す' }) }
+                : {}),
               onSquare: (square) => answer(answering.answerOfSquare(square)),
               onHidden: (at) => answer(answering.answerOfHidden(at)),
             }

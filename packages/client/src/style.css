@@ -2441,15 +2441,65 @@ body {
   --card-width: 3.2rem;
 }
 
-/* 中のカードから選ぶ間のゾーン（エネルギー・スマッシュ）。背景の橙と、押せるカード・行き先の
-   橙から離すため、自分の色（青）で囲む。押すとゾーンが動く行き先（橙の破線）とは、実線でも
-   見分ける。枠の太さを変えると並びがずれるので、内側の線と外側の白い縁で太く見せる。 */
-.duel .zone--候補あり {
-  border-color: var(--accent-own);
-  background: var(--accent-own-soft);
+/*
+ * 中のカードから選ぶ間の枠（エネルギー・スマッシュ。1 つのゾーンか、2 つをまとめた群）。
+ * 盤面のほかを暗くし、この枠だけを明るく、少し大きく見せる。橙は押せるものの色（押せるカード・
+ * 行き先）と揃え、押すと枠が動く行き先（橙の破線）とは、実線で見分ける。枠の太さを変えると
+ * 並びがずれるので、内側の線と外側の白い縁で太く見せる。拡大は見た目だけで、並びは動かさない。
+ */
+.duel .zone--候補あり,
+.duel .group--候補あり {
+  position: relative;
+  z-index: 41;
+  border-color: #e07b00;
+  background: #fff3d6;
   box-shadow:
-    inset 0 0 0 2px var(--accent-own),
-    0 0 0 2px #fff;
+    inset 0 0 0 2px #e07b00,
+    0 0 0 2px #fff,
+    0 0 14px 4px rgb(255 180 40 / 0.7);
+  transform: scale(1.15);
+  transform-origin: 50% 100%;
+}
+
+/* 暗くするのは盤面（中央の列）だけ。左の案内文と右のカードの詳細は暗くしない。クリックは通す。 */
+.duel__center:has(.zone--候補あり, .group--候補あり) {
+  position: relative;
+}
+
+.duel__center:has(.zone--候補あり, .group--候補あり)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  border-radius: var(--radius);
+  background: rgb(40 20 0 / 0.55);
+  pointer-events: none;
+}
+
+/* 枠の上端に付く札。どこから選ぶかの文字と、行動をやめるボタン。 */
+.duel .choosing-tab {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+}
+
+.duel .choosing-tab__label {
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  background: #e05a00;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.duel .choosing-tab .choice__button {
+  padding: 0.1rem 0.6rem;
+  font-size: 0.7rem;
 }
 
 /* エネルギー・スマッシュは重ねて並べる。フリーズしたカードは横にはみ出すぶん空く */

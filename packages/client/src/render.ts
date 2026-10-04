@@ -159,6 +159,11 @@ export interface BoardPicking {
   readonly deck?: { readonly picked: boolean }
   readonly onDeck?: () => void
   readonly onCard: (card: CardId) => void
+  /**
+   * 選んでいる行動をやめる。コストなど中のカードから選ぶゾーンの枠の近くに出す。やめられない場面
+   * （戻れない選択）では渡されない。
+   */
+  readonly onCancelChoice?: () => void
   readonly onSquare?: (square: Square) => void
   readonly onHidden?: (at: WireCardPosition) => void
   /**
@@ -534,14 +539,33 @@ function backCardElement(): HTMLElement {
 }
 
 /**
- * 中のカードから選ぶ（コストなど）ゾーン。選べるカードがあるあいだ、ゾーンの枠ごと目立たせる。
- * 重ねて小さく並べるので、カードの縁の光だけだと、どこを見ればよいか分かりにくい。
+ * 中のカードから選ぶ（コストなど）ゾーン。選べるカードがあるあいだ、枠ごと目立たせ、盤面のほかを
+ * 暗くする。重ねて小さく並べるので、カードの縁の光だけだと、どこを見ればよいか分かりにくい。
  */
 const CHOOSING_ZONES: readonly string[] = ['エネルギーゾーン', 'スマッシュゾーン']
 
-function zoneElement(zone: ZoneView, picking?: BoardPicking, options: FaceOptions = {}): HTMLElement {
-  // どのカードが押せるかはここで決めない。カードの側と同じ `isPickable` で引く。
-  const choosing = CHOOSING_ZONES.includes(zone.zone) && zone.cards.some((card) => isPickable(card, picking))
+/** そのゾーンの中のカードから選ぶか。どのカードが押せるかはここで決めず、カードの側と同じ `isPickable` で引く。 */
+function choosesFrom(zone: ZoneView, picking: BoardPicking | undefined): boolean {
+  return CHOOSING_ZONES.includes(zone.zone) && zone.cards.some((card) => isPickable(card, picking))
+}
+
+/**
+ * 強調した枠の上端に付ける札。どこから選ぶかを文字で言い、行動をやめるボタンを枠のすぐ近くに置く
+ * （盤面を暗くしても押せる）。やめられない場面ではボタンを出さない。
+ */
+function choosingTabElement(picking: BoardPicking | undefined): HTMLElement {
+  const tab = element('div', 'choosing-tab')
+  tab.append(element('span', 'choosing-tab__label', 'ここから選択'))
+  if (picking?.onCancelChoice !== undefined) tab.append(button('この行動をやめる', picking.onCancelChoice))
+
+  return tab
+}
+
+/**
+ * ゾーンを 1 つ描く。`framed` が偽のとき、ゾーン単独では強調しない（まとめて囲む枠が強調する）。
+ */
+function zoneElement(zone: ZoneView, picking?: BoardPicking, options: FaceOptions = {}, framed = true): HTMLElement {
+  const choosing = framed && choosesFrom(zone, picking)
   const node = element('section', `zone zone--${zone.zone}${choosing ? ' zone--候補あり' : ''}`)
   const title = element('h3', 'zone__title', zone.zone)
   title.append(element('span', '', `（${zone.count}）`))
@@ -551,6 +575,27 @@ function zoneElement(zone: ZoneView, picking?: BoardPicking, options: FaceOption
   if (zone.cards.length === 0) cards.append(element('div', 'zone__empty'))
   for (const card of zone.cards) cards.append(cardElement(card, picking, options))
   node.append(cards)
+  if (choosing) node.append(choosingTabElement(picking))
+
+  return node
+}
+
+/**
+ * エネルギーとスマッシュを囲む枠。選べるカードがあるゾーンが両方なら（プランのコスト）、2 つを
+ * 1 つの枠で囲んで強調する。片方だけなら（プレイ・移動・起動のコスト）、そのゾーンだけを囲む。
+ */
+function energyGroupElement(whose: '自分' | '相手', zones: readonly ZoneView[], picking?: BoardPicking): HTMLElement {
+  const lit = zones.filter((zone) => choosesFrom(zone, picking))
+  const together = lit.length > 1 && lit.length === zones.length
+  const node = groupElement(
+    whose,
+    'エネルギーゾーン',
+    zones.map((zone) => zoneElement(zone, picking, {}, !together)),
+  )
+  if (together) {
+    node.classList.add('group--候補あり')
+    node.append(choosingTabElement(picking))
+  }
 
   return node
 }
@@ -760,19 +805,13 @@ function boardGridElement(
       pileZoneElement(zoneOf(view.opponent, 'リムーブゾーン'), openerOf(view.opponent, 'リムーブゾーン')),
       pileZoneElement(zoneOf(view.opponent, '捨札'), openerOf(view.opponent, '捨札')),
     ]),
-    groupElement('相手', 'エネルギーゾーン', [
-      zoneElement(zoneOf(view.opponent, 'スマッシュゾーン'), picking),
-      zoneElement(zoneOf(view.opponent, 'エネルギーゾーン'), picking),
-    ]),
+    energyGroupElement('相手', [zoneOf(view.opponent, 'スマッシュゾーン'), zoneOf(view.opponent, 'エネルギーゾーン')], picking),
   )
   node.append(opponentStrip)
 
   const ownStrip = element('div', 'strip strip--自分')
   ownStrip.append(
-    groupElement('自分', 'エネルギーゾーン', [
-      zoneElement(zoneOf(view.own, 'エネルギーゾーン'), picking),
-      zoneElement(zoneOf(view.own, 'スマッシュゾーン'), picking),
-    ]),
+    energyGroupElement('自分', [zoneOf(view.own, 'エネルギーゾーン'), zoneOf(view.own, 'スマッシュゾーン')], picking),
     groupElement('自分', '捨札', [
       pileZoneElement(zoneOf(view.own, '捨札'), openerOf(view.own, '捨札')),
       pileZoneElement(zoneOf(view.own, 'リムーブゾーン'), openerOf(view.own, 'リムーブゾーン')),
