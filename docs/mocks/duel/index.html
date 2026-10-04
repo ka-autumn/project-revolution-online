@@ -315,6 +315,11 @@ body {
   font-size: 0.75rem;
 }
 
+/* カプセルの overflow: hidden に外側の枠を切り取られるので、フォーカスの枠は内側に描く。 */
+.duel .mode button:focus-visible {
+  outline-offset: -3px;
+}
+
 .duel .mode .mode--選択中 {
   color: #3a1f00;
   background: var(--gold-bright);
@@ -1606,7 +1611,7 @@ body {
 
   <!-- 左：相手・操作・自分 -->
   <aside class="duel__left">
-    <section class="panel player player--相手" aria-label="相手">
+    <section class="panel player player--相手" aria-label="相手・後攻">
       <div class="player__portrait" aria-hidden="true"><svg fill="#8a4a52"><use href="#silhouette"/></svg></div>
       <div class="player__body">
         <span class="player__whose">相手・後攻</span>
@@ -1655,7 +1660,7 @@ body {
       </div>
     </section>
 
-    <section class="panel player player--自分" aria-label="自分">
+    <section class="panel player player--自分" aria-label="自分・先攻">
       <div class="player__portrait" aria-hidden="true"><svg fill="#44628f"><use href="#silhouette"/></svg></div>
       <div class="player__body">
         <span class="player__whose">自分・先攻</span>
@@ -1899,6 +1904,10 @@ function zone(title, count, content) {
   const node = document.createElement('div')
   node.className = `zone zone--${title}`
   node.innerHTML = `<h3 class="zone__title">${title}<span>（${count}）</span></h3>`
+  // 見える文字は「ゾーン」を外した呼び名で、読み上げの名前は正式名にする（実装の zoneTitleElement と同じ）。
+  if (['リムーブ', 'スマッシュ', 'エネルギー', 'トラップ'].includes(title)) {
+    node.querySelector('.zone__title').setAttribute('aria-label', `${title}ゾーン（${count}）`)
+  }
   const cardsNode = document.createElement('div')
   cardsNode.className = 'zone__cards'
   if (content.length === 0) cardsNode.append(empty())
