@@ -470,6 +470,37 @@ function optionLabelOf(action: LegalAction, viewer: Player, withDestination: boo
   }
 }
 
+/**
+ * 確認ダイアログで、その手を行うかを尋ねる文。手の呼び名（`optionLabelOf`）は言い切りの形で、
+ * 「を行いますか」に当てはめると不自然になるので、手ごとに持つ。
+ */
+function confirmOf(action: LegalAction): string {
+  switch (action.kind) {
+    case 'エネルギーを置く':
+      return 'エネルギーとして置きますか？'
+    case 'カードをプレイする':
+      return `${action.declaration.square === undefined ? '' : 'スクエアに'}プレイしますか？`
+    case 'ユニットを移動する':
+      return '移動しますか？'
+    case '起動型能力を起動する':
+      return `能力を起動しますか？（${action.ability + 1} 個目）`
+    case '優先権を放棄する':
+      return '優先権を放棄しますか？'
+    case 'プランする':
+      return 'プランしますか？'
+    case 'スマッシュする':
+      return 'スマッシュしますか？'
+    case 'トラップを廃棄する':
+      return 'トラップを廃棄しますか？'
+    case 'トラップとしてプレイする':
+      return 'トラップとしてプレイしますか？'
+    case 'トラップを発動する':
+      return 'トラップを発動しますか？'
+    case '「勇気」を起動する':
+      return '「勇気」を起動しますか？'
+  }
+}
+
 /** 選びかけ。カードを選んでいるか、山札を選んでいるか。どちらでもなければ何も選んでいない。 */
 export interface PickSelection {
   /** 選んでいるカード。 */
@@ -632,8 +663,8 @@ function arrange(
   }
 
   const heading = deck || picked === undefined ? '山札' : nameOf(names, picked)
-  const lead =
-    options.length === 1 ? `「${options[0]?.label ?? ''}」を行いますか？` : 'どの手を行いますか？'
+  const [only] = options
+  const lead = options.length === 1 && only !== undefined && 'send' in only ? confirmOf(only.send) : 'どの手を行いますか？'
 
   return { ...selected, ask: { heading, lead, options } }
 }

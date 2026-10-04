@@ -674,7 +674,7 @@ describe('クリックで操作する', () => {
 
     expect(view.ask).toEqual({
       heading: 'テスト・手札の戦士',
-      lead: '「エネルギーとして置く」を行いますか？',
+      lead: 'エネルギーとして置きますか？',
       options: [{ label: 'エネルギーとして置く', send: PLACE }],
     })
     expect(view.destinations).toEqual([])
@@ -828,7 +828,7 @@ describe('クリックで操作する', () => {
 
       expect(view.ask).toEqual({
         heading: '山札',
-        lead: '「プランする」を行いますか？',
+        lead: 'プランしますか？',
         options: [{ label: 'プランする', send: PLAN }],
       })
       expect(view.untargeted).toEqual([])
@@ -926,45 +926,50 @@ describe('クリックで操作する', () => {
    * 手が 1 つなら確認で、「その手」を行うかを聞く。
    */
   describe('行き先の無い手の聞き方', () => {
-    const cases: readonly { readonly action: LegalAction; readonly card: string; readonly heading: string; readonly label: string }[] = [
-      { action: PLACE, card: 'てふだの1枚', heading: 'テスト・手札の戦士', label: 'エネルギーとして置く' },
+    const cases: readonly { readonly action: LegalAction; readonly card: string; readonly heading: string; readonly label: string; readonly lead: string }[] = [
+      { action: PLACE, card: 'てふだの1枚', heading: 'テスト・手札の戦士', label: 'エネルギーとして置く', lead: 'エネルギーとして置きますか？' },
       {
         action: { kind: 'カードをプレイする', declaration: { card: 'てふだの1枚' } },
         card: 'てふだの1枚',
         heading: 'テスト・手札の戦士',
         label: 'プレイする',
+        lead: 'プレイしますか？',
       },
       {
         action: { kind: '「勇気」を起動する', card: 'てふだの1枚' },
         card: 'てふだの1枚',
         heading: 'テスト・手札の戦士',
         label: '「勇気」を起動する',
+        lead: '「勇気」を起動しますか？',
       },
-      { action: SMASH, card: 'スクエアの1枚', heading: 'テスト・盤上の戦士', label: 'スマッシュする' },
+      { action: SMASH, card: 'スクエアの1枚', heading: 'テスト・盤上の戦士', label: 'スマッシュする', lead: 'スマッシュしますか？' },
       {
         action: { kind: 'トラップを発動する', card: 'てふだの1枚' },
         card: 'てふだの1枚',
         heading: 'テスト・手札の戦士',
         label: 'トラップを発動する',
+        lead: 'トラップを発動しますか？',
       },
       {
         action: { kind: 'トラップを廃棄する', card: 'てふだの1枚' },
         card: 'てふだの1枚',
         heading: 'テスト・手札の戦士',
         label: 'トラップを廃棄する',
+        lead: 'トラップを廃棄しますか？',
       },
       {
         action: { kind: '起動型能力を起動する', unit: 'スクエアの1枚', ability: 0 },
         card: 'スクエアの1枚',
         heading: 'テスト・盤上の戦士',
         label: '能力を起動する（1 個目）',
+        lead: '能力を起動しますか？（1 個目）',
       },
     ]
 
-    it.each(cases)('$label は、1 つだけなら確認ダイアログで聞く', ({ action, card, heading, label }) => {
+    it.each(cases)('$label は、1 つだけなら確認ダイアログで聞く', ({ action, card, heading, label, lead }) => {
       const view = pick([PASS, action], card)
 
-      expect(view.ask).toEqual({ heading, lead: `「${label}」を行いますか？`, options: [{ label, send: action }] })
+      expect(view.ask).toEqual({ heading, lead, options: [{ label, send: action }] })
       expect(view.destinations).toEqual([])
       expect(view.trapZone).toBeUndefined()
     })
