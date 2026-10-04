@@ -684,7 +684,7 @@ describe('クリックで操作する', () => {
     const courage: LegalAction = { kind: '「勇気」を起動する', card: 'てふだの1枚' }
     const view = pick([PLACE, courage], 'てふだの1枚')
 
-    expect(view.ask?.lead).toBe('どの手を行いますか？')
+    expect(view.ask?.lead).toBe('どれにしますか？')
     expect(view.ask?.options).toEqual([
       { label: 'エネルギーとして置く', send: PLACE },
       { label: '「勇気」を起動する', send: courage },
@@ -860,7 +860,7 @@ describe('クリックで操作する', () => {
     it('プランゾーンのカードをプレイすることもできるなら、プレイするかプランするかを選ばせる', () => {
       const view = pickView(withPlanCard(), [PASS, PLAN, PLAY_PLANNED], { card: 'プランの1枚' }, undefined)
 
-      expect(view.ask?.lead).toBe('どの手を行いますか？')
+      expect(view.ask?.lead).toBe('どれにしますか？')
       expect(view.ask?.options).toEqual([
         { label: 'プレイする', send: PLAY_PLANNED },
         { label: 'プランする', send: PLAN },
@@ -980,7 +980,7 @@ describe('クリックで操作する', () => {
       const second: LegalAction = { kind: '起動型能力を起動する', unit: 'スクエアの1枚', ability: 1 }
       const view = pick([PASS, first, second], 'スクエアの1枚')
 
-      expect(view.ask?.lead).toBe('どの手を行いますか？')
+      expect(view.ask?.lead).toBe('どれにしますか？')
       expect(view.ask?.options).toEqual([
         { label: '能力を起動する（1 個目）', send: first },
         { label: '能力を起動する（2 個目）', send: second },

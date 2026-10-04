@@ -664,7 +664,7 @@ function arrange(
 
   const heading = deck || picked === undefined ? '山札' : nameOf(names, picked)
   const [only] = options
-  const lead = options.length === 1 && only !== undefined && 'send' in only ? confirmOf(only.send) : 'どの手を行いますか？'
+  const lead = options.length === 1 && only !== undefined && 'send' in only ? confirmOf(only.send) : 'どれにしますか？'
 
   return { ...selected, ask: { heading, lead, options } }
 }
