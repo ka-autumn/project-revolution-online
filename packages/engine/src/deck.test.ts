@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DUEL_FORMATS, checkCardLimits, checkConstructedDeck, checkDeckForFormat, deckFaceKeyOf, defineUnit, faceOf } from './index.js'
+import { DUEL_FORMATS, checkCardLimits, checkConstructedDeck, checkDeckForFormat, deckCoverKeyOf, defineUnit, faceOf } from './index.js'
 import type { Card, Deck } from './index.js'
 
 function testUnit(name: string, stars = 0, reverseStars = 0): Card {
@@ -213,25 +213,25 @@ describe('カードの表記に当てる判定', () => {
   })
 })
 
-describe('デッキの顔にするカード（ADR-0028）', () => {
+describe('表紙のカード（ADR-0028）', () => {
   const levels: Record<string, number> = { 低い: 1, 高い: 5 }
   const levelOf = (key: string): number | undefined => levels[key]
 
   it('一番多く入れたカードを選ぶ', () => {
-    expect(deckFaceKeyOf(['低い', '高い', '低い'], levelOf)).toBe('低い')
+    expect(deckCoverKeyOf(['低い', '高い', '低い'], levelOf)).toBe('低い')
   })
 
   it('同じ枚数ならレベルの高いほうを選ぶ', () => {
-    expect(deckFaceKeyOf(['低い', '高い'], levelOf)).toBe('高い')
+    expect(deckCoverKeyOf(['低い', '高い'], levelOf)).toBe('高い')
   })
 
   it('枚数もレベルも同じなら、デッキの中で先に出てくるほうを選ぶ', () => {
-    expect(deckFaceKeyOf(['あ', 'い'], () => 1)).toBe('あ')
+    expect(deckCoverKeyOf(['あ', 'い'], () => 1)).toBe('あ')
   })
 
-  it('レベルが引けないカードは顔にしない。顔にできるカードが無ければ選ばない', () => {
-    expect(deckFaceKeyOf(['知らない', '知らない', '高い'], levelOf)).toBe('高い')
-    expect(deckFaceKeyOf(['知らない'], levelOf)).toBeUndefined()
-    expect(deckFaceKeyOf([], levelOf)).toBeUndefined()
+  it('レベルが引けないカードは表紙にしない。表紙にできるカードが無ければ選ばない', () => {
+    expect(deckCoverKeyOf(['知らない', '知らない', '高い'], levelOf)).toBe('高い')
+    expect(deckCoverKeyOf(['知らない'], levelOf)).toBeUndefined()
+    expect(deckCoverKeyOf([], levelOf)).toBeUndefined()
   })
 })

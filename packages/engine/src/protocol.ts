@@ -52,15 +52,15 @@ export interface WireDeck {
 }
 
 /**
- * コピー元として並ぶ既製デッキ 1 つ（ADR-0028）。`WireDeck` に、デッキの顔にするカードを添える。
+ * コピー元として並ぶ既製デッキ 1 つ（ADR-0028）。`WireDeck` に、表紙のカードを添える。
  *
- * 既製デッキの中身は画面に届かないので、顔はサーバが選んで識別子で渡す（選び方は engine の
- * `deckFaceKeyOf`。自分のデッキの顔と同じ）。付いてこないことがある——顔にできるカードが
+ * 既製デッキの中身は画面に届かないので、表紙のカードはサーバが選んで識別子で渡す（選び方は engine の
+ * `deckCoverKeyOf`。自分のデッキの表紙のカードと同じ）。付いてこないことがある——表紙にできるカードが
  * 無い時と、古いサーバの時。その時は裏面を出す。
  */
 export interface WirePresetDeck extends WireDeck {
-  /** 顔にするカードの識別子（プールの `WirePoolCard.key`）。 */
-  readonly face?: string
+  /** 表紙のカードの識別子（プールの `WirePoolCard.key`）。 */
+  readonly cover?: string
 }
 
 /**

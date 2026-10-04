@@ -479,6 +479,8 @@ function cardElement(card: CardView, picking?: BoardPicking, options: FaceOption
     // 裏向きのカードも候補になる（プランのコストのスマッシュ、#127）。押せるかどうかは
     // 置き場所で引く。識別子は届いていない。
     const pickable = isPickable(card, picking)
+    // `backCardElement()` を使わないのは、向き・押せるかどうかのクラスを付け、中も `faceElement` で
+    // 作る盤面のカードだから（山札やデッキの表紙の、飾りだけの裏面とは作りが違う）。
     const back = element('div', `card card--back card--${card.orientation}${pickable ? ' card--押せる' : ''}`)
     // 押せることを色だけで区別させないのは、表向きのカードと同じである（#94）。
     back.setAttribute('aria-label', `裏向きのカード（${card.orientation}）${pickable ? '（押せます）' : ''}`)
@@ -1130,16 +1132,14 @@ function lobbyTopbarElement(own: string): HTMLElement {
   return bar
 }
 
-/** デッキの顔。カードの面か、面が無ければ裏面（ADR-0029）。読み上げにはデッキの名前があるので、隠す。 */
-function deckArtElement(deck: LobbyDeck, size: 'large' | 'thumb' | 'normal'): HTMLElement {
+/** デッキの表紙のカード。カードの面か、面が無ければ裏面（ADR-0029）。読み上げにはデッキの名前があるので、隠す。 */
+function deckCoverElement(deck: LobbyDeck, size: 'large' | 'thumb' | 'normal'): HTMLElement {
   const node = element('span', `lobby__art${size === 'normal' ? '' : ` lobby__art--${size}`}`)
   node.setAttribute('aria-hidden', 'true')
-  if (deck.face !== undefined) {
-    node.append(poolCardElement(deck.face))
+  if (deck.cover !== undefined) {
+    node.append(poolCardElement(deck.cover))
   } else {
-    const back = element('div', 'card card--back')
-    back.append(element('div', 'card__face'))
-    node.append(back)
+    node.append(backCardElement())
   }
 
   return node
@@ -1327,7 +1327,7 @@ function deckRowElement(
   main.append(element('span', 'lobby__deck-name', deck.name))
   const meta = deckMetaElement(deck)
   if (meta !== undefined) main.append(meta)
-  radio.append(deckArtElement(deck, 'normal'), main)
+  radio.append(deckCoverElement(deck, 'normal'), main)
   row.append(radio)
 
   if (picked) {
@@ -1493,7 +1493,7 @@ function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement 
       main.append(element('span', 'lobby__carousel-name', chosen.name))
       const meta = deckMetaElement(chosen)
       if (meta !== undefined) main.append(meta)
-      current.append(deckArtElement(chosen, 'large'), main)
+      current.append(deckCoverElement(chosen, 'large'), main)
     }
     carousel.append(previous, current, next)
     picker.append(carousel)
@@ -1519,7 +1519,7 @@ function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement 
       thumb.classList.toggle('lobby__thumb--unusable', !choosable)
       thumb.setAttribute('role', 'radio')
       thumb.setAttribute('aria-checked', String(picked))
-      // 帯を出さない小さな顔なので、使えないことは読み上げと `title` に添える。
+      // 帯を出さない小さな表紙なので、使えないことは読み上げと `title` に添える。
       const named = choosable ? deck.name : `${deck.name}（${unusableText(deck.refusal ?? '')}）`
       thumb.setAttribute('aria-label', named)
       thumb.title = named
@@ -1534,7 +1534,7 @@ function lobbyCpuElement(view: LobbyView, handlers: LobbyHandlers): HTMLElement 
         thumb.dataset[KEEP_FOCUS] = PICKED_CPU_DECK_KEY
         handlers.onCpuDeck(to.id)
       })
-      thumb.append(deckArtElement(deck, 'thumb'))
+      thumb.append(deckCoverElement(deck, 'thumb'))
       if (!choosable) thumb.append(unusableSign())
       thumbs.append(thumb)
     })
@@ -1847,8 +1847,8 @@ function deckSearchPanelElement(view: DeckListView, handlers: DeckListHandlers):
 }
 
 /**
- * 既製デッキからコピーして作るところ（ADR-0022）。自分のデッキと同じく、デッキの顔を小さく添える
- * （ADR-0028）。顔が決まらないデッキはカードの裏面を出す。読み上げにはデッキの名前があるので、顔は隠す。
+ * 既製デッキからコピーして作るところ（ADR-0022）。自分のデッキと同じく、表紙のカードを小さく添える
+ * （ADR-0028）。表紙のカードが決まらないデッキはカードの裏面を出す。読み上げにはデッキの名前があるので、隠す。
  */
 function presetsPanelElement(presets: readonly PresetRow[], waiting: boolean, handlers: DeckListHandlers): HTMLElement | undefined {
   if (presets.length === 0) return undefined
@@ -1859,12 +1859,10 @@ function presetsPanelElement(presets: readonly PresetRow[], waiting: boolean, ha
     const row = element('div', 'preset')
     const art = element('span', 'preset__art')
     art.setAttribute('aria-hidden', 'true')
-    if (preset.face !== undefined) {
-      art.append(poolCardElement(preset.face))
+    if (preset.cover !== undefined) {
+      art.append(poolCardElement(preset.cover))
     } else {
-      const back = element('div', 'card card--back')
-      back.append(element('div', 'card__face'))
-      art.append(back)
+      art.append(backCardElement())
     }
     row.append(art, element('span', 'preset__name', preset.name))
     const copy = smallButton('コピーして組む', () => handlers.onCopy(preset.id))
@@ -1882,7 +1880,7 @@ function deckCardElement(row: OwnedDeckRow, waiting: boolean, handlers: DeckList
   const card = element('article', 'deckcard')
 
   const faceWrap = element('div', 'deckcard__face')
-  if (row.face !== undefined) faceWrap.append(poolCardElement(row.face))
+  if (row.cover !== undefined) faceWrap.append(poolCardElement(row.cover))
   card.append(faceWrap)
 
   const main = element('div', 'deckcard__main')

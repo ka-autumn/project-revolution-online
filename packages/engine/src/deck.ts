@@ -162,14 +162,14 @@ function countByName(deck: readonly DeckCard[]): ReadonlyMap<string, { readonly 
 }
 
 /**
- * デッキの顔にするカードの識別子（ADR-0028）。一番多く入れたカード、同じ枚数ならレベルの高いもの。
+ * 表紙のカードの識別子（ADR-0028）。表紙のカードは、デッキ一覧・ロビーでデッキを表すために面を出すカード。一番多く入れたカード、同じ枚数ならレベルの高いもの。
  * それでも並ぶなら、デッキの中で先に出てくるほう。
  *
  * 識別子の並びと、識別子からレベルを引く関数だけを受け取る。サーバ（カードの実装を持つ）と
  * 画面（表記だけを持つ）が同じ決まりで選べる。`levelOf` が `undefined` を返す識別子（プールに無い
- * カード）は、印刷されている項目が分からないので顔にしない。顔にできるカードが無ければ `undefined`。
+ * カード）は、印刷されている項目が分からないので表紙にしない。表紙にできるカードが無ければ `undefined`。
  */
-export function deckFaceKeyOf(cards: readonly string[], levelOf: (key: string) => number | undefined): string | undefined {
+export function deckCoverKeyOf(cards: readonly string[], levelOf: (key: string) => number | undefined): string | undefined {
   const counts = new Map<string, number>()
   for (const key of cards) counts.set(key, (counts.get(key) ?? 0) + 1)
 

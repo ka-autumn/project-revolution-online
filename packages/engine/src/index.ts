@@ -96,7 +96,7 @@ export {
   checkCardLimits,
   checkConstructedDeck,
   checkDeckForFormat,
-  deckFaceKeyOf,
+  deckCoverKeyOf,
   sameNameKey,
 } from './deck.js'
 export type { CardLimits, Deck, DeckCard, DeckViolation, DuelFormat } from './deck.js'
