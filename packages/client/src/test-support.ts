@@ -6,6 +6,7 @@ import type {
   PlayerZone,
   WireCardInstance,
   WirePerspective,
+  WireStrategyFace,
   WireUnitFace,
   WireVisibleCard,
 } from '@revolution/engine'
@@ -74,6 +75,11 @@ export function unitFace(name: string, values: Partial<WireUnitFace> = {}): Wire
     moveIcon: ['上'],
     ...values,
   }
+}
+
+/** 表記だけを差し替えたストラテジー。種別以外は使う側で気にしなくてよい。 */
+export function strategyFace(name: string, type: WireStrategyFace['type'] = 'ストラテジー'): WireStrategyFace {
+  return { type, name, level: 1, colors: ['赤'], stars: 0, reverseStars: 0, attributes: [], keywords: [], text: [] }
 }
 
 /** 盤面に置く 1 枚。 */

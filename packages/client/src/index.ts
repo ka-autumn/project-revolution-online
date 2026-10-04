@@ -62,6 +62,7 @@ import {
   pickView,
   showsChoicePicker,
 } from './input-model.js'
+import type { AimKind, PickSelection } from './input-model.js'
 import { filterChoicesOf, filterPool } from './pool-filter.js'
 import {
   closedRecipeUrlOf,
@@ -92,6 +93,7 @@ import {
   myShareListElement,
   nameElement,
   overlayElement,
+  askElement,
   pickElement,
   recipeElement,
   recipeListElement,
@@ -247,13 +249,22 @@ function statusOf(session: Session, link: Link): string | undefined {
  */
 type PickMode = 'クリック' | 'ボタン'
 
-/** いま盤面をどう操作しているか。`card` は選びかけのカード。 */
+/** いま盤面をどう操作しているか。`selection` が選びかけ。 */
 interface Picking {
   readonly mode: PickMode
-  readonly card: CardId | undefined
+  /** 選びかけ（カード・山札・聞いて選び終えた手）。何も選んでいなければ空。 */
+  readonly selection: PickSelection
+  readonly onAim: (aim: AimKind) => void
   readonly onCard: (card: CardId) => void
-  /** 選びかけをやめる。 */
+  /** 山札を押した（#249）。もう一度押したら外す。 */
+  readonly onDeck: () => void
+  /** 選びかけを捨てる。手を送る時に呼ぶ。描き直さない（届く盤面が描き直す）。 */
   readonly onCancel: () => void
+  /**
+   * 選びかけを外して描き直す（#249）。「カードの選択をやめる」・押せるもの以外を押す・Esc の
+   * 共通の出口。何も送らない。
+   */
+  readonly onDeselect: () => void
   readonly onMode: (mode: PickMode) => void
 }
 
@@ -781,7 +792,7 @@ function draw(
     const clicking = connected && picking.mode === 'クリック' && !showsOverlay(overlay)
     const view =
       clicking && stage.choice === undefined
-        ? pickView(board, stage.actions, picking.card, stage.passOutcome)
+        ? pickView(board, stage.actions, picking.selection, stage.passOutcome)
         : undefined
     // 盤面に出ている候補がどれかは、操作のしかた・演出・繋がりとは関係なく決まる（#207）。
     // 一覧を出すかどうか（`offBoard` 以下）はここから決める。
@@ -801,6 +812,19 @@ function draw(
             picked: view.picked,
             squares: view.destinations,
             onCard: (card) => picking.onCard(card),
+            ...(view.picked === undefined && !view.deck ? {} : { onBlank: picking.onDeselect }),
+            ...(view.deckPickable ? { deck: { picked: view.deck }, onDeck: picking.onDeck } : {}),
+            ...(view.trapZone === undefined
+              ? {}
+              : {
+                  trapZone: { label: view.trapZone.label },
+                  onTrapZone: () => {
+                    const zone = view.trapZone
+                    if (zone === undefined) return
+                    picking.onCancel()
+                    connection.send({ kind: '行動する', action: zone.action })
+                  },
+                }),
             onSquare: (square) => {
               const destination = view.destinations.find((each) => indexOfSquare(each.square) === indexOfSquare(square))
               if (destination === undefined) return
@@ -816,6 +840,10 @@ function draw(
               // 裏向きのカードは識別子を持たないので、置き場所で押す（#127）。
               hidden: answering.hidden,
               onCard: (card) => answer(answering.answerOf(card)),
+              // やめられるかは、パネルの「この行動をやめる」と同じ判断（`choiceView` の `mayCancel`）。
+              ...(stage.choice !== undefined && choiceView(board, stage.choice).mayCancel
+                ? { onCancelChoice: () => connection.send({ kind: '取り消す' }) }
+                : {}),
               onSquare: (square) => answer(answering.answerOfSquare(square)),
               onHidden: (at) => answer(answering.answerOfHidden(at)),
             }
@@ -881,7 +909,7 @@ function draw(
       // であって、待ち行列の遅れとは関係が無い。止めると、演出が消えるまで解決が進まなくなる。
       controlsChildren.push(waitingForOverlayElement(mode))
     } else if (stage.choice === undefined && view !== undefined) {
-      // クリックで操作する（#94）。盤面の上で示せない手だけをここに出す。
+      // クリックで操作する（#94）。パネルには、優先権の放棄と案内文だけを出す。
       controlsChildren.push(
         pickElement(
           view,
@@ -890,7 +918,7 @@ function draw(
               picking.onCancel()
               connection.send({ kind: '行動する', action })
             },
-            onCancel: () => picking.onCancel(),
+            onCancel: picking.onDeselect,
           },
           mode,
         ),
@@ -960,6 +988,23 @@ function draw(
           })()
         : undefined
 
+    // 選んだカードの手を聞くダイアログ（#249）。出すのは `view` が立つ間（繋がっていて、演出が
+    // 出ておらず、選ぶのを待たれていない）だけで、そうでなければ `view` が無いので開かない。
+    const dialog =
+      view?.ask !== undefined
+        ? askElement(view.ask, {
+            onChoose: (option) => {
+              if ('send' in option) {
+                picking.onCancel()
+                connection.send({ kind: '行動する', action: option.send })
+              } else {
+                picking.onAim(option.aim)
+              }
+            },
+            onCancel: picking.onDeselect,
+          })
+        : undefined
+
     // 捨札・リムーブの中身を見る一覧（ADR-0027）。押す前に選んでいる（`duel.viewingPile`）ものだけ出す。
     const viewingPileElement =
       duel.viewingPile !== undefined
@@ -985,6 +1030,7 @@ function draw(
         onOpenPile: duel.onOpenPile,
         viewingPile: viewingPileElement,
         choosePicker,
+        ...(dialog === undefined ? {} : { dialog }),
         overlay: overlayNode,
         cardsById,
       }),
@@ -1120,10 +1166,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    */
   let pendingRecipe: RecipeKey | undefined = options.recipe
 
-  // 盤面をクリックして操作する（#94）。選びかけているカードは**盤面が届くたびに捨てる**。
-  // 届いた手は入れ替わっており、選びかけの手がまだ行えるとは限らないためである。
+  // 盤面をクリックして操作する（#94）。選びかけは、行える手が入れ替わる時（盤面が届いた時など）に
+  // 捨てる。届いた手は入れ替わっており、選びかけの手がまだ行えるとは限らないためである。
   let mode: PickMode = 'クリック'
-  let pickedCard: CardId | undefined
+  let selection: PickSelection = {}
 
   /** 開いている「見る」一覧（捨札・リムーブの中身を見る、ADR-0027）。無ければ何も開いていない。 */
   let viewingPile: { readonly player: Player; readonly zone: '捨札' | 'リムーブゾーン' } | undefined
@@ -1150,20 +1196,35 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let overlayTimer: ReturnType<typeof setTimeout> | undefined
   let lastFresh: readonly LoggedEvent[] | undefined
 
+  const deselect = (): void => {
+    if (selection.card === undefined && selection.deck !== true) return
+    selection = {}
+    redraw()
+  }
+
   const picking = (): Picking => ({
     mode,
-    card: pickedCard,
+    selection,
+    onAim: (aim) => {
+      selection = { ...selection, aim }
+      redraw()
+    },
     onCard: (card) => {
-      // 同じカードをもう一度押したら、選ぶのをやめる。
-      pickedCard = pickedCard === card ? undefined : card
+      // 同じカードをもう一度押したら、選ぶのをやめる。選び直したら、聞いた答えも捨てる。
+      selection = selection.card === card ? {} : { card }
+      redraw()
+    },
+    onDeck: () => {
+      selection = selection.deck === true ? {} : { deck: true }
       redraw()
     },
     onCancel: () => {
-      pickedCard = undefined
+      selection = {}
     },
+    onDeselect: deselect,
     onMode: (next) => {
       mode = next
-      pickedCard = undefined
+      selection = {}
       redraw()
     },
   })
@@ -1914,8 +1975,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // 消えてしまう。
       if (message.kind === '名前を決めてほしい' && nameDraft === '') nameDraft = message.current ?? ''
       if (message.kind === '名前を決めてほしい' && message.reason !== undefined) nameRefusalArrived = true
-      // 盤面が入れ替わったら、選びかけは捨てる（#94）。
-      pickedCard = undefined
+      // 行える手が入れ替わる時（盤面・選んでほしい・席についた）は、選びかけを捨てる（#94）。届いた
+      // 手が変わると、選びかけの手がまだ行えるとは限らない。`相手の繋がり` のような、行える手を変えない
+      // ものでは捨てない——ダイアログを読んでいる途中で閉じてしまう。
+      if (message.kind === '盤面' || message.kind === '選んでほしい' || message.kind === '席についた') selection = {}
       // 「見る」「選ぶ」の状態は、席についた時点（入り直しを含む）で前の対局のものを持ち越さない。
       // 席は覚えているだけの値なので、次の対局で入れ替わると別の置き場を指してしまう（#207）。
       if (message.kind === '席についた') {
@@ -1954,6 +2017,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
     onLinkChanged: (value) => {
       link = value
+      // 切れたら、聞いている途中のダイアログは何も送らずに閉じる（#249）。繋ぎ直した先で、その手が
+      // まだ行えるとは限らない（ADR-0016）。
+      if (value.kind !== '繋がっている') selection = {}
       // **切れている間に送ったものは届いていない**（`connection.ts`）ので、返事も来ない。待つのを
       // やめて、繋がり直したら確かめ直す。組みかけは画面が持っているので消えない。
       if (value.kind !== '繋がっている') updateBuilder({ ...builder, waiting: { kind: '無し' }, checking: 0 })
@@ -1990,7 +2056,14 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     }, 0)
   }
 
+  // Esc で、選びかけを外す（#249）。何も選んでいなければ何もしない。ダイアログなどが
+  // 自分の Esc を持つ場合も、行き着く先は同じ（選んでいない状態）なので、重ねて呼んでも困らない。
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') deselect()
+  }
+
   redraw()
+  window.addEventListener('keydown', onKeyDown)
   window.addEventListener('popstate', onPopState)
   window.addEventListener('pointerdown', onPointerDown, true)
   window.addEventListener('pointerup', onPointerRelease, true)
@@ -2000,6 +2073,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   return () => {
     if (overlayTimer !== undefined) clearTimeout(overlayTimer)
+    window.removeEventListener('keydown', onKeyDown)
     window.removeEventListener('popstate', onPopState)
     window.removeEventListener('pointerdown', onPointerDown, true)
     window.removeEventListener('pointerup', onPointerRelease, true)

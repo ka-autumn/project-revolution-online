@@ -6,6 +6,7 @@ import type {
   Player,
   Square,
   WireCandidate,
+  WireCardInstance,
   WireCardPosition,
   WireChoice,
   WirePerspective,
@@ -259,7 +260,8 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
  *
  * `picking` を渡すと、**盤面から押して答えられる候補はボタンにしない**（#150）。クリックで
  * 操作している間、同じ候補が盤面と操作パネルの 2 か所に出ているのをやめるためである。行える手
- * のほうは既にそうなっている（`pickView`、盤面の上で示せない手だけが操作パネルに出る）。
+ * のほうは既にそうなっている（`pickView`、盤面の上で示せない手は、パネルの優先権の放棄と
+ * ダイアログに出る）。
  *
  * **どれを外すかは `choicePicking` が決めたものをそのまま使う。** 押せるかどうかの判断をここに
  * 書き写すと、盤面が光る条件とボタンが消える条件が別々にずれていく。渡されない場面
@@ -352,6 +354,17 @@ export interface DestinationView extends PickableSquare {
   readonly action: LegalAction
 }
 
+/**
+ * 光らせる自分のトラップゾーンと、そこを押した時に送る手（#249）。
+ *
+ * スクエアと違って行と列を持たない。置き先が自分のトラップゾーンに決まっている手
+ * （`トラップとしてプレイする`）だけが指すので、ゾーンの名前は持たない。
+ */
+export interface TrapZoneView {
+  readonly action: LegalAction
+  readonly label: string
+}
+
 /** クリックで操作する時に、画面に出すもの。 */
 export interface PickView {
   /**
@@ -365,31 +378,229 @@ export interface PickView {
   /** いま選んでいるカード。選んでいなければ `undefined`。 */
   readonly picked: CardId | undefined
   /**
-   * 選んだカードで行える手のうち、置き先を持たないもの。ボタンとして出す。
-   *
-   * 置き先を持つ手でも、同じスクエアを指す手が 2 つ以上あるならここに入る。押した場所だけ
-   * では、どちらの手かが決まらないためである。
+   * 山札を押せるか（#249）。プランする手が届いていて、プランゾーンにカードが無いとき。カードが
+   * あるときは、山札の場所に見えているそのカードが `pickable` に入る。
    */
-  readonly direct: readonly ActionView[]
-  /** 光らせるスクエア。選んだカードの手が指しているところだけ。 */
+  readonly deckPickable: boolean
+  /** いま山札を選んでいるか。 */
+  readonly deck: boolean
+  /**
+   * 光らせるスクエア。選んだカードの手が指しているところだけ。
+   *
+   * 選んだカードに、置き先の無い手（確認が要るもの）や、押した場所だけでは決まらない手が
+   * 混じるなら、先に `ask` で聞くので、聞き終えるまでは空である。
+   */
   readonly destinations: readonly DestinationView[]
-  /** カードに紐づかない手（優先権の放棄・プラン）。いつでも押せる。 */
+  /**
+   * 光らせる自分のトラップゾーン。`トラップとしてプレイする` を行えるときだけ（#249）。
+   * 光らせる条件は `destinations` と同じ（聞くことがあれば、聞き終えるまでは `undefined`）。
+   */
+  readonly trapZone: TrapZoneView | undefined
+  /**
+   * 聞くダイアログ。聞くことが無ければ `undefined`（#249）。
+   *
+   * 選んだカードで行える手が、盤面の行き先だけで決まらないときに出す。手が 1 つなら確認、
+   * 2 つ以上なら選ばせる。手の並びは届いた手から作るだけで、押せない手は並ばない
+   * （ADR-0010）。
+   */
+  readonly ask: AskView | undefined
+  /**
+   * カードに紐づかない手（優先権の放棄）。カードを選んでいない間だけ出す（#249）。
+   * プランは山札を押して行うので、ここには入らない。
+   *
+   * 選んでいる間は、そのカードに関係ない手は出さない。画面に出すかどうかだけを変えていて、
+   * 送れる手が減るわけではない（ADR-0010）。選択を外せば戻る。
+   */
   readonly untargeted: readonly ActionView[]
+  /**
+   * パネルに出す案内文。出すことが無ければ `undefined`（ダイアログが聞いている間は、ダイアログ自身が
+   * 聞いているので出さない）。
+   */
+  readonly guide: string | undefined
+}
+
+/** 案内文を添える前の `PickView`。 */
+type PickBody = Omit<PickView, 'guide'>
+
+/** 行き先を押して行う手の種類。聞くダイアログで「この手にする」と決めた後に、行き先を絞るのに使う。 */
+export type AimKind = LegalAction['kind']
+
+/** 聞くダイアログの選択肢 1 つ。押したら、手を送るか、行き先を光らせる。 */
+export type AskOption =
+  | { readonly label: string; readonly send: LegalAction }
+  | { readonly label: string; readonly aim: AimKind }
+
+/**
+ * 聞くダイアログ（#249）。選択肢が 1 つなら確認、2 つ以上なら選ばせる。
+ *
+ * `heading` が何のカードの話かで、読み上げでは見出しに結び付く。`lead` は何を聞いているか。
+ * `subject` は見出しが場所の名前（プランゾーン）のときに、そこにあるカードの名前を添える。
+ */
+export interface AskView {
+  readonly heading: string
+  readonly subject?: string | undefined
+  readonly lead: string
+  readonly options: readonly AskOption[]
 }
 
 /**
- * クリックで操作する時の画面。`picked` が選んでいるカード（`undefined` なら選んでいない）。
+ * ダイアログの選択肢に出す手の呼び名。何のカードかは見出しに出るので、カード名は添えない。
+ *
+ * 行き先で決まらない手（同じスクエアを指す手が 2 つ以上あるとき）は、行き先を添えて見分ける。
+ */
+function optionLabelOf(
+  action: LegalAction,
+  viewer: Player,
+  withDestination: boolean,
+  playLabel?: string | undefined,
+): string {
+  const where = (): string => {
+    const square = destinationOf(action)
+    return withDestination && square !== undefined ? `（${squareLabel(viewer, square)}へ）` : ''
+  }
+  switch (action.kind) {
+    case 'エネルギーを置く':
+      return 'エネルギーとして置く'
+    case 'カードをプレイする':
+      return `${playLabel ?? (action.declaration.square === undefined ? 'プレイする' : 'スクエアにプレイする')}${where()}`
+    case 'ユニットを移動する':
+      return `移動する${where()}`
+    case '起動型能力を起動する':
+      return `能力を起動する（${action.ability + 1} 個目）`
+    case '優先権を放棄する':
+    case 'プランする':
+    case 'スマッシュする':
+    case 'トラップを廃棄する':
+    case 'トラップとしてプレイする':
+    case 'トラップを発動する':
+    case '「勇気」を起動する':
+      return action.kind
+  }
+}
+
+/**
+ * 確認ダイアログで、その手を行うかを尋ねる文。手の呼び名（`optionLabelOf`）は言い切りの形で、
+ * 「を行いますか」に当てはめると不自然になるので、手ごとに持つ。
+ */
+function confirmOf(action: LegalAction): string {
+  switch (action.kind) {
+    case 'エネルギーを置く':
+      return 'エネルギーとして置きますか？'
+    case 'カードをプレイする':
+      return `${action.declaration.square === undefined ? '' : 'スクエアに'}プレイしますか？`
+    case 'ユニットを移動する':
+      return '移動しますか？'
+    case '起動型能力を起動する':
+      return `能力を起動しますか？（${action.ability + 1} 個目）`
+    case '優先権を放棄する':
+      return '優先権を放棄しますか？'
+    case 'プランする':
+      return 'プランしますか？'
+    case 'スマッシュする':
+      return 'スマッシュしますか？'
+    case 'トラップを廃棄する':
+      return 'トラップを廃棄しますか？'
+    case 'トラップとしてプレイする':
+      return 'トラップとしてプレイしますか？'
+    case 'トラップを発動する':
+      return 'トラップを発動しますか？'
+    case '「勇気」を起動する':
+      return '「勇気」を起動しますか？'
+  }
+}
+
+/** 選びかけ。カードを選んでいるか、山札を選んでいるか。どちらでもなければ何も選んでいない。 */
+export interface PickSelection {
+  /** 選んでいるカード。 */
+  readonly card?: CardId | undefined
+  /**
+   * 山札を選んでいる（#249）。プランゾーンにカードが無いときの、プランの入り口。プランゾーンに
+   * カードがあるときは、そのカードが山札の場所に見えている（ADR-0027）ので、カードを選ぶ。
+   */
+  readonly deck?: boolean | undefined
+  /** 聞くダイアログで「行き先を押して行う手」を選び終えた、その手の種類。 */
+  readonly aim?: AimKind | undefined
+}
+
+/** 自分のプランゾーンにある、見えているカード。無ければ `undefined`。 */
+function ownPlanInstanceOf(board: WirePerspective): WireCardInstance | undefined {
+  const [first] = board.zones[board.viewer]['プランゾーン']
+
+  return first?.kind === '見えている' ? first.instance : undefined
+}
+
+function ownPlanCardOf(board: WirePerspective): CardId | undefined {
+  return ownPlanInstanceOf(board)?.id
+}
+
+/**
+ * プランゾーンのカードをプレイする手の呼び名。種別（ユニット・ストラテジー）で呼ぶ。
+ * プランゾーンのダイアログは、見出しが場所の名前でカード名が本文に出るので、ボタンでは何をプレイ
+ * するのかを種別で言う。ユニットとストラテジー以外は、通常の呼び名のままにする（`undefined`）。
+ */
+function planPlayLabelOf(card: WireCardInstance | undefined): string | undefined {
+  switch (card?.card.type) {
+    case 'ユニット':
+      return 'ユニットをプレイする'
+    case 'ストラテジー':
+    case '超必殺ストラテジー！':
+      return 'ストラテジーをプレイする'
+    default:
+      return undefined
+  }
+}
+
+/**
+ * クリックで操作する時の画面。`selection` が選びかけ（何も選んでいなければ空）。
  *
  * 段は 2 つである。カードを選ぶまでは押せるカードを示すだけで、選んだ後にその 1 枚で行える手
- * だけを出す。**置き先を選ぶ手は盤面の上で示す**ので、そこは押すところが 2 か所（カード →
- * スクエア）になる。
+ * を出す。置き先を選ぶ手は盤面の上で示すので、そこは押すところが 2 か所（カード →
+ * スクエア）になる。それ以外の手は、ダイアログで聞く（`ask`）。
+ *
+ * プランは、山札（プランゾーンにカードがあればそのカード）を押して始める（#249）。プランする手は
+ * カードを指さないが、山札の場所に見えているものを押すので、そのカードの手の 1 つとして聞く。
+ *
+ * `selection.aim` は、聞くダイアログで「行き先を押して行う手」を選んだ後に、その種類を渡す。
+ * 渡すと、その種類の行き先だけが光る。
  */
 export function pickView(
   board: WirePerspective,
   actions: readonly LegalAction[],
-  picked: CardId | undefined,
+  selection: PickSelection,
   passOutcome: PassOutcome | undefined,
 ): PickView {
+  const body = arrange(board, actions, selection, passOutcome)
+
+  return { ...body, guide: guideOf(body, board) }
+}
+
+/**
+ * パネルの案内文。「押す」ではなく「選択」で書く。
+ *
+ * 押せるものが何も無いときに、相手が優先権を持っていれば、待っていることを言う。`board.turn.priority`
+ * は届いた盤面の値を読んでいるだけで、優先権の判断はここでしない。
+ */
+function guideOf(view: PickBody, board: WirePerspective): string | undefined {
+  if (view.ask !== undefined) return undefined
+  if (view.picked !== undefined) {
+    return view.destinations.length > 0 || view.trapZone !== undefined ? '置く場所を選択してください' : undefined
+  }
+
+  const cards = view.pickable.length > 0
+  if (cards && view.deckPickable) return '操作するカードを選択してください。プランするには、山札を選択してください'
+  if (cards) return '操作するカードを選択してください'
+  if (view.deckPickable) return 'プランするには、山札を選択してください'
+
+  return board.turn.priority === board.viewer ? '選択できるカードがありません' : '相手の操作を待っています'
+}
+
+/** 行き先とダイアログを組む。案内文は `pickView` が添える。 */
+function arrange(
+  board: WirePerspective,
+  actions: readonly LegalAction[],
+  selection: PickSelection,
+  passOutcome: PassOutcome | undefined,
+): PickBody {
   const names = namesIn(board)
   const view = (action: LegalAction): ActionView => ({
     action,
@@ -397,35 +608,107 @@ export function pickView(
     primary: isPrimaryAction(action),
   })
 
+  const planAction = actions.find((action) => action.kind === 'プランする')
+  const planCard = ownPlanCardOf(board)
   const targeted = actions.filter((action) => targetOf(action) !== undefined)
-  const untargeted = actions.filter((action) => targetOf(action) === undefined).map(view)
-  const pickable = [...new Set(targeted.flatMap((action) => targetOf(action) ?? []))]
-  // 届いていないカードは選べない。選んだ後に手が届かなくなることは起こる（盤面が入れ替わる）
-  // ので、その時は選んでいない状態と同じ扱いになる。
-  if (picked === undefined || !pickable.includes(picked)) {
-    return { pickable, picked: undefined, direct: [], destinations: [], untargeted }
-  }
-
-  const mine = targeted.filter((action) => targetOf(action) === picked)
-  const placing = mine.filter((action) => destinationOf(action) !== undefined)
-  // 同じスクエアを指す手が 2 つ以上あるなら、押した場所だけでは決まらない。
-  const ambiguous = (square: Square): boolean =>
-    placing.filter((action) => sameSquare(destinationOf(action), square)).length > 1
-
-  const destinations = placing.flatMap((action): readonly DestinationView[] => {
-    const square = destinationOf(action)
-    if (square === undefined || ambiguous(square)) return []
-    return [{ square, action, label: view(action).label }]
-  })
-  const decided = destinations.map((each) => each.action)
-
-  return {
+  // プランは山札の場所を押して行うので、ボタンとしては出さない。
+  const untargeted = actions
+    .filter((action) => targetOf(action) === undefined && action.kind !== 'プランする')
+    .map(view)
+  const pickable = [
+    ...new Set([
+      ...targeted.flatMap((action) => targetOf(action) ?? []),
+      ...(planAction !== undefined && planCard !== undefined ? [planCard] : []),
+    ]),
+  ]
+  const deckPickable = planAction !== undefined && planCard === undefined
+  const idle: PickBody = {
     pickable,
-    picked,
-    direct: mine.filter((action) => !decided.includes(action)).map(view),
-    destinations,
+    picked: undefined,
+    deckPickable,
+    deck: false,
+    destinations: [],
+    trapZone: undefined,
+    ask: undefined,
     untargeted,
   }
+
+  // 届いていないカードは選べない。選んだ後に手が届かなくなることは起こる（盤面が入れ替わる）
+  // ので、その時は選んでいない状態と同じ扱いになる。
+  const { card: picked, aim } = selection
+  const deck = selection.deck === true && deckPickable
+  if (!deck && (picked === undefined || !pickable.includes(picked))) return idle
+
+  // 山札の場所を押したなら、プランする手も、選んだものの手になる。
+  const pressesPlan = deck || (picked !== undefined && picked === planCard)
+  const mine = [
+    ...(deck ? [] : targeted.filter((action) => targetOf(action) === picked)),
+    ...(pressesPlan && planAction !== undefined ? [planAction] : []),
+  ]
+  const placing = mine.filter((action) => destinationOf(action) !== undefined)
+  // 同じスクエアを指す手が 2 つ以上あるなら、押した場所だけでは決まらない。
+  const ambiguous = (action: LegalAction): boolean => {
+    const square = destinationOf(action)
+    return square !== undefined && placing.filter((other) => sameSquare(destinationOf(other), square)).length > 1
+  }
+  // 行き先を押して行える手（スクエアを指す手と、自分のトラップゾーンを指す手）。残りは、
+  // ダイアログで聞く手。
+  const aimable = mine.filter((action) =>
+    action.kind === 'トラップとしてプレイする' ? true : placing.includes(action) && !ambiguous(action),
+  )
+  const asked = mine.filter((action) => !aimable.includes(action))
+
+  // プランゾーンのカードを押して、プランする手も含めて聞くとき。ダイアログの見出しは場所の名前に
+  // し、カード名は本文に出す。
+  const planZoneCard = !deck && picked !== undefined && picked === planCard && planAction !== undefined ? picked : undefined
+  const playLabelOf = (action: LegalAction): string | undefined =>
+    planZoneCard !== undefined && action.kind === 'カードをプレイする' && action.declaration.card === planCard
+      ? planPlayLabelOf(ownPlanInstanceOf(board))
+      : undefined
+
+  // 聞く選択肢。行き先を押して行う手は、種類ごとに 1 つにまとめる。届いた並びの順に出す。
+  const options: AskOption[] = []
+  for (const action of mine) {
+    if (aimable.includes(action)) {
+      if (!options.some((option) => 'aim' in option && option.aim === action.kind)) {
+        options.push({ label: optionLabelOf(action, board.viewer, false, playLabelOf(action)), aim: action.kind })
+      }
+    } else {
+      options.push({
+        label: optionLabelOf(action, board.viewer, ambiguous(action), playLabelOf(action)),
+        send: action,
+      })
+    }
+  }
+
+  const selected = { ...idle, picked: deck ? undefined : picked, deck, untargeted: [] }
+  const light = (lit: readonly LegalAction[]): PickBody => {
+    const trap = lit.find((action) => action.kind === 'トラップとしてプレイする')
+
+    return {
+      ...selected,
+      destinations: lit.flatMap((action): readonly DestinationView[] => {
+        const square = destinationOf(action)
+        return square === undefined ? [] : [{ square, action, label: view(action).label }]
+      }),
+      trapZone: trap === undefined ? undefined : { action: trap, label: view(trap).label },
+    }
+  }
+
+  // 聞くことが無ければ、行き先を全部光らせる。聞くことがあっても、行き先を押して行う手を選び終えて
+  // いれば、その種類の行き先だけを光らせる（聞き直さない）。
+  if (asked.length === 0) return light(aimable)
+  if (aim !== undefined && aimable.some((action) => action.kind === aim)) {
+    return light(aimable.filter((action) => action.kind === aim))
+  }
+
+  const heading =
+    planZoneCard !== undefined ? 'プランゾーン' : deck || picked === undefined ? '山札' : nameOf(names, picked)
+  const subject = planZoneCard !== undefined ? { subject: nameOf(names, planZoneCard) } : {}
+  const [only] = options
+  const lead = options.length === 1 && only !== undefined && 'send' in only ? confirmOf(only.send) : 'どれにしますか？'
+
+  return { ...selected, ask: { heading, ...subject, lead, options } }
 }
 
 function sameSquare(square: Square | undefined, other: Square): boolean {

@@ -62,7 +62,7 @@ import type {
   PoolView,
   TypeCount,
 } from './deck-builder.js'
-import type { ActionView, ChoiceView, DestinationView, PickView } from './input-model.js'
+import type { ActionView, AskOption, AskView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import { countName, DISPLAY_NAME_LIMIT } from './name-count.js'
 import { COLORLESS, emptyFilter, isFiltering, MOVE_SHAPES, toggled } from './pool-filter.js'
 import type { FilterChoices, MoveShape, NumberRange, PoolFilter, StarChoice } from './pool-filter.js'
@@ -146,9 +146,55 @@ export interface BoardPicking {
    * 置き場所で引く。**どれが押せるかはここで決めない**のは、表向きのカードと同じである。
    */
   readonly hidden?: readonly WireCardPosition[]
+  /**
+   * 光らせる自分のトラップゾーン（#249）。`トラップとしてプレイする` を行える時だけ渡される。
+   * 押した時に何を送るかはここに無い（`onTrapZone`）。
+   */
+  readonly trapZone?: { readonly label: string }
+  readonly onTrapZone?: () => void
+  /**
+   * 山札を押せる（#249）。プランゾーンにカードが無く、プランする手が届いている時だけ渡される。
+   * プランゾーンにカードがあれば、山札の場所に見えているそのカードを押す（`pickable`）。
+   */
+  readonly deck?: { readonly picked: boolean }
+  readonly onDeck?: () => void
   readonly onCard: (card: CardId) => void
+  /**
+   * 選んでいる行動をやめる。コストなど中のカードから選ぶゾーンの枠の近くに出す。やめられない場面
+   * （戻れない選択）では渡されない。
+   */
+  readonly onCancelChoice?: () => void
   readonly onSquare?: (square: Square) => void
   readonly onHidden?: (at: WireCardPosition) => void
+  /**
+   * 押せるもの以外のところが押された。カードを選んでいる間だけ渡され、選びかけを外す（#249）。
+   * 何を押せるかはここで決めない（`keepsPicking` が DOM の目印で見分ける）。
+   */
+  readonly onBlank?: () => void
+}
+
+/**
+ * カードを選んでいる間の「押せるもの」の目印。押されたものがこれらの中にあれば、選びかけを外さない。
+ *
+ * 中身は ADR-0031 の「押せるもの」の一覧と 1 対 1 で対応する。どれが押せるかはここで決めず、
+ * 描いた側の目印に頼る——押せるかどうかを 2 か所で決めない（ADR-0010、`input-model.ts` の
+ * `choicePicking` と同じ考え方）。
+ */
+const KEEPS_PICKING = [
+  'button', // ボタン
+  '[role="button"]', // ボタンのように振る舞うもの全般（捨札・リムーブの束を開くもの、山札、トラップゾーン）
+  '.card--押せる', // 押せるカード
+  '.square--置き先', // 光っている行き先（スクエア）
+  '.zone--置き先', // 光っている行き先（自分のトラップゾーン）
+  '.pile--押せる', // 押せる山札
+  '.picker', // カードの一覧（捨札・リムーブを見る一覧と、効果で選ぶ一覧）
+  '.dialog', // 手を聞くダイアログ
+  '.duel__right', // 右の列（カードの詳細）
+].join(', ')
+
+/** 押されたものが、カードを選んでいる間の「押せるもの」か。そうなら選びかけを外さない。 */
+function keepsPicking(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(KEEPS_PICKING) !== null
 }
 
 /** そのスクエアが押せるなら、その 1 つ。押せなければ `undefined`。 */
@@ -160,6 +206,11 @@ function pickableAt(picking: BoardPicking | undefined, square: Square): Pickable
 function picksHidden(picking: BoardPicking | undefined, at: WireCardPosition): boolean {
   const key = keyOfPosition(at)
   return picking?.hidden?.some((each) => keyOfPosition(each) === key) ?? false
+}
+
+/** そのカードが押せるか。表向きは識別子で、裏向きは置き場所で引く。 */
+function isPickable(card: CardView, picking: BoardPicking | undefined): boolean {
+  return card.kind === '裏' ? picksHidden(picking, card.at) : (picking?.pickable.includes(card.id) ?? false)
 }
 
 /* ---------- アイコン・カードの面（ADR-0027） ---------- */
@@ -336,12 +387,6 @@ function appendTraitsAndStats(
 interface FaceOptions {
   /** 詳細（拡大）として出すか。テキストの枠が付き、並びが変わる。 */
   readonly big?: boolean
-  /**
-   * 山札の場所に見せているプランのカードか。
-   *
-   * 小さな面では、このカードにだけキーワード能力のアイコンを名前の下の行に出す。
-   */
-  readonly plan?: boolean
 }
 
 /**
@@ -392,11 +437,6 @@ function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptio
     node.append(bottom)
   } else {
     node.append(title)
-    if (options.plan && keywords !== undefined) {
-      const row = element('div', 'card__keywords-row')
-      row.append(keywords)
-      node.append(row)
-    }
 
     if (icons !== undefined) bottom.append(icons)
     appendTraitsAndStats(bottom, card)
@@ -438,7 +478,7 @@ function cardElement(card: CardView, picking?: BoardPicking, options: FaceOption
   if (card.kind === '裏') {
     // 裏向きのカードも候補になる（プランのコストのスマッシュ、#127）。押せるかどうかは
     // 置き場所で引く。識別子は届いていない。
-    const pickable = picksHidden(picking, card.at)
+    const pickable = isPickable(card, picking)
     const back = element('div', `card card--back card--${card.orientation}${pickable ? ' card--押せる' : ''}`)
     // 押せることを色だけで区別させないのは、表向きのカードと同じである（#94）。
     back.setAttribute('aria-label', `裏向きのカード（${card.orientation}）${pickable ? '（押せます）' : ''}`)
@@ -455,7 +495,7 @@ function cardElement(card: CardView, picking?: BoardPicking, options: FaceOption
   // それだけに頼らない（#91）。
   const modified = card.modified === undefined ? '' : ' card--修整あり'
   // 押せるかどうかも色だけで区別させない。押せるカードは `aria-label` にもそう出す（#94）。
-  const pickable = picking?.pickable.includes(card.id) ?? false
+  const pickable = isPickable(card, picking)
   const picked = picking?.picked === card.id
   const state = `${pickable ? ' card--押せる' : ''}${picked ? ' card--選択中' : ''}`
   const color = `card--色-${primaryColorOf(card.colors)}`
@@ -487,16 +527,98 @@ function backCardElement(): HTMLElement {
   return node
 }
 
-function zoneElement(zone: ZoneView, picking?: BoardPicking, options: FaceOptions = {}): HTMLElement {
-  const node = element('section', `zone zone--${zone.zone}`)
+/**
+ * 中のカードから選ぶ（コストなど）ゾーン。選べるカードがあるあいだ、枠ごと目立たせ、盤面のほかを
+ * 暗くする。重ねて小さく並べるので、カードの縁の光だけだと、どこを見ればよいか分かりにくい。
+ */
+const CHOOSING_ZONES: readonly string[] = ['エネルギーゾーン', 'スマッシュゾーン']
+
+/** そのゾーンの中のカードから選ぶか。どのカードが押せるかはここで決めず、カードの側と同じ `isPickable` で引く。 */
+function choosesFrom(zone: ZoneView, picking: BoardPicking | undefined): boolean {
+  return CHOOSING_ZONES.includes(zone.zone) && zone.cards.some((card) => isPickable(card, picking))
+}
+
+/**
+ * 強調した枠の上端に付ける札。どこから選ぶかを文字で言い、行動をやめるボタンを枠のすぐ近くに置く
+ * （盤面を暗くしても押せる）。やめられない場面ではボタンを出さない。
+ */
+function choosingTabElement(picking: BoardPicking | undefined): HTMLElement {
+  const tab = element('div', 'choosing-tab')
+  tab.append(element('span', 'choosing-tab__label', 'ここから選択'))
+  if (picking?.onCancelChoice !== undefined) tab.append(button('この行動をやめる', picking.onCancelChoice))
+
+  return tab
+}
+
+/**
+ * ゾーンを 1 つ描く。`framed` が偽のとき、ゾーン単独では強調しない（まとめて囲む枠が強調する）。
+ */
+function zoneElement(zone: ZoneView, picking?: BoardPicking, options: FaceOptions = {}, framed = true): HTMLElement {
+  const choosing = framed && choosesFrom(zone, picking)
+  const node = element('section', `zone zone--${zone.zone}${choosing ? ' zone--候補あり' : ''}`)
   const title = element('h3', 'zone__title', zone.zone)
   title.append(element('span', '', `（${zone.count}）`))
   node.append(title)
 
   const cards = element('div', 'zone__cards')
   if (zone.cards.length === 0) cards.append(element('div', 'zone__empty'))
+  // 重ねて並べるゾーンは、枚数に応じて重なり幅を詰める（`style.css` の `--fit`）ので、枚数と
+  // フリーズしている枚数を渡す。
+  if (CHOOSING_ZONES.includes(zone.zone)) {
+    cards.style.setProperty('--n', String(zone.cards.length))
+    cards.style.setProperty('--nf', String(zone.cards.filter((card) => card.orientation === 'フリーズ').length))
+  }
   for (const card of zone.cards) cards.append(cardElement(card, picking, options))
   node.append(cards)
+  if (choosing) node.append(choosingTabElement(picking))
+
+  return node
+}
+
+/**
+ * エネルギーとスマッシュを囲む枠。選べるカードがあるゾーンが両方なら（プランのコスト）、2 つを
+ * 1 つの枠で囲んで強調する。片方だけなら（プレイ・移動・起動のコスト）、そのゾーンだけを囲む。
+ */
+function energyGroupElement(whose: '自分' | '相手', zones: readonly ZoneView[], picking?: BoardPicking): HTMLElement {
+  const lit = zones.filter((zone) => choosesFrom(zone, picking))
+  const together = lit.length > 1 && lit.length === zones.length
+  const node = groupElement(
+    whose,
+    'エネルギーゾーン',
+    zones.map((zone) => zoneElement(zone, picking, {}, !together)),
+  )
+  if (together) {
+    node.classList.add('group--候補あり')
+    node.append(choosingTabElement(picking))
+  }
+
+  return node
+}
+
+/**
+ * 自分のトラップゾーン。`トラップとしてプレイする` を行える間は、ここが行き先として光り、押すと
+ * その手を行う（#249）。スクエアと同じく、押せることを色だけで区別させず、読み上げにも出す。
+ */
+function ownTrapZoneElement(zone: ZoneView, picking: BoardPicking | undefined): HTMLElement {
+  const node = zoneElement(zone, picking)
+  const lit = picking?.trapZone
+  const onTrapZone = picking?.onTrapZone
+  if (lit === undefined || onTrapZone === undefined) return node
+
+  node.classList.add('zone--置き先')
+  node.setAttribute('role', 'button')
+  node.tabIndex = 0
+  node.setAttribute('aria-label', `自分のトラップゾーン（押せます: ${lit.label}）`)
+  // 光るのは、トラップとしてプレイする手が届いている間だけで、その手はトラップゾーンが空の時にしか
+  // 行えない（総合ルール 第2部 第20章 3-1）。ゾーンの中に押せるカードは無いので、カードの click との
+  // 重なりは考えない。
+  node.addEventListener('click', onTrapZone)
+  node.addEventListener('keydown', (event) => {
+    // 中のカードにフォーカスがある時の Enter は、そのカードのものである。
+    if (event.target !== node || (event.key !== 'Enter' && event.key !== ' ')) return
+    event.preventDefault()
+    onTrapZone()
+  })
 
   return node
 }
@@ -538,7 +660,12 @@ function pileZoneElement(zone: ZoneView, onOpen: (() => void) | undefined): HTML
  * 山札。プランゾーンにカードがあれば、裏面のかわりにそのカードを表で見せる（ADR-0027）。
  * 有る・無しで山札の位置は動かさない。
  */
-function deckZoneElement(deck: ZoneView, plan: CardView | undefined, picking: BoardPicking | undefined): HTMLElement {
+function deckZoneElement(
+  deck: ZoneView,
+  plan: CardView | undefined,
+  picking: BoardPicking | undefined,
+  own: boolean,
+): HTMLElement {
   const node = element('section', 'zone zone--山札')
   const title = element('h3', 'zone__title', '山札')
   title.append(element('span', '', `（${deck.count}）`))
@@ -546,18 +673,42 @@ function deckZoneElement(deck: ZoneView, plan: CardView | undefined, picking: Bo
 
   const cardsWrap = element('div', 'zone__cards')
   const pile = element('div', 'pile')
+  // プランゾーンにカードが無い間の山札は、押してプランを始められる（#249）。カードがあれば、
+  // そのカードを押す（`cardElement`）。
+  const pressable = own && plan === undefined && picking?.deck !== undefined && picking.onDeck !== undefined
+  if (pressable) {
+    const onDeck = picking.onDeck
+    pile.classList.add('pile--押せる')
+    if (picking.deck?.picked === true) pile.classList.add('pile--選択中')
+    pile.setAttribute('role', 'button')
+    pile.tabIndex = 0
+    pile.setAttribute('aria-label', `山札（${picking.deck?.picked === true ? '選択中' : '押せます'}）`)
+    if (onDeck !== undefined) {
+      pile.addEventListener('click', onDeck)
+      pile.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onDeck()
+      })
+    }
+  }
   // プランゾーンのカードは公開情報だが、念のため見えている時だけ表で見せる。見えていなければ
   // 裏面のままにする（表に出せないものを表として描かない）。
   const hasCard = plan !== undefined || deck.count > 0
   if (plan !== undefined && plan.kind === '表') {
-    pile.append(cardElement(plan, picking, { plan: true }))
+    pile.append(cardElement(plan, picking))
     pile.append(element('span', 'pile__plan', 'プラン（1）'))
+    // プランのカードのキーワード能力は、カードの下に大きく並べる。枚数は上の見出しに出ている。
+    const keywords = keywordsElement(plan.keywords)
+    if (keywords !== undefined) {
+      keywords.classList.add('pile__keywords')
+      pile.append(keywords)
+    }
   } else if (hasCard) {
     pile.append(backCardElement())
   } else {
     pile.append(element('div', 'zone__empty'))
   }
-  if (hasCard) pile.append(element('span', 'pile__count', String(deck.count)))
   cardsWrap.append(pile)
   node.append(cardsWrap)
 
@@ -611,7 +762,7 @@ function squareElement(square: SquareView, picking: BoardPicking | undefined, ba
   )
   if (inBattle) node.append(element('span', 'square__battle', 'バトル中'))
   // 押せることを色だけで区別させない。読み上げにも出す。
-  const where = pickable === undefined ? '' : `（${pickable.label}）`
+  const where = pickable === undefined ? '' : `（押せます: ${pickable.label}）`
   node.setAttribute('aria-label', `${square.area} ${square.square.row}-${square.square.column}${where}`)
   const onSquare = picking?.onSquare
   if (pickable !== undefined && onSquare !== undefined) {
@@ -654,19 +805,13 @@ function boardGridElement(
       pileZoneElement(zoneOf(view.opponent, 'リムーブゾーン'), openerOf(view.opponent, 'リムーブゾーン')),
       pileZoneElement(zoneOf(view.opponent, '捨札'), openerOf(view.opponent, '捨札')),
     ]),
-    groupElement('相手', 'エネルギーゾーン', [
-      zoneElement(zoneOf(view.opponent, 'スマッシュゾーン'), picking),
-      zoneElement(zoneOf(view.opponent, 'エネルギーゾーン'), picking),
-    ]),
+    energyGroupElement('相手', [zoneOf(view.opponent, 'スマッシュゾーン'), zoneOf(view.opponent, 'エネルギーゾーン')], picking),
   )
   node.append(opponentStrip)
 
   const ownStrip = element('div', 'strip strip--自分')
   ownStrip.append(
-    groupElement('自分', 'エネルギーゾーン', [
-      zoneElement(zoneOf(view.own, 'エネルギーゾーン'), picking),
-      zoneElement(zoneOf(view.own, 'スマッシュゾーン'), picking),
-    ]),
+    energyGroupElement('自分', [zoneOf(view.own, 'エネルギーゾーン'), zoneOf(view.own, 'スマッシュゾーン')], picking),
     groupElement('自分', '捨札', [
       pileZoneElement(zoneOf(view.own, '捨札'), openerOf(view.own, '捨札')),
       pileZoneElement(zoneOf(view.own, 'リムーブゾーン'), openerOf(view.own, 'リムーブゾーン')),
@@ -674,10 +819,10 @@ function boardGridElement(
   )
   node.append(ownStrip)
 
-  node.append(place(deckZoneElement(zoneOf(view.opponent, '山札'), planOf(view.opponent), picking), '2 / 1'))
+  node.append(place(deckZoneElement(zoneOf(view.opponent, '山札'), planOf(view.opponent), picking, false), '2 / 1'))
   node.append(place(zoneElement(zoneOf(view.opponent, 'トラップゾーン'), picking), '2 / 6'))
-  node.append(place(zoneElement(zoneOf(view.own, 'トラップゾーン'), picking), '4 / 1'))
-  node.append(place(deckZoneElement(zoneOf(view.own, '山札'), planOf(view.own), picking), '4 / 6'))
+  node.append(place(ownTrapZoneElement(zoneOf(view.own, 'トラップゾーン'), picking), '4 / 1'))
+  node.append(place(deckZoneElement(zoneOf(view.own, '山札'), planOf(view.own), picking, true), '4 / 6'))
 
   node.append(place(waitingElement('バンク', view.bank), '3 / 1'))
   node.append(place(waitingElement('誘発した能力', view.triggered), '3 / 6'))
@@ -3263,36 +3408,119 @@ export interface PickHandlers {
 /**
  * クリックで操作する時の、行える手のところ（#94）。
  *
- * 盤面の上で示せない手だけをここに出す。**カードを選ぶ前は、対象を持たない手だけ**が並び、
- * カードを選んだ後はその 1 枚の手が並ぶ。置き先を選ぶ手は盤面の上にあるので、ここには出ない。
+ * パネルに出す手のボタンは、カードを選んでいない間の優先権の放棄だけである。カードを選んだ後の手は、
+ * 行き先（盤面）とダイアログ（`askElement`）で出す。
  */
 export function pickElement(view: PickView, handlers: PickHandlers, aside?: HTMLElement): HTMLElement {
   const node = element('section', 'actions')
   node.append(titleRow('actions__title', '行える手', aside))
 
-  const guide =
-    view.picked === undefined
-      ? view.pickable.length > 0
-        ? 'カードを押すと、そのカードで行える手が出ます'
-        : '押せるカードがありません'
-      : view.destinations.length > 0
-        ? '光っているスクエアを押すと、そこへ置きます'
-        : 'このカードで行える手を選んでください'
-  node.append(element('p', 'actions__none', guide))
+  if (view.guide !== undefined) node.append(element('p', 'actions__none', view.guide))
 
   const list = element('div', 'actions__list')
-  for (const view_ of [...view.direct, ...view.untargeted]) {
+  for (const view_ of view.untargeted) {
     list.append(button(view_.label, () => handlers.onAction(view_.action), view_.primary))
   }
   node.append(list)
 
   if (view.picked !== undefined) {
     const back = element('div', 'choice__back')
-    back.append(button('選ぶのをやめる', handlers.onCancel))
+    // 選択中の「この行動をやめる」（始めた行動を取り消す）と区別する。こちらは押す前の選びかけを
+    // 外すだけで、何も送らない。
+    back.append(button('カードの選択をやめる', handlers.onCancel))
     node.append(back)
   }
 
   return node
+}
+
+/** 聞くダイアログで押せるもの。 */
+export interface AskHandlers {
+  readonly onChoose: (option: AskOption) => void
+  /** やめる。ダイアログを閉じて、カードを選んでいない状態に戻る。何も送らない。 */
+  readonly onCancel: () => void
+}
+
+/**
+ * 選んだカードの手を聞くダイアログ（#249）。画面の中に重ねる。ブラウザの確認ダイアログは
+ * 使わない（`confirmElement` と同じ）。
+ *
+ * 手が 1 つなら確認（左にキャンセル、右に手）、2 つ以上なら選ぶ（手を縦に並べ、最後にキャンセル）。
+ * 見出し（カード名）と何を聞いているかは、読み上げに結び付ける。最初の手に手を置く——デッキ構築の
+ * 確認は戻せないことを聞くのでキャンセルに置くが、ここは手を行うために出しているので、Enter で
+ * そのまま進める。Esc・暗くしたところを押すのは、キャンセルと同じ。
+ *
+ * 手を送ったあとは、返事（盤面など）が届いて描き直されるまで、このダイアログは古い画面のまま残る。
+ * その間に押されると 2 通目が送られ、サーバに断られて「行えませんでした」が出るので、送った時点で
+ * すべてのボタンを押せなくし、通信中であることを出す。送った手は取り消せないので、キャンセルも
+ * Esc も効かせない。アニメーションは使わない（描き直しで作り直されるため、ADR-0027）。
+ */
+export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
+  const layer = element('div', 'dialog')
+  const box = element('div', 'dialog__box')
+  box.setAttribute('role', 'dialog')
+  box.setAttribute('aria-modal', 'true')
+  const title = element('h2', 'dialog__title', view.heading)
+  title.id = 'dialog-title'
+  const lead = element('p', 'dialog__lead', view.lead)
+  lead.id = 'dialog-lead'
+  // 見出しが場所の名前のときだけ、そこにあるカードの名前を見出しと聞く文の間に置く。
+  const subject = view.subject === undefined ? undefined : element('p', 'dialog__subject', view.subject)
+  if (subject !== undefined) subject.id = 'dialog-subject'
+  box.setAttribute('aria-labelledby', title.id)
+  box.setAttribute('aria-describedby', subject === undefined ? lead.id : `${subject.id} ${lead.id}`)
+  // 送っている間の表示の場所。読み上げに伝わるよう、中身が空のうちから置いておく。
+  const sending = element('p', 'dialog__sending')
+  sending.setAttribute('role', 'status')
+  box.append(title, ...(subject === undefined ? [] : [subject]), lead, sending)
+
+  let sent = false
+  const onSent = (): void => {
+    sent = true
+    box.setAttribute('aria-busy', 'true')
+    sending.textContent = '通信中…'
+    for (const each of box.querySelectorAll('button')) each.disabled = true
+  }
+  const choose = (option: AskOption): HTMLElement =>
+    button(
+      option.label,
+      () => {
+        if (sent) return
+        // 行き先を絞るだけの選択肢は何も送らず、すぐ描き直されるので、待つことが無い。
+        if ('send' in option) onSent()
+        handlers.onChoose(option)
+      },
+      view.options.length === 1,
+    )
+  const onCancel = (): void => {
+    if (!sent) handlers.onCancel()
+  }
+  const cancel = button('キャンセル', onCancel)
+  const first = view.options[0]
+  if (view.options.length === 1 && first !== undefined) {
+    const row = element('div', 'dialog__row')
+    row.append(cancel, choose(first))
+    box.append(row)
+  } else {
+    const actions = element('div', 'dialog__actions')
+    for (const option of view.options) actions.append(choose(option))
+    const foot = element('div', 'dialog__cancel')
+    foot.append(cancel)
+    box.append(actions, foot)
+  }
+  layer.append(box)
+
+  layer.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') onCancel()
+  })
+  // 重ねた層の外側（暗くしたところ）を押しても、やめる。
+  layer.addEventListener('click', (event) => {
+    if (event.target === layer) onCancel()
+  })
+  // 付け終わってから手を置く。まだ文書に無い要素には置けない。
+  queueMicrotask(() => layer.querySelector<HTMLElement>('.dialog__actions button, .dialog__row .button--primary')?.focus())
+
+  return layer
 }
 
 /**
@@ -3782,6 +4010,8 @@ export interface DuelElementProps {
   readonly viewingPile?: HTMLElement
   /** 開いている「選ぶ」一覧。無ければ `undefined`。 */
   readonly choosePicker?: HTMLElement
+  /** 選んだカードの手を聞くダイアログ（#249）。無ければ `undefined`。 */
+  readonly dialog?: HTMLElement
   /** 演出・決着の層。出すものが無ければ `undefined`。 */
   readonly overlay?: HTMLElement
   /** 表側が見えているカードすべて（`view-model.ts` の `visibleCardViewsIn`）。詳細の配線に使う。 */
@@ -3835,8 +4065,18 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   if (props.overlay !== undefined) root.append(props.overlay)
   if (props.viewingPile !== undefined) root.append(props.viewingPile)
   if (props.choosePicker !== undefined) root.append(props.choosePicker)
+  if (props.dialog !== undefined) root.append(props.dialog)
 
   wireCardDetailHover(root, detail, props.cardsById, props.picking?.picked)
+
+  // 押せるもの以外のところを押したら、選びかけを外す（#249）。押せるカードを押した時は、その
+  // カードが次の選択になるので外さない。
+  const onBlank = props.picking?.onBlank
+  if (onBlank !== undefined) {
+    root.addEventListener('click', (event) => {
+      if (!keepsPicking(event.target)) onBlank()
+    })
+  }
 
   return root
 }
