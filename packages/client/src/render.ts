@@ -203,6 +203,11 @@ function picksHidden(picking: BoardPicking | undefined, at: WireCardPosition): b
   return picking?.hidden?.some((each) => keyOfPosition(each) === key) ?? false
 }
 
+/** そのカードが押せるか。表向きは識別子で、裏向きは置き場所で引く。 */
+function isPickable(card: CardView, picking: BoardPicking | undefined): boolean {
+  return card.kind === '裏' ? picksHidden(picking, card.at) : (picking?.pickable.includes(card.id) ?? false)
+}
+
 /* ---------- アイコン・カードの面（ADR-0027） ---------- */
 
 /** レベルアイコンの SVG。色ごとに形が違う（開発者が用意した原本をそのまま使う）。 */
@@ -479,7 +484,7 @@ function cardElement(card: CardView, picking?: BoardPicking, options: FaceOption
   if (card.kind === '裏') {
     // 裏向きのカードも候補になる（プランのコストのスマッシュ、#127）。押せるかどうかは
     // 置き場所で引く。識別子は届いていない。
-    const pickable = picksHidden(picking, card.at)
+    const pickable = isPickable(card, picking)
     const back = element('div', `card card--back card--${card.orientation}${pickable ? ' card--押せる' : ''}`)
     // 押せることを色だけで区別させないのは、表向きのカードと同じである（#94）。
     back.setAttribute('aria-label', `裏向きのカード（${card.orientation}）${pickable ? '（押せます）' : ''}`)
@@ -496,7 +501,7 @@ function cardElement(card: CardView, picking?: BoardPicking, options: FaceOption
   // それだけに頼らない（#91）。
   const modified = card.modified === undefined ? '' : ' card--修整あり'
   // 押せるかどうかも色だけで区別させない。押せるカードは `aria-label` にもそう出す（#94）。
-  const pickable = picking?.pickable.includes(card.id) ?? false
+  const pickable = isPickable(card, picking)
   const picked = picking?.picked === card.id
   const state = `${pickable ? ' card--押せる' : ''}${picked ? ' card--選択中' : ''}`
   const color = `card--色-${primaryColorOf(card.colors)}`
@@ -528,8 +533,16 @@ function backCardElement(): HTMLElement {
   return node
 }
 
+/**
+ * 中のカードから選ぶ（コストなど）ゾーン。選べるカードがあるあいだ、ゾーンの枠ごと目立たせる。
+ * 重ねて小さく並べるので、カードの縁の光だけだと、どこを見ればよいか分かりにくい。
+ */
+const CHOOSING_ZONES: readonly string[] = ['エネルギーゾーン', 'スマッシュゾーン']
+
 function zoneElement(zone: ZoneView, picking?: BoardPicking, options: FaceOptions = {}): HTMLElement {
-  const node = element('section', `zone zone--${zone.zone}`)
+  // どのカードが押せるかはここで決めない。カードの側と同じ `isPickable` で引く。
+  const choosing = CHOOSING_ZONES.includes(zone.zone) && zone.cards.some((card) => isPickable(card, picking))
+  const node = element('section', `zone zone--${zone.zone}${choosing ? ' zone--候補あり' : ''}`)
   const title = element('h3', 'zone__title', zone.zone)
   title.append(element('span', '', `（${zone.count}）`))
   node.append(title)
