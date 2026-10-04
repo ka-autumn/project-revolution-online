@@ -6,7 +6,7 @@ Issue #207（画面全体の見た目を今風に揃える）のうち、**対�
 
 ほかの 3 画面と違い、見本にした画面イメージは無い。ほかの 3 画面の見た目を延長して、開発者がモックで決めた。**どちらの画面も、何をどこで押せば先へ進めるか（操作の流れ）は変えない。**
 
-**図版（モック）**: [`docs/mocks/naming/`](../mocks/naming/index.html)（名前を決める画面）、[`docs/mocks/waiting/`](../mocks/waiting/index.html)（待機中の画面）。正はこの文章で、モックはその図版である（ADR-0032）。
+**モック**: [`docs/mocks/naming/`](../mocks/naming/index.html)（名前を決める画面）、[`docs/mocks/waiting/`](../mocks/waiting/index.html)（待機中の画面）。この ADR の決まりを目で見て確かめるための見本で、食い違ったときはこの ADR が正しい（ADR-0032）。
 
 ## 決めたこと
 

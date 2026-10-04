@@ -4,7 +4,7 @@ Issue #207（画面全体の見た目を今風に揃える）のうち、**対�
 
 見た目だけを揃えるつもりで始めたが、ADR-0027 と同じく**並べ方は開発者の判断で組み直した。** あわせて、デッキの一覧と組むところに機能をいくつか足す（後述）。そのうち画面だけでは作れないものは、別の Issue に切り出す。押せない手を出さない・読み上げに名前を付ける、という決まりはそのまま守る。
 
-**図版（モック）**: [`docs/mocks/deck-list/`](../mocks/deck-list/index.html)（デッキ一覧）、[`docs/mocks/deck-builder/`](../mocks/deck-builder/index.html)（デッキ構築）。正はこの文章で、モックはその図版である（ADR-0032）。
+**モック**: [`docs/mocks/deck-list/`](../mocks/deck-list/index.html)（デッキ一覧）、[`docs/mocks/deck-builder/`](../mocks/deck-builder/index.html)（デッキ構築）。この ADR の決まりを目で見て確かめるための見本で、食い違ったときはこの ADR が正しい（ADR-0032）。
 
 ## 決めたこと
 
