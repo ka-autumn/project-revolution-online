@@ -3746,19 +3746,12 @@ function silhouetteElement(): SVGElement {
 /**
  * プレイヤーの枠（ADR-0027）。立ち絵の場所（胸から上のシルエット）・名前・ダメージを置く。
  *
- * `partner` はパートナーゾーンの中身。空ならパートナーの場所ごと詰める——パートナー
- * バトルでない対局ではこのゾーンが常に空になるので、渡す側で対局の形式を気にしなくてよい。
+ * パートナーゾーンが空ならパートナーの場所ごと詰める——パートナーバトルでない対局では
+ * このゾーンが常に空になるので、呼ぶ側で対局の形式を気にしなくてよい。
  */
-function playerPanelElement(
-  whose: '自分' | '相手',
-  seat: Player,
-  name: string,
-  damage: number,
-  partner: (CardView & { readonly kind: '表' }) | undefined,
-  picking: BoardPicking | undefined,
-): HTMLElement {
-  const node = element('section', `panel player player--${whose}`)
-  const tag = `${whose}・${seat}`
+function playerPanelElement(side: SideView, name: string, picking: BoardPicking | undefined): HTMLElement {
+  const node = element('section', `panel player player--${side.whose}`)
+  const tag = `${side.whose}・${side.player}`
   node.setAttribute('aria-label', tag)
 
   const portrait = element('div', 'player__portrait')
@@ -3770,10 +3763,11 @@ function playerPanelElement(
   body.append(element('span', 'player__whose', tag))
   body.append(element('p', 'player__name', name))
   const damageLine = element('p', 'player__damage', 'ダメージ ')
-  damageLine.append(element('strong', '', String(damage)))
+  damageLine.append(element('strong', '', String(side.damage)))
   body.append(damageLine)
   node.append(body)
 
+  const partner = partnerOf(side)
   if (partner !== undefined) {
     const wrap = element('div', 'player__partner')
     wrap.append(element('span', 'player__partner-label', 'パートナー'))
@@ -4059,7 +4053,7 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   const root = element('main', 'duel')
 
   const left = element('aside', 'duel__left')
-  left.append(playerPanelElement('相手', view.seat === '先攻' ? '後攻' : '先攻', props.opponentName, view.opponent.damage, partnerOf(view.opponent), props.picking))
+  left.append(playerPanelElement(view.opponent, props.opponentName, props.picking))
 
   const controls = element('section', 'panel controls')
   controls.append(element('p', 'controls__turn', view.turnNumber))
@@ -4070,7 +4064,7 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   controls.append(actions)
   left.append(controls)
 
-  left.append(playerPanelElement('自分', view.seat, props.ownName, view.own.damage, partnerOf(view.own), props.picking))
+  left.append(playerPanelElement(view.own, props.ownName, props.picking))
   root.append(left)
 
   const center = element('section', 'duel__center')

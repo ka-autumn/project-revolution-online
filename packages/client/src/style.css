@@ -1862,12 +1862,6 @@ body {
   /* 右の列の幅。「選ぶ」一覧と、手を聞くダイアログが覆わない範囲（`.picker`・`.dialog` の
      `inset`）もここから決める。 */
   --right-column: 18rem;
-  /*
-   * 共通のクラス（`.choice__button--選択中` など）が引く `--own` を、対戦画面の中だけ鮮やかな
-   * ほうの色に差し替える。`:root` の値はロビーなどが使っているので、そちらは変えない。
-   */
-  --own: var(--accent-own);
-
   /* 明るい・暗いの切り替えは持たない（ADR-0027）。将来プレイヤーごとに背景を差し替える余地の
      ために、色は変数から引く。 */
   color-scheme: light;
@@ -1930,6 +1924,11 @@ body {
   color: var(--ink-dim);
   font-size: 0.75rem;
   cursor: pointer;
+}
+
+/* カプセルの `overflow: hidden` に外側の枠を切り取られるので、フォーカスの枠は内側に描く。 */
+.duel .mode button:focus-visible {
+  outline-offset: -3px;
 }
 
 .duel .mode .mode--選択中 {
