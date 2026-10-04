@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>名前を決める画面 モック</title>
+<!-- 見た目の決まりは ADR-0030 -->
+<link rel="stylesheet" href="../shared/naming-waiting.css" />
+</head>
+<body>
+<main id="board"></main>
+
+<div class="mockbar" id="mockbar" aria-label="モックの切り替え（本番には無い）"></div>
+
+<script>
+const LIMIT = 20
+const board = document.getElementById('board')
+
+const screens = {
+  'naming-empty': ['初めて', () => naming('', undefined)],
+  'naming-typing': ['打ちかけ', () => naming('あきかぜ', undefined)],
+  'naming-full': ['上限', () => naming('ながいながいながいながいながいながいなが', undefined)],
+  'naming-refused': ['断られた', () => naming('', '名前を入れてください')],
+  'naming-refused2': ['断られた(文字)', () => naming('ab​c', '使えない文字が入っています')],
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag)
+  if (cls) n.className = cls
+  if (text !== undefined) n.textContent = text
+  return n
+}
+
+function naming(draft, reason) {
+  const frame = el('section', 'frame naming')
+  frame.append(el('h1', 'naming__brand', 'プロレヴォオンライン'))
+  const panel = el('div', 'panel')
+  const head = el('div', 'panel__head')
+  head.append(el('h2', 'panel__title', 'プレイヤー名'))
+  const body = el('div', 'panel__body')
+  body.append(el('p', 'lead', '他のプレイヤーに公開される名前です。後から変えられます'))
+  const field = el('div', 'naming__field')
+  const input = el('input')
+  input.type = 'text'; input.maxLength = LIMIT; input.placeholder = '名前'; input.value = draft
+  input.setAttribute('aria-describedby', 'count')
+  // 名前が決まると、ロビーへ移る
+  const decide = el('button', 'button--primary', 'これにする')
+  decide.addEventListener('click', () => { location.href = '../lobby/index.html' })
+  field.append(input, decide)
+  const count = el('span', 'naming__count'); count.id = 'count'
+  const sync = () => {
+    const n = [...input.value.normalize('NFC').trim()].length
+    count.textContent = `${n} / ${LIMIT}`
+    count.classList.toggle('naming__count--full', n >= LIMIT)
+  }
+  input.addEventListener('input', sync); sync()
+  body.append(field, count)
+  if (reason !== undefined) body.append(el('p', 'naming__refusal', reason))
+  panel.append(head, body)
+  frame.append(panel)
+  board.replaceChildren(frame)
+  input.focus()
+}
+
+const bar = document.getElementById('mockbar')
+bar.append(el('span', '', 'モック:'))
+for (const [key, [label]] of Object.entries(screens)) {
+  const b = el('button', '', label)
+  b.addEventListener('click', () => show(key))
+  b.dataset.key = key
+  bar.append(b)
+}
+function show(key) {
+  for (const b of bar.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.key === key))
+  screens[key][1]()
+  history.replaceState(null, '', '#' + key)
+}
+show(location.hash.slice(1) in screens ? location.hash.slice(1) : 'naming-empty')
+</script>
+</body>
+</html>

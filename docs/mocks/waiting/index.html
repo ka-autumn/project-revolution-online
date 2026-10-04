@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>待機中の画面 モック</title>
+<!-- 見た目の決まりは ADR-0030 -->
+<link rel="stylesheet" href="../shared/naming-waiting.css" />
+</head>
+<body>
+<main id="board"></main>
+
+<div class="mockbar" id="mockbar" aria-label="モックの切り替え（本番には無い）"></div>
+
+<script>
+const board = document.getElementById('board')
+
+const screens = {
+  'awaiting': ['待機中', () => awaiting()],
+  'awaiting-offline': ['切れた（今の動き）', () => offline()],
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag)
+  if (cls) n.className = cls
+  if (text !== undefined) n.textContent = text
+  return n
+}
+
+function awaiting() {
+  const frame = el('section', 'frame awaiting')
+  const panel = el('div', 'panel')
+  const body = el('div', 'panel__body')
+  body.append(el('h2', 'awaiting__title', '相手を待っています'))
+  const leave = el('button', 'awaiting__leave', 'やめてロビーに戻る')
+  leave.addEventListener('click', () => { location.href = '../lobby/index.html' })
+  body.append(leave)
+  panel.append(body)
+  frame.append(panel)
+  board.replaceChildren(frame)
+}
+
+function offline() {
+  board.replaceChildren(el('p', 'status', '繋がりが切れました。繋ぎ直しています（1/10 回目）'))
+}
+
+const bar = document.getElementById('mockbar')
+bar.append(el('span', '', 'モック:'))
+for (const [key, [label]] of Object.entries(screens)) {
+  const b = el('button', '', label)
+  b.addEventListener('click', () => show(key))
+  b.dataset.key = key
+  bar.append(b)
+}
+// 相手が部屋に入ると、押すものは無く、そのまま対戦画面へ移る。モックではここから移る
+const arrived = el('a', '', '相手が来た → 対戦へ')
+arrived.href = '../duel/index.html'
+bar.append(arrived)
+function show(key) {
+  for (const b of bar.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.key === key))
+  screens[key][1]()
+  history.replaceState(null, '', '#' + key)
+}
+show(location.hash.slice(1) in screens ? location.hash.slice(1) : 'awaiting')
+</script>
+</body>
+</html>

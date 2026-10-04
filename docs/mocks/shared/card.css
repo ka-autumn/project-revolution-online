@@ -1,0 +1,575 @@
+/* 対戦画面（style.css）のカードの面・詳細の規則を、.duel を .deckbuild に置き換えて写したもの。モック専用。 */
+/* ---------- カード ---------- */
+
+.deckbuild .card {
+  position: relative;
+  flex: none;
+  width: var(--card-width);
+  aspect-ratio: 2 / 3;
+  font-size: calc(var(--card-width) * 0.12);
+}
+
+/*
+ * 色ごとの値。種別の地・名前の地・SP の地・面の下側に使う。複数の色を持つカード・無色の
+ * カードは、いまのカードプールに無いので考えない（ADR-0027）。
+ */
+.deckbuild .card--色-青 {
+  --lv-light: #80ceec;
+  --lv-deep: #009cd9;
+  --on-color: #fff;
+}
+
+.deckbuild .card--色-赤 {
+  --lv-light: #ff8080;
+  --lv-deep: #ee1c1c;
+  --on-color: #fff;
+}
+
+.deckbuild .card--色-緑 {
+  --lv-light: #80d680;
+  --lv-deep: #0a960a;
+  --on-color: #fff;
+}
+
+.deckbuild .card--色-黒 {
+  --lv-light: #808080;
+  --lv-deep: #1c1c1c;
+  --on-color: #fff;
+}
+
+.deckbuild .card--色-白 {
+  --lv-light: #ffffff;
+  --lv-deep: #dddddd;
+  --on-color: #111;
+}
+
+/*
+ * 面の地は上が白、下がカードの色。白のカードは下を薄い灰色にする。将来はこの下にカードの
+ * イラストを敷き、このグラデーションを半透明で重ねる想定。
+ */
+.deckbuild .card__face {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  width: 100%;
+  height: 100%;
+  padding: 0.25em;
+  overflow: hidden;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  color: var(--ink);
+  background: linear-gradient(180deg, #fff 18%, color-mix(in srgb, var(--lv-deep) 55%, #fff) 62%, var(--lv-deep) 100%);
+  box-shadow: 0 2px 6px rgb(80 40 0 / 0.4);
+  line-height: 1.2;
+}
+
+.deckbuild .card--色-白 .card__face {
+  background: linear-gradient(180deg, #fff 18%, #ececec 62%, #cfcfcf 100%);
+}
+
+/* 支配者の色：面の外周 */
+.deckbuild .card--自分 .card__face {
+  border-color: var(--own);
+}
+
+.deckbuild .card--相手 .card__face {
+  border-color: var(--opponent);
+}
+
+.deckbuild .card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.2em;
+}
+
+.deckbuild .card__level {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.9em;
+  height: 1.9em;
+  font-weight: 800;
+}
+
+.deckbuild .card__level img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.deckbuild .card__level span {
+  position: relative;
+  color: #fff;
+  text-shadow: 0 0 2px #000, 0 0 2px #000;
+}
+
+.deckbuild .card--色-白 .card__level span {
+  color: #000;
+  text-shadow: 0 0 2px #fff;
+}
+
+.deckbuild .card__kind {
+  padding: 0.05em 0.4em;
+  border-radius: 999px;
+  color: var(--on-color);
+  background: radial-gradient(circle at 40% 30%, var(--lv-light), var(--lv-deep));
+  font-size: 0.85em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.deckbuild .card--色-白 .card__kind {
+  box-shadow: 0 0 0 1px #000 inset;
+}
+
+/*
+ * 名前の行：スター・名前・（詳細では）キーワード能力のアイコン。地の枠はアイコンまで含め、
+ * アイコンは枠から上下にはみ出させる。
+ */
+.deckbuild .card__title {
+  display: flex;
+  align-items: center;
+  gap: 0.15em;
+  min-width: 0;
+  margin-block: 0.25em;
+  padding: 0 0.2em;
+  border-radius: 3px;
+  color: var(--on-color);
+  background: var(--lv-deep);
+}
+
+.deckbuild .card--色-白 .card__title {
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35) inset;
+}
+
+.deckbuild .card__title .star,
+.deckbuild .card__title .keywords {
+  margin-block: -0.35em;
+}
+
+.deckbuild .star {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.8em;
+  height: 1.8em;
+  font-weight: 900;
+}
+
+.deckbuild .star img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.4));
+}
+
+/* ダブルスター：★ の中に赤い数字 */
+.deckbuild .star span {
+  position: relative;
+  top: 0.1em;
+  color: #d0101a;
+  font-size: 1em;
+  line-height: 1;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff;
+}
+
+.deckbuild .keywords {
+  display: flex;
+  flex: none;
+  gap: 0.15em;
+}
+
+/* リバーススター：緑を基調にした逆さの ★ */
+.deckbuild .star--reverse img {
+  transform: rotate(180deg);
+}
+
+.deckbuild .star--reverse span {
+  top: -0.1em;
+  color: #0b4a22;
+}
+
+/*
+ * キーワード能力のアイコン：半透明の宝石の球に字。夢＝サファイア、希望＝ルビー、幸運＝
+ * トパーズ、苦労＝暗いエメラルド（ADR-0027。幸運・苦労はまだ実装していないキーワード）。
+ */
+.deckbuild .keyword {
+  display: grid;
+  place-items: center;
+  width: 2.1em;
+  height: 2.1em;
+  border: 1px solid rgb(255 255 255 / 0.7);
+  border-radius: 50%;
+  color: #fff;
+  background:
+    radial-gradient(circle at 34% 28%, rgb(255 255 255 / 0.95) 0 7%, rgb(255 255 255 / 0) 24%),
+    radial-gradient(circle at 60% 75%, rgb(255 255 255 / 0.35) 0 10%, rgb(255 255 255 / 0) 30%),
+    radial-gradient(circle at 50% 55%, var(--gem-light) 0%, var(--gem) 55%, var(--gem-deep) 100%);
+  box-shadow:
+    inset 0 -0.2em 0.35em rgb(0 0 0 / 0.35),
+    inset 0 0.12em 0.25em rgb(255 255 255 / 0.45),
+    0 1px 3px rgb(0 0 0 / 0.45);
+  font-family: 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 0 2px rgb(0 0 0 / 0.8), 0 1px 1px rgb(0 0 0 / 0.6);
+}
+
+.deckbuild .keyword--夢 {
+  --gem-light: rgb(80 130 220 / 0.8);
+  --gem: rgb(16 52 150 / 0.86);
+  --gem-deep: rgb(4 16 70 / 0.95);
+}
+
+.deckbuild .keyword--希望 {
+  --gem-light: rgb(220 80 100 / 0.8);
+  --gem: rgb(150 8 32 / 0.86);
+  --gem-deep: rgb(70 0 10 / 0.95);
+}
+
+.deckbuild .keyword--幸運 {
+  --gem-light: rgb(230 190 80 / 0.85);
+  --gem: rgb(185 125 8 / 0.88);
+  --gem-deep: rgb(95 55 0 / 0.95);
+}
+
+.deckbuild .keyword--苦労 {
+  --gem-light: rgb(80 170 115 / 0.7);
+  --gem: rgb(8 100 55 / 0.85);
+  --gem-deep: rgb(0 42 22 / 0.95);
+}
+
+/* 字の大きさだけ変える（球の大きさは揃える） */
+.deckbuild .keyword span {
+  font-size: 0.95em;
+}
+
+.deckbuild .keyword--希望 span,
+.deckbuild .keyword--幸運 span,
+.deckbuild .keyword--苦労 span {
+  font-size: 0.62em;
+}
+
+/* プランのカード（山札の上）だけ、夢・希望・幸運を名前の下の行に出す */
+.deckbuild .card__keywords-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.deckbuild .card__keywords-row .keyword {
+  width: 1.9em;
+  height: 1.9em;
+}
+
+.deckbuild .card__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.1em 0.1em;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.deckbuild .card__bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  margin-top: auto;
+}
+
+/* ムーブアイコン（ユニット）・トリガーアイコン（侵入のトラップ）は右側 */
+.deckbuild .card__icons {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+}
+
+.deckbuild .move-icon,
+.deckbuild .trigger-icon {
+  display: block;
+  width: 2.2em;
+  height: 2.2em;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.4));
+}
+
+.deckbuild .trigger-icon {
+  margin-left: auto;
+}
+
+.deckbuild .card__traits {
+  overflow: hidden;
+  color: var(--on-color);
+  font-size: 0.8em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 2px rgb(0 0 0 / 0.5);
+}
+
+.deckbuild .card--色-白 .card__traits {
+  text-shadow: none;
+}
+
+.deckbuild .card__stats {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.deckbuild .card__bp {
+  padding: 0 0.3em;
+  border-radius: 3px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.55);
+}
+
+.deckbuild .card__sp {
+  padding: 0 0.3em;
+  border-radius: 3px;
+  color: var(--on-color);
+  background: var(--lv-deep);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.6);
+}
+
+.deckbuild .card--色-白 .card__sp {
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
+}
+
+/*
+ * 継続効果で元の値から変わった BP・SP。上がったら赤、下がったら青。地はそのまま。地の色
+ * （SP はカードの色）と文字の色が重なっても読めるよう、文字に白い縁を付ける。色だけに頼らず、
+ * 末尾に ▲▼ も添える（#91）。
+ */
+.deckbuild .card__bp--上,
+.deckbuild .card__sp--上,
+.deckbuild .card__bp--下,
+.deckbuild .card__sp--下 {
+  text-shadow:
+    1px 0 0 #fff, -1px 0 0 #fff, 0 1px 0 #fff, 0 -1px 0 #fff,
+    1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff;
+}
+
+.deckbuild .card__bp--上,
+.deckbuild .card__sp--上 {
+  color: #d4101c;
+}
+
+.deckbuild .card__bp--下,
+.deckbuild .card__sp--下 {
+  color: #1553c8;
+}
+
+.deckbuild .card__bp--上::after,
+.deckbuild .card__sp--上::after {
+  content: '▲';
+  font-size: 0.7em;
+}
+
+.deckbuild .card__bp--下::after,
+.deckbuild .card__sp--下::after {
+  content: '▼';
+  font-size: 0.7em;
+}
+
+.deckbuild .card__damage {
+  position: absolute;
+  inset: 45% 0 auto 0;
+  padding: 0.05em 0;
+  color: #fff;
+  background: rgb(200 20 30 / 0.88);
+  font-weight: 700;
+  text-align: center;
+}
+
+/*
+ * 自分・相手の札。バトルスペースのカードにだけ出す（ほかの置き場は、置き場の側で誰のものか
+ * 分かる）。面の外に付けるので、フリーズで面が寝ても札は寝ない。
+ */
+.deckbuild .card__whose {
+  position: absolute;
+  top: -0.55em;
+  right: -0.45em;
+  z-index: 2;
+  display: none;
+  padding: 0 0.35em;
+  border: 1px solid #fff;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.8em;
+  font-weight: 700;
+  line-height: 1.4;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  background: none;
+}
+
+.deckbuild .square .card__whose {
+  display: block;
+}
+
+.deckbuild .card--自分 .card__whose {
+  background: var(--own);
+}
+
+.deckbuild .card--相手 .card__whose {
+  background: var(--opponent);
+}
+
+/* フリーズしたカードは、寝た面の右肩に札を付け直す（面は枠の中心で 90 度回る） */
+.deckbuild .card--フリーズ .card__whose {
+  top: calc(var(--card-width) * 0.25 - 0.55em);
+  right: calc(var(--card-width) * -0.25 - 0.45em);
+}
+
+.deckbuild .card--フリーズ {
+  margin: 0 calc(var(--card-width) / 4);
+}
+
+.deckbuild .card--フリーズ .card__face {
+  transform: rotate(90deg);
+}
+
+/* 裏面：金・橙の光条（実物の裏面の雰囲気。ロゴは使わない） */
+.deckbuild .card--back .card__face {
+  border-color: #fff;
+  background:
+    radial-gradient(circle at 50% 46%, transparent 0 17%, rgb(176 110 20 / 0.9) 17.5% 21%, transparent 21.5%),
+    radial-gradient(circle at 50% 46%, #fff 0 10%, #ffe79a 18%, transparent 42%),
+    repeating-conic-gradient(from 12deg at 50% 46%, rgb(255 255 255 / 0.5) 0deg 5deg, transparent 5deg 16deg),
+    linear-gradient(160deg, #ffe38a, #f5a623 55%, #df7410);
+}
+
+/* 裏面の丸の中の R */
+.deckbuild .card--back .card__face::after {
+  content: 'R';
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  color: #fff6d0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: calc(var(--card-width) * 0.3);
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 1px #6b3e00, 0 0 2px #6b3e00, 0 1px 3px rgb(120 60 0 / 0.8);
+  transform: translate(-50%, -52%);
+}
+
+.deckbuild .card--押せる {
+  cursor: pointer;
+}
+
+.deckbuild .card--押せる .card__face {
+  outline: 3px solid #ff9d00;
+  outline-offset: 1px;
+  box-shadow: 0 0 12px 3px rgb(255 170 0 / 0.75);
+}
+
+.deckbuild .card--選択中 .card__face {
+  outline: 3px solid #e05a00;
+  outline-offset: 2px;
+  box-shadow: 0 0 18px 6px rgb(255 140 0 / 0.9);
+}
+
+.deckbuild .card--詳細中:not(.card--選択中) .card__face {
+  outline: 2px solid var(--heading);
+  outline-offset: 2px;
+}
+
+/* 選べないカード（一覧で条件に合わないもの）。色だけに頼らず、読み上げでも断る。 */
+.deckbuild .card--選べない {
+  opacity: 0.4;
+}
+.deckbuild .card--拡大 {
+  --card-width: 14.5rem;
+  font-size: 0.8rem;
+}
+
+.deckbuild .card--拡大 .card__face {
+  border-width: 3px;
+  border-radius: 10px;
+  padding: 0.4rem;
+  gap: 0.3rem;
+}
+
+.deckbuild .card--拡大 .card__title {
+  font-size: 1.05rem;
+  padding: 0 0.3rem;
+}
+
+.deckbuild .card--拡大 .card__name {
+  padding: 0.15rem 0.2rem;
+}
+
+.deckbuild .card--拡大 .card__kind {
+  font-size: 0.8rem;
+}
+
+.deckbuild .card--拡大 .card__level {
+  font-size: 0.95rem;
+}
+
+.deckbuild .card--拡大 .card__stats {
+  font-size: 1.1rem;
+}
+
+.deckbuild .card--拡大 .card__traits {
+  font-size: 0.75rem;
+}
+
+.deckbuild .card--拡大 .move-icon,
+.deckbuild .card--拡大 .trigger-icon {
+  width: 2.4rem;
+  height: 2.4rem;
+}
+
+.deckbuild .card--拡大 .star {
+  font-size: 1.3rem;
+}
+
+.deckbuild .card--拡大 .keyword {
+  font-size: 0.9rem;
+}
+
+.deckbuild .card--拡大 .card__damage {
+  inset: 30% 0 auto 0;
+  font-size: 0.9rem;
+}
+
+/*
+ * 詳細のテキストの枠。ムーブアイコン・トリガーアイコンは枠の中の右に置き、テキストが無くても
+ * アイコンのぶんの高さを取る。
+ */
+.deckbuild .card__text {
+  display: flex;
+  gap: 0.4rem;
+  min-height: calc(2.4rem + 0.7rem);
+  max-height: 8.5rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 6px;
+  color: var(--ink);
+  background: rgb(255 255 255 / 0.9);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.15);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.deckbuild .card__text p {
+  margin: 0 0 0.2rem;
+}
+
+.deckbuild .card__lines {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.deckbuild .card__text .card__icons {
+  flex: none;
+  align-items: flex-start;
+}
