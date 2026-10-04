@@ -11,10 +11,11 @@ import {
   MOVE_SHAPES,
   STAR_CHOICES,
   toggled,
+  typeShownAs,
   TRIGGER_CONDITIONS,
 } from './pool-filter.js'
 import type { PoolFilter } from './pool-filter.js'
-import { unitFace } from './test-support.js'
+import { strategyFace, unitFace } from './test-support.js'
 
 /**
  * プールを絞り込む（#193）。
@@ -133,13 +134,27 @@ describe('絞り込む', () => {
 })
 
 describe('選べるもの', () => {
-  it('プールに実際にあるものだけが、決まった順に並ぶ', () => {
+  it('色・属性・エキスパンションは、プールに実際にあるものだけが、決まった順に並ぶ', () => {
     const choices = filterChoicesOf(POOL)
 
-    expect(choices.types).toEqual(['ユニット', 'ストラテジー', 'トラップ'])
     expect(choices.colors).toEqual(['赤', '黒', '青', COLORLESS])
     expect(choices.attributes).toEqual(['テスト属性'])
     expect(choices.expansions).toEqual(['テストの第1弾', 'テストの第2弾'])
+  })
+
+  /** 超必殺ストラテジー！のカードが無いプールでも、種別のボタンは 4 つ並ぶ（ADR-0028）。押すと 0 件になる。 */
+  it('種別は、プールの中身に関わらず 4 つとも並び、超必殺は超必殺ストラテジー！にだけ当たる', () => {
+    const choices = filterChoicesOf([RED_UNIT])
+
+    expect(choices.types).toEqual(['ユニット', 'ストラテジー', 'トラップ', '超必殺ストラテジー！'])
+    expect(typeShownAs('超必殺ストラテジー！')).toBe('超必殺')
+    expect(typeShownAs('ストラテジー')).toBe('ストラテジー')
+    expect(filterPool(POOL, { ...emptyFilter(), types: ['超必殺ストラテジー！'] })).toEqual([])
+
+    const finisher = card('う', strategyFace('テスト・超必殺', '超必殺ストラテジー！'))
+    const plain = card('え', strategyFace('テスト・ストラテジー'))
+    expect(filterPool([finisher, plain], { ...emptyFilter(), types: ['超必殺ストラテジー！'] })).toEqual([finisher])
+    expect(filterPool([finisher, plain], { ...emptyFilter(), types: ['ストラテジー'] })).toEqual([plain])
   })
 
   /** レベル・スター・移動方向・発動条件は、開いた語彙（色・属性など）と違って範囲が決まっている（ADR-0028）。 */

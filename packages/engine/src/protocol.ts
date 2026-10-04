@@ -52,6 +52,18 @@ export interface WireDeck {
 }
 
 /**
+ * コピー元として並ぶ既製デッキ 1 つ（ADR-0028）。`WireDeck` に、表紙のカードを添える。
+ *
+ * 既製デッキの中身は画面に届かないので、表紙のカードはサーバが選んで識別子で渡す（選び方は engine の
+ * `deckCoverKeyOf`。自分のデッキの表紙のカードと同じ）。付いてこないことがある——表紙にできるカードが
+ * 無い時と、古いサーバの時。その時は裏面を出す。
+ */
+export interface WirePresetDeck extends WireDeck {
+  /** 表紙のカードの識別子（プールの `WirePoolCard.key`）。 */
+  readonly cover?: string
+}
+
+/**
  * 持ち主が組んだデッキ 1 つ（ADR-0021）。**持ち主にだけ届く。**
  *
  * **持つのはカードを指す識別子の並びだけで、カードの姿は写し取らない。** カードの実装が直れば、
@@ -652,7 +664,7 @@ export type ToClient =
        * **席に着く時に選べるものではない。** 座るのは自分のデッキで（`chosen`）、既製デッキは
        * コピーしてから使う。ここに並ぶのはコピー元としてである。
        */
-      readonly presets: readonly WireDeck[]
+      readonly presets: readonly WirePresetDeck[]
       /**
        * 何も選ばずに座った時に使われるデッキ（ADR-0021）。**画面はこれを選んだ状態で出す。**
        *

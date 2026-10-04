@@ -30,6 +30,7 @@ import {
   judgedRulesOfRoom,
   levelBreakdownOf,
   lobbyDecks,
+  presetRows,
   newDraft,
   noCpuDeckReason,
   noDeckReason,
@@ -805,14 +806,14 @@ describe('デッキ一覧（ADR-0028）', () => {
     { id: 'E', name: '無色のデッキ', description: '', cards: ['き', 'き'] },
   ]
 
-  it('顔は一番多く入れたカード。同じ枚数ならレベルの高いもの', () => {
+  it('表紙のカードは一番多く入れたカード。同じ枚数ならレベルの高いもの', () => {
     const rows = ownedDeckRows(POOL, decks)
 
-    expect(rows.find((row) => row.id === 'A')?.face?.name).toBe('テスト・赤のユニットLv1')
-    // B は い(Lv1)・き(Lv0) が同数。レベルの高い い が顔になる。
-    expect(rows.find((row) => row.id === 'B')?.face?.name).toBe('テスト・赤のユニットLv1')
-    expect(rows.find((row) => row.id === 'C')?.face).toBeUndefined()
-    expect(rows.find((row) => row.id === 'D')?.face).toBeUndefined()
+    expect(rows.find((row) => row.id === 'A')?.cover?.name).toBe('テスト・赤のユニットLv1')
+    // B は い(Lv1)・き(Lv0) が同数。レベルの高い い が表紙のカードになる。
+    expect(rows.find((row) => row.id === 'B')?.cover?.name).toBe('テスト・赤のユニットLv1')
+    expect(rows.find((row) => row.id === 'C')?.cover).toBeUndefined()
+    expect(rows.find((row) => row.id === 'D')?.cover).toBeUndefined()
   })
 
   it('色ごとの枚数を数える。0 枚の色は持たない。使えないカードは数えない', () => {
@@ -881,27 +882,27 @@ describe('デッキ一覧（ADR-0028）', () => {
   })
 })
 
-/** ADR-0029。ロビーに並べるデッキの顔・色・ラベル。 */
+/** ADR-0029。ロビーに並べるデッキの表紙のカード・色・ラベル。 */
 describe('ロビーに並べるデッキ', () => {
   const PRESETS = [{ id: '既製1', name: 'トライアルデッキ' }]
   const RULES: JudgedRules = { format: '構築戦', limits: undefined }
 
-  it('自分のデッキは、顔・色・「色の構成」を除いたラベルを持ち、操作できる', () => {
+  it('自分のデッキは、表紙のカード・色・「色の構成」を除いたラベルを持ち、操作できる', () => {
     const [deck] = lobbyDecks(POOL, [OWNED], PRESETS, RULES)
 
-    expect(deck?.face?.name).toBe('テスト・赤のユニットLv1')
+    expect(deck?.cover?.name).toBe('テスト・赤のユニットLv1')
     expect(deck?.colors).toEqual(['赤', '青'])
     expect(deck?.labels.map((label) => label.group)).not.toContain('色の構成')
     expect(deck?.manageable).toBe(true)
   })
 
-  /** ロビーには名前しか届かない。カードの裏面を顔にし、色・ラベルは出さない。 */
+  /** 中身（色・ラベル）が届かない。カードの裏面を表紙のカードにし、色・ラベルは出さない。 */
   it('デッキを持てない立て方の既製デッキは、名前だけで、操作できない', () => {
     expect(lobbyDecks(undefined, undefined, PRESETS, RULES)).toEqual([
       {
         id: '既製1',
         name: 'トライアルデッキ',
-        face: undefined,
+        cover: undefined,
         colors: [],
         labels: [],
         manageable: false,
@@ -1221,5 +1222,23 @@ describe('押せない手の理由', () => {
     it('デッキを選べていなければ、ルール外ではなく、選べていないことを理由にする', () => {
       expect(joinRefusal(decksUnder(FREE), undefined, free)).toEqual({ reason: 'デッキを選んでください', outOfRules: false })
     })
+  })
+})
+
+/** ADR-0028。既製デッキの表紙のカードは、サーバが選んだ識別子をプールから引く。無ければ裏面（`cover` が `undefined`）。 */
+describe('既製デッキの表紙のカード', () => {
+  it('サーバが選んだ識別子のカードの面を表紙のカードにする', () => {
+    const [row] = presetRows(POOL, [{ id: '既製1', name: 'トライアルデッキ', cover: 'う' }])
+
+    expect(row?.name).toBe('トライアルデッキ')
+    expect(row?.cover?.name).toBe('テスト・赤のユニットLv2')
+  })
+
+  it('cover が付いていない（古いサーバ・表紙にできるカードが無い）・プールに無い・プールが届いていない時は、表紙のカードが無い', () => {
+    const presets = [{ id: '既製1', name: 'トライアルデッキ' }]
+
+    expect(presetRows(POOL, presets)[0]?.cover).toBeUndefined()
+    expect(presetRows(POOL, [{ ...presets[0]!, cover: '知らない番号' }])[0]?.cover).toBeUndefined()
+    expect(presetRows(undefined, [{ ...presets[0]!, cover: 'う' }])[0]?.cover).toBeUndefined()
   })
 })

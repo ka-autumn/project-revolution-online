@@ -10,7 +10,7 @@ import type {
   RoomCode,
   ToClient,
   WireChoice,
-  WireDeck,
+  WirePresetDeck,
   WireLobbyRestrictionList,
   WireOwnedDeck,
   WirePerspective,
@@ -58,7 +58,7 @@ export type Stage =
        * **席に着く時に選ぶものではない**（#194）。座るのは自分のデッキ（`Session.ownedDecks`）で、
        * これはデッキを組むところにコピー元として並ぶ。
        */
-      readonly presets: readonly WireDeck[]
+      readonly presets: readonly WirePresetDeck[]
       /**
        * 何も選ばずに座った時に使われる自分のデッキ（ADR-0021、#194）。**選んだ状態で出す。**
        *

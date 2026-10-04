@@ -64,6 +64,14 @@ export type TriggerCondition = '侵入された時'
 
 export const TRIGGER_CONDITIONS: readonly TriggerCondition[] = ['侵入された時']
 
+/**
+ * 種別を画面に出す時の短い呼び方（ADR-0028）。超必殺ストラテジー！は「超必殺」と出す。読み上げと
+ * 絞り込みの値は正式な種別名のまま（`aria-label` に `type` を使う）。
+ */
+export function typeShownAs(type: CardType): string {
+  return type === '超必殺ストラテジー！' ? '超必殺' : type
+}
+
 /** 絞り込みの条件。何も選んでいない軸は空（数の範囲は両側 `undefined`）。 */
 export interface PoolFilter {
   /** 名前とテキストに含まれる文字。空白で区切ると、どれも含むカードが残る。 */
@@ -182,6 +190,7 @@ export function filterPool(pool: readonly WirePoolCard[], filter: PoolFilter): r
 
 /**
  * 絞り込みで選べるもの。**プールに実際にあるものだけを並べる。** 選んでも 1 枚も残らない値は出さない。
+ * ただし種別・レベル・スター・移動方向・発動条件は、プールの中身に関わらず全部並べる（ADR-0028）。
  *
  * 数え上げている順があるもの（種別・色・ムーブアイコン）はその順、数は小さい順、名前は五十音順に並べる。
  */
@@ -205,7 +214,9 @@ export function filterChoicesOf(pool: readonly WirePoolCard[]): FilterChoices {
   const colors = new Set(faces.flatMap((face): readonly string[] => (face.colors.length === 0 ? [COLORLESS] : face.colors)))
 
   return {
-    types: CARD_TYPES.filter((type) => faces.some((face) => face.type === type)),
+    // 種別は 4 つとも並べる。超必殺ストラテジー！に当たるカードが無いプールでも、ボタンは出る
+    // （押すと 0 件になる）。
+    types: CARD_TYPES,
     colors: [...COLORS, COLORLESS].filter((color) => colors.has(color)),
     // レベル・スター・移動方向・発動条件は、プールの中身に関わらず全部並べる（ADR-0028、`LEVELS` 等の定義を参照）。
     levels: LEVELS,

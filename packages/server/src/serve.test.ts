@@ -313,7 +313,7 @@ describe('WebSocket で繋ぐ', () => {
 
     const lobby = await client.waitFor('ロビー')
 
-    expect(lobby.kind === 'ロビー' && lobby.presets).toEqual([{ id: '既製1', name: 'ひとつめ' }])
+    expect(lobby.kind === 'ロビー' && lobby.presets).toEqual(deckChoices)
     await client.close()
   })
 

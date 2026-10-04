@@ -240,14 +240,14 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
 .lobby .deckrow__menu { align-self: start; }
 
 /*
- * デッキの顔：デッキ一覧と同じく、パートナーのカードの面（決めていなければ、いちばん枚数の多いカード）。
+ * デッキの表紙のカード：デッキ一覧と同じく、パートナーのカードの面（決めていなければ、いちばん枚数の多いカード）。
  * カードの画像が入れば、面が画像に替わる（別 Issue）。
  */
 .lobby .art { display: block; flex: none; --card-width: 3.3rem; }
 .lobby .art--large { --card-width: 4.6rem; }
 .lobby .art--thumb { --card-width: 2.5rem; }
 .lobby .art .card { pointer-events: none; }
-/* 中身の届かないデッキ（組めない立て方の既製デッキ）は、対戦画面と同じカードの裏面を顔にする */
+/* 中身の届かないデッキ（組めない立て方の既製デッキ）は、対戦画面と同じカードの裏面を表紙のカードにする */
 .lobby .card--back .card__face {
   position: relative;
   height: 100%;
@@ -434,7 +434,7 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
 .lobby .deckrow--unusable:hover { border-color: var(--unusable); box-shadow: none; }
 .lobby .deckrow--unusable::before, .lobby .thumb--unusable::before { content: ''; position: absolute; inset: 0; z-index: 4; border: var(--frame, 6px) solid var(--unusable, var(--accent-opponent)); border-radius: inherit; pointer-events: none; }
 .lobby .deckrow--unusable::after, .lobby .thumb--unusable::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: rgb(90 90 90 / 0.6); }
-/* 顔・名前・ラベル・色は板（::after）の後ろ。板より上に出すのは、帯・枠・斜線・「…」だけ */
+/* 表紙のカード・名前・ラベル・色は板（::after）の後ろ。板より上に出すのは、帯・枠・斜線・「…」だけ */
 .lobby .deckrow--unusable > .deckrow__menu { position: relative; z-index: 6; }
 /* 帯：枠の内側の、下いっぱいに重ねる（行の高さは増やさない）。周りの板より濃い灰色 */
 .lobby .deckrow--unusable > .deckrow__no { position: absolute; z-index: 3; bottom: var(--frame); left: var(--frame); right: var(--frame); height: 1.35rem; display: grid; place-items: center; color: #fff; background: #3a3a3a; font-size: 0.8rem; font-weight: 900; letter-spacing: 0.12em; }
@@ -478,7 +478,7 @@ const COLORS = ['赤', '黒', '青', '白', '緑']
 const TAG_EMOJI = { アグロ: '⚡', ミッドレンジ: '⚖️', コントロール: '🛡️', コンボ: '🧩', 初心者向け: '🔰', 大会用: '🏆', お試し: '🧪', 多色: '🌈' }
 
 // ---- ダミーのデータ（名前・数値はダミー） ----
-// face：デッキの顔にするカード（パートナー。決めていなければ、いちばん枚数の多いカード）
+// face：デッキの表紙のカード（パートナー。決めていなければ、いちばん枚数の多いカード）
 const OWNED = [
   { id: 'd1', name: '見本・もちぬい速攻', face: 'MHA-01', colors: ['黒'], tags: [{ label: 'アグロ' }, { label: '黒単', group: '色の構成' }, { label: '初心者向け' }] },
   { id: 'd2', name: '赤黒ミッドレンジ', face: 'MHA-08', colors: ['赤', '黒'], tags: [{ label: 'ミッドレンジ' }, { label: '赤黒', group: '色の構成' }] },
@@ -491,7 +491,7 @@ const OWNED = [
   { id: 'd7', name: '赤単', face: 'MHA-10', colors: ['赤'], tags: [{ label: 'アグロ' }, { label: '赤単', group: '色の構成' }] },
   { id: 'd8', name: '大会用・調整中', face: 'MHB-08', colors: ['赤', '青'], tags: [{ label: 'ミッドレンジ' }, { label: '赤青', group: '色の構成' }] },
 ]
-// 組めない立て方で並ぶ既製デッキ。ロビーに届くのは名前だけなので、色・ラベルは出さず、顔はカードの裏面
+// 組めない立て方で並ぶ既製デッキ。ロビーには色・ラベルが届かないので、それらは出さず、表紙のカードはカードの裏面
 const PRESETS = [
   { id: 'p1', name: '見本デッキ A', face: undefined, colors: [], tags: [] },
   { id: 'p2', name: '見本デッキ B', face: undefined, colors: [], tags: [] },
@@ -630,7 +630,7 @@ function face(f) {
   node.append(bottom)
   return node
 }
-/** デッキの顔。card.css の規則は .deckbuild の内側に効くので、その箱で包む（モックだけの都合） */
+/** デッキの表紙のカード。card.css の規則は .deckbuild の内側に効くので、その箱で包む（モックだけの都合） */
 function art(deck, size = '') {
   const n = el('span', `art deckbuild ${size}`)
   n.setAttribute('aria-hidden', 'true')

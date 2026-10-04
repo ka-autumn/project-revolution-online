@@ -480,7 +480,7 @@ function rightColumn() {
     const b = el('div', 'partner__body')
     b.append(el('span', 'partner__label', 'パートナー'), el('span', 'partner__name', pc.face.name))
     if (pc.face.type !== 'ユニット') b.append(el('span', 'partner__warn', `${pc.face.type}なので、パートナーバトルでは使えません`))
-    else b.append(el('span', 'partner__note', 'デッキ一覧で、このデッキの顔にもなります'))
+    else b.append(el('span', 'partner__note', 'デッキ一覧で、このデッキの表紙のカードにもなります'))
     partner.append(b, btn('外す', () => { state.partner = undefined; state.saved = false; draw() }, 'button--small'))
   } else {
     partner.append(el('span', 'partner__empty', '♥'))

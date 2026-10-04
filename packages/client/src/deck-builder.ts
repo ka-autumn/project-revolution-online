@@ -1,4 +1,4 @@
-import { CARD_TYPES, COLORS, checkCardLimits, checkDeckForFormat } from '@revolution/engine'
+import { CARD_TYPES, COLORS, checkCardLimits, checkDeckForFormat, deckCoverKeyOf } from '@revolution/engine'
 import type {
   CardLimits,
   Color,
@@ -16,6 +16,7 @@ import type {
   WireLobbyRestrictionList,
   WireOwnedDeck,
   WirePoolCard,
+  WirePresetDeck,
   WireRoomRules,
 } from '@revolution/engine'
 import { COLORLESS, emptyFilter } from './pool-filter.js'
@@ -766,22 +767,39 @@ export interface DeckColorCount {
 }
 
 /**
- * デッキの顔にするカード（ADR-0028）。一番多く入れたカード（同じ枚数ならレベルの高いもの）。
+ * 自分のデッキの表紙のカード（ADR-0028）。一番多く入れたカード（同じ枚数ならレベルの高いもの）。
  *
- * パートナーカードを顔にする分は #228 が済むまで無い——それまではこれだけで決める。使えない
- * カード（プールに無いカード）は、印刷されている項目が分からないので顔にはしない。
+ * パートナーカードを表紙のカードにする分は #228 が済むまで無い——それまではこれだけで決める。使えない
+ * カード（プールに無いカード）は、印刷されている項目が分からないので表紙にはしない。
  */
-function faceCardOf(pool: readonly WirePoolCard[], cards: readonly string[]): WireCardFace | undefined {
+function coverCardOf(pool: readonly WirePoolCard[], cards: readonly string[]): WireCardFace | undefined {
   const byKey = new Map(pool.map((card) => [card.key, card.face] as const))
-  const counted = [...countsOf(cards)]
-    .map(([key, count]): { readonly face: WireCardFace; readonly count: number } | undefined => {
-      const face = byKey.get(key)
-      return face === undefined ? undefined : { face, count }
-    })
-    .filter((each): each is { readonly face: WireCardFace; readonly count: number } => each !== undefined)
-  if (counted.length === 0) return undefined
+  const key = deckCoverKeyOf(cards, (each) => byKey.get(each)?.level)
 
-  return [...counted].sort((left, right) => right.count - left.count || right.face.level - left.face.level)[0]?.face
+  return key === undefined ? undefined : byKey.get(key)
+}
+
+/** コピー元に並べる既製デッキ 1 つ（ADR-0028）。 */
+export interface PresetRow {
+  readonly id: DeckId
+  readonly name: string
+  /** 表紙のカードの面。`undefined` ならカードの裏面を出す。 */
+  readonly cover: WireCardFace | undefined
+}
+
+/**
+ * 既製デッキの表紙のカードを、プールから引く。選ぶのはサーバで、届くのは識別子だけ（`WirePresetDeck`）。
+ * 付いていない時（表紙にできるカードが無い・古いサーバ）と、プールに無い識別子を指している時、
+ * プールがまだ届いていない時は、`cover` を `undefined` にして裏面を出す。
+ */
+export function presetRows(pool: readonly WirePoolCard[] | undefined, presets: readonly WirePresetDeck[]): readonly PresetRow[] {
+  const byKey = new Map((pool ?? []).map((card) => [card.key, card.face] as const))
+
+  return presets.map((preset) => ({
+    id: preset.id,
+    name: preset.name,
+    cover: preset.cover === undefined ? undefined : byKey.get(preset.cover),
+  }))
 }
 
 function colorCountsOf(pool: readonly WirePoolCard[], cards: readonly string[]): readonly DeckColorCount[] {
@@ -798,7 +816,7 @@ export interface OwnedDeckRow {
   readonly name: string
   readonly description: string
   readonly count: number
-  readonly face: WireCardFace | undefined
+  readonly cover: WireCardFace | undefined
   readonly colorCounts: readonly DeckColorCount[]
   readonly labels: readonly AutoDeckLabel[]
   /**
@@ -815,7 +833,7 @@ export function ownedDeckRows(pool: readonly WirePoolCard[], decks: readonly Wir
     name: deck.name,
     description: deck.description,
     count: deck.cards.length,
-    face: faceCardOf(pool, deck.cards),
+    cover: coverCardOf(pool, deck.cards),
     colorCounts: colorCountsOf(pool, deck.cards),
     // 持ち主が選ぶアーキタイプは #229 が済むまで無いので、自動の分だけになる。
     labels: autoLabelsOf(pool, draftOf(deck), undefined),
@@ -945,14 +963,14 @@ export function sentChoice(
 /**
  * ロビーの使用するデッキ・CPUが使用するデッキに並べる 1 つ（ADR-0029）。
  *
- * 顔・色・ラベルはデッキ一覧と同じもの（ADR-0028）だが、「色の構成」のラベルは出さない——すぐ横に
+ * 表紙のカード・色・ラベルはデッキ一覧と同じもの（ADR-0028）だが、「色の構成」のラベルは出さない——すぐ横に
  * 色のアイコンを出していて、同じことを 2 度言うことになるためである。
  */
 export interface LobbyDeck {
   readonly id: DeckId
   readonly name: string
-  /** デッキの顔にするカードの面。`undefined` ならカードの裏面を出す。 */
-  readonly face: WireCardFace | undefined
+  /** 表紙のカードの面。`undefined` ならカードの裏面を出す。 */
+  readonly cover: WireCardFace | undefined
   /** 入っている色。色ごとのアイコンで並べる。数は出さない。 */
   readonly colors: readonly DeckColor[]
   readonly labels: readonly AutoDeckLabel[]
@@ -1101,8 +1119,9 @@ export function deckRefusal(deck: Pick<LobbyDeck, 'hasUnusable' | 'faces'>, rule
  * ロビーに並べるデッキ（ADR-0029）。並びは `seatableDecks` と同じで、選べるものは届いたものだけ
  * である（ADR-0021）。
  *
- * 中身が届かないデッキ（組めない立て方で並ぶ既製デッキ。ロビーには名前しか届かない）は、
- * 顔をカードの裏面にし、色・ラベルを出さない。
+ * 中身が届かないデッキ（組めない立て方で並ぶ既製デッキ）は、表紙のカードをカードの裏面にし、
+ * 色・ラベルを出さない。既製デッキの `cover` は届くが、ここでは使わない。色とラベルは届かないので、
+ * 表紙のカードだけ出しても、自分のデッキの行と並びが揃わないため。
  */
 export function lobbyDecks(
   pool: readonly WirePoolCard[] | undefined,
@@ -1113,7 +1132,7 @@ export function lobbyDecks(
   const nameOnly = (deck: WireDeck): LobbyDeck => ({
     id: deck.id,
     name: deck.name,
-    face: undefined,
+    cover: undefined,
     colors: [],
     labels: [],
     manageable: false,
@@ -1136,7 +1155,7 @@ export function lobbyDecks(
     return {
       id: row.id,
       name: row.name,
-      face: row.face,
+      cover: row.cover,
       colors: row.colorCounts.map((each) => each.color),
       labels: row.labels.filter((label) => label.group !== '色の構成'),
       manageable: true,

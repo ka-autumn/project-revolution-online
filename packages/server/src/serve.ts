@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import { NOT_SIGNED_IN, SHARE_PATH_PREFIX } from '@revolution/engine'
-import type { DeckId, FromClient, RecipeKey, ToClient, WireDeck } from '@revolution/engine'
+import type { DeckId, FromClient, RecipeKey, ToClient, WirePresetDeck } from '@revolution/engine'
 import { isCpu } from './cpu.js'
 import { poolFacesOf, restrictionChoicesOf, withOwnedDecks } from './deck.js'
 import type { CardKey, CardSupply, PresetDeck } from './deck.js'
@@ -83,7 +83,7 @@ export interface ServeOptions {
    * **席に着く時に選べるものではない**（ADR-0021、#194）。座るのは自分のデッキで、既製デッキは
    * コピーしてから使う。
    */
-  readonly deckChoices: readonly WireDeck[]
+  readonly deckChoices: readonly WirePresetDeck[]
   /**
    * 立てる時に渡されたもの一式（`deck.ts` の `CardSupply`）。**自分のデッキを預かる時に引く**
    * （ADR-0021）。
