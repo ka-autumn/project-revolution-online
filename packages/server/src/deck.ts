@@ -1,4 +1,4 @@
-import { checkConstructedDeck, faceOf } from '@revolution/engine'
+import { checkConstructedDeck, deckFaceKeyOf, faceOf } from '@revolution/engine'
 import type {
   Card,
   CardLimits,
@@ -6,7 +6,7 @@ import type {
   DeckId,
   DeckViolation,
   RestrictionListId,
-  WireDeck,
+  WirePresetDeck,
   WireLobbyRestrictionList,
   WirePoolCard,
 } from '@revolution/engine'
@@ -399,9 +399,19 @@ export function withOwnedDecks(base: DeckSource, pool: CardPool, owned: OwnedDec
   }
 }
 
-/** コピー元として画面に出す既製デッキ（`WireDeck`）。**渡された順のまま並べる。** */
-export function deckChoicesOf(supply: CardSupply): readonly WireDeck[] {
-  return supply.presets.map((preset) => ({ id: preset.id, name: preset.name }))
+/**
+ * コピー元として画面に出す既製デッキ（`WirePresetDeck`）。**渡された順のまま並べる。**
+ *
+ * 画面には既製デッキの中身が届かないので、デッキの顔にするカードをここで選んで添える。選び方は
+ * 自分のデッキの顔と同じ（engine の `deckFaceKeyOf`）。プールに無いカードしか入っていなければ、
+ * 顔は付けない。
+ */
+export function deckChoicesOf(supply: CardSupply): readonly WirePresetDeck[] {
+  return supply.presets.map((preset) => {
+    const face = deckFaceKeyOf(preset.cards, (key) => supply.pool[key]?.level)
+
+    return face === undefined ? { id: preset.id, name: preset.name } : { id: preset.id, name: preset.name, face }
+  })
 }
 
 /**

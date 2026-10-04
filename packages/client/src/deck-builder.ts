@@ -1,4 +1,4 @@
-import { CARD_TYPES, COLORS, checkCardLimits, checkDeckForFormat } from '@revolution/engine'
+import { CARD_TYPES, COLORS, checkCardLimits, checkDeckForFormat, deckFaceKeyOf } from '@revolution/engine'
 import type {
   CardLimits,
   Color,
@@ -16,6 +16,7 @@ import type {
   WireLobbyRestrictionList,
   WireOwnedDeck,
   WirePoolCard,
+  WirePresetDeck,
   WireRoomRules,
 } from '@revolution/engine'
 import { COLORLESS, emptyFilter } from './pool-filter.js'
@@ -773,15 +774,32 @@ export interface DeckColorCount {
  */
 function faceCardOf(pool: readonly WirePoolCard[], cards: readonly string[]): WireCardFace | undefined {
   const byKey = new Map(pool.map((card) => [card.key, card.face] as const))
-  const counted = [...countsOf(cards)]
-    .map(([key, count]): { readonly face: WireCardFace; readonly count: number } | undefined => {
-      const face = byKey.get(key)
-      return face === undefined ? undefined : { face, count }
-    })
-    .filter((each): each is { readonly face: WireCardFace; readonly count: number } => each !== undefined)
-  if (counted.length === 0) return undefined
+  const key = deckFaceKeyOf(cards, (each) => byKey.get(each)?.level)
 
-  return [...counted].sort((left, right) => right.count - left.count || right.face.level - left.face.level)[0]?.face
+  return key === undefined ? undefined : byKey.get(key)
+}
+
+/** コピー元に並べる既製デッキ 1 つ（ADR-0028）。 */
+export interface PresetRow {
+  readonly id: DeckId
+  readonly name: string
+  /** デッキの顔にするカードの面。`undefined` ならカードの裏面を出す。 */
+  readonly face: WireCardFace | undefined
+}
+
+/**
+ * 既製デッキの顔を、プールから引く。選ぶのはサーバで、届くのは識別子だけ（`WirePresetDeck`）。
+ * 付いていない時（顔にできるカードが無い・古いサーバ）と、プールに無い識別子を指している時、
+ * プールがまだ届いていない時は、顔を `undefined` にして裏面を出す。
+ */
+export function presetRows(pool: readonly WirePoolCard[] | undefined, presets: readonly WirePresetDeck[]): readonly PresetRow[] {
+  const byKey = new Map((pool ?? []).map((card) => [card.key, card.face] as const))
+
+  return presets.map((preset) => ({
+    id: preset.id,
+    name: preset.name,
+    face: preset.face === undefined ? undefined : byKey.get(preset.face),
+  }))
 }
 
 function colorCountsOf(pool: readonly WirePoolCard[], cards: readonly string[]): readonly DeckColorCount[] {

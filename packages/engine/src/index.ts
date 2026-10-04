@@ -96,6 +96,7 @@ export {
   checkCardLimits,
   checkConstructedDeck,
   checkDeckForFormat,
+  deckFaceKeyOf,
   sameNameKey,
 } from './deck.js'
 export type { CardLimits, Deck, DeckCard, DeckViolation, DuelFormat } from './deck.js'
@@ -208,6 +209,7 @@ export type {
   WireCardPosition,
   WireChoice,
   WireDeck,
+  WirePresetDeck,
   WireLobbyRestrictionList,
   WireOwnedDeck,
   WirePoolCard,

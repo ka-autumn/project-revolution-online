@@ -30,6 +30,7 @@ import {
   judgedRulesOfRoom,
   levelBreakdownOf,
   lobbyDecks,
+  presetRows,
   newDraft,
   noCpuDeckReason,
   noDeckReason,
@@ -1221,5 +1222,23 @@ describe('押せない手の理由', () => {
     it('デッキを選べていなければ、ルール外ではなく、選べていないことを理由にする', () => {
       expect(joinRefusal(decksUnder(FREE), undefined, free)).toEqual({ reason: 'デッキを選んでください', outOfRules: false })
     })
+  })
+})
+
+/** ADR-0028。既製デッキの顔は、サーバが選んだ識別子をプールから引く。無ければ裏面（`face` が `undefined`）。 */
+describe('既製デッキの顔', () => {
+  it('サーバが選んだ識別子のカードの面を顔にする', () => {
+    const [row] = presetRows(POOL, [{ id: '既製1', name: 'トライアルデッキ', face: 'う' }])
+
+    expect(row?.name).toBe('トライアルデッキ')
+    expect(row?.face?.name).toBe('テスト・赤のユニットLv2')
+  })
+
+  it('顔が付いていない（古いサーバ・顔にできるカードが無い）・プールに無い・プールが届いていない時は、顔が無い', () => {
+    const presets = [{ id: '既製1', name: 'トライアルデッキ' }]
+
+    expect(presetRows(POOL, presets)[0]?.face).toBeUndefined()
+    expect(presetRows(POOL, [{ ...presets[0]!, face: '知らない番号' }])[0]?.face).toBeUndefined()
+    expect(presetRows(undefined, [{ ...presets[0]!, face: 'う' }])[0]?.face).toBeUndefined()
   })
 })

@@ -348,9 +348,31 @@ describe('席に持ち込めるデッキ', () => {
 
   /** 画面に出るのは名前で、指すのは識別子である。**渡された順のまま並べる。** */
   it('選べるデッキは、渡された順に名前付きで並ぶ', () => {
-    expect(deckChoicesOf(supply)).toEqual([
+    expect(deckChoicesOf(supply).map(({ id, name }) => ({ id, name }))).toEqual([
       { id: '既製1', name: 'ひとつめ' },
       { id: '既製2', name: 'ふたつめ' },
+    ])
+  })
+
+  /** 画面には既製デッキの中身が届かない。顔にするカードはここで選んで渡す（ADR-0028）。 */
+  it('選べるデッキには、顔にするカードの識別子が付く', () => {
+    const pool = {
+      低い: defineUnit({ name: 'テスト・低い', level: 1, bp: 100, sp: 100 }),
+      高い: defineUnit({ name: 'テスト・高い', level: 5, bp: 100, sp: 100 }),
+    }
+    const faced = supplyOf({
+      pool,
+      presets: [
+        { id: '多い', name: 'ひとつめ', cards: ['低い', '低い', '高い'] },
+        { id: '同数', name: 'ふたつめ', cards: ['低い', '高い'] },
+        { id: '無い', name: 'みっつめ', cards: ['知らない番号'] },
+      ],
+    })
+
+    expect(deckChoicesOf(faced)).toEqual([
+      { id: '多い', name: 'ひとつめ', face: '低い' },
+      { id: '同数', name: 'ふたつめ', face: '高い' },
+      { id: '無い', name: 'みっつめ' },
     ])
   })
 })

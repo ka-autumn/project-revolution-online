@@ -24,7 +24,6 @@ import type {
   WireCandidate,
   WireCardFace,
   WireCardPosition,
-  WireDeck,
   WireLobbyRestrictionList,
   WireRestrictionList,
   WireRoomRules,
@@ -58,13 +57,14 @@ import type {
   LevelBar,
   LobbyDeck,
   OwnedDeckRow,
+  PresetRow,
   PoolRow,
   PoolView,
   TypeCount,
 } from './deck-builder.js'
 import type { ActionView, AskOption, AskView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import { countName, DISPLAY_NAME_LIMIT } from './name-count.js'
-import { COLORLESS, emptyFilter, isFiltering, MOVE_SHAPES, toggled } from './pool-filter.js'
+import { COLORLESS, emptyFilter, isFiltering, MOVE_SHAPES, toggled, typeShownAs } from './pool-filter.js'
 import type { FilterChoices, MoveShape, NumberRange, PoolFilter, StarChoice } from './pool-filter.js'
 import type { CopyState, MyShareRow, PublicCardSection, RecipeCardRow, RecipeSummaryRow, ShareDraft, ShareRow, SharingState } from './recipe.js'
 import type {
@@ -1760,7 +1760,7 @@ export interface DeckListView {
   readonly search: string
   readonly colorFilter: readonly string[]
   readonly labelFilter: readonly string[]
-  readonly presets: readonly WireDeck[]
+  readonly presets: readonly PresetRow[]
   /** コピー・複製・削除の返事を待っているか。重ねて押させない——2 度押すとデッキが 2 つできる。 */
   readonly waiting: boolean
   readonly refusal: string | undefined
@@ -1846,15 +1846,27 @@ function deckSearchPanelElement(view: DeckListView, handlers: DeckListHandlers):
   return panel
 }
 
-/** 既製デッキからコピーして作るところ（ADR-0022）。カードのデータを持たないので、面は出さない。 */
-function presetsPanelElement(presets: readonly WireDeck[], waiting: boolean, handlers: DeckListHandlers): HTMLElement | undefined {
+/**
+ * 既製デッキからコピーして作るところ（ADR-0022）。自分のデッキと同じく、デッキの顔を小さく添える
+ * （ADR-0028）。顔が決まらないデッキはカードの裏面を出す。読み上げにはデッキの名前があるので、顔は隠す。
+ */
+function presetsPanelElement(presets: readonly PresetRow[], waiting: boolean, handlers: DeckListHandlers): HTMLElement | undefined {
   if (presets.length === 0) return undefined
 
   const panel = sectionPanel('', '既製デッキからコピーして作る')
   const body = element('div', 'presets')
   for (const preset of presets) {
     const row = element('div', 'preset')
-    row.append(element('span', 'preset__name', preset.name))
+    const art = element('span', 'preset__art')
+    art.setAttribute('aria-hidden', 'true')
+    if (preset.face !== undefined) {
+      art.append(poolCardElement(preset.face))
+    } else {
+      const back = element('div', 'card card--back')
+      back.append(element('div', 'card__face'))
+      art.append(back)
+    }
+    row.append(art, element('span', 'preset__name', preset.name))
     const copy = smallButton('コピーして組む', () => handlers.onCopy(preset.id))
     copy.toggleAttribute('disabled', waiting)
     row.append(copy)
@@ -2283,13 +2295,14 @@ function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers):
       change({ expansions: next }),
     ),
     filterRow('色', choices.colors, filter.colors, (next) => change({ colors: next }), (color) => colorChipContent(color as DeckColor)),
-    filterRow('種別', choices.types, filter.types, (next) => change({ types: next })),
+    filterRow('種別', choices.types, filter.types, (next) => change({ types: next }), (type) => [typeShownAs(type)], (type) => type),
     filterRow(
       'レベル',
       choices.levels,
       filter.levels,
       (next) => change({ levels: next }),
-      (level) => [`Lv${level}`],
+      (level) => [String(level)],
+      (level) => `レベル${level}`,
     ),
   ]
   for (const row of rows) if (row !== undefined) body.append(row)
@@ -2647,7 +2660,8 @@ function typeCountsElement(typeCounts: readonly TypeCount[], starTotal: number):
   list.setAttribute('aria-label', '種別ごとの枚数')
   for (const { type, count } of typeCounts) {
     const item = element('li', count === 0 ? 'types__zero' : '')
-    item.append(element('span', '', type), element('span', '', String(count)))
+    item.append(element('span', '', typeShownAs(type)), element('span', '', String(count)))
+    if (typeShownAs(type) !== type) item.setAttribute('aria-label', `${type} ${count}`)
     list.append(item)
   }
   const starItem = element('li', 'types__stars')

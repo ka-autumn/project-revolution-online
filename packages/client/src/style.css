@@ -4987,6 +4987,10 @@ body {
   background: #fffef9;
 }
 
+.deckbuild .preset__art {
+  display: flex;
+}
+
 .deckbuild .preset .card {
   --card-width: 3rem;
 }
