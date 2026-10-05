@@ -299,7 +299,7 @@ export function choiceView(board: WirePerspective, choice: WireChoice, picking?:
  * 候補が全部能力の選択か（ADR-0031）。クリックモードでは、これをカードの一覧と同じ枠のダイアログで
  * 選ばせる（`render.ts` の `choosePickerElement`）。
  *
- * **カードやスクエアが混じる場合は含めない。** 能力の札とカードの面を同じ一覧に並べる見た目は
+ * カードやスクエアが混じる場合は含めない。能力の札とカードの面を同じ一覧に並べる見た目は
  * 決めていない。今の選択の種類では混じらない（`protocol.ts` の `describeCandidate` が選択の
  * 種類で候補の形を決めている）ので、混じる選択が増えたときは、これまでどおり番号のボタンに
  * 戻る。
@@ -312,7 +312,7 @@ export function isAbilityChoice(choice: WireChoice): boolean {
  * 能力の候補を、ダイアログの札に書く呼び名にする。候補と同じ並びで返す（番号が答えになる、ADR-0008）。
  *
  * 呼び名は発生源のカード名で「〇〇 の能力」。発生源を持たない、または選ぶ人から見えない能力は
- * 「発生源のない能力」とする。**同じ呼び名が 2 つ以上並ぶときだけ**、読み上げでも区別がつくよう、
+ * 「発生源のない能力」とする。同じ呼び名が 2 つ以上並ぶときだけ、読み上げでも区別がつくよう、
  * 並びの順に「（1 つ目）」「（2 つ目）」を添える。
  */
 export function abilityLabels(board: WirePerspective, choice: WireChoice): readonly string[] {

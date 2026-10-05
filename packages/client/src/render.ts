@@ -3963,8 +3963,8 @@ export interface ChoosePickerHandlers {
  * 候補が全部能力のとき（`isAbilityChoice`、ADR-0031）は、カードの面のかわりに文字の札を並べる。
  * 呼び名は `abilityLabels` が候補と同じ並びで渡す。
  *
- * **答えを送ったあとは、返事が届いて描き直されるまで、すべての押す先を押せなくして「通信中…」を
- * 出す**（ADR-0031）。残ったままの一覧で押されると、2 通目がサーバに断られる。
+ * 答えを送ったあとは、返事が届いて描き直されるまで、すべての押す先を押せなくして「通信中…」を
+ * 出す（ADR-0031）。残ったままの一覧で押されると、2 通目がサーバに断られる。
  */
 export function choosePickerElement(
   asking: string,
@@ -3992,10 +3992,17 @@ export function choosePickerElement(
   const lock = (): void => {
     sent = true
     sending.textContent = '通信中…'
-    root?.querySelector('.picker__box')?.setAttribute('aria-busy', 'true')
+    // `role="dialog"` を持つ外側の要素に付ける（確認ダイアログと同じ、`askElement`）。
+    root?.setAttribute('aria-busy', 'true')
     for (const each of root?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? []) {
-      if (each instanceof HTMLButtonElement) each.disabled = true
-      else each.setAttribute('aria-disabled', 'true')
+      if (each instanceof HTMLButtonElement) {
+        each.disabled = true
+        continue
+      }
+      each.setAttribute('aria-disabled', 'true')
+      // 押せなくしたあとも「押せます」と読み上げない。選びかけの「（選択中）」は残す。
+      const label = each.getAttribute('aria-label')
+      if (label !== null) each.setAttribute('aria-label', label.replace('（押せます）', ''))
     }
   }
   const once =
@@ -4071,6 +4078,10 @@ export function choosePickerElement(
   foot.append(decide)
 
   root = pickerElement('選ぶ', '候補から選ぶ', asking, cards, foot, sending)
+  // 能力の札は文字だけなので、枠の幅は中身に合わせて狭める（ADR-0031）。
+  if (candidates.length > 0 && candidates.every(({ candidate }) => candidate.kind === '能力')) {
+    root.classList.add('picker--ability')
+  }
 
   return root
 }

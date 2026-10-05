@@ -1552,4 +1552,54 @@ describe('isAbilityChoice・abilityLabels', () => {
       '発生源のない能力（2 つ目）',
     ])
   })
+
+  it('候補が 1 件なら、「n つ目」は付かない', () => {
+    expect(abilityLabels(board(), choice([{ kind: '能力', source: 'スクエアの1枚' }]))).toEqual(['テスト・盤上の戦士 の能力'])
+    expect(abilityLabels(board(), choice([{ kind: '能力', source: undefined }]))).toEqual(['発生源のない能力'])
+  })
+
+  it('同じ呼び名が 3 件以上重なるときは、並びの順に「3 つ目」まで振る', () => {
+    const asked = choice([
+      { kind: '能力', source: 'スクエアの1枚' },
+      { kind: '能力', source: 'スクエアの1枚' },
+      { kind: '能力', source: 'スクエアの1枚' },
+    ])
+
+    expect(abilityLabels(board(), asked)).toEqual([
+      'テスト・盤上の戦士 の能力（1 つ目）',
+      'テスト・盤上の戦士 の能力（2 つ目）',
+      'テスト・盤上の戦士 の能力（3 つ目）',
+    ])
+  })
+
+  it('重なる呼び名と重ならない呼び名が混じるときは、重ならないほうには付かない', () => {
+    const asked = choice([
+      { kind: '能力', source: 'スクエアの1枚' },
+      { kind: '能力', source: 'てふだの1枚' },
+      { kind: '能力', source: 'スクエアの1枚' },
+    ])
+
+    expect(abilityLabels(board(), asked)).toEqual([
+      'テスト・盤上の戦士 の能力（1 つ目）',
+      'テスト・手札の戦士 の能力',
+      'テスト・盤上の戦士 の能力（2 つ目）',
+    ])
+  })
+
+  it('発生源の識別子が違っても、カード名が同じなら重なったものとして両方に付ける', () => {
+    const twin = instance('そっくりな1枚', '先攻', { card: unitFace('テスト・盤上の戦士') })
+    const base = board()
+    const withTwin = withZone(base, '先攻', '手札', [...base.zones['先攻']['手札'], { kind: '見えている', instance: twin }])
+    const asked = choice([
+      { kind: '能力', source: 'スクエアの1枚' },
+      { kind: '能力', source: 'そっくりな1枚' },
+    ])
+
+    expect(abilityLabels(withTwin, asked)).toEqual(['テスト・盤上の戦士 の能力（1 つ目）', 'テスト・盤上の戦士 の能力（2 つ目）'])
+  })
+
+  it('カードだけの候補・能力とカードが混じる候補は、能力の選択とは見なさない', () => {
+    expect(isAbilityChoice(choice([{ kind: '見えている', card: 'スクエアの1枚' }]))).toBe(false)
+    expect(isAbilityChoice(choice([{ kind: '能力', source: undefined }, { kind: '見えている', card: 'スクエアの1枚' }]))).toBe(false)
+  })
 })

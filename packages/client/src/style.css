@@ -3848,7 +3848,11 @@ body {
   --card-width: 6rem;
 }
 
-/* 能力の札だけが並ぶときは、幅の広い札を 1 列に並べる。 */
+/* 能力の札だけが並ぶときは、枠を狭めて、幅の広い札を 1 列に並べる。カードの一覧は今の幅のまま。 */
+.duel .picker--ability .picker__box {
+  width: min(32rem, 100%);
+}
+
 .duel .picker__cards:has(.picker__ability) {
   grid-template-columns: 1fr;
 }
@@ -3907,9 +3911,14 @@ body {
   opacity: 0.6;
 }
 
-.duel .picker__box[aria-busy='true'] .card--押せる,
-.duel .picker__box[aria-busy='true'] .picker__ability {
+.duel .picker[aria-busy='true'] .card--押せる,
+.duel .picker[aria-busy='true'] .picker__ability {
   pointer-events: none;
+}
+
+/* 送ったあとのカードの面は薄くする（能力の札は上の `aria-disabled` で薄くしている）。 */
+.duel .picker[aria-busy='true'] .card--押せる {
+  opacity: 0.6;
 }
 
 /*

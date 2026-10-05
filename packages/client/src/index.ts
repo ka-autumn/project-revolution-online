@@ -883,12 +883,13 @@ function draw(
     // 繋がっていない間は「選ぶ」一覧も出さない。「繋がっていない間は手を出さない」と同じ決まりを、
     // 一覧にも適用する。
     //
-    // 候補が全部能力の選択（`isAbilityChoice`）は、**クリックモードのときだけ**同じ一覧に出す
-    // （ADR-0031）。ボタンモードは番号のボタンのままである。
+    // 候補が全部能力の選択（`isAbilityChoice`）は、クリックモードのときだけ同じ一覧に出す
+    // （ADR-0031）。ボタンモードは番号のボタンのままである。`clicking` は使わない。演出が出て
+    // いる間も選択は止まらない（#115）ので、カードの一覧と同じく、演出中も出す。
     const showsPicker =
       connected &&
       stage.choice !== undefined &&
-      (showsChoicePicker(stage.choice, offBoard) || (clicking && isAbilityChoice(stage.choice)))
+      (showsChoicePicker(stage.choice, offBoard) || (picking.mode === 'クリック' && isAbilityChoice(stage.choice)))
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (!connected) {
