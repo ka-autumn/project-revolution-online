@@ -3908,6 +3908,7 @@ function pickerElement(
   lead: string | undefined,
   cards: readonly HTMLElement[],
   foot: HTMLElement,
+  sending?: HTMLElement,
 ): HTMLElement {
   const node = element('div', `picker picker--${kind}`)
   node.setAttribute('role', 'dialog')
@@ -3918,6 +3919,7 @@ function pickerElement(
   const head = element('div', 'picker__head')
   head.append(element('h2', 'picker__title', title))
   if (lead !== undefined) head.append(element('p', 'picker__lead', lead))
+  if (sending !== undefined) head.append(sending)
   box.append(head)
 
   const list = element('div', 'picker__cards')
@@ -3957,6 +3959,12 @@ export interface ChoosePickerHandlers {
  * `見えていない`）は中身を見せられないので、裏面と位置を示す読み上げの文だけにする。
  *
  * 押すと選びかけになり（`onPick`）、もう一度「これに決める」を押して答える（ADR-0008）。
+ *
+ * 候補が全部能力のとき（`isAbilityChoice`、ADR-0031）は、カードの面のかわりに文字の札を並べる。
+ * 呼び名は `abilityLabels` が候補と同じ並びで渡す。
+ *
+ * 答えを送ったあとは、返事が届いて描き直されるまで、すべての押す先を押せなくして「通信中…」を
+ * 出す（ADR-0031）。残ったままの一覧で押されると、2 通目がサーバに断られる。
  */
 export function choosePickerElement(
   asking: string,
@@ -3974,13 +3982,62 @@ export function choosePickerElement(
   mayDecline: boolean,
   mayRewind: boolean,
   mayCancel: boolean,
-  handlers: ChoosePickerHandlers,
+  rawHandlers: ChoosePickerHandlers,
+  abilityLabels: readonly string[] = [],
 ): HTMLElement {
+  const sending = element('p', 'picker__sending')
+  sending.setAttribute('role', 'status')
+  let sent = false
+  let root: HTMLElement | undefined
+  const lock = (): void => {
+    sent = true
+    sending.textContent = '通信中…'
+    // `role="dialog"` を持つ外側の要素に付ける（確認ダイアログと同じ、`askElement`）。
+    root?.setAttribute('aria-busy', 'true')
+    for (const each of root?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? []) {
+      if (each instanceof HTMLButtonElement) {
+        each.disabled = true
+        continue
+      }
+      each.setAttribute('aria-disabled', 'true')
+      // 押せなくしたあとも「押せます」と読み上げない。選びかけの「（選択中）」は残す。
+      const label = each.getAttribute('aria-label')
+      if (label !== null) each.setAttribute('aria-label', label.replace('（押せます）', ''))
+    }
+  }
+  const once =
+    <Args extends unknown[]>(run: (...args: Args) => void) =>
+    (...args: Args): void => {
+      if (sent) return
+      lock()
+      run(...args)
+    }
+  const handlers: ChoosePickerHandlers = {
+    // 選びかけは何も送らない。もう送ったあとは動かさない。
+    onPick: (index) => {
+      if (!sent) rawHandlers.onPick(index)
+    },
+    onConfirm: once(rawHandlers.onConfirm),
+    onDecline: once(rawHandlers.onDecline),
+    onRewind: once(rawHandlers.onRewind),
+    onCancel: once(rawHandlers.onCancel),
+  }
+
+  const abilityOnly = candidates.length > 0 && candidates.every(({ candidate }) => candidate.kind === '能力')
   const cards = candidates.map(({ index, candidate }) => {
     const isPicked = picked === index
     const how = isPicked ? '（選択中）' : '（押せます）'
     const node =
-      candidate.kind === '見えている'
+      candidate.kind === '能力'
+        ? (() => {
+            const built = element('div', 'picker__ability', abilityLabels[index] ?? '発生源のない能力')
+            built.setAttribute('aria-label', `${abilityLabels[index] ?? '発生源のない能力'}${how}`)
+            // 乗せた・フォーカスした札の発生源のカードを、右の列の詳細に出す（`wireCardDetailHover`）。
+            // 何をする能力かは通信に載らないので、出せるのはカードのテキストまでである。
+            if (candidate.source !== undefined) built.dataset.cardId = candidate.source
+            return built
+          })()
+        : candidate.kind === '見えている'
         ? (() => {
             const found = cardOf(candidate.card)
             const card = found?.kind === '表' ? found : undefined
@@ -3994,8 +4051,10 @@ export function choosePickerElement(
             return built
           })()
 
-    node.classList.add('card--押せる')
-    node.classList.toggle('card--選択中', isPicked)
+    // 能力の札は文字だけなので、カードの面の光り方（`card--`）ではなく専用の見た目にする。
+    const isAbility = candidate.kind === '能力'
+    node.classList.add(isAbility ? 'picker__ability--押せる' : 'card--押せる')
+    node.classList.toggle(isAbility ? 'picker__ability--選択中' : 'card--選択中', isPicked)
     node.setAttribute('role', 'button')
     node.tabIndex = 0
     const pick = (): void => handlers.onPick(isPicked ? undefined : index)
@@ -4011,7 +4070,9 @@ export function choosePickerElement(
   })
 
   const foot = element('div', 'picker__foot')
-  foot.append(element('span', 'picker__count', `${answered + 1} 枚目を選んでいます`))
+  // 何枚目を選んでいるかは、カードを何枚か選ばせる場面の情報である。能力を選ぶ場面では意味が
+  // 無いので出さない（ADR-0031）。
+  if (!abilityOnly) foot.append(element('span', 'picker__count', `${answered + 1} 枚目を選んでいます`))
   if (mayDecline) foot.append(button('選ばない', handlers.onDecline))
   if (mayRewind) foot.append(button('ひとつ戻る', handlers.onRewind))
   if (mayCancel) foot.append(button('この行動をやめる', handlers.onCancel))
@@ -4022,7 +4083,11 @@ export function choosePickerElement(
   decide.toggleAttribute('disabled', picked === undefined)
   foot.append(decide)
 
-  return pickerElement('選ぶ', '候補から選ぶ', asking, cards, foot)
+  root = pickerElement('選ぶ', '候補から選ぶ', asking, cards, foot, sending)
+  // 能力の札は文字だけなので、枠の幅は中身に合わせて狭める（ADR-0031）。
+  if (abilityOnly) root.classList.add('picker--ability')
+
+  return root
 }
 
 /** 対戦画面で押せるもの・出すものをまとめて渡す（ADR-0027）。 */
@@ -4047,6 +4112,11 @@ export interface DuelElementProps {
   readonly overlay?: HTMLElement
   /** 表側が見えているカードすべて（`view-model.ts` の `visibleCardViewsIn`）。詳細の配線に使う。 */
   readonly cardsById: ReadonlyMap<CardId, CardView>
+  /**
+   * カードの詳細の既定に出すカード。盤面で選んでいるカード（`picking.picked`）のかわりに使う。
+   * 能力を選ぶ一覧で選びかけの札があるとき、その発生源のカードを出す（ADR-0031）。
+   */
+  readonly detailDefault?: CardId
 }
 
 function partnerOf(side: SideView): (CardView & { readonly kind: '表' }) | undefined {
@@ -4098,7 +4168,7 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   if (props.choosePicker !== undefined) root.append(props.choosePicker)
   if (props.dialog !== undefined) root.append(props.dialog)
 
-  wireCardDetailHover(root, detail, props.cardsById, props.picking?.picked)
+  wireCardDetailHover(root, detail, props.cardsById, props.detailDefault ?? props.picking?.picked)
 
   // 押せるもの以外のところを押したら、選びかけを外す（#249）。押せるカードを押した時は、その
   // カードが次の選択になるので外さない。

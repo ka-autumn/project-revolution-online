@@ -1494,7 +1494,8 @@ body {
 }
 
 .show-picker-view .picker--見る,
-.show-picker-choose .picker--選ぶ { display: flex; }
+.show-picker-choose .picker--選ぶ,
+.show-picker-sending .picker--送信中 { display: flex; }
 
 .picker__box {
   display: flex;
@@ -1547,6 +1548,11 @@ body {
 }
 
 .picker__count { margin-right: auto; font-weight: 700; }
+
+/* 答えを送ったあと、返事が届くまで（ADR-0031）。何も出ていない間は場所を取らない */
+.picker__sending { margin: 0; color: var(--heading); font-size: 0.85rem; font-weight: 700; }
+.picker__sending:empty { display: none; }
+.picker[aria-busy='true'] .card--押せる { pointer-events: none; opacity: 0.6; }
 
 .duel .picker button:disabled {
   opacity: 0.45;
@@ -1759,6 +1765,7 @@ body {
   <label><input type="checkbox" data-show="show-result-draw">決着（引き分け）</label>
   <label><input type="checkbox" data-show="show-picker-view">一覧（捨札を見る）</label>
   <label><input type="checkbox" data-show="show-picker-choose">一覧（山札から選ぶ）</label>
+  <label><input type="checkbox" data-show="show-picker-sending">一覧（山札から選ぶ・通信中）</label>
 </div>
 
 <script>
@@ -2076,9 +2083,10 @@ fan(document.getElementById('hand-own'), [
 // ---- カードの一覧（オーバーレイ） ----
 // 見る：捨札・リムーブの中身を見るだけ。閉じるで戻る。
 // 選ぶ：効果で山札などから選ぶ。条件に合わないカードは薄くして押せなくし、選んだ枚数を数える。
-function picker(kind, title, lead, cardsInList, foot) {
+function picker(kind, title, lead, cardsInList, foot, sending) {
   const node = document.createElement('div')
   node.className = `picker picker--${kind}`
+  if (sending) node.setAttribute('aria-busy', 'true')
   node.setAttribute('role', 'dialog')
   node.setAttribute('aria-modal', 'true')
   node.setAttribute('aria-label', title)
@@ -2087,6 +2095,7 @@ function picker(kind, title, lead, cardsInList, foot) {
       <div class="picker__head">
         <h2 class="picker__title">${title}</h2>
         <p class="picker__lead">${lead}</p>
+        <p class="picker__sending" role="status">${sending ? '通信中…' : ''}</p>
       </div>
       <div class="picker__cards"></div>
       <div class="picker__foot">${foot}</div>
@@ -2112,6 +2121,20 @@ choosable[1].classList.add('card--選択中')
 pickers.append(picker('選ぶ', '山札から選ぶ', 'レベル 3 以下のユニットを 1 枚まで選んで、手札に加える',
   choosable,
   '<span class="picker__count">1 枚目を選んでいます</span><button type="button">選ばない</button><button type="button" class="button--primary">これに決める</button>'))
+
+// 「これに決める」を押したあと、返事が届くまで。カードの面は薄くして押せなくし、ボタンも押せなくする
+const sendingList = [
+  card('見本・もちぬい', '自分'),
+  card('見本・森の守護者', '自分'),
+  card('見本・霧島透', '自分'),
+  card('見本・光の祈り手', '自分'),
+]
+for (const n of sendingList) n.classList.add('card--押せる')
+sendingList[1].classList.add('card--選択中')
+pickers.append(picker('送信中', '山札から選ぶ', 'レベル 3 以下のユニットを 1 枚まで選んで、手札に加える',
+  sendingList,
+  '<span class="picker__count">1 枚目を選んでいます</span><button type="button" disabled>選ばない</button><button type="button" class="button--primary" disabled>これに決める</button>',
+  true))
 
 // ---- カードの詳細 ----
 // 何も無ければ案内だけ。カードを選んでいる間はそのカードが既定。乗せたカードに切り替わり、

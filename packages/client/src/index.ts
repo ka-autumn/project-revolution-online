@@ -55,10 +55,12 @@ import {
 } from './deck-builder.js'
 import type { Builder, DeckDraft, LobbyDeck, PoolView } from './deck-builder.js'
 import {
+  abilityLabels,
   actionViews,
   automaticAction,
   choicePicking,
   choiceView,
+  isAbilityChoice,
   offBoardCandidates,
   pickView,
   showsChoicePicker,
@@ -880,7 +882,14 @@ function draw(
     const offBoard = stage.choice !== undefined ? offBoardCandidates(stage.choice, structuralPicking) : []
     // 繋がっていない間は「選ぶ」一覧も出さない。「繋がっていない間は手を出さない」と同じ決まりを、
     // 一覧にも適用する。
-    const showsPicker = connected && stage.choice !== undefined && showsChoicePicker(stage.choice, offBoard)
+    //
+    // 候補が全部能力の選択（`isAbilityChoice`）は、クリックモードのときだけ同じ一覧に出す
+    // （ADR-0031）。ボタンモードは番号のボタンのままである。`clicking` は使わない。演出が出て
+    // いる間も選択は止まらない（#115）ので、カードの一覧と同じく、演出中も出す。
+    const showsPicker =
+      connected &&
+      stage.choice !== undefined &&
+      (showsChoicePicker(stage.choice, offBoard) || (picking.mode === 'クリック' && isAbilityChoice(stage.choice)))
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (!connected) {
@@ -987,6 +996,7 @@ function draw(
                   connection.send({ kind: '取り消す' })
                 },
               },
+              isAbilityChoice(choice) ? abilityLabels(board, choice) : [],
             )
           })()
         : undefined
@@ -1023,6 +1033,10 @@ function draw(
         ? overlayElement(overlay, boardData.result, leavesAfterResult ? lobby.onLeave : undefined)
         : undefined
 
+    // 能力を選ぶ一覧で選びかけの札があれば、その発生源のカードを詳細の既定にする（ADR-0031）。
+    const pickedCandidate = showsPicker && stage.choice !== undefined && pickerPicked !== undefined ? stage.choice.candidates[pickerPicked] : undefined
+    const detailDefault = pickedCandidate?.kind === '能力' ? pickedCandidate.source : undefined
+
     root.append(
       duelElement({
         view: boardData,
@@ -1036,6 +1050,7 @@ function draw(
         ...(dialog === undefined ? {} : { dialog }),
         overlay: overlayNode,
         cardsById,
+        ...(detailDefault === undefined ? {} : { detailDefault }),
       }),
     )
   }
