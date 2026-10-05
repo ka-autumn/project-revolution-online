@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { CHOICE_PURPOSES, indexOfSquare } from '@revolution/engine'
 import type { LegalAction, PassOutcome, Player, WireCardFace, WireChoice, WirePerspective } from '@revolution/engine'
 import {
+  abilityLabels,
+  isAbilityChoice,
   actionViews,
   automaticAction,
   choicePicking,
@@ -1500,5 +1502,54 @@ describe('offBoardCandidates・showsChoicePicker', () => {
     const asked = choice([{ kind: '見えていない', at: undefined }])
 
     expect(showsChoicePicker(asked, offBoardCandidates(asked, undefined))).toBe(true)
+  })
+})
+
+/**
+ * 選択の中の能力の候補を、ダイアログに書く形にするところ（#250、ADR-0031）。答えは候補の番号
+ * のままなので、呼び名は候補と同じ並びで返る。
+ */
+describe('isAbilityChoice・abilityLabels', () => {
+  const choice = (candidates: WireChoice['candidates']): WireChoice => ({
+    player: '先攻',
+    purpose: '解決する能力',
+    mayDecline: false,
+    answered: 0,
+    mayGoBack: false,
+    candidates,
+  })
+
+  it('候補が全部能力なら、能力の選択', () => {
+    expect(isAbilityChoice(choice([{ kind: '能力', source: undefined }, { kind: '能力', source: 'スクエアの1枚' }]))).toBe(true)
+  })
+
+  it('カードやスクエアが混じるなら、能力の選択とは見なさない（番号のボタンのまま）', () => {
+    expect(isAbilityChoice(choice([{ kind: '能力', source: undefined }, { kind: '見えていない', at: undefined }]))).toBe(false)
+  })
+
+  it('候補が空なら、能力の選択とは見なさない', () => {
+    expect(isAbilityChoice(choice([]))).toBe(false)
+  })
+
+  it('発生源のカード名で「〇〇 の能力」と呼び、発生源が無ければ「発生源のない能力」と呼ぶ', () => {
+    const asked = choice([{ kind: '能力', source: 'スクエアの1枚' }, { kind: '能力', source: undefined }])
+
+    expect(abilityLabels(board(), asked)).toEqual(['テスト・盤上の戦士 の能力', '発生源のない能力'])
+  })
+
+  it('同じ呼び名が重なるときだけ、並びの順に「n つ目」を添える', () => {
+    const asked = choice([
+      { kind: '能力', source: 'スクエアの1枚' },
+      { kind: '能力', source: undefined },
+      { kind: '能力', source: 'スクエアの1枚' },
+      { kind: '能力', source: undefined },
+    ])
+
+    expect(abilityLabels(board(), asked)).toEqual([
+      'テスト・盤上の戦士 の能力（1 つ目）',
+      '発生源のない能力（1 つ目）',
+      'テスト・盤上の戦士 の能力（2 つ目）',
+      '発生源のない能力（2 つ目）',
+    ])
   })
 })

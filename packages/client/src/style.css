@@ -3848,6 +3848,11 @@ body {
   --card-width: 6rem;
 }
 
+/* 能力の札だけが並ぶときは、幅の広い札を 1 列に並べる。 */
+.duel .picker__cards:has(.picker__ability) {
+  grid-template-columns: 1fr;
+}
+
 .duel .picker__foot {
   display: flex;
   align-items: center;
@@ -3860,6 +3865,51 @@ body {
 .duel .picker__count {
   margin-right: auto;
   font-weight: 700;
+}
+
+/* 手を送ってから返事が届くまで。何も出ていない間は場所を取らない。 */
+.duel .picker__sending {
+  margin: 0;
+  color: var(--heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.duel .picker__sending:empty {
+  display: none;
+}
+
+/* 能力の候補の札（文字だけ）。カードの一覧と同じく、押すと選びかけになり、「これに決める」で答える。 */
+.duel .picker__ability {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 3.2rem;
+  padding: 0.6rem 0.9rem;
+  border: 2px solid rgb(220 166 64 / 0.7);
+  border-radius: 10px;
+  background: #fffdf6;
+  color: var(--ink);
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+}
+
+.duel .picker__ability--選択中 {
+  border-color: var(--gold);
+  background: #ffe9a8;
+  box-shadow: 0 0 0 3px rgb(220 166 64 / 0.6);
+}
+
+.duel .picker__ability[aria-disabled='true'] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.duel .picker__box[aria-busy='true'] .card--押せる,
+.duel .picker__box[aria-busy='true'] .picker__ability {
+  pointer-events: none;
 }
 
 /*

@@ -55,10 +55,12 @@ import {
 } from './deck-builder.js'
 import type { Builder, DeckDraft, LobbyDeck, PoolView } from './deck-builder.js'
 import {
+  abilityLabels,
   actionViews,
   automaticAction,
   choicePicking,
   choiceView,
+  isAbilityChoice,
   offBoardCandidates,
   pickView,
   showsChoicePicker,
@@ -880,7 +882,13 @@ function draw(
     const offBoard = stage.choice !== undefined ? offBoardCandidates(stage.choice, structuralPicking) : []
     // 繋がっていない間は「選ぶ」一覧も出さない。「繋がっていない間は手を出さない」と同じ決まりを、
     // 一覧にも適用する。
-    const showsPicker = connected && stage.choice !== undefined && showsChoicePicker(stage.choice, offBoard)
+    //
+    // 候補が全部能力の選択（`isAbilityChoice`）は、**クリックモードのときだけ**同じ一覧に出す
+    // （ADR-0031）。ボタンモードは番号のボタンのままである。
+    const showsPicker =
+      connected &&
+      stage.choice !== undefined &&
+      (showsChoicePicker(stage.choice, offBoard) || (clicking && isAbilityChoice(stage.choice)))
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (!connected) {
@@ -987,6 +995,7 @@ function draw(
                   connection.send({ kind: '取り消す' })
                 },
               },
+              isAbilityChoice(choice) ? abilityLabels(board, choice) : [],
             )
           })()
         : undefined
