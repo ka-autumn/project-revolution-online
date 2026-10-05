@@ -68,8 +68,8 @@ button.b:disabled { opacity: 0.5; cursor: default; }
   border-radius: 10px; background: #fffdf6; font-weight: 700; text-align: center; cursor: pointer; }
 .picker__ability--selected { border-color: var(--gold); background: #ffe9a8; box-shadow: 0 0 0 3px rgb(220 166 64 / 0.6); }
 .picker__ability[aria-disabled='true'] { cursor: default; opacity: 0.6; pointer-events: none; }
-.picker__foot { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; padding: 0.7rem 1rem; border-top: 1px solid rgb(220 166 64 / 0.5); }
-.picker__count { margin-right: auto; font-weight: 700; }
+.picker__foot { flex-wrap: wrap; display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; padding: 0.7rem 1rem; border-top: 1px solid rgb(220 166 64 / 0.5); }
+.picker__foot button { white-space: nowrap; }
 .dialog__actions { display: flex; flex-direction: column; gap: var(--gap); }
 .dialog__actions button { width: 100%; text-align: left; }
 .dialog__row { display: flex; gap: var(--gap); justify-content: flex-end; }
@@ -153,7 +153,7 @@ const variants = {
       <div class="picker__cards"><div class="picker__ability picker__ability--selected" role="button" tabindex="0" aria-label="見本・火の戦士 の能力（1 つ目）（選択中）">見本・火の戦士 の能力（1 つ目）</div>
       <div class="picker__ability" role="button" tabindex="0" aria-label="見本・火の戦士 の能力（2 つ目）（押せます）">見本・火の戦士 の能力（2 つ目）</div>
       <div class="picker__ability" role="button" tabindex="0" aria-label="発生源のない能力（押せます）">発生源のない能力</div></div>
-      <div class="picker__foot"><span class="picker__count">1 個目を選んでいます</span><button class="b">ひとつ戻る</button><button class="b">この行動をやめる</button><button class="b primary">これに決める</button></div></div></div>`,
+      <div class="picker__foot"><button class="b">選ばない</button><button class="b">ひとつ戻る</button><button class="b">この行動をやめる</button><button class="b primary">これに決める</button></div></div></div>`,
   },
   'ability-sending': {
     note: '能力を選んで「これに決める」を押したあと、返事が届くまで。札とボタンをすべて押せなくし、「通信中…」を出す。読み上げの名前は「押せます」を外し、選びかけの「選択中」は残す。カードの一覧（カードを選ぶ場面）も同じ止め方をする。',
@@ -161,7 +161,7 @@ const variants = {
       <div class="picker__cards"><div class="picker__ability picker__ability--selected" role="button" aria-disabled="true" aria-label="見本・火の戦士 の能力（1 つ目）（選択中）">見本・火の戦士 の能力（1 つ目）</div>
       <div class="picker__ability" role="button" aria-disabled="true" aria-label="見本・火の戦士 の能力（2 つ目）">見本・火の戦士 の能力（2 つ目）</div>
       <div class="picker__ability" role="button" aria-disabled="true" aria-label="発生源のない能力">発生源のない能力</div></div>
-      <div class="picker__foot"><span class="picker__count">1 個目を選んでいます</span><button class="b" disabled>ひとつ戻る</button><button class="b" disabled>この行動をやめる</button><button class="b primary" disabled>これに決める</button></div></div></div>`,
+      <div class="picker__foot"><button class="b" disabled>選ばない</button><button class="b" disabled>ひとつ戻る</button><button class="b" disabled>この行動をやめる</button><button class="b primary" disabled>これに決める</button></div></div></div>`,
   },
 }
 const tabs = document.querySelectorAll('.tabs button')

@@ -3871,6 +3871,15 @@ body {
   font-weight: 700;
 }
 
+/* 足もとのボタンは、狭い枠でも文字の途中では折り返さない。入りきらなければ行ごと折り返す。 */
+.duel .picker__foot {
+  flex-wrap: wrap;
+}
+
+.duel .picker__foot button {
+  white-space: nowrap;
+}
+
 /* 手を送ってから返事が届くまで。何も出ていない間は場所を取らない。 */
 .duel .picker__sending {
   margin: 0;

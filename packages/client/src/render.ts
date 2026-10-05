@@ -4023,6 +4023,7 @@ export function choosePickerElement(
     onCancel: once(rawHandlers.onCancel),
   }
 
+  const abilityOnly = candidates.length > 0 && candidates.every(({ candidate }) => candidate.kind === '能力')
   const cards = candidates.map(({ index, candidate }) => {
     const isPicked = picked === index
     const how = isPicked ? '（選択中）' : '（押せます）'
@@ -4066,7 +4067,9 @@ export function choosePickerElement(
   })
 
   const foot = element('div', 'picker__foot')
-  foot.append(element('span', 'picker__count', `${answered + 1} ${candidates.every(({ candidate }) => candidate.kind === '能力') ? '個' : '枚'}目を選んでいます`))
+  // 何枚目を選んでいるかは、カードを何枚か選ばせる場面の情報である。能力を選ぶ場面では意味が
+  // 無いので出さない（ADR-0031）。
+  if (!abilityOnly) foot.append(element('span', 'picker__count', `${answered + 1} 枚目を選んでいます`))
   if (mayDecline) foot.append(button('選ばない', handlers.onDecline))
   if (mayRewind) foot.append(button('ひとつ戻る', handlers.onRewind))
   if (mayCancel) foot.append(button('この行動をやめる', handlers.onCancel))
@@ -4079,9 +4082,7 @@ export function choosePickerElement(
 
   root = pickerElement('選ぶ', '候補から選ぶ', asking, cards, foot, sending)
   // 能力の札は文字だけなので、枠の幅は中身に合わせて狭める（ADR-0031）。
-  if (candidates.length > 0 && candidates.every(({ candidate }) => candidate.kind === '能力')) {
-    root.classList.add('picker--ability')
-  }
+  if (abilityOnly) root.classList.add('picker--ability')
 
   return root
 }
