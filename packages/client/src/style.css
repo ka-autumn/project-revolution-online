@@ -36,9 +36,7 @@
   --panel-edge: #e2b252;
   --radius: 12px;
   --radius-small: 7px;
-  --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
-  /* ゴシック系の見出しの字。明朝の `--heading-font` と対になる（名前を決める画面の題字、待機中の見出し）。 */
-  --heading-font-gothic: 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
+  --heading-font: 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
   /* 通常の `--gap` より広い、パネル間などの余白の基準値。 */
   --gap-lg: 0.75rem;
 }
@@ -1722,7 +1720,7 @@ body {
 .naming__brand {
   margin: 0 0 1.6rem;
   color: var(--heading);
-  font-family: var(--heading-font-gothic);
+  font-family: var(--heading-font);
   font-size: 2.6rem;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -1820,7 +1818,7 @@ body {
 .awaiting__title {
   margin: 0;
   color: var(--heading);
-  font-family: var(--heading-font-gothic);
+  font-family: var(--heading-font);
   font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: 0.08em;

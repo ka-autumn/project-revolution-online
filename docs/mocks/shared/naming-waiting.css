@@ -14,8 +14,7 @@
   --panel-edge: #e2b252;
   --radius: 12px;
   --radius-small: 7px;
-  --heading-font: 'Yu Mincho', YuMincho, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
-  --heading-font-gothic: 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
+  --heading-font: 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
   --gap-lg: 0.75rem;
 }
 html, body { height: 100%; }
@@ -84,7 +83,7 @@ body { box-sizing: border-box; margin: 0; padding: var(--gap); font-family: syst
 .naming > :last-child, .awaiting > :last-child { margin-bottom: auto; }
 .naming { gap: 1.6rem; }
 .naming__brand {
-  margin: 0; color: var(--heading); font-family: var(--heading-font-gothic);
+  margin: 0; color: var(--heading); font-family: var(--heading-font);
   font-size: 2.6rem; font-weight: 800; letter-spacing: 0.12em;
   text-shadow: 0 1px 0 #fff, 0 0 18px rgb(255 255 255 / 0.9);
 }
@@ -103,5 +102,5 @@ body { box-sizing: border-box; margin: 0; padding: var(--gap); font-family: syst
 /* ---- 対戦待機中画面 ---- */
 .awaiting .panel { width: min(28rem, 100%); }
 .awaiting .panel__body { align-items: stretch; text-align: center; padding: 1.4rem 1.2rem 1.2rem; gap: 1.1rem; }
-.awaiting__title { margin: 0; color: var(--heading); font-family: var(--heading-font-gothic); font-size: 1.5rem; font-weight: 800; letter-spacing: 0.08em; }
+.awaiting__title { margin: 0; color: var(--heading); font-family: var(--heading-font); font-size: 1.5rem; font-weight: 800; letter-spacing: 0.08em; }
 .awaiting__leave { align-self: center; }
