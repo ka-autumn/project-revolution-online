@@ -1033,6 +1033,10 @@ function draw(
         ? overlayElement(overlay, boardData.result, leavesAfterResult ? lobby.onLeave : undefined)
         : undefined
 
+    // 能力を選ぶ一覧で選びかけの札があれば、その発生源のカードを詳細の既定にする（ADR-0031）。
+    const pickedCandidate = showsPicker && stage.choice !== undefined && pickerPicked !== undefined ? stage.choice.candidates[pickerPicked] : undefined
+    const detailDefault = pickedCandidate?.kind === '能力' ? pickedCandidate.source : undefined
+
     root.append(
       duelElement({
         view: boardData,
@@ -1046,6 +1050,7 @@ function draw(
         ...(dialog === undefined ? {} : { dialog }),
         overlay: overlayNode,
         cardsById,
+        ...(detailDefault === undefined ? {} : { detailDefault }),
       }),
     )
   }

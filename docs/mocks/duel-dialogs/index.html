@@ -105,7 +105,7 @@ button.b:disabled { opacity: 0.5; cursor: default; }
   </div>
   <div class="col">
     <div class="panel" style="flex:1">操作ログ…</div>
-    <div class="panel detail"><h3>見本・ファイアボルト</h3><p>ストラテジー／赤／レベル2</p><p>相手のユニット1体に3ダメージを与える。</p><p>【トラップ】相手のユニットが攻撃したとき…</p></div>
+    <div class="panel detail" id="detail"><h3>見本・ファイアボルト</h3><p>ストラテジー／赤／レベル2</p><p>相手のユニット1体に3ダメージを与える。</p><p>【トラップ】相手のユニットが攻撃したとき…</p></div>
   </div>
 
   <div id="overlay"></div>
@@ -148,7 +148,8 @@ const variants = {
       <div class="dialog__row"><button class="b" disabled>キャンセル</button><button class="b primary" disabled>エネルギーとして置く</button></div></div></div>`,
   },
   ability: {
-    note: '選択の中の能力の候補（解決する能力・プランの置き換え）。枠・押し方はカードの一覧と同じで、札を押すと選びかけになり、「これに決める」で答える。札は発生源のカード名で「〇〇 の能力」。同じ呼び名が重なるときだけ「（n つ目）」を添える。発生源が無い（または見えない）能力は「発生源のない能力」。「選ばない」「ひとつ戻る」「この行動をやめる」は、行える場面だけ出る。クリックモードだけで、ボタンモードは番号のボタンのまま。',
+    detail: '<h3>見本・火の戦士</h3><p>ユニット／赤／レベル2</p><p>【出たとき】相手のユニット1体に1ダメージを与える。</p><p>【攻撃したとき】カードを1枚引く。</p>',
+    note: '選択の中の能力の候補（解決する能力・プランの置き換え）。枠・押し方はカードの一覧と同じで、札を押すと選びかけになり、「これに決める」で答える。札は発生源のカード名で「〇〇 の能力」。札に乗せる・フォーカスする・選びかけにすると、右の列にその発生源のカードの詳細が出る（何をする能力かは通信に載らないので、出せるのはカードのテキストまで。この図は選びかけの札の発生源）。同じ呼び名が重なるときだけ「（n つ目）」を添える。発生源が無い（または見えない）能力は「発生源のない能力」。「選ばない」「ひとつ戻る」「この行動をやめる」は、行える場面だけ出る。クリックモードだけで、ボタンモードは番号のボタンのまま。',
     html: `<div class="dialog" role="dialog" aria-modal="true" aria-label="候補から選ぶ"><div class="picker__box"><div class="picker__head"><h2 class="picker__title">候補から選ぶ</h2><p class="picker__lead">解決する能力を選んでください</p><p class="picker__sending" role="status"></p></div>
       <div class="picker__cards"><div class="picker__ability picker__ability--selected" role="button" tabindex="0" aria-label="見本・火の戦士 の能力（1 つ目）（選択中）">見本・火の戦士 の能力（1 つ目）</div>
       <div class="picker__ability" role="button" tabindex="0" aria-label="見本・火の戦士 の能力（2 つ目）（押せます）">見本・火の戦士 の能力（2 つ目）</div>
@@ -164,11 +165,13 @@ const variants = {
       <div class="picker__foot"><button class="b" disabled>選ばない</button><button class="b" disabled>ひとつ戻る</button><button class="b" disabled>この行動をやめる</button><button class="b primary" disabled>これに決める</button></div></div></div>`,
   },
 }
+const defaultDetail = document.getElementById('detail').innerHTML
 const tabs = document.querySelectorAll('.tabs button')
 function show(v) {
   tabs.forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.v === v)))
   document.getElementById('overlay').innerHTML = variants[v].html
   document.getElementById('note').textContent = variants[v].note
+  document.getElementById('detail').innerHTML = variants[v].detail ?? defaultDetail
 }
 tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.v)))
 show(location.hash.slice(1) in variants ? location.hash.slice(1) : 'confirm')
