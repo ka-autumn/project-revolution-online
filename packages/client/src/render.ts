@@ -1,5 +1,6 @@
 import { COLORS, DUEL_FORMATS } from '@revolution/engine'
-import { REGION_ATTRIBUTE, type Region, wireBoardKeyboard } from './board-keyboard.js'
+import { FOCUS_KEY_ATTRIBUTE, REGION_ATTRIBUTE, type Region, wireBoardKeyboard } from './board-keyboard.js'
+import { ignoreKeyRepeat, onLayerEscape } from './dialog-focus.js'
 import type {
   Area,
   CardId,
@@ -514,6 +515,7 @@ function cardElement(card: CardView, picking?: BoardPicking, options: FaceOption
       // 押せる裏向きのカードは、キーボードでも押せる（ADR-0033）。
       back.setAttribute('role', 'button')
       back.tabIndex = 0
+      back.dataset[FOCUS_KEY_ATTRIBUTE] = `h:${keyOfPosition(at)}`
     }
     back.append(faceElement(card))
     return back
@@ -646,6 +648,7 @@ function ownTrapZoneElement(zone: ZoneView, picking: BoardPicking | undefined): 
   node.classList.add('zone--置き先')
   node.setAttribute('role', 'button')
   node.tabIndex = 0
+  node.dataset[FOCUS_KEY_ATTRIBUTE] = 'trap:自分'
   node.setAttribute('aria-label', `自分のトラップゾーン（押せます: ${lit.label}）`)
   // 光るのは、トラップとしてプレイする手が届いている間だけで、その手はトラップゾーンが空の時にしか
   // 行えない（総合ルール 第2部 第20章 3-1）。ゾーンの中に押せるカードは無いので、カードの click との
@@ -665,7 +668,7 @@ function ownTrapZoneElement(zone: ZoneView, picking: BoardPicking | undefined): 
  * 束（捨札・リムーブ）。見せるのは一番上の 1 枚と枚数だけ（ADR-0027）。中身があれば押せ、
  * 押すと中身の一覧が開く（`pickerElement` の「見る」）。
  */
-function pileZoneElement(zone: ZoneView, onOpen: (() => void) | undefined): HTMLElement {
+function pileZoneElement(zone: ZoneView, whose: '自分' | '相手', onOpen: (() => void) | undefined): HTMLElement {
   const node = element('section', `zone zone--${zone.zone}`)
   node.append(zoneTitleElement(zone))
 
@@ -676,6 +679,7 @@ function pileZoneElement(zone: ZoneView, onOpen: (() => void) | undefined): HTML
     pile.classList.add('pile--開ける')
     pile.setAttribute('role', 'button')
     pile.tabIndex = 0
+    pile.dataset[FOCUS_KEY_ATTRIBUTE] = `pile:${whose}:${zone.zone}`
     pile.setAttribute('aria-label', `${zone.zone}の一覧を開く（${zone.count} 枚）`)
     pile.addEventListener('click', onOpen)
     pile.addEventListener('keydown', (event) => {
@@ -715,6 +719,7 @@ function deckZoneElement(
   if (pressable) {
     const onDeck = picking.onDeck
     pile.classList.add('pile--押せる')
+    pile.dataset[FOCUS_KEY_ATTRIBUTE] = `deck:${own ? '自分' : '相手'}`
     if (picking.deck?.picked === true) pile.classList.add('pile--選択中')
     pile.setAttribute('role', 'button')
     pile.tabIndex = 0
@@ -788,7 +793,12 @@ function waitingElement(title: string, abilities: readonly AbilityView[]): HTMLE
  * スクエア 1 つ。バトルが起きているスクエアには、上端にも「バトル中」の帯を出し、枠を
  * 赤く光らせる（ADR-0027）。
  */
-function squareElement(square: SquareView, picking: BoardPicking | undefined, battle: BattleView | undefined): HTMLElement {
+function squareElement(
+  square: SquareView,
+  picking: BoardPicking | undefined,
+  battle: BattleView | undefined,
+  keyboard: boolean,
+): HTMLElement {
   const pickable = pickableAt(picking, square.square)
   const inBattle =
     battle !== undefined && battle.square.row === square.square.row && battle.square.column === square.square.column
@@ -797,26 +807,33 @@ function squareElement(square: SquareView, picking: BoardPicking | undefined, ba
     `square square--${square.area}${pickable === undefined ? '' : ' square--置き先'}${inBattle ? ' square--バトル中' : ''}`,
   )
   if (inBattle) node.append(element('span', 'square__battle', 'バトル中'))
-  // 押せることを色だけで区別させない。読み上げにも出す。キーボードでは、ユニットごとではなく
-  // スクエアに手を置くので、そこにいるユニットの名前も添える（ADR-0033）。
-  const units = square.cards.map((card) => (card.kind === '表' ? `${card.controlledBy}の${card.name}` : '裏向きのカード'))
-  const unitsPressable = square.cards.some((card) => isPickable(card, picking))
-  const where =
-    pickable !== undefined
-      ? `（押せます: ${pickable.label}）`
-      : unitsPressable
-        ? '（押せます）'
-        : hasPressable(picking)
-          ? '（押せません）'
-          : ''
-  const inside = units.length === 0 ? '' : `：${units.join('、')}`
-  node.setAttribute('aria-label', `${square.area} ${square.square.row}-${square.square.column}${inside}${where}`)
-  node.tabIndex = 0
-  node.setAttribute('role', 'group')
+  // 押せることを色だけで区別させない。読み上げにも出す。
   const onSquare = picking?.onSquare
+  if (keyboard) {
+    // クリックモードのキーボードでは、ユニットごとではなくスクエアに手を置くので、そこにいる
+    // ユニットの名前も添える。押せないスクエアも手を置ける先なので、押せないことも言う（ADR-0033）。
+    const units = square.cards.map((card) => (card.kind === '表' ? `${card.controlledBy}の${card.name}` : '裏向きのカード'))
+    const unitsPressable = square.cards.some((card) => isPickable(card, picking))
+    const where =
+      pickable !== undefined
+        ? `（押せます: ${pickable.label}）`
+        : unitsPressable
+          ? '（押せます）'
+          : hasPressable(picking)
+            ? '（押せません）'
+            : ''
+    const inside = units.length === 0 ? '' : `：${units.join('、')}`
+    node.setAttribute('aria-label', `${square.area} ${square.square.row}-${square.square.column}${inside}${where}`)
+    node.tabIndex = 0
+    node.setAttribute('role', 'group')
+    if (pickable !== undefined && onSquare !== undefined) node.setAttribute('role', 'button')
+  } else {
+    const where = pickable === undefined ? '' : `（押せます: ${pickable.label}）`
+    node.setAttribute('aria-label', `${square.area} ${square.square.row}-${square.square.column}${where}`)
+    if (pickable !== undefined && onSquare !== undefined) node.tabIndex = 0
+  }
   if (pickable !== undefined && onSquare !== undefined) {
     const picked = pickable.square
-    node.setAttribute('role', 'button')
     node.addEventListener('click', () => onSquare(picked))
   }
   for (const card of square.cards) node.append(cardElement(card, picking))
@@ -839,6 +856,7 @@ function boardGridElement(
   view: BoardView,
   picking: BoardPicking | undefined,
   onOpenPile: (player: Player, zone: '捨札' | 'リムーブゾーン') => void,
+  keyboard: boolean,
 ): HTMLElement {
   const node = element('div', 'board')
   const place = (child: HTMLElement, area: string): HTMLElement => {
@@ -851,8 +869,8 @@ function boardGridElement(
   const opponentStrip = element('div', 'strip strip--相手')
   opponentStrip.append(
     groupElement('相手', '捨札', [
-      pileZoneElement(zoneOf(view.opponent, 'リムーブゾーン'), openerOf(view.opponent, 'リムーブゾーン')),
-      pileZoneElement(zoneOf(view.opponent, '捨札'), openerOf(view.opponent, '捨札')),
+      pileZoneElement(zoneOf(view.opponent, 'リムーブゾーン'), '相手', openerOf(view.opponent, 'リムーブゾーン')),
+      pileZoneElement(zoneOf(view.opponent, '捨札'), '相手', openerOf(view.opponent, '捨札')),
     ]),
     energyGroupElement('相手', [zoneOf(view.opponent, 'スマッシュゾーン'), zoneOf(view.opponent, 'エネルギーゾーン')], picking),
   )
@@ -862,39 +880,41 @@ function boardGridElement(
   ownStrip.append(
     energyGroupElement('自分', [zoneOf(view.own, 'エネルギーゾーン'), zoneOf(view.own, 'スマッシュゾーン')], picking),
     groupElement('自分', '捨札', [
-      pileZoneElement(zoneOf(view.own, '捨札'), openerOf(view.own, '捨札')),
-      pileZoneElement(zoneOf(view.own, 'リムーブゾーン'), openerOf(view.own, 'リムーブゾーン')),
+      pileZoneElement(zoneOf(view.own, '捨札'), '自分', openerOf(view.own, '捨札')),
+      pileZoneElement(zoneOf(view.own, 'リムーブゾーン'), '自分', openerOf(view.own, 'リムーブゾーン')),
     ]),
   )
   inRegion(ownStrip, 'own')
 
-  // 置く順は、キーボードでたどる順（相手の置き場 → バトルスペース → 自分の置き場）にする。
-  // 画面の位置は `gridArea` で決めているので、見た目は変わらない（ADR-0033）。
-  node.append(opponentStrip)
-  node.append(
-    inRegion(place(deckZoneElement(zoneOf(view.opponent, '山札'), planOf(view.opponent), picking, false), '2 / 1'), 'opp'),
+  const opponentDeck = inRegion(
+    place(deckZoneElement(zoneOf(view.opponent, '山札'), planOf(view.opponent), picking, false), '2 / 1'),
+    'opp',
   )
-  node.append(inRegion(place(zoneElement(zoneOf(view.opponent, 'トラップゾーン'), picking), '2 / 6'), 'opp'))
+  const opponentTrap = inRegion(place(zoneElement(zoneOf(view.opponent, 'トラップゾーン'), picking), '2 / 6'), 'opp')
+  const ownTrap = inRegion(place(ownTrapZoneElement(zoneOf(view.own, 'トラップゾーン'), picking), '4 / 1'), 'own')
+  const ownDeck = inRegion(place(deckZoneElement(zoneOf(view.own, '山札'), planOf(view.own), picking, true), '4 / 6'), 'own')
+  const bank = place(waitingElement('バンク', view.bank), '3 / 1')
+  const triggered = place(waitingElement('誘発した能力', view.triggered), '3 / 6')
 
-  node.append(place(waitingElement('バンク', view.bank), '3 / 1'))
-  node.append(place(waitingElement('誘発した能力', view.triggered), '3 / 6'))
-
+  const grid: HTMLElement[] = []
   view.squares.forEach((row, r) => {
     const first = row[0]
     if (first === undefined) return
-    node.append(place(areaLabelElement(first.area), `${r + 2} / 2`))
+    grid.push(place(areaLabelElement(first.area), `${r + 2} / 2`))
     row.forEach((square, i) => {
-      const squareNode = inRegion(squareElement(square, picking, view.battle), 'battle')
+      const squareNode = inRegion(squareElement(square, picking, view.battle, keyboard), 'battle')
       // 矢印キーで、画面で見える向きのまま隣へ移るための位置。
       squareNode.dataset.screenRow = String(r)
       squareNode.dataset.screenColumn = String(i)
-      node.append(place(squareNode, `${r + 2} / ${i + 3}`))
+      grid.push(place(squareNode, `${r + 2} / ${i + 3}`))
     })
   })
 
-  node.append(ownStrip)
-  node.append(inRegion(place(ownTrapZoneElement(zoneOf(view.own, 'トラップゾーン'), picking), '4 / 1'), 'own'))
-  node.append(inRegion(place(deckZoneElement(zoneOf(view.own, '山札'), planOf(view.own), picking, true), '4 / 6'), 'own'))
+  // 置く順は、キーボードでたどる順（相手の置き場 → バトルスペース → 自分の置き場）にする。
+  // 画面の位置は `gridArea` で決めているので、見た目は変わらない。ボタンモードでは、これまでの順の
+  // ままにする（ADR-0033）。
+  if (keyboard) node.append(opponentStrip, opponentDeck, opponentTrap, bank, triggered, ...grid, ownStrip, ownTrap, ownDeck)
+  else node.append(opponentStrip, ownStrip, opponentDeck, opponentTrap, ownTrap, ownDeck, bank, triggered, ...grid)
 
   return node
 }
@@ -3586,12 +3606,9 @@ export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
   }
   layer.append(box)
 
-  // Esc は、このダイアログが受ける。窓全体の Esc（選びかけを外す）へは渡さない（ADR-0033）。
-  layer.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return
-    event.stopPropagation()
-    onCancel()
-  })
+  // Esc は、手がどこにあっても一番上の層が受ける（`index.ts` の窓全体の Esc が、ここへ回す）。
+  onLayerEscape(layer, onCancel)
+  ignoreKeyRepeat(layer)
   // 重ねた層の外側（暗くしたところ）を押しても、やめる。
   layer.addEventListener('click', (event) => {
     if (event.target === layer) onCancel()
@@ -3956,6 +3973,9 @@ function wireCardDetailHover(
   }
 }
 
+/** 一覧の問いの文の `id`。一覧が重なっても、同じ `id` を持たないようにする。 */
+let pickerSequence = 0
+
 /**
  * カードの一覧を包む枠（ADR-0027）。捨札・リムーブを見る一覧と、効果で選ばせる一覧の両方が使う。
  * ブラウザ標準のダイアログは使わず、画面の中に重ねる。右の列（カードの詳細）は覆わない
@@ -3968,7 +3988,7 @@ function pickerElement(
   cards: readonly HTMLElement[],
   foot: HTMLElement,
   sending?: HTMLElement,
-  /** Esc を押したときの動き。Esc はこの一覧が受け、窓全体の Esc へは渡さない（ADR-0033）。 */
+  /** Esc を押したときの動き。手がどこにあっても、一番上の層が受ける（ADR-0033）。 */
   onEscape?: () => void,
 ): HTMLElement {
   const node = element('div', `picker picker--${kind}`)
@@ -3977,16 +3997,19 @@ function pickerElement(
   node.setAttribute('aria-label', title)
   // 手を置ける箱にする（Tab の止まる先には加えない）。
   node.tabIndex = -1
-  node.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return
-    event.stopPropagation()
-    onEscape?.()
-  })
+  if (onEscape !== undefined) onLayerEscape(node, onEscape)
+  ignoreKeyRepeat(node)
 
   const box = element('div', 'picker__box')
   const head = element('div', 'picker__head')
   head.append(element('h2', 'picker__title', title))
-  if (lead !== undefined) head.append(element('p', 'picker__lead', lead))
+  if (lead !== undefined) {
+    const leadNode = element('p', 'picker__lead', lead)
+    // 続けて届いた選択で問いの文が変わっても、読み上げで伝わるように、箱の説明に結ぶ。
+    leadNode.id = `picker-lead-${++pickerSequence}`
+    node.setAttribute('aria-describedby', leadNode.id)
+    head.append(leadNode)
+  }
   if (sending !== undefined) head.append(sending)
   box.append(head)
 
@@ -4175,6 +4198,11 @@ export interface DuelElementProps {
    */
   readonly controlsChildren: readonly HTMLElement[]
   readonly picking?: BoardPicking
+  /**
+   * 操作のしかたがクリックか（演出・繋がっていない間も含む）。キーボードの配線（盤面の区画・矢印キー・
+   * DOM の順）はクリックモードにだけ掛ける。ボタンモードは変えない（ADR-0033）。
+   */
+  readonly clickMode: boolean
   readonly onOpenPile: (player: Player, zone: '捨札' | 'リムーブゾーン') => void
   /** 開いている「見る」一覧。無ければ `undefined`。 */
   readonly viewingPile?: HTMLElement
@@ -4208,8 +4236,6 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   const { view } = props
   const root = element('main', 'duel')
 
-  // 画面の左の列は、キーボードでたどる順では盤面のあと（`style.css` の `order` で画面の位置は
-  // 動かさない、ADR-0033）。DOM の順を、盤面 → 左の列 → 右の列にする。
   const left = element('aside', 'duel__left')
   left.append(playerPanelElement(view.opponent, props.opponentName, props.picking))
 
@@ -4227,12 +4253,16 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   const center = element('section', 'duel__center')
   center.setAttribute('aria-label', '盤面')
   // 区画の中に手を置ける先が無いときの、手の戻し先（`board-keyboard.ts`）。Tab の止まる先には加えない。
-  center.tabIndex = -1
+  if (props.clickMode) center.tabIndex = -1
   center.append(handElement('相手', zoneOf(view.opponent, '手札'), props.picking))
   center.append(procedureElement(view.battle, view.smashJudgments))
-  center.append(boardGridElement(view, props.picking, props.onOpenPile))
+  center.append(boardGridElement(view, props.picking, props.onOpenPile, props.clickMode))
   center.append(handElement('自分', zoneOf(view.own, '手札'), props.picking))
-  root.append(center, left)
+  // クリックモードでは、DOM の順を盤面 → 左の列 → 右の列にする。キーボードでたどる順を、盤面の
+  // あとに操作パネルにするため（`style.css` の `order` で画面の位置は動かさない、ADR-0033）。
+  // ボタンモードは、これまでの順（左の列が先）のまま。
+  if (props.clickMode) root.append(center, left)
+  else root.append(left, center)
 
   const right = element('aside', 'duel__right')
   right.append(logElement(view.log))
@@ -4245,7 +4275,7 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   if (props.choosePicker !== undefined) root.append(props.choosePicker)
   if (props.dialog !== undefined) root.append(props.dialog)
 
-  wireBoardKeyboard(root)
+  if (props.clickMode) wireBoardKeyboard(root)
   wireCardDetailHover(root, detail, props.cardsById, props.detailDefault ?? props.picking?.picked)
 
   // 押せるもの以外のところを押したら、選びかけを外す（#249）。押せるカードを押した時は、その

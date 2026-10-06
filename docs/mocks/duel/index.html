@@ -1560,6 +1560,23 @@ body {
   box-shadow: none;
 }
 
+/* 山札は、プランを始められる間、押せる（#249）。スクエア・トラップゾーンの行き先と同じ見せ方 */
+.pile--押せる {
+  cursor: pointer;
+  border-radius: 6px;
+  outline: 2px dashed #e07b00;
+  outline-offset: 3px;
+  box-shadow: 0 0 14px 2px rgb(255 180 40 / 0.6);
+}
+
+/* キーボードで手を置いた位置。点線の縁が光っているので、別の枠（実線・外側）を重ねる（ADR-0033）。
+   モックでは :focus-visible を作れないので、`.mock-focus` で代わりに見せる。 */
+.pile--押せる:focus-visible,
+.pile--押せる.mock-focus {
+  outline: 3px solid var(--own);
+  outline-offset: 5px;
+}
+
 /* 捨札・リムーブの束は押すと一覧が開く */
 .pile--開ける { cursor: pointer; border-radius: 6px; }
 .pile--開ける:hover,
@@ -1755,6 +1772,7 @@ body {
   <label><input type="checkbox" data-show="show-partner" checked>パートナーバトル</label>
   <label><input type="checkbox" data-show="show-plan" checked>プランにカードあり</label>
   <label><input type="checkbox" data-show="show-picking">クリックで選ぶ状態</label>
+  <label><input type="checkbox" data-show="show-focus">山札にキーボードの手</label>
   <label><input type="checkbox" data-show="show-cost">コストの選択</label>
   <label><input type="checkbox" data-show="show-battle">バトル中</label>
   <label><input type="checkbox" data-show="show-transition">切り替わり</label>
@@ -2021,7 +2039,8 @@ board.append(ownStrip)
 board.append(place(deck(48, '見本・紅葉', '相手'), '2 / 1'))
 board.append(place(zone('トラップ', 1, [back()]), '2 / 6'))
 board.append(place(zone('トラップ', 1, [card('見本・底の抜けたバケツ', '自分')]), '4 / 1'))
-board.append(place(deck(50, '見本・ガルド・ベルンシュタイン', '自分'), '4 / 6'))
+const ownDeck = deck(50, '見本・ガルド・ベルンシュタイン', '自分')
+board.append(place(ownDeck, '4 / 6'))
 
 // 提案：中央エリアの両脇に、バンク（左）と誘発した能力（右）。どちらも両者で共有の、解決を待つ能力
 function waiting(title, items) {
@@ -2187,6 +2206,11 @@ function apply() {
   for (const c of document.querySelectorAll('.mock-pickable')) c.classList.toggle('card--押せる', picking)
   for (const s of document.querySelectorAll('.mock-target')) s.classList.toggle('square--置き先', picking)
   document.querySelector('.hand--自分 .card')?.classList.toggle('card--選択中', picking)
+  // 押せる山札（#249）と、そこにキーボードの手がある状態（ADR-0033）
+  const focusing = duel.classList.contains('show-focus')
+  const ownPile = ownDeck.querySelector('.pile')
+  ownPile.classList.toggle('pile--押せる', picking || focusing)
+  ownPile.classList.toggle('mock-focus', focusing)
   document.getElementById('choice').hidden = !picking
   document.getElementById('choice-guide').hidden = !picking
   // コストの選択: 自分のエネルギーとスマッシュの群を囲み、札を付け、選べるカード（立っているもの）を上に出す

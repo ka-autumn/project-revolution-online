@@ -132,7 +132,7 @@ import {
   zoneOf,
 } from './view-model.js'
 import type { Overlay, HandRefusal, RoomTab } from './view-model.js'
-import { closedByCancel, focusBefore, settleFocus } from './dialog-focus.js'
+import { closedByCancel, escapeTopLayer, focusBefore, markDialog, settleFocus } from './dialog-focus.js'
 
 /**
  * クライアントの起動点。
@@ -1002,6 +1002,9 @@ function draw(
             )
           })()
         : undefined
+    // 続けて届いた選択は、見出しやボタンの文字が同じになりうる。届いた選択ごとに別のダイアログとして
+    // 扱う（`dialog-focus.ts` の `markDialog`）。
+    if (choosePicker !== undefined && stage.choice !== undefined) markDialog(choosePicker, stage.choice)
 
     // 選んだカードの手を聞くダイアログ（#249）。出すのは `view` が立つ間（繋がっていて、演出が
     // 出ておらず、選ぶのを待たれていない）だけで、そうでなければ `view` が無いので開かない。
@@ -1022,6 +1025,8 @@ function draw(
             },
           })
         : undefined
+    // 選びかけが替わる（別のカードを選ぶ・行き先を絞る）たびに、別のダイアログとして扱う。
+    if (dialog !== undefined) markDialog(dialog, picking.selection)
 
     // 捨札・リムーブの中身を見る一覧（ADR-0027）。押す前に選んでいる（`duel.viewingPile`）ものだけ出す。
     const viewingPileElement =
@@ -1034,6 +1039,8 @@ function draw(
             },
           )
         : undefined
+    // 開くたびに別の一覧として扱う。盤面が届いて枚数が変わっても、同じ一覧の描き直しである。
+    if (viewingPileElement !== undefined && duel.viewingPile !== undefined) markDialog(viewingPileElement, duel.viewingPile)
 
     // 演出・決着の層。決着は溜めない演出とは別で、消えずに出続ける（`overlayElement`）。
     const overlayNode =
@@ -1052,6 +1059,7 @@ function draw(
         opponentName: opponentName(stage.opponent),
         controlsChildren,
         picking: boardPicking,
+        clickMode: picking.mode === 'クリック',
         onOpenPile: duel.onOpenPile,
         viewingPile: viewingPileElement,
         choosePicker,
@@ -2078,10 +2086,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     }, 0)
   }
 
-  // Esc で、選びかけを外す（#249）。何も選んでいなければ何もしない。ダイアログなどが
-  // 自分の Esc を持つ場合も、行き着く先は同じ（選んでいない状態）なので、重ねて呼んでも困らない。
+  // Esc は、ダイアログ・一覧が開いていれば、手がどこにあっても一番上の層の動きに回す（ADR-0033）。
+  // 開いていなければ、選びかけを外す（#249）。何も選んでいなければ何もしない。
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape') deselect()
+    if (event.key !== 'Escape') return
+    if (!escapeTopLayer(root)) deselect()
   }
 
   redraw()

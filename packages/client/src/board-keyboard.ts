@@ -1,5 +1,5 @@
 /**
- * 対戦画面の盤面をキーボードで操作する（Issue #251、ADR-0033）。
+ * 対戦画面の盤面をキーボードで操作する（Issue #251、ADR-0033）。クリックモードのときだけ配線する。
  *
  * 盤面は区画に分け、Tab は区画ごとに 1 回だけ止まる。区画の中は矢印キーで移る
  * （ロービング tabindex: 区画の中で `tabIndex=0` を持つのは 1 つだけで、残りは `-1`）。
@@ -7,26 +7,38 @@
  * （`BoardFocus`）で覚えておき、描き直したあとに戻す。
  */
 
+/**
+ * `focus()` に渡す。既定のままだと、手を置いた要素が見えるところまでスクロールが起きる。手札の扇は画面の
+ * 端から半分だけ出ているので、盤面の入れ物（`.duel`）が上へずれて、盤面全体が動いてしまう。
+ */
+export const NO_SCROLL: FocusOptions = { preventScroll: true }
+
 /** 盤面の区画。Tab で止まる順に並べる。 */
 export const REGIONS = ['opp', 'battle', 'own', 'hand'] as const
 export type Region = (typeof REGIONS)[number]
 
 /** 区画の目印を付ける要素の `data-region`。 */
 export const REGION_ATTRIBUTE = 'region'
+/** 識別子（カードの `data-card-id`）の無い止まる先に付ける、描き直しをまたいで同じものを見分ける印。 */
+export const FOCUS_KEY_ATTRIBUTE = 'focusKey'
 
 /** バトルスペース以外の区画で、矢印キーで移る先になるもの。外側のものだけを数える。 */
-const ITEM =
-  '.pile--開ける, .pile--押せる, .zone--置き先, .card[data-card-id], .card--back.card--押せる'
+const ITEM = '.pile--開ける, .pile--押せる, .zone--置き先, .card[data-card-id], .card--back.card--押せる'
 /** バトルスペースで、矢印キーで移る先になるもの。 */
 const SQUARE = '.square'
 /** いま押せるもの。区画に入ったときの手の置き先に選ぶ。 */
 const PRESSABLE = '.card--押せる, .square--置き先, .zone--置き先, .pile--押せる'
 
-/** 手を置いていた先の印。描き直したあとに、同じ要素へ手を戻すために使う。 */
+/**
+ * 手を置いていた先の印。描き直したあとに、同じ要素へ手を戻すために使う。
+ *
+ * `region` が区画の名前のときは、区画の止まる先（`key` は `keyOf` が決める。スクエアのときは、
+ * 中のユニットにいたなら `unit` にその識別子）。そのほかは、区画に入らない要素（ADR-0033）。
+ */
 export interface BoardFocus {
-  /** 区画の名前。区画の中に手を置ける先が無くて盤面の入れ物に置いていたときは `center`。 */
-  readonly region: Region | 'center'
+  readonly region: Region | 'center' | 'partner' | 'button'
   readonly key: string
+  readonly unit?: string
 }
 
 /** 矢印キーなどで動く先。動かないときは `undefined`（端で止まる）。 */
@@ -86,6 +98,9 @@ const wiredBy = new WeakMap<HTMLElement, Wired>()
 
 const isElement = (target: EventTarget | null): target is HTMLElement => target instanceof HTMLElement
 
+/** ダイアログ・一覧の層の中か。層の中のものは、それぞれの層が自分で扱う。 */
+const inLayer = (node: Element): boolean => node.closest('.picker, .dialog') !== null
+
 function isPressable(item: HTMLElement): boolean {
   return item.matches(PRESSABLE) || item.querySelector(PRESSABLE) !== null
 }
@@ -106,7 +121,18 @@ function itemsOf(root: HTMLElement, region: Region): HTMLElement[] {
   return [...found].filter((node) => node.parentElement?.closest(selector) == null).sort(byDocumentOrder)
 }
 
+/**
+ * 区画の止まる先を、描き直しをまたいで見分ける印。同じものとみなすのは、次のとおり（ADR-0033）。
+ *
+ * - 束・山札・トラップゾーン・押せる裏向きのカード: 持ち主と置き場（置き場所）。`render.ts` が付ける。
+ * - カード: 識別子。
+ * - スクエア: 画面での位置。
+ *
+ * 並びの位置では覚えない。前に並ぶものの数が変わると、別の要素を指してしまう。
+ */
 function keyOf(item: HTMLElement, index: number): string {
+  const key = item.dataset[FOCUS_KEY_ATTRIBUTE]
+  if (key !== undefined) return key
   if (item.dataset.cardId !== undefined) return `c:${item.dataset.cardId}`
   if (item.dataset.screenRow !== undefined) return `s:${item.dataset.screenRow}-${item.dataset.screenColumn}`
 
@@ -127,6 +153,21 @@ function pressableUnitsIn(square: HTMLElement): HTMLElement[] {
   return [...square.querySelectorAll<HTMLElement>('.card--押せる')].filter((card) => card.closest('.square') === square)
 }
 
+/**
+ * 押したあと、同じキーの keyup が、そのとき手を置いた先のボタンを押したことにしないようにする。
+ * Space は keyup でボタンが押される。keydown でダイアログが開いて手がボタンへ移ると、そのまま
+ * 手が送られかねない（ADR-0033）。
+ */
+function swallowNextKeyup(key: string): void {
+  if (key !== ' ') return
+  const swallow = (event: KeyboardEvent): void => {
+    if (event.key !== ' ') return
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  window.addEventListener('keyup', swallow, { capture: true, once: true })
+}
+
 function activate(target: HTMLElement): void {
   if (target.classList.contains('square')) {
     if (target.classList.contains('square--置き先')) {
@@ -137,7 +178,7 @@ function activate(target: HTMLElement): void {
     const only = units[0]
     if (units.length === 1 && only !== undefined) only.click()
     // 押せるユニットが 2 体以上いるときは、どちらを押すのかをここでは決められない。スクエアの中へ入る。
-    else if (only !== undefined) only.focus()
+    else if (only !== undefined) only.focus(NO_SCROLL)
     return
   }
   if (target.classList.contains('card--押せる')) target.click()
@@ -175,11 +216,39 @@ export function wireBoardKeyboard(duel: HTMLElement): void {
     square.addEventListener('blur', () => unit.dispatchEvent(new Event('blur')))
   }
 
+  const regionOf = (node: Node): Region | undefined =>
+    REGIONS.find((name) => items.get(name)?.some((item) => item === node || item.contains(node)))
+
+  // 区画から手が出たら、入口を押せるものの先頭へ置き直す。区画へ入るときは、いつも先頭から始まる。
+  duel.addEventListener('focusout', (event) => {
+    if (!isElement(event.target)) return
+    const region = regionOf(event.target)
+    if (region === undefined) return
+    const list = items.get(region) ?? []
+    const to = event.relatedTarget
+    if (to instanceof Node && regionOf(to) === region) return
+    const entrance = entranceOf(list)
+    if (entrance !== undefined) makeCurrent(list, entrance)
+  })
+
+  // 押しっぱなしのキーリピートは受けない。Enter を押しっぱなしにすると、開いたダイアログの
+  // 最初の手に、そのまま届いてしまう（ADR-0033）。ボタンの押下は、ダイアログの層が自分で止める。
+  duel.addEventListener(
+    'keydown',
+    (event) => {
+      if (!event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return
+      if (!isElement(event.target) || event.target instanceof HTMLButtonElement || inLayer(event.target)) return
+      event.preventDefault()
+      event.stopPropagation()
+    },
+    true,
+  )
+
   duel.addEventListener('keydown', (event) => {
     const target = event.target
     if (!isElement(target) || event.altKey || event.ctrlKey || event.metaKey) return
     // ダイアログ・一覧の中のものは、それぞれが自分で扱う。
-    if (target.closest('.picker, .dialog') !== null) return
+    if (inLayer(target)) return
 
     const activates = event.key === 'Enter' || event.key === ' '
 
@@ -190,18 +259,19 @@ export function wireBoardKeyboard(duel: HTMLElement): void {
       if (event.key === 'Escape') {
         event.preventDefault()
         event.stopPropagation()
-        inside.focus()
+        inside.focus(NO_SCROLL)
         return
       }
       if (activates) {
         event.preventDefault()
+        swallowNextKeyup(event.key)
         target.click()
         return
       }
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault()
         const to = linearTarget(units.length, units.indexOf(target), event.key)
-        if (to !== undefined) units[to]?.focus()
+        if (to !== undefined) units[to]?.focus(NO_SCROLL)
       }
       return
     }
@@ -225,35 +295,52 @@ export function wireBoardKeyboard(duel: HTMLElement): void {
         event.preventDefault()
         if (next !== undefined) {
           makeCurrent(list, next)
-          next.focus()
+          next.focus(NO_SCROLL)
         }
         return
       }
     }
 
     // 束・トラップゾーン・山札は自分で Enter・Space を受けている。カードとスクエアだけをここで押す。
+    // 押せないものでは何も起きない（選びかけを外すのは Esc だけ、ADR-0033）。
     if (activates && (target.classList.contains('card') || target.classList.contains('square'))) {
       event.preventDefault()
+      swallowNextKeyup(event.key)
       activate(target)
     }
   })
 }
 
-/** 手が盤面の区画の中にあれば、その印。 */
+/** 左の列のパートナーのカード。区画には入らないが、フォーカスの覚え先にはする。 */
+const PARTNER = '.player__partner .card[data-card-id]'
+
+/** 層の外にあるボタンのうち、その文字のもの。 */
+function buttonLabeled(duel: HTMLElement, label: string): HTMLElement | undefined {
+  return [...duel.querySelectorAll<HTMLElement>('button')].find((each) => !inLayer(each) && each.textContent === label)
+}
+
+/** 手が盤面（区画・盤面の入れ物・パートナー・盤面と左の列のボタン）にあれば、その印。 */
 export function boardFocusOf(duel: HTMLElement | null): BoardFocus | undefined {
   if (duel === null) return undefined
   const wired = wiredBy.get(duel)
   const active = document.activeElement
-  if (wired === undefined || !isElement(active)) return undefined
+  if (wired === undefined || !isElement(active) || !duel.contains(active) || inLayer(active)) return undefined
   if (active === wired.center) return { region: 'center', key: '' }
 
-  // スクエアの中のユニットに手があるときは、そのスクエアを覚える。
-  const target = active.closest<HTMLElement>('.square') ?? active
+  // スクエアの中のユニットに手があるときは、そのスクエアと、ユニットの識別子を覚える。
+  const square = active.closest<HTMLElement>('.square')
+  const target = square ?? active
   for (const region of REGIONS) {
     const list = wired.items.get(region) ?? []
     const index = list.indexOf(target)
-    if (index >= 0) return { region, key: keyOf(target, index) }
+    if (index < 0) continue
+    const unit = square !== null && active !== square ? active.dataset.cardId : undefined
+
+    return { region, key: keyOf(target, index), ...(unit === undefined ? {} : { unit }) }
   }
+
+  if (active.matches(PARTNER)) return { region: 'partner', key: active.dataset.cardId ?? '' }
+  if (active instanceof HTMLButtonElement) return { region: 'button', key: active.textContent ?? '' }
 
   return undefined
 }
@@ -261,33 +348,60 @@ export function boardFocusOf(duel: HTMLElement | null): BoardFocus | undefined {
 /** 印の要素に手を戻す。見つからなければ `false`。 */
 export function restoreBoardFocus(duel: HTMLElement, focus: BoardFocus): boolean {
   const wired = wiredBy.get(duel)
+  if (wired === undefined) return false
+
   if (focus.region === 'center') {
-    wired?.center.focus()
-    return wired !== undefined
+    wired.center.focus(NO_SCROLL)
+    return true
   }
-  const list = wired?.items.get(focus.region) ?? []
-  const index = list.findIndex((item, at) => keyOf(item, at) === focus.key)
-  const found = list[index]
+  if (focus.region === 'partner') {
+    const found = [...duel.querySelectorAll<HTMLElement>(PARTNER)].find((each) => each.dataset.cardId === focus.key)
+    found?.focus(NO_SCROLL)
+    return found !== undefined
+  }
+  if (focus.region === 'button') {
+    const found = buttonLabeled(duel, focus.key)
+    found?.focus(NO_SCROLL)
+    return found !== undefined
+  }
+
+  const list = wired.items.get(focus.region) ?? []
+  const found = list.find((item, at) => keyOf(item, at) === focus.key)
   if (found === undefined) return false
 
   makeCurrent(list, found)
-  found.focus()
+  found.focus(NO_SCROLL)
+  // 2 体のユニットがいたスクエアの中にいたなら、同じユニットがまだ押せる状態でいれば、そこへ戻す。
+  if (focus.unit !== undefined) {
+    const units = pressableUnitsIn(found)
+    if (units.length >= 2) units.find((each) => each.dataset.cardId === focus.unit)?.focus(NO_SCROLL)
+  }
 
   return true
 }
 
+/**
+ * 描き直したあとに、手を戻す。もとの要素が無ければ、区画の入口へ。区画に入らないもの（パートナー・
+ * ボタン）が無くなっていたら、押せるものの先頭へ。
+ */
+export function restoreBoardFocusNearby(duel: HTMLElement, focus: BoardFocus): void {
+  if (restoreBoardFocus(duel, focus)) return
+  if (focus.region === 'partner' || focus.region === 'button' || focus.region === 'center') focusFirstPressable(duel)
+  else focusRegionEntrance(duel, focus.region)
+}
+
 /** 区画の入口（押せるものの先頭）に手を置く。区画に何も無ければ、次の区画へ送る。 */
-export function focusRegionEntrance(duel: HTMLElement, region: Region | 'center'): boolean {
+export function focusRegionEntrance(duel: HTMLElement, region: Region): boolean {
   const wired = wiredBy.get(duel)
   if (wired === undefined) return false
-  const start = region === 'center' ? 0 : REGIONS.indexOf(region)
+  const start = REGIONS.indexOf(region)
   for (const name of [...REGIONS.slice(start), ...REGIONS.slice(0, start)]) {
     const entrance = entranceOf(wired.items.get(name) ?? [])
     if (entrance === undefined) continue
-    entrance.focus()
+    entrance.focus(NO_SCROLL)
     return true
   }
-  wired.center.focus()
+  wired.center.focus(NO_SCROLL)
 
   return false
 }
@@ -300,8 +414,8 @@ export function focusFirstPressable(duel: HTMLElement): void {
     const found = (wired.items.get(region) ?? []).find(isPressable)
     if (found === undefined) continue
     makeCurrent(wired.items.get(region) ?? [], found)
-    found.focus()
+    found.focus(NO_SCROLL)
     return
   }
-  wired.center.focus()
+  wired.center.focus(NO_SCROLL)
 }

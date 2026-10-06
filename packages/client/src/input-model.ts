@@ -269,10 +269,8 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
  *
  * **番号は元のまま**である（ADR-0008）。答えるのは候補の番号なので、外した分は飛び番になる。
  *
- * **これでクリックモードにキーボードの経路が無くなる。** 盤面のカードはクリックでしか押せない
- * （表向きのカードの `tabIndex` は詳細を出すためのもの）ので、クリックモードで唯一キーボードで
- * たどれるのが候補のボタンだった。行える手（#94）が同じ取引を呑んでおり、**操作のしかたの
- * 切り替えは残る**ので、キーボードで打つ人はボタンモードを選ぶことになる。
+ * 盤面から押せる候補は、キーボードでも押せる（ADR-0033）。ボタンの候補が減っても、クリックモードで
+ * マウスなしに答えられなくなることは無い。行える手（#94）も同じ取引を呑んでいる。
  */
 export function choiceView(board: WirePerspective, choice: WireChoice, picking?: ChoicePicking): ChoiceView {
   const names = namesIn(board)
