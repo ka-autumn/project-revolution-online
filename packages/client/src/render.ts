@@ -3572,7 +3572,7 @@ export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
   const onSent = (): void => {
     sent = true
     // ボタンを押せなくすると、そこにあった手が外れる。先に箱へ移して、「通信中…」を読み上げさせる。
-    if (box.contains(document.activeElement)) box.focus()
+    if (box.contains(document.activeElement)) box.focus({ preventScroll: true })
     box.setAttribute('aria-busy', 'true')
     sending.textContent = '通信中…'
     for (const each of box.querySelectorAll('button')) each.disabled = true
@@ -4083,7 +4083,7 @@ export function choosePickerElement(
   const lock = (): void => {
     sent = true
     // 押せなくしたボタンから手が外れる。先に一覧の箱へ移して、「通信中…」を読み上げさせる。
-    if (root?.contains(document.activeElement) === true) root.focus()
+    if (root?.contains(document.activeElement) === true) root.focus({ preventScroll: true })
     sending.textContent = '通信中…'
     // `role="dialog"` を持つ外側の要素に付ける（確認ダイアログと同じ、`askElement`）。
     root?.setAttribute('aria-busy', 'true')

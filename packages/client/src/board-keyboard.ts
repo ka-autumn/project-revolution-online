@@ -164,8 +164,9 @@ function swallowNextKeyup(key: string): void {
     if (event.key !== ' ') return
     event.preventDefault()
     event.stopPropagation()
+    window.removeEventListener('keyup', swallow, true)
   }
-  window.addEventListener('keyup', swallow, { capture: true, once: true })
+  window.addEventListener('keyup', swallow, true)
 }
 
 function activate(target: HTMLElement): void {
@@ -193,6 +194,12 @@ export function wireBoardKeyboard(duel: HTMLElement): void {
   for (const holder of duel.querySelectorAll(`[data-${REGION_ATTRIBUTE}]`)) {
     for (const node of holder.querySelectorAll('[tabindex]')) node.setAttribute('tabindex', '-1')
     if (holder.hasAttribute('tabindex')) holder.setAttribute('tabindex', '-1')
+  }
+
+  // 溢れてスクロールする一覧（バンク・誘発した能力、カードの文字欄）を、ブラウザが Tab の止まる先にしない
+  // ようにする。右の列の詳細は、長い文を読むのに要るので外さない（ADR-0033）。
+  for (const node of duel.querySelectorAll('.duel__center .waiting__list, .duel__center .card__lines')) {
+    node.setAttribute('tabindex', '-1')
   }
 
   const items = new Map<Region, readonly HTMLElement[]>()
