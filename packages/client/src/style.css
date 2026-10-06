@@ -1982,6 +1982,8 @@ body {
 /* ---------- 左の列：プレイヤーと操作 ---------- */
 
 .duel__left {
+  /* DOM では盤面のあとに置いている（キーボードでたどる順、ADR-0033）。画面では左端のまま。 */
+  order: -1;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -2694,6 +2696,12 @@ body {
   outline: 2px dashed #e07b00;
   outline-offset: 3px;
   box-shadow: 0 0 14px 2px rgb(255 180 40 / 0.6);
+}
+
+/* 押せる山札は枠が点線の縁で光っているので、手のある位置が分かるように別の枠を重ねる（ADR-0033） */
+.duel .pile--押せる:focus-visible {
+  outline: 3px solid var(--accent-own);
+  outline-offset: 5px;
 }
 
 .duel .pile--選択中 {

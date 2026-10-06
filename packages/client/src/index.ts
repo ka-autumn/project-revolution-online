@@ -132,6 +132,7 @@ import {
   zoneOf,
 } from './view-model.js'
 import type { Overlay, HandRefusal, RoomTab } from './view-model.js'
+import { closedByCancel, focusBefore, settleFocus } from './dialog-focus.js'
 
 /**
  * クライアントの起動点。
@@ -561,9 +562,10 @@ function draw(
   const typingName = refusalArrived || document.activeElement?.classList.contains('naming__input') === true
   const typingDeck = typingIn(root)
   const scrolled = scrollPositions(root)
-  // 「見る」「選ぶ」一覧の中に居たかどうか。開いた時だけフォーカスを一覧の中へ移す
-  // （#207）——すでに中に居るなら、描き直すたびに奪わない。
-  const wasFocusInPicker = document.activeElement?.closest('.picker') != null
+  // 対戦画面の手の置き場所（盤面・ダイアログ・一覧）。描き直す前に印を取り、あとで戻す。
+  // ダイアログが新しく開いたときだけ中へ移す——すでに中に居るなら、描き直すたびに先頭へ戻さない
+  // （#207、#251）。
+  const focusMemory = focusBefore(root)
   root.replaceChildren()
 
   const status = statusOf(session, link)
@@ -1014,7 +1016,10 @@ function draw(
                 picking.onAim(option.aim)
               }
             },
-            onCancel: picking.onDeselect,
+            onCancel: () => {
+              closedByCancel()
+              picking.onDeselect()
+            },
           })
         : undefined
 
@@ -1023,7 +1028,10 @@ function draw(
       duel.viewingPile !== undefined
         ? viewPileElement(
             zoneOf(duel.viewingPile.player === stage.seat ? boardData.own : boardData.opponent, duel.viewingPile.zone),
-            duel.onClosePile,
+            () => {
+              closedByCancel()
+              duel.onClosePile()
+            },
           )
         : undefined
 
@@ -1063,11 +1071,7 @@ function draw(
   restoreScroll(root, scrolled)
   restoreTyping(root, typingDeck)
 
-  // 一覧が新しく開いたら、フォーカスをその中へ移す。閉じている間は何もしない。
-  if (!wasFocusInPicker) {
-    const picker = root.querySelector<HTMLElement>('.picker')
-    picker?.querySelector<HTMLElement>('[tabindex], button')?.focus()
-  }
+  settleFocus(root, focusMemory)
 }
 
 /** 組みかけのデッキを覚えておく先の名前（#193）。 */
