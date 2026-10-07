@@ -297,8 +297,10 @@ body {
   font-size: 0.95rem;
 }
 
+/* 見出しが長くても縮ませない（縮むと文字が 1 字ずつ折り返して縦長になる）。 */
 .mode {
   display: flex;
+  flex: none;
   overflow: hidden;
   border: 1px solid var(--gold);
   border-radius: 999px;
@@ -313,6 +315,7 @@ body {
   box-shadow: none;
   color: var(--ink-dim);
   font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 /* カプセルの overflow: hidden に外側の枠を切り取られるので、フォーカスの枠は内側に描く。 */

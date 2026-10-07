@@ -1909,8 +1909,12 @@ body {
   border-bottom: 1px solid rgb(220 166 64 / 0.45);
 }
 
-/* 操作のしかたの切り替え。金の枠の丸いカプセルで、選んだ側を金で塗る（ADR-0027）。 */
+/*
+ * 操作のしかたの切り替え。金の枠の丸いカプセルで、選んだ側を金で塗る（ADR-0027）。
+ * 見出しが長くても縮ませない。縮むと文字が 1 字ずつ折り返して縦長になる（見出しの側が折り返す）。
+ */
 .duel .mode {
+  flex: none;
   overflow: hidden;
   border: 1px solid var(--gold);
   border-radius: 999px;
@@ -1925,6 +1929,7 @@ body {
   box-shadow: none;
   color: var(--ink-dim);
   font-size: 0.75rem;
+  white-space: nowrap;
   cursor: pointer;
 }
 
