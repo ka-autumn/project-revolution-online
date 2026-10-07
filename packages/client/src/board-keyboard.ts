@@ -172,6 +172,25 @@ function swallowNextKeyup(key: string): void {
   window.addEventListener('keyup', swallow, true)
 }
 
+/** Tab の止まる先になりうるもの。溢れてスクロールする一覧は、ブラウザが自分で止まる先にする。 */
+const TABBABLE = 'button, a[href], input, select, textarea, [tabindex]'
+
+/**
+ * 選んでいる間、区画の外で止まる先に残すのは、操作パネルの選択（答えのボタン・「選ばない」・戻る側）と、
+ * 右の列のカードの詳細だけにする。操作のしかたの切り替え・パートナーのカード・ロビーに戻るボタンは外す。
+ * 区画の中（「この行動をやめる」の札を含む）は、区画ごとに決める（`resetRegion`）。
+ */
+function confineToAnswers(duel: HTMLElement): void {
+  for (const node of duel.querySelectorAll<HTMLElement>(TABBABLE)) {
+    if (inLayer(node) || node.closest(`[data-${REGION_ATTRIBUTE}]`) !== null) continue
+    if (node.closest('.choice') !== null && node.closest('.mode') === null) continue
+    if (node.closest('.duel__right') !== null && node.closest('.log') === null) continue
+    node.tabIndex = -1
+  }
+  // ログの一覧は溢れるとブラウザが止まる先にするので、明示して外す。
+  for (const node of duel.querySelectorAll<HTMLElement>('.log__list')) node.tabIndex = -1
+}
+
 function activate(target: HTMLElement): void {
   if (target.classList.contains('square')) {
     if (target.classList.contains('square--置き先')) {
@@ -205,13 +224,28 @@ export function wireBoardKeyboard(duel: HTMLElement): void {
     node.setAttribute('tabindex', '-1')
   }
 
+  // 盤面・操作パネルで選んでいる間（効果やコストの選択。一覧のダイアログを出さないもの）は、答えに
+  // 使うものだけを Tab の止まる先にする。ダイアログと同じ考え方だが、`inert` にはしない。マウスでは
+  // 選んでいる間も、カードに乗せて詳細を読み、ログをスクロールするため（ADR-0033）。
+  const answering = duel.querySelector('.controls .choice') !== null
+
+  // 区画の入口を置き直す。選んでいる間は、押せるものの無い区画を止まる先から外す。
+  const resetRegion = (list: readonly HTMLElement[]): void => {
+    if (answering && !list.some(isPressable)) {
+      for (const item of list) item.tabIndex = -1
+      return
+    }
+    const entrance = entranceOf(list)
+    if (entrance !== undefined) makeCurrent(list, entrance)
+  }
+
   const items = new Map<Region, readonly HTMLElement[]>()
   for (const region of REGIONS) {
     const each = itemsOf(duel, region)
     items.set(region, each)
-    const entrance = entranceOf(each)
-    if (entrance !== undefined) makeCurrent(each, entrance)
+    resetRegion(each)
   }
+  if (answering) confineToAnswers(duel)
 
   // 盤面の入れ物。区画の中に手を置ける先が無いときの、最後の戻し先。
   const center = duel.querySelector<HTMLElement>('.duel__center')
@@ -237,8 +271,7 @@ export function wireBoardKeyboard(duel: HTMLElement): void {
     const list = items.get(region) ?? []
     const to = event.relatedTarget
     if (to instanceof Node && regionOf(to) === region) return
-    const entrance = entranceOf(list)
-    if (entrance !== undefined) makeCurrent(list, entrance)
+    resetRegion(list)
   })
 
   // 押しっぱなしのキーリピートは受けない。Enter を押しっぱなしにすると、開いたダイアログの
