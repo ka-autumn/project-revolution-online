@@ -108,10 +108,13 @@ body { box-sizing: border-box; margin: 0; padding: var(--gap); font-family: syst
 /* ---- スマートフォン（縦向き）：幅 768px 以下。もともと幅に収まるので、指で押しやすくするだけ ---- */
 @media (max-width: 768px) {
   /* 指で押すものは 2.75rem 以上 */
-  .frame button { min-height: 2.75rem; }
-  .frame input[type='text'] { min-height: 2.75rem; }
-  /* 題字は、長い名前が 2 行に割れて窮屈にならないよう小さくする */
-  .naming__brand { font-size: 1.9rem; text-align: center; }
+  .naming button,
+  .awaiting button,
+  .naming__input {
+    min-height: 2.75rem;
+  }
+  /* 幅 360px でも、長い題字が 2 行に割れて窮屈にならない大きさ */
+  .naming__brand { font-size: clamp(1.4rem, 8vw, 1.9rem); }
   /* モックの切り替えは、画面の幅に収める */
   .mockbar { right: auto; left: 8px; max-width: calc(100vw - 16px); }
 }

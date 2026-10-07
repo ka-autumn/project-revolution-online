@@ -22,6 +22,8 @@ export function watchRotateCover(root: HTMLElement): void {
 
     root.inert = false
     // 描き直しで作り直されて、もう無いこともある。そのときは何もしない。
+    // 限界として受け入れている（#269）: 覆っている間に描き直されると元の要素が無くなり、手は
+    // どこにも戻らない。入力欄の打ちかけの文字は残る。
     if (resting instanceof HTMLElement && resting.isConnected) resting.focus({ preventScroll: true })
     resting = null
   }

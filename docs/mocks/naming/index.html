@@ -40,7 +40,7 @@ function naming(draft, reason) {
   const body = el('div', 'panel__body')
   body.append(el('p', 'lead', '他のプレイヤーに公開される名前です。後から変えられます'))
   const field = el('div', 'naming__field')
-  const input = el('input')
+  const input = el('input', 'naming__input')
   input.type = 'text'; input.maxLength = LIMIT; input.placeholder = '名前'; input.value = draft
   input.setAttribute('aria-describedby', 'count')
   // 名前が決まると、ロビーへ移る
