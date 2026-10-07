@@ -910,10 +910,10 @@ function boardGridElement(
     })
   })
 
-  // 置く順は、キーボードでたどる順（相手の置き場 → バトルスペース → 自分の置き場）にする。
+  // 置く順は、キーボードでたどる順（自分の置き場 → バトルスペース → 相手の置き場）にする。
   // 画面の位置は `gridArea` で決めているので、見た目は変わらない。ボタンモードでは、これまでの順の
   // ままにする（ADR-0033）。
-  if (keyboard) node.append(opponentStrip, opponentDeck, opponentTrap, bank, triggered, ...grid, ownStrip, ownTrap, ownDeck)
+  if (keyboard) node.append(ownStrip, ownTrap, ownDeck, ...grid, bank, triggered, opponentStrip, opponentDeck, opponentTrap)
   else node.append(opponentStrip, ownStrip, opponentDeck, opponentTrap, ownTrap, ownDeck, bank, triggered, ...grid)
 
   return node
@@ -4254,10 +4254,14 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   center.setAttribute('aria-label', '盤面')
   // 区画の中に手を置ける先が無いときの、手の戻し先（`board-keyboard.ts`）。Tab の止まる先には加えない。
   if (props.clickMode) center.tabIndex = -1
-  center.append(handElement('相手', zoneOf(view.opponent, '手札'), props.picking))
-  center.append(procedureElement(view.battle, view.smashJudgments))
-  center.append(boardGridElement(view, props.picking, props.onOpenPile, props.clickMode))
-  center.append(handElement('自分', zoneOf(view.own, '手札'), props.picking))
+  const opponentHand = handElement('相手', zoneOf(view.opponent, '手札'), props.picking)
+  const procedure = procedureElement(view.battle, view.smashJudgments)
+  const board = boardGridElement(view, props.picking, props.onOpenPile, props.clickMode)
+  const ownHand = handElement('自分', zoneOf(view.own, '手札'), props.picking)
+  // クリックモードでは、自分の手札を盤面より先に置く。キーボードでたどる順を、手札 → 盤面にするため
+  // （行は `style.css` で決めているので、画面の位置は動かない、ADR-0033）。
+  if (props.clickMode) center.append(ownHand, procedure, board, opponentHand)
+  else center.append(opponentHand, procedure, board, ownHand)
   // クリックモードでは、DOM の順を盤面 → 左の列 → 右の列にする。キーボードでたどる順を、盤面の
   // あとに操作パネルにするため（`style.css` の `order` で画面の位置は動かさない、ADR-0033）。
   // ボタンモードは、これまでの順（左の列が先）のまま。

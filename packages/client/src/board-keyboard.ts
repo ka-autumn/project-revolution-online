@@ -13,8 +13,11 @@
  */
 export const NO_SCROLL: FocusOptions = { preventScroll: true }
 
-/** 盤面の区画。Tab で止まる順に並べる。 */
-export const REGIONS = ['opp', 'battle', 'own', 'hand'] as const
+/**
+ * 盤面の区画。Tab で止まる順に並べる。手を送ったあとに押せるものを探すのも、この順にする。
+ * 自分の側を先にするのは、押す回数がいちばん多いのが手札と自分の置き場だから（ADR-0033）。
+ */
+export const REGIONS = ['hand', 'own', 'battle', 'opp'] as const
 export type Region = (typeof REGIONS)[number]
 
 /** 区画の目印を付ける要素の `data-region`。 */
