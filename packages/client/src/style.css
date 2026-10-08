@@ -5211,3 +5211,799 @@ body {
   width: 1.1em;
   height: 1.1em;
 }
+
+/*
+ * スマートフォンの縦向き：ロビー・デッキ一覧・デッキ構築（ADR-0034）。
+ *
+ * 幅 768px 以下の並べ方。PC の大きさ（769px 以上）には届かないよう、メディアクエリの中にだけ書く。
+ * スマートフォンでだけ出す部品（`.phone-only`・タブ・シート・下の帯）は、`phone.ts` の窓口が渡されたときだけ
+ * 作られる（`isPhoneWidth`）。境目を変えるときは、そちらの `PHONE_WIDTH_QUERY` も揃える。
+ * 画面は 1 列に縦に積み、ページをスクロールさせる。
+ */
+
+/* 幅を広げた直後、描き直されるまでの間も、スマートフォンの部品は出さない。 */
+@media (min-width: 769px) {
+  .phone-only,
+  .phone-sheet-backdrop {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* ---------- 共通：タブ・シート ---------- */
+
+  .phone-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 85;
+    display: block;
+    background: rgb(60 30 0 / 0.45);
+  }
+
+  .lobby .lobby__sheet,
+  .deckbuild .phone-sheet {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 90;
+    max-height: 86dvh;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+    background: linear-gradient(180deg, #fffdf6, #fff4dc);
+    box-shadow: 0 -8px 30px rgb(80 40 0 / 0.4);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .lobby .lobby__sheet:focus,
+  .deckbuild .phone-sheet:focus {
+    outline: none;
+  }
+
+  /* 閉じる口はシートの一番下。スクロールしても見えるよう下に付ける。 */
+  .lobby .phone-sheet__close {
+    display: block;
+    position: sticky;
+    bottom: 0;
+    margin: 0.2rem 0.9rem 0.8rem;
+  }
+
+  /* 入力欄は 16px 未満だと、iPhone で押したときに画面が拡大される。 */
+  .lobby input[type='text'],
+  .lobby input[type='search'],
+  .lobby select,
+  .lobby .lobby__rule-select,
+  .deckbuild input[type='text'],
+  .deckbuild input[type='search'],
+  .deckbuild input[type='number'],
+  .deckbuild textarea,
+  .deckbuild select,
+  .deckbuild .lobby__rule-select {
+    font-size: 16px;
+  }
+
+  /* ---------- ロビー：上から 見出しの帯・使用するデッキ・対人戦／CPU戦・お知らせ ---------- */
+
+  .lobby {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 100dvh;
+    padding: 0.5rem;
+    overflow: visible;
+  }
+
+  .lobby .panel {
+    flex: none;
+  }
+
+  .lobby .lobby__columns {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .lobby .lobby__column {
+    flex: none;
+    gap: 0.5rem;
+  }
+
+  .lobby .lobby__decks-panel,
+  .lobby .lobby__rooms-panel,
+  .lobby .lobby__news-panel {
+    flex: none;
+  }
+
+  /* 指で押すものは 2.75rem 以上 */
+  .lobby button {
+    min-height: 2.75rem;
+  }
+
+  .lobby input[type='text'],
+  .lobby input[type='search'],
+  .lobby select {
+    min-height: 2.75rem;
+  }
+
+  .lobby .icon-button {
+    min-width: 2.75rem;
+  }
+
+  /* 見出しの帯：タイトルと自分の名前・アバターだけ */
+  .lobby .topbar {
+    gap: 0.5rem;
+    padding: 0.35rem 0.6rem;
+  }
+
+  .lobby .topbar__title {
+    font-size: 1.25rem;
+  }
+
+  .lobby .topbar__divider,
+  .lobby .topbar__sub {
+    display: none;
+  }
+
+  .lobby .lobby__me {
+    padding-right: 0.7rem;
+  }
+
+  .lobby .lobby__me-name {
+    font-size: 0.95rem;
+  }
+
+  /* 使用するデッキ：選んでいる 1 つを 1 行で。押して開くのは「変更」 */
+  .lobby .lobby__deckpick {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0.6rem;
+  }
+
+  .lobby .lobby__deckpick-main {
+    display: flex;
+    flex-direction: column;
+    grid-column: 2;
+    min-width: 0;
+  }
+
+  .lobby .lobby__deckpick-label {
+    color: var(--heading);
+    font-size: 0.72rem;
+    font-weight: 800;
+  }
+
+  .lobby .lobby__deckpick-name {
+    overflow: hidden;
+    font-size: 0.95rem;
+    font-weight: 800;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .lobby .lobby__deckpick-name--none {
+    color: var(--accent-opponent);
+  }
+
+  .lobby .lobby__deckpick-change {
+    grid-column: 3;
+    min-width: 4rem;
+  }
+
+  .lobby .lobby__deckpick:not(:has(.lobby__art)) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .lobby .lobby__deckpick:not(:has(.lobby__art)) .lobby__deckpick-main {
+    grid-column: 1;
+  }
+
+  .lobby .lobby__deckpick:not(:has(.lobby__art)) .lobby__deckpick-change {
+    grid-column: 2;
+  }
+
+  /* シートにした使用するデッキの枠。一覧は枠の中でスクロールさせず、シート全体をスクロールさせる。 */
+  .lobby .lobby__sheet .lobby__decks {
+    flex: none;
+    overflow: visible;
+  }
+
+  .lobby .lobby__deckrow:has(.lobby__deck-menu) .lobby__deck {
+    padding-right: 3.4rem;
+  }
+
+  /* 対人戦・CPU戦：タブで切り替える。タブが見出しの代わりなので、色つきの見出しは出さない。 */
+  .lobby .lobby__modetabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+  }
+
+  .lobby .lobby__modetabs .phone-tab {
+    border-radius: var(--radius-small);
+    font-family: var(--heading-font);
+    font-size: 1.1rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+  }
+
+  .lobby .lobby__modetabs .phone-tab[aria-selected='true'] {
+    color: #fff;
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  }
+
+  .lobby .lobby__modetab--human[aria-selected='true'] {
+    border-color: #a8182a;
+    background: linear-gradient(180deg, #ea5a6c, var(--accent-opponent));
+  }
+
+  .lobby .lobby__modetab--cpu[aria-selected='true'] {
+    border-color: #1b54a8;
+    background: linear-gradient(180deg, #4a8ff0, var(--accent-own));
+  }
+
+  .lobby .lobby__modes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lobby .lobby__mode-head {
+    display: none;
+  }
+
+  .lobby .lobby__mode--human {
+    border-top: 3px solid var(--accent-opponent);
+  }
+
+  .lobby .lobby__mode--cpu {
+    border-top: 3px solid var(--accent-own);
+  }
+
+  .lobby .lobby__column[data-phone-mode='対人戦'] .lobby__mode--cpu,
+  .lobby .lobby__column[data-phone-mode='CPU戦'] .lobby__mode--human,
+  .lobby .lobby__column[data-phone-mode='CPU戦'] .lobby__rooms-panel {
+    display: none;
+  }
+
+  .lobby .lobby__go {
+    min-height: 3rem;
+  }
+
+  .lobby .lobby__carousel-arrow {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .lobby .lobby__thumbs {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .lobby .lobby__thumb {
+    min-height: 2.75rem;
+  }
+
+  /* 部屋の一覧：表をやめ、1 部屋を 3 行の札にする（部屋名と状態／対戦する 2 人と参加／ルール） */
+  .lobby .lobby__tools {
+    flex-wrap: wrap;
+    padding-inline: 0.6rem;
+  }
+
+  .lobby .lobby__tabs {
+    display: flex;
+    flex: 1 1 100%;
+  }
+
+  .lobby .lobby__tabs button {
+    flex: 1;
+    padding-inline: 0.4rem;
+  }
+
+  .lobby .lobby__search {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .lobby .lobby__rooms {
+    flex: none;
+    margin: 0 0.6rem 0.6rem;
+    overflow: visible;
+  }
+
+  .lobby .lobby__rooms table,
+  .lobby .lobby__rooms tbody {
+    display: block;
+  }
+
+  /* 見出しの行は目には出さない。`display: none` にすると読み上げの木からも消えるので、読み上げにだけ残す。 */
+  .lobby .lobby__rooms thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .lobby .lobby__rooms tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'name name status'
+      'players players action'
+      'rules rules action';
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    margin-bottom: 0.45rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid rgb(220 166 64 / 0.55);
+    border-radius: var(--radius-small);
+    background: #fffef9;
+  }
+
+  .lobby .lobby__rooms td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: none;
+  }
+
+  .lobby .lobby__rooms .lobby__room-name {
+    grid-area: name;
+    max-width: none;
+  }
+
+  .lobby .lobby__rooms .lobby__room-status {
+    grid-area: status;
+    justify-self: end;
+  }
+
+  .lobby .lobby__rooms .lobby__room-rules {
+    grid-area: rules;
+    overflow: hidden;
+    font-size: 0.8rem;
+    text-overflow: ellipsis;
+  }
+
+  .lobby .lobby__rooms .lobby__room-players {
+    grid-area: players;
+  }
+
+  .lobby .lobby__rooms .lobby__room-action {
+    grid-area: action;
+    width: auto;
+  }
+
+  .lobby .lobby__rooms .lobby__room-action button {
+    min-width: 4.5rem;
+  }
+
+  /* 席の幅を分け合い、2 人の名前が並ぶ行を幅に収める。「1/2」は畳む。 */
+  .lobby .lobby__players {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 1.6rem minmax(0, 1fr);
+  }
+
+  .lobby .lobby__room-players small {
+    display: none;
+  }
+
+  .lobby .lobby__pager {
+    flex-wrap: wrap;
+  }
+
+  .lobby .lobby__pager button {
+    min-width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  /* ---------- デッキ一覧・デッキ構築の共通 ---------- */
+
+  .deckbuild {
+    --card-width: clamp(4.6rem, calc((100vw - 4.6rem) / 3), 6.4rem);
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 100dvh;
+    padding: 0.5rem;
+    overflow: visible;
+  }
+
+  /* 下の帯（枚数と保存）に隠れないよう、デッキ構築の末尾に余白を足す */
+  .deckbuild[class*='deckbuild--tab-'] {
+    padding-bottom: 4.8rem;
+  }
+
+  .deckbuild .columns,
+  .deckbuild--list .columns {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .deckbuild .column {
+    gap: 0.5rem;
+  }
+
+  .deckbuild .column .panel,
+  .deckbuild .column--center .panel {
+    flex: none;
+  }
+
+  /* 指で押すものは 2.75rem 以上 */
+  .deckbuild button {
+    min-height: 2.75rem;
+  }
+
+  .deckbuild input[type='text'],
+  .deckbuild input[type='search'],
+  .deckbuild input[type='number'],
+  .deckbuild select {
+    min-height: 2.75rem;
+  }
+
+  .deckbuild .icon-button {
+    min-width: 2.75rem;
+  }
+
+  /* 上の帯：折り返して、狭い幅に収める */
+  .deckbuild .topbar {
+    gap: 0.4rem 0.5rem;
+    padding: 0.4rem 0.6rem;
+  }
+
+  .deckbuild .topbar__title {
+    font-size: 1.25rem;
+  }
+
+  .deckbuild .topbar__divider,
+  .deckbuild .topbar__spacer,
+  .deckbuild .topbar__sub {
+    display: none;
+  }
+
+  .deckbuild .deckname {
+    flex: 1 1 100%;
+  }
+
+  .deckbuild .deckname__text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .deckbuild .deckname input {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .deckbuild .taglist--bar {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  /* 形式・禁止／制限リストは、名前を上に置いて 2 つを横に並べる */
+  .deckbuild .lobby__rules {
+    flex: 1 1 100%;
+  }
+
+  .deckbuild .lobby__rule {
+    display: flex;
+    flex: 1 1 40%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.1rem;
+  }
+
+  .deckbuild .lobby__rule-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* 畳む欄の開閉（デッキの設定・絞り込み） */
+  .deckbuild .phone-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding-inline: 0.9rem;
+    font-weight: 700;
+  }
+
+  .deckbuild .phone-settings-toggle {
+    flex-basis: 100%;
+  }
+
+  .deckbuild .phone-toggle__mark {
+    color: var(--ink-dim);
+    font-size: 0.8rem;
+  }
+
+  .deckbuild .panel--filter .panel__body {
+    overflow: visible;
+  }
+
+  .deckbuild .filter__row {
+    align-items: start;
+  }
+
+  .deckbuild .filter__row > .filter__label {
+    line-height: 2.75rem;
+  }
+
+  .deckbuild .fold > summary {
+    align-items: center;
+    min-height: 2.75rem;
+  }
+
+  /* ---------- デッキ構築：「カードを探す」「デッキ」のタブ ---------- */
+
+  /* ページをスクロールしても、画面の上に付いて残る */
+  .deckbuild .deckbuild__tabs {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem;
+    padding: 0.3rem;
+    border-radius: var(--radius);
+    background: rgb(255 248 228 / 0.96);
+    box-shadow: 0 2px 8px rgb(150 80 0 / 0.25);
+  }
+
+  .deckbuild .phone-tab {
+    padding-inline: 0.4rem;
+    font-weight: 700;
+  }
+
+  .deckbuild .phone-tab[aria-selected='true'] {
+    border-color: var(--gold-deep);
+    background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  }
+
+  .deckbuild--tab-探す .column--right {
+    display: none;
+  }
+
+  .deckbuild--tab-デッキ .column--left,
+  .deckbuild--tab-デッキ .column--center {
+    display: none;
+  }
+
+  /* カードプール：3 列。各カードの下の増減のボタンは、幅を分け合う */
+  .deckbuild .pool {
+    flex: none;
+    overflow: visible;
+    padding: 0.5rem;
+  }
+
+  .deckbuild .pool__grid {
+    grid-template-columns: repeat(auto-fill, minmax(var(--card-width), 1fr));
+    gap: 0.6rem 0.4rem;
+  }
+
+  .deckbuild .pool .rows {
+    min-width: 0;
+  }
+
+  .deckbuild .pool__item {
+    width: 100%;
+  }
+
+  .deckbuild .pool__item .counter {
+    width: 100%;
+    gap: 0.2rem;
+  }
+
+  .deckbuild .pool__item .counter button {
+    flex: 1;
+    width: auto;
+    height: 2.75rem;
+    padding: 0;
+    border-radius: 8px;
+  }
+
+  .deckbuild .pool__item .counter__count {
+    min-width: 0;
+    padding-inline: 0.3rem;
+    font-size: 0.85rem;
+  }
+
+  /* カードの 1 行（一覧表示・デッキの列）：入りきらなければ、−・枚数・＋を次の行へ回す */
+  .deckbuild .cardrow {
+    flex-wrap: wrap;
+    gap: 0.25rem 0.4rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .deckbuild .cardrow__name {
+    flex: 1 1 6rem;
+  }
+
+  .deckbuild .cardrow .counter {
+    margin-left: auto;
+  }
+
+  .deckbuild .cardrow .counter button {
+    width: 2.5rem;
+    height: 2.75rem;
+    border-radius: 8px;
+  }
+
+  .deckbuild .cardrow .counter__count {
+    min-width: 2.2rem;
+  }
+
+  /* 「デッキ」のタブ。保存の帯は、下の帯に任せる */
+  .deckbuild .check {
+    margin-inline: 0.6rem;
+  }
+
+  .deckbuild .breakdown {
+    grid-template-columns: minmax(0, 1fr) 7.5rem;
+    padding-inline: 0.6rem;
+  }
+
+  .deckbuild .decklist.rows {
+    flex: none;
+    margin-inline: 0.6rem;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .deckbuild .decklist__head {
+    margin-inline: 0.6rem;
+  }
+
+  /* 画面の下に常に出しておく帯：枚数・保存の状態・保存 */
+  .deckbuild .phonebar {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--panel-edge);
+    background: rgb(255 248 228 / 0.97);
+    box-shadow: 0 -4px 14px rgb(120 60 0 / 0.25);
+  }
+
+  /* 規定を満たしていないときだけ出る印。保存の状態の文の代わりに、同じ場所へ出す（帯の高さは変えない） */
+  .deckbuild .phonebar__notice {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    min-height: 2.75rem;
+    padding-inline: 0.4rem;
+    border-color: var(--accent-opponent);
+    background: var(--accent-opponent-soft);
+    color: var(--accent-opponent);
+    font-size: 0.85rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .deckbuild .phonebar__count {
+    font-size: 0.9rem;
+    white-space: nowrap;
+  }
+
+  .deckbuild .phonebar__count strong {
+    font-size: 1.25rem;
+  }
+
+  .deckbuild .phonebar .savebar__state {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .deckbuild .phonebar .button--primary {
+    min-width: 7rem;
+    font-size: 1.02rem;
+  }
+
+  /* カードの詳細のシート：詳細、枚数の増減、一番下に「閉じる」 */
+  .deckbuild .phone-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem 0.6rem;
+  }
+
+  .deckbuild .phone-sheet .detail {
+    flex: none;
+    height: 14rem;
+    padding: 0.2rem;
+  }
+
+  .deckbuild .phone-sheet__counter {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .deckbuild .phone-sheet__counter .counter__count {
+    min-width: 2.6rem;
+    font-size: 1rem;
+  }
+
+  /* ---------- デッキ一覧：1 列。見出し → 絞り込み（畳む）→ 自分のデッキ → 既製デッキ ---------- */
+
+  /* 既製デッキの欄は、DOM の順で自分のデッキの下に置いてある（`order` で並べ替えない） */
+  .deckbuild--list .columns > .panel {
+    flex: none;
+  }
+
+  .deckbuild--list .decklist {
+    flex: none;
+    overflow: visible;
+    padding: 0.5rem;
+  }
+
+  .deckbuild .decklist__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .deckbuild .deckcard .card {
+    --card-width: 5rem;
+  }
+
+  /* 3 つの文字のボタンと削除を 1 行に収める。入りきらない幅なら折り返す。 */
+  .deckbuild .deckcard__actions {
+    flex-wrap: wrap;
+  }
+
+  .deckbuild .deckcard__actions button {
+    flex: 1 1 0;
+    min-width: 4.5rem;
+    padding-inline: 0.25rem;
+  }
+
+  .deckbuild .deckcard__actions .icon-button {
+    flex: none;
+    min-width: 2.75rem;
+  }
+
+  .deckbuild .preset {
+    flex-wrap: wrap;
+  }
+
+  /*
+   * 重ねる窓（解説・確認・共有）：幅いっぱいに出し、ボタンは折り返す。窓は `root` の直下に作られるものもあり
+   * （確認・共有）、`.deckbuild` の中にあるとは限らないので、`.confirm` だけで当てる。使うのはデッキの流れだけ。
+   */
+  .confirm {
+    padding: 0.5rem;
+  }
+
+  .confirm__box {
+    box-sizing: border-box;
+    width: 100%;
+    max-height: 92dvh;
+    overflow-y: auto;
+  }
+
+  .confirm__buttons {
+    flex-wrap: wrap;
+  }
+
+  .confirm button {
+    min-height: 2.75rem;
+  }
+
+  .confirm input,
+  .confirm select,
+  .confirm textarea {
+    font-size: 16px;
+  }
+
+  .confirm input[type='text'],
+  .confirm select {
+    min-height: 2.75rem;
+  }
+}

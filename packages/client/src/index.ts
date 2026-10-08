@@ -133,6 +133,10 @@ import {
 } from './view-model.js'
 import type { Overlay, HandRefusal, RoomTab } from './view-model.js'
 import { closedByCancel, escapeTopLayer, focusBefore, markDialog, settleFocus } from './dialog-focus.js'
+import { PHONE_WIDTH_QUERY, initialPhone, isPhoneWidth, reducePhone, returnedToPhone, settlePhone, takePending, takeScroll } from './phone.js'
+import type { PhoneControl, PhonePending, PhoneScroll, PhoneState } from './phone.js'
+import { settlePhoneScroll } from './phone-scroll.js'
+import { settlePhoneFocus } from './phone-focus.js'
 
 /**
  * クライアントの起動点。
@@ -554,6 +558,8 @@ function draw(
   naming: Naming,
   building: DeckBuilding,
   duel: DuelInteraction,
+  phone: PhoneControl | undefined,
+  phonePending: PhonePending | undefined,
 ): void {
   // 打ち込みかけの場所は描き直すと消える。打っていた人には返す（`lobbyElement`）。
   const typing = document.activeElement?.classList.contains('lobby__name') === true
@@ -616,6 +622,7 @@ function draw(
           presets: presetRows(pool, stage.presets),
           waiting: builder.waiting.kind !== '無し',
           refusal: builder.refusal,
+          phone,
         },
         building.list,
       ),
@@ -656,6 +663,7 @@ function draw(
           typeCounts: typeCountsOf(pool, draft),
           starTotal: starTotalOf(pool, draft),
           modal: builder.modal,
+          phone,
         },
         building.editor,
       ),
@@ -756,6 +764,7 @@ function draw(
           roomQuery: lobby.roomQuery,
           roomPage: lobby.roomPage,
           waiting: builder.waiting.kind !== '無し',
+          phone,
         },
         {
           onCreate: lobby.onCreate,
@@ -1078,6 +1087,8 @@ function draw(
 
   restoreScroll(root, scrolled)
   restoreTyping(root, typingDeck)
+  // スマートフォンのシートの手の置き直しと、外の止め方（ADR-0034）。手の置き直しは、直前の `restoreTyping` を上書きする。
+  settlePhoneFocus(root, phonePending)
 
   settleFocus(root, focusMemory)
 }
@@ -1166,6 +1177,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let lobbyRoomTab: RoomTab = 'すべて'
   let lobbyRoomQuery = ''
   let lobbyRoomPage = 0
+  // スマートフォンの並べ方でだけ持つ状態（ADR-0034、`phone.ts`）。通信にも保存にも混ぜない。
+  let phoneState: PhoneState = initialPhone()
   // 打ち込みかけている表示名（ADR-0020）。尋ねられるたびに、いま付いている名前から始める。
   let nameDraft = ''
   // 名前を断る返事が届いて、まだ描き直していない間は真。描き直しが入力欄へフォーカスを戻す印になる。
@@ -1798,6 +1811,30 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     lobbyRoomPage = roomListView(lobbyView(stage.rooms), lobbyRoomTab, lobbyRoomQuery, lobbyRoomPage).paged.page
   }
 
+  /**
+   * スマートフォンの状態を、いま画面に出るものに合わせる（ADR-0034）。画面を離れたら、開いていたシートや
+   * 畳んだ欄の開閉を最初に戻す。描く前に呼ぶ——`draw` は読むだけにする。
+   */
+  const settlePhoneView = (): void => {
+    const stage = session.stage
+    const loaded = session.pool !== undefined && session.ownedDecks !== undefined
+    const builderOpen = stage.kind === 'ロビー' && link.kind === '繋がっている' && builder.screen !== '閉じている' && loaded
+    phoneState = settlePhone(phoneState, {
+      lobby: lobbyIsShown(session, link, builder),
+      deckList: builderOpen && builder.screen === 'デッキを選ぶ',
+      editor: builderOpen && builder.screen === 'デッキを組む' && builder.draft !== undefined,
+    })
+  }
+
+  /** 描き直しに渡す窓口。押した動きで状態を進め、描き直す。 */
+  const phoneControl = (): PhoneControl => ({
+    state: phoneState,
+    send: (action) => {
+      phoneState = reducePhone(phoneState, action)
+      redraw()
+    },
+  })
+
   const lobby = (): Lobby => ({
     name: roomName,
     deck: chosenDeck,
@@ -1902,7 +1939,21 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     redrawAfterComposition = false
     try {
       settleLobbyView()
-      draw(root, session, link, connection, overlay, picking(), lobby(), naming(), building(), duelInteraction())
+      settlePhoneView()
+      // 手の置き直しは 1 度だけ。幅が PC のときは、状態を持っていても渡さず、使いもしない——取り出して捨てることもしない。
+      let pending: PhonePending | undefined
+      let scroll: PhoneScroll | undefined
+      if (isPhoneWidth()) {
+        const taken = takePending(phoneState)
+        pending = taken.pending
+        const scrolled = takeScroll(taken.state)
+        phoneState = scrolled.state
+        scroll = scrolled.scroll
+      }
+      const phone: PhoneControl | undefined = isPhoneWidth() ? phoneControl() : undefined
+      draw(root, session, link, connection, overlay, picking(), lobby(), naming(), building(), duelInteraction(), phone, pending)
+      // デッキ構築のタブを替えたあとのページのスクロール。描いて高さが決まってから置く。
+      settlePhoneScroll(root, scroll)
       // 描いたあとに送る。先に送ると、`draw` が戻すスクロールの位置で上書きされる。
       if (revealCpuDeck) {
         revealCpuDeck = false
@@ -2093,6 +2144,15 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     if (!escapeTopLayer(root)) deselect()
   }
 
+  // スマートフォンの幅と PC の幅を行き来したら、部品の出入りが変わるので描き直す（ADR-0034）。
+  const phoneQuery = window.matchMedia(PHONE_WIDTH_QUERY)
+  const onPhoneWidthChange = (): void => {
+    // シートを開いたまま PC の幅を経て戻ったら、作り直したシートの中へ手を置き直す。
+    if (isPhoneWidth()) phoneState = returnedToPhone(phoneState)
+    redraw()
+  }
+  phoneQuery.addEventListener('change', onPhoneWidthChange)
+
   redraw()
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('popstate', onPopState)
@@ -2104,6 +2164,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   return () => {
     if (overlayTimer !== undefined) clearTimeout(overlayTimer)
+    phoneQuery.removeEventListener('change', onPhoneWidthChange)
     window.removeEventListener('keydown', onKeyDown)
     window.removeEventListener('popstate', onPopState)
     window.removeEventListener('pointerdown', onPointerDown, true)
