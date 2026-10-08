@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { initialPhone, isPhoneWidth, reducePhone, returnedToPhone, rulesSummaryOf, settlePhone, tabAfterKey, takePending } from './phone.js'
+import { initialPhone, isPhoneWidth, reducePhone, returnedToPhone, rulesSummaryOf, settlePhone, tabAfterKey, takePending, takeScroll } from './phone.js'
 
 describe('スマートフォンの画面の中の状態（ADR-0034）', () => {
   it('テストの環境のように画面が無ければ、スマートフォンの幅ではない', () => {
@@ -39,7 +39,7 @@ describe('スマートフォンの画面の中の状態（ADR-0034）', () => {
 
   it('タブ・畳んだ欄は互いに別の状態で、開閉は往復する', () => {
     let state = initialPhone()
-    state = reducePhone(state, { kind: 'デッキ構築のタブ', tab: 'デッキ' })
+    state = reducePhone(state, { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: { top: 0, stuck: false } })
     state = reducePhone(state, { kind: '構築の絞り込みを開閉' })
     state = reducePhone(state, { kind: 'ロビーのモード', mode: 'CPU戦' })
     expect(state).toMatchObject({ builderTab: 'デッキ', builderFilter: true, lobbyMode: 'CPU戦', listFilter: false, builderSettings: false })
@@ -67,7 +67,7 @@ describe('画面を離れたときの状態の整理', () => {
   })
 
   it('デッキ構築を離れたら、タブ・畳んだ欄・シートを最初に戻し、手の置き直しも持ち越さない', () => {
-    let state = reducePhone(initialPhone(), { kind: 'デッキ構築のタブ', tab: 'デッキ' })
+    let state = reducePhone(initialPhone(), { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: { top: 0, stuck: false } })
     state = reducePhone(state, { kind: 'カードのシートを開く', card: 'a', opener: 'カード-a' })
     state = reducePhone(state, { kind: '構築の設定を開閉' })
     expect(settlePhone(state, { ...none, lobby: true, deckList: true })).toEqual(initialPhone())
@@ -142,5 +142,80 @@ describe('PC の幅を経てスマートフォンの幅へ戻ったとき', () =
   it('シートを開いていなければ、何も動かさない（同じ値を返す）', () => {
     const state = initialPhone()
     expect(returnedToPhone(state)).toBe(state)
+  })
+})
+
+describe('デッキ構築のタブごとのスクロールの位置（ADR-0034）', () => {
+  const stuckAt = (top: number) => ({ top, stuck: true })
+  const free = { top: 40, stuck: false }
+
+  it('帯が上に付いている間に、初めて開くタブは、タブの帯のすぐ下から見せる', () => {
+    const state = reducePhone(initialPhone(), { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: stuckAt(900) })
+    expect(state.builderTab).toBe('デッキ')
+    expect(takeScroll(state).scroll).toEqual({ kind: 'タブの帯の下へ' })
+  })
+
+  it('離れたタブの位置を覚え、戻ったときにその位置へ戻す', () => {
+    let state = reducePhone(initialPhone(), { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: stuckAt(900) })
+    state = takeScroll(state).state
+    state = reducePhone(state, { kind: 'デッキ構築のタブ', tab: '探す', sight: stuckAt(300) })
+    expect(state.scroll).toEqual({ kind: '位置へ', top: 900 })
+    // 「デッキ」を離れたときの位置（300）が覚えられている。
+    state = reducePhone(takeScroll(state).state, { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: stuckAt(900) })
+    expect(state.scroll).toEqual({ kind: '位置へ', top: 300 })
+  })
+
+  it('帯がまだ上に付いていない（ページの上の方にいる）なら、位置を動かさず、その位置も覚えない', () => {
+    const state = reducePhone(initialPhone(), { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: free })
+    expect(state.scroll).toBeUndefined()
+    expect(state.builderScroll).toEqual({})
+    // 覚えていた位置があっても、上に付く前の切り替えでは動かさない。
+    const back = reducePhone(
+      reducePhone(reducePhone(initialPhone(), { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: stuckAt(500) }), {
+        kind: 'デッキ構築のタブ',
+        tab: '探す',
+        sight: stuckAt(700),
+      }),
+      { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: free },
+    )
+    expect(back.scroll).toBeUndefined()
+  })
+
+  it('選んでいるタブをもう一度押しても、何も動かさない', () => {
+    const state = initialPhone()
+    expect(reducePhone(state, { kind: 'デッキ構築のタブ', tab: '探す', sight: stuckAt(500) })).toBe(state)
+  })
+
+  it('確かめた結果を見に行くときは、覚えていた位置より確かめた結果の文を優先する', () => {
+    let state = reducePhone(initialPhone(), { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: stuckAt(500) })
+    state = reducePhone(state, { kind: 'デッキ構築のタブ', tab: '探す', sight: stuckAt(800) })
+    state = reducePhone(takeScroll(state).state, { kind: '確かめた結果を見る', sight: stuckAt(800) })
+    expect(state.builderTab).toBe('デッキ')
+    expect(state.scroll).toEqual({ kind: '確かめた結果へ' })
+    // 上に付く前でも見に行く。
+    const top = reducePhone(initialPhone(), { kind: '確かめた結果を見る', sight: free })
+    expect(top.scroll).toEqual({ kind: '確かめた結果へ' })
+  })
+
+  it('すでに「デッキ」のタブにいても、確かめた結果の位置へ持っていく', () => {
+    const inDeck = reducePhone(initialPhone(), { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: stuckAt(100) })
+    const state = reducePhone(takeScroll(inDeck).state, { kind: '確かめた結果を見る', sight: stuckAt(600) })
+    expect(state.scroll).toEqual({ kind: '確かめた結果へ' })
+    expect(state.builderScroll).toEqual(inDeck.builderScroll)
+  })
+
+  it('スクロールの置き直しは 1 度だけ渡す', () => {
+    const state = reducePhone(initialPhone(), { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: stuckAt(900) })
+    const first = takeScroll(state)
+    expect(first.scroll).toBeDefined()
+    expect(takeScroll(first.state).scroll).toBeUndefined()
+  })
+
+  it('デッキ構築を離れたら、覚えた位置も置き直しも捨てる', () => {
+    const state = reducePhone(initialPhone(), { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: stuckAt(900) })
+    const left = reducePhone(takeScroll(state).state, { kind: 'デッキ構築のタブ', tab: '探す', sight: stuckAt(300) })
+    expect(Object.keys(left.builderScroll).sort()).toEqual(['デッキ', '探す'])
+    expect(settlePhone(left, { lobby: true, deckList: true, editor: false })).toEqual(initialPhone())
+    expect(settlePhone(left, { lobby: true, deckList: false, editor: true })).toBe(left)
   })
 })

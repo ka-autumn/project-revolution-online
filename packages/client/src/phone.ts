@@ -25,6 +25,24 @@ export type PhonePending =
   /** シートを閉じたので、開いた元の押せるものへ（`opener` は `data-phone-opener` の値）。 */
   | { readonly kind: '元へ'; readonly opener: string }
 
+/**
+ * デッキ構築でタブを押した時点の、ページの見え方。測るのは描く側（`phone-scroll.ts`）で、ここでは値として受け取る。
+ * `stuck` は、タブの帯が画面の上に付いて残っているか（ページを帯の位置より下までスクロールしているか）。
+ */
+export interface ScrollSight {
+  readonly top: number
+  readonly stuck: boolean
+}
+
+/** 描き直したあとに 1 度だけ行う、ページのスクロールの置き直し。 */
+export type PhoneScroll =
+  /** 前に見ていた位置へ。 */
+  | { readonly kind: '位置へ'; readonly top: number }
+  /** タブの帯のすぐ下（タブの帯が上に付いた状態で、中身の先頭が出る位置）へ。 */
+  | { readonly kind: 'タブの帯の下へ' }
+  /** 確かめた結果の文が見える位置へ。 */
+  | { readonly kind: '確かめた結果へ' }
+
 export interface PhoneState {
   /** ロビーで、対人戦・CPU戦のどちらの中身を出すか。 */
   readonly lobbyMode: LobbyMode
@@ -34,6 +52,10 @@ export interface PhoneState {
   readonly listFilter: boolean
   /** デッキ構築で、どちらのタブを見ているか。 */
   readonly builderTab: BuilderTab
+  /** デッキ構築で、タブごとに前に見ていたスクロールの位置。見ていなければ（または上に付く前なら）持たない。 */
+  readonly builderScroll: Readonly<Partial<Record<BuilderTab, number>>>
+  /** デッキ構築で、描き直したあとに行うスクロールの置き直し。 */
+  readonly scroll: PhoneScroll | undefined
   /** デッキ構築で、絞り込みを開いているか。 */
   readonly builderFilter: boolean
   /** デッキ構築で、上の段（解説・ラベル・形式・禁止／制限リスト）を開いているか。 */
@@ -51,6 +73,8 @@ export function initialPhone(): PhoneState {
     deckSheet: false,
     listFilter: false,
     builderTab: '探す',
+    builderScroll: {},
+    scroll: undefined,
     builderFilter: false,
     builderSettings: false,
     sheetCard: undefined,
@@ -64,7 +88,9 @@ export type PhoneAction =
   | { readonly kind: 'デッキのシートを開く'; readonly opener: string }
   | { readonly kind: 'デッキのシートを閉じる' }
   | { readonly kind: '一覧の絞り込みを開閉' }
-  | { readonly kind: 'デッキ構築のタブ'; readonly tab: BuilderTab }
+  | { readonly kind: 'デッキ構築のタブ'; readonly tab: BuilderTab; readonly sight: ScrollSight }
+  /** 下の帯の規定外の印から、「デッキ」のタブの確かめた結果を見に行く。 */
+  | { readonly kind: '確かめた結果を見る'; readonly sight: ScrollSight }
   | { readonly kind: '構築の絞り込みを開閉' }
   | { readonly kind: '構築の設定を開閉' }
   | { readonly kind: 'カードのシートを開く'; readonly card: string; readonly opener: string }
@@ -82,7 +108,9 @@ export function reducePhone(state: PhoneState, action: PhoneAction): PhoneState 
     case '一覧の絞り込みを開閉':
       return { ...state, listFilter: !state.listFilter }
     case 'デッキ構築のタブ':
-      return { ...state, builderTab: action.tab }
+      return switchedBuilderTab(state, action.tab, action.sight, false)
+    case '確かめた結果を見る':
+      return switchedBuilderTab(state, 'デッキ', action.sight, true)
     case '構築の絞り込みを開閉':
       return { ...state, builderFilter: !state.builderFilter }
     case '構築の設定を開閉':
@@ -93,6 +121,39 @@ export function reducePhone(state: PhoneState, action: PhoneAction): PhoneState 
     case 'カードのシートを閉じる':
       return state.sheetCard === undefined ? state : closedSheet({ ...state, sheetCard: undefined })
   }
+}
+
+/**
+ * タブを切り替える。離れるタブの位置を覚え、着いたタブでは次の順で置く場所を決める。
+ *
+ * - 確かめた結果を見に来たなら、その文の位置（覚えていた位置より優先）。
+ * - タブの帯がまだ上に付いていない（ページの上の方にいる）なら、動かさない。
+ * - 前に見ていた位置があればそこ、無ければタブの帯のすぐ下。
+ *
+ * 帯が上に付く前の位置は覚えない。そこはタブの帯の下ではなく、ページの上の方だから。
+ */
+function switchedBuilderTab(state: PhoneState, tab: BuilderTab, sight: ScrollSight, reveal: boolean): PhoneState {
+  if (tab === state.builderTab) return reveal ? { ...state, scroll: { kind: '確かめた結果へ' } } : state
+
+  const { [state.builderTab]: _left, ...kept } = state.builderScroll
+  const builderScroll = sight.stuck ? { ...kept, [state.builderTab]: sight.top } : kept
+  const remembered = state.builderScroll[tab]
+  const scroll: PhoneScroll | undefined = reveal
+    ? { kind: '確かめた結果へ' }
+    : !sight.stuck
+      ? undefined
+      : remembered === undefined
+        ? { kind: 'タブの帯の下へ' }
+        : { kind: '位置へ', top: remembered }
+
+  return { ...state, builderTab: tab, builderScroll, scroll }
+}
+
+/** スクロールの置き直しを 1 度だけ渡す（渡したら消す）。 */
+export function takeScroll(state: PhoneState): { readonly scroll: PhoneScroll | undefined; readonly state: PhoneState } {
+  if (state.scroll === undefined) return { scroll: undefined, state }
+
+  return { scroll: state.scroll, state: { ...state, scroll: undefined } }
 }
 
 function closedSheet(state: PhoneState): PhoneState {
@@ -120,9 +181,22 @@ export function settlePhone(state: PhoneState, shown: ShownScreens): PhoneState 
   if (!shown.deckList && next.listFilter) next = { ...next, listFilter: false }
   if (
     !shown.editor &&
-    (next.sheetCard !== undefined || next.builderTab !== initial.builderTab || next.builderFilter || next.builderSettings)
+    (next.sheetCard !== undefined ||
+      next.builderTab !== initial.builderTab ||
+      Object.keys(next.builderScroll).length > 0 ||
+      next.scroll !== undefined ||
+      next.builderFilter ||
+      next.builderSettings)
   ) {
-    next = { ...next, sheetCard: undefined, builderTab: initial.builderTab, builderFilter: false, builderSettings: false }
+    next = {
+      ...next,
+      sheetCard: undefined,
+      builderTab: initial.builderTab,
+      builderScroll: initial.builderScroll,
+      scroll: undefined,
+      builderFilter: false,
+      builderSettings: false,
+    }
   }
   if (next !== state && !next.deckSheet && next.sheetCard === undefined) next = { ...next, opener: undefined, pending: undefined }
 

@@ -68,6 +68,7 @@ import type { ActionView, AskOption, AskView, ChoiceView, DestinationView, PickV
 import { countName, DISPLAY_NAME_LIMIT } from './name-count.js'
 import { PHONE_BACKDROP, PHONE_OPENER, PHONE_SHEET, rulesSummaryOf, tabAfterKey } from './phone.js'
 import type { BuilderTab, LobbyMode, PhoneControl } from './phone.js'
+import { builderSight } from './phone-scroll.js'
 import { COLORLESS, emptyFilter, isFiltering, MOVE_SHAPES, toggled, typeShownAs } from './pool-filter.js'
 import type { FilterChoices, MoveShape, NumberRange, PoolFilter, StarChoice } from './pool-filter.js'
 import type { CopyState, MyShareRow, PublicCardSection, RecipeCardRow, RecipeSummaryRow, ShareDraft, ShareRow, SharingState } from './recipe.js'
@@ -2932,6 +2933,41 @@ function checkElement(check: CheckView): HTMLElement {
   return node
 }
 
+/**
+ * スマートフォンの下の帯に出す、規定を満たしていないことの印（ADR-0034）。押すと「デッキ」のタブへ移り、
+ * 確かめた結果の文が見える位置へ持っていく。PC の右の列が文で出すもの（`checkElement`）のうち、
+ * 読み手が動く必要があるものだけを印にする。
+ *
+ * 使えなくなったカードがあって確かめられないときも出す。PC では不備と同じ見た目で出していて、
+ * 保存もできないので、「カードを探す」のタブにいる間に気づけないと困る。
+ */
+function checkNoticeElement(check: CheckView, phone: PhoneControl): HTMLElement | undefined {
+  let label: string
+  let spoken: string
+  switch (check.kind) {
+    case '満たしていない':
+      label = `規定外 ${check.lines.length} 件`
+      spoken = `規定を満たしていない点が ${check.lines.length} 件あります。押すとデッキのタブで見られます`
+      break
+    case '確かめられない':
+      label = '規定を確かめられません'
+      spoken = '使えなくなったカードが入っていて、規定を確かめられません。押すとデッキのタブで見られます'
+      break
+    default:
+      return undefined
+  }
+
+  const node = button('', () => phone.send({ kind: '確かめた結果を見る', sight: builderSight() }))
+  node.classList.add('phonebar__notice')
+  node.setAttribute('aria-label', `${label}。${spoken}`)
+  node.dataset[KEEP_FOCUS] = '規定外の印'
+  const mark = element('span', 'phonebar__notice-mark', '⚠')
+  mark.setAttribute('aria-hidden', 'true')
+  node.append(mark, element('span', '', label))
+
+  return node
+}
+
 /** デッキの内訳：レベルの段ごとの、色別の積み上げ棒グラフ（ADR-0028）。 */
 function levelBreakdownElement(bars: readonly LevelBar[]): HTMLElement {
   const figure = document.createElement('figure')
@@ -3205,7 +3241,12 @@ function cardSheetElements(view: DeckEditorView, handlers: DeckEditorHandlers, p
 export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
   const phone = view.phone
   // スマートフォンでは、「カードを探す」「デッキ」のタブで 2 つの見え方を切り替える（CSS が class で出し分ける）。
-  const node = element('div', phone === undefined ? 'deckbuild' : `deckbuild deckbuild--tab-${phone.state.builderTab}`)
+  // 下の帯に規定外の印が出る間は帯が高くなるので、末尾の余白を足す（`deckbuild--notice`）。
+  const noticed = phone !== undefined && (view.check.kind === '満たしていない' || view.check.kind === '確かめられない')
+  const node = element(
+    'div',
+    phone === undefined ? 'deckbuild' : `deckbuild deckbuild--tab-${phone.state.builderTab}${noticed ? ' deckbuild--notice' : ''}`,
+  )
   node.append(editorTopbarElement(view, handlers))
   if (phone !== undefined) {
     node.append(
@@ -3217,11 +3258,8 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
           { value: 'デッキ', label: `デッキ（${view.count} 枚）`, panels: 1 },
         ],
         phone.state.builderTab,
-        (tab) => {
-          phone.send({ kind: 'デッキ構築のタブ', tab })
-          // 切り替えた先は、先頭から見せる。タブは画面の上に付いて残るので、ページを先頭へ戻しても見失わない。
-          window.scrollTo(0, 0)
-        },
+        // 押した時点のページの見え方を渡す。スクロールの置き直しは、描き直したあとに `index.ts` が行う。
+        (tab) => phone.send({ kind: 'デッキ構築のタブ', tab, sight: builderSight() }),
       ),
     )
   }
@@ -3313,7 +3351,11 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
     // デッキの枚数は形式で決まった枚数が無いので、いまの枚数だけを出す。
     const total = element('span', 'phonebar__count')
     total.append(element('strong', '', String(view.count)), ' 枚')
-    savebar.append(total, element('span', `savebar__state${view.unsaved ? ' savebar__state--未保存' : ''}`, saveState), save)
+    // 規定を満たしていないことは「デッキ」のタブの中にしか出ないので、「カードを探す」のタブでも気づけるよう、
+    // 満たしていないときだけ印を出す。確かめている間・満たしているときは出さない。
+    const notice = checkNoticeElement(view.check, phone)
+    if (notice !== undefined) savebar.append(notice)
+    savebar.append(total,element('span', `savebar__state${view.unsaved ? ' savebar__state--未保存' : ''}`, saveState), save)
   }
   right.append(deckPanel)
 

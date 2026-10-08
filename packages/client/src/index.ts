@@ -133,8 +133,9 @@ import {
 } from './view-model.js'
 import type { Overlay, HandRefusal, RoomTab } from './view-model.js'
 import { closedByCancel, escapeTopLayer, focusBefore, markDialog, settleFocus } from './dialog-focus.js'
-import { PHONE_WIDTH_QUERY, initialPhone, isPhoneWidth, reducePhone, returnedToPhone, settlePhone, takePending } from './phone.js'
-import type { PhoneControl, PhonePending, PhoneState } from './phone.js'
+import { PHONE_WIDTH_QUERY, initialPhone, isPhoneWidth, reducePhone, returnedToPhone, settlePhone, takePending, takeScroll } from './phone.js'
+import type { PhoneControl, PhonePending, PhoneScroll, PhoneState } from './phone.js'
+import { settlePhoneScroll } from './phone-scroll.js'
 import { settlePhoneFocus } from './phone-focus.js'
 
 /**
@@ -1941,13 +1942,18 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       settlePhoneView()
       // 手の置き直しは 1 度だけ。幅が PC のときは、状態を持っていても渡さず、使いもしない——取り出して捨てることもしない。
       let pending: PhonePending | undefined
+      let scroll: PhoneScroll | undefined
       if (isPhoneWidth()) {
         const taken = takePending(phoneState)
-        phoneState = taken.state
         pending = taken.pending
+        const scrolled = takeScroll(taken.state)
+        phoneState = scrolled.state
+        scroll = scrolled.scroll
       }
       const phone: PhoneControl | undefined = isPhoneWidth() ? phoneControl() : undefined
       draw(root, session, link, connection, overlay, picking(), lobby(), naming(), building(), duelInteraction(), phone, pending)
+      // デッキ構築のタブを替えたあとのページのスクロール。描いて高さが決まってから置く。
+      settlePhoneScroll(root, scroll)
       // 描いたあとに送る。先に送ると、`draw` が戻すスクロールの位置で上書きされる。
       if (revealCpuDeck) {
         revealCpuDeck = false
