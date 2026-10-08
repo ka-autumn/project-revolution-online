@@ -66,6 +66,8 @@ import type {
 } from './deck-builder.js'
 import type { ActionView, AskOption, AskView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import { countName, DISPLAY_NAME_LIMIT } from './name-count.js'
+import { PHONE_BACKDROP, PHONE_OPENER, PHONE_SHEET, rulesSummaryOf, tabAfterKey } from './phone.js'
+import type { BuilderTab, LobbyMode, PhoneControl } from './phone.js'
 import { COLORLESS, emptyFilter, isFiltering, MOVE_SHAPES, toggled, typeShownAs } from './pool-filter.js'
 import type { FilterChoices, MoveShape, NumberRange, PoolFilter, StarChoice } from './pool-filter.js'
 import type { CopyState, MyShareRow, PublicCardSection, RecipeCardRow, RecipeSummaryRow, ShareDraft, ShareRow, SharingState } from './recipe.js'
@@ -1169,6 +1171,97 @@ export interface LobbyView {
   readonly roomPage: number
   /** コピー・複製・削除の返事を待っているか。重ねて押させない——2 度押すとデッキが 2 つできる。 */
   readonly waiting: boolean
+  /** スマートフォンの並べ方の状態と窓口（ADR-0034）。PC の幅では `undefined`。 */
+  readonly phone: PhoneControl | undefined
+}
+
+/*
+ * スマートフォンの並べ方でだけ出す部品（ADR-0034、`phone.ts`）。
+ *
+ * `PhoneControl` が渡されたとき（幅 768px 以下）にだけ作る。PC の幅では作らないので、PC の DOM には
+ * 入り込まない。押した元・閉じる口・フォーカスの扱いは、既存の窓（`confirmElement`）に合わせる——
+ * 開いたら中へ、閉じたら開いた元へ手を戻す（置き直しは `phone-focus.ts`）。
+ */
+
+/** タブの並び。押したタブが選ばれ、左右の矢印・Home・End で移る。移る先へ手を置くため、描き直しの前に印を替える。 */
+function phoneTabsElement<T extends string>(
+  name: string,
+  className: string,
+  tabs: readonly { readonly value: T; readonly label: string; readonly className?: string }[],
+  current: T,
+  onChoose: (tab: T) => void,
+): HTMLElement {
+  const node = element('div', `phone-only ${className}`)
+  node.setAttribute('role', 'tablist')
+  node.setAttribute('aria-label', name)
+  const values = tabs.map((tab) => tab.value)
+  for (const tab of tabs) {
+    const each = button(tab.label, () => onChoose(tab.value))
+    each.classList.add('phone-tab')
+    if (tab.className !== undefined) each.classList.add(tab.className)
+    each.setAttribute('role', 'tab')
+    each.setAttribute('aria-selected', String(tab.value === current))
+    each.tabIndex = tab.value === current ? 0 : -1
+    each.dataset[KEEP_FOCUS] = `${name}-${tab.value}`
+    each.addEventListener('keydown', (event) => {
+      const to = tabAfterKey(values, tab.value, event.key)
+      if (to === undefined) return
+
+      event.preventDefault()
+      each.dataset[KEEP_FOCUS] = `${name}-${to}`
+      onChoose(to)
+    })
+    node.append(each)
+  }
+
+  return node
+}
+
+/** 畳んだ欄を開閉する、幅いっぱいのボタン。 */
+function phoneToggleElement(label: string, open: boolean, focusKey: string, className: string, onPress: () => void): HTMLElement {
+  const node = button('', onPress)
+  node.classList.add('phone-only', 'phone-toggle', className)
+  node.setAttribute('aria-expanded', String(open))
+  node.dataset[KEEP_FOCUS] = focusKey
+  const mark = element('span', 'phone-toggle__mark', open ? '▲' : '▼')
+  mark.setAttribute('aria-hidden', 'true')
+  node.append(element('span', '', label), mark)
+
+  return node
+}
+
+/**
+ * 下からせり上がるシートにする。ダイアログとして名前を付け、Esc で閉じる。
+ * `canEscape` が偽の間は Esc を見送る（シートの中で開いている別のもの——「…」のメニューが先に閉じる）。
+ */
+function phoneSheetMarks(sheet: HTMLElement, label: string, onClose: () => void, canEscape: () => boolean = () => true): HTMLElement {
+  sheet.setAttribute('role', 'dialog')
+  sheet.setAttribute('aria-modal', 'true')
+  sheet.setAttribute('aria-label', label)
+  sheet.tabIndex = -1
+  sheet.dataset[PHONE_SHEET] = ''
+  sheet.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && canEscape()) onClose()
+  })
+
+  return sheet
+}
+
+/** シートの外を暗くした背面。押すと閉じる。 */
+function phoneBackdropElement(onClose: () => void): HTMLElement {
+  const node = element('div', `phone-only phone-sheet-backdrop ${PHONE_BACKDROP}`)
+  node.addEventListener('click', onClose)
+
+  return node
+}
+
+/** シートの一番下の閉じる口。片手の親指が届く位置に置く。 */
+function phoneCloseElement(label: string, focusKey: string, onClose: () => void): HTMLElement {
+  const node = button(label, onClose)
+  node.classList.add('phone-sheet__close')
+  node.dataset[KEEP_FOCUS] = focusKey
+
+  return node
 }
 
 /** 人型のシルエット。アイコンを選べるようにするのは別の Issue（#235）で、それまではこれを出す。 */
@@ -1373,6 +1466,8 @@ function deckRowElement(
   const choose = (id: DeckId): void => {
     radio.dataset[KEEP_FOCUS] = PICKED_DECK_KEY
     handlers.onDeck(id)
+    // スマートフォンでは、選んだらシートを閉じる（選んだデッキは、上の 1 行に出る）。選んだ印を描いてから閉じる。
+    view.phone?.send({ kind: 'デッキのシートを閉じる' })
   }
   if (choosable) {
     radio.addEventListener('click', () => choose(deck.id))
@@ -1469,6 +1564,16 @@ function lobbyDecksPanelElement(view: LobbyView, handlers: LobbyHandlers): HTMLE
   if (handlers.onBuild !== undefined) foot.append(button('デッキ一覧', handlers.onBuild))
   panel.append(foot)
 
+  // スマートフォンでは、この枠そのものが下からのシートになる（ADR-0034）。閉じる口は一番下に置く。
+  const phone = view.phone
+  if (phone !== undefined) {
+    const close = (): void => phone.send({ kind: 'デッキのシートを閉じる' })
+    panel.classList.add('lobby__sheet')
+    // 「…」のメニューが開いている間の Esc は、メニューを閉じるほうが先（下の keydown）。
+    phoneSheetMarks(panel, '使用するデッキ', close, () => view.menu === undefined)
+    panel.append(phoneCloseElement('閉じる', 'デッキのシートを閉じる', close))
+  }
+
   // 「…」を開いている間、外を押したら閉じる。
   panel.addEventListener('click', (event) => {
     const inside = event.target instanceof Element && event.target.closest('.lobby__menu, .lobby__deck-menu') !== null
@@ -1484,6 +1589,36 @@ function lobbyDecksPanelElement(view: LobbyView, handlers: LobbyHandlers): HTMLE
   })
 
   return panel
+}
+
+/** スマートフォンの「変更」の印。押したシートを閉じたとき、手はここへ戻る。 */
+const DECK_SHEET_OPENER = 'ロビーのデッキの変更'
+
+/**
+ * スマートフォンで、使用するデッキ（選んでいる 1 つ）を 1 行で見せる（ADR-0034）。「変更」を押すと、
+ * デッキの一覧と対戦ルールをシートで出す。選べているものだけを出す（`chosenDeck` は選べないデッキを含まない）。
+ */
+function lobbyDeckSummaryElement(view: LobbyView, phone: PhoneControl): HTMLElement {
+  const node = element('section', 'panel phone-only lobby__deckpick')
+  node.setAttribute('aria-label', '使用するデッキ')
+  const chosen = view.decks.find((deck) => deck.id === view.chosenDeck)
+  const main = element('div', 'lobby__deckpick-main')
+  main.append(element('span', 'lobby__deckpick-label', '使用するデッキ'))
+  if (chosen === undefined) {
+    main.append(element('span', 'lobby__deckpick-name lobby__deckpick-name--none', noDeckReason(view.decks)))
+  } else {
+    node.append(deckCoverElement(chosen, 'thumb'))
+    main.append(element('span', 'lobby__deckpick-name', chosen.name))
+  }
+  const change = button('変更', () => phone.send({ kind: 'デッキのシートを開く', opener: DECK_SHEET_OPENER }))
+  change.classList.add('lobby__deckpick-change')
+  change.setAttribute('aria-label', '使用するデッキを変更する')
+  change.setAttribute('aria-haspopup', 'dialog')
+  change.dataset[PHONE_OPENER] = DECK_SHEET_OPENER
+  change.dataset[KEEP_FOCUS] = DECK_SHEET_OPENER
+  node.append(main, change)
+
+  return node
 }
 
 /** 対人戦・CPU戦の枠。見出しの帯の色だけが違う。 */
@@ -1769,14 +1904,35 @@ export function lobbyElement(view: LobbyView, handlers: LobbyHandlers, focused =
   const node = element('section', 'lobby')
   node.append(lobbyTopbarElement(view.own))
 
+  const phone = view.phone
+
   const columns = element('div', 'lobby__columns')
   const left = element('div', 'lobby__column')
-  left.append(lobbyDecksPanelElement(view, handlers))
+  // スマートフォンでは、選んでいる 1 つを 1 行で見せ、一覧と対戦ルールは「変更」のシートに出す。閉じている間は
+  // 一覧を作らない。PC の並べ方（3 列）に入り込む部品は、PC では作らない。
+  if (phone !== undefined) left.append(lobbyDeckSummaryElement(view, phone))
+  if (phone === undefined || phone.state.deckSheet) left.append(lobbyDecksPanelElement(view, handlers))
 
   const center = element('div', 'lobby__column')
   const human = lobbyHumanElement(view, handlers)
   const modes = element('div', 'lobby__modes')
   modes.append(human.node, lobbyCpuElement(view, handlers))
+  // スマートフォンでは、上に対人戦・CPU戦のタブを置き、選んだ方の中身だけを見せる（CSS が `data-phone-mode` で出し分ける）。
+  if (phone !== undefined) {
+    center.dataset.phoneMode = phone.state.lobbyMode
+    center.append(
+      phoneTabsElement<LobbyMode>(
+        '対戦の始め方',
+        'lobby__modetabs',
+        [
+          { value: '対人戦', label: '対人戦', className: 'lobby__modetab--human' },
+          { value: 'CPU戦', label: 'CPU戦', className: 'lobby__modetab--cpu' },
+        ],
+        phone.state.lobbyMode,
+        (mode) => phone.send({ kind: 'ロビーのモード', mode }),
+      ),
+    )
+  }
   center.append(modes, lobbyRoomsPanelElement(view, handlers))
 
   const right = element('div', 'lobby__column')
@@ -1784,6 +1940,9 @@ export function lobbyElement(view: LobbyView, handlers: LobbyHandlers, focused =
 
   columns.append(left, center, right)
   node.append(columns)
+  if (phone !== undefined && phone.state.deckSheet) {
+    node.append(phoneBackdropElement(() => phone.send({ kind: 'デッキのシートを閉じる' })))
+  }
 
   // 描き直しで打ち込みかけの場所を見失わないように、打っていた人には返す。付け終わってから手を置く。
   // まだ文書に無い要素には置けない。
@@ -1836,6 +1995,8 @@ export interface DeckListView {
   /** コピー・複製・削除の返事を待っているか。重ねて押させない——2 度押すとデッキが 2 つできる。 */
   readonly waiting: boolean
   readonly refusal: string | undefined
+  /** スマートフォンの並べ方の状態と窓口（ADR-0034）。PC の幅では `undefined`。 */
+  readonly phone: PhoneControl | undefined
 }
 
 /**
@@ -2013,10 +2174,23 @@ export function deckListElement(view: DeckListView, handlers: DeckListHandlers):
 
   const columns = element('div', 'columns')
 
-  const left = element('div', 'column')
-  left.append(deckSearchPanelElement(view, handlers))
+  const left = element('div', 'column column--left')
+  // スマートフォンでは、絞り込みを畳んでおき、押すと開く。絞り込み中なら、畳んでいても分かるようにする（ADR-0034）。
+  const phone = view.phone
+  if (phone !== undefined) {
+    const filtering = view.search !== '' || view.colorFilter.length > 0 || view.labelFilter.length > 0
+    left.append(
+      phoneToggleElement(filtering ? '絞り込み（絞り込み中）' : '絞り込み', phone.state.listFilter, '一覧の絞り込み', 'phone-filter-toggle', () =>
+        phone.send({ kind: '一覧の絞り込みを開閉' }),
+      ),
+    )
+  }
+  if (phone === undefined || phone.state.listFilter) left.append(deckSearchPanelElement(view, handlers))
   const presetsPanel = presetsPanelElement(view.presets, view.waiting, handlers)
-  if (presetsPanel !== undefined) left.append(presetsPanel)
+  if (presetsPanel !== undefined) {
+    presetsPanel.classList.add('panel--presets')
+    left.append(presetsPanel)
+  }
 
   const center = element('div', 'column column--center')
   const aside = element('span', 'panel__aside')
@@ -2119,6 +2293,8 @@ export interface DeckEditorView {
   readonly starTotal: number
   /** 組むところの帯から開いている窓。「ラベル」は #229 が済むまで無い。 */
   readonly modal: DeckEditorModal | undefined
+  /** スマートフォンの並べ方の状態と窓口（ADR-0034）。PC の幅では `undefined`。 */
+  readonly phone: PhoneControl | undefined
 }
 
 
@@ -2522,6 +2698,7 @@ function poolCardItemElement(
   pinned: boolean,
   handlers: DeckEditorHandlers,
   onHover: (key: string) => void,
+  phone: PhoneControl | undefined,
 ): HTMLElement {
   const item = element('div', `pool__item${row.count > 0 ? ' pool__item--入っている' : ''}`)
   const card = poolCardElement(row.face, { pinned })
@@ -2529,20 +2706,45 @@ function poolCardItemElement(
   // （1 行表示の名前のボタンと同じく、詳細に出したままにしているかを aria-pressed で出す）。
   card.tabIndex = 0
   card.setAttribute('role', 'button')
-  card.setAttribute('aria-pressed', String(pinned))
-  card.setAttribute('aria-label', `${row.face.name}（押すと詳細に出したままにする）`)
+  // スマートフォンでは、出したままにするのではなく詳細のシートを開く。開いたままの状態を持たないので aria-pressed は付けない。
+  if (phone === undefined) card.setAttribute('aria-pressed', String(pinned))
+  else {
+    card.setAttribute('aria-haspopup', 'dialog')
+    card.dataset[PHONE_OPENER] = cardOpener('プール', row.key)
+  }
+  card.setAttribute('aria-label', `${row.face.name}（押すと${phone === undefined ? '詳細に出したままにする' : '詳細を開く'}）`)
+  const tap = (): void => tapCard(row.key, 'プール', handlers, phone)
   card.addEventListener('mouseenter', () => onHover(row.key))
   card.addEventListener('focus', () => onHover(row.key))
-  card.addEventListener('click', () => handlers.onPin(row.key))
+  card.addEventListener('click', tap)
   card.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
-    handlers.onPin(row.key)
+    tap()
   })
   item.append(card, counterElement(row.key, row.face.name, row.count, handlers))
 
   return item
 }
+
+/**
+ * カードを 1 回押したときの動き。PC は詳細に出したままにする（ADR-0028）。スマートフォンはマウスを乗せられないので、
+ * 詳細を下からのシートで開く（ADR-0034）。シートを閉じたとき手を戻す先として、押したものに印を付ける。
+ * 同じカードがプールとデッキの両方に並ぶので、印には置き場所も入れる。
+ */
+function tapCard(key: string, place: CardPlace, handlers: DeckEditorHandlers, phone: PhoneControl | undefined): void {
+  if (phone === undefined) {
+    handlers.onPin(key)
+    return
+  }
+
+  phone.send({ kind: 'カードのシートを開く', card: key, opener: cardOpener(place, key) })
+}
+
+type CardPlace = 'プール' | 'デッキ'
+
+/** シートを閉じたとき手を戻す先の印（`data-phone-opener`）。描き直しても、同じ印の要素へ戻る。 */
+const cardOpener = (place: CardPlace, key: string): string => `カード-${place}-${key}`
 
 /**
  * 1 行表示の 1 種（ADR-0028）。プールでもデッキでも使う。
@@ -2556,6 +2758,7 @@ function poolCardRowElement(
   handlers: DeckEditorHandlers,
   onHover: (key: string) => void,
   withStats: boolean,
+  phone: PhoneControl | undefined,
 ): HTMLElement {
   const face = row.face
   const node = element('div', `cardrow card--色-${primaryColorOf(face.colors)}${pinned ? ' cardrow--詳細中' : ''}`)
@@ -2570,8 +2773,13 @@ function poolCardRowElement(
   name.type = 'button'
   name.className = 'cardrow__name'
   name.textContent = face.name
-  name.setAttribute('aria-pressed', String(pinned))
-  name.addEventListener('click', () => handlers.onPin(row.key))
+  const place: CardPlace = withStats ? 'プール' : 'デッキ'
+  if (phone === undefined) name.setAttribute('aria-pressed', String(pinned))
+  else {
+    name.setAttribute('aria-haspopup', 'dialog')
+    name.dataset[PHONE_OPENER] = cardOpener(place, row.key)
+  }
+  name.addEventListener('click', () => tapCard(row.key, place, handlers, phone))
   name.addEventListener('focus', () => onHover(row.key))
   node.append(name)
 
@@ -2629,11 +2837,11 @@ function poolListElement(view: DeckEditorView, handlers: DeckEditorHandlers, onH
 
   if (view.poolView === 'カード') {
     const grid = element('div', 'pool__grid')
-    for (const row of shown) grid.append(poolCardItemElement(row, row.key === view.pinned, handlers, onHover))
+    for (const row of shown) grid.append(poolCardItemElement(row, row.key === view.pinned, handlers, onHover, view.phone))
     scroller.append(grid)
   } else {
     const rows = element('div', 'rows')
-    for (const row of shown) rows.append(poolCardRowElement(row, row.key === view.pinned, handlers, onHover, true))
+    for (const row of shown) rows.append(poolCardRowElement(row, row.key === view.pinned, handlers, onHover, true, view.phone))
     scroller.append(rows)
   }
 
@@ -2651,7 +2859,8 @@ function poolListElement(view: DeckEditorView, handlers: DeckEditorHandlers, onH
         watcher.disconnect()
         handlers.onShowMorePool()
       },
-      { root: scroller, rootMargin: '0px 0px 200px 0px' },
+      // スマートフォンでは一覧は枠の中でスクロールせず、ページがスクロールする（ADR-0034）ので、見張るのは画面にする。
+      { root: view.phone === undefined ? scroller : null, rootMargin: '0px 0px 200px 0px' },
     )
     watcher.observe(more)
   }
@@ -2849,6 +3058,19 @@ function editorTopbarElement(view: DeckEditorView, handlers: DeckEditorHandlers)
   }
   bar.append(name)
 
+  // スマートフォンでは、解説・ラベル・形式・禁止／制限リストを「デッキの設定」に畳む。上の段が大きいと、カードプールが
+  // 1 段ほどしか見えなくなるため。畳んでいても、いまの形式とリストは見出しで分かる（ADR-0034）。
+  const phone = view.phone
+  if (phone !== undefined) {
+    const summary = rulesSummaryOf(DUEL_FORMATS, view.rules.format, view.restrictions, view.rules.restriction)
+    bar.append(
+      phoneToggleElement(`デッキの設定（${summary}）`, phone.state.builderSettings, 'デッキの設定', 'phone-settings-toggle', () =>
+        phone.send({ kind: '構築の設定を開閉' }),
+      ),
+    )
+    if (!phone.state.builderSettings) return bar
+  }
+
   const description = smallButton(view.description ? '📝 解説' : '📝 解説を書く', () => handlers.onOpenModal('解説'))
   description.setAttribute('aria-haspopup', 'dialog')
   bar.append(description, labelListElement(view.labels, 'taglist--bar'), element('span', 'topbar__spacer'))
@@ -2895,6 +3117,41 @@ function descriptionModalElement(view: DeckEditorView, handlers: DeckEditorHandl
 }
 
 /**
+ * スマートフォンで、カードを 1 回押したときの詳細のシート（ADR-0034）。カードの詳細と、1 枚抜く・今の枚数・1 枚入れるの口、
+ * 一番下に閉じる口を置く。枚数の増減は一覧の下の＋・−と同じ手（`onAdd`・`onRemove`）で、送るものは変わらない。
+ * 詳細が引けないカード（プールから消えた）なら出さない。
+ */
+function cardSheetElements(view: DeckEditorView, handlers: DeckEditorHandlers, phone: PhoneControl, key: string): HTMLElement[] | undefined {
+  const detail = view.detail(key)
+  if (detail === undefined) return undefined
+
+  const close = (): void => phone.send({ kind: 'カードのシートを閉じる' })
+  const sheet = element('section', 'phone-sheet')
+  phoneSheetMarks(sheet, `「${detail.name}」の詳細`, close)
+  const body = element('div', 'detail')
+  fillPoolDetail(body, detail)
+
+  const count = view.deck.find((row) => row.kind === '使える' && row.key === key)?.count ?? 0
+  const counter = element('div', 'phone-sheet__counter')
+  counter.setAttribute('role', 'group')
+  counter.setAttribute('aria-label', `「${detail.name}」 デッキに ${count} 枚`)
+  const minus = button('1 枚抜く', () => handlers.onRemove(key))
+  minus.toggleAttribute('disabled', count === 0)
+  minus.dataset[KEEP_FOCUS] = 'シート-抜く'
+  // 抜ききると押せなくなる。押せない要素には手を置けないので、「1 枚入れる」へ移す。
+  minus.dataset[KEEP_FOCUS_INSTEAD] = 'シート-入れる'
+  const badge = element('span', `counter__count${count > 0 ? ' counter__count--入っている' : ''}`, `×${count}`)
+  badge.setAttribute('aria-hidden', 'true')
+  const plus = button('1 枚入れる', () => handlers.onAdd(key), true)
+  plus.dataset[KEEP_FOCUS] = 'シート-入れる'
+  counter.append(minus, badge, plus)
+
+  sheet.append(body, counter, phoneCloseElement('閉じる', 'カードのシートを閉じる', close))
+
+  return [phoneBackdropElement(close), sheet]
+}
+
+/**
  * デッキを組むところ（#193、ADR-0028）。上に帯、下に 3 列（絞り込みとカードの詳細／カード一覧／
  * デッキ）を並べ、画面の高さに収める。
  *
@@ -2903,20 +3160,55 @@ function descriptionModalElement(view: DeckEditorView, handlers: DeckEditorHandl
  * 打ち込む欄には `KEEP_FOCUS` を付ける。描き直した後に、打っていた人の手を戻すのは `index.ts` である。
  */
 export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
-  const node = element('div', 'deckbuild')
+  const phone = view.phone
+  // スマートフォンでは、「カードを探す」「デッキ」のタブで 2 つの見え方を切り替える（CSS が class で出し分ける）。
+  const node = element('div', phone === undefined ? 'deckbuild' : `deckbuild deckbuild--tab-${phone.state.builderTab}`)
   node.append(editorTopbarElement(view, handlers))
+  if (phone !== undefined) {
+    node.append(
+      phoneTabsElement<BuilderTab>(
+        'デッキ構築',
+        'deckbuild__tabs',
+        [
+          { value: '探す', label: 'カードを探す' },
+          { value: 'デッキ', label: `デッキ（${view.count} 枚）` },
+        ],
+        phone.state.builderTab,
+        (tab) => {
+          phone.send({ kind: 'デッキ構築のタブ', tab })
+          // 切り替えた先は、先頭から見せる。タブは画面の上に付いて残るので、ページを先頭へ戻しても見失わない。
+          window.scrollTo(0, 0)
+        },
+      ),
+    )
+  }
 
   const columns = element('div', 'columns')
 
-  // 左列：絞り込み（上）とカードの詳細（下）。
-  const left = element('div', 'column')
-  left.append(filterPanelElement(view, handlers))
-  const detailPanel = poolDetailPanelElement(view.pinned === undefined ? undefined : view.detail(view.pinned), view, handlers)
-  left.append(detailPanel)
+  // 左列：絞り込み（上）とカードの詳細（下）。スマートフォンでは、絞り込みは畳んでおき、カードの詳細は
+  // 出さない（カードを押すと、シートで出る）。
+  const left = element('div', 'column column--left')
+  if (phone !== undefined) {
+    left.append(
+      phoneToggleElement(
+        isFiltering(view.filter) ? '絞り込み（絞り込み中）' : '絞り込み',
+        phone.state.builderFilter,
+        '構築の絞り込み',
+        'phone-filter-toggle',
+        () => phone.send({ kind: '構築の絞り込みを開閉' }),
+      ),
+    )
+  }
+  if (phone === undefined || phone.state.builderFilter) left.append(filterPanelElement(view, handlers))
+  const detailPanel =
+    phone === undefined
+      ? poolDetailPanelElement(view.pinned === undefined ? undefined : view.detail(view.pinned), view, handlers)
+      : undefined
+  if (detailPanel !== undefined) left.append(detailPanel)
 
   // カーソルを合わせている間は仮に出し、離れたらクリックで決めたものに戻す。**描き直さない**——
   // 一覧を丸ごと作り直すほどのことではない。
-  const detailBody = detailPanel.querySelector<HTMLElement>('.detail')
+  const detailBody = detailPanel?.querySelector<HTMLElement>('.detail') ?? null
   const showPinned = (): void => {
     if (detailBody !== null) fillPoolDetail(detailBody, view.pinned === undefined ? undefined : view.detail(view.pinned))
   }
@@ -2937,7 +3229,7 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
   center.append(poolPanel)
 
   // 右列：デッキ。
-  const right = element('div', 'column')
+  const right = element('div', 'column column--right')
   const deckAside = element('span', 'panel__aside')
   deckAside.append(element('strong', '', String(view.count)), ' 枚')
   const deckPanel = sectionPanel('panel--deck', 'デッキ', deckAside)
@@ -2956,7 +3248,7 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
   let unusableOrdinal = 0
   for (const row of view.deck) {
     if (row.kind === '使える') {
-      deckList.append(poolCardRowElement(row, row.key === view.pinned, handlers, hover, false))
+      deckList.append(poolCardRowElement(row, row.key === view.pinned, handlers, hover, false, view.phone))
     } else {
       unusableOrdinal += 1
       deckList.append(unusableCardRowElement(row.key, row.count, unusableOrdinal, handlers))
@@ -2965,18 +3257,31 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
   deckList.addEventListener('mouseleave', showPinned)
   deckPanel.append(deckList)
 
-  const savebar = element('div', 'savebar')
+  const savebar = element('div', phone === undefined ? 'savebar' : 'phonebar')
   // 一度も保存していない新しいデッキは、触っていなくても「保存しました」とは言えない。
   const saveState = view.unsaved ? '保存していない変更があります' : view.saved ? '保存しました' : ''
-  savebar.append(element('span', `savebar__state${view.unsaved ? ' savebar__state--未保存' : ''}`, saveState))
   const save = button('保存する', handlers.onSave, true)
   save.toggleAttribute('disabled', !view.savable)
-  savebar.append(save)
-  deckPanel.append(savebar)
+  if (phone === undefined) {
+    savebar.append(element('span', `savebar__state${view.unsaved ? ' savebar__state--未保存' : ''}`, saveState), save)
+    deckPanel.append(savebar)
+  } else {
+    // スマートフォンでは、枚数と保存を画面の下の帯に出し、どちらのタブでも見えるようにする（ADR-0034）。
+    // デッキの枚数は形式で決まった枚数が無いので、いまの枚数だけを出す。
+    const total = element('span', 'phonebar__count')
+    total.append(element('strong', '', String(view.count)), ' 枚')
+    savebar.append(total, element('span', `savebar__state${view.unsaved ? ' savebar__state--未保存' : ''}`, saveState), save)
+  }
   right.append(deckPanel)
 
   columns.append(left, center, right)
   node.append(columns)
+  if (phone !== undefined) node.append(savebar)
+
+  if (phone !== undefined && phone.state.sheetCard !== undefined) {
+    const sheet = cardSheetElements(view, handlers, phone, phone.state.sheetCard)
+    if (sheet !== undefined) node.append(...sheet)
+  }
 
   if (view.modal === '解説') node.append(descriptionModalElement(view, handlers))
 
