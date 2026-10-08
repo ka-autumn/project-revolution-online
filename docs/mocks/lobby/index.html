@@ -503,6 +503,8 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
   .lobby button { min-height: 2.75rem; }
   .lobby input[type='text'], .lobby input[type='search'], .lobby input[type='password'], .lobby select { min-height: 2.75rem; }
   .lobby .icon-button { min-width: 2.75rem; }
+  /* 入力欄は 16px 未満だと、iPhone で押したときに画面が拡大される */
+  .lobby input[type='text'], .lobby input[type='search'], .lobby input[type='password'], .lobby select, .lobby .rule select { font-size: 16px; }
 
   /* 見出しの帯：タイトルと自分の名前・アバターだけ */
   .lobby .topbar { gap: 0.5rem; padding: 0.35rem 0.6rem; }
@@ -565,7 +567,8 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
   .lobby .search { flex: 1 1 100%; min-width: 0; }
   .lobby .rooms { margin: 0 0.6rem 0.6rem; overflow: visible; }
   .lobby .rooms table, .lobby .rooms tbody { display: block; }
-  .lobby .rooms thead { display: none; }
+  /* 見出しの行は目には出さない。display: none にすると読み上げの木からも消えるので、読み上げにだけ残す */
+  .lobby .rooms thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .lobby .rooms tr {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
@@ -970,11 +973,17 @@ function deckSummary() {
   n.append(main, change)
   return n
 }
+/** タブが出す中身に、タブとの結び付きを付ける（中身の名前はタブの文字。タブからは aria-controls で指す） */
+const PANELS = { 対人戦: 2, CPU戦: 1 }
+function tabpanel(panel, mode, at) {
+  panel.id = `phone-panel-${mode}-${at}`; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', `phone-tab-${mode}`)
+}
 /** スマホで、対人戦・CPU戦のどちらの中身を出すかを切り替える */
 function phoneModeTabs() {
   const n = el('div', 'phone-only modetabs'); n.setAttribute('role', 'tablist'); n.setAttribute('aria-label', '対戦の始め方')
   for (const m of ['対人戦', 'CPU戦']) {
     const b = btn('', () => set({ phoneMode: m }), `modetab modetab--${m}`)
+    b.id = `phone-tab-${m}`; b.setAttribute('aria-controls', Array.from({ length: PANELS[m] }, (_, at) => `phone-panel-${m}-${at}`).join(' '))
     b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(state.phoneMode === m))
     b.append(el('span', 'modetab__title', m))
     n.append(b)
@@ -1072,13 +1081,14 @@ function renderRooms() {
   if (shown.length === 0) { box.append(el('p', 'rooms__none', '当てはまる部屋がありません')); return }
   const pages = Math.ceil(shown.length / ROOMS_PER_PAGE)
   const page = Math.min(state.roomPage, pages - 1)
-  const table = el('table')
-  const thead = el('thead'); const hr = el('tr')
-  for (const h of ['部屋名', 'ステータス', 'ルール', 'プレイヤー', '観戦', '']) hr.append(el('th', '', h))
+  // スマホでは CSS で札の形にする（display を変える）ので、表の役割を明示して、読み上げの構造を保つ
+  const table = el('table'); table.setAttribute('role', 'table')
+  const thead = el('thead'); thead.setAttribute('role', 'rowgroup'); const hr = el('tr'); hr.setAttribute('role', 'row')
+  for (const h of ['部屋名', 'ステータス', 'ルール', 'プレイヤー', '観戦', '']) { const th = el('th', '', h); th.setAttribute('role', 'columnheader'); hr.append(th) }
   thead.append(hr); table.append(thead)
-  const tbody = el('tbody')
+  const tbody = el('tbody'); tbody.setAttribute('role', 'rowgroup')
   for (const r of shown.slice(page * ROOMS_PER_PAGE, (page + 1) * ROOMS_PER_PAGE)) {
-    const tr = el('tr')
+    const tr = el('tr'); tr.setAttribute('role', 'row')
     const nameCell = el('td', 'room__name')
     if (r.locked) { const l = el('span', 'room__lock', '🔒'); l.setAttribute('role', 'img'); l.setAttribute('aria-label', '鍵付きの部屋'); l.title = '鍵付きの部屋'; nameCell.append(l) }
     nameCell.append(r.name ?? `${r.occupants[0]}の対戦部屋`)
@@ -1111,6 +1121,7 @@ function renderRooms() {
     if (r.status === '相手を待っている') act.append(...[].concat(refuse(btn('参加', () => { if (!noDeck()) enter('参加') }, 'button--small join'), noDeck(), `refusal-join-${r.code}`)))
     else act.append(btn('観戦', () => enter('観戦'), 'button--small watch'))
     tr.append(act)
+    for (const td of tr.children) td.setAttribute('role', 'cell')
     tbody.append(tr)
   }
   table.append(tbody)
@@ -1256,8 +1267,11 @@ function render() {
   // スマホ専用の部品（deckSummary・phoneModeTabs・.sheet-backdrop）は PC では display:none で、グリッドにも入らない
   const left = el('div', 'column'); left.append(deckSummary(), deckPanel())
   const center = el('div', 'column'); center.dataset.phoneMode = state.phoneMode
-  const modes = el('div', 'modes'); modes.append(humanMode(), cpuMode())
-  center.append(phoneModeTabs(), modes, roomsPanel())
+  const human = humanMode(), cpu = cpuMode(), rooms = roomsPanel()
+  // 対人戦のタブが出すのは、部屋を作る欄と部屋の一覧。CPU戦のタブが出すのは CPU戦の枠。中身はタブと読み上げで結ぶ
+  tabpanel(human, '対人戦', 0); tabpanel(rooms, '対人戦', 1); tabpanel(cpu, 'CPU戦', 0)
+  const modes = el('div', 'modes'); modes.append(human, cpu)
+  center.append(phoneModeTabs(), modes, rooms)
   const right = el('div', 'column'); right.append(newsPanel())
   cols.append(left, center, right)
   lobby.append(cols)

@@ -486,7 +486,7 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
   .deckbuild .phone-only { display: revert; }
 
   html, body { height: auto; }
-  .deckbuild { --card-width: 5.4rem; display: flex; flex-direction: column; gap: 0.5rem; height: auto; min-height: 100dvh; padding: 0.5rem; overflow: visible; }
+  .deckbuild { --card-width: clamp(4.6rem, calc((100vw - 4.6rem) / 3), 6.4rem); display: flex; flex-direction: column; gap: 0.5rem; height: auto; min-height: 100dvh; padding: 0.5rem; overflow: visible; }
   /* 下の帯（枚数と保存）に隠れないよう、デッキ構築の末尾に余白を足す */
   .deckbuild[class*='deckbuild--tab-'] { padding-bottom: 4.8rem; }
   .deckbuild .columns, .deckbuild--list .columns { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -497,6 +497,8 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
   .deckbuild button { min-height: 2.75rem; }
   .deckbuild input[type='text'], .deckbuild input[type='search'], .deckbuild input[type='number'], .deckbuild select { min-height: 2.75rem; }
   .deckbuild .icon-button { min-width: 2.75rem; }
+  /* 入力欄は 16px 未満だと、iPhone で押したときに画面が拡大される */
+  .deckbuild input[type='text'], .deckbuild input[type='search'], .deckbuild input[type='number'], .deckbuild textarea, .deckbuild select, .deckbuild .rule select { font-size: 16px; }
 
   /* 上の帯：折り返して、狭い幅に収める */
   .deckbuild .topbar { gap: 0.4rem 0.5rem; padding: 0.4rem 0.6rem; }
@@ -585,14 +587,15 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
   .deckbuild .sheet__counter .counter__count { min-width: 2.6rem; font-size: 1rem; }
 
   /* デッキ一覧：1 列。見出し → 絞り込み（畳む）→ 自分のデッキ → 既製デッキ */
-  .deckbuild--list .column--left { display: contents; }
-  .deckbuild--list .column--center { order: 1; }
-  .deckbuild--list .panel--presets { order: 2; }
+  /* 既製デッキの欄は、スマホの幅のときは DOM の順で自分のデッキの下に置いてある（order で並べ替えない） */
+  .deckbuild--list .columns > .panel { flex: none; }
   .deckbuild .decks { flex: none; overflow: visible; padding: 0.5rem; }
   .deckbuild .decks__grid { grid-template-columns: minmax(0, 1fr); }
   .deckbuild .deckcard .card { --card-width: 5rem; }
   .deckbuild .deckcard__actions { flex-wrap: wrap; }
-  .deckbuild .deckcard__actions button { flex: 1 1 28%; }
+  /* 3 つの文字のボタンと削除を 1 行に収める。入りきらない幅なら折り返す */
+  .deckbuild .deckcard__actions button { flex: 1 1 0; min-width: 4.5rem; padding-inline: 0.25rem; }
+  .deckbuild .deckcard__actions .icon-button { flex: none; min-width: 2.75rem; }
   .deckbuild .preset { flex-wrap: wrap; }
 
   /* 重ねる窓：幅いっぱいに出し、ボタンは折り返す */

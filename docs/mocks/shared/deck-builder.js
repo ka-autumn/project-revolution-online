@@ -275,6 +275,12 @@ function fold(label, values, chosen, key, shownAs = (v) => v) {
 /* ---- 描く ---- */
 const app = document.getElementById('app')
 let keepScroll = {}
+/** スマホの並べ方か。deck-builder.css の境目（幅 768px）と同じ。DOM の順を入れ替えるのに使う */
+const phoneQuery = matchMedia('(max-width: 768px)')
+const phoneWidth = () => phoneQuery.matches
+// 幅を行き来したら、DOM の順が変わるので描き直す
+phoneQuery.addEventListener('change', () => draw())
+
 function draw() {
   // 縦だけでなく横の位置も戻す（一覧表示は狭いと横にスクロールするので、−・＋を押すたびに左端へ戻らないように）
   for (const n of app.querySelectorAll('[data-keep-scroll]')) keepScroll[n.dataset.keepScroll] = { top: n.scrollTop, left: n.scrollLeft }
@@ -292,18 +298,25 @@ function builder() {
   // スマホ専用の部品（phone-only）は PC では display:none で、グリッドにも入らない
   root.append(topbarBuild(), phoneTabs())
   const columns = el('div', 'columns')
-  columns.append(leftColumn(), centerColumn(), rightColumn())
+  columns.append(tabpanel(leftColumn(), '探す', 0), tabpanel(centerColumn(), '探す', 1), tabpanel(rightColumn(), 'デッキ', 0))
   root.append(columns, phoneBar())
   if (state.pinned && byKey(state.pinned)) root.append(...phoneSheet(byKey(state.pinned)))
   if (state.modal) root.append(modal())
   return root
 }
 
+/** タブが出す中身の塊の数（探す: 左と真ん中の列、デッキ: 右の列）。中身には tabpanel と、タブ由来の名前を付ける */
+const TAB_PANELS = { 探す: 2, デッキ: 1 }
+function tabpanel(panel, key, at) {
+  panel.id = `phone-panel-${key}-${at}`; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', `phone-tab-${key}`)
+  return panel
+}
 /** スマホで、「カードを探す」「デッキ」を切り替えるタブ。デッキのほうには、いまの枚数を出す */
 function phoneTabs() {
   const n = el('div', 'phone-only phone-tabs'); n.setAttribute('role', 'tablist')
   for (const [key, label] of [['探す', 'カードを探す'], ['デッキ', `デッキ（${state.cards.length} 枚）`]]) {
     const b = btn(label, () => { state.phoneTab = key; draw(); window.scrollTo(0, 0) }, 'phone-tab')
+    b.id = `phone-tab-${key}`; b.setAttribute('aria-controls', Array.from({ length: TAB_PANELS[key] }, (_, at) => `phone-panel-${key}-${at}`).join(' '))
     b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(state.phoneTab === key))
     n.append(b)
   }
@@ -831,9 +844,10 @@ function deckList() {
     row.append(el('span', 'preset__name', name), btn('コピーして組む', () => go('deck-builder'), 'button--small'))
     pb.append(row)
   }
-  presets.append(pb); left.append(presets)
+  presets.append(pb)
 
-  columns.append(left, center)
+  // PC は左の列の下。スマホは自分のデッキの下（見た目の順と Tab・読み上げの順を DOM の順でそろえる。CSS の order は使わない）
+  if (phoneWidth()) { columns.append(left, center, presets) } else { left.append(presets); columns.append(left, center) }
   root.append(columns)
   if (state.modal) root.append(modal())
   return root
