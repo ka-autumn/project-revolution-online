@@ -2950,7 +2950,7 @@ function checkNoticeElement(check: CheckView, phone: PhoneControl): HTMLElement 
       spoken = `規定を満たしていない点が ${check.lines.length} 件あります。押すとデッキのタブで見られます`
       break
     case '確かめられない':
-      label = '規定を確かめられません'
+      label = '確かめられません'
       spoken = '使えなくなったカードが入っていて、規定を確かめられません。押すとデッキのタブで見られます'
       break
     default:
@@ -3241,12 +3241,7 @@ function cardSheetElements(view: DeckEditorView, handlers: DeckEditorHandlers, p
 export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
   const phone = view.phone
   // スマートフォンでは、「カードを探す」「デッキ」のタブで 2 つの見え方を切り替える（CSS が class で出し分ける）。
-  // 下の帯に規定外の印が出る間は帯が高くなるので、末尾の余白を足す（`deckbuild--notice`）。
-  const noticed = phone !== undefined && (view.check.kind === '満たしていない' || view.check.kind === '確かめられない')
-  const node = element(
-    'div',
-    phone === undefined ? 'deckbuild' : `deckbuild deckbuild--tab-${phone.state.builderTab}${noticed ? ' deckbuild--notice' : ''}`,
-  )
+  const node = element('div', phone === undefined ? 'deckbuild' : `deckbuild deckbuild--tab-${phone.state.builderTab}`)
   node.append(editorTopbarElement(view, handlers))
   if (phone !== undefined) {
     node.append(
@@ -3352,10 +3347,11 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
     const total = element('span', 'phonebar__count')
     total.append(element('strong', '', String(view.count)), ' 枚')
     // 規定を満たしていないことは「デッキ」のタブの中にしか出ないので、「カードを探す」のタブでも気づけるよう、
-    // 満たしていないときだけ印を出す。確かめている間・満たしているときは出さない。
+    // 満たしていないときだけ印を出す。帯を高くしないよう、保存の状態の文の場所に、その文の代わりに出す。
+    // 確かめている間・満たしているときは出さず、保存の状態の文を出す。
     const notice = checkNoticeElement(view.check, phone)
-    if (notice !== undefined) savebar.append(notice)
-    savebar.append(total,element('span', `savebar__state${view.unsaved ? ' savebar__state--未保存' : ''}`, saveState), save)
+    const state = element('span', `savebar__state${view.unsaved ? ' savebar__state--未保存' : ''}`, saveState)
+    savebar.append(total, notice ?? state, save)
   }
   right.append(deckPanel)
 

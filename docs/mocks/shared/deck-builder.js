@@ -332,8 +332,7 @@ const panel = (cls, title, aside) => { const p = el('section', `panel ${cls}`); 
 
 /* ================= デッキを組む ================= */
 function builder() {
-  // 下の帯に規定外の印が出る間は帯が高くなるので、末尾の余白を足す
-  const root = el('div', `deckbuild deckbuild--tab-${state.phoneTab}${checkOf().kind === '満たしている' ? '' : ' deckbuild--notice'}`)
+  const root = el('div', `deckbuild deckbuild--tab-${state.phoneTab}`)
   // スマホ専用の部品（phone-only）は PC では display:none で、グリッドにも入らない
   root.append(topbarBuild(), phoneTabs())
   const columns = el('div', 'columns')
@@ -385,18 +384,19 @@ function phoneBar() {
   const hasUnusable = state.cards.some((k) => !known.has(k))
   const save = btn('保存する', () => { state.saved = true; draw() }, 'button--primary')
   save.disabled = hasUnusable || state.saved
-  // 規定を満たしていないときだけ出す印。押すと「デッキ」のタブへ移り、確かめた結果の文が見える位置へ持っていく
+  // 規定を満たしていないときだけ出す印。保存の状態の文の代わりに出し、押すと「デッキ」のタブへ移って、確かめた結果の文が見える位置へ持っていく
   const check = checkOf()
+  const saveState = el('span', `savebar__state${state.saved ? '' : ' savebar__state--未保存'}`, state.saved ? '保存しました' : '未保存')
+  let notice
   if (check.kind !== '満たしている') {
-    const label = check.kind === '満たしていない' ? `規定外 ${check.lines.length} 件` : '規定を確かめられません'
+    const label = check.kind === '満たしていない' ? `規定外 ${check.lines.length} 件` : '確かめられません'
     const spoken = check.kind === '満たしていない' ? `規定を満たしていない点が ${check.lines.length} 件あります` : '使えなくなったカードが入っていて、規定を確かめられません'
-    const notice = btn('', () => switchTab('デッキ', true), 'phonebar__notice')
+    notice = btn('', () => switchTab('デッキ', true), 'phonebar__notice')
     notice.setAttribute('aria-label', `${label}。${spoken}。押すとデッキのタブで見られます`)
     const mark = el('span', 'phonebar__notice-mark', '⚠'); mark.setAttribute('aria-hidden', 'true')
     notice.append(mark, el('span', '', label))
-    n.append(notice)
   }
-  n.append(total,el('span', `savebar__state${state.saved ? '' : ' savebar__state--未保存'}`, state.saved ? '保存しました' : '未保存'), save)
+  n.append(total, notice ?? saveState, save)
   return n
 }
 /** スマホで、カードを 1 回タップしたときに下から出す詳細のシート。枚数を増減する口と、一番下に「閉じる」 */

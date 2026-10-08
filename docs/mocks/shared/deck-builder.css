@@ -560,10 +560,9 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
   .deckbuild .savebar { display: none; }
 
   /* 画面の下に常に出しておく帯：枚数・保存の状態・保存 */
-  /* 規定を満たしていないときだけ出る印。帯の 1 行目を幅いっぱいに使う */
-  .deckbuild .phonebar__notice { flex: 1 0 100%; display: flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 2.75rem; border-color: var(--opponent); background: var(--opponent-soft); color: var(--opponent); font-weight: 700; }
-  .deckbuild--notice[class*='deckbuild--tab-'] { padding-bottom: 8.6rem; }
-  .deckbuild .phonebar { position: fixed; inset: auto 0 0 0; z-index: 60; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--panel-edge); background: rgb(255 248 228 / 0.97); box-shadow: 0 -4px 14px rgb(120 60 0 / 0.25); }
+  .deckbuild .phonebar { position: fixed; inset: auto 0 0 0; z-index: 60; display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--panel-edge); background: rgb(255 248 228 / 0.97); box-shadow: 0 -4px 14px rgb(120 60 0 / 0.25); }
+  /* 規定を満たしていないときだけ出る印。保存の状態の文の代わりに、同じ場所へ出す（帯の高さは変えない） */
+  .deckbuild .phonebar__notice { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 0.3rem; min-height: 2.75rem; padding-inline: 0.4rem; border-color: var(--opponent); background: var(--opponent-soft); color: var(--opponent); font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
   .deckbuild .phonebar__count { font-size: 0.9rem; white-space: nowrap; }
   .deckbuild .phonebar__count strong { font-size: 1.25rem; }
   .deckbuild .phonebar .savebar__state { flex: 1; min-width: 0; }
