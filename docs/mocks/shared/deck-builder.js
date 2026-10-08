@@ -390,7 +390,7 @@ function phoneBar() {
   let notice
   if (check.kind !== '満たしている') {
     const label = check.kind === '満たしていない' ? `規定外 ${check.lines.length} 件` : '確かめられません'
-    const spoken = check.kind === '満たしていない' ? `規定を満たしていない点が ${check.lines.length} 件あります` : '使えなくなったカードが入っていて、規定を確かめられません'
+    const spoken = check.kind === '満たしていない' ? `規定を満たしていない点が ${check.lines.length} 件あります` : '使えなくなったカードが入っています'
     notice = btn('', () => switchTab('デッキ', true), 'phonebar__notice')
     notice.setAttribute('aria-label', `${label}。${spoken}。押すとデッキのタブで見られます`)
     const mark = el('span', 'phonebar__notice-mark', '⚠'); mark.setAttribute('aria-hidden', 'true')

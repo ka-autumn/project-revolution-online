@@ -2951,7 +2951,7 @@ function checkNoticeElement(check: CheckView, phone: PhoneControl): HTMLElement 
       break
     case '確かめられない':
       label = '確かめられません'
-      spoken = '使えなくなったカードが入っていて、規定を確かめられません。押すとデッキのタブで見られます'
+      spoken = '使えなくなったカードが入っています。押すとデッキのタブで見られます'
       break
     default:
       return undefined
