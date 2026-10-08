@@ -1183,11 +1183,31 @@ export interface LobbyView {
  * 開いたら中へ、閉じたら開いた元へ手を戻す（置き直しは `phone-focus.ts`）。
  */
 
-/** タブの並び。押したタブが選ばれ、左右の矢印・Home・End で移る。移る先へ手を置くため、描き直しの前に印を替える。 */
+const phoneTabId = (name: string, value: string): string => `phone-tab-${name}-${value}`
+const phonePanelId = (name: string, value: string, at: number): string => `phone-panel-${name}-${value}-${at}`
+/** デッキ構築のタブの並びの名前。タブと中身の両方が同じ名前で結ぶ。 */
+const BUILDER_TABS = 'デッキ構築'
+
+/**
+ * タブが出す中身に、タブとの結び付きを付ける。中身の名前はタブの文字になり、タブからは `aria-controls` で指される。
+ * 1 つのタブが複数の塊を出すときは、`at` で塊ごとに別の印にする（タブの `controls` の数と合わせる）。
+ */
+function phoneTabpanel(panel: HTMLElement, name: string, value: string, at: number): HTMLElement {
+  panel.id = phonePanelId(name, value, at)
+  panel.setAttribute('role', 'tabpanel')
+  panel.setAttribute('aria-labelledby', phoneTabId(name, value))
+
+  return panel
+}
+
+/**
+ * タブの並び。押したタブが選ばれ、左右の矢印・Home・End で移る。移る先へ手を置くため、描き直しの前に印を替える。
+ * `panels` は、そのタブが出す中身の塊の数。中身には `phoneTabpanel` で同じ順に印を付ける。
+ */
 function phoneTabsElement<T extends string>(
   name: string,
   className: string,
-  tabs: readonly { readonly value: T; readonly label: string; readonly className?: string }[],
+  tabs: readonly { readonly value: T; readonly label: string; readonly panels: number; readonly className?: string }[],
   current: T,
   onChoose: (tab: T) => void,
 ): HTMLElement {
@@ -1199,7 +1219,9 @@ function phoneTabsElement<T extends string>(
     const each = button(tab.label, () => onChoose(tab.value))
     each.classList.add('phone-tab')
     if (tab.className !== undefined) each.classList.add(tab.className)
+    each.id = phoneTabId(name, tab.value)
     each.setAttribute('role', 'tab')
+    each.setAttribute('aria-controls', Array.from({ length: tab.panels }, (_, at) => phonePanelId(name, tab.value, at)).join(' '))
     each.setAttribute('aria-selected', String(tab.value === current))
     each.tabIndex = tab.value === current ? 0 : -1
     each.dataset[KEEP_FOCUS] = `${name}-${tab.value}`
@@ -1466,15 +1488,19 @@ function deckRowElement(
   const choose = (id: DeckId): void => {
     radio.dataset[KEEP_FOCUS] = PICKED_DECK_KEY
     handlers.onDeck(id)
-    // スマートフォンでは、選んだらシートを閉じる（選んだデッキは、上の 1 行に出る）。選んだ印を描いてから閉じる。
+  }
+  // スマートフォンでは、押す・Space・Enter で選んだらシートを閉じる（選んだデッキは、上の 1 行に出る）。
+  // 閉じるのは選んだ印を描いたあと。矢印で隣へ移るのは見て回る動きなので、閉じない。
+  const chooseAndClose = (id: DeckId): void => {
+    choose(id)
     view.phone?.send({ kind: 'デッキのシートを閉じる' })
   }
   if (choosable) {
-    radio.addEventListener('click', () => choose(deck.id))
+    radio.addEventListener('click', () => chooseAndClose(deck.id))
     radio.addEventListener('keydown', (event) => {
       if (event.key === ' ' || event.key === 'Enter') {
         event.preventDefault()
-        choose(deck.id)
+        chooseAndClose(deck.id)
         return
       }
       // ラジオボタンのまとまりと同じく、矢印で隣のデッキへ移って選ぶ。選べないデッキは飛ばす。
@@ -1776,25 +1802,35 @@ function seatElement(name: string | undefined): HTMLElement {
 
 /** 対戦部屋一覧の表。 */
 function lobbyRoomsTableElement(rows: readonly RoomView[], handlers: LobbyHandlers): HTMLElement {
+  // 表の役割を明示する。スマートフォンでは CSS で札の形にする（`display` を変える）ので、ブラウザによっては
+  // 表としての読み上げの構造が落ちる。役割を書いておけば、1 部屋ずつの行と見出しのまとまりが保たれる（ADR-0034）。
   const table = document.createElement('table')
+  table.setAttribute('role', 'table')
   const head = document.createElement('tr')
+  head.setAttribute('role', 'row')
   for (const heading of ['部屋名', 'ステータス', 'ルール', 'プレイヤー']) {
     const cell = document.createElement('th')
+    cell.setAttribute('role', 'columnheader')
     cell.textContent = heading
     head.append(cell)
   }
   const action = document.createElement('th')
+  action.setAttribute('role', 'columnheader')
   action.append(element('span', 'lobby__hidden', '操作'))
   head.append(action)
   const thead = document.createElement('thead')
+  thead.setAttribute('role', 'rowgroup')
   thead.append(head)
   table.append(thead)
 
   const body = document.createElement('tbody')
+  body.setAttribute('role', 'rowgroup')
   for (const view of rows) {
     const row = document.createElement('tr')
+    row.setAttribute('role', 'row')
     const cell = (className: string, ...children: (Node | string)[]): HTMLElement => {
       const node = document.createElement('td')
+      node.setAttribute('role', 'cell')
       node.className = className
       node.append(...children)
       row.append(node)
@@ -1916,24 +1952,31 @@ export function lobbyElement(view: LobbyView, handlers: LobbyHandlers, focused =
   const center = element('div', 'lobby__column')
   const human = lobbyHumanElement(view, handlers)
   const modes = element('div', 'lobby__modes')
-  modes.append(human.node, lobbyCpuElement(view, handlers))
+  const cpu = lobbyCpuElement(view, handlers)
+  const rooms = lobbyRoomsPanelElement(view, handlers)
+  modes.append(human.node, cpu)
   // スマートフォンでは、上に対人戦・CPU戦のタブを置き、選んだ方の中身だけを見せる（CSS が `data-phone-mode` で出し分ける）。
+  // 対人戦のタブが出すのは、部屋を作る欄と部屋の一覧の 2 つ。CPU戦のタブが出すのは CPU戦の枠。
   if (phone !== undefined) {
+    const tabs = '対戦の始め方'
     center.dataset.phoneMode = phone.state.lobbyMode
+    phoneTabpanel(human.node, tabs, '対人戦', 0)
+    phoneTabpanel(rooms, tabs, '対人戦', 1)
+    phoneTabpanel(cpu, tabs, 'CPU戦', 0)
     center.append(
       phoneTabsElement<LobbyMode>(
-        '対戦の始め方',
+        tabs,
         'lobby__modetabs',
         [
-          { value: '対人戦', label: '対人戦', className: 'lobby__modetab--human' },
-          { value: 'CPU戦', label: 'CPU戦', className: 'lobby__modetab--cpu' },
+          { value: '対人戦', label: '対人戦', panels: 2, className: 'lobby__modetab--human' },
+          { value: 'CPU戦', label: 'CPU戦', panels: 1, className: 'lobby__modetab--cpu' },
         ],
         phone.state.lobbyMode,
         (mode) => phone.send({ kind: 'ロビーのモード', mode }),
       ),
     )
   }
-  center.append(modes, lobbyRoomsPanelElement(view, handlers))
+  center.append(modes, rooms)
 
   const right = element('div', 'lobby__column')
   right.append(lobbyNewsPanelElement())
@@ -2186,11 +2229,10 @@ export function deckListElement(view: DeckListView, handlers: DeckListHandlers):
     )
   }
   if (phone === undefined || phone.state.listFilter) left.append(deckSearchPanelElement(view, handlers))
+  // 既製デッキの欄は、PC では左の列の下。スマートフォンでは自分のデッキの下に置く。見た目の順と Tab・読み上げの順を
+  // 一致させるため、CSS の `order` ではなく DOM の順で並べる。
   const presetsPanel = presetsPanelElement(view.presets, view.waiting, handlers)
-  if (presetsPanel !== undefined) {
-    presetsPanel.classList.add('panel--presets')
-    left.append(presetsPanel)
-  }
+  if (presetsPanel !== undefined && phone === undefined) left.append(presetsPanel)
 
   const center = element('div', 'column column--center')
   const aside = element('span', 'panel__aside')
@@ -2205,6 +2247,7 @@ export function deckListElement(view: DeckListView, handlers: DeckListHandlers):
   center.append(mine)
 
   columns.append(left, center)
+  if (presetsPanel !== undefined && phone !== undefined) columns.append(presetsPanel)
   node.append(columns)
 
   if (view.refusal !== undefined) node.append(element('p', 'refusal', `行えませんでした: ${view.refusal}`))
@@ -3167,11 +3210,11 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
   if (phone !== undefined) {
     node.append(
       phoneTabsElement<BuilderTab>(
-        'デッキ構築',
+        BUILDER_TABS,
         'deckbuild__tabs',
         [
-          { value: '探す', label: 'カードを探す' },
-          { value: 'デッキ', label: `デッキ（${view.count} 枚）` },
+          { value: '探す', label: 'カードを探す', panels: 2 },
+          { value: 'デッキ', label: `デッキ（${view.count} 枚）`, panels: 1 },
         ],
         phone.state.builderTab,
         (tab) => {
@@ -3273,6 +3316,13 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
     savebar.append(total, element('span', `savebar__state${view.unsaved ? ' savebar__state--未保存' : ''}`, saveState), save)
   }
   right.append(deckPanel)
+
+  // 「カードを探す」のタブが出すのは左と真ん中の列、「デッキ」のタブが出すのは右の列。
+  if (phone !== undefined) {
+    phoneTabpanel(left, BUILDER_TABS, '探す', 0)
+    phoneTabpanel(center, BUILDER_TABS, '探す', 1)
+    phoneTabpanel(right, BUILDER_TABS, 'デッキ', 0)
+  }
 
   columns.append(left, center, right)
   node.append(columns)

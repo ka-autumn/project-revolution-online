@@ -133,7 +133,7 @@ import {
 } from './view-model.js'
 import type { Overlay, HandRefusal, RoomTab } from './view-model.js'
 import { closedByCancel, escapeTopLayer, focusBefore, markDialog, settleFocus } from './dialog-focus.js'
-import { PHONE_WIDTH_QUERY, initialPhone, isPhoneWidth, reducePhone, settlePhone, takePending } from './phone.js'
+import { PHONE_WIDTH_QUERY, initialPhone, isPhoneWidth, reducePhone, returnedToPhone, settlePhone, takePending } from './phone.js'
 import type { PhoneControl, PhonePending, PhoneState } from './phone.js'
 import { settlePhoneFocus } from './phone-focus.js'
 
@@ -1939,11 +1939,15 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     try {
       settleLobbyView()
       settlePhoneView()
-      // 手の置き直しは 1 度だけ。幅が PC のときは、状態を持っていても渡さず、使いもしない。
-      const taken = takePending(phoneState)
-      phoneState = taken.state
+      // 手の置き直しは 1 度だけ。幅が PC のときは、状態を持っていても渡さず、使いもしない——取り出して捨てることもしない。
+      let pending: PhonePending | undefined
+      if (isPhoneWidth()) {
+        const taken = takePending(phoneState)
+        phoneState = taken.state
+        pending = taken.pending
+      }
       const phone: PhoneControl | undefined = isPhoneWidth() ? phoneControl() : undefined
-      draw(root, session, link, connection, overlay, picking(), lobby(), naming(), building(), duelInteraction(), phone, phone === undefined ? undefined : taken.pending)
+      draw(root, session, link, connection, overlay, picking(), lobby(), naming(), building(), duelInteraction(), phone, pending)
       // 描いたあとに送る。先に送ると、`draw` が戻すスクロールの位置で上書きされる。
       if (revealCpuDeck) {
         revealCpuDeck = false
@@ -2136,7 +2140,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   // スマートフォンの幅と PC の幅を行き来したら、部品の出入りが変わるので描き直す（ADR-0034）。
   const phoneQuery = window.matchMedia(PHONE_WIDTH_QUERY)
-  const onPhoneWidthChange = (): void => redraw()
+  const onPhoneWidthChange = (): void => {
+    // シートを開いたまま PC の幅を経て戻ったら、作り直したシートの中へ手を置き直す。
+    if (isPhoneWidth()) phoneState = returnedToPhone(phoneState)
+    redraw()
+  }
   phoneQuery.addEventListener('change', onPhoneWidthChange)
 
   redraw()

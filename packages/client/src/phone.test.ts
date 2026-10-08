@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { initialPhone, isPhoneWidth, reducePhone, rulesSummaryOf, settlePhone, tabAfterKey, takePending } from './phone.js'
+import { initialPhone, isPhoneWidth, reducePhone, returnedToPhone, rulesSummaryOf, settlePhone, tabAfterKey, takePending } from './phone.js'
 
 describe('スマートフォンの画面の中の状態（ADR-0034）', () => {
   it('テストの環境のように画面が無ければ、スマートフォンの幅ではない', () => {
@@ -126,5 +126,21 @@ describe('デッキの設定の見出しに出す、いまの形式とリスト'
 
   it('選んだリストがもう無ければ、選ぶところと同じく先頭にする', () => {
     expect(rulesSummaryOf(['構築戦'], undefined, lists, { kind: '禁止／制限リスト', id: 'x' })).toBe('構築戦・第1期')
+  })
+})
+
+describe('PC の幅を経てスマートフォンの幅へ戻ったとき', () => {
+  it('シートを開いたままなら、手をシートの中へ置き直す', () => {
+    const opened = takePending(reducePhone(initialPhone(), { kind: 'デッキのシートを開く', opener: '変更' })).state
+    expect(opened.pending).toBeUndefined()
+    expect(returnedToPhone(opened).pending).toEqual({ kind: 'シートの中へ' })
+
+    const card = takePending(reducePhone(initialPhone(), { kind: 'カードのシートを開く', card: 'a', opener: 'カード-a' })).state
+    expect(returnedToPhone(card).pending).toEqual({ kind: 'シートの中へ' })
+  })
+
+  it('シートを開いていなければ、何も動かさない（同じ値を返す）', () => {
+    const state = initialPhone()
+    expect(returnedToPhone(state)).toBe(state)
   })
 })

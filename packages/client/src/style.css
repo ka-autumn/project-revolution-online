@@ -5270,11 +5270,13 @@ body {
   .lobby input[type='text'],
   .lobby input[type='search'],
   .lobby select,
+  .lobby .lobby__rule-select,
   .deckbuild input[type='text'],
   .deckbuild input[type='search'],
   .deckbuild input[type='number'],
   .deckbuild textarea,
-  .deckbuild select {
+  .deckbuild select,
+  .deckbuild .lobby__rule-select {
     font-size: 16px;
   }
 
@@ -5512,8 +5514,13 @@ body {
     display: block;
   }
 
+  /* 見出しの行は目には出さない。`display: none` にすると読み上げの木からも消えるので、読み上げにだけ残す。 */
   .lobby .lobby__rooms thead {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 
   .lobby .lobby__rooms tr {
@@ -5909,16 +5916,9 @@ body {
 
   /* ---------- デッキ一覧：1 列。見出し → 絞り込み（畳む）→ 自分のデッキ → 既製デッキ ---------- */
 
-  .deckbuild--list .column--left {
-    display: contents;
-  }
-
-  .deckbuild--list .column--center {
-    order: 1;
-  }
-
-  .deckbuild--list .panel--presets {
-    order: 2;
+  /* 既製デッキの欄は、DOM の順で自分のデッキの下に置いてある（`order` で並べ替えない） */
+  .deckbuild--list .columns > .panel {
+    flex: none;
   }
 
   .deckbuild--list .decklist {
@@ -5955,22 +5955,37 @@ body {
     flex-wrap: wrap;
   }
 
-  /* 重ねる窓（解説）：幅いっぱいに出し、ボタンは折り返す */
-  .deckbuild .confirm {
+  /*
+   * 重ねる窓（解説・確認・共有）：幅いっぱいに出し、ボタンは折り返す。窓は `root` の直下に作られるものもあり
+   * （確認・共有）、`.deckbuild` の中にあるとは限らないので、`.confirm` だけで当てる。使うのはデッキの流れだけ。
+   */
+  .confirm {
     padding: 0.5rem;
   }
 
-  .deckbuild .confirm__box {
+  .confirm__box {
+    box-sizing: border-box;
     width: 100%;
     max-height: 92dvh;
     overflow-y: auto;
   }
 
-  .deckbuild .confirm__buttons {
+  .confirm__buttons {
     flex-wrap: wrap;
   }
 
-  .deckbuild .confirm button {
+  .confirm button {
+    min-height: 2.75rem;
+  }
+
+  .confirm input,
+  .confirm select,
+  .confirm textarea {
+    font-size: 16px;
+  }
+
+  .confirm input[type='text'],
+  .confirm select {
     min-height: 2.75rem;
   }
 }

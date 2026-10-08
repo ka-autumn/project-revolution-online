@@ -136,6 +136,16 @@ export function takePending(state: PhoneState): { readonly pending: PhonePending
   return { pending: state.pending, state: { ...state, pending: undefined } }
 }
 
+/**
+ * 幅が PC からスマートフォンへ戻った直後の状態。シートを開いたままだったなら、作り直されたシートの中へ手を置き直す
+ * （PC の幅の間に描き直されて、手はシートから離れている）。開いていなければ、そのまま返す。
+ */
+export function returnedToPhone(state: PhoneState): PhoneState {
+  if (!state.deckSheet && state.sheetCard === undefined) return state
+
+  return { ...state, pending: { kind: 'シートの中へ' } }
+}
+
 /** 呼ぶ側が描く側へ渡す窓口。PC の幅の間は渡さない（`isPhoneWidth`）。 */
 export interface PhoneControl {
   readonly state: PhoneState
