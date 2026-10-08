@@ -7,6 +7,12 @@
   </head>
   <body>
     <main id="board"></main>
+    <!-- 横向きのときだけ見える案内（ADR-0034）。画面は #board の中を描き直すので、その外に静的に置く。 -->
+    <div class="rotate-cover" role="alert">
+      <span class="rotate-cover__icon" aria-hidden="true">⟲</span>
+      <p>画面を縦向きにしてください</p>
+      <p class="rotate-cover__sub">スマートフォンでは縦向きで遊べます</p>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

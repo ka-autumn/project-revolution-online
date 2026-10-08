@@ -74,6 +74,19 @@ button.b:disabled { opacity: 0.5; cursor: default; }
 .dialog__actions button { width: 100%; text-align: left; }
 .dialog__row { display: flex; gap: var(--gap); justify-content: flex-end; }
 .dialog__cancel { margin-top: var(--gap-lg); display: flex; justify-content: flex-end; }
+
+/* ---------- 横向きのスマートフォン：画面全体を覆って、縦向きにするよう案内する（ADR-0034。どの画面でも同じ） ---------- */
+.rotate-cover { display: none; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .rotate-cover {
+    position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem;
+    color: #8a4700; background: radial-gradient(ellipse 60% 55% at 50% 46%, #fffdf6 0%, #ffeec2 40%, #fbc766 100%);
+    font-family: 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif; font-size: 1.1rem; font-weight: 700; text-align: center;
+  }
+  .rotate-cover p { margin: 0; }
+  .rotate-cover__icon { font-size: 2.6rem; line-height: 1; }
+  .rotate-cover__sub { color: #7d6848; font-size: 0.85rem; font-weight: 400; }
+}
 </style>
 </head>
 <body>
@@ -176,5 +189,10 @@ function show(v) {
 tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.v)))
 show(location.hash.slice(1) in variants ? location.hash.slice(1) : 'confirm')
 </script>
+<div class="rotate-cover" role="alert">
+  <span class="rotate-cover__icon" aria-hidden="true">⟲</span>
+  <p>画面を縦向きにしてください</p>
+  <p class="rotate-cover__sub">スマートフォンでは縦向きで遊べます</p>
+</div>
 </body>
 </html>

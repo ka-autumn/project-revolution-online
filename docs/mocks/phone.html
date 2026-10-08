@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>スマートフォンの大きさで見る</title>
+<!--
+  各画面のモックを、スマートフォンの大きさの枠に入れて見るためのページ（ADR-0034）。
+  枠の中のモックは、枠の幅を画面の幅として受け取るので、モックのスマートフォン向けの CSS がそのまま効く。
+  モックそのものは変えない。ここは枠の大きさと、どのモックを入れるかを切り替えるだけ。
+-->
+<style>
+:root {
+  color-scheme: light;
+  --ink: #3b2a12;
+  --ink-dim: #7d6848;
+  --heading: #8a4700;
+  --gold: #dca640;
+  --gold-deep: #b07a1c;
+  --gold-bright: #f7c956;
+}
+* { box-sizing: border-box; }
+body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  gap: 1rem;
+  height: 100vh;
+  margin: 0;
+  padding: 1rem;
+  color: var(--ink);
+  background: #e9e4da;
+  font: 14px system-ui, sans-serif;
+}
+.stage {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+/* 枠は端末の外形に見立てる。中の iframe が、選んだ大きさそのものになる */
+/* 縮めたあとの大きさの箱。枠は左上を起点に縮め、この箱にちょうど収める */
+.device-box { width: var(--box-w); height: var(--box-h); }
+.device {
+  transform: scale(var(--fit, 1));
+  transform-origin: 0 0;
+  width: max-content;
+  padding: 10px;
+  border-radius: 28px;
+  background: #222;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.3);
+}
+.device iframe {
+  display: block;
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
+}
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  overflow-y: auto;
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  background: #fffdf6;
+}
+.panel h1 { margin: 0; color: var(--heading); font-size: 1.05rem; }
+.panel h2 { margin: 0 0 0.4rem; color: var(--heading); font-size: 0.85rem; }
+.panel p { margin: 0; color: var(--ink-dim); font-size: 0.8rem; line-height: 1.6; }
+.choices { display: flex; flex-direction: column; gap: 0.3rem; }
+.choices button {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--gold);
+  border-radius: 7px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.choices button[aria-pressed='true'] {
+  border-color: var(--gold-deep);
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  font-weight: 700;
+}
+.panel a { color: var(--heading); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<main class="stage">
+  <div class="device-box"><div class="device"><iframe id="frame" title="モック"></iframe></div></div>
+</main>
+
+<aside class="panel" aria-label="切り替え">
+  <h1>スマートフォンの大きさで見る</h1>
+  <p>枠の中は、選んだ大きさの画面として表示される。枠の中で画面を移っても、大きさはそのまま。</p>
+  <section>
+    <h2>画面</h2>
+    <div class="choices" id="screens"></div>
+  </section>
+  <section>
+    <h2>大きさ</h2>
+    <div class="choices" id="sizes"></div>
+  </section>
+  <a id="open" target="_blank" rel="noopener">枠の外で開く</a>
+</aside>
+
+<script>
+const screens = [
+  ['naming', '名前を決める画面'],
+  ['lobby', 'ロビー'],
+  ['deck-list', 'デッキ一覧'],
+  ['deck-builder', 'デッキ構築'],
+  ['waiting', '相手を待っている間の画面'],
+  ['duel', '対戦画面'],
+  ['duel-dialogs', '対戦中のダイアログ'],
+]
+// 幅 360〜430px の縦向きが対象（ADR-0034）。664 と 844 は、iPhone のブラウザでアドレスバーが出ている・隠れているときの高さの目安。
+// 横向きは、縦向きにするよう案内する画面を見るためのもの
+const sizes = [
+  ['360x640', '360×640（小さめの Android）'],
+  ['390x664', '390×664（iPhone・アドレスバーあり）'],
+  ['390x844', '390×844（iPhone・アドレスバーなし）'],
+  ['430x932', '430×932（大きめの iPhone）'],
+  ['844x390', '844×390（横向き）'],
+]
+
+const frame = document.getElementById('frame')
+let current = { screen: 'duel', size: '390x664' }
+
+function choices(id, list, key) {
+  const node = document.getElementById(id)
+  for (const [value, label] of list) {
+    const b = document.createElement('button')
+    b.type = 'button'
+    b.textContent = label
+    b.dataset.value = value
+    b.addEventListener('click', () => show({ ...current, [key]: value }))
+    node.append(b)
+  }
+}
+
+function show(next) {
+  const screenChanged = next.screen !== current.screen || !frame.getAttribute('src')
+  current = next
+  const [w, h] = current.size.split('x').map(Number)
+  frame.width = String(w)
+  frame.height = String(h)
+  const src = `${current.screen}/index.html`
+  if (screenChanged) frame.src = src
+  document.getElementById('open').href = src
+  for (const b of document.querySelectorAll('#screens button')) b.setAttribute('aria-pressed', String(b.dataset.value === current.screen))
+  for (const b of document.querySelectorAll('#sizes button')) b.setAttribute('aria-pressed', String(b.dataset.value === current.size))
+  history.replaceState(null, '', `#${current.screen},${current.size}`)
+  fit()
+}
+
+// 置き場より枠が大きいときは、枠ごと縮めて見せる。transform で縮めても、枠の中の画面の幅（モックが
+// 受け取る幅）は選んだ大きさのまま変わらない
+function fit() {
+  const stage = document.querySelector('.stage')
+  const device = document.querySelector('.device')
+  const w = frame.width * 1 + 20
+  const h = frame.height * 1 + 20
+  const scale = Math.min(1, stage.clientWidth / w, stage.clientHeight / h)
+  device.style.setProperty('--fit', String(scale))
+  const box = device.parentElement
+  box.style.setProperty('--box-w', `${w * scale}px`)
+  box.style.setProperty('--box-h', `${h * scale}px`)
+}
+addEventListener('resize', fit)
+
+choices('screens', screens, 'screen')
+choices('sizes', sizes, 'size')
+const [hashScreen, hashSize] = decodeURIComponent(location.hash.slice(1)).split(',')
+show({
+  screen: screens.some(([v]) => v === hashScreen) ? hashScreen : current.screen,
+  size: sizes.some(([v]) => v === hashSize) ? hashSize : current.size,
+})
+</script>
+</body>
+</html>

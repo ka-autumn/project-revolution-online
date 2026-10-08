@@ -2,6 +2,7 @@ import './style.css'
 import { SIGN_IN_PATH } from '@revolution/engine'
 import { mount } from './index.js'
 import { mountPublicShare } from './public-share.js'
+import { watchRotateCover } from './rotate-cover.js'
 import { recipeKeyFromPath, shareKeyFromPath, takePendingRecipe, takePendingShare } from './recipe.js'
 
 /**
@@ -92,6 +93,9 @@ const root = document.getElementById('board')
 if (root === null) throw new Error('#board が無い')
 
 const server = serverUrl(params)
+
+// 横向きのスマートフォンでは、どの画面も案内で覆う（ADR-0034）。公開ページも含めるので、分岐の前に置く。
+watchRotateCover(root)
 
 /**
  * ログインへ送られて戻ってきた時、`location.pathname` はもう `SIGN_IN_RETURN_TO`（ふつうは

@@ -104,3 +104,41 @@ body { box-sizing: border-box; margin: 0; padding: var(--gap); font-family: syst
 .awaiting .panel__body { align-items: stretch; text-align: center; padding: 1.4rem 1.2rem 1.2rem; gap: 1.1rem; }
 .awaiting__title { margin: 0; color: var(--heading); font-family: var(--heading-font); font-size: 1.5rem; font-weight: 800; letter-spacing: 0.08em; }
 .awaiting__leave { align-self: center; }
+
+/* ---- スマートフォン（縦向き）：幅 768px 以下。もともと幅に収まるので、指で押しやすくするだけ ---- */
+@media (max-width: 768px) {
+  /* 指で押すものは 2.75rem 以上 */
+  .naming button,
+  .awaiting button,
+  .naming__input {
+    min-height: 2.75rem;
+  }
+  /* 幅 360px でも、長い題字が 2 行に割れて窮屈にならない大きさ */
+  .naming__brand { font-size: clamp(1.4rem, 8vw, 1.9rem); }
+  /* モックの切り替えは、画面の幅に収める */
+  .mockbar { right: auto; left: 8px; max-width: calc(100vw - 16px); }
+}
+
+/* ---- 横向きのスマートフォン：画面全体を覆って、縦向きにするよう案内する（ADR-0034。どの画面でも同じ） ---- */
+.rotate-cover { display: none; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .rotate-cover {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8rem;
+    color: var(--heading);
+    background: radial-gradient(ellipse 60% 55% at 50% 46%, #fffdf6 0%, #ffeec2 40%, #fbc766 100%);
+    font-family: var(--heading-font);
+    font-size: 1.1rem;
+    font-weight: 700;
+    text-align: center;
+  }
+  .rotate-cover p { margin: 0; }
+  .rotate-cover__icon { font-size: 2.6rem; line-height: 1; }
+  .rotate-cover__sub { color: var(--ink-dim); font-size: 0.85rem; font-weight: 400; }
+}
