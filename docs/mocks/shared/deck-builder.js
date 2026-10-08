@@ -115,6 +115,8 @@ const state = {
   deckColors: [],
   // スマホの並べ方でだけ使う。PC の見た目には効かない
   phoneTab: '探す', // デッキ構築の 2 つのタブ（探す・デッキ）
+  phoneScroll: {}, // タブごとに、前に見ていたスクロールの位置（帯が上に付いている間に離れたときだけ覚える）
+  scrollTo: undefined, // 描き直したあとに 1 度だけ行うスクロール（'位置' | 'タブの帯の下' | '確かめた結果'）
   phoneFilter: false, // 絞り込みを開いているか（デッキ構築・デッキ一覧で共通）
   phoneSettings: false, // デッキ構築の上の段（解説・ラベル・形式・リスト）を開いているか
 
@@ -289,12 +291,49 @@ function draw() {
   const sentinel = app.querySelector('.pool__more')
   if (sentinel) new IntersectionObserver((entries, obs) => { if (entries[0].isIntersecting) { obs.disconnect(); state.shown += BATCH[state.poolView]; draw() } }, { root: app.querySelector('.pool') }).observe(sentinel)
   const focus = app.querySelector('[data-autofocus]'); if (focus) focus.focus()
+  settlePhoneScroll()
+}
+/** 確かめた結果。使えなくなったカードがあれば確かめられない。無ければ、枚数と同名の入れすぎを見る */
+function checkOf() {
+  const unusable = state.cards.filter((k) => !known.has(k)).length
+  if (unusable > 0) return { kind: '確かめられない', lines: [`使えなくなったカードが ${unusable} 枚入っています。下の一覧の「抜く」で外すまで、規定を確かめることも保存することもできません`] }
+  const lines = []
+  if (state.cards.length < 60) lines.push(`あと ${60 - state.cards.length} 枚足りません（60 枚以上）`)
+  for (const c of pool) { const n = countOf(c.key); if (n > 4) lines.push(`「${c.face.name}」が ${n} 枚入っています（4 枚まで）`) }
+  return lines.length ? { kind: '満たしていない', lines } : { kind: '満たしている', lines: ['規定を満たしています'] }
+}
+/** タブの帯の下から、中身の先頭までの隙間（`.deckbuild` の gap と同じ 0.5rem） */
+const GAP_BELOW_TABS = 8
+/** 描き直したあと、タブを切り替えた先のスクロールの位置に置く。実装の `phone-scroll.ts` と同じ */
+function settlePhoneScroll() {
+  const to = state.scrollTo; state.scrollTo = undefined
+  const tabs = app.querySelector('.phone-tabs')
+  if (!to || !tabs) return
+  const at = (top) => window.scrollTo({ top: Math.max(0, top), behavior: 'instant' })
+  if (to.kind === '位置') return at(to.top)
+  const target = app.querySelector(to.kind === 'タブの帯の下' ? '.columns' : '.check')
+  if (target) at(target.getBoundingClientRect().top + window.scrollY - tabs.getBoundingClientRect().height - GAP_BELOW_TABS)
+}
+/**
+ * タブを切り替える。離れるタブの位置を覚え（帯が上に付いている間だけ）、着いたタブでは、確かめた結果を見に来たならその文、
+ * 帯がまだ付いていなければ動かさず、前に見ていた位置があればそこ、無ければタブの帯のすぐ下へ置く。実装の `phone.ts` と同じ
+ */
+function switchTab(key, reveal) {
+  const tabs = app.querySelector('.phone-tabs')
+  const stuck = Boolean(tabs) && tabs.getBoundingClientRect().top <= 0.5
+  if (key === state.phoneTab) { if (reveal) { state.scrollTo = { kind: '確かめた結果' }; draw() } else draw(); return }
+  if (stuck) state.phoneScroll[state.phoneTab] = window.scrollY; else delete state.phoneScroll[state.phoneTab]
+  const remembered = state.phoneScroll[key]
+  state.scrollTo = reveal ? { kind: '確かめた結果' } : !stuck ? undefined : remembered === undefined ? { kind: 'タブの帯の下' } : { kind: '位置', top: remembered }
+  state.phoneTab = key
+  draw()
 }
 const panel = (cls, title, aside) => { const p = el('section', `panel ${cls}`); const h = el('div', 'panel__head'); h.append(el('h2', 'panel__title', title)); if (aside) h.append(aside); p.append(h); return p }
 
 /* ================= デッキを組む ================= */
 function builder() {
-  const root = el('div', `deckbuild deckbuild--tab-${state.phoneTab}`)
+  // 下の帯に規定外の印が出る間は帯が高くなるので、末尾の余白を足す
+  const root = el('div', `deckbuild deckbuild--tab-${state.phoneTab}${checkOf().kind === '満たしている' ? '' : ' deckbuild--notice'}`)
   // スマホ専用の部品（phone-only）は PC では display:none で、グリッドにも入らない
   root.append(topbarBuild(), phoneTabs())
   const columns = el('div', 'columns')
@@ -315,7 +354,7 @@ function tabpanel(panel, key, at) {
 function phoneTabs() {
   const n = el('div', 'phone-only phone-tabs'); n.setAttribute('role', 'tablist')
   for (const [key, label] of [['探す', 'カードを探す'], ['デッキ', `デッキ（${state.cards.length} 枚）`]]) {
-    const b = btn(label, () => { state.phoneTab = key; draw(); window.scrollTo(0, 0) }, 'phone-tab')
+    const b = btn(label, () => switchTab(key, false), 'phone-tab')
     b.id = `phone-tab-${key}`; b.setAttribute('aria-controls', Array.from({ length: TAB_PANELS[key] }, (_, at) => `phone-panel-${key}-${at}`).join(' '))
     b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(state.phoneTab === key))
     n.append(b)
@@ -346,7 +385,18 @@ function phoneBar() {
   const hasUnusable = state.cards.some((k) => !known.has(k))
   const save = btn('保存する', () => { state.saved = true; draw() }, 'button--primary')
   save.disabled = hasUnusable || state.saved
-  n.append(total, el('span', `savebar__state${state.saved ? '' : ' savebar__state--未保存'}`, state.saved ? '保存しました' : '未保存'), save)
+  // 規定を満たしていないときだけ出す印。押すと「デッキ」のタブへ移り、確かめた結果の文が見える位置へ持っていく
+  const check = checkOf()
+  if (check.kind !== '満たしている') {
+    const label = check.kind === '満たしていない' ? `規定外 ${check.lines.length} 件` : '規定を確かめられません'
+    const spoken = check.kind === '満たしていない' ? `規定を満たしていない点が ${check.lines.length} 件あります` : '使えなくなったカードが入っていて、規定を確かめられません'
+    const notice = btn('', () => switchTab('デッキ', true), 'phonebar__notice')
+    notice.setAttribute('aria-label', `${label}。${spoken}。押すとデッキのタブで見られます`)
+    const mark = el('span', 'phonebar__notice-mark', '⚠'); mark.setAttribute('aria-hidden', 'true')
+    notice.append(mark, el('span', '', label))
+    n.append(notice)
+  }
+  n.append(total,el('span', `savebar__state${state.saved ? '' : ' savebar__state--未保存'}`, state.saved ? '保存しました' : '未保存'), save)
   return n
 }
 /** スマホで、カードを 1 回タップしたときに下から出す詳細のシート。枚数を増減する口と、一番下に「閉じる」 */
@@ -597,19 +647,9 @@ function rightColumn() {
   deck.append(breakdown)
 
   const hasUnusable = state.cards.some((k) => !known.has(k))
-  const check = el('div', 'check'); const lines = []
-  if (hasUnusable) {
-    check.classList.add('check--確かめられない')
-    const n = state.cards.filter((k) => !known.has(k)).length
-    lines.push(`使えなくなったカードが ${n} 枚入っています。下の一覧の「抜く」で外すまで、規定を確かめることも保存することもできません`)
-  }
-  else {
-    if (state.cards.length < 60) lines.push(`あと ${60 - state.cards.length} 枚足りません（60 枚以上）`)
-    for (const c of pool) { const n = countOf(c.key); if (n > 4) lines.push(`「${c.face.name}」が ${n} 枚入っています（4 枚まで）`) }
-    check.classList.add(lines.length ? 'check--満たしていない' : 'check--満たしている')
-    if (!lines.length) lines.push('規定を満たしています')
-  }
-  for (const l of lines) check.append(el('p', '', l))
+  const result = checkOf()
+  const check = el('div', `check check--${result.kind}`)
+  for (const l of result.lines) check.append(el('p', '', l))
   deck.append(check)
 
   const lh = el('div', 'decklist__head'); lh.append(el('span', '', 'カード'), el('span', '', 'パートナー ・ 枚数')); deck.append(lh)
@@ -865,6 +905,8 @@ if (params.get('rows') === '1') { state.poolView = '一覧'; state.shown = BATCH
 if (params.get('partner') === 'unit') state.partner = pool.find((c) => c.face.name === '見本・霧島透')?.key
 if (params.get('partner') === 'trap') { const t = pool.find((c) => c.face.type === 'トラップ' && startCards.includes(c.key)) ?? pool.find((c) => c.face.type !== 'ユニット' && startCards.includes(c.key)); state.partner = t?.key }
 if (params.get('ok') === '1') { state.cards = state.cards.filter((k) => known.has(k)); while (state.cards.length < 60) state.cards.push(pool[state.cards.length % pool.length].key) }
+// 使えなくなったカードを外す。枚数が足りないままなので、「規定外」の印が出る（満たしている場面は ok=1）
+if (params.get('ng') === '1') state.cards = state.cards.filter((k) => known.has(k))
 if (params.get('modal')) state.modal = params.get('modal')
 if (params.get('detail') === '0') state.detailOpen = false
 if (params.get('tagedit') === '1') { const d = state.listDecks[1]; state.view = 'list'; state.tagEdit = { index: 1, name: d.name, cards: d.cards, userType: d.userType, userUses: d.userUses }; state.modal = 'ラベル' }
