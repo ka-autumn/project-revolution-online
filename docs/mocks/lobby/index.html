@@ -479,6 +479,140 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
   .rotate-cover__icon { font-size: 2.6rem; line-height: 1; }
   .rotate-cover__sub { color: #7d6848; font-size: 0.85rem; font-weight: 400; }
 }
+
+/* ---------- スマートフォン（縦向き） ---------- */
+
+/* スマホでだけ出す部品。PC の大きさでは出さない（.lobby .panel などより後ろに書き、同じ強さで勝たせる） */
+.lobby .phone-only { display: none; }
+
+/*
+ * 幅 768px 以下はスマホの並べ方。1 列に縦に積み、ページを縦にスクロールさせる。上から、見出しの帯・
+ * 使用するデッキ（選んでいる 1 つ）・対人戦／CPU戦のタブとその中身・お知らせ。デッキの一覧と対戦ルールは、
+ * 「変更」を押したときだけ下からせり上がるシートに出す。
+ */
+@media (max-width: 768px) {
+  .lobby .phone-only { display: revert; }
+
+  html, body { height: auto; }
+  .lobby { display: flex; flex-direction: column; gap: 0.5rem; height: auto; min-height: 100dvh; padding: 0.5rem; overflow: visible; }
+  .lobby .panel { flex: none; }
+  .lobby .columns { display: flex; flex-direction: column; gap: 0.5rem; }
+  .lobby .column { flex: none; gap: 0.5rem; }
+
+  /* 指で押すものは 2.75rem 以上 */
+  .lobby button { min-height: 2.75rem; }
+  .lobby input[type='text'], .lobby input[type='search'], .lobby input[type='password'], .lobby select { min-height: 2.75rem; }
+  .lobby .icon-button { min-width: 2.75rem; }
+
+  /* 見出しの帯：タイトルと自分の名前・アバターだけ */
+  .lobby .topbar { gap: 0.5rem; padding: 0.35rem 0.6rem; }
+  .lobby .topbar__title { font-size: 1.25rem; }
+  .lobby .topbar__divider, .lobby .topbar__sub { display: none; }
+  .lobby .me { padding-right: 0.7rem; }
+  .lobby .me__name { font-size: 0.95rem; }
+
+  /* 使用するデッキ：選んでいる 1 つを 1 行で。押して開くのは「変更」 */
+  .lobby .deckpick { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; padding: 0.4rem 0.6rem; }
+  .lobby .deckpick > .art { --card-width: 2.2rem; }
+  .lobby .deckpick__main { display: flex; flex-direction: column; min-width: 0; grid-column: 2; }
+  .lobby .deckpick__label { color: var(--heading); font-size: 0.72rem; font-weight: 800; }
+  .lobby .deckpick__name { overflow: hidden; font-size: 0.95rem; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
+  .lobby .deckpick__name--none { color: var(--accent-opponent); }
+  .lobby .deckpick__change { grid-column: 3; min-width: 4rem; }
+  .lobby .deckpick:not(:has(.art)) { grid-template-columns: minmax(0, 1fr) auto; }
+  .lobby .deckpick:not(:has(.art)) .deckpick__main { grid-column: 1; }
+  .lobby .deckpick:not(:has(.art)) .deckpick__change { grid-column: 2; }
+
+  /* シート（下からせり上がる）。使用するデッキの枠そのものを、開いたときだけシートにする */
+  .lobby .panel--decks:not(.sheet--開いている) { display: none; }
+  .lobby .sheet-backdrop { position: fixed; inset: 0; z-index: 85; display: block; background: rgb(60 30 0 / 0.45); }
+  .lobby .panel--decks.sheet--開いている {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 90;
+    max-height: 82dvh;
+    border-radius: 16px 16px 0 0;
+    background: linear-gradient(180deg, #fffdf6, #fff4dc);
+    box-shadow: 0 -8px 30px rgb(80 40 0 / 0.4);
+    overflow-y: auto;
+  }
+  .lobby .panel--decks .decks { flex: none; overflow: visible; }
+  .lobby .sheet__close { display: block; position: sticky; bottom: 0; margin: 0.2rem 0.9rem 0.8rem; }
+  .lobby .menu button { min-height: 2.75rem; }
+
+  /* 対人戦・CPU戦：タブで切り替える。タブが見出しの代わりなので、各枠の色つきの見出しは出さない */
+  .lobby .modetabs { display: grid; gap: 0.4rem; }
+  .lobby .modetab { min-height: 2.75rem; border-radius: var(--radius-small); }
+  .lobby .modetab:hover { box-shadow: inset 0 0 0 999px rgb(247 201 86 / 0.15); }
+  .lobby .modetab[aria-selected='true']:hover { box-shadow: none; }
+  .lobby .modes { grid-template-columns: minmax(0, 1fr); }
+  .lobby .mode__head { display: none; }
+  .lobby .mode--human { border-top: 3px solid var(--accent-opponent); }
+  .lobby .mode--cpu { border-top: 3px solid var(--accent-own); }
+  .lobby .column[data-phone-mode='対人戦'] .mode--cpu,
+  .lobby .column[data-phone-mode='CPU戦'] .mode--human,
+  .lobby .column[data-phone-mode='CPU戦'] .panel--rooms { display: none; }
+  .lobby .lock__check { min-height: 2.75rem; }
+  .lobby .mode__go { min-height: 3rem; }
+  .lobby .carousel__arrow { width: 2.75rem; height: 2.75rem; }
+  .lobby .thumbs { flex-wrap: wrap; overflow-x: visible; }
+  .lobby .thumb { min-height: 2.75rem; }
+
+  /* 部屋の一覧：表をやめ、1 部屋を 3 行ほどのカード状の行にする（名前・状態／プレイヤー・参加／ルール・観戦） */
+  .lobby .rooms__tools { flex-wrap: wrap; padding-inline: 0.6rem; }
+  .lobby .tabs { display: flex; flex: 1 1 100%; }
+  .lobby .tabs button { flex: 1; padding-inline: 0.4rem; }
+  .lobby .search { flex: 1 1 100%; min-width: 0; }
+  .lobby .rooms { margin: 0 0.6rem 0.6rem; overflow: visible; }
+  .lobby .rooms table, .lobby .rooms tbody { display: block; }
+  .lobby .rooms thead { display: none; }
+  .lobby .rooms tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "name name status" "players players action" "rules watch action";
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    margin-bottom: 0.45rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid rgb(220 166 64 / 0.55);
+    border-radius: var(--radius-small);
+    background: #fffef9;
+  }
+  .lobby[data-fit] .rooms td { display: block; min-width: 0; padding: 0; border: none; }
+  .lobby[data-fit] .rooms .room__name { grid-area: name; max-width: none; }
+  .lobby .rooms td:nth-child(2) { grid-area: status; justify-self: end; }
+  .lobby .rooms .room__rules { grid-area: rules; overflow: hidden; font-size: 0.8rem; text-overflow: ellipsis; }
+  .lobby .rooms .room__players { grid-area: players; min-width: 0; }
+  .lobby .rooms .room__watch { grid-area: watch; font-size: 0.8rem; }
+  .lobby .rooms .room__action { grid-area: action; width: auto; }
+  .lobby .rooms .room__action button { min-width: 4.5rem; }
+  /* 席の幅を縮めて、2 人の名前が並ぶ行を幅に収める。「1/2」は畳む */
+  .lobby[data-fit] { --seat: 5rem; }
+  .lobby[data-fit] .room__players small { display: none; }
+  .lobby .pager button { min-width: 2.75rem; height: 2.75rem; }
+  .lobby .pager { flex-wrap: wrap; }
+
+  /* お知らせ：見出しだけにして畳み、押すと開く */
+  .lobby .panel--news .panel__head { padding: 0; }
+  .lobby .news__toggle { display: flex; flex: 1; align-items: center; justify-content: space-between; border: none; border-radius: var(--radius) var(--radius) 0 0; background: none; box-shadow: none; color: var(--heading); font-family: var(--heading-font); font-size: 1rem; font-weight: 700; letter-spacing: 0.06em; padding: 0.45rem 0.9rem; }
+  .lobby .news__toggle-mark { font-size: 0.8rem; }
+  .lobby .news__toggle ~ .panel__title { display: none; }
+  .lobby .panel--news:not([data-open]) > .panel__head { border-bottom: none; }
+  .lobby .panel--news:not([data-open]) .news,
+  .lobby .panel--news:not([data-open]) .news__all { display: none; }
+  .lobby .news__all { min-height: 2.75rem; padding-inline: 0.9rem; }
+  .lobby .news { flex: none; overflow: visible; }
+  .lobby .news__link { min-height: 2.75rem; }
+
+  /* 重ねる窓（お知らせ・パスワード）：幅いっぱいに出し、ボタンは折り返す */
+  .lobby .modal { padding: 0.5rem; }
+  .lobby .modal__box { width: 100%; max-height: 90dvh; }
+  .lobby .modal__buttons { flex-wrap: wrap; }
+
+  /* 画面の外に出る 1 行・モックの切り替えは、左下に畳む（対戦画面のモックと同じ） */
+  .mock-switch { right: auto; left: 0; bottom: 0; max-width: 100vw; max-height: 1.6rem; overflow: hidden; }
+  .mock-switch:hover, .mock-switch:focus-within { max-height: 60vh; overflow-y: auto; }
+}
 </style>
 </head>
 <body>
@@ -562,9 +696,13 @@ const state = {
   password: '',
   joining: undefined, // パスワードを打っている鍵付きの部屋 { code, purpose: '参加' | '観戦', typed, wrong }
   toast: undefined,
+  // スマホの並べ方でだけ使う。PC の見た目には効かない
+  deckSheet: false, // 使用するデッキの一覧と対戦ルールを、下からのシートで開いているか
+  phoneMode: '対人戦', // 対人戦・CPU戦のうち、中身を出すほう
+  newsOpen: false, // お知らせを開いているか
 }
 
-const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n }
+const el =(tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n }
 const btn = (label, onClick, cls) => { const b = el('button', cls, label); b.type = 'button'; b.addEventListener('click', onClick); return b }
 const set = (patch) => { Object.assign(state, patch); render() }
 // 画面の移動は、移った先の画面のモックを開く（移る前の選択は引き継がない）
@@ -760,8 +898,9 @@ function deckRow(deck) {
   n.setAttribute('role', 'radio'); n.setAttribute('aria-checked', String(picked)); n.tabIndex = picked || (!decks().some((d) => usable(d) && d.id === state.picked) && deck === decks().find(usable)) ? 0 : -1
   n.setAttribute('aria-label', deck.name)
   if (ok) {
-    n.addEventListener('click', () => set({ picked: deck.id, menu: undefined }))
-    n.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); set({ picked: deck.id }) } })
+    // スマホでは、選んだらシートを閉じる（選んだデッキは、上の 1 行に出る）
+    n.addEventListener('click', () => set({ picked: deck.id, menu: undefined, deckSheet: false }))
+    n.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); set({ picked: deck.id, deckSheet: false }) } })
   } else {
     // 選べない：aria-disabled（クリックしても何も起きない）。矢印キーでは飛ばす。理由は札の下に出し、読み上げと結び付ける
     n.setAttribute('aria-disabled', 'true'); n.classList.add('deckrow--unusable'); n.setAttribute('aria-describedby', `unusable-${deck.id}`); n.title = unusableText(deck)
@@ -791,7 +930,7 @@ function deckRow(deck) {
   return n
 }
 function deckPanel() {
-  const n = el('section', 'panel panel--decks')
+  const n = el('section', `panel panel--decks${state.deckSheet ? ' sheet--開いている' : ''}`)
   const head = el('div', 'panel__head')
   head.append(el('h2', 'panel__title', '使用するデッキ'))
   const all = decks()
@@ -815,6 +954,31 @@ function deckPanel() {
   foot.append(pages > 1 ? pager(Math.min(state.deckPage, pages - 1), pages, (p) => set({ deckPage: p, menu: undefined }), 'デッキのページ') : el('span'))
   if (canBuild()) foot.append(btn('デッキ一覧', () => go('deck-list')))
   n.append(foot)
+  // スマホでは、この枠が下からのシートになる。閉じる口はシートの一番下に置く
+  n.append(btn('閉じる', () => set({ deckSheet: false, menu: undefined }), 'phone-only sheet__close'))
+  return n
+}
+/** スマホで、使用するデッキ（選んでいる 1 つ）を 1 行で見せる。「変更」で一覧と対戦ルールのシートを開く */
+function deckSummary() {
+  const n = el('section', 'panel phone-only deckpick'); n.setAttribute('aria-label', '使用するデッキ')
+  const d = decks().find((d) => usable(d) && d.id === state.picked)
+  const main = el('div', 'deckpick__main')
+  main.append(el('span', 'deckpick__label', '使用するデッキ'))
+  if (d) { n.append(art(d)); main.append(el('span', 'deckpick__name', d.name)) }
+  else main.append(el('span', 'deckpick__name deckpick__name--none', decks().length === 0 ? 'デッキがありません' : 'デッキを選んでください'))
+  const change = btn('変更', () => set({ deckSheet: true }), 'deckpick__change'); change.setAttribute('aria-haspopup', 'dialog')
+  n.append(main, change)
+  return n
+}
+/** スマホで、対人戦・CPU戦のどちらの中身を出すかを切り替える */
+function phoneModeTabs() {
+  const n = el('div', 'phone-only modetabs'); n.setAttribute('role', 'tablist'); n.setAttribute('aria-label', '対戦の始め方')
+  for (const m of ['対人戦', 'CPU戦']) {
+    const b = btn('', () => set({ phoneMode: m }), `modetab modetab--${m}`)
+    b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(state.phoneMode === m))
+    b.append(el('span', 'modetab__title', m))
+    n.append(b)
+  }
   return n
 }
 
@@ -957,7 +1121,16 @@ function renderRooms() {
 // ---------- 右：お知らせ ----------
 function newsPanel() {
   const n = el('section', 'panel panel--news')
-  const head = el('div', 'panel__head'); head.append(el('h2', 'panel__title', 'お知らせ'))
+  if (state.newsOpen) n.dataset.open = 'true'
+  const head = el('div', 'panel__head')
+  // スマホでは、見出しの行ごと押せる開閉のボタンにする（PC では出ない）
+  if (state.news !== 'なし') {
+    const toggle = btn('', () => set({ newsOpen: !state.newsOpen }), 'phone-only news__toggle')
+    toggle.setAttribute('aria-expanded', String(state.newsOpen))
+    toggle.append(el('span', '', 'お知らせ'), el('span', 'news__toggle-mark', state.newsOpen ? '▲' : '▼'))
+    head.append(toggle)
+  }
+  head.append(el('h2', 'panel__title', 'お知らせ'))
   n.append(head)
   if (state.news === 'なし') {
     const none = el('div', 'news__none')
@@ -1080,13 +1253,15 @@ function render() {
   lobby.dataset.fit = state.fit
   lobby.append(topbar())
   const cols = el('div', 'columns')
-  const left = el('div', 'column'); left.append(deckPanel())
-  const center = el('div', 'column')
+  // スマホ専用の部品（deckSummary・phoneModeTabs・.sheet-backdrop）は PC では display:none で、グリッドにも入らない
+  const left = el('div', 'column'); left.append(deckSummary(), deckPanel())
+  const center = el('div', 'column'); center.dataset.phoneMode = state.phoneMode
   const modes = el('div', 'modes'); modes.append(humanMode(), cpuMode())
-  center.append(modes, roomsPanel())
+  center.append(phoneModeTabs(), modes, roomsPanel())
   const right = el('div', 'column'); right.append(newsPanel())
   cols.append(left, center, right)
   lobby.append(cols)
+  if (state.deckSheet) { const back = el('div', 'phone-only sheet-backdrop'); back.addEventListener('click', () => set({ deckSheet: false, menu: undefined })); lobby.append(back) }
   if (state.newsView) lobby.append(newsModal())
   if (state.joining) lobby.append(passwordModal())
   app.replaceChildren(lobby)
@@ -1112,6 +1287,7 @@ function renderSwitch() {
 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.newsView) set({ newsView: undefined }) })
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.joining) set({ joining: undefined }) })
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.deckSheet && !state.newsView && !state.joining) set({ deckSheet: false, menu: undefined }) })
 document.addEventListener('click', (e) => { if (state.menu && !e.target.closest('.menu') && !e.target.closest('.deckrow__menu')) set({ menu: undefined }) })
 render()
 </script>

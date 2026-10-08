@@ -113,6 +113,10 @@ const state = {
   modal: undefined,
   deckSearch: '',
   deckColors: [],
+  // スマホの並べ方でだけ使う。PC の見た目には効かない
+  phoneTab: '探す', // デッキ構築の 2 つのタブ（探す・デッキ）
+  phoneFilter: false, // 絞り込みを開いているか（デッキ構築・デッキ一覧で共通）
+  phoneSettings: false, // デッキ構築の上の段（解説・ラベル・形式・リスト）を開いているか
 
 }
 
@@ -284,13 +288,67 @@ const panel = (cls, title, aside) => { const p = el('section', `panel ${cls}`); 
 
 /* ================= デッキを組む ================= */
 function builder() {
-  const root = el('div', 'deckbuild')
-  root.append(topbarBuild())
+  const root = el('div', `deckbuild deckbuild--tab-${state.phoneTab}`)
+  // スマホ専用の部品（phone-only）は PC では display:none で、グリッドにも入らない
+  root.append(topbarBuild(), phoneTabs())
   const columns = el('div', 'columns')
   columns.append(leftColumn(), centerColumn(), rightColumn())
-  root.append(columns)
+  root.append(columns, phoneBar())
+  if (state.pinned && byKey(state.pinned)) root.append(...phoneSheet(byKey(state.pinned)))
   if (state.modal) root.append(modal())
   return root
+}
+
+/** スマホで、「カードを探す」「デッキ」を切り替えるタブ。デッキのほうには、いまの枚数を出す */
+function phoneTabs() {
+  const n = el('div', 'phone-only phone-tabs'); n.setAttribute('role', 'tablist')
+  for (const [key, label] of [['探す', 'カードを探す'], ['デッキ', `デッキ（${state.cards.length} 枚）`]]) {
+    const b = btn(label, () => { state.phoneTab = key; draw(); window.scrollTo(0, 0) }, 'phone-tab')
+    b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(state.phoneTab === key))
+    n.append(b)
+  }
+  return n
+}
+/** スマホで、絞り込みを畳んで置く開閉のボタン（デッキ構築・デッキ一覧で共通）。絞り込み中かは、畳んでいても分かるようにする */
+function phoneFilterToggle(active) {
+  const b = btn('', () => { state.phoneFilter = !state.phoneFilter; draw() }, 'phone-only filter__toggle')
+  b.setAttribute('aria-expanded', String(state.phoneFilter))
+  b.append(el('span', '', active ? '絞り込み（絞り込み中）' : '絞り込み'), el('span', 'filter__toggle-mark', state.phoneFilter ? '▲' : '▼'))
+  return b
+}
+/**
+ * スマホで、上の段の解説・ラベル・形式・禁止／制限リストを畳んで置く開閉のボタン。上の段が大きいと、
+ * カードプールが 1 段ほどしか見えなくなるため。畳んでいても、いまの形式とリストは分かるようにする
+ */
+function phoneSettingsToggle() {
+  const b = btn('', () => { state.phoneSettings = !state.phoneSettings; draw() }, 'phone-only settings__toggle')
+  b.setAttribute('aria-expanded', String(Boolean(state.phoneSettings)))
+  b.append(el('span', '', `デッキの設定（${state.format}・制限なし）`), el('span', 'filter__toggle-mark', state.phoneSettings ? '▲' : '▼'))
+  return b
+}
+/** スマホで、画面の下に常に出しておく帯。枚数と保存。どちらのタブでも見える */
+function phoneBar() {
+  const n = el('div', 'phone-only phonebar')
+  const total = el('span', 'phonebar__count'); total.append(el('strong', '', String(state.cards.length)), ' 枚')
+  const hasUnusable = state.cards.some((k) => !known.has(k))
+  const save = btn('保存する', () => { state.saved = true; draw() }, 'button--primary')
+  save.disabled = hasUnusable || state.saved
+  n.append(total, el('span', `savebar__state${state.saved ? '' : ' savebar__state--未保存'}`, state.saved ? '保存しました' : '未保存'), save)
+  return n
+}
+/** スマホで、カードを 1 回タップしたときに下から出す詳細のシート。枚数を増減する口と、一番下に「閉じる」 */
+function phoneSheet(c) {
+  const close = () => { state.pinned = undefined; draw() }
+  const back = el('div', 'phone-only sheet-backdrop'); back.addEventListener('click', close)
+  const sheet = el('section', 'phone-only sheet'); sheet.setAttribute('role', 'dialog'); sheet.setAttribute('aria-modal', 'true'); sheet.setAttribute('aria-label', `「${c.face.name}」の詳細`)
+  const d = el('div', 'detail'); d.append(...detailNodes(c))
+  const count = countOf(c.key)
+  const row = el('div', 'sheet__counter')
+  const minus = btn('1 枚抜く', () => removeOne(c)); minus.disabled = count === 0
+  const badge = el('span', `counter__count${count > 0 ? ' counter__count--入っている' : ''}`, `×${count}`); badge.setAttribute('aria-label', `デッキに ${count} 枚`)
+  row.append(minus, badge, btn('1 枚入れる', () => addOne(c), 'button--primary'))
+  sheet.append(d, row, btn('閉じる', close, 'sheet__close'))
+  return [back, sheet]
 }
 
 function topbarBuild() {
@@ -306,7 +364,8 @@ function topbarBuild() {
   } else {
     name.append(el('span', 'deckname__text', state.name), iconBtn('✏️', 'デッキの名前を変える', () => { state.editingName = true; draw() }))
   }
-  bar.append(name)
+  bar.append(name, phoneSettingsToggle())
+  if (state.phoneSettings) bar.classList.add('topbar--phone-開いている')
   const desc = btn(state.description ? '📝 解説' : '📝 解説を書く', () => { state.modal = '解説'; draw() }, 'button--small')
   desc.setAttribute('aria-haspopup', 'dialog')
   const tagBtn = btn('🏷 ラベル', () => { state.modal = 'ラベル'; draw() }, 'button--small')
@@ -318,10 +377,11 @@ function topbarBuild() {
 }
 
 function leftColumn() {
-  const col = el('div', 'column')
+  const col = el('div', 'column column--left')
   const f = state.filter
   const reset = filtering() ? btn('すべて外す', () => setFilter(emptyFilter()), 'button--small') : undefined
-  const filter = panel('panel--filter', '絞り込み', reset)
+  const filter = panel(`panel--filter${state.phoneFilter ? ' panel--phone-開いている' : ''}`, '絞り込み', reset)
+  col.append(phoneFilterToggle(filtering()))
   const body = el('div', 'panel__body')
   // 選ぶたびに描き直すので、スクロールした位置を戻す（本番の KEEP_SCROLL と同じ）
   body.dataset.keepScroll = 'filter'
@@ -449,17 +509,20 @@ function cardRow(c, inDeck) {
   return row
 }
 
+function removeOne(c) {
+  const i = state.cards.lastIndexOf(c.key); if (i < 0) return
+  state.cards.splice(i, 1); state.saved = false
+  // パートナーのカードを全部抜いたら、パートナーから外れる（その旨を出す）
+  if (state.partner === c.key && countOf(c.key) === 0) { state.partner = undefined; state.partnerDropped = c.face.name }
+  draw()
+}
+function addOne(c) { state.cards.push(c.key); state.saved = false; draw() }
+
 function counter(c, count) {
   const n = el('div', 'counter')
-  const minus = btn('−', () => {
-    const i = state.cards.lastIndexOf(c.key); if (i < 0) return
-    state.cards.splice(i, 1); state.saved = false
-    // パートナーのカードを全部抜いたら、パートナーから外れる（その旨を出す）
-    if (state.partner === c.key && countOf(c.key) === 0) { state.partner = undefined; state.partnerDropped = c.face.name }
-    draw()
-  })
+  const minus = btn('−', () => removeOne(c))
   minus.setAttribute('aria-label', `「${c.face.name}」を 1 枚抜く`); minus.disabled = count === 0
-  const plus = btn('＋', () => { state.cards.push(c.key); state.saved = false; draw() })
+  const plus = btn('＋', () => addOne(c))
   plus.setAttribute('aria-label', `「${c.face.name}」を 1 枚入れる`)
   const badge = el('span', `counter__count${count > 0 ? ' counter__count--入っている' : ''}`, `×${count}`)
   badge.setAttribute('aria-label', `デッキに ${count} 枚`)
@@ -468,7 +531,7 @@ function counter(c, count) {
 }
 
 function rightColumn() {
-  const col = el('div', 'column')
+  const col = el('div', 'column column--right')
   const aside = el('span', 'panel__aside'); aside.append(el('strong', '', String(state.cards.length)), ' 枚')
   const deck = panel('panel--deck', 'デッキ', aside)
 
@@ -563,6 +626,10 @@ function showDetail(key) {
   if (!body) return
   const c = key === undefined ? undefined : byKey(key)
   if (!c) { body.replaceChildren(el('p', 'detail__none', 'カードにカーソルを合わせると、ここに出ます。押すと出したままにします')); return }
+  body.replaceChildren(...detailNodes(c))
+}
+/** カードの詳細の中身（PC の詳細の枠と、スマホの詳細のシートで共通） */
+function detailNodes(c) {
   // 左にカードの面、右に文字で全部を書く。面のテキスト欄は省略されてよい（右に全文がある）。
   const info = el('div', 'detail__info')
   const title = el('div', 'detail__name')
@@ -587,7 +654,7 @@ function showDetail(key) {
   for (const [k, v] of rows) dl.append(el('dt', '', k), el('dd', '', v))
   info.append(dl)
   if (c.face.text.length) { const t = el('div', 'detail__text'); for (const p of c.face.text) t.append(el('p', '', p)); info.append(t) }
-  body.replaceChildren(cardEl(c, true), info)
+  return [cardEl(c, true), info]
 }
 
 /* ================= 重ねる窓 ================= */
@@ -698,8 +765,9 @@ function deckList() {
 
   const columns = el('div', 'columns')
   // 左：探す
-  const left = el('div', 'column')
-  const find = panel('', 'デッキを探す')
+  const left = el('div', 'column column--left')
+  left.append(phoneFilterToggle(!!state.deckSearch || state.deckColors.length > 0 || state.deckTags.length > 0))
+  const find = panel(`panel--find${state.phoneFilter ? ' panel--phone-開いている' : ''}`, 'デッキを探す')
   const fb = el('div', 'panel__body')
   const s = el('input'); s.type = 'search'; s.placeholder = 'デッキの名前で探す'; s.setAttribute('aria-label', 'デッキの名前で探す'); s.value = state.deckSearch
   s.addEventListener('change', () => { state.deckSearch = s.value; draw() })
@@ -753,7 +821,7 @@ function deckList() {
   center.append(mine)
 
   // 左の下：既製デッキ（統計は置かない。2 列にする）
-  const presets = panel('', '既製デッキからコピーして作る')
+  const presets = panel('panel--presets', '既製デッキからコピーして作る')
   const pb = el('div', 'presets')
   for (const name of ['見本デッキ A', '見本デッキ B']) {
     const row = el('div', 'preset')

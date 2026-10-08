@@ -470,3 +470,133 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
   .rotate-cover__icon { font-size: 2.6rem; line-height: 1; }
   .rotate-cover__sub { color: #7d6848; font-size: 0.85rem; font-weight: 400; }
 }
+
+/* ---------- スマートフォン（縦向き） ---------- */
+
+/* スマホでだけ出す部品。PC の大きさでは出さない（.deckbuild .panel などより後ろに書き、同じ強さで勝たせる） */
+.deckbuild .phone-only { display: none; }
+
+/*
+ * 幅 768px 以下はスマホの並べ方。1 列に縦に積み、ページを縦にスクロールさせる。
+ * デッキ構築は「カードを探す」「デッキ」の 2 つのタブで切り替え、枚数と保存は画面の下の帯に常に出す。
+ * カードの詳細（PC ではマウスを乗せて見る）は、カードを 1 回タップしたときに下からのシートで出す。
+ * デッキ一覧は、見出し・自分のデッキ・既製デッキの順に積み、絞り込みは畳んでおく。
+ */
+@media (max-width: 768px) {
+  .deckbuild .phone-only { display: revert; }
+
+  html, body { height: auto; }
+  .deckbuild { --card-width: 5.4rem; display: flex; flex-direction: column; gap: 0.5rem; height: auto; min-height: 100dvh; padding: 0.5rem; overflow: visible; }
+  /* 下の帯（枚数と保存）に隠れないよう、デッキ構築の末尾に余白を足す */
+  .deckbuild[class*='deckbuild--tab-'] { padding-bottom: 4.8rem; }
+  .deckbuild .columns, .deckbuild--list .columns { display: flex; flex-direction: column; gap: 0.5rem; }
+  .deckbuild .column { gap: 0.5rem; }
+  .deckbuild .column .panel, .deckbuild .column--center .panel { flex: none; }
+
+  /* 指で押すものは 2.75rem 以上 */
+  .deckbuild button { min-height: 2.75rem; }
+  .deckbuild input[type='text'], .deckbuild input[type='search'], .deckbuild input[type='number'], .deckbuild select { min-height: 2.75rem; }
+  .deckbuild .icon-button { min-width: 2.75rem; }
+
+  /* 上の帯：折り返して、狭い幅に収める */
+  .deckbuild .topbar { gap: 0.4rem 0.5rem; padding: 0.4rem 0.6rem; }
+  .deckbuild .topbar__title { font-size: 1.25rem; }
+  .deckbuild .topbar__divider, .deckbuild .topbar__spacer, .deckbuild .topbar__sub { display: none; }
+  .deckbuild .deckname { flex: 1 1 100%; }
+  .deckbuild .deckname__text { flex: 1; min-width: 0; }
+  .deckbuild .deckname input { flex: 1; width: 100%; min-width: 0; }
+  .deckbuild .taglist--bar { flex: 1 1 100%; flex-wrap: wrap; }
+  /* 形式・禁止／制限リストは、名前を上に置いて 2 つを横に並べる */
+  .deckbuild .rule { flex: 1 1 40%; flex-direction: column; align-items: stretch; gap: 0.1rem; }
+  .deckbuild .rule select { width: 100%; min-width: 0; }
+
+  /* デッキ構築のタブ。ページをスクロールしても、上に付いて残る */
+  .deckbuild .phone-tabs { position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; padding: 0.3rem; border-radius: var(--radius); background: rgb(255 248 228 / 0.96); box-shadow: 0 2px 8px rgb(150 80 0 / 0.25); }
+  .deckbuild .phone-tab { padding-inline: 0.4rem; font-weight: 700; }
+  .deckbuild .phone-tab[aria-selected='true'] { border-color: var(--gold-deep); background: linear-gradient(180deg, var(--gold-bright), var(--gold)); }
+  .deckbuild--tab-探す .column--right { display: none; }
+  .deckbuild--tab-デッキ .column--left, .deckbuild--tab-デッキ .column--center { display: none; }
+
+  /* 絞り込み：畳んでおき、押すと開く。詳細の枠はシートに替わるので出さない */
+  .deckbuild .filter__toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; padding-inline: 0.9rem; font-weight: 700; }
+  .deckbuild .filter__toggle-mark { color: var(--ink-dim); font-size: 0.8rem; }
+  /* デッキ構築の上の段：解説・ラベル・形式・禁止／制限リストは「デッキの設定」に畳む */
+  .deckbuild .settings__toggle { display: flex; flex-basis: 100%; align-items: center; justify-content: space-between; padding-inline: 0.9rem; font-weight: 700; }
+  .deckbuild .topbar:not(.topbar--phone-開いている) > .button--small,
+  .deckbuild .topbar:not(.topbar--phone-開いている) > .taglist--bar,
+  .deckbuild .topbar:not(.topbar--phone-開いている) > .rule { display: none; }
+  .deckbuild .panel--filter:not(.panel--phone-開いている), .deckbuild .panel--find:not(.panel--phone-開いている) { display: none; }
+  .deckbuild .panel--detail { display: none; }
+  .deckbuild .panel--filter .panel__body { overflow: visible; }
+  .deckbuild .filter__row { align-items: start; }
+  .deckbuild .filter__row > .filter__label { line-height: 2.75rem; }
+  .deckbuild .fold > summary { align-items: center; min-height: 2.75rem; }
+
+  /* カードプール：幅に収まる列数のグリッド。各カードの下の増減ボタンは、幅に合わせて分け合う */
+  .deckbuild .pool { flex: none; overflow: visible; padding: 0.5rem; }
+  .deckbuild .pool__grid { gap: 0.6rem 0.4rem; }
+  .deckbuild .pool .rows { min-width: 0; }
+  .deckbuild .pool__item { width: 100%; }
+  .deckbuild .pool__item .counter { width: 100%; gap: 0.2rem; }
+  .deckbuild .pool__item .counter button { flex: 1; width: auto; height: 2.75rem; padding: 0; border-radius: 8px; }
+  .deckbuild .pool__item .counter__count { min-width: 0; padding-inline: 0.3rem; font-size: 0.85rem; }
+
+  /* カードの 1 行（一覧表示・デッキの列）：入りきらなければ、−・枚数・＋を次の行へ回す */
+  .deckbuild .cardrow { flex-wrap: wrap; gap: 0.25rem 0.4rem; padding: 0.25rem 0.5rem; }
+  .deckbuild .cardrow__name { flex: 1 1 6rem; }
+  .deckbuild .cardrow .counter { margin-left: auto; }
+  .deckbuild .partner-toggle { width: 2.75rem; height: 2.75rem; margin-left: auto; }
+  .deckbuild .partner-toggle + .counter { margin-left: 0; }
+  .deckbuild .cardrow .counter button { width: 2.5rem; height: 2.75rem; border-radius: 8px; }
+  .deckbuild .cardrow .counter__count { min-width: 2.2rem; }
+
+  /* デッキのタブ。保存の帯は、下の帯に任せる */
+  .deckbuild .partner, .deckbuild .check { margin-inline: 0.6rem; }
+  .deckbuild .breakdown { grid-template-columns: minmax(0, 1fr) 7.5rem; padding-inline: 0.6rem; }
+  .deckbuild .decklist { flex: none; margin-inline: 0.6rem; overflow: visible; }
+  .deckbuild .decklist__head { margin-inline: 0.6rem; }
+  .deckbuild .savebar { display: none; }
+
+  /* 画面の下に常に出しておく帯：枚数・保存の状態・保存 */
+  .deckbuild .phonebar { position: fixed; inset: auto 0 0 0; z-index: 60; display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--panel-edge); background: rgb(255 248 228 / 0.97); box-shadow: 0 -4px 14px rgb(120 60 0 / 0.25); }
+  .deckbuild .phonebar__count { font-size: 0.9rem; white-space: nowrap; }
+  .deckbuild .phonebar__count strong { font-size: 1.25rem; }
+  .deckbuild .phonebar .savebar__state { flex: 1; min-width: 0; }
+  .deckbuild .phonebar .button--primary { min-width: 7rem; font-size: 1.02rem; }
+
+  /* シート（下からせり上がる）：カードの詳細、枚数の増減、一番下に「閉じる」 */
+  .deckbuild .sheet-backdrop { position: fixed; inset: 0; z-index: 85; display: block; background: rgb(60 30 0 / 0.45); }
+  .deckbuild .sheet {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 86dvh;
+    padding: 0.5rem 0.6rem 0.6rem;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+    background: linear-gradient(180deg, #fffdf6, #fff4dc);
+    box-shadow: 0 -8px 30px rgb(80 40 0 / 0.4);
+  }
+  .deckbuild .sheet .detail { flex: none; height: 14rem; padding: 0.2rem; }
+  .deckbuild .sheet__counter { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 0.5rem; }
+  .deckbuild .sheet__counter .counter__count { min-width: 2.6rem; font-size: 1rem; }
+
+  /* デッキ一覧：1 列。見出し → 絞り込み（畳む）→ 自分のデッキ → 既製デッキ */
+  .deckbuild--list .column--left { display: contents; }
+  .deckbuild--list .column--center { order: 1; }
+  .deckbuild--list .panel--presets { order: 2; }
+  .deckbuild .decks { flex: none; overflow: visible; padding: 0.5rem; }
+  .deckbuild .decks__grid { grid-template-columns: minmax(0, 1fr); }
+  .deckbuild .deckcard .card { --card-width: 5rem; }
+  .deckbuild .deckcard__actions { flex-wrap: wrap; }
+  .deckbuild .deckcard__actions button { flex: 1 1 28%; }
+  .deckbuild .preset { flex-wrap: wrap; }
+
+  /* 重ねる窓：幅いっぱいに出し、ボタンは折り返す */
+  .deckbuild .modal { padding: 0.5rem; }
+  .deckbuild .modal__box { max-height: 92dvh; }
+  .deckbuild .modal__buttons { flex-wrap: wrap; }
+}
