@@ -17,6 +17,19 @@ export function isPhoneWidth(): boolean {
 
 export type LobbyMode = '対人戦' | 'CPU戦'
 export type BuilderTab = '探す' | 'デッキ'
+/** 対戦画面で、下からのシートにして開くもの（操作パネルの中身とログ）。 */
+export type DuelSheet = 'ログ' | '行える手'
+
+/**
+ * 対戦画面で、詳細だけを見ているカード。選んでいる（行える手がある）カードは選びかけ（`index.ts` の
+ * `selection`）が持つので、ここには持たない。
+ *
+ * 値でなく入れ物にしているのは、開いた単位を見分けるため（同じカードを開き直しても別のシートとして
+ * 手を置き直す、`dialog-focus.ts` の `markDialog`）。
+ */
+export interface ViewedCard {
+  readonly card: string
+}
 
 /** 描き直したあとに 1 度だけ行う、手の置き直し。 */
 export type PhonePending =
@@ -62,6 +75,10 @@ export interface PhoneState {
   readonly builderSettings: boolean
   /** デッキ構築で、詳細のシートを開いているカード。 */
   readonly sheetCard: string | undefined
+  /** 対戦画面で、開いているシート（ログ・行える手）。 */
+  readonly duelSheet: DuelSheet | undefined
+  /** 対戦画面で、詳細だけを見ているカード。 */
+  readonly viewedCard: ViewedCard | undefined
   /** 開いているシートを開いた押せるものの印。閉じたとき、手をここへ戻す。 */
   readonly opener: string | undefined
   readonly pending: PhonePending | undefined
@@ -78,6 +95,8 @@ export function initialPhone(): PhoneState {
     builderFilter: false,
     builderSettings: false,
     sheetCard: undefined,
+    duelSheet: undefined,
+    viewedCard: undefined,
     opener: undefined,
     pending: undefined,
   }
@@ -95,6 +114,10 @@ export type PhoneAction =
   | { readonly kind: '構築の設定を開閉' }
   | { readonly kind: 'カードのシートを開く'; readonly card: string; readonly opener: string }
   | { readonly kind: 'カードのシートを閉じる' }
+  | { readonly kind: '対戦のシートを開く'; readonly sheet: DuelSheet; readonly opener: string }
+  | { readonly kind: '対戦のシートを閉じる' }
+  | { readonly kind: '対戦のカードを見る'; readonly card: string }
+  | { readonly kind: '対戦のカードを閉じる' }
 
 /** 状態を進める。シートを開けば手は中へ、閉じれば開いた元へ戻す。 */
 export function reducePhone(state: PhoneState, action: PhoneAction): PhoneState {
@@ -120,6 +143,15 @@ export function reducePhone(state: PhoneState, action: PhoneAction): PhoneState 
       return { ...state, sheetCard: action.card, opener: state.sheetCard === undefined ? action.opener : state.opener, pending: { kind: 'シートの中へ' } }
     case 'カードのシートを閉じる':
       return state.sheetCard === undefined ? state : closedSheet({ ...state, sheetCard: undefined })
+    case '対戦のシートを開く':
+      return { ...state, duelSheet: action.sheet, opener: action.opener, pending: { kind: 'シートの中へ' } }
+    case '対戦のシートを閉じる':
+      return state.duelSheet === undefined ? state : closedSheet({ ...state, duelSheet: undefined })
+    case '対戦のカードを見る':
+      // 手を置き直すのは、層（`.dialog`）の手の置き直し（`dialog-focus.ts`）が受け持つ。
+      return { ...state, viewedCard: { card: action.card } }
+    case '対戦のカードを閉じる':
+      return state.viewedCard === undefined ? state : { ...state, viewedCard: undefined }
   }
 }
 
@@ -165,6 +197,7 @@ export interface ShownScreens {
   readonly lobby: boolean
   readonly deckList: boolean
   readonly editor: boolean
+  readonly duel: boolean
 }
 
 /**
@@ -198,7 +231,12 @@ export function settlePhone(state: PhoneState, shown: ShownScreens): PhoneState 
       builderSettings: false,
     }
   }
-  if (next !== state && !next.deckSheet && next.sheetCard === undefined) next = { ...next, opener: undefined, pending: undefined }
+  if (!shown.duel && (next.duelSheet !== undefined || next.viewedCard !== undefined)) {
+    next = { ...next, duelSheet: undefined, viewedCard: undefined }
+  }
+  if (next !== state && !next.deckSheet && next.sheetCard === undefined && next.duelSheet === undefined) {
+    next = { ...next, opener: undefined, pending: undefined }
+  }
 
   return next
 }
@@ -215,7 +253,7 @@ export function takePending(state: PhoneState): { readonly pending: PhonePending
  * （PC の幅の間に描き直されて、手はシートから離れている）。開いていなければ、そのまま返す。
  */
 export function returnedToPhone(state: PhoneState): PhoneState {
-  if (!state.deckSheet && state.sheetCard === undefined) return state
+  if (!state.deckSheet && state.sheetCard === undefined && state.duelSheet === undefined) return state
 
   return { ...state, pending: { kind: 'シートの中へ' } }
 }

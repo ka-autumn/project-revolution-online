@@ -439,6 +439,14 @@ export interface PickView {
    */
   readonly ask: AskView | undefined
   /**
+   * 選んだカードで行える手を、まとめて出すシート（スマートフォン、ADR-0034）。選んだカードが無いとき、
+   * 行き先を絞り終えたとき（`selection.aim`）は `undefined`。
+   *
+   * 聞くことがあるとき（`ask`）は、`ask` と同じ。聞くことが無く行き先を押して決まるだけの手も、スマートフォンでは
+   * 先にシートで手を選ばせる（行き先は、手を選んでから光る）ので、その手を種類ごとに並べる。PC は読まない。
+   */
+  readonly sheet: AskView | undefined
+  /**
    * カードに紐づかない手（優先権の放棄）。カードを選んでいない間だけ出す（#249）。
    * プランは山札を押して行うので、ここには入らない。
    *
@@ -664,6 +672,7 @@ function arrange(
     destinations: [],
     trapZone: undefined,
     ask: undefined,
+    sheet: undefined,
     untargeted,
   }
 
@@ -729,9 +738,7 @@ function arrange(
     }
   }
 
-  // 聞くことが無ければ、行き先を全部光らせる。聞くことがあっても、行き先を押して行う手を選び終えて
-  // いれば、その種類の行き先だけを光らせる（聞き直さない）。
-  if (asked.length === 0) return light(aimable)
+  // 行き先を押して行う手を選び終えていれば、その種類の行き先だけを光らせる（聞き直さない）。
   if (aim !== undefined && aimable.some((action) => action.kind === aim)) {
     return light(aimable.filter((action) => action.kind === aim))
   }
@@ -741,9 +748,16 @@ function arrange(
   const subject = planZoneCard !== undefined ? { subject: nameOf(names, planZoneCard) } : {}
   const [only] = options
   const lead = options.length === 1 && only !== undefined && 'send' in only ? confirmOf(only.send) : 'どれにしますか？'
+  const ask: AskView = { heading, ...subject, lead, options }
 
-  return { ...selected, ask: { heading, ...subject, lead, options } }
+  // 聞くことが無ければ、行き先を全部光らせる。スマートフォンのシートだけは、手を種類ごとに並べて先に選ばせる。
+  if (asked.length === 0) return { ...light(aimable), sheet: { ...ask, lead: SHEET_LEAD } }
+
+  return { ...selected, ask, sheet: ask }
 }
+
+/** 聞くことが無い手を、シートに並べるときの問いの文。 */
+const SHEET_LEAD = 'このカードで行える手'
 
 function sameSquare(square: Square | undefined, other: Square): boolean {
   return square !== undefined && square.row === other.row && square.column === other.column
@@ -828,6 +842,28 @@ export function choicePicking(board: WirePerspective, choice: WireChoice): Choic
       ...[...byPosition.values()].map((each) => each.answer),
     ].sort((a, b) => a - b),
   }
+}
+
+/**
+ * 選ぶのを待たれている候補に、そのプレイヤーのエネルギー・スマッシュのカードが入っているか。
+ *
+ * スマートフォンでは、エネルギー・スマッシュは一覧で開く（ADR-0034）。コストの選択中に開いた一覧は
+ * 払うカードを選ぶ一覧で、選び終えたら閉じる。その見分けに使う。押せるかどうかは `choicePicking` が
+ * すでに決めているので、ここでは候補と置き場所を突き合わせるだけにする。
+ */
+export function choosesFromZone(
+  board: WirePerspective,
+  choice: WireChoice,
+  player: Player,
+  zone: 'エネルギーゾーン' | 'スマッシュゾーン',
+): boolean {
+  const picking = choicePicking(board, choice)
+
+  return board.zones[player][zone].some((card, index) =>
+    card.kind === '見えている'
+      ? picking.pickable.includes(card.instance.id)
+      : picking.hidden.some((at) => keyOfPosition(at) === keyOfPosition({ player, zone, index })),
+  )
 }
 
 /** 選ぶ候補のうち、盤面から押せないもの。`picking` が渡されなければ全部が該当する。 */

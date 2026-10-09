@@ -8,6 +8,7 @@ import {
   automaticAction,
   choicePicking,
   choiceView,
+  choosesFromZone,
   offBoardCandidates,
   pickView,
   showsChoicePicker,
@@ -732,6 +733,53 @@ describe('クリックで操作する', () => {
   })
 
   /**
+   * スマートフォンのシート（ADR-0034）。選んだカードで行える手を、届いた手から作って並べる。
+   * PC の画面（行き先・ダイアログ）は、これに左右されない。
+   */
+  describe('スマートフォンのシートに並べる手', () => {
+    it('何も選んでいなければ、シートは無い', () => {
+      expect(pick([PLACE, PLAY_LEFT]).sheet).toBeUndefined()
+    })
+
+    it('聞くことがあるときは、ダイアログと同じ手が並ぶ', () => {
+      const view = pick([PLACE, PLAY_LEFT, PLAY_RIGHT], 'てふだの1枚')
+
+      expect(view.sheet).toEqual(view.ask)
+    })
+
+    it('行き先を押して決まるだけの手も、種類ごとに並べる。行き先は PC と同じに光る', () => {
+      const view = pick([PLAY_LEFT, PLAY_RIGHT], 'てふだの1枚')
+
+      expect(view.ask).toBeUndefined()
+      expect(view.sheet?.options).toEqual([{ label: 'スクエアにプレイする', aim: 'カードをプレイする' }])
+      expect(view.destinations.map((each) => each.square)).toEqual([
+        { row: 0, column: 0 },
+        { row: 0, column: 2 },
+      ])
+    })
+
+    it('手を選び終えたら、シートは閉じて、選んだ種類の行き先だけが光る', () => {
+      const view = pickView(board(), [PLAY_LEFT, PLAY_RIGHT], { card: 'てふだの1枚', aim: 'カードをプレイする' }, undefined)
+
+      expect(view.sheet).toBeUndefined()
+      expect(view.destinations).toHaveLength(2)
+    })
+
+    it('山札を選んだときも、聞く内容がシートに並ぶ', () => {
+      const view = pickView(board(), [{ kind: 'プランする' }], { deck: true }, undefined)
+
+      expect(view.sheet?.heading).toBe('山札')
+      expect(view.sheet?.options).toEqual([{ label: 'プランする', send: { kind: 'プランする' } }])
+    })
+
+    it('届いた手に無いものは並ばない', () => {
+      const view = pick([PLACE, SMASH], 'てふだの1枚')
+
+      expect(view.sheet?.options.map((each) => each.label)).toEqual(['エネルギーとして置く'])
+    })
+  })
+
+  /**
    * 「トラップとしてプレイする」は、自分のトラップゾーンを行き先にする（#249）。行える手が
    * それだけなら、聞かずにトラップゾーンを光らせる。
    */
@@ -1163,6 +1211,35 @@ describe('候補を盤面から押す', () => {
       { player: '先攻', zone: 'スマッシュゾーン', index: 0 },
       { player: '先攻', zone: 'スマッシュゾーン', index: 1 },
     ])
+  })
+
+  /** スマートフォンで、エネルギー・スマッシュの一覧を「払うカードを選ぶ一覧」にするか、閉じるかの見分け（ADR-0034）。 */
+  describe('エネルギー・スマッシュから選ばれているか', () => {
+    it('候補にそのゾーンの札が入っていれば、真', () => {
+      const asked = choice([{ kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 1 } }])
+
+      expect(choosesFromZone(withSmashes(), asked, '先攻', 'スマッシュゾーン')).toBe(true)
+    })
+
+    it('候補が別のゾーンや別のプレイヤーなら、偽', () => {
+      const asked = choice([{ kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 1 } }])
+
+      expect(choosesFromZone(withSmashes(), asked, '先攻', 'エネルギーゾーン')).toBe(false)
+      expect(choosesFromZone(withSmashes(), asked, '後攻', 'スマッシュゾーン')).toBe(false)
+    })
+
+    it('見えている札は、識別子で突き合わせる', () => {
+      const energy = withZone(board(), '先攻', 'エネルギーゾーン', [
+        { kind: '見えている', instance: instance('エネルギーの1枚', '先攻') },
+      ])
+
+      expect(choosesFromZone(energy, choice([{ kind: '見えている', card: 'エネルギーの1枚' }]), '先攻', 'エネルギーゾーン')).toBe(true)
+      expect(choosesFromZone(energy, choice([{ kind: '見えている', card: 'てふだの1枚' }]), '先攻', 'エネルギーゾーン')).toBe(false)
+    })
+
+    it('選ぶのを待たれていても、候補が空なら偽', () => {
+      expect(choosesFromZone(withSmashes(), choice([]), '先攻', 'スマッシュゾーン')).toBe(false)
+    })
   })
 
   /** 押した札と答えた番号が一致していること。ずれると別の札をフリーズすることになる。 */
