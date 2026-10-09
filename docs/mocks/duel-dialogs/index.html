@@ -87,6 +87,60 @@ button.b:disabled { opacity: 0.5; cursor: default; }
   .rotate-cover__icon { font-size: 2.6rem; line-height: 1; }
   .rotate-cover__sub { color: #7d6848; font-size: 0.85rem; font-weight: 400; }
 }
+
+/* スマホでだけ出す部品 */
+.phone-only { display: none; }
+
+/*
+ * スマートフォン（幅 768px 以下、縦向き）。カードを押したときの確認・選ぶダイアログは、下からせり上がる
+ * シートにし、右の列の代わりにカードの詳細をシートの上の段に一緒に出す（対戦画面のカードのシートと
+ * 同じもの）。能力を選ぶ一覧は画面いっぱいに出し、上の段に発生源のカードの詳細を出す。
+ * 後ろの盤面は、骨組みを 1 列にして盤面だけを見せる（対戦画面の並べ方は ../duel/ を見る）。
+ */
+@media (max-width: 768px) {
+  .phone-only { display: revert; }
+  .duel { grid-template-columns: 1fr; height: 600px; padding: 0.4rem; }
+  .duel > .col { display: none; }
+  .board { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .card { width: 44px; height: 62px; font-size: 8px; }
+
+  .dialog { position: fixed; inset: 0; align-items: flex-end; }
+  .dialog__box {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    max-height: 85%;
+    overflow-y: auto;
+    padding: 0.6rem 0.8rem 0.9rem;
+    border-width: 2px 0 0;
+    border-radius: 16px 16px 0 0;
+  }
+  .dialog__row { flex-direction: column-reverse; }
+  .dialog button.b { min-height: 2.75rem; }
+  .dialog__actions button { text-align: center; }
+  .dialog__cancel { justify-content: stretch; }
+  .dialog__cancel button { flex: 1; }
+
+  /* シートの上の段：カードの詳細（PC では右の列に出ているもの） */
+  .dialog__detail {
+    margin: 0 0 0.6rem;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid rgb(220 166 64 / 0.6);
+    border-radius: var(--radius-small);
+    background: #fff;
+  }
+  .dialog__detail h3 { margin: 0 0 4px; font-family: var(--heading-font); color: var(--heading); font-size: 0.95rem; }
+  .dialog__detail p { margin: 0 0 4px; font-size: 12px; line-height: 1.5; }
+
+  /* 能力を選ぶ一覧：画面いっぱい */
+  .dialog:has(.picker__box) { align-items: stretch; padding: 0.5rem; }
+  .picker__box { width: 100%; }
+  .picker__head { flex-direction: column; align-items: flex-start; gap: 0.2rem; }
+  .picker__box .dialog__detail { margin: 0.5rem 0.8rem 0; }
+  .picker__ability { min-height: 2.75rem; }
+  .picker__foot button { flex: 1; min-height: 2.75rem; }
+}
 </style>
 </head>
 <body>
@@ -180,11 +234,24 @@ const variants = {
 }
 const defaultDetail = document.getElementById('detail').innerHTML
 const tabs = document.querySelectorAll('.tabs button')
+// スマホでの注記（どの見本にも共通）
+const phoneNote = 'スマホ（幅 768px 以下）では、確認・選ぶダイアログは下からのシートになり、上の段にカードの詳細を一緒に出す。'
+  + 'カードを 1 回押すと出るシート（対戦画面のモック）がこれにあたる。能力を選ぶ一覧は画面いっぱいに出し、上の段に発生源のカードの詳細を出す。'
+  + 'ボタンは指で押せる高さ（2.75rem）にし、確認では手を上・キャンセルを下に並べる。'
 function show(v) {
   tabs.forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.v === v)))
-  document.getElementById('overlay').innerHTML = variants[v].html
-  document.getElementById('note').textContent = variants[v].note
-  document.getElementById('detail').innerHTML = variants[v].detail ?? defaultDetail
+  const overlay = document.getElementById('overlay')
+  overlay.innerHTML = variants[v].html
+  const note = document.getElementById('note')
+  note.textContent = variants[v].note
+  note.append(Object.assign(document.createElement('p'), { className: 'phone-only', textContent: phoneNote, style: 'margin:6px 0 0;font-weight:700' }))
+  const detailHtml = variants[v].detail ?? defaultDetail
+  document.getElementById('detail').innerHTML = detailHtml
+  // スマホでだけ見える、シート・一覧の上の段のカードの詳細
+  const phoneDetail = Object.assign(document.createElement('div'), { className: 'phone-only dialog__detail', innerHTML: detailHtml })
+  const box = overlay.querySelector('.dialog__box')
+  if (box) box.prepend(phoneDetail)
+  else overlay.querySelector('.picker__head')?.after(phoneDetail)
 }
 tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.v)))
 show(location.hash.slice(1) in variants ? location.hash.slice(1) : 'confirm')

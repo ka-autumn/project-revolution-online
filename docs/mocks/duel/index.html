@@ -1619,6 +1619,281 @@ body {
   .rotate-cover__icon { font-size: 2.6rem; line-height: 1; }
   .rotate-cover__sub { color: #7d6848; font-size: 0.85rem; font-weight: 400; }
 }
+
+/* ---------- スマートフォン（縦向き） ---------- */
+
+/* スマホでだけ出す部品。PC の大きさでは出さない */
+.phone-only { display: none; }
+
+.sheet-backdrop { display: none; }
+
+/*
+ * 幅 768px 以下はスマホの並べ方。上から、相手の札・相手の手札・手順の帯・盤面・自分の手札・
+ * 自分の札・操作の帯の 1 列に積む。ログ・カードの詳細・行える手の一覧は、下からせり上がる
+ * シートにして、押したときだけ出す。
+ */
+@media (max-width: 768px) {
+  .duel {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto 2rem 1.5rem auto minmax(3.2rem, 1fr) auto auto;
+    grid-template-areas:
+      "opp logbtn"
+      "ohand ohand"
+      "proc proc"
+      "board board"
+      "hand hand"
+      "own turn"
+      "ctrl ctrl";
+    gap: 0.25rem;
+    height: 100dvh;
+    padding: 0.4rem 0.5rem;
+  }
+
+  .duel__left, .duel__center, .duel__right { display: contents; }
+
+  .phone-only { display: revert; }
+
+  /* 相手・自分の札は 1 行に詰める。立ち絵は出さない */
+  .player { gap: 0.4rem; padding: 0.15rem 0.5rem; min-height: 0; height: 2.6rem; }
+  .player__partner { flex-direction: row; }
+  .player__portrait { display: none; }
+  .player__body { display: flex; align-items: baseline; gap: 0.4rem; min-width: 0; }
+  .player__name { margin: 0; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player__damage { margin: 0; font-size: 0.7rem; white-space: nowrap; }
+  .player__damage strong { font-size: 0.95rem; }
+  .player__whose { font-size: 0.6rem; }
+  .player__partner { display: flex; align-items: center; gap: 0.2rem; margin-left: auto; }
+  .player__partner-label { font-size: 0.55rem; }
+  .player__partner .card { --card-width: 1.6rem; }
+  .player--相手 { grid-area: opp; }
+  .player--自分 { grid-area: own; }
+
+  .phone-log-open {
+    grid-area: logbtn;
+    align-self: center;
+    min-height: 2.5rem;
+    padding: 0 0.8rem;
+  }
+
+  .phone-turn {
+    grid-area: turn;
+    align-self: center;
+    margin: 0;
+    color: var(--heading);
+    font-family: var(--heading-font);
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  /* 手札。相手は裏面の下の端だけ、自分は上半分だけを出す。指では乗せられないので浮き上がらない */
+  .hand--相手 { grid-area: ohand; overflow: hidden; }
+  .hand--相手 .card { --card-width: 2rem; margin: 0 -0.3rem; }
+  .hand--自分 { grid-area: hand; overflow: hidden; padding-top: 0.6rem; }
+  .hand--自分 .card { --card-width: 4.4rem; margin: 0 -0.55rem; }
+  .hand--自分 .card:hover,
+  .hand--自分 .card:focus-within { z-index: auto; transform: rotate(var(--r, 0deg)) translateY(var(--y, 0rem)); }
+  .hand--自分 .card--選択中,
+  .hand--自分 .card--選択中:not(:hover) { z-index: 30; transform: translateY(-0.5rem); }
+  .hand__label { font-size: 0.65rem; padding: 0 0.7rem; }
+  .hand--相手 .hand__label { top: auto; bottom: 0; }
+  .hand--自分 .hand__label { top: 0; bottom: auto; }
+
+  .procedure { grid-area: proc; padding: 0 0.6rem; font-size: 0.7rem; }
+
+  /*
+   * 盤面は PC の形のまま、画面の幅に合わせて縮める（縮める率は --board-zoom。モックでは JS が
+   * 幅から計算する）。行の高さは縦いっぱいに伸ばさず、スクエアの元の高さに固定する。
+   */
+  .board {
+    grid-area: board;
+    grid-template-rows: auto repeat(3, 10.7rem) auto;
+    height: max-content;
+    zoom: var(--board-zoom, 0.5);
+  }
+
+  /*
+   * 捨札・リムーブは盤面から外し、画面の端の引き出しのつまみにする（自分は右端、相手は左端。
+   * 盤面の点対称に合わせ、それぞれのエネルギーの段の高さに置く）。空いた幅はエネルギー・
+   * スマッシュの段に回す。つまみの縦の位置は、モックでは JS が段の位置から合わせる。
+   */
+  .group--捨札 { display: none; }
+  .strip--自分, .strip--相手 { grid-template-columns: minmax(0, 1fr); }
+  .strip--自分 { padding-right: 5.6rem; }
+  .strip--相手 { padding-left: 5.6rem; }
+  .drawer {
+    position: fixed;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .drawer--自分 { right: 0; }
+  .drawer--相手 { left: 0; }
+  .duel .drawer button {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 2.9rem;
+    padding: 0.15rem 0;
+    border: 1px solid var(--gold-deep);
+    color: var(--heading);
+    background: linear-gradient(90deg, #fffdf6, #ffe3a6);
+    box-shadow: 0 2px 6px rgb(120 60 0 / 0.35);
+    font-family: var(--heading-font);
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1.15;
+  }
+  .drawer--自分 button { border-right: 0; border-radius: 8px 0 0 8px; }
+  .drawer--相手 button { border-left: 0; border-radius: 0 8px 8px 0; }
+  .drawer button strong { color: var(--ink); font-size: 0.8rem; }
+  .drawer button:disabled { opacity: 0.55; }
+
+  /*
+   * エネルギー・スマッシュも、カードを並べずに「名前・枚数・色の点」のボタンにする。重なった
+   * 小さなカードは指で押し分けられないため。中身は押すと開く一覧で見る・選ぶ。
+   */
+  .zone--エネルギー > .zone__title,
+  .zone--エネルギー > .zone__cards,
+  .zone--スマッシュ > .zone__title,
+  .zone--スマッシュ > .zone__cards { display: none; }
+  .duel .zone__summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem 0.5rem;
+    width: 100%;
+    min-height: 4.4rem;
+    padding: 0.3rem 0.6rem;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    color: var(--heading);
+    background: linear-gradient(180deg, #fffdf6, #ffeec2);
+    font-family: var(--heading-font);
+    font-size: 1.3rem;
+    font-weight: 700;
+  }
+  .zone__summary strong { font-size: 2rem; color: var(--ink); }
+  .zone__dots { display: flex; flex-basis: 100%; justify-content: center; gap: 0.35rem; }
+  /*
+   * エネルギー：1 枚を、その色のレベルアイコンの形で表す。フリーズしているものは、上に赤い × を
+   * 重ねる（× は白で縁取り、赤のアイコンに重なっても埋もれないようにする）
+   */
+  .zone__symbol { position: relative; width: 3rem; height: 3rem; }
+  .zone__symbol > svg { width: 100%; height: 100%; }
+  .zone__symbol > .zone__cross { position: absolute; inset: -0.1rem; width: auto; height: auto; }  /* コストの選択中は、ボタンを押せるものの色で囲む。やめる口は一覧の中にあるので、枠の札のボタンは出さない */
+  .group--候補あり .zone__summary { border-color: #ff8a00; box-shadow: 0 0 0 3px rgb(255 138 0 / 0.45); }
+  .choosing-tab button { display: none; }
+
+  /* 操作の帯：いま一番よく押す手と、行える手の一覧を開く口だけを出す */
+  .controls { grid-area: ctrl; flex: none; }
+  .controls__turn, .phases, .controls__head, .controls__reason, .controls__leave, .controls__priority { display: none; }
+  .controls__actions { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.4rem; border-top: 0; }
+  .controls__list { display: contents; }
+  .controls__list button:not(.button--primary) { display: none; }
+  .controls__list .button--primary { flex: 1; min-height: 2.75rem; }
+  .controls .phone-actions-open { min-height: 2.75rem; padding: 0 0.8rem; }
+  .controls .actions__none { flex-basis: 100%; margin: 0; font-size: 0.8rem; }
+  .controls .choice__back { flex: 1; }
+  .controls .choice__back button { width: 100%; min-height: 2.75rem; }
+  .controls:has(.choice__back:not([hidden])) .button--primary,
+  .controls:has(.choice__back:not([hidden])) .phone-actions-open { display: none; }
+  .controls .phone-priority { flex-basis: 100%; margin: 0; font-size: 0.75rem; font-weight: 700; color: var(--own); }
+
+  /* ---- シート（下からせり上がる） ---- */
+  .sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 85;
+    display: none;
+    background: rgb(60 30 0 / 0.45);
+  }
+
+  .duel:has(.sheet--開いている) .sheet-backdrop { display: block; }
+
+  .log, .detail { display: none; }
+
+  .duel .sheet--開いている {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 90;
+    display: flex !important;
+    flex-direction: column;
+    max-height: 82dvh;
+    height: auto;
+    border-radius: 16px 16px 0 0;
+    background: linear-gradient(180deg, #fffdf6, #fff4dc);
+    box-shadow: 0 -8px 30px rgb(80 40 0 / 0.4);
+    overflow-y: auto;
+  }
+
+  :not(.sheet--開いている) > .sheet__close { display: none; }
+
+  .sheet__close {
+    align-self: flex-end;
+    margin: 0.4rem 0.5rem 0;
+    min-height: 2.5rem;
+    padding: 0 1rem;
+  }
+
+  /* 行える手を開いたとき：PC の操作パネルの中身をすべて出す */
+  .controls.sheet--開いている .controls__turn,
+  .controls.sheet--開いている .controls__priority,
+  .controls.sheet--開いている .phases,
+  .controls.sheet--開いている .controls__head,
+  .controls.sheet--開いている .controls__reason,
+  .controls.sheet--開いている .controls__leave { display: revert; }
+  .controls.sheet--開いている .controls__head { display: flex; }
+  .controls.sheet--開いている .controls__actions { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
+  .controls.sheet--開いている .controls__list { display: flex; flex-direction: column; gap: 0.4rem; padding: 0 0.5rem 0.6rem; }
+  .controls.sheet--開いている .controls__list button { display: block; min-height: 2.75rem; }
+  .controls.sheet--開いている .phone-actions-open,
+  .controls.sheet--開いている .phone-priority { display: none; }
+  .controls .mode { display: none; }
+
+  /* カードの詳細：拡大した面と、そのカードで行える手のボタン */
+  .detail.sheet--開いている { align-items: center; padding: 0 0.6rem 0.8rem; }
+  .detail .card--拡大 { --card-width: min(13rem, 60vw); }
+  .detail .card--拡大 .card__text { max-height: 7rem; }
+  .detail__actions { display: flex; flex-direction: column; gap: 0.4rem; width: 100%; margin-top: 0.6rem; }
+  .detail__actions:empty { display: none; }
+  .detail__actions button { min-height: 2.75rem; }
+
+  .log.sheet--開いている { padding-bottom: 0.6rem; }
+
+  /* 一覧（見る・選ぶ）は画面いっぱいに出す。右の列は無いので空けない */
+  .picker { inset: 0; padding: 0.5rem; }
+  .picker.picker--開いている { display: flex; }
+  .picker__head { flex-direction: column; align-items: flex-start; gap: 0.2rem; }
+  .picker__title { font-size: 1rem; }
+  .picker__cards { flex-wrap: wrap; justify-content: center; }
+  /* 一覧の上の段：最後に押したカードの詳細 */
+  .picker__detail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 3rem;
+    padding: 0.3rem;
+    border-bottom: 1px solid rgb(220 166 64 / 0.45);
+  }
+  .picker__detail .card--拡大 { --card-width: 8.5rem; font-size: 0.6rem; }
+  .picker__detail .card--拡大 .card__title { font-size: 0.8rem; }
+  .picker__detail .card--拡大 .card__text { font-size: 0.65rem; max-height: 4.5rem; min-height: 0; }
+  .picker__detail .detail__note { font-size: 0.7rem; }
+  .picker__box { max-height: 100%; overflow-y: auto; }
+  .picker__cards .card { --card-width: 4.6rem; }
+  .picker__foot { flex-wrap: wrap; }
+  .picker__foot .picker__count { flex-basis: 100%; }
+  .picker__foot button { flex: 1; min-height: 2.75rem; white-space: nowrap; }
+
+  /* モックの切り替えは、畳んだ帯にする */
+  .mock-switch { top: auto; bottom: 0; left: 0; transform: none; max-height: 1.6rem; overflow: hidden; }
+  .mock-switch:hover, .mock-switch:focus-within { max-height: 60vh; overflow-y: auto; }
+}
 </style>
 </head>
 <body>
@@ -1643,6 +1918,8 @@ body {
   <symbol id="lv-黒" viewBox="0 0 26.458334 26.458334"><g transform="translate(-73.492744,-84.27195)"><path fill="url(#rg-黒)" stroke="#fff" stroke-width="0.53" transform="matrix(0.86602073,0.4999973,-0.4999973,0.86602073,61.871206,-29.283419)" d="M 96.216791,103.89873 85.061656,110.42478 73.83236,104.02717 73.7582,91.103518 84.913335,84.577464 96.142631,90.975068 Z"/></g></symbol>
   <symbol id="star" viewBox="0 0 20 20"><defs><linearGradient id="lg-star" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff7b0"/><stop offset="0.5" stop-color="#ffd23a"/><stop offset="1" stop-color="#d99000"/></linearGradient></defs><path d="M10 0.8 12.7 6.6 19 7.3 14.3 11.6 15.6 17.9 10 14.7 4.4 17.9 5.7 11.6 1 7.3 7.3 6.6Z" fill="url(#lg-star)" stroke="#8a5a00" stroke-width="0.7" stroke-linejoin="round"/></symbol>
   <symbol id="reverse-star" viewBox="0 0 20 20"><defs><linearGradient id="lg-rstar" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#d6ffd0"/><stop offset="0.5" stop-color="#3fbf5a"/><stop offset="1" stop-color="#0d6b2a"/></linearGradient></defs><path d="M10 0.8 12.7 6.6 19 7.3 14.3 11.6 15.6 17.9 10 14.7 4.4 17.9 5.7 11.6 1 7.3 7.3 6.6Z" fill="url(#lg-rstar)" stroke="#0a4a1c" stroke-width="0.7" stroke-linejoin="round"/></symbol>
+  <!-- スマホのスマッシュの印：カードの裏面を小さくしたもの -->
+  <symbol id="card-back-mini" viewBox="0 0 26.458334 26.458334"><defs><radialGradient id="rg-back-mini" cx="0.5" cy="0.45" r="0.65"><stop offset="0" stop-color="#fff6d6"/><stop offset="0.55" stop-color="#f7b545"/><stop offset="1" stop-color="#d9771a"/></radialGradient></defs><rect x="5.2" y="1.3" width="16" height="23.8" rx="2.4" fill="url(#rg-back-mini)" stroke="#fff" stroke-width="1.3"/><rect x="5.2" y="1.3" width="16" height="23.8" rx="2.4" fill="none" stroke="#a0601a" stroke-width="0.5"/><circle cx="13.2" cy="13.2" r="4.4" fill="#fffaf0" stroke="#b07a1c" stroke-width="0.8"/><text x="13.2" y="15.6" text-anchor="middle" font-family="Georgia, serif" font-size="6.4" font-weight="700" fill="#b0601a">R</text></symbol>
   <symbol id="silhouette" viewBox="0 0 100 100"><path d="M50 18c-11 0-19 8-19 19 0 7 3 13 8 16-2 3-5 5-10 6-11 3-17 12-19 24l-1 17h82l-1-17c-2-12-8-21-19-24-5-1-8-3-10-6 5-3 8-9 8-16 0-11-8-19-19-19z"/></symbol>
 </svg>
 
@@ -1660,7 +1937,8 @@ body {
       <div class="player__partner mock-partner" id="partner-opponent"><span class="player__partner-label">パートナー</span></div>
     </section>
 
-    <section class="panel controls" aria-label="操作">
+    <section class="panel controls" aria-label="操作" id="controls">
+      <button type="button" class="phone-only sheet__close" data-close>閉じる</button>
       <p class="controls__turn">第 3 ターン</p>
       <p class="controls__priority">自分のターン・自分の優先権</p>
       <ol class="phases" aria-label="フェイズ">
@@ -1681,6 +1959,7 @@ body {
           </div>
         </div>
         <p class="controls__reason">相手が優先権を放棄しました</p>
+        <p class="phone-only phone-priority">自分の優先権・相手が優先権を放棄しました</p>
         <p class="actions__none" id="choice-guide" hidden>置く場所を選択してください</p>
         <div class="choice__back" id="choice" hidden>
           <button type="button">カードの選択をやめる</button>
@@ -1693,6 +1972,7 @@ body {
           <button type="button">トラップとしてプレイする: 見本・まるまる砲</button>
           <button type="button">起動する: 見本・パルフェ・若葉</button>
         </div>
+        <button type="button" class="phone-only phone-actions-open" id="actions-open" aria-haspopup="dialog">行える手（6）</button>
       </div>
       <div class="controls__leave">
         <button type="button" class="button--quiet" onclick="location.href = '../lobby/index.html'">やめてロビーに戻る</button>
@@ -1723,8 +2003,13 @@ body {
   </section>
 
   <!-- 右：待っている能力・ログ・カードの詳細 -->
+  <!-- スマホでだけ出す：ログを開く口と、ターン・フェイズの 1 行 -->
+  <button type="button" class="phone-only phone-log-open" id="log-open" aria-haspopup="dialog">ログ</button>
+  <p class="phone-only phone-turn">第 3 ターン・メイン</p>
+
   <aside class="duel__right">
-    <section class="panel log">
+    <section class="panel log" id="log">
+      <button type="button" class="phone-only sheet__close" data-close>閉じる</button>
       <h2 class="panel__title">操作ログ（8）</h2>
       <ol class="log__list" reversed>
         <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>見本・竜の飛翔 をプレイ</span></li>
@@ -1781,6 +2066,9 @@ body {
 
   <!-- カードの一覧（JS で組み立てる） -->
   <div id="pickers"></div>
+
+  <!-- スマホのシートの後ろに敷く幕。押すとシートを閉じる -->
+  <div class="sheet-backdrop" id="sheet-backdrop"></div>
 </main>
 
 <div class="mock-switch" aria-label="モックの表示切り替え">
@@ -1957,6 +2245,28 @@ function zone(title, count, content) {
   cardsNode.style.setProperty('--n', String(content.length))
   cardsNode.style.setProperty('--nf', String(content.filter((c) => c.classList.contains('card--フリーズ')).length))
   node.append(cardsNode)
+  // スマホでは、エネルギー・スマッシュをカードの並びのかわりに名前と枚数のボタンにする。エネルギーには
+  // 1 枚につき 1 つ印を添える。エネルギーはカードの色のレベルアイコンの形、
+  // 裏向きのスマッシュはカードの裏面を小さくした形で表す。フリーズしているものには、どちらも赤い × を重ねる。押すと中身の一覧が開く
+  if (title === 'エネルギー' || title === 'スマッシュ') {
+    const summary = document.createElement('button')
+    summary.type = 'button'
+    summary.className = 'phone-only zone__summary'
+    const frozen = content.filter((c) => c.classList.contains('card--フリーズ')).length
+    summary.setAttribute('aria-label', `${title}ゾーン（${count}、うちフリーズ ${frozen}）の一覧を開く`)
+    const dots = content.map((c) => {
+      const frozen = c.classList.contains('card--フリーズ')
+      const color = [...c.classList].find((k) => k.startsWith('card--色-'))?.slice('card--色-'.length)
+      const symbol = title === 'スマッシュ' ? 'card-back-mini' : `lv-${color}`
+      const cross = frozen
+        ? '<svg class="zone__cross" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M5 5 19 19M19 5 5 19" stroke="#e01818" stroke-width="3.6" stroke-linecap="round"/></svg>'
+        : ''
+      return `<span class="zone__symbol"><svg><use href="#${symbol}"/></svg>${cross}</span>`
+    }).join('')
+    summary.innerHTML = `<span class="zone__summary-name">${title}</span><strong>${count}</strong>${dots ? `<span class="zone__dots">${dots}</span>` : ''}`
+    summary.addEventListener('click', () => openZoneList(node, title))
+    node.append(summary)
+  }
   return node
 }
 
@@ -2132,6 +2442,7 @@ function picker(kind, title, lead, cardsInList, foot, sending) {
         <p class="picker__lead">${lead}</p>
         <p class="picker__sending" role="status">${sending ? '通信中…' : ''}</p>
       </div>
+      <div class="phone-only picker__detail" aria-live="polite"><p class="detail__none">カードを押すと、ここに詳細が出ます。</p></div>
       <div class="picker__cards"></div>
       <div class="picker__foot">${foot}</div>
     </div>`
@@ -2180,6 +2491,12 @@ function renderDetail(node) {
     detail.innerHTML = '<p class="detail__none">カードにマウスを乗せるか、フォーカスすると、ここに詳細が出ます。</p>'
     return
   }
+  detail.replaceChildren(...detailParts(node))
+  for (const n of document.querySelectorAll('.card--詳細中')) n.classList.remove('card--詳細中')
+  node.classList.add('card--詳細中')
+}
+// 拡大した面と、その下の補足の 1 行
+function detailParts(node) {
   const name = node.dataset.name
   const c = cards[name]
   const big = document.createElement('div')
@@ -2190,9 +2507,7 @@ function renderDetail(node) {
   if (node.dataset.bp && Number(node.dataset.bp) !== c.bp) notes.push(`BP ${c.bp}→${node.dataset.bp}`)
   if (node.dataset.sp && Number(node.dataset.sp) !== c.sp) notes.push(`SP ${c.sp}→${node.dataset.sp}`)
   if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
-  detail.replaceChildren(big, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') }))
-  for (const n of document.querySelectorAll('.card--詳細中')) n.classList.remove('card--詳細中')
-  node.classList.add('card--詳細中')
+  return [big, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
 }
 function selected() {
   return document.querySelector('.card--選択中[data-name]')
@@ -2202,11 +2517,148 @@ function restoreDetail() {
   renderDetail(selected())
 }
 for (const node of document.querySelectorAll('.card[data-name]')) {
-  node.addEventListener('mouseenter', () => renderDetail(node))
-  node.addEventListener('focus', () => renderDetail(node))
-  node.addEventListener('mouseleave', restoreDetail)
-  node.addEventListener('blur', restoreDetail)
+  node.addEventListener('mouseenter', () => { if (!phone.matches) renderDetail(node) })
+  node.addEventListener('focus', () => { if (!phone.matches) renderDetail(node) })
+  node.addEventListener('mouseleave', () => { if (!phone.matches) restoreDetail() })
+  node.addEventListener('blur', () => { if (!phone.matches) restoreDetail() })
+  node.addEventListener('click', () => {
+    if (!phone.matches) return
+    if (node.closest('.picker')) pickInList(node)
+    else openCardSheet(node)
+  })
 }
+
+// ---- スマホ：シート ----
+// カードを 1 回押すと、詳細と、そのカードで行える手のボタンをシートに出す。手のボタンを押すと、
+// PC でカードを押したときと同じ状態（置き先を選ぶ・一覧で選んだことになる）に進む。
+const phone = matchMedia('(max-width: 768px)')
+// 見本：カードごとに、届いた手のうちそのカードに関わるもの（本番では届いた手から作る）
+const actionsByCard = {
+  見本・霧島透: ['プレイする（置く場所を選ぶ）'],
+  見本・もちぬい: ['プレイする（置く場所を選ぶ）'],
+  見本・まるまる砲: ['トラップとしてプレイする'],
+  '見本・パルフェ・若葉': ['起動する', '移動する（行き先を選ぶ）'],
+}
+function closeSheets() {
+  for (const n of document.querySelectorAll('.sheet--開いている')) n.classList.remove('sheet--開いている')
+}
+function openSheet(node) {
+  closeSheets()
+  node.classList.add('sheet--開いている')
+}
+function openCardSheet(node) {
+  renderDetail(node)
+  const actions = Object.assign(document.createElement('div'), { className: 'detail__actions' })
+  const labels = node.closest('.hand--相手') ? [] : (actionsByCard[node.dataset.name] ?? [])
+  for (const label of labels) {
+    const b = Object.assign(document.createElement('button'), { type: 'button', textContent: label })
+    if (label === labels[0]) b.className = 'button--primary'
+    b.addEventListener('click', () => {
+      closeSheets()
+      const box = document.querySelector('[data-show="show-picking"]')
+      box.checked = true
+      apply()
+    })
+    actions.append(b)
+  }
+  // 閉じる口は、対戦中のダイアログと同じく一番下に置く（親指が届く位置）。手があれば「キャンセル」、
+  // 詳細だけなら「閉じる」
+  const close = Object.assign(document.createElement('button'), { type: 'button', textContent: labels.length > 0 ? 'キャンセル' : '閉じる' })
+  close.addEventListener('click', closeSheets)
+  actions.append(close)
+  detail.append(actions)
+  openSheet(detail)
+}
+// 一覧の中のカード：1 回押すと、選べるカードなら選ぶ・外すが切り替わる。詳細は一覧の上の段に出す
+function pickInList(node) {
+  const list = node.closest('.picker')
+  if (node.classList.contains('card--押せる') && !list.hasAttribute('aria-busy')) node.classList.toggle('card--選択中')
+  list.querySelector('.picker__detail').replaceChildren(...detailParts(node))
+  const count = list.querySelector('.picker__count')
+  if (count) count.textContent = `${list.querySelectorAll('.picker__cards .card--選択中').length} 枚を選んでいます`
+}
+
+// エネルギー・スマッシュのボタンを押したとき：中身を大きく並べた一覧を開く。コストの選択中なら、
+// その一覧で支払うカードを選ぶ
+function openZoneList(zoneNode, title) {
+  document.getElementById('zone-list')?.remove()
+  const whose = zoneNode.closest('.group--自分') ? '自分' : '相手'
+  const choosing = zoneNode.closest('.group--候補あり') !== null
+  const cardsInList = [...zoneNode.querySelectorAll('.zone__cards > .card')].map((c) => {
+    const copy = c.cloneNode(true)
+    copy.classList.remove('card--フリーズ', 'card--選択中')
+    if (c.classList.contains('card--フリーズ')) copy.classList.add('card--フリーズ')
+    if (copy.dataset.name) copy.addEventListener('click', () => pickInList(copy))
+    return copy
+  })
+  const close = () => document.getElementById('zone-list')?.remove()
+  const node = choosing
+    ? picker('選ぶ', `${whose}の${title}ゾーン`, '支払うカードを選んでください（フリーズしているカードは選べません）', cardsInList,
+      '<span class="picker__count">0 枚を選んでいます</span><button type="button" data-zone-close>この行動をやめる</button><button type="button" class="button--primary" data-zone-close>これで払う</button>')
+    : picker('見る', `${whose}の${title}ゾーン（${cardsInList.length}）`, title === 'スマッシュ' ? '裏向きのカードは中身を見られません' : 'フリーズしているカードは横向き', cardsInList,
+      '<button type="button" data-zone-close>閉じる</button>')
+  node.id = 'zone-list'
+  node.classList.add('picker--開いている')
+  for (const b of node.querySelectorAll('[data-zone-close]')) b.addEventListener('click', close)
+  pickers.append(node)
+}
+
+document.getElementById('log-open').addEventListener('click', () => openSheet(document.getElementById('log')))
+document.getElementById('actions-open').addEventListener('click', () => openSheet(document.getElementById('controls')))
+document.getElementById('sheet-backdrop').addEventListener('click', closeSheets)
+for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', closeSheets)
+document.querySelector('.choice__back button').addEventListener('click', () => {
+  document.querySelector('[data-show="show-picking"]').checked = false
+  apply()
+})
+
+// 捨札・リムーブの引き出しのつまみ（スマホだけ）。押すと中身の一覧が開く
+function drawer(whose, piles) {
+  const node = Object.assign(document.createElement('div'), { className: `phone-only drawer drawer--${whose}` })
+  node.setAttribute('aria-label', `${whose}の捨札とリムーブ`)
+  for (const [title, count] of piles) {
+    const b = Object.assign(document.createElement('button'), { type: 'button' })
+    b.innerHTML = `${title}<strong>${count}</strong>`
+    b.setAttribute('aria-label', `${whose}の${title === '捨札' ? '捨札' : 'リムーブゾーン'}（${count}）の一覧を開く`)
+    b.disabled = count === 0
+    b.addEventListener('click', () => {
+      document.querySelector('[data-show="show-picker-view"]').checked = true
+      apply()
+    })
+    node.append(b)
+  }
+  document.getElementById('duel').append(node)
+  return node
+}
+const drawers = [
+  [drawer('相手', [['リムーブ', 0], ['捨札', 1]]), opponentStrip],
+  [drawer('自分', [['捨札', 2], ['リムーブ', 1]]), ownStrip],
+]
+function placeDrawers() {
+  for (const [node, strip] of drawers) {
+    // 段の高さを下回らないようにし、字が収まらなければ段の中央を軸に上下へはみ出す
+    const r = strip.getBoundingClientRect()
+    node.style.minHeight = `${r.height}px`
+    node.style.top = `${r.top + r.height / 2 - node.offsetHeight / 2}px`
+  }
+}
+
+// 盤面を、画面の幅に合わせて縮める率（本番の盤面の自然な幅は約 47.3rem）
+// 高さが足りない端末では、手札・札・操作の帯（約 20.5rem）を残せるところまで縮める
+function fitBoard() {
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize)
+  const board = document.getElementById('board')
+  // 行の高さ（縮める前の値）を足して、盤面の元の高さを出す
+  const style = getComputedStyle(board)
+  const rows = style.gridTemplateRows.split(' ').map(parseFloat)
+  const natural = rows.reduce((a, b) => a + b, 0) + parseFloat(style.rowGap) * (rows.length - 1)
+  const byWidth = (innerWidth - 16) / (47.3 * rem)
+  const byHeight = (innerHeight - 20.5 * rem) / natural
+  board.style.setProperty('--board-zoom', Math.min(1, byWidth, byHeight).toFixed(3))
+  placeDrawers()
+}
+addEventListener('resize', fitBoard)
+fitBoard()
 
 // ---- モックの表示切り替え ----
 const duel = document.getElementById('duel')
