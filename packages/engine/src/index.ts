@@ -28,6 +28,7 @@ export type {
   BpModifyingAbility,
   CreatedTrigger,
   CreatedTriggeredAbility,
+  DiscardOccasion,
   DreamAbility,
   GutsAbility,
   HopeAbility,
@@ -37,11 +38,15 @@ export type {
   MovementOccasion,
   PepAbility,
   PlanReplacingAbility,
+  OccasionOf,
   TriggerCondition,
+  TriggerRequirement,
   TriggerOccasion,
   TriggeredAbility,
+  TriggeredAbilityOptions,
   TriggerEvent,
   TrustAbility,
+  WhenFor,
 } from './ability.js'
 export { discardTrap, placeEnergy, plan, smash } from './action.js'
 export type { ActionOutcome, ActionViolation } from './action.js'

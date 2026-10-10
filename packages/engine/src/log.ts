@@ -106,6 +106,20 @@ export type DuelEvent =
       /** 発生源のカード。持たないか、見えていなければ `undefined`。 */
       readonly source: CardId | undefined
     }
+  /**
+   * 条件付誘発型能力が、解決する時に誘発条件を満たしておらず、無効化された（総合ルール
+   * 第4部 第7章 8）。
+   *
+   * 効果は実行されないので `能力を解決した` も `命令を実行した` も残らない。このできごとが
+   * 無いと、バンクにあった能力が何も言わずに消えたように見える。無効化が起こりうるのは
+   * バンクを経由する誘発型能力だけなので、経路は持たない。
+   */
+  | {
+      readonly kind: '能力が無効化された'
+      readonly controller: Player
+      /** 発生源のカード。見えていなければ `undefined`。 */
+      readonly source: CardId | undefined
+    }
   /** 効果が命令を 1 つ実行した（総合ルール 第4部 第1章 1）。 */
   | {
       readonly kind: '命令を実行した'
