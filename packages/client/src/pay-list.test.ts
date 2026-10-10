@@ -222,4 +222,27 @@ describe('選択が届いた時点で払う一覧を開く', () => {
 
     expect(again).toEqual(opened)
   })
+
+  /**
+   * 1 つの行動で 2 度選ばせる場合（コスト → 置換効果の能力）。能力を選ぶ一覧から「ひとつ戻る」と、サーバは
+   * 盤面のあとにコストの選択を送り直す。送り直された選択は、新しく届いた選択として条件を見て、払う一覧を開く。
+   */
+  it('コストのあとの能力を選ぶ選択から戻って、コストの選択が送り直されたら、払う一覧がまた開く', () => {
+    const ability = choice([
+      { kind: '能力', source: 'ユニットの1枚' },
+      { kind: '能力', source: 'ユニットの2枚' },
+    ])
+    const opened = settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: BOTH, autoOpen: true })
+    const answered = settlePayState(opened, { kind: '答えた' })
+    const onBoard = settlePayState(answered, { kind: '盤面', actions: 0, scroll: 0 })
+    // 能力を選ぶ選択は、払う一覧の置き場の候補を含まないので、予定を捨てる。
+    const asking = settlePayState(onBoard, { kind: '選んでほしい', board: board(), choice: ability, autoOpen: true })
+    expect(asking).toBeUndefined()
+
+    // ひとつ戻る：盤面、コストの選択の順に届く。
+    const backBoard = settlePayState(asking, { kind: '盤面', actions: 0, scroll: 0 })
+    const back = settlePayState(backBoard, { kind: '選んでほしい', board: board(), choice: BOTH, autoOpen: true })
+
+    expect(back).toEqual(opened)
+  })
 })
