@@ -90,13 +90,27 @@ export interface TriggeredAbility {
    * **ここに書かれるのはテキストの読み方なので、カードの側にあるのが正しい。** engine が
    * 読み方を列挙して持つと、カードのためのルールが engine に漏れる（ADR-0002）。
    *
-   * 「～した時、～ならば」と書かれた条件付誘発型能力（総合ルール 第4部 第7章 8）とは別で
-   * ある。あちらは誘発する時と解決する時の両方で条件をチェックし、解決時に満たされて
-   * いなければ無効化されるが、これは**誘発イベントそのものの一部**として誘発する時に
-   * 1 度だけ判定する。解決時に「プランゾーンから登場した」を確かめようとしても、その
-   * 時点でプランゾーンは無くなっている（同 第2部 第21章 3-3）ので成立しない。
+   * 「～した時、～ならば」と書かれた条件付誘発型能力（総合ルール 第4部 第7章 8）の
+   * 「～ならば」は、これではなく `condition` で表す。あちらは誘発する時と解決する時の
+   * 両方で盤面を見て確かめ、解決時に満たされていなければ無効化されるが、これは
+   * 誘発イベントそのものの一部として誘発する時に 1 度だけ、きっかけを見て判定する。
+   * 解決時に「プランゾーンから登場した」を確かめようとしても、その時点でプランゾーンは
+   * 無くなっている（同 第2部 第21章 3-3）ので成立しない。
    */
   readonly when?: TriggerCondition
+  /**
+   * 条件付誘発型能力の誘発条件（総合ルール 第4部 第3章 3、第7章 8）。省略すれば無条件。
+   *
+   * 誘発する時に満たされていなければ誘発しない。満たされて誘発しても、解決する時にもう
+   * 一度確かめ、満たされていなければ効果を実行せずにバンクから取り除く（無効化）。
+   * `when` と違い、盤面を読んで答える。きっかけは受け取らない。誘発の瞬間にしか分からない
+   * ことを確かめたいのなら `when` の仕事である。
+   *
+   * 誘発する時に読む盤面は、能力を探すのと同じ盤面である。ユニットが捨札に置かれる時の
+   * ように、能力を持つユニット自身が同時にスクエアを離れうるものは、離れる前の盤面を読む
+   * （同 第7章 10）。
+   */
+  readonly condition?: TriggerRequirement
 }
 
 /**
@@ -105,8 +119,38 @@ export interface TriggeredAbility {
  * 支配者を受け取るのは、エリアやラインの呼び名が見るプレイヤーによって入れ替わる
  * （総合ルール 第2部 第22章 4・6）ためである。「味方エリアに」は支配者から見た呼び方に
  * なる（同 6-1）。
+ *
+ * `self` は能力を持つユニット自身である。「自分自身が捨札に置かれた時」のように、きっかけが
+ * 自分についてのものかを確かめるために使う。誘発の判定の外から呼ぶ場合（カードの単体の
+ * テストなど）は渡されないことがあるので、省略されうる。
  */
-export type TriggerCondition = (occasion: TriggerOccasion, controller: Player) => boolean
+export type TriggerCondition<Occasion extends TriggerOccasion = TriggerOccasion> = (
+  occasion: Occasion,
+  controller: Player,
+  self?: UnitOnSquare,
+) => boolean
+
+/**
+ * その誘発イベントが持つきっかけの型。きっかけを持たない誘発イベントは `never`。
+ *
+ * `triggeredAbility` が、書く述語に渡るきっかけを誘発イベントに合わせて絞るために使う。
+ * 「登場した時」の述語が `from` を読めるのは、ここで `AppearanceOccasion` に決まるからである。
+ */
+export type OccasionOf<Event extends TriggerEvent> = Event extends '登場した時'
+  ? AppearanceOccasion
+  : Event extends 'あなたのユニットがスクエアから捨札に置かれた時'
+    ? DiscardOccasion
+    : never
+
+/**
+ * 条件付誘発型能力の誘発条件を、盤面を読んで答える。
+ *
+ * `duel` は効果が盤面を読むのと同じ口である。`controller` は `duel.controller` と同じで、
+ * `self` は誘発した時点の能力を持つユニット（`TriggeredInstance.self`）である。解決する時
+ * には、スクエアに残っていれば引き直した姿になり、離れていれば誘発した時点の写しになる
+ * （同 第4部 第8章 2-5、`duel.self()` と同じ）。
+ */
+export type TriggerRequirement = (duel: DuelView, controller: Player, self: UnitOnSquare) => boolean
 
 /**
  * 誘発イベントのきっかけ。
@@ -123,11 +167,25 @@ export type TriggerCondition = (occasion: TriggerOccasion, controller: Player) =
  * 交わらないので 1 つの型にはまとめない。渡される形が経路ごとに決まっていれば、受け取る
  * カードの側にどのきっかけなのかを確かめる分岐が要らない。
  *
- * 誘発イベントごとに形が決まる。きっかけを持つのはいま「登場した時」だけで、他のイベントは
- * 誘発したこと自体以外に見るものが無い。必要になった時に足す（`card.ts` の属性・トリガー
- * アイコンと同じ考え方）。
+ * 誘発イベントごとに形が決まる。きっかけを持つのはいま「登場した時」と「あなたのユニットが
+ * スクエアから捨札に置かれた時」だけで、他のイベントは誘発したこと自体以外に見るものが
+ * 無い。必要になった時に足す（`card.ts` の属性・トリガーアイコンと同じ考え方）。
+ *
+ * どちらも置かれたスクエアを `square` に持つ。スクエアで絞り込む述語を、きっかけの種類を
+ * 分けずに書けるようにするためである。
  */
-export type TriggerOccasion = AppearanceOccasion
+export type TriggerOccasion = AppearanceOccasion | DiscardOccasion
+
+/**
+ * 「あなたのユニットがスクエアから捨札に置かれた時」のきっかけ（総合ルール 第4部 第7章 6）。
+ *
+ * 捨札に置かれたユニットの、置かれる直前の姿である。置かれたユニットごとに 1 度ずつ、
+ * そのユニットをきっかけとして判定する。ユニット自身が持つ能力が「自分自身が置かれた時」
+ * だけ誘発するようにしたいときは、`TriggerCondition` が受け取る `self` と `id` を比べる。
+ */
+export interface DiscardOccasion extends UnitOnSquare {
+  readonly kind: '捨札'
+}
 
 /** 「登場した時」のきっかけ（総合ルール 第2部 第20章 1-4-a）。 */
 export interface AppearanceOccasion {
@@ -536,14 +594,27 @@ export type Ability =
  * 誘発型能力を 1 つ書く。
  *
  * `when` を渡すと、誘発イベントを満たしたうえでそれが真の時だけ誘発する。渡せるのは
- * きっかけを持つ誘発イベント（いまは「登場した時」だけ、`TriggerOccasion`）に対してである。
+ * きっかけを持つ誘発イベント（「登場した時」と「あなたのユニットがスクエアから捨札に
+ * 置かれた時」、`TriggerOccasion`）に対してである。
+ *
+ * `condition` を渡すと条件付誘発型能力になる（総合ルール 第4部 第7章 8）。`when` を
+ * 使わないときは `undefined` を渡す。
  */
-export function triggeredAbility(
-  event: TriggerEvent,
+export function triggeredAbility<Event extends TriggerEvent>(
+  event: Event,
   effect: Effect,
-  when?: TriggerCondition,
+  when?: TriggerCondition<OccasionOf<Event>>,
+  condition?: TriggerRequirement,
 ): TriggeredAbility {
-  return when === undefined ? { kind: '誘発型能力', event, effect } : { kind: '誘発型能力', event, effect, when }
+  return {
+    kind: '誘発型能力',
+    event,
+    effect,
+    // 述語が受け取るきっかけは誘発イベントごとに絞ってある（`OccasionOf`）。能力として持つ
+    // 側は、どのイベントのものかを忘れて、きっかけの和集合で呼ぶ（`trigger.ts`）。
+    ...(when === undefined ? {} : { when: when as TriggerCondition }),
+    ...(condition === undefined ? {} : { condition }),
+  }
 }
 
 /**
