@@ -15,7 +15,9 @@ import {
   bpPlus,
   cardsIn,
   cardsOn,
+  choose,
   defineUnit,
+  destroy,
   emptyDuelState,
   dream,
   friendship,
@@ -282,7 +284,10 @@ const madeByTestCompany = defineUnit({
   makerSymbols: ['テスト社'],
 })
 
-/** 「テスト社」と「テスト社・別名」の両方を並びに書いたユニット。同じものとして扱うカードの書き方。 */
+/**
+ * 「テスト社」を、「テスト社・別名」としても扱うユニット。扱われる側のシンボル（テスト社）を
+ * 持つカードは、並びに両方を書く。
+ */
 const madeByTestCompanyOrItsAlias = defineUnit({
   name: 'テスト・テスト社と別名',
   level: 1,
@@ -290,6 +295,16 @@ const madeByTestCompanyOrItsAlias = defineUnit({
   bp: 1000,
   sp: 1000,
   makerSymbols: ['テスト社', 'テスト社・別名'],
+})
+
+/** 「テスト社・別名」だけを持つユニット。扱う先のシンボルしか持たないので、「テスト社」としては数えられない。 */
+const madeByTheAliasOnly = defineUnit({
+  name: 'テスト・別名のみ',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  makerSymbols: ['テスト社・別名'],
 })
 
 /** 属性にだけ「テスト社」と同じ綴りを書いたユニット。メーカーシンボルとは別の並びであることを見る。 */
@@ -327,10 +342,16 @@ describe('メーカーシンボル', () => {
     expect(hasMakerSymbol(vanilla, 'テスト社')).toBe(false)
   })
 
-  // 総合ルール 第2部 第13章 1-1-1。別名を同じものとして扱うカードは、並びに両方を書く。
-  it('別名と同じものとして扱うカードは、どちらのシンボルでも持つと答える', () => {
+  // 総合ルール 第2部 第13章 1-1-1。あるシンボルを別のシンボルとして扱うのは片方向である。
+  it('別のシンボルとして扱われるシンボルを持つカードは、どちらのシンボルでも持つと答える', () => {
     expect(hasMakerSymbol(madeByTestCompanyOrItsAlias, 'テスト社')).toBe(true)
     expect(hasMakerSymbol(madeByTestCompanyOrItsAlias, 'テスト社・別名')).toBe(true)
+  })
+
+  // 総合ルール 第2部 第13章 1-1-1。逆は成り立たない。
+  it('扱われる先のシンボルしか持たないカードは、もう一方のシンボルでは数えられない', () => {
+    expect(hasMakerSymbol(madeByTheAliasOnly, 'テスト社・別名')).toBe(true)
+    expect(hasMakerSymbol(madeByTheAliasOnly, 'テスト社')).toBe(false)
   })
 
   it('属性の並びとは別で、属性に同じ綴りがあってもメーカーシンボルは持たない', () => {
@@ -587,6 +608,26 @@ describe('友情を持つユニットで対象を絞るＢＰの修整', () => {
     )
 
     expect(answers).toEqual([false, true, false, false, false, true])
+  })
+
+  // スクエアを離れた写しは、継続効果の及ばない場所にいる（総合ルール 第4部 第12章 4-1）ので、
+  // 渡された写しがそのまま持つ能力を答える。
+  it('スクエアを離れた写しを渡された時は、その写しが持つ能力を答える', () => {
+    const board = boardOf([homeLeft, '見るユニット', vanilla], [homeCenter, '離れる友情', friendly])
+    const answers: boolean[] = []
+
+    resolveEffect(
+      board,
+      function* (duel) {
+        const leaving = yield* choose(duel.allies().filter((ally) => ally.id === '離れる友情'))
+        if (leaving === undefined) throw new Error('味方がいる盤面で試すこと')
+        yield* destroy(leaving)
+        answers.push(duel.hasKeyword(leaving, '友情'), duel.hasKeyword(leaving, '夢'))
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+
+    expect(answers).toEqual([true, false])
   })
 })
 

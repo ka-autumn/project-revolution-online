@@ -105,11 +105,14 @@ interface WrittenCard {
    * カードに書かれているメーカーシンボル（総合ルール 第2部 第13章 1-1）。
    *
    * 効果と常在型能力が見るのは、この並びにあるシンボルを含むかどうかだけである
-   * （`hasMakerSymbol`）。複数のシンボルを同じものとして扱うカード（同 1-1-1）は、カードの
-   * 側が並びに両方を書く。engine は実在のメーカー名を 1 つも知らない（ADR-0001・ADR-0002）。
+   * （`hasMakerSymbol`）。あるシンボルを別のシンボルとして扱う決まり（同 1-1-1）は片方向で、
+   * 扱われる側のシンボルを持つカードだけが、もう一方としても数えられる（逆は成り立たない）。
+   * そのカードの側が、並びに両方を書く。扱われる先のシンボルしか持たないカードは、並びにも
+   * 先のシンボルだけを書く。engine は実在のメーカー名を 1 つも知らない（ADR-0001・ADR-0002）。
    *
-   * 属性と違って、メーカーシンボルを加える・失わせる効果は無い。書かれた並びがそのまま
-   * 継続効果を適用した後の姿でもある。
+   * メーカーシンボルを加える・失わせる効果を持つカードは無いので、書かれた並びがそのまま
+   * 継続効果を適用した後の姿でもある（総合ルールは属性一般の変更・追加を認めている。
+   * 同 第13章 3・4）。そうした効果が出てきた時は、属性と同じ形にする。
    */
   readonly makerSymbols: readonly MakerSymbol[]
   /** テキストが定義する能力（総合ルール 第2部 第10章 1）。改行ごとに別の能力になる（同 第4部 第1章 3）。 */
@@ -284,8 +287,9 @@ export function defineTrap(spec: TrapSpec): TrapCard {
 /**
  * そのカードが、そのメーカーシンボルを持つか（総合ルール 第2部 第13章 1-1）。
  *
- * 書かれた並びに含まれるかどうかだけを見る。メーカーシンボルを加える・失わせる効果は
- * 無いので、継続効果を適用した後の姿を通す必要が無い。
+ * 書かれた並びに含まれるかどうかだけを見る。メーカーシンボルを加える・失わせる効果を持つ
+ * カードは無いので、継続効果を適用した後の姿を通す必要が無い。別のシンボルとして扱われる
+ * シンボルは、そのカードの並びに両方が書かれている前提で、片方向に答える（`makerSymbols`）。
  */
 export function hasMakerSymbol(card: Card, symbol: MakerSymbol): boolean {
   return card.makerSymbols.includes(symbol)
@@ -300,8 +304,11 @@ export function hasMakerSymbol(card: Card, symbol: MakerSymbol): boolean {
  * 名前を持つ側であることを確かめる。「友情」はその例で、ＢＰを修整する常在型能力に名前を
  * 足した形（`FriendshipAbility`）で持つ。
  *
- * **盤面にいるユニットが持つかどうかは、これを直接呼ばず `DuelView.hasKeyword` で尋ねる。**
- * ここが見るのはカードに書かれている能力だけで、継続効果を適用した後の姿ではない。
+ * 見るのは、渡されたカードの `abilities` だけである。盤面から来た写し（`DuelView` の
+ * `allies`・`enemies`・`self` が返す、継続効果を適用した後の `card`）を渡す限り、与えられた能力も含めて正しく答える
+ * （与えられた能力は写しの `abilities` に載る形で表す。`effect.ts` の `DuelView.hasKeyword`）。
+ * カードの定義そのもの（`defineUnit` が返したもの）を渡すと、書かれた能力しか見ない。
+ * 盤面にいるユニットのことは `DuelView.hasKeyword` で尋ねるとよい。
  */
 export function hasKeyword(card: Card, keyword: PassiveKeyword): boolean {
   return card.abilities.some(

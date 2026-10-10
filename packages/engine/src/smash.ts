@@ -90,17 +90,8 @@ export interface SmashJudgment {
  */
 const SMASH_JUDGMENT_DAMAGE = 1000
 
-/**
- * そのプレイヤーのスマッシュ（総合ルール 第2部 第21章 7-2）。
- *
- * スマッシュゾーンにある「裏向きの」カードだけがスマッシュである。希望ステップで表向きに
- * 置かれているカードはスマッシュではない（同 第3部 第19章 1）ので、7 枚以上で敗北する
- * ルールエフェクト（同 第4部 第14章 4-1）はこれを数える。
- */
-export function smashesOf(state: DuelState, player: Player): readonly CardInstance[] {
-  const faceUp = state.smashJudgments.map((judgment) => judgment.faceUp)
-  return cardsIn(state, player, 'スマッシュゾーン').filter((card) => !faceUp.includes(card.id))
-}
+// スマッシュの数え方は `duel.ts` にある（`view.ts` から読むため。輪を作らないよう）。
+export { smashesOf } from './duel.js'
 
 /**
  * 1000 以上のダメージを受けているプレイヤーがいれば、そのスマッシュ判定を始める

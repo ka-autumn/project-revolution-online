@@ -132,14 +132,16 @@ function triggers(
   if (ability.condition === undefined) return true
 
   // 誘発する時の条件は、能力を探しているこの盤面で確かめる。誘発してから解決するまでに
-  // 盤面が変わっても、ここで見るのは誘発の瞬間の姿である。
+  // 盤面が変わっても、ここで見るのは誘発の瞬間の姿である。確かめるだけで命令を出さない
+  // ので、見せたカードは覚えない。ここで読んだカードが、効果の対象に取れるようになる
+  // ことは無い。
   const duel = duelView(() => state, {
     controller: self.controller,
     self: () => self,
     show: () => {},
     data: continuousData,
   })
-  return ability.condition(duel, self.controller, self)
+  return ability.condition(duel)
 }
 
 /**

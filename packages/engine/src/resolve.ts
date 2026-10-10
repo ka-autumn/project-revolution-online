@@ -176,7 +176,7 @@ export function conditionHolds(state: DuelState, instance: TriggeredInstance): b
 
   const context = { controller: instance.controller, self: instance.self }
   const duel = effectView(() => state, context, new Set())
-  return condition(duel, instance.controller, instance.self)
+  return condition(duel)
 }
 
 interface Outcome {
@@ -285,12 +285,14 @@ function apply(
       // すでにその向きなら、リリースすることもフリーズすることもできない（総合ルール
       // 第2部 第24章 1-1）ので、この行動は実行されない（同 第1部 第1章 3）。スクエアや
       // エネルギーゾーンを離れていた場合も同じで、どちらの手続きも盤面をそのまま返す。
-      // エネルギーを指す対象だけが `zone` を持つ（`effect.ts` の `EnergyInZone`）。
+      // エネルギーを指す対象だけが `zone` を持つ（`effect.ts` の `EnergyInZone`）。向きを
+      // 変えられるのは支配者のエネルギーだけで、相手のエネルギーゾーンにあるカードを指して
+      // いても盤面は変わらない（見せたカードがそこへ移った場合など）。
       const { target, orientation } = instruction
       return {
         state:
           'zone' in target
-            ? setOrientationInEnergyZone(state, target.id, orientation)
+            ? setOrientationInEnergyZone(state, context.controller, target.id, orientation)
             : setOrientationOnSquare(state, target.id, orientation),
         value: undefined,
       }

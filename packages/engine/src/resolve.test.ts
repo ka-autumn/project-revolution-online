@@ -1343,6 +1343,45 @@ describe('効果によるエネルギーの向きの変更', () => {
     expect(orientationsOf(resolved, '後攻')).toEqual(['リリース'])
   })
 
+  // 見せたカードが相手のエネルギーゾーンへ移ると、その識別子を指すエネルギーは相手のものになる。
+  it('相手のエネルギーゾーンにあるカードを指していても、向きは変わらず、ログにも残らない', () => {
+    const state = putOnSquare(
+      withEnergies('リリース'),
+      enemySquare,
+      instantiate({ id: '相手のユニット', card: vanilla, owner: '後攻' }),
+    )
+
+    const resolved = resolve(state, function* (duel) {
+      const enemy = yield* choose(duel.enemies())
+      if (enemy === undefined) throw new Error('相手のユニットがいる盤面で試すこと')
+      yield* placeInZone(enemy, 'エネルギーゾーン', 'リリース')
+      yield* freeze({ id: enemy.id, zone: 'エネルギーゾーン', card: enemy.card, orientation: 'リリース' })
+    })
+
+    expect(idsOf(cardsIn(resolved, '後攻', 'エネルギーゾーン'))).toContain('相手のユニット')
+    expect(orientationsOf(resolved, '後攻')).toEqual(['リリース', 'リリース'])
+    expect(executedInstructions(resolved).map((instruction) => instruction.kind)).not.toContain('向きを変える')
+  })
+
+  it('ユニットとして読んだ写しのカードがエネルギーゾーンへ移った後にフリーズしても、エネルギーの向きは変わらない', () => {
+    const state = putOnSquare(
+      withEnergies('リリース'),
+      mySquare,
+      instantiate({ id: '味方のユニット', card: vanilla, owner: '先攻' }),
+    )
+
+    const resolved = resolve(state, function* (duel) {
+      const ally = yield* choose(duel.allies())
+      if (ally === undefined) throw new Error('味方のユニットがいる盤面で試すこと')
+      yield* placeInZone(ally, 'エネルギーゾーン', 'リリース')
+      yield* freeze(ally)
+    })
+
+    expect(idsOf(cardsIn(resolved, '先攻', 'エネルギーゾーン'))).toContain('味方のユニット')
+    expect(orientationsOf(resolved)).toEqual(['リリース', 'リリース'])
+    expect(executedInstructions(resolved).map((instruction) => instruction.kind)).not.toContain('向きを変える')
+  })
+
   it('見せていないエネルギーは対象にできない', () => {
     expect(() =>
       resolve(withEnergies('リリース'), function* () {

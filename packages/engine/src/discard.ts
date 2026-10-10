@@ -1,4 +1,5 @@
 import type { DiscardOccasion } from './ability.js'
+import { continuousData } from './continuous.js'
 import { findOnSquares, locateOnSquares, moveFromSquareTo } from './duel.js'
 import type { CardId, CardInstance, DuelState } from './duel.js'
 import { addTriggered, triggeredOnSquares } from './trigger.js'
@@ -35,11 +36,13 @@ function onSquares(state: DuelState, ids: readonly CardId[]): readonly CardInsta
  * すべての能力を移動前の盤面から探してからカードを動かす（同 10）。
  *
  * 置かれたユニットごとに、そのユニットをきっかけ（`DiscardOccasion`）として判定する。
- * 能力の側は、置かれたのが自分自身かどうかをきっかけから確かめられる。
+ * 能力の側は、置かれたのが自分自身かどうかをきっかけから確かめられる。きっかけの
+ * ユニットは、継続効果を適用した後の姿（置かれる直前の属性とＢＰ）で渡す。
  */
 export function discardFromSquares(state: DuelState, ids: readonly CardId[]): DuelState {
   const discarded = onSquares(state, ids)
   const event = 'あなたのユニットがスクエアから捨札に置かれた時'
+  const dataBefore = continuousData(state)
   const triggered = discarded.flatMap((instance) => {
     const { card } = instance
     const located = locateOnSquares(state, instance.id)
@@ -49,7 +52,7 @@ export function discardFromSquares(state: DuelState, ids: readonly CardId[]): Du
       kind: '捨札',
       id: instance.id,
       square: located.square,
-      card,
+      card: dataBefore(instance.id, card),
       controller: instance.controller,
     }
     return triggeredOnSquares(state, event, (each) => each.controller === instance.controller, occasion)
