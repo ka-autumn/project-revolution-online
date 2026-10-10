@@ -155,6 +155,7 @@ export type {
   DuelView,
   Effect,
   EffectStep,
+  EnergyInZone,
   Instruction,
   SmashCard,
   TrapEffect,

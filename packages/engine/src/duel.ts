@@ -867,6 +867,31 @@ export function setOrientationOnSquare(state: DuelState, id: CardId, orientation
 }
 
 /**
+ * エネルギーゾーンにあるカードの向きを変える（総合ルール 第2部 第24章 1）。エネルギーゾーンに
+ * 無ければ盤面はそのまま。
+ *
+ * `setOrientationOnSquare` と同じく、すでにその向きのカードに対して行うことはできない
+ * （同 1-1）ので、その場合も盤面をそのまま返す。エネルギーゾーンはプレイヤーごとに分かれて
+ * いて、カードは持ち主のものにしか居ない（`moveToZone`）ので、どちらのプレイヤーのゾーンかは
+ * 呼ぶ側が言わなくてもカードの識別子から決まる。
+ */
+export function setOrientationInEnergyZone(state: DuelState, id: CardId, orientation: Orientation): DuelState {
+  for (const player of PLAYERS) {
+    const found = findInZone(state, player, 'エネルギーゾーン', id)
+    if (found === undefined) continue
+    if (found.orientation === orientation) return state
+
+    return putInZone(
+      state,
+      player,
+      'エネルギーゾーン',
+      cardsIn(state, player, 'エネルギーゾーン').map((card) => (card.id === id ? { ...card, orientation } : card)),
+    )
+  }
+  return state
+}
+
+/**
  * そのプレイヤーが支配する、フリーズ状態のカードをすべてリリースする
  * （総合ルール 第3部 第5章 1）。
  *

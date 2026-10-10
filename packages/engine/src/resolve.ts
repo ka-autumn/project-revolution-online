@@ -9,6 +9,7 @@ import {
   locateOnSquares,
   moveToSquare,
   moveToZone,
+  setOrientationInEnergyZone,
   setOrientationOnSquare,
   topOfLibrary,
 } from './duel.js'
@@ -282,10 +283,15 @@ function apply(
         throw new Error('効果に見せていないカードが対象にされた')
       }
       // すでにその向きなら、リリースすることもフリーズすることもできない（総合ルール
-      // 第2部 第24章 1-1）ので、この行動は実行されない（同 第1部 第1章 3）。スクエアを
-      // 離れていた場合も同じで、どちらも `setOrientationOnSquare` が盤面をそのまま返す。
+      // 第2部 第24章 1-1）ので、この行動は実行されない（同 第1部 第1章 3）。スクエアや
+      // エネルギーゾーンを離れていた場合も同じで、どちらの手続きも盤面をそのまま返す。
+      // エネルギーを指す対象だけが `zone` を持つ（`effect.ts` の `EnergyInZone`）。
+      const { target, orientation } = instruction
       return {
-        state: setOrientationOnSquare(state, instruction.target.id, instruction.orientation),
+        state:
+          'zone' in target
+            ? setOrientationInEnergyZone(state, target.id, orientation)
+            : setOrientationOnSquare(state, target.id, orientation),
         value: undefined,
       }
     }

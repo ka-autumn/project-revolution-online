@@ -36,6 +36,20 @@ export interface CardInZone {
 }
 
 /**
+ * 効果から見た、エネルギーゾーンにあるカード 1 枚（エネルギー）。
+ *
+ * `CardInZone` に、いまの向きを足したもの。エネルギーゾーンのカードは向きを持つ（総合ルール
+ * 第2部 第24章 1）ので、「リリース状態のエネルギーを 1 枚選び、フリーズする」のような
+ * テキストの候補をカードの側で絞れる。向きを変える命令（`freeze`・`release`）の対象にできる。
+ *
+ * 向きは読んだ時点のものである。命令で向きを変えても、すでに手元にある写しは変わらない。
+ */
+export interface EnergyInZone extends CardInZone {
+  readonly zone: 'エネルギーゾーン'
+  readonly orientation: Orientation
+}
+
+/**
  * 効果から見た、スマッシュゾーンにある裏向きのカード 1 枚（スマッシュ）。
  *
  * `CardInZone` と違って、**カードの中身を持たない。** スマッシュは両方のプレイヤーに対して
@@ -126,8 +140,11 @@ export interface DuelView {
    * 中身も公開されている（同 6-3）ので相手のぶんも見せられるが、返すのは支配者自身の
    * ぶんだけにしている。相手のエネルギーゾーンから選ぶテキストの消費者がまだいないため
    * で、手札・捨札・プランゾーンと同じ形である。要るようになった時に足す。
+   *
+   * いまの向きも読める（`EnergyInZone`）。向きも公開されている情報である（同 第2部 第23章
+   * 1-1、第21章 6-3）。
    */
-  energyZone(): readonly CardInZone[]
+  energyZone(): readonly EnergyInZone[]
   /**
    * そのプレイヤーのスマッシュの枚数（総合ルール 第2部 第21章 7-2）。
    *
@@ -171,7 +188,7 @@ export type Instruction =
   | { readonly kind: '破壊する'; readonly target: UnitOnSquare }
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
   | { readonly kind: 'ユニットにダメージを与える'; readonly target: UnitOnSquare; readonly amount: number }
-  | { readonly kind: '向きを変える'; readonly target: UnitOnSquare; readonly orientation: Orientation }
+  | { readonly kind: '向きを変える'; readonly target: UnitOnSquare | EnergyInZone; readonly orientation: Orientation }
   | {
       readonly kind: 'ゾーンへ置く'
       readonly card: CardInZone | UnitOnSquare | SmashCard
@@ -381,25 +398,25 @@ export function* damageUnit(target: UnitOnSquare, amount: number): EffectStep<vo
 }
 
 /**
- * スクエアにいるユニットをリリースする（総合ルール 第2部 第24章 1）。
+ * スクエアにいるユニット、または支配者のエネルギーをリリースする（総合ルール 第2部 第24章 1）。
  *
  * フリーズ状態のカードをリリース状態にすることを「リリースする」と呼ぶ。
  *
  * **すでにリリース状態のカードをリリースすることはできない**（同 1-1）。その場合この行動は
- * 実行されない（同 第1部 第1章 3）。効果はそのまま続く。対象がすでにスクエアを離れていた
- * 場合も同じである。
+ * 実行されない（同 第1部 第1章 3）。効果はそのまま続く。対象がすでにスクエアやエネルギー
+ * ゾーンを離れていた場合も同じである。
  *
  * これは向きを変えるだけで、ゾーンの移動ではない。置く経路（`placeOnSquare`）に同じ
  * スクエアを渡して代用しないこと。置く経路を通すと、ユニットがあるスクエアに同じ
  * プレイヤーの支配するユニットが置かれた時に働くルールエフェクト（同 第4部 第14章 4-7）の
  * 判定に、向きを変えただけのカードが紛れ込む。
  */
-export function* release(target: UnitOnSquare): EffectStep<void> {
+export function* release(target: UnitOnSquare | EnergyInZone): EffectStep<void> {
   yield { kind: '向きを変える', target, orientation: 'リリース' }
 }
 
 /**
- * スクエアにいるユニットをフリーズする（総合ルール 第2部 第24章 1）。
+ * スクエアにいるユニット、または支配者のエネルギーをフリーズする（総合ルール 第2部 第24章 1）。
  *
  * リリース状態のカードをフリーズ状態にすることを「フリーズする」と呼ぶ。すでにフリーズ
  * 状態のカードをフリーズすることはできない（同 1-1）。実行できない場合の扱いは `release`
@@ -409,7 +426,7 @@ export function* release(target: UnitOnSquare): EffectStep<void> {
  * こちらは効果が行うものである。コストとしてのフリーズは、フリーズできることを先に
  * 確かめたうえで支払われる。
  */
-export function* freeze(target: UnitOnSquare): EffectStep<void> {
+export function* freeze(target: UnitOnSquare | EnergyInZone): EffectStep<void> {
   yield { kind: '向きを変える', target, orientation: 'フリーズ' }
 }
 

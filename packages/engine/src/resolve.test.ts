@@ -28,7 +28,16 @@ import {
   squaresBeside,
   triggeredAbility,
 } from './index.js'
-import type { CardInZone, CardInstance, Chooser, DuelState, ResolutionVia, Square, UnitOnSquare } from './index.js'
+import type {
+  CardInZone,
+  CardInstance,
+  Chooser,
+  DuelState,
+  Effect,
+  ResolutionVia,
+  Square,
+  UnitOnSquare,
+} from './index.js'
 
 /**
  * このファイルのテストはどの経路で解決されたかを見ていないので、決め打ちで 1 つ使い回す
@@ -1157,6 +1166,186 @@ describe('効果から見えるエネルギーゾーン', () => {
 
     expect(idsOf(cardsOn(resolved, mySquare))).toEqual(['先攻のエネルギー0'])
     expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')).toEqual([])
+  })
+})
+
+// 総合ルール 第2部 第24章 1・1-1（ADR-0006）
+describe('効果によるエネルギーの向きの変更', () => {
+  /** 先攻のエネルギーゾーンに、指定した向きのカードを置いた盤面。後攻にもリリース状態を 1 枚置く。 */
+  function withEnergies(...orientations: readonly ('リリース' | 'フリーズ')[]): DuelState {
+    const board = putInZone(
+      emptyDuelState(),
+      '先攻',
+      'エネルギーゾーン',
+      orientations.map((orientation, index) =>
+        instantiate({ id: `先攻のエネルギー${index}`, card: vanilla, owner: '先攻', orientation }),
+      ),
+    )
+    return putInZone(board, '後攻', 'エネルギーゾーン', [
+      instantiate({ id: '後攻のエネルギー', card: vanilla, owner: '後攻' }),
+    ])
+  }
+
+  const orientationsOf = (state: DuelState, player: '先攻' | '後攻' = '先攻') =>
+    cardsIn(state, player, 'エネルギーゾーン').map((card) => card.orientation)
+
+  /**
+   * 「あなたのエネルギーを 1 枚まで選び、フリーズしてよい。そうしたら、ダメージを受ける」。
+   * 選べるのはリリース状態のエネルギーだけで、選んだ時にだけ続きが起こる。
+   */
+  const freezeAnEnergy: Effect = function* (duel) {
+    const energy = yield* chooseAtMostOne(duel.energyZone().filter((each) => each.orientation === 'リリース'))
+    if (energy === undefined) return
+    yield* freeze(energy)
+    yield* damagePlayer(duel.controller, 500)
+  }
+
+  const resolve = (state: DuelState, effect: Effect, chooser: Chooser = chooseFirst) =>
+    resolveEffect(state, effect, { controller: '先攻', via: VIA, chooser })
+
+  /** ログに残った、実行された命令。 */
+  const executedInstructions = (state: DuelState) =>
+    state.log.flatMap((recorded) => (recorded.event.kind === '命令を実行した' ? [recorded.event.instruction] : []))
+
+  it('効果から見たエネルギーは、いまの向きを持つ', () => {
+    let seen: readonly (string | undefined)[] = []
+    resolve(withEnergies('リリース', 'フリーズ'), function* (duel) {
+      seen = duel.energyZone().map((energy) => energy.orientation)
+    })
+
+    expect(seen).toEqual(['リリース', 'フリーズ'])
+  })
+
+  it('リリース状態のエネルギーをフリーズする', () => {
+    const resolved = resolve(withEnergies('リリース', 'リリース'), freezeAnEnergy)
+
+    expect(orientationsOf(resolved)).toEqual(['フリーズ', 'リリース'])
+    // 「そうしたら」の続きが起こる。
+    expect(resolved.damage['先攻']).toBe(500)
+  })
+
+  it('フリーズ状態のエネルギーをリリースする', () => {
+    const resolved = resolve(withEnergies('フリーズ', 'フリーズ'), function* (duel) {
+      const energy = yield* choose(duel.energyZone())
+      if (energy !== undefined) yield* release(energy)
+    })
+
+    expect(orientationsOf(resolved)).toEqual(['リリース', 'フリーズ'])
+  })
+
+  it('選ぶ候補はカードの側で向きによって絞れ、フリーズ状態のものは候補に並ばない', () => {
+    let offered: readonly unknown[] = []
+    resolve(withEnergies('フリーズ', 'リリース', 'フリーズ'), freezeAnEnergy, (candidates) => {
+      offered = candidates
+      return candidates[0]
+    })
+
+    expect(offered).toHaveLength(1)
+    expect(offered).toMatchObject([{ id: '先攻のエネルギー1', orientation: 'リリース' }])
+  })
+
+  it('選ばなければ、何も起こらず、続きも起こらない', () => {
+    const state = withEnergies('リリース', 'リリース')
+
+    const resolved = resolve(state, freezeAnEnergy, () => undefined)
+
+    expect(orientationsOf(resolved)).toEqual(['リリース', 'リリース'])
+    expect(resolved.damage['先攻']).toBe(0)
+  })
+
+  // 総合ルール 第1部 第1章 3。候補が無ければ選ぶ行動が実行されず、続きも起こらない。
+  it('エネルギーが全部フリーズ状態なら、候補が無く、何も起こらない', () => {
+    const state = withEnergies('フリーズ', 'フリーズ')
+    let asked = false
+
+    const resolved = resolve(state, freezeAnEnergy, (candidates) => {
+      asked = true
+      return candidates[0]
+    })
+
+    expect(asked).toBe(false)
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  it('エネルギーが 0 枚なら、候補が無く、何も起こらない', () => {
+    const state = withEnergies()
+
+    const resolved = resolve(state, freezeAnEnergy)
+
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  // 総合ルール 第2部 第24章 1-1。
+  it('すでにフリーズ状態のエネルギーはフリーズできず、効果はそのまま続く', () => {
+    const state = withEnergies('フリーズ')
+
+    const resolved = resolve(state, function* (duel) {
+      const [energy] = duel.energyZone()
+      if (energy === undefined) throw new Error('エネルギーがある盤面で試すこと')
+      yield* freeze(energy)
+      yield* damagePlayer(duel.controller, 500)
+    })
+
+    expect(orientationsOf(resolved)).toEqual(['フリーズ'])
+    expect(resolved.damage['先攻']).toBe(500)
+    // 実行されなかった行動は、ログにも残らない。
+    expect(executedInstructions(resolved).map((instruction) => instruction.kind)).toEqual([
+      'プレイヤーにダメージを与える',
+    ])
+  })
+
+  // 総合ルール 第2部 第24章 1-1。
+  it('すでにリリース状態のエネルギーはリリースできない', () => {
+    const state = withEnergies('リリース')
+
+    const resolved = resolve(state, function* (duel) {
+      const [energy] = duel.energyZone()
+      if (energy === undefined) throw new Error('エネルギーがある盤面で試すこと')
+      yield* release(energy)
+    })
+
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  it('向きを変えたことは、これまでと同じ形でログに残る', () => {
+    const resolved = resolve(withEnergies('リリース'), freezeAnEnergy)
+
+    expect(executedInstructions(resolved)).toContainEqual({
+      kind: '向きを変える',
+      card: '先攻のエネルギー0',
+      orientation: 'フリーズ',
+    })
+  })
+
+  it('すでにエネルギーゾーンを離れたエネルギーの向きは変わらないが、効果はそのまま続く', () => {
+    const state = withEnergies('リリース')
+
+    const resolved = resolve(state, function* (duel) {
+      const [energy] = duel.energyZone()
+      if (energy === undefined) throw new Error('エネルギーがある盤面で試すこと')
+      yield* placeInZone(energy, '捨札', 'リリース')
+      yield* freeze(energy)
+      yield* damagePlayer(duel.controller, 500)
+    })
+
+    expect(orientationsOf(resolved)).toEqual([])
+    expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['先攻のエネルギー0'])
+    expect(cardsIn(resolved, '先攻', '捨札')[0]?.orientation).toBe('リリース')
+    expect(resolved.damage['先攻']).toBe(500)
+  })
+
+  it('相手のエネルギーには触れない', () => {
+    const resolved = resolve(withEnergies('リリース'), freezeAnEnergy)
+
+    expect(orientationsOf(resolved, '後攻')).toEqual(['リリース'])
+  })
+
+  it('見せていないエネルギーは対象にできない', () => {
+    expect(() =>
+      resolve(withEnergies('リリース'), function* () {
+        yield* freeze({ id: '先攻のエネルギー0', zone: 'エネルギーゾーン', card: vanilla, orientation: 'リリース' })
+      }),
+    ).toThrowError('効果に見せていないカードが対象にされた')
   })
 })
 

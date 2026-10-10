@@ -2,7 +2,7 @@ import { BATTLE_SPACE } from './board.js'
 import type { UnitCard } from './card.js'
 import { cardsIn } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
-import type { CardInZone, DuelView, SmashCard, UnitOnSquare } from './effect.js'
+import type { CardInZone, DuelView, EnergyInZone, SmashCard, UnitOnSquare } from './effect.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import { smashesOf } from './smash.js'
@@ -132,7 +132,18 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
     // 枚数だけを返すので、見せたカードとして覚えるものが無い。数えたことによって、その
     // カードを対象にできるようにはならない。
     energyCount: (player) => cardsIn(currentState(), player, 'エネルギーゾーン').length,
-    energyZone: showZone('エネルギーゾーン'),
+    energyZone: () => {
+      const energies = cardsIn(currentState(), controller, 'エネルギーゾーン').map(
+        (instance): EnergyInZone => ({
+          id: instance.id,
+          zone: 'エネルギーゾーン',
+          card: instance.card,
+          orientation: instance.orientation,
+        }),
+      )
+      for (const energy of energies) source.show(energy.id)
+      return energies
+    },
     // 数え方は `smashesOf` に任せる。表向きに置かれているカードを数えない判断をここで
     // 繰り返さない。
     smashCount: (player) => smashesOf(currentState(), player).length,
