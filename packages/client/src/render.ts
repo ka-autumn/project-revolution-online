@@ -142,6 +142,8 @@ function element(tag: string, className: string, text?: string): HTMLElement {
 export interface PickableSquare {
   readonly square: Square
   readonly label: string
+  /** エリアごと選んでいる（効果がエリアを選ばせている場面、#278）。`input-model.ts` の同名の型と同じ。 */
+  readonly wholeArea?: true
 }
 
 export interface BoardPicking {
@@ -936,9 +938,10 @@ function squareElement(
   const pickable = pickableAt(picking, square.square)
   const inBattle =
     battle !== undefined && battle.square.row === square.square.row && battle.square.column === square.square.column
+  const wholeArea = pickable?.wholeArea === true
   const node = element(
     'div',
-    `square square--${square.area}${pickable === undefined ? '' : ' square--置き先'}${inBattle ? ' square--バトル中' : ''}`,
+    `square square--${square.area}${pickable === undefined ? '' : ' square--置き先'}${wholeArea ? ' square--エリア選択' : ''}${inBattle ? ' square--バトル中' : ''}`,
   )
   if (inBattle) node.append(element('span', 'square__battle', 'バトル中'))
   // 押せることを色だけで区別させない。読み上げにも出す。
@@ -969,10 +972,32 @@ function squareElement(
   if (pickable !== undefined && onSquare !== undefined) {
     const picked = pickable.square
     node.addEventListener('click', () => onSquare(picked))
+    if (wholeArea) wireAreaHighlight(node, square.area)
   }
   for (const card of square.cards) node.append(cardElement(card, picking))
 
   return node
+}
+
+/** エリアごと選んでいる間、カーソルを載せた（またはフォーカスした）スクエアと同じエリアの 3 つに付ける class。 */
+export const AREA_HIGHLIGHT = 'square--エリア強調'
+
+/**
+ * エリアを選んでいる間、カーソルを載せた（またはフォーカスした）スクエアと同じエリアの 3 つのスクエアを
+ * まとめて強調する（ADR-0031）。行単位で選んでいることが、押す前に見えるようにするため。
+ *
+ * 描き直すとスクエアは作り直されるので、付けた class は残らない。同じエリアの仲間は、押せるスクエアの
+ * 目印（`square--エリア選択`）で盤面から引く。どれが仲間かをここでは数えない（ADR-0010）。
+ */
+function wireAreaHighlight(node: HTMLElement, area: Area): void {
+  const highlight = (on: boolean): void => {
+    const mates = node.closest('.board')?.querySelectorAll<HTMLElement>(`.square--エリア選択.square--${area}`) ?? []
+    for (const mate of mates) mate.classList.toggle(AREA_HIGHLIGHT, on)
+  }
+  node.addEventListener('mouseenter', () => highlight(true))
+  node.addEventListener('mouseleave', () => highlight(false))
+  node.addEventListener('focusin', () => highlight(true))
+  node.addEventListener('focusout', () => highlight(false))
 }
 
 /**
