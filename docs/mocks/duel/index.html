@@ -1647,6 +1647,8 @@ body {
     gap: 0.25rem;
     height: 100dvh;
     padding: 0.4rem 0.5rem;
+    /* 収まらないときは、操作の帯より上だけを縦に送る（操作の帯は下に付いたまま） */
+    overflow-y: auto;
   }
 
   .duel__left, .duel__center, .duel__right { display: contents; }
@@ -1687,17 +1689,68 @@ body {
   }
 
   /* 手札。相手は裏面の下の端だけ、自分は上半分だけを出す。指では乗せられないので浮き上がらない */
+  /*
+   * 枚数が増えたら、カードの重なりを増やして詰める。`--n` は手札の枚数、`--pitch` は隣のカードとの間隔
+   * （1 枚の見えている幅）。段の幅に収まる間隔を割り出し、ふだんの間隔より広げない。
+   * 相手の手札は見るだけなので、全部が見えるところまで詰める。
+   * 自分の手札は押すものなので、間隔を 2.75rem より狭くしない。それでも収まらなければ、段を横に送る
+   */
+  .hand--相手,
+  .hand--自分 { container-type: inline-size; }
   .hand--相手 { grid-area: ohand; overflow: hidden; }
-  .hand--相手 .card { --card-width: 2rem; margin: 0 -0.3rem; }
-  .hand--自分 { grid-area: hand; overflow: hidden; padding-top: 0.6rem; }
-  .hand--自分 .card { --card-width: 4.4rem; margin: 0 -0.55rem; }
+  .hand--相手 .card {
+    --card-width: 2rem;
+    --pitch: clamp(0.3rem, calc((100cqw - 2rem) / max(var(--n, 6) - 1, 1)), 1.4rem);
+    flex: none;
+    margin: 0;
+  }
+  .hand--相手 .card ~ .card { margin-left: calc(var(--pitch) - 2rem); }
+  /* 左の余白は、扇の左端のカードが傾いて左へ出る分（これが無いと、送る前の 1 枚目の角が切れる） */
+  .hand--自分 { grid-area: hand; justify-content: safe center; overflow: auto hidden; padding: 0.6rem 0 0 0.6rem; scrollbar-width: none; }
+  .hand--自分 .card {
+    --card-width: 4.4rem;
+    /* 2.2rem は、扇の端のカードが傾いて右へ出る分の余裕（これを引かないと、収まる枚数でも段が少し横に動く） */
+    --pitch: clamp(2.75rem, calc((100cqw - 4.4rem - 2.2rem) / max(var(--n, 6) - 1, 1)), 3.3rem);
+    flex: none;
+    margin: 0;
+  }
+  .hand--自分 .card ~ .card { margin-left: calc(var(--pitch) - 4.4rem); }
+  /*
+   * 指が重なっているカード。手札を指でなぞって送っている間も、いま指の下にあるカードを手前に出して
+   * 目立たせる（PC でマウスを乗せたときにあたる）。段の上には出せない（段が縦に切るので）ので、
+   * 上が切れない範囲に収める——持ち上げるのは段の上の余白（0.6rem）の内側までにし、大きくするときは
+   * 上端を動かさずに下へ広げる（下は、もともと段の外に隠れている）。押せるものの色の光で囲む。指を離すと戻る
+   */
+  .hand--自分 .card.card--指の下,
+  .hand--自分 .card.card--指の下:hover {
+    z-index: 31;
+    transform-origin: 50% 0;
+    transform: translateY(-0.4rem) scale(1.1);
+    filter: drop-shadow(0 0 0.3rem #ff8a00) drop-shadow(0 0 0.1rem #ff8a00);
+  }
   .hand--自分 .card:hover,
   .hand--自分 .card:focus-within { z-index: auto; transform: rotate(var(--r, 0deg)) translateY(var(--y, 0rem)); }
   .hand--自分 .card--選択中,
   .hand--自分 .card--選択中:not(:hover) { z-index: 30; transform: translateY(-0.5rem); }
   .hand__label { font-size: 0.65rem; padding: 0 0.7rem; }
   .hand--相手 .hand__label { top: auto; bottom: 0; }
-  .hand--自分 .hand__label { top: 0; bottom: auto; }
+  /*
+   * 自分の手札の見出しは、段を横に送っても真ん中に留める。並びの中に置いて左右の位置を留め（sticky）、
+   * 自分の幅ぶんを負の余白で打ち消して、カードの並びを押しのけないようにする
+   */
+  .hand--自分 .hand__label {
+    position: sticky;
+    top: auto;
+    bottom: auto;
+    left: calc(50% - 4rem);
+    flex: none;
+    align-self: flex-start;
+    box-sizing: border-box;
+    width: 8rem;
+    margin: -0.6rem -8rem 0 0;
+    text-align: center;
+    transform: none;
+  }
 
   .procedure { grid-area: proc; padding: 0 0.6rem; font-size: 0.7rem; }
 
@@ -1760,14 +1813,16 @@ body {
   .zone--エネルギー > .zone__cards,
   .zone--スマッシュ > .zone__title,
   .zone--スマッシュ > .zone__cards { display: none; }
+  /* 左端に名前と枚数を縦に積み、その右に種類ごとの枚数を置く。高さは段いっぱいにして、隣のボタンとそろえる */
   .duel .zone__summary {
     display: flex;
-    flex-wrap: wrap;
+    flex: 1;
     align-items: center;
     justify-content: center;
-    gap: 0.2rem 0.5rem;
+    gap: 0.7rem;
     width: 100%;
-    min-height: 4.4rem;
+    /* 盤面ごと縮めても、指で押す高さ（実寸で 2.75rem）を下回らないよう、縮める率で割り戻す */
+    min-height: calc(2.75rem / var(--board-zoom, 0.5));
     padding: 0.3rem 0.6rem;
     border: 2px solid var(--gold);
     border-radius: 12px;
@@ -1777,13 +1832,25 @@ body {
     font-size: 1.3rem;
     font-weight: 700;
   }
+  .zone__summary-head { display: flex; flex: none; flex-direction: column; align-items: center; line-height: 1.15; }
+  .zone__summary-name { font-size: 1.1rem; white-space: nowrap; }
   .zone__summary strong { font-size: 2rem; color: var(--ink); }
-  .zone__dots { display: flex; flex-basis: 100%; justify-content: center; gap: 0.35rem; }
   /*
-   * エネルギー：1 枚を、その色のレベルアイコンの形で表す。フリーズしているものは、上に赤い × を
-   * 重ねる（× は白で縁取り、赤のアイコンに重なっても埋もれないようにする）
+   * 中身は、1 枚ごとに印を並べず、種類ごとの枚数で出す（枚数が増えても枠からはみ出さない）。
+   * エネルギーは「色 × 状態（リリース／フリーズ）」ごと。列が色（赤・青・白・緑・黒の順で、あるものだけ）、
+   * 上の段がリリース、下の段がフリーズで、最大 5 色 × 2 状態の 10 種類が枠に収まる。
+   * 1 枚でもある色は、片方の状態が 0 枚でも両方を出す（0 枚は薄くする）。1 枚も無い色は出さない。
+   * スマッシュは裏向きで色が無いので、状態ごとの 2 種類を、同じく上がリリース・下がフリーズで縦に並べる。
+   * 印は、エネルギーが色のレベルアイコン、スマッシュがカードの裏面。フリーズには赤い × を重ねる
+   * （× は白で縁取り、赤のアイコンに重なっても埋もれないようにする）
    */
-  .zone__symbol { position: relative; width: 3rem; height: 3rem; }
+  .zone__tally { display: grid; flex: 0 1 auto; grid-auto-columns: max-content; min-width: 0; gap: 0.15rem 0.6rem; }
+  .zone__kind { display: flex; align-items: center; gap: 0.25rem; }
+  .zone__kind b { color: var(--ink); font-size: 1.7rem; line-height: 1; }
+  .zone__kind--フリーズ b { color: #c22d12; }
+  /* 0 枚の種類は、出したまま薄くする（ある・無いを一目で見分ける） */
+  .zone__kind--無し { opacity: 0.45; }
+  .zone__symbol { position: relative; flex: none; width: 1.9rem; height: 1.9rem; }
   .zone__symbol > svg { width: 100%; height: 100%; }
   .zone__symbol > .zone__cross { position: absolute; inset: -0.1rem; width: auto; height: auto; }
   .duel .zone__summary:disabled { opacity: 0.55; cursor: default; }
@@ -1799,8 +1866,66 @@ body {
   /* 払う一覧で、エネルギーとスマッシュを見出しで分ける */
   .picker__section-title { margin: 0.5rem 0.8rem 0.2rem; color: var(--heading); font-family: var(--heading-font); font-size: 0.95rem; }
 
-  /* 操作の帯：いま一番よく押す手と、行える手の一覧を開く口だけを出す */
-  .controls { grid-area: ctrl; flex: none; }
+  /*
+   * 操作の帯：いま一番よく押す手と、行える手の一覧を開く口だけを出す。いつも画面の下に付けておき、
+   * ほかの段が収まらずに送られても、帯は動かない
+   */
+  .controls { grid-area: ctrl; flex: none; position: sticky; bottom: 0; z-index: 35; }
+  .controls.sheet--開いている { position: fixed; }
+
+  /*
+   * 行き先を選んでいる間の、低い詳細の帯。行える手が「行き先を押して決まる 1 種類」だけのカードを
+   * 押したときに、画面の下に付けて出す。行き先を選んでいる間は操作の帯のかわりになり、案内の文と
+   * やめる口もこの中に持つ。高さは中身に合わせ、上は手札の段の上端までしか伸ばさない（`placePeek`）
+   * ので、盤面には重ならず、光った行き先をそのまま押せる。全部の詳細は「詳細」で、いつものシートに出す
+   */
+  .peek {
+    position: fixed;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0.4rem;
+    /* 手札の見出し・操作の帯より手前。シートの幕（85）よりは奥 */
+    z-index: 60;
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+    padding: 0.4rem 0.5rem;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    background: #fffdf6;
+    box-shadow: 0 -2px 10px rgb(120 70 0 / 0.25);
+    overflow: hidden;
+  }
+  .peek[hidden] { display: none; }
+  /* カードは帯の高さいっぱいに出す（幅は `placePeek` が高さから決める） */
+  .peek > .card { flex: none; align-self: center; margin: 0; transform: none; }
+  .peek__body { display: flex; flex: 1; flex-direction: column; gap: 0.3rem; min-width: 0; min-height: 0; }
+  .peek__head { display: flex; align-items: center; gap: 0.4rem; }
+  .peek__title { flex: 1; min-width: 0; }
+  .peek__name { margin: 0; overflow: hidden; color: var(--heading); font-family: var(--heading-font); font-size: 1rem; font-weight: 700; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+  .peek__kind { margin: 0; overflow: hidden; color: #7d6848; font-size: 0.68rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+  .peek__more { flex: none; min-width: 3.2rem; min-height: 2.75rem; padding: 0 0.6rem; font-size: 0.8rem; }
+  /* 数値は、項目名と値を分けた札にして横に並べる。元の値から変わっているものは色を変える */
+  .peek__stats { display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; gap: 0.3rem; margin: 0; }
+  .peek__stat { display: flex; flex-direction: column; align-items: center; padding: 0.15rem 0.2rem 0.2rem; border: 1px solid rgb(220 166 64 / 0.7); border-radius: 8px; background: #fff; }
+  .peek__stat dt { color: #7d6848; font-size: 0.6rem; font-weight: 700; line-height: 1.3; }
+  .peek__stat dd { margin: 0; color: var(--ink); font-size: 1.05rem; font-weight: 700; line-height: 1.15; white-space: nowrap; }
+  /* カードの絵と同じ決まり：上がったら赤と ▲、下がったら青と ▼（色だけに頼らない） */
+  .peek__stat--上 { border-color: #d0452b; background: #fff1ec; }
+  .peek__stat--上 dd { color: #d4101c; }
+  .peek__stat--上 dd::after { content: "▲"; font-size: 0.7em; }
+  .peek__stat--下 { border-color: #3a6fd0; background: #eef3ff; }
+  .peek__stat--下 dd { color: #1553c8; }
+  .peek__stat--下 dd::after { content: "▼"; font-size: 0.7em; }
+  .peek__stat--受けている { border-color: #d0452b; background: #fff1ec; }
+  .peek__stat--受けている dd { color: #d4101c; }
+  /* テキストは中身の高さで出し、帯が上まで届いて収まらなければ、この中で送る */
+  .peek__text { flex: 0 1 auto; min-height: 1.8rem; margin: 0; padding: 0.3rem 0.45rem; overflow-y: auto; border-radius: 8px; background: rgb(255 238 194 / 0.55); font-size: 0.8rem; line-height: 1.5; }
+  /* 一番下：何を待っているかの 1 行と、やめる口（親指が届く位置） */
+  .peek__foot { display: flex; align-items: center; gap: 0.5rem; }
+  /* 幅が足りず 2 行になるときは、言葉の途中で割らず、文の中に入れた切れ目（「を」の後ろ）でだけ割る */
+  .peek__guide { flex: 1; min-width: 0; margin: 0; color: var(--own); font-size: 0.75rem; font-weight: 700; line-height: 1.35; word-break: keep-all; }
+  .peek__cancel { flex: none; min-height: 2.75rem; padding: 0 0.8rem; }
   .controls__turn, .phases, .controls__head, .controls__reason, .controls__leave, .controls__priority { display: none; }
   .controls__actions { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.4rem; border-top: 0; }
   .controls__list { display: contents; }
@@ -2077,6 +2202,9 @@ body {
   <!-- カードの一覧（JS で組み立てる） -->
   <div id="pickers"></div>
 
+  <!-- スマホで、行き先を選んでいる間に出す低い詳細の帯（JS で組み立てる） -->
+  <div class="phone-only peek" id="peek" role="region" aria-label="選んでいるカード" aria-live="polite" hidden></div>
+
   <!-- スマホのシートの後ろに敷く幕。押すとシートを閉じる -->
   <div class="sheet-backdrop" id="sheet-backdrop"></div>
 </main>
@@ -2098,6 +2226,7 @@ body {
   <label><input type="checkbox" data-show="show-picker-view">一覧（捨札を見る）</label>
   <label><input type="checkbox" data-show="show-picker-choose">一覧（山札から選ぶ）</label>
   <label><input type="checkbox" data-show="show-picker-sending">一覧（山札から選ぶ・通信中）</label>
+  <label><input type="checkbox" data-show="show-many">枚数が多い（手札 12 枚。スマホではエネルギー 10 種類 24 枚・スマッシュ 6 枚も）</label>
 </div>
 
 <script>
@@ -2239,6 +2368,42 @@ function empty() {
   return Object.assign(document.createElement('div'), { className: 'zone__empty' })
 }
 
+// ---- スマホ：エネルギー・スマッシュのボタンの中身 ----
+// `items` は、そのゾーンのカード 1 枚ごとの { color, frozen }。種類ごとに数えて出す。
+// エネルギーは色 × 状態、スマッシュは裏向きで色が無いので状態だけで分ける
+const ENERGY_COLORS = ['赤', '青', '白', '緑', '黒']
+const FROZEN_CROSS = '<svg class="zone__cross" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M5 5 19 19M19 5 5 19" stroke="#e01818" stroke-width="3.6" stroke-linecap="round"/></svg>'
+function summaryHtml(title, items) {
+  const kind = (symbol, frozen, n, column, row) =>
+    `<span class="zone__kind${frozen ? ' zone__kind--フリーズ' : ''}${n === 0 ? ' zone__kind--無し' : ''}" style="grid-column: ${column}; grid-row: ${row}"><span class="zone__symbol"><svg><use href="#${symbol}"/></svg>${frozen ? FROZEN_CROSS : ''}</span><b>${n}</b></span>`
+  const kinds = []
+  if (title === 'スマッシュ') {
+    const frozen = items.filter((item) => item.frozen).length
+    // 1 枚でもあれば、リリース・フリーズの両方を出す（片方が 0 枚でも出す）。0 枚のゾーンには何も出さない
+    if (items.length > 0) kinds.push(kind('card-back-mini', false, items.length - frozen, 1, 1), kind('card-back-mini', true, frozen, 1, 2))
+  } else {
+    // 列は、1 枚でもある色だけを色の順に詰める。段は、上がリリース、下がフリーズ。
+    // ある色は、片方の状態が 0 枚でも両方を出す（列ごとに段がそろい、0 枚であることも読める）
+    const colors = ENERGY_COLORS.filter((color) => items.some((item) => item.color === color))
+    colors.forEach((color, at) => {
+      const frozen = items.filter((item) => item.color === color && item.frozen).length
+      const ready = items.filter((item) => item.color === color && !item.frozen).length
+      kinds.push(kind(`lv-${color}`, false, ready, at + 1, 1), kind(`lv-${color}`, true, frozen, at + 1, 2))
+    })
+  }
+  const tally = kinds.length > 0 ? `<span class="zone__tally zone__tally--${title}">${kinds.join('')}</span>` : ''
+  return `<span class="zone__summary-head"><span class="zone__summary-name">${title}</span><strong>${items.length}</strong></span>${tally}`
+}
+// 読み上げの名前。種類ごとの枚数も言う（「エネルギーゾーン（4、うちフリーズ 2。赤 1、黒 1、フリーズの黒 2）の一覧を開く」）
+function summaryLabel(title, items) {
+  const frozen = items.filter((item) => item.frozen).length
+  const parts = title === 'スマッシュ' ? [] : [false, true].flatMap((state) => ENERGY_COLORS.map((color) => {
+    const n = items.filter((item) => item.color === color && item.frozen === state).length
+    return n > 0 ? `${state ? 'フリーズの' : ''}${color} ${n}` : undefined
+  }).filter(Boolean))
+  return `${title}ゾーン（${items.length}、うちフリーズ ${frozen}${parts.length > 0 ? `。${parts.join('、')}` : ''}）の一覧を開く`
+}
+
 function zone(title, count, content) {
   const node = document.createElement('div')
   node.className = `zone zone--${title}`
@@ -2255,25 +2420,18 @@ function zone(title, count, content) {
   cardsNode.style.setProperty('--n', String(content.length))
   cardsNode.style.setProperty('--nf', String(content.filter((c) => c.classList.contains('card--フリーズ')).length))
   node.append(cardsNode)
-  // スマホでは、エネルギー・スマッシュをカードの並びのかわりに名前と枚数のボタンにする。エネルギーには
-  // 1 枚につき 1 つ印を添える。エネルギーはカードの色のレベルアイコンの形、
-  // 裏向きのスマッシュはカードの裏面を小さくした形で表す。フリーズしているものには、どちらも赤い × を重ねる。押すと中身の一覧が開く
+  // スマホでは、エネルギー・スマッシュをカードの並びのかわりに名前と枚数のボタンにする。中身は、
+  // 種類ごとの枚数で出す（`summaryHtml`）。押すと中身の一覧が開く
   if (title === 'エネルギー' || title === 'スマッシュ') {
     const summary = document.createElement('button')
     summary.type = 'button'
     summary.className = 'phone-only zone__summary'
-    const frozen = content.filter((c) => c.classList.contains('card--フリーズ')).length
-    summary.setAttribute('aria-label', `${title}ゾーン（${count}、うちフリーズ ${frozen}）の一覧を開く`)
-    const dots = content.map((c) => {
-      const frozen = c.classList.contains('card--フリーズ')
-      const color = [...c.classList].find((k) => k.startsWith('card--色-'))?.slice('card--色-'.length)
-      const symbol = title === 'スマッシュ' ? 'card-back-mini' : `lv-${color}`
-      const cross = frozen
-        ? '<svg class="zone__cross" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M5 5 19 19M19 5 5 19" stroke="#e01818" stroke-width="3.6" stroke-linecap="round"/></svg>'
-        : ''
-      return `<span class="zone__symbol"><svg><use href="#${symbol}"/></svg>${cross}</span>`
-    }).join('')
-    summary.innerHTML = `<span class="zone__summary-name">${title}</span><strong>${count}</strong>${dots ? `<span class="zone__dots">${dots}</span>` : ''}`
+    const items = content.map((c) => ({
+      frozen: c.classList.contains('card--フリーズ'),
+      color: [...c.classList].find((k) => k.startsWith('card--色-'))?.slice('card--色-'.length),
+    }))
+    summary.setAttribute('aria-label', summaryLabel(title, items))
+    summary.innerHTML = summaryHtml(title, items)
     // 0 枚なら押せない（捨札・リムーブのつまみと同じ）
     summary.disabled = content.length === 0
     summary.addEventListener('click', () => openZoneList(node, title))
@@ -2419,12 +2577,16 @@ document.getElementById('partner-own').append(card('見本・ココア・M', '�
 
 function fan(el, nodes, step) {
   const mid = (nodes.length - 1) / 2
+  // 6 枚を超えたら、端の傾きと下がり方が 6 枚のとき（端で 2.5 枚ぶん）を超えないように均す
+  const scale = Math.min(1, 2.5 / Math.max(mid, 1))
   nodes.forEach((n, i) => {
-    const o = i - mid
+    const o = (i - mid) * scale
     n.style.setProperty('--r', `${o * step}deg`)
     n.style.setProperty('--y', `${o * o * 0.12}rem`)
     el.append(n)
   })
+  // 手札の枚数。スマホでは、これをもとにカードの重なりを決める
+  el.style.setProperty('--n', String(nodes.length))
 }
 
 fan(document.getElementById('hand-opponent'), Array.from({ length: 6 }, () => back()), -3)
@@ -2536,6 +2698,7 @@ for (const node of document.querySelectorAll('.card[data-name]')) {
   node.addEventListener('click', () => {
     if (!phone.matches) return
     if (node.closest('.picker')) pickInList(node)
+    else if (aimsOnly(node)) startAiming(node)
     else openCardSheet(node)
   })
 }
@@ -2544,13 +2707,144 @@ for (const node of document.querySelectorAll('.card[data-name]')) {
 // カードを 1 回押すと、詳細と、そのカードで行える手のボタンをシートに出す。手のボタンを押すと、
 // PC でカードを押したときと同じ状態（置き先を選ぶ・一覧で選んだことになる）に進む。
 const phone = matchMedia('(max-width: 768px)')
-// 見本：カードごとに、届いた手のうちそのカードに関わるもの（本番では届いた手から作る）
-const actionsByCard = {
-  見本・霧島透: ['プレイする（置く場所を選ぶ）'],
-  見本・もちぬい: ['プレイする（置く場所を選ぶ）'],
-  見本・まるまる砲: ['トラップとしてプレイする'],
-  '見本・パルフェ・若葉': ['起動する', '移動する（行き先を選ぶ）'],
+// 見本：カードごとに、届いた手のうちそのカードに関わるもの（本番では届いた手から作る）。
+// `aim` は、行き先を押して決まる手（置く場所・移動先を選ぶ）
+const PLAY = { label: 'プレイする（置く場所を選ぶ）', aim: true }
+const MOVE = { label: '移動する（行き先を選ぶ）', aim: true }
+const handActions = {
+  見本・霧島透: [PLAY],
+  見本・もちぬい: [PLAY],
+  見本・まるまる砲: [{ label: 'トラップとしてプレイする', aim: true }],
 }
+const boardActions = {
+  見本・霧島透: [MOVE],
+  '見本・パルフェ・若葉': [{ label: '起動する' }, MOVE],
+}
+function actionsOf(node) {
+  if (node.dataset.whose !== '自分') return []
+  if (node.closest('.hand--自分')) return handActions[node.dataset.name] ?? []
+  if (node.closest('.square')) return boardActions[node.dataset.name] ?? []
+  return []
+}
+// 行える手が、行き先を押して決まる 1 種類だけか。そのときは、手を聞かずにすぐ行き先を光らせる
+function aimsOnly(node) {
+  const actions = actionsOf(node)
+  return actions.length === 1 && actions[0].aim === true
+}
+// 自分の手札：指が重なっているカードを目立たせる。指でなぞって段を横に送っている間も、指の位置を追い続ける
+// （touchmove は、ブラウザが段を送っている間も届く）。押した・離したの判定は変えない（その場で離せば押したことになる）
+const handOwn = document.getElementById('hand-own')
+let underFinger
+function markUnderFinger(x, y) {
+  const card = x === undefined ? undefined : (document.elementFromPoint(x, y)?.closest?.('#hand-own .card') ?? undefined)
+  if (card === underFinger) return
+  underFinger?.classList.remove('card--指の下')
+  underFinger = card
+  underFinger?.classList.add('card--指の下')
+}
+for (const type of ['touchstart', 'touchmove']) {
+  handOwn.addEventListener(type, (event) => {
+    if (phone.matches) markUnderFinger(event.touches[0].clientX, event.touches[0].clientY)
+  }, { passive: true })
+}
+for (const type of ['touchend', 'touchcancel']) handOwn.addEventListener(type, () => markUnderFinger())
+// 見本をマウスで見るとき（PC の小さな窓）も、乗せたカードを同じに見せる
+handOwn.addEventListener('pointermove', (event) => {
+  if (phone.matches && event.pointerType === 'mouse') markUnderFinger(event.clientX, event.clientY)
+})
+handOwn.addEventListener('pointerleave', (event) => { if (event.pointerType === 'mouse') markUnderFinger() })
+// コストの選択で、払う一覧を自動で開いたか（開くのは選択に入ったときの 1 回だけ）
+let costOpened = false
+const peek = document.getElementById('peek')
+function closePeek() {
+  peek.hidden = true
+  peek.replaceChildren()
+}
+// 低い詳細の帯は画面の下に付け、上は手札の段の上端までしか伸ばさない（盤面には重ねない）
+function placePeek() {
+  if (peek.hidden) return
+  const top = document.querySelector('.hand--自分').getBoundingClientRect().top
+  peek.style.maxHeight = `${peek.getBoundingClientRect().bottom - top}px`
+  // カードは、右の中身の高さに合わせる（カードの縦横は 3:2）。先に小さくして、中身だけの高さを測る
+  const mini = peek.querySelector(':scope > .card')
+  if (!mini) return
+  mini.style.setProperty('--card-width', '0px')
+  mini.style.setProperty('--card-width', `${Math.max(48, peek.querySelector('.peek__body').offsetHeight * (2 / 3))}px`)
+}
+function startAiming(node) {
+  closeSheets()
+  document.querySelector('[data-show="show-picking"]').checked = true
+  apply()
+  for (const n of document.querySelectorAll('.card--選択中')) n.classList.remove('card--選択中')
+  node.classList.add('card--選択中')
+  const c = cards[node.dataset.name]
+  const mini = node.cloneNode(true)
+  mini.className = mini.className.replace(/card--(選択中|押せる|詳細中)/g, '')
+  mini.removeAttribute('style')
+  const body = Object.assign(document.createElement('div'), { className: 'peek__body' })
+  // 名前の行：名前と特徴。右端に、全部の詳細を見る口
+  const title = Object.assign(document.createElement('div'), { className: 'peek__title' })
+  title.append(
+    Object.assign(document.createElement('p'), { className: 'peek__name', textContent: node.dataset.name }),
+    Object.assign(document.createElement('p'), { className: 'peek__kind', textContent: c.traits ?? '' }),
+  )
+  const more = Object.assign(document.createElement('button'), { type: 'button', className: 'peek__more', textContent: '詳細' })
+  more.setAttribute('aria-label', `${node.dataset.name}の詳細を全部見る`)
+  more.addEventListener('click', () => openCardSheet(node, true))
+  const head = Object.assign(document.createElement('div'), { className: 'peek__head' })
+  head.append(title, more)
+  // 数値の札：いまの値を出し、元の値から変わっていれば色を変える
+  const stats = Object.assign(document.createElement('dl'), { className: 'peek__stats' })
+  // `base` は元の値。いまの値がそれより大きければ「上」、小さければ「下」の印を付ける
+  const stat = (label, value, base = value) => {
+    const way = value > base ? ' peek__stat--上' : value < base ? ' peek__stat--下' : ''
+    const each = Object.assign(document.createElement('div'), { className: `peek__stat${way}` })
+    each.append(Object.assign(document.createElement('dt'), { textContent: label }), Object.assign(document.createElement('dd'), { textContent: value }))
+    stats.append(each)
+  }
+  // 種類・色・移動の向きは、左のカードの絵と光っている行き先で分かるので、札にしない。
+  // スクエアのユニットは、レベルのかわりにダメージを出す（盤面ではレベルより、いま受けているダメージを見る）。
+  // 手札のカードは、プレイに使うレベルを出す
+  const onSquare = node.closest('.square') !== null
+  if (!onSquare) stat('Lv', c.lv)
+  if (c.bp !== undefined) {
+    const bp = Number(node.dataset.bp ?? c.bp)
+    const sp = Number(node.dataset.sp ?? c.sp)
+    stat('BP', bp, c.bp)
+    stat('SP', sp, c.sp)
+  }
+  // ダメージは、受けていれば赤くする。増える・減るの印（▲▼）は付けない
+  if (onSquare) {
+    const damage = Number(node.dataset.damage ?? 0)
+    stat('ダメージ', damage)
+    if (damage > 0) stats.lastElementChild.classList.add('peek__stat--受けている')
+  }
+  // 一番下：案内の文と、やめる口（行き先を選んでいる間は、操作の帯のかわりになる）
+  const cancel = Object.assign(document.createElement('button'), { type: 'button', className: 'peek__cancel', textContent: '選択をやめる' })
+  cancel.addEventListener('click', () => {
+    document.querySelector('[data-show="show-picking"]').checked = false
+    apply()
+  })
+  const foot = Object.assign(document.createElement('div'), { className: 'peek__foot' })
+  // `<wbr>` は、2 行になるときに割ってよい位置
+  foot.append(Object.assign(document.createElement('p'), { className: 'peek__guide', innerHTML: actionsOf(node)[0].label.includes('移動') ? '移動先を<wbr>選択してください' : '置く場所を<wbr>選択してください' }), cancel)
+  body.append(
+    head,
+    stats,
+    Object.assign(document.createElement('p'), { className: 'peek__text', textContent: c.text.length > 0 ? c.text.join(' ') : '（テキストなし）' }),
+    foot,
+  )
+  peek.replaceChildren(mini, body)
+  peek.hidden = false
+  placePeek()
+}
+window.addEventListener('resize', placePeek)
+// 見本：光った行き先を押すと、手を送ったことにして選択を終える
+document.getElementById('board').addEventListener('click', (event) => {
+  if (!phone.matches || !event.target.closest('.square--置き先')) return
+  document.querySelector('[data-show="show-picking"]').checked = false
+  apply()
+})
 function closeSheets() {
   for (const n of document.querySelectorAll('.sheet--開いている')) n.classList.remove('sheet--開いている')
 }
@@ -2558,10 +2852,11 @@ function openSheet(node) {
   closeSheets()
   node.classList.add('sheet--開いている')
 }
-function openCardSheet(node) {
+// `detailOnly` は、行き先を選んでいる間に「詳細」から開いたとき。手のボタンは出さず、閉じても行き先の選択は続く
+function openCardSheet(node, detailOnly = false) {
   renderDetail(node)
   const actions = Object.assign(document.createElement('div'), { className: 'detail__actions' })
-  const labels = node.closest('.hand--相手') ? [] : (actionsByCard[node.dataset.name] ?? [])
+  const labels = detailOnly ? [] : actionsOf(node).map((action) => action.label)
   for (const label of labels) {
     const b = Object.assign(document.createElement('button'), { type: 'button', textContent: label })
     if (label === labels[0]) b.className = 'button--primary'
@@ -2707,8 +3002,43 @@ fitBoard()
 
 // ---- モックの表示切り替え ----
 const duel = document.getElementById('duel')
+// 見本：枚数が多い状態。手札を 12 枚にし、スマホの自分のエネルギー・スマッシュのボタンの中身を多くする
+// （ボタンの中身だけを替える。盤面のカードの並びは足さない）
+function applyMany(many) {
+  for (const [id, step, make] of [['hand-own', 4, undefined], ['hand-opponent', -3, back]]) {
+    const hand = document.getElementById(id)
+    const extras = [...hand.querySelectorAll('.mock-extra')]
+    if (many === extras.length > 0) continue
+    for (const n of extras) n.remove()
+    const base = [...hand.querySelectorAll('.card')]
+    const more = many ? Array.from({ length: 6 }, (_, i) => {
+      const c = make ? make() : base[i % base.length].cloneNode(true)
+      c.classList.add('mock-extra')
+      c.classList.remove('card--選択中', 'card--詳細中')
+      if (!make) c.addEventListener('click', () => { if (phone.matches) (aimsOnly(c) ? startAiming(c) : openCardSheet(c)) })
+      return c
+    }) : []
+    fan(hand, [...base, ...more], step)
+    const label = hand.querySelector('.hand__label')
+    label.textContent = label.textContent.replace(/（\d+）/, `（${base.length + more.length}）`)
+  }
+  // エネルギーは、5 色 × 2 状態の 10 種類が全部あり、2 桁の枚数もある状態（枠に収まるかを見る）。スマッシュは上限の 6 枚
+  const some = (color, ready, frozen) => [...Array(ready).fill({ color, frozen: false }), ...Array(frozen).fill({ color, frozen: true })]
+  const manyItems = {
+    エネルギー: [...some('赤', 3, 1), ...some('青', 2, 1), ...some('白', 1, 1), ...some('緑', 2, 1), ...some('黒', 10, 2)],
+    スマッシュ: some(undefined, 4, 2),
+  }
+  for (const zone of ['エネルギー', 'スマッシュ']) {
+    const summary = document.querySelector(`.group--自分 .zone--${zone} .zone__summary`)
+    summary.dataset.base ??= summary.innerHTML
+    summary.dataset.baseLabel ??= summary.getAttribute('aria-label')
+    summary.innerHTML = many ? summaryHtml(zone, manyItems[zone]) : summary.dataset.base
+    summary.setAttribute('aria-label', many ? summaryLabel(zone, manyItems[zone]) : summary.dataset.baseLabel)
+  }
+}
 function apply() {
   for (const box of document.querySelectorAll('.mock-switch input')) duel.classList.toggle(box.dataset.show, box.checked)
+  applyMany(duel.classList.contains('show-many'))
   const battle = duel.classList.contains('show-battle')
   for (const sq of document.querySelectorAll('.mock-battle')) {
     sq.classList.toggle('square--バトル中', battle)
@@ -2738,6 +3068,13 @@ function apply() {
     tab.append(Object.assign(document.createElement('button'), { type: 'button', textContent: 'この行動をやめる' }))
     costGroup.prepend(tab)
   }
+  // スマホ：行き先の選択を終えたら、低い詳細の帯を消す
+  if (!picking) closePeek()
+  // スマホ：コストの選択に入ったら、払う一覧をすぐ開く（候補が全部エネルギー・スマッシュにあるとき）。
+  // 「閉じる」で盤面に戻ったあとは、囲んだゾーンのボタンから開き直す
+  if (phone.matches && cost && !costOpened) openZoneList(costGroup.querySelector('.zone--エネルギー'), 'エネルギー')
+  if (!cost) document.getElementById('zone-list')?.remove()
+  costOpened = cost
   const plan = duel.classList.contains('show-plan')
   for (const n of document.querySelectorAll('.mock-deck-plan')) n.hidden = !plan
   for (const n of document.querySelectorAll('.mock-deck')) {
