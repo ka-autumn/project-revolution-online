@@ -145,8 +145,8 @@ import type { PhoneControl, PhonePending, PhoneScroll, PhoneState } from './phon
 import { settlePhoneScroll } from './phone-scroll.js'
 import { settlePhoneBoard } from './phone-board.js'
 import { settlePhoneFocus } from './phone-focus.js'
-import { openPayList, settlePayList } from './pay-list.js'
-import type { PayList, PayListEvent } from './pay-list.js'
+import { openPayList, settlePayState } from './pay-list.js'
+import type { PayEvent, PayState } from './pay-list.js'
 
 /**
  * クライアントの起動点。
@@ -307,9 +307,9 @@ interface DuelInteraction {
   readonly onListShow: (card: CardId, redraw: boolean) => void
   /**
    * 開いている、コストを払う一覧（スマートフォン、ADR-0034）。払うカードが無いゾーンの一覧は見るだけで、ここは
-   * 空になる。払い終えるまで開いたままにする（`pay-list.ts`）。
+   * 空になる。答えたあとの盤面でいったん閉じ、選択が続けば開き直す（`pay-list.ts`）。
    */
-  readonly payList: PayList | undefined
+  readonly payState: PayState | undefined
   /** 払う答えを 1 枚分送った。描き直さない（届く返事が描き直す）。 */
   readonly onPayAnswered: () => void
   /** 行動をやめる答えを送った。描き直さない。 */
@@ -528,12 +528,6 @@ function revealPayZone(root: HTMLElement, zone: ListZone): void {
   const sections = [...root.querySelectorAll<HTMLElement>('.picker__section')]
   sections.find((each) => each.dataset.zone === zone)?.scrollIntoView({ block: 'start' })
 }
-
-/**
- * 払う答えを送ったあと、選択が続かないと見切るまでの時間。サーバは盤面と選んでほしいことを続けて送る
- * ので、続くなら待たずに届く。届かなければ行動が終わっているので、払う一覧を閉じる。
- */
-const PAY_LIST_GRACE_MS = 400
 
 /**
  * 選び直した CPU のデッキのサムネイルが見えるところまで、列を横に送る（ADR-0029）。見えていれば動かさない。
@@ -1129,7 +1123,7 @@ function draw(
             }
             if (phoneList === undefined) return viewPileElement(zone, close)
 
-            const paying = duel.payList
+            const paying = duel.payState?.kind === '開いている' ? duel.payState.list : undefined
             if (paying === undefined) return viewPileElement(zone, close, { ...phoneList, whose: side.whose })
 
             // 払えるゾーンは、開いたときに決めたものを並べる。払い終えて空になったゾーンは出さない。
@@ -1169,7 +1163,6 @@ function draw(
                     }),
               },
               phoneList,
-              paying.awaiting,
             )
           })()
         : undefined
@@ -1349,13 +1342,13 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let listShown: CardId | undefined
   /**
    * いま開いている一覧が、コストの選択中に開いた「払うカードを選ぶ」一覧なら、その状態（スマートフォン、
-   * ADR-0034）。払い終えるまで開いたままにし、閉じるかどうかは `pay-list.ts` の `settlePayList` が決める。
+   * ADR-0034）。答えたあとの盤面でいったん閉じ、選択が続けば開き直す予定を持つ。開閉は `pay-list.ts` が決める。
    */
-  let payList: PayList | undefined
+  let payState: PayState | undefined
   /** 払う一覧を開いた直後に、押した方のゾーンの見出しへ送る。描いたあとに 1 度だけ行う。 */
   let payReveal: ListZone | undefined
-  /** 答えたあと、選択が続かないまま待ちきれた時に、払う一覧を閉じるタイマー。 */
-  let payTimer: ReturnType<typeof setTimeout> | undefined
+  /** 払う一覧を開き直したあと、一覧のスクロールを戻す位置。描いたあとに 1 度だけ行う。 */
+  let payScroll: number | undefined
   /**
    * 「選ぶ」一覧で、いま選びかけている候補の番号（ADR-0027）。まだ何も選んでいなければ
    * `undefined`。答えて（選ばない・これに決める）次の状況に移るたびに捨てる。
@@ -1385,27 +1378,30 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     redraw()
   }
 
-  /** 払う一覧に出来事を伝える。閉じることになったら、見る一覧ごと閉じる。 */
-  const settlePay = (event: PayListEvent): void => {
-    if (payList === undefined) return
-
-    payList = settlePayList(payList, event)
-    if (payList === undefined) {
+  /**
+   * 払う一覧に出来事を伝える。一覧は、開いているかどうかを見る一覧の状態（`viewingPile`）にも映す。
+   * 開き直す予定は、閉じた状態で覚えておく。
+   */
+  const settlePay = (event: PayEvent): void => {
+    const before = payState
+    payState = settlePayState(before, event)
+    if (payState?.kind === '開いている') {
+      const { player, pressed } = payState.list
+      if (before?.kind === '開き直す予定') {
+        viewingPile = { player, zone: pressed }
+        payScroll = before.scroll
+      }
+    } else if (before?.kind === '開いている') {
       viewingPile = undefined
-      clearPayTimer()
     }
   }
 
-  const clearPayTimer = (): void => {
-    if (payTimer !== undefined) clearTimeout(payTimer)
-    payTimer = undefined
-  }
-
-  /** 払う一覧を捨てる（見る一覧も閉じる）。 */
+  /** 払う一覧も開き直す予定も捨てる。開いている一覧は閉じる。 */
   const dropPayList = (): void => {
-    clearPayTimer()
-    payList = undefined
+    if (payState?.kind === '開いている') viewingPile = undefined
+    payState = undefined
     payReveal = undefined
+    payScroll = undefined
   }
 
   const picking = (): Picking => ({
@@ -1442,9 +1438,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       listShown = undefined
       // コストの選択中に、払うカードがあるゾーンのボタンを押したなら、払う一覧にする。
       const stage = session.stage
-      payList =
+      payState =
         stage.kind === '打っている' && stage.board !== undefined ? openPayList(stage.board, stage.choice, player, zone) : undefined
-      payReveal = payList === undefined ? undefined : zone
+      payReveal = payState === undefined ? undefined : zone
+      payScroll = undefined
       redraw()
     },
     onClosePile: () => {
@@ -1457,7 +1454,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       listShown = card
       if (again) redraw()
     },
-    payList,
+    payState,
     // 答えは送るだけで、描き直さない（`onPickerAnswered` と同じ）。次の選択が続くかは、届いたもので決める。
     onPayAnswered: () => {
       settlePay({ kind: '答えた' })
@@ -2148,8 +2145,14 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       settlePhoneScroll(root, scroll)
       // 対戦画面の盤面を画面に合わせて縮め、捨札・リムーブのつまみの縦の位置を合わせる。描いて高さが決まってから測る。
       if (phone !== undefined) settlePhoneBoard(root)
-      // 払う一覧を開いた直後は、押した方のゾーンの見出しが見える位置から出す。2 枚目以降は、位置を戻すだけ（`KEEP_SCROLL`）。
-      if (payReveal !== undefined) {
+      // 払う一覧を開いた直後は、押した方のゾーンの見出しが見える位置から出す。開き直したときは、前の位置へ戻す。
+      if (payScroll !== undefined) {
+        const top = payScroll
+        payScroll = undefined
+        payReveal = undefined
+        const area = root.querySelector<HTMLElement>('.picker__zones')
+        if (area !== null) area.scrollTop = top
+      } else if (payReveal !== undefined) {
         const zone = payReveal
         payReveal = undefined
         revealPayZone(root, zone)
@@ -2282,31 +2285,23 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         listShown = undefined
         dropPayList()
       }
-      // 払う一覧は、払い終えるまで開いたままにする（ADR-0034）。答えを受け取るたびに、サーバは盤面、選んでほしいの
-      // 順に送る。盤面だけでは次の選択が続くか分からないので、続けて届く選択が一覧のゾーンの候補を含むかで決める。
+      // 払う一覧は、答えたあとの盤面でいったん閉じ、続く選択が一覧のゾーンの候補を含めば開き直す（ADR-0034）。
+      // 盤面だけでは選択が続くか行動が終わったのか分からないので、待たずに、次に届くもので決める。
       const stage = session.stage
-      if (payList !== undefined && stage.kind === '打っている') {
-        if (message.kind === '盤面') settlePay({ kind: '盤面', actions: message.actions.length })
-        else if (message.kind === '選んでほしい' && stage.board !== undefined) {
+      if (payState !== undefined) {
+        if (stage.kind !== '打っている') dropPayList()
+        else if (message.kind === '盤面') {
+          const scroll = root.querySelector<HTMLElement>('.picker__zones')?.scrollTop ?? 0
+          settlePay({ kind: '盤面', actions: message.actions.length, scroll })
+        } else if (message.kind === '選んでほしい' && stage.board !== undefined) {
           settlePay({ kind: '選んでほしい', board: stage.board, choice: message.choice })
         } else if (message.kind === '行えなかった') settlePay({ kind: '断られた' })
-
-        clearPayTimer()
-        // 答えたあとの盤面で行える手が空なら、選択が続くのか、行動が終わって相手に優先権が渡ったのか分からない。
-        // 続くなら選んでほしいがすぐ届くので、少し待って届かなければ閉じる。
-        if (payList?.awaiting === true && stage.choice === undefined) {
-          payTimer = setTimeout(() => {
-            payTimer = undefined
-            settlePay({ kind: '続かなかった' })
-            redraw()
-          }, PAY_LIST_GRACE_MS)
-        }
       }
       // 開いている束が空になったら、見るものが無いので閉じる。払う一覧は、払い終えて空になるのを待たずに
       // 閉じるかどうかを上で決めている。
       if (
         viewingPile !== undefined &&
-        payList === undefined &&
+        payState === undefined &&
         session.stage.kind === '打っている' &&
         session.stage.board !== undefined &&
         session.stage.board.zones[viewingPile.player][viewingPile.zone].length === 0
@@ -2329,7 +2324,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       link = value
       // 切れたら、聞いている途中のダイアログは何も送らずに閉じる（#249）。繋ぎ直した先で、その手が
       // まだ行えるとは限らない（ADR-0016）。
-      if (value.kind !== '繋がっている') selection = {}
+      if (value.kind !== '繋がっている') {
+        selection = {}
+        // 繋ぎ直した先で、払っていた選択が続いているとは限らない。開き直す予定も残さない。
+        dropPayList()
+      }
       // **切れている間に送ったものは届いていない**（`connection.ts`）ので、返事も来ない。待つのを
       // やめて、繋がり直したら確かめ直す。組みかけは画面が持っているので消えない。
       if (value.kind !== '繋がっている') updateBuilder({ ...builder, waiting: { kind: '無し' }, checking: 0 })
@@ -2405,6 +2404,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   return () => {
     if (overlayTimer !== undefined) clearTimeout(overlayTimer)
+    if (checkTimer !== undefined) clearTimeout(checkTimer)
+    dropPayList()
     phoneQuery.removeEventListener('change', onPhoneWidthChange)
     window.removeEventListener('resize', onResize)
     window.removeEventListener('keydown', onKeyDown)

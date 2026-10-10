@@ -4702,8 +4702,6 @@ function senderLock(): {
   readonly sending: HTMLElement
   readonly isSent: () => boolean
   readonly bind: (root: HTMLElement) => void
-  /** 送ったあとの止め方を、いますぐかける。答えを送って返事を待っている間に作った一覧のため。 */
-  readonly lockNow: () => void
   readonly once: <Args extends unknown[]>(run: (...args: Args) => void) => (...args: Args) => void
 } {
   const sending = element('p', 'picker__sending')
@@ -4735,7 +4733,6 @@ function senderLock(): {
     bind: (node) => {
       root = node
     },
-    lockNow: lock,
     once:
       <Args extends unknown[]>(run: (...args: Args) => void) =>
       (...args: Args): void => {
@@ -4762,11 +4759,11 @@ export interface ChooseZoneHandlers {
  * 払うカードを 1 回押すと、その 1 枚を払う。答えは 1 枚ずつ送る（ADR-0008）ので、PC のクリックモードで
  * 盤面のカードを押したときと同じく、確かめる段を挟まない。払う候補でないカード（フリーズしているなど）は、
  * 詳細を上の段に出すだけ。裏向きのスマッシュも、払う候補なら押せる（置き場所で答える、#127）。
- * 払い終えるまで開いたままで（`pay-list.ts`）、続けて次の 1 枚を選べる。
+ * 答えたあとの盤面でいったん閉じ、選択が続けば開き直す（`pay-list.ts`）ので、続けて次の 1 枚を選べる。
  *
  * 一覧の下には、「この行動をやめる」（やめられるときだけ）と、何も送らずに戻る「閉じる」を置く。
- * 送ったあとの止め方は「選ぶ」一覧と同じ（`senderLock`）。`picking` が無いとき（演出が出ている、
- * 次の選択を待っている）は、押せるカードの無い一覧になる。`waiting` なら、送ったあとの止め方を最初からかける。
+ * 送ったあとの止め方は「選ぶ」一覧と同じ（`senderLock`）。`picking` が無いとき（演出が出ている間、
+ * 繋がっていない間）は、押せるカードの無い一覧になる。
  */
 export function chooseZoneListElement(
   zones: readonly ZoneView[],
@@ -4774,7 +4771,6 @@ export function chooseZoneListElement(
   picking: BoardPicking | undefined,
   rawHandlers: ChooseZoneHandlers,
   phone: PhoneListOptions,
-  waiting: boolean,
 ): HTMLElement {
   const lock = senderLock()
   const handlers: ChooseZoneHandlers = {
@@ -4846,7 +4842,6 @@ export function chooseZoneListElement(
   // 見出しで分けた並びを、カードの並びの代わりに置く（カードの並びの箱は、各ゾーンの中にある）。
   root.querySelector('.picker__box > .picker__cards')?.replaceWith(area)
   lock.bind(root)
-  if (waiting) lock.lockNow()
 
   return root
 }

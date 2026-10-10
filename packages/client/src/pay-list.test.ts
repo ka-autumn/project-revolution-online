@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { WireChoice, WirePerspective } from '@revolution/engine'
 import { choicePicking } from './input-model.js'
-import { openPayList, settlePayList } from './pay-list.js'
-import type { PayList } from './pay-list.js'
+import { openPayList, settlePayState } from './pay-list.js'
+import type { PayState } from './pay-list.js'
 import { emptyBoard, instance, withZone } from './test-support.js'
 
 /**
@@ -40,13 +40,14 @@ describe('払う一覧を開く', () => {
     const fromEnergy = openPayList(board(), BOTH, '先攻', 'エネルギーゾーン')
     const fromSmash = openPayList(board(), BOTH, '先攻', 'スマッシュゾーン')
 
-    expect(fromEnergy?.zones).toEqual(['エネルギーゾーン', 'スマッシュゾーン'])
-    expect(fromSmash).toEqual(fromEnergy)
+    expect(fromEnergy?.list.zones).toEqual(['エネルギーゾーン', 'スマッシュゾーン'])
+    expect(fromSmash?.list.zones).toEqual(fromEnergy?.list.zones)
+    expect(fromSmash?.list.pressed).toBe('スマッシュゾーン')
   })
 
   it('片方にしか払うカードが無ければ、その置き場だけを並べる', () => {
-    expect(openPayList(board(), ENERGY_ONLY, '先攻', 'エネルギーゾーン')?.zones).toEqual(['エネルギーゾーン'])
-    expect(openPayList(board(), SMASH_ONLY, '先攻', 'スマッシュゾーン')?.zones).toEqual(['スマッシュゾーン'])
+    expect(openPayList(board(), ENERGY_ONLY, '先攻', 'エネルギーゾーン')?.list.zones).toEqual(['エネルギーゾーン'])
+    expect(openPayList(board(), SMASH_ONLY, '先攻', 'スマッシュゾーン')?.list.zones).toEqual(['スマッシュゾーン'])
   })
 
   it('押した置き場に払うカードが無ければ、払う一覧にしない（見るだけの一覧）', () => {
@@ -72,65 +73,68 @@ describe('裏向きのスマッシュを払う', () => {
   })
 })
 
-describe('払う一覧をいつまで開いておくか', () => {
-  const open: PayList = { player: '先攻', zones: ['エネルギーゾーン', 'スマッシュゾーン'], awaiting: false }
+describe('払う一覧の開閉', () => {
+  const open = openPayList(board(), BOTH, '先攻', 'スマッシュゾーン') as PayState
+  const answeredBoard = settlePayState(settlePayState(open, { kind: '答えた' }), { kind: '盤面', actions: 0, scroll: 42 })
+  const elsewhere = choice([{ kind: '見えている', card: 'てふだの1枚' }])
 
-  it('1 枚払って盤面が届いても、次の選択を待つあいだは開いたままにする', () => {
-    const answered = settlePayList(open, { kind: '答えた' })
-    const arrived = settlePayList(answered, { kind: '盤面', actions: 0 })
-
-    expect(arrived).toEqual({ ...open, awaiting: true })
+  it('答えたあとの盤面が届いたら、その場で閉じ、開き直す予定だけを覚える', () => {
+    expect(answeredBoard).toEqual({ kind: '開き直す予定', list: (open as { list: unknown }).list, scroll: 42 })
   })
 
-  it('次の選択がまだ一覧の置き場の候補を含むなら、開いたまま次の 1 枚を選べる', () => {
-    const waiting = settlePayList(settlePayList(open, { kind: '答えた' }), { kind: '盤面', actions: 0 })
+  it('続く選択が一覧の置き場の候補を含めば、同じ一覧を開き直す', () => {
+    const reopened = settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY })
 
-    expect(settlePayList(waiting, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY })).toEqual(open)
+    expect(reopened).toEqual({ kind: '開いている', list: (open as { list: unknown }).list, answered: false })
   })
 
-  it('次の選択が一覧の置き場の候補を含まなくなったら、閉じる', () => {
-    const waiting = settlePayList(settlePayList(open, { kind: '答えた' }), { kind: '盤面', actions: 0 })
-    const elsewhere = choice([{ kind: '見えている', card: 'てふだの1枚' }])
-
-    expect(settlePayList(waiting, { kind: '選んでほしい', board: board(), choice: elsewhere })).toBeUndefined()
+  it('一覧の片方の置き場だけ候補が残っていても、開き直す', () => {
+    expect(settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: ENERGY_ONLY })?.kind).toBe('開いている')
   })
 
-  it('一覧の片方の置き場だけ候補が残っていれば、開いたまま', () => {
-    const waiting = settlePayList(open, { kind: '答えた' })
-
-    expect(settlePayList(waiting, { kind: '選んでほしい', board: board(), choice: ENERGY_ONLY })).toEqual(open)
+  it('続く選択が一覧の置き場の候補を含まなければ、予定を捨てる', () => {
+    expect(settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: elsewhere })).toBeUndefined()
   })
 
-  it('行える手が付いてきた盤面は、行動が終わったあとのものなので、閉じる', () => {
-    const waiting = settlePayList(open, { kind: '答えた' })
-
-    expect(settlePayList(waiting, { kind: '盤面', actions: 3 })).toBeUndefined()
+  it('選択が遅れて届いても、予定が残っていれば開き直す（待ち時間では見切らない）', () => {
+    // 盤面のあと、ほかに何も届かないまま時間が過ぎても、状態は変わらない。
+    expect(settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY })?.kind).toBe('開いている')
   })
 
-  it('選択が続かないまま待ちきれなかったら、閉じる', () => {
-    const waiting = settlePayList(settlePayList(open, { kind: '答えた' }), { kind: '盤面', actions: 0 })
+  it('行動が終わった（行える手が付いてきた）盤面なら、予定も残さない', () => {
+    const answered = settlePayState(open, { kind: '答えた' })
 
-    expect(settlePayList(waiting, { kind: '続かなかった' })).toBeUndefined()
+    expect(settlePayState(answered, { kind: '盤面', actions: 3, scroll: 0 })).toBeUndefined()
   })
 
-  it('次の選択が届いたあとに待ちきれなかった知らせが来ても、閉じない', () => {
-    expect(settlePayList(open, { kind: '続かなかった' })).toBe(open)
+  it('予定を捨てたあとに選択が遅れて届いても、開き直さない', () => {
+    const dropped = settlePayState(answeredBoard, { kind: '捨てる' })
+
+    expect(dropped).toBeUndefined()
+    expect(settlePayState(dropped, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY })).toBeUndefined()
   })
 
-  it('送った答えが断られたら、選択は続いているので、開いたまま選び直せる', () => {
-    expect(settlePayList(settlePayList(open, { kind: '答えた' }), { kind: '断られた' })).toEqual(open)
-    expect(settlePayList(open, { kind: '断られた' })).toBe(open)
-  })
-
-  it('行動をやめたら、閉じる', () => {
-    expect(settlePayList(open, { kind: 'やめた' })).toBeUndefined()
+  it('予定のあとに、選択以外のもの（盤面・断られた）が届いたら、予定を捨てる', () => {
+    expect(settlePayState(answeredBoard, { kind: '盤面', actions: 0, scroll: 0 })).toBeUndefined()
+    expect(settlePayState(answeredBoard, { kind: '断られた' })).toBeUndefined()
   })
 
   it('答えていないのに盤面が届いたら、別の盤面になったので閉じる', () => {
-    expect(settlePayList(open, { kind: '盤面', actions: 0 })).toBeUndefined()
+    expect(settlePayState(open, { kind: '盤面', actions: 0, scroll: 0 })).toBeUndefined()
+  })
+
+  it('行動をやめたら、閉じる。予定も残さない', () => {
+    expect(settlePayState(open, { kind: 'やめた' })).toBeUndefined()
+    expect(settlePayState(answeredBoard, { kind: 'やめた' })).toBeUndefined()
+  })
+
+  it('送った答えが断られたら、選択は続いているので、開いたまま選び直せる', () => {
+    const answered = settlePayState(open, { kind: '答えた' })
+
+    expect(settlePayState(answered, { kind: '断られた' })).toEqual(open)
   })
 
   it('開いていなければ、何が届いても開かない', () => {
-    expect(settlePayList(undefined, { kind: '選んでほしい', board: board(), choice: BOTH })).toBeUndefined()
+    expect(settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: BOTH })).toBeUndefined()
   })
 })
