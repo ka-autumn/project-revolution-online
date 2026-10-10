@@ -4439,10 +4439,12 @@ function playerPanelElement(side: SideView, name: string, picking: BoardPicking 
  * 相手の手札は表側が見えていない（`裏`）カードの並びとして届く（`zoneOf` がそのまま返す）ので、
  * ここで裏向きを作り出す必要は無い。
  */
-function handElement(whose: '自分' | '相手', hand: ZoneView, picking: BoardPicking | undefined): HTMLElement {
+function handElement(whose: '自分' | '相手', hand: ZoneView, picking: BoardPicking | undefined, phone: boolean): HTMLElement {
   const node = element('div', `hand hand--${whose}`)
   if (whose === '自分') inRegion(node, 'hand')
   node.setAttribute('aria-label', `${whose}の手札`)
+  // スマートフォンでは、枚数に応じてカードの重なりを決める（`style.css`）ので、枚数を渡す。PC の DOM は変えない。
+  if (phone) node.style.setProperty('--n', String(hand.cards.length))
   node.append(element('span', 'hand__label', `${whose}の手札（${hand.count}）`))
 
   const step = whose === '相手' ? -3 : 4
@@ -5108,10 +5110,10 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   center.setAttribute('aria-label', '盤面')
   // 区画の中に手を置ける先が無いときの、手の戻し先（`board-keyboard.ts`）。Tab の止まる先には加えない。
   if (props.clickMode) center.tabIndex = -1
-  const opponentHand = handElement('相手', zoneOf(view.opponent, '手札'), props.picking)
+  const opponentHand = handElement('相手', zoneOf(view.opponent, '手札'), props.picking, phone !== undefined)
   const procedure = procedureElement(view.battle, view.smashJudgments)
   const board = boardGridElement(view, props.picking, props.onOpenPile, props.clickMode, phone !== undefined)
-  const ownHand = handElement('自分', zoneOf(view.own, '手札'), props.picking)
+  const ownHand = handElement('自分', zoneOf(view.own, '手札'), props.picking, phone !== undefined)
   // クリックモードでは、自分の手札を盤面より先に置く。キーボードでたどる順を、手札 → 盤面にするため
   // （行は `style.css` で決めているので、画面の位置は動かない、ADR-0033）。
   if (props.clickMode) center.append(ownHand, procedure, board, opponentHand)

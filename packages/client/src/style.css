@@ -6130,33 +6130,84 @@ body {
     white-space: nowrap;
   }
 
-  /* ---------- 手札：相手は裏面の端だけ、自分は上半分だけ。指では乗せられないので浮き上がらない ---------- */
+  /*
+   * ---------- 手札：相手は裏面の端だけ、自分は上半分だけ ----------
+   *
+   * 枚数が増えたら、カードの重なりを増やして詰める。`--n` は手札の枚数（`render.ts` がスマートフォンのときだけ渡す）、
+   * `--pitch` は隣のカードとの間隔（1 枚の見えている幅）。段の幅に収まる間隔を割り出し、ふだんの間隔より広げない。
+   * 相手の手札は見るだけなので、全部が見えるところまで詰める。自分の手札は押すものなので、間隔を 2.75rem より
+   * 狭くしない。それでも収まらなければ、段を横に送る。
+   * 扇の傾きと下がり方は、6 枚を超えたら、端で 6 枚のときの大きさ（真ん中から 2.5 枚ぶん）を超えないよう均す
+   * （`--fan-scale`）。PC の扇は変えない（このメディアクエリの中だけ）。
+   */
+
+  .duel .hand--相手,
+  .duel .hand--自分 {
+    container-type: inline-size;
+  }
 
   .duel .hand--相手 {
     grid-area: ohand;
     overflow: hidden;
   }
 
+  /* 左の余白は、扇の左端のカードが傾いて左へ出る分（これが無いと、送る前の 1 枚目の角が切れる）。 */
   .duel .hand--自分 {
     grid-area: hand;
-    padding-top: 0.6rem;
-    overflow: hidden;
+    justify-content: safe center;
+    padding: 0.6rem 0 0 0.6rem;
+    overflow: auto hidden;
+    scrollbar-width: none;
   }
 
   .duel .hand--相手 .card {
     --card-width: 2rem;
-    margin: 0 -0.3rem;
+    --pitch: clamp(0.3rem, calc((100cqw - 2rem) / max(var(--n, 6) - 1, 1)), 1.4rem);
+    --fan-scale: min(1, 5 / max(var(--n, 6) - 1, 1));
+    flex: none;
+    margin: 0;
+    transform: rotate(calc(var(--r, 0deg) * var(--fan-scale))) translateY(calc(0rem - var(--y, 0rem) * var(--fan-scale) * var(--fan-scale)));
+  }
+
+  .duel .hand--相手 .card ~ .card {
+    margin-left: calc(var(--pitch) - 2rem);
   }
 
   .duel .hand--自分 .card {
     --card-width: 4.4rem;
-    margin: 0 -0.55rem;
+    /* 2.2rem は、扇の端のカードが傾いて右へ出る分の余裕（これを引かないと、収まる枚数でも段が少し横に動く）。 */
+    --pitch: clamp(2.75rem, calc((100cqw - 4.4rem - 2.2rem) / max(var(--n, 6) - 1, 1)), 3.3rem);
+    --fan-scale: min(1, 5 / max(var(--n, 6) - 1, 1));
+    --fan: rotate(calc(var(--r, 0deg) * var(--fan-scale))) translateY(calc(var(--y, 0rem) * var(--fan-scale) * var(--fan-scale)));
+    flex: none;
+    margin: 0;
+    transform: var(--fan);
   }
 
+  .duel .hand--自分 .card ~ .card {
+    margin-left: calc(var(--pitch) - 4.4rem);
+  }
+
+  /* マウスを乗せても浮き上がらない（指では乗せられない）。 */
   .duel .hand--自分 .card:hover,
   .duel .hand--自分 .card:focus-within {
     z-index: auto;
-    transform: rotate(var(--r, 0deg)) translateY(var(--y, 0rem));
+    transform: var(--fan);
+  }
+
+  /*
+   * 指が重なっているカード（`phone-touch.ts` が付ける）。手札を指でなぞって段を送っている間も、いま指の下に
+   * あるカードを手前に出して目立たせる（PC でマウスを乗せたときにあたる）。段は横に送るために上下を切るので、
+   * 段の外へは出せない。持ち上げるのは段の上の余白（0.6rem）の内側までにし、大きくするときは上端を動かさずに
+   * 下へ広げる（下は、もともと段の外に隠れている）。押せるものの色の光で囲む。指を離すと戻る。
+   */
+  .duel .hand--自分 .card.card--指の下,
+  .duel .hand--自分 .card.card--指の下:hover,
+  .duel .hand--自分 .card.card--指の下:focus-within {
+    z-index: 31;
+    transform-origin: 50% 0;
+    transform: translateY(-0.4rem) scale(1.1);
+    filter: drop-shadow(0 0 0.3rem #ff8a00) drop-shadow(0 0 0.1rem #ff8a00);
   }
 
   /* 選んでいる 1 枚だけ、少し上に出す（指を離したあとも乗せたままになる hover には頼らない）。 */
@@ -6178,9 +6229,22 @@ body {
     bottom: 0;
   }
 
+  /*
+   * 自分の手札の見出しは、段を横に送っても真ん中に留める。並びの中に置いて左右の位置を留め（sticky）、
+   * 自分の幅ぶんを負の余白で打ち消して、カードの並びを押しのけないようにする。
+   */
   .duel .hand--自分 .hand__label {
-    top: 0;
+    position: sticky;
+    top: auto;
     bottom: auto;
+    left: calc(50% - 4rem);
+    flex: none;
+    align-self: flex-start;
+    width: 8rem;
+    margin: -0.6rem -8rem 0 0;
+    padding: 0;
+    text-align: center;
+    transform: none;
   }
 
   .duel .procedure {

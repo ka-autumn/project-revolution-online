@@ -144,6 +144,7 @@ import { PHONE_WIDTH_QUERY, initialPhone, isPhoneWidth, reducePhone, returnedToP
 import type { PhoneControl, PhonePending, PhoneScroll, PhoneState } from './phone.js'
 import { settlePhoneScroll } from './phone-scroll.js'
 import { settlePhoneBoard } from './phone-board.js'
+import { wireFingerOnHand } from './phone-touch.js'
 import { settlePhoneFocus } from './phone-focus.js'
 import { openPayList, settlePayState } from './pay-list.js'
 import type { PayEvent, PayState } from './pay-list.js'
@@ -2407,6 +2408,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     if (isPhoneWidth()) settlePhoneBoard(root)
   }
   window.addEventListener('resize', onResize)
+  // 手札に触れた指の下のカードを目立たせる（ADR-0034）。root に付けるので、描き直しても付いたまま。
+  const unwireFinger = wireFingerOnHand(root, isPhoneWidth)
 
   redraw()
   window.addEventListener('keydown', onKeyDown)
@@ -2423,6 +2426,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     dropPayList()
     phoneQuery.removeEventListener('change', onPhoneWidthChange)
     window.removeEventListener('resize', onResize)
+    unwireFinger()
     window.removeEventListener('keydown', onKeyDown)
     window.removeEventListener('popstate', onPopState)
     window.removeEventListener('pointerdown', onPointerDown, true)
