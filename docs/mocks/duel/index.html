@@ -780,6 +780,16 @@ body {
   cursor: pointer;
 }
 
+/* 効果でエリアを選んでいる間（ADR-0031）、カーソルを載せた・フォーカスしたスクエアと同じエリアの
+   3 つ。光る橙のまま、枠を実線にして濃くする。モックでは先に敵エリアをこの状態にしてあり、
+   スクエアに乗せると乗せたエリアに移る。 */
+.square--エリア強調 {
+  border-style: solid;
+  border-color: #c25e00;
+  background: rgb(255 190 70 / 0.85);
+  box-shadow: inset 0 0 22px rgb(255 150 20 / 0.7), 0 0 10px rgb(255 160 40 / 0.55);
+}
+
 .square .card { --card-width: 4.6rem; }
 
 /* ---------- カード ---------- */
@@ -2214,6 +2224,7 @@ body {
   <label><input type="checkbox" data-show="show-partner" checked>パートナーバトル</label>
   <label><input type="checkbox" data-show="show-plan" checked>プランにカードあり</label>
   <label><input type="checkbox" data-show="show-picking">クリックで選ぶ状態</label>
+  <label><input type="checkbox" data-show="show-area">効果でエリアを選ぶ（敵エリアと中央エリアが候補）</label>
   <label><input type="checkbox" data-show="show-focus">山札にキーボードの手</label>
   <label><input type="checkbox" data-show="show-cost">コストの選択</label>
   <label><input type="checkbox" data-show="show-battle">バトル中</label>
@@ -3057,13 +3068,25 @@ function apply() {
   for (const c of document.querySelectorAll('.mock-pickable')) c.classList.toggle('card--押せる', picking)
   for (const s of document.querySelectorAll('.mock-target')) s.classList.toggle('square--置き先', picking)
   document.querySelector('.hand--自分 .card')?.classList.toggle('card--選択中', picking)
+  // 効果でエリアを選ぶ状態（#278、ADR-0031）。候補は敵エリアと中央エリアで、ユニットのいないスクエアも
+  // 含めて 3 つとも光る。味方エリアは候補に無いので光らない。押せるのはスクエアで、カードは押せない
+  const areaChoice = duel.classList.contains('show-area')
+  const areaCandidate = (sq) => !sq.classList.contains('square--味方エリア')
+  for (const sq of document.querySelectorAll('.board .square')) {
+    sq.classList.toggle('square--置き先', (picking && sq.classList.contains('mock-target')) || (areaChoice && areaCandidate(sq)))
+    sq.classList.toggle('square--エリア選択', areaChoice && areaCandidate(sq))
+    sq.classList.toggle('square--エリア強調', areaChoice && sq.classList.contains('square--敵エリア'))
+  }
+  document.getElementById('choice-guide').textContent = areaChoice
+    ? '盤面の光っているところを押して選んでください'
+    : '置く場所を選択してください'
   // 押せる山札（#249）と、そこにキーボードの手がある状態（ADR-0033）
   const focusing = duel.classList.contains('show-focus')
   const ownPile = ownDeck.querySelector('.pile')
   ownPile.classList.toggle('pile--押せる', picking || focusing)
   ownPile.classList.toggle('mock-focus', focusing)
   document.getElementById('choice').hidden = !picking
-  document.getElementById('choice-guide').hidden = !picking
+  document.getElementById('choice-guide').hidden = !(picking || areaChoice)
   // コストの選択: 自分のエネルギーとスマッシュの群を囲み、札を付け、選べるカード（立っているもの）を上に出す
   const cost = duel.classList.contains('show-cost')
   const costGroup = document.querySelector('.group--自分.group--エネルギー')
@@ -3094,6 +3117,15 @@ function apply() {
   // 画像に書き出す用：#…,detail=カード名 で、そのカードに乗せた状態にする
   const want = decodeURIComponent(location.hash).match(/detail=([^,]+)/)?.[1]
   if (want) renderDetail(document.querySelector(`.square .card[data-name="${want}"], .card[data-name="${want}"]`))
+}
+// エリアを選んでいる間、乗せたスクエアと同じエリアの 3 つをまとめて強調する（実装は `render.ts` の `wireAreaHighlight`）
+for (const sq of document.querySelectorAll('.board .square')) {
+  const mates = () => [...document.querySelectorAll('.board .square--エリア選択')].filter((other) => [...sq.classList].some((name) => name.endsWith('エリア') && other.classList.contains(name)))
+  sq.addEventListener('mouseenter', () => {
+    if (!sq.classList.contains('square--エリア選択')) return
+    for (const other of document.querySelectorAll('.board .square--エリア選択')) other.classList.remove('square--エリア強調')
+    for (const mate of mates()) mate.classList.add('square--エリア強調')
+  })
 }
 for (const box of document.querySelectorAll('.mock-switch input')) {
   box.addEventListener('change', apply)
