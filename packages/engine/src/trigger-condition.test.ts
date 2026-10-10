@@ -212,6 +212,9 @@ describe('条件付誘発型能力', () => {
 
     expect(executedInstructions(resolved)).toBe(0)
     expect(resolvedAbilities(resolved)).toBe(0)
+    expect(resolved.log.map((recorded) => recorded.event)).toEqual([
+      { kind: '能力が無効化された', controller: '先攻', source: '能力持ち' },
+    ])
     expect(resolved.bank).toEqual([])
     expect(resolved.triggered).toEqual([])
   })
