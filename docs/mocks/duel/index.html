@@ -1655,6 +1655,9 @@ body {
 
 .sheet-backdrop { display: none; }
 
+/* エリアのシート（スマホでだけ出す。値は下のスマホの並べ方の中） */
+.duel .dialog { display: none; }
+
 /*
  * 幅 768px 以下はスマホの並べ方。上から、相手の札・相手の手札・手順の帯・盤面・自分の手札・
  * 自分の札・操作の帯の 1 列に積む。ログ・カードの詳細・行える手の一覧は、下からせり上がる
@@ -2028,11 +2031,96 @@ body {
 
   .log.sheet--開いている { padding-bottom: 0.6rem; }
 
-  /* 効果でエリアを選んでいる間に、光っているスクエアを押したときのシート。見出しはエリアの呼び名、ユニットがいれば詳細、
-     一番下に「このエリアを選ぶ」と「閉じる」。選ぼうとしているエリアの強調が見えるよう、背面はぼかさず薄くだけ暗くする */
-  .duel:has(.detail.sheet--エリア) .sheet-backdrop { background: rgb(60 30 0 / 0.2); }
-  .detail__area-title { margin: 0.2rem 0 0; color: var(--heading); font-size: 1.1rem; font-weight: 800; }
-  .detail__area-lead { margin: 0.2rem 0 0; color: var(--ink-dim); font-size: 0.8rem; }
+  /* 効果でエリアを選んでいる間に、光っているスクエアを押したときのシート（ADR-0034）。実装（`style.css` の
+     `.dialog`・`.dialog__box`・`.dialog--エリア`）と同じ作り・同じクラス名・同じ値。
+     上から、見出し（エリアの呼び名）→ 詳細の枠 → 聞く文 → 通信中 → ボタン。見出しとボタンは固定し、詳細の枠だけが縦に送れる。
+     強調が見えるよう、背面はぼかさず薄くだけ暗くする */
+  .duel .dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+    background: rgb(60 30 0 / 0.2);
+  }
+
+  .duel .dialog__box {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    max-height: 85%;
+    overflow-y: hidden;
+    padding: 0.6rem 0.8rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
+    border: 2px solid var(--gold);
+    border-width: 2px 0 0;
+    border-radius: 16px 16px 0 0;
+    background: linear-gradient(180deg, #fffdf6, #fff4dc);
+    box-shadow: 0 16px 50px rgb(80 40 0 / 0.4);
+  }
+
+  .duel .dialog__box > * { flex: none; }
+  .duel .dialog__box:focus { outline: none; }
+
+  .duel .dialog__title {
+    margin: 0 0 0.25rem;
+    color: var(--heading);
+    font-family: var(--heading-font);
+    font-size: 1.15rem;
+  }
+
+  .duel .dialog__box > .dialog__details {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .duel .dialog__detail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0 0 0.6rem;
+  }
+
+  .duel .dialog__detail .card--拡大 { --card-width: min(13rem, 60vw); }
+  .duel .dialog__detail .card--拡大 .card__text { max-height: 7rem; }
+
+  .duel .dialog__lead {
+    margin: 0 0 0.75rem;
+    color: var(--ink-dim);
+    font-size: 0.85rem;
+  }
+
+  .duel .dialog__sending {
+    margin: 0;
+    color: var(--heading);
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  .duel .dialog__sending:not(:empty) { margin-bottom: 0.75rem; }
+
+  .duel .dialog__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .duel .dialog button { min-height: 2.75rem; }
+  .duel .dialog__actions button { width: 100%; text-align: center; }
+
+  .duel .dialog__cancel {
+    display: flex;
+    justify-content: stretch;
+    gap: 0.4rem;
+    margin-top: 0.75rem;
+  }
+
+  .duel .dialog__cancel button { flex: 1; }
 
   /* 一覧（見る・選ぶ）は画面いっぱいに出す。右の列は無いので空けない */
   .picker { inset: 0; padding: 0.5rem; }
@@ -2250,7 +2338,7 @@ body {
   <label><input type="checkbox" data-show="show-plan" checked>プランにカードあり</label>
   <label><input type="checkbox" data-show="show-picking">クリックで選ぶ状態</label>
   <label><input type="checkbox" data-show="show-area">効果でエリアを選ぶ（敵エリアと中央エリアが候補）</label>
-  <label><input type="checkbox" data-show="show-area-sheet">スマホ：エリアを選ぶシート（要「効果でエリアを選ぶ」。敵エリアのユニットのいるスクエアを押した）</label>
+  <label><input type="checkbox" data-show="show-area-sheet">スマホ：エリアを選ぶシート（要「効果でエリアを選ぶ」。敵エリアのユニットのいるスクエアを押した。中央エリアのバトル中のスクエアを押すと、詳細が 2 体ぶん並び、詳細の枠だけが送れる）</label>
   <label><input type="checkbox" data-show="show-focus">山札にキーボードの手</label>
   <label><input type="checkbox" data-show="show-cost">コストの選択</label>
   <label><input type="checkbox" data-show="show-battle">バトル中</label>
@@ -2724,8 +2812,6 @@ function selected() {
   return document.querySelector('.card--選択中[data-name]')
 }
 function restoreDetail() {
-  // エリアのシートが開いている間は、シートの中身を替えない
-  if (areaSheetSquare !== null) return
   for (const n of document.querySelectorAll('.card--詳細中')) n.classList.remove('card--詳細中')
   renderDetail(selected())
 }
@@ -2895,40 +2981,92 @@ document.getElementById('board').addEventListener('click', (event) => {
 })
 // シートを出したスクエア。開いている間、そのエリアを強調したままにする（`paintAreas`）
 let areaSheetSquare = null
+// 開いているエリアのシート（実装の `div.dialog.dialog--エリア`）と、答えを送って返事を待っているか
+let areaSheetLayer = null
+let areaSheetSent = false
 function closeSheets() {
   for (const n of document.querySelectorAll('.sheet--開いている')) n.classList.remove('sheet--開いている')
   if (areaSheetSquare !== null) {
     areaSheetSquare = null
-    detail.classList.remove('sheet--エリア')
+    areaSheetSent = false
+    areaSheetLayer?.remove()
+    areaSheetLayer = null
     duel.classList.remove('show-area-sheet')
     document.querySelector('[data-show="show-area-sheet"]').checked = false
+    // 閉じたら、タップで覚えたカーソルとフォーカスも捨てて、強調を外す（実装の `forgetPointerWhenSheetClosed`）
+    clearAreaPointer()
     paintAreas()
   }
 }
-// 光っているエリアのスクエアを押したときのシート。そのスクエアにユニットがいれば詳細を出す。空きスクエアも同じシートで、
-// 詳細は無い。同じエリアの別のユニットを読むときは、閉じて、そのスクエアを押す
+// 光っているエリアのスクエアを押したときのシート。上から、見出し（エリアの呼び名）・そのスクエアにいるユニットの詳細
+// （空きスクエアなら無い）・聞く文・通信中・ボタン。同じエリアの別のユニットを読むときは、閉じて、そのスクエアを押す
 function openAreaSheet(square) {
+  closeSheets()
+  const make = (tag, className, textContent) => Object.assign(document.createElement(tag), { className, ...(textContent === undefined ? {} : { textContent }) })
   const area = [...square.classList].find((name) => name.startsWith('square--') && name.endsWith('エリア'))?.replace('square--', '')
   const units = [...square.querySelectorAll('.card[data-name]')]
-  const title = Object.assign(document.createElement('h2'), { className: 'detail__area-title', textContent: area })
-  const lead = Object.assign(document.createElement('p'), { className: 'detail__area-lead', textContent: 'このエリアを選びますか' })
-  const actions = Object.assign(document.createElement('div'), { className: 'detail__actions' })
-  const choose = Object.assign(document.createElement('button'), { type: 'button', className: 'button--primary', textContent: 'このエリアを選ぶ' })
-  // 答えを送ったことにして、選択を終える
+  const layer = make('div', 'dialog dialog--エリア')
+  const box = make('div', 'dialog__box')
+  box.setAttribute('role', 'dialog')
+  box.setAttribute('aria-modal', 'true')
+  const title = make('h2', 'dialog__title', area)
+  title.id = 'dialog-title'
+  const lead = make('p', 'dialog__lead', 'このエリアを選びますか')
+  lead.id = 'dialog-lead'
+  box.setAttribute('aria-labelledby', title.id)
+  box.setAttribute('aria-describedby', lead.id)
+  const sending = make('p', 'dialog__sending')
+  sending.setAttribute('role', 'status')
+  box.append(title)
+  if (units.length > 0) {
+    const frame = make('div', 'dialog__details')
+    for (const unit of units) {
+      const one = make('div', 'dialog__detail')
+      one.append(...detailParts(unit))
+      frame.append(one)
+    }
+    box.append(frame)
+  }
+  box.append(lead, sending)
+  box.tabIndex = -1
+  const lock = () => {
+    if (box.contains(document.activeElement)) box.focus({ preventScroll: true })
+    box.setAttribute('aria-busy', 'true')
+    sending.textContent = '通信中…'
+    for (const each of box.querySelectorAll('button')) each.disabled = true
+  }
+  const choose = make('button', 'choice__button button--primary', 'このエリアを選ぶ')
+  choose.type = 'button'
+  // 答えを送ったことにして、返事（盤面が進んで選択が終わる）が届くまで、押せず閉じられない体で少し待つ
   choose.addEventListener('click', () => {
-    closeSheets()
-    document.querySelector('[data-show="show-area"]').checked = false
-    apply()
+    if (areaSheetSent) return
+    areaSheetSent = true
+    lock()
+    setTimeout(() => {
+      closeSheets()
+      document.querySelector('[data-show="show-area"]').checked = false
+      apply()
+    }, 1500)
   })
-  const close = Object.assign(document.createElement('button'), { type: 'button', textContent: '閉じる' })
-  close.addEventListener('click', closeSheets)
-  actions.append(choose, close)
-  detail.replaceChildren(...units.flatMap((unit) => detailParts(unit)), title, lead, actions)
-  openSheet(detail)
+  const close = make('button', 'choice__button', '閉じる')
+  close.type = 'button'
+  close.addEventListener('click', () => { if (!areaSheetSent) closeSheets() })
+  const actions = make('div', 'dialog__actions')
+  actions.append(choose)
+  const foot = make('div', 'dialog__cancel')
+  foot.append(close)
+  box.append(actions, foot)
+  layer.append(box)
+  // 背面（暗くしたところ）を押す・Esc で閉じる。送ったあとは効かせない
+  layer.addEventListener('click', (event) => { if (event.target === layer && !areaSheetSent) closeSheets() })
+  layer.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !areaSheetSent) closeSheets() })
+  duel.append(layer)
+  areaSheetLayer = layer
   areaSheetSquare = square
-  detail.classList.add('sheet--エリア')
   duel.classList.add('show-area-sheet')
   document.querySelector('[data-show="show-area-sheet"]').checked = true
+  // 開いた直後の手は「閉じる」。送った答えは取り消せないので、戻せないことを聞く確認として扱う
+  close.focus({ preventScroll: true })
   paintAreas()
 }
 function openSheet(node) {
