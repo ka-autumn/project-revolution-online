@@ -1451,16 +1451,16 @@ describe('エリアの候補', () => {
     const picking = choicePicking(board(), asked)
     const offBoard = offBoardCandidates(asked, picking)
 
-    expect(picking.onBoard).toContain(0)
-    expect(picking.onBoard).toContain(1)
+    expect(picking.onBoard).toEqual([0, 1])
     expect(offBoard).toEqual([])
     expect(showsChoicePicker(asked, offBoard)).toBe(false)
   })
 
-  it('盤面から押さない時（ボタンモード）も、カードの一覧は出さない', () => {
+  /** 盤面から押さない時（ボタンモード）も、`index.ts` は押せる候補の結びつけ（`choicePicking`）を渡す。 */
+  it('盤面から押さない時（ボタンモード）も、エリアの候補にカードの一覧は出さない', () => {
     const asked = choice([{ kind: 'エリア', row: 0 }])
 
-    expect(showsChoicePicker(asked, offBoardCandidates(asked, undefined))).toBe(false)
+    expect(showsChoicePicker(asked, offBoardCandidates(asked, choicePicking(board(), asked)))).toBe(false)
   })
 })
 

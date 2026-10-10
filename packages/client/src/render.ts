@@ -1,5 +1,7 @@
 import { COLORS, DUEL_FORMATS } from '@revolution/engine'
 import { FOCUS_KEY_ATTRIBUTE, REGION_ATTRIBUTE, type Region, wireBoardKeyboard } from './board-keyboard.js'
+import { highlightedSquares } from './area-highlight.js'
+import type { AreaPointerStore } from './area-highlight.js'
 import { ignoreKeyRepeat, onLayerEscape } from './dialog-focus.js'
 import type {
   Area,
@@ -151,6 +153,11 @@ export interface BoardPicking {
   readonly picked: CardId | undefined
   /** 光らせるスクエア。押す先がカードだけの場面では空か、渡されない。 */
   readonly squares?: readonly PickableSquare[]
+  /**
+   * エリアごと選んでいる間の、カーソルとフォーカスのあるスクエアの覚え先（`area-highlight.ts`）。
+   * 描き直しをまたいで持つので、呼ぶ側（`index.ts`）が渡す。エリアを選ぶ場面でだけ渡される。
+   */
+  readonly areaPointer?: AreaPointerStore
   /**
    * 押せる裏向きのカードの置き場所（#127）。行える手を選ぶ場面では渡されない。
    *
@@ -934,6 +941,7 @@ function squareElement(
   picking: BoardPicking | undefined,
   battle: BattleView | undefined,
   keyboard: boolean,
+  areas: AreaHighlight | undefined,
 ): HTMLElement {
   const pickable = pickableAt(picking, square.square)
   const inBattle =
@@ -972,7 +980,7 @@ function squareElement(
   if (pickable !== undefined && onSquare !== undefined) {
     const picked = pickable.square
     node.addEventListener('click', () => onSquare(picked))
-    if (wholeArea) wireAreaHighlight(node, square.area)
+    if (wholeArea && areas !== undefined) areas.wire(node, picked)
   }
   for (const card of square.cards) node.append(cardElement(card, picking))
 
@@ -982,22 +990,55 @@ function squareElement(
 /** エリアごと選んでいる間、カーソルを載せた（またはフォーカスした）スクエアと同じエリアの 3 つに付ける class。 */
 export const AREA_HIGHLIGHT = 'square--エリア強調'
 
+/** 盤面 1 枚を描く間だけ持つ、エリアを選ぶスクエアの束ね役。 */
+interface AreaHighlight {
+  /** 押せるエリアのスクエアに、カーソル・フォーカスの出入りを聞かせる。 */
+  readonly wire: (node: HTMLElement, square: Square) => void
+  /** 覚えている位置から、強調する class を全スクエアに写す。 */
+  readonly apply: () => void
+}
+
 /**
  * エリアを選んでいる間、カーソルを載せた（またはフォーカスした）スクエアと同じエリアの 3 つのスクエアを
  * まとめて強調する（ADR-0031）。行単位で選んでいることが、押す前に見えるようにするため。
  *
- * 描き直すとスクエアは作り直されるので、付けた class は残らない。同じエリアの仲間は、押せるスクエアの
- * 目印（`square--エリア選択`）で盤面から引く。どれが仲間かをここでは数えない（ADR-0010）。
+ * どのエリアを強調するかは `area-highlight.ts` が決める。ここは、出入りを覚え先へ渡し、結果を class に
+ * 写すだけである。カーソルとフォーカスの位置は要素ではなくスクエアで覚えるので、描き直して要素が
+ * 作り直されても、描いた直後（`apply`）に同じ強調が付く。
  */
-function wireAreaHighlight(node: HTMLElement, area: Area): void {
-  const highlight = (on: boolean): void => {
-    const mates = node.closest('.board')?.querySelectorAll<HTMLElement>(`.square--エリア選択.square--${area}`) ?? []
-    for (const mate of mates) mate.classList.toggle(AREA_HIGHLIGHT, on)
+function areaHighlightOf(store: AreaPointerStore): AreaHighlight {
+  const nodes: { readonly square: Square; readonly node: HTMLElement }[] = []
+  const apply = (): void => {
+    const lit = highlightedSquares(
+      store.read(),
+      nodes.map((each) => each.square),
+    )
+    for (const each of nodes) {
+      each.node.classList.toggle(
+        AREA_HIGHLIGHT,
+        lit.some((square) => square.row === each.square.row && square.column === each.square.column),
+      )
+    }
   }
-  node.addEventListener('mouseenter', () => highlight(true))
-  node.addEventListener('mouseleave', () => highlight(false))
-  node.addEventListener('focusin', () => highlight(true))
-  node.addEventListener('focusout', () => highlight(false))
+
+  return {
+    apply,
+    wire: (node, square) => {
+      nodes.push({ square, node })
+      const enter = (pointer: 'カーソル' | 'フォーカス') => (): void => {
+        store.send({ kind: '入った', pointer, square })
+        apply()
+      }
+      const leave = (pointer: 'カーソル' | 'フォーカス') => (): void => {
+        store.send({ kind: '出た', pointer })
+        apply()
+      }
+      node.addEventListener('mouseenter', enter('カーソル'))
+      node.addEventListener('mouseleave', leave('カーソル'))
+      node.addEventListener('focusin', enter('フォーカス'))
+      node.addEventListener('focusout', leave('フォーカス'))
+    },
+  }
 }
 
 /**
@@ -1078,13 +1119,14 @@ function boardGridElement(
   const bank = place(waitingElement('バンク', view.bank), '3 / 1')
   const triggered = place(waitingElement('誘発した能力', view.triggered), '3 / 6')
 
+  const areas = picking?.areaPointer === undefined ? undefined : areaHighlightOf(picking.areaPointer)
   const grid: HTMLElement[] = []
   view.squares.forEach((row, r) => {
     const first = row[0]
     if (first === undefined) return
     grid.push(place(areaLabelElement(first.area), `${r + 2} / 2`))
     row.forEach((square, i) => {
-      const squareNode = inRegion(squareElement(square, picking, view.battle, keyboard), 'battle')
+      const squareNode = inRegion(squareElement(square, picking, view.battle, keyboard, areas), 'battle')
       // 矢印キーで、画面で見える向きのまま隣へ移るための位置。
       squareNode.dataset.screenRow = String(r)
       squareNode.dataset.screenColumn = String(i)
@@ -1097,6 +1139,16 @@ function boardGridElement(
   // ままにする（ADR-0033）。
   if (keyboard) node.append(ownStrip, ownTrap, ownDeck, ...grid, bank, triggered, opponentStrip, opponentDeck, opponentTrap)
   else node.append(opponentStrip, ownStrip, opponentDeck, opponentTrap, ownTrap, ownDeck, bank, triggered, ...grid)
+
+  if (areas !== undefined) {
+    // 描き直しの前にカーソル・フォーカスのあったエリアの強調を、作り直した盤面にも付ける。
+    areas.apply()
+    // 盤面の外へ出たら、カーソルは離れたことにする。描き直しで消えた要素の `mouseleave` は届かない。
+    node.addEventListener('mouseleave', () => {
+      picking?.areaPointer?.send({ kind: '出た', pointer: 'カーソル' })
+      areas.apply()
+    })
+  }
 
   return node
 }

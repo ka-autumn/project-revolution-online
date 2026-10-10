@@ -810,6 +810,7 @@ export interface ChoicePicking {
    *
    * ボタンを二重に出さないために `choiceView` が読む。**押せるかどうかを 2 か所で決めない**
    * ようにするための言い直しで、上の 3 つと同じものを番号の並びとして見せているだけである。
+   * 番号は昇順で、同じ番号は 1 度だけ並ぶ（エリアの候補は 3 つのスクエアが同じ番号を持つ）。
    */
   readonly onBoard: readonly number[]
 }
@@ -876,10 +877,13 @@ export function choicePicking(board: WirePerspective, choice: WireChoice): Choic
     answerOfSquare: (square) => bySquare.get(indexOfSquare(square))?.answer,
     hidden: [...byPosition.values()].map((each) => each.at),
     answerOfHidden: (at) => byPosition.get(keyOfPosition(at))?.answer,
+    // エリアの候補は 3 つのスクエアに同じ番号が付くので、重ねずに 1 度だけ数える。
     onBoard: [
-      ...answers.values(),
-      ...[...bySquare.values()].map((each) => each.answer),
-      ...[...byPosition.values()].map((each) => each.answer),
+      ...new Set([
+        ...answers.values(),
+        ...[...bySquare.values()].map((each) => each.answer),
+        ...[...byPosition.values()].map((each) => each.answer),
+      ]),
     ].sort((a, b) => a - b),
   }
 }

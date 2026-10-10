@@ -1,3 +1,5 @@
+import { areaPointerStore } from './area-highlight.js'
+import type { AreaPointerStore } from './area-highlight.js'
 import { MAX_ATTEMPTS, connect, connectingLink } from './connection.js'
 import type { Connection, Link } from './connection.js'
 import { NOT_SIGNED_IN, indexOfSquare } from '@revolution/engine'
@@ -322,6 +324,11 @@ interface DuelInteraction {
   readonly onPickerPick: (index: number | undefined) => void
   /** 答えて（選ばない・これに決める・戻る・取り消す）次の状況に移る。選びかけを捨てる。 */
   readonly onPickerAnswered: () => void
+  /**
+   * エリアを選んでいる間の、カーソルとフォーカスのあるスクエアの覚え先（`area-highlight.ts`）。描き直しを
+   * またいで持つ。エリアの候補が無い描き直しでは捨てる（`draw`）。
+   */
+  readonly areaPointer: AreaPointerStore
 }
 
 /** 操作のしかたを切り替えるところ。 */
@@ -864,6 +871,9 @@ function draw(
     }
     const boardData = boardView(board)
     const cardsById = visibleCardViewsIn(board)
+    // エリアを選ぶ場面でなくなったら、カーソルとフォーカスの覚えは捨てる。次のエリアの選択に持ち越さない。
+    const choosingArea = answering?.squares.some((each) => each.wholeArea === true) === true
+    if (!choosingArea) duel.areaPointer.clear()
     const boardPicking: BoardPicking | undefined =
       view !== undefined
         ? {
@@ -896,6 +906,7 @@ function draw(
               pickable: answering.pickable,
               picked: undefined,
               squares: answering.squares,
+              ...(choosingArea ? { areaPointer: duel.areaPointer } : {}),
               // 裏向きのカードは識別子を持たないので、置き場所で押す（#127）。
               hidden: answering.hidden,
               onCard: (card) => answer(answering.answerOf(card)),
@@ -1377,6 +1388,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    * `undefined`。答えて（選ばない・これに決める）次の状況に移るたびに捨てる。
    */
   let pickerPicked: number | undefined
+  /** エリアを選ぶ間の、カーソルとフォーカスのあるスクエア（描き直しをまたいで強調を保つ、`area-highlight.ts`）。 */
+  const areaPointer = areaPointerStore()
 
   // いま出している演出と、後から出す分の待ち行列（#96・#104）。フェイズ・ターンの切り替わりと
   // 効果解決のカットインは、出す中身は別だが同じ待ち行列を通る（`view-model.ts` の
@@ -1501,6 +1514,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     onPickerAnswered: () => {
       pickerPicked = undefined
     },
+    areaPointer,
   })
 
   const naming = (): Naming => ({
