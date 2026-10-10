@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { BOARD_NATURAL_WIDTH_REM, HAND_MIN_REM, MIN_ZOOM, drawerTop, fittedZoom, reservedHeight, widthZoom } from './phone-board.js'
+import {
+  BOARD_NATURAL_WIDTH_REM,
+  FALLBACK_CONTROLS_REM,
+  HAND_MIN_REM,
+  MIN_ZOOM,
+  boardAvailableHeight,
+  controlsReserve,
+  drawerTop,
+  fittedZoom,
+  reservedHeight,
+  topInContent,
+  visibleHeight,
+  widthZoom,
+} from './phone-board.js'
 
 describe('スマートフォンの盤面を縮める率（ADR-0034）', () => {
   const rem = 16
@@ -46,18 +59,93 @@ describe('盤面のほかの段に残す高さ', () => {
   const rem = 16
 
   it('盤面の段は数えず、自分の手札の段は最低の高さで数える', () => {
-    // 相手の札・ログ・手順・盤面・手札・自分の札・操作の帯
-    const rows = [44, 32, 24, 700, 200, 42, 110]
+    // 相手の札・ログ・手順・盤面・手札・自分の札（操作の帯は画面に固定で、段に数えない）
+    const rows = [44, 32, 24, 700, 200, 42]
 
-    expect(reservedHeight(rows, 4, 13, rem)).toBe(44 + 32 + 24 + HAND_MIN_REM * rem + 42 + 110 + 4 * 6 + 13)
+    expect(reservedHeight(rows, 4, 13, rem)).toBe(44 + 32 + 24 + HAND_MIN_REM * rem + 42 + 4 * 5 + 13)
+  })
+
+  it('外枠の余白（下に操作の帯の分を含む）は、そのまま残す高さに入る', () => {
+    const rows = [44, 32, 24, 700, 200, 42]
+
+    expect((reservedHeight(rows, 4, 13 + 70, rem) ?? 0) - (reservedHeight(rows, 4, 13, rem) ?? 0)).toBe(70)
   })
 
   it('段の数が合わなければ、測れなかったものとして扱う', () => {
     expect(reservedHeight([44, 32, 24], 4, 13, rem)).toBeUndefined()
+    expect(reservedHeight([44, 32, 24, 700, 200, 42, 110], 4, 13, rem)).toBeUndefined()
   })
 
   it('数にならない高さが混じれば、測れなかったものとして扱う', () => {
-    expect(reservedHeight([44, 32, 24, Number.NaN, 200, 42, 110], 4, 13, rem)).toBeUndefined()
+    expect(reservedHeight([44, 32, 24, Number.NaN, 200, 42], 4, 13, rem)).toBeUndefined()
+  })
+})
+
+describe('いま見えている高さ', () => {
+  it('visualViewport があれば、その高さ（アドレスバーが出ていれば低い）', () => {
+    expect(visibleHeight({ height: 740, scale: 1 }, 844)).toBe(740)
+  })
+
+  it('visualViewport が無ければ、innerHeight', () => {
+    expect(visibleHeight(undefined, 844)).toBe(844)
+  })
+
+  it('測れない値（0 や NaN）のときも、innerHeight', () => {
+    expect(visibleHeight({ height: 0, scale: 1 }, 844)).toBe(844)
+    expect(visibleHeight({ height: Number.NaN, scale: 1 }, 844)).toBe(844)
+  })
+
+  it('ピンチで拡大している間は、拡大の率を掛け戻す（見える範囲が狭くなっただけで、画面は低くなっていない）', () => {
+    expect(visibleHeight({ height: 422, scale: 2 }, 844)).toBe(844)
+  })
+
+  it('アドレスバーが出入りして高さが変わると、盤面に使える高さも変わる', () => {
+    const reserved = 400
+
+    expect(boardAvailableHeight(visibleHeight({ height: 844, scale: 1 }, 844), reserved)).toBe(444)
+    expect(boardAvailableHeight(visibleHeight({ height: 740, scale: 1 }, 844), reserved)).toBe(340)
+  })
+
+  it('使える高さの違いが、縮める率に表れる', () => {
+    const heightAt = (at: number): number => 700 * at
+    const tall = fittedZoom(0.5, boardAvailableHeight(844, 400), heightAt)
+    const short = fittedZoom(0.5, boardAvailableHeight(640, 400), heightAt)
+
+    expect(tall).toBe(0.5)
+    expect(short).toBeCloseTo(240 / 700, 5)
+  })
+})
+
+describe('操作の帯の分に空ける高さ', () => {
+  const rem = 16
+
+  it('測れた高さをそのまま使う。帯が高くなれば、余白も追随する', () => {
+    expect(controlsReserve(72, 60, rem)).toBe(72)
+    expect(controlsReserve(120, 72, rem)).toBe(120)
+  })
+
+  it('帯が操作パネルそのものになって測れない間は、前に測った高さを使う', () => {
+    expect(controlsReserve(undefined, 72, rem)).toBe(72)
+  })
+
+  it('どちらも無ければ、決め打ちの高さ', () => {
+    expect(controlsReserve(undefined, undefined, rem)).toBe(FALLBACK_CONTROLS_REM * rem)
+  })
+
+  it('0 や負の高さは、測れなかったものとして扱う', () => {
+    expect(controlsReserve(0, 72, rem)).toBe(72)
+    expect(controlsReserve(-1, undefined, rem)).toBe(FALLBACK_CONTROLS_REM * rem)
+  })
+})
+
+describe('つまみの位置の座標', () => {
+  it('画面の座標の段の上端を、外枠の中身の座標にする（送られた分を足す）', () => {
+    expect(topInContent(300, 0, 0)).toBe(300)
+    expect(topInContent(240, 0, 60)).toBe(300)
+  })
+
+  it('外枠が画面の上端から離れていれば、その分を引く', () => {
+    expect(topInContent(340, 40, 0)).toBe(300)
   })
 })
 

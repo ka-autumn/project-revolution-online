@@ -65,12 +65,14 @@ import type {
   PoolView,
   TypeCount,
 } from './deck-builder.js'
-import type { ActionView, AskOption, AskView, ChoiceView, DestinationView, PickView } from './input-model.js'
+import type { ActionView, AimKind, AskOption, AskView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import { countName, DISPLAY_NAME_LIMIT } from './name-count.js'
 import { zoneTally } from './zone-tally.js'
 import type { TallySymbol, TallyZone } from './zone-tally.js'
 import { PHONE_BACKDROP, PHONE_OPENER, PHONE_SHEET, rulesSummaryOf, tabAfterKey } from './phone.js'
 import type { BuilderTab, DuelSheet, LobbyMode, PhoneControl } from './phone.js'
+import { peekGuide, peekStats } from './phone-peek.js'
+import type { PeekPlace } from './phone-peek.js'
 import { builderSight } from './phone-scroll.js'
 import { COLORLESS, emptyFilter, isFiltering, MOVE_SHAPES, toggled, typeShownAs } from './pool-filter.js'
 import type { FilterChoices, MoveShape, NumberRange, PoolFilter, StarChoice } from './pool-filter.js'
@@ -198,6 +200,7 @@ const KEEPS_PICKING = [
   '.picker', // カードの一覧（捨札・リムーブを見る一覧と、効果で選ぶ一覧）
   '.dialog', // 手を聞くダイアログ
   '.duel__right', // 右の列（カードの詳細）
+  '.peek', // スマートフォンで、行き先を選んでいる間の帯（案内の文やカードの絵を押しても、選びかけを外さない）
   '.phone-sheet--open', // スマートフォンで開いているシート（操作パネル・ログ）
   '.phone-sheet-backdrop', // 同じシートの外の暗い背面（押すとシートを閉じる）
 ].join(', ')
@@ -1444,6 +1447,78 @@ function phoneOpenElement(label: string, className: string, sheet: DuelSheet, ph
   node.classList.add('phone-only', className)
   node.setAttribute('aria-haspopup', 'dialog')
   node.dataset[PHONE_OPENER] = sheet
+
+  return node
+}
+
+/** 行き先を選んでいる間の帯（スマートフォン、ADR-0034）の材料。 */
+export interface PeekProps {
+  readonly card: CardView & { readonly kind: '表' }
+  readonly place: PeekPlace
+  /** 行き先を絞る手の種類。案内の文を決める。 */
+  readonly aim: AimKind
+  /** 「詳細」を押した。いつものシートに詳細だけを出す。 */
+  readonly onDetail: () => void
+  /** 「選択をやめる」を押した。「カードの選択をやめる」と同じ処理。 */
+  readonly onCancel: () => void
+}
+
+/**
+ * 行き先を選んでいる間の、盤面を隠さない低い帯（スマートフォン、ADR-0034）。画面の下に付け、操作の帯のかわりに
+ * なる。左にカードの絵、右に上から、名前と特徴・「詳細」、数値の札、テキスト、案内の文と「選択をやめる」。
+ *
+ * 数値や案内の文は `phone-peek.ts` が決める。ここは並べるだけ。大きさ（上は自分の手札の段の上端まで、カードの絵は
+ * 右の中身の高さ）は、描いたあとに測って置く（`phone-board.ts`）。出たことが読み上げに伝わるよう、名前を付けた
+ * 領域にして、更新を丁寧に読ませる（`aria-live`）。手は帯の中へ移さない（選びかけの手の置き場所を崩さない）。
+ */
+export function peekElement(props: PeekProps): HTMLElement {
+  const { card } = props
+  const node = element('section', 'phone-only peek')
+  node.setAttribute('role', 'region')
+  node.setAttribute('aria-label', '選んでいるカード')
+  node.setAttribute('aria-live', 'polite')
+
+  // カードの絵。読み上げは右の中身が受け持つので、絵は隠す。手の止まる先にも、押す先にもしない。
+  const mini = cardElement(card)
+  mini.removeAttribute('tabindex')
+  mini.removeAttribute('aria-label')
+  mini.setAttribute('aria-hidden', 'true')
+  delete mini.dataset.cardId
+
+  const body = element('div', 'peek__body')
+
+  const title = element('div', 'peek__title')
+  const traits = [...card.attributes, ...(card.modified?.addedAttributes ?? []).map((attribute) => `+${attribute}`)]
+  title.append(element('p', 'peek__name', card.name), element('p', 'peek__kind', traits.join(' | ')))
+  const more = button('詳細', props.onDetail)
+  more.classList.add('peek__more')
+  more.setAttribute('aria-label', `${card.name}の詳細を全部見る`)
+  const head = element('div', 'peek__head')
+  head.append(title, more)
+
+  const stats = element('dl', 'peek__stats')
+  for (const stat of peekStats(card, props.place)) {
+    const each = element('div', `peek__stat${stat.change === undefined ? '' : ` peek__stat--${stat.change}`}`)
+    // 色と ▲▼ だけに頼らない。読み上げには、元の値も添えた文を読ませる。
+    const value = element('dd', '', String(stat.value))
+    if (stat.valueReading !== String(stat.value)) value.setAttribute('aria-label', stat.valueReading)
+    each.append(element('dt', '', stat.label), value)
+    stats.append(each)
+  }
+
+  const text = element('p', 'peek__text', card.text.length > 0 ? card.text.join('\n') : '（テキストなし）')
+
+  // 2 行になるときに割ってよい位置（「を」の後ろ）にだけ、切れ目を入れる。
+  const [first, second] = peekGuide(props.aim)
+  const guide = element('p', 'peek__guide')
+  guide.append(first, document.createElement('wbr'), second)
+  const cancel = button('選択をやめる', props.onCancel)
+  cancel.classList.add('peek__cancel')
+  const foot = element('div', 'peek__foot')
+  foot.append(guide, cancel)
+
+  body.append(head, stats, text, foot)
+  node.append(mini, body)
 
   return node
 }
@@ -5032,6 +5107,11 @@ export interface DuelElementProps {
    * 渡すときは `clickMode` も真にする（スマートフォンはクリックモードで描く）。
    */
   readonly phone?: PhoneControl
+  /**
+   * 行き先を選んでいる間の低い詳細の帯（スマートフォン、ADR-0034）の材料。行える手が「行き先を押して決まる 1 種類」
+   * だけのカードを選んでいる間だけ渡す（`phone` も渡されているときだけ作る）。
+   */
+  readonly peek?: PeekProps
   /** 開いている「見る」一覧。無ければ `undefined`。 */
   readonly viewingPile?: HTMLElement
   /** 開いている「選ぶ」一覧。無ければ `undefined`。 */
@@ -5127,6 +5207,16 @@ export function duelElement(props: DuelElementProps): HTMLElement {
     phone === undefined ? [] : [drawerElement(view.own, openPile(view.own)), drawerElement(view.opponent, openPile(view.opponent))]
   if (props.clickMode) root.append(center, ...drawers, left)
   else root.append(left, center, ...drawers)
+
+  // 行き先を選んでいる間の帯は、操作の帯のかわりなので、操作の帯（左の列）のすぐあとに置く。
+  const peek = phone === undefined || props.peek === undefined ? undefined : peekElement(props.peek)
+  if (peek !== undefined) {
+    root.append(peek)
+    // 光った行き先を押すと手を送る。返事の盤面が届いて描き直されるまで、帯を残さない。
+    root.addEventListener('click', (event) => {
+      if (event.target instanceof Element && event.target.closest('.square--置き先, .zone--置き先') !== null) peek.remove()
+    })
+  }
 
   // スマートフォンでは、ログとカードの詳細は押したときだけ出すシートにする。ログは開いている間だけ作る。
   // カードの詳細の置き場（右の列）は無く、押したカードの詳細は別のシートに出す（`index.ts`）。

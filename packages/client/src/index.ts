@@ -116,6 +116,7 @@ import type {
   DeckListHandlers,
   ListZone,
   MyShareHandlers,
+  PeekProps,
   PhoneListOptions,
   RecipeListHandlers,
   RecipeViewHandlers,
@@ -143,7 +144,8 @@ import { closedByCancel, escapeTopLayer, focusBefore, markDialog, settleFocus } 
 import { PHONE_WIDTH_QUERY, initialPhone, isPhoneWidth, reducePhone, returnedToPhone, settlePhone, takePending, takeScroll } from './phone.js'
 import type { PhoneControl, PhonePending, PhoneScroll, PhoneState } from './phone.js'
 import { settlePhoneScroll } from './phone-scroll.js'
-import { settlePhoneBoard } from './phone-board.js'
+import { settlePhoneBoard, watchControls } from './phone-board.js'
+import { peekAimOf } from './phone-peek.js'
 import { wireFingerOnHand } from './phone-touch.js'
 import { settlePhoneFocus } from './phone-focus.js'
 import { openPayList, settlePayState } from './pay-list.js'
@@ -1088,11 +1090,28 @@ function draw(
     // スマートフォンでは、選んだカードで行える手を下からのシートで出し、上の段にカードの詳細を一緒に出す
     // （ADR-0034）。聞くことが無く、行き先を押して決まるだけの手も、先にシートで手を選ばせる。
     const sheetCard = view?.picked === undefined ? undefined : cardsById.get(view.picked)
-    // 詳細だけを見るシート（押せないカードをタップした）。手は無く、閉じる口は「閉じる」。選んでいる間は出さない。
+    // 行える手が「行き先を押して決まる 1 種類」だけのカードは、シートを挟まず、すぐ行き先を光らせて、盤面を
+    // 隠さない低い帯で詳細を見せる（ADR-0034）。帯の「詳細」から、いつものシートに詳細だけを出せる。
+    const peekAim = phone === undefined ? undefined : peekAimOf(view?.sheet)
+    const peek: PeekProps | undefined =
+      phone !== undefined && peekAim !== undefined && view?.picked !== undefined && sheetCard?.kind === '表'
+        ? {
+            card: sheetCard,
+            place: boardData.squares.some((row) => row.some((square) => square.cards.some((each) => each.kind === '表' && each.id === sheetCard.id)))
+              ? 'スクエア'
+              : '手札など',
+            aim: peekAim,
+            onDetail: () => phone.send({ kind: '対戦のカードを見る', card: sheetCard.id }),
+            // 「カードの選択をやめる」と同じ処理。
+            onCancel: askHandlers.onCancel,
+          }
+        : undefined
+    // 詳細だけを見るシート（押せないカードをタップした）。手は無く、閉じる口は「閉じる」。選んでいる間は出さない
+    // （帯から開いた詳細は、選んでいる間も出す。閉じても行き先の選択は続く）。
     const viewed = phone?.state.viewedCard
     const viewedCard = viewed === undefined ? undefined : cardsById.get(viewed.card)
     const viewedSheet =
-      phone !== undefined && viewed !== undefined && viewedCard?.kind === '表' && view?.sheet === undefined
+      phone !== undefined && viewed !== undefined && viewedCard?.kind === '表' && (view?.sheet === undefined || peek !== undefined)
         ? askElement(
             { heading: viewedCard.name, lead: 'カードの詳細', options: [] },
             { onChoose: () => undefined, onCancel: () => phone.send({ kind: '対戦のカードを閉じる' }) },
@@ -1101,7 +1120,7 @@ function draw(
         : undefined
     const dialog =
       phone !== undefined
-        ? view?.sheet !== undefined
+        ? view?.sheet !== undefined && peek === undefined
           ? askElement(view.sheet, askHandlers, sheetDetailElement(sheetCard))
           : viewedSheet
         : view?.ask !== undefined
@@ -1189,6 +1208,7 @@ function draw(
         picking: boardPicking,
         clickMode,
         ...(phone === undefined ? {} : { phone }),
+        ...(peek === undefined ? {} : { peek }),
         onOpenPile: duel.onOpenPile,
         viewingPile: viewingPileElement,
         choosePicker,
@@ -1346,6 +1366,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    * ADR-0034）。答えたあとの盤面でいったん閉じ、選択が続けば開き直す予定を持つ。開閉は `pay-list.ts` が決める。
    */
   let payState: PayState | undefined
+  /** 操作の帯の高さの変わり方を見張るのを止める（スマートフォンの対戦画面。描き直すたびに付け直す）。 */
+  let stopWatchingControls: () => void = () => undefined
   /** 払う一覧を開いた直後に、押した方のゾーンの見出しへ送る。描いたあとに 1 度だけ行う。 */
   let payReveal: ListZone | undefined
   /** 払う一覧を開き直したあと、一覧のスクロールを戻す位置。描いたあとに 1 度だけ行う。 */
@@ -2151,7 +2173,15 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // デッキ構築のタブを替えたあとのページのスクロール。描いて高さが決まってから置く。
       settlePhoneScroll(root, scroll)
       // 対戦画面の盤面を画面に合わせて縮め、捨札・リムーブのつまみの縦の位置を合わせる。描いて高さが決まってから測る。
-      if (phone !== undefined) settlePhoneBoard(root)
+      // 操作の帯の高さが描き直さずに変わったときも、測り直す。描き直すたびに新しい帯へ付け直す。
+      stopWatchingControls()
+      stopWatchingControls = () => undefined
+      if (phone !== undefined) {
+        settlePhoneBoard(root)
+        stopWatchingControls = watchControls(root, () => {
+          if (isPhoneWidth()) settlePhoneBoard(root)
+        })
+      }
       // 払う一覧を開いた直後は、押した方のゾーンの見出しが見える位置から出す。開き直したときは、前の位置へ戻す。
       if (payScroll !== undefined) {
         const top = payScroll
@@ -2408,6 +2438,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     if (isPhoneWidth()) settlePhoneBoard(root)
   }
   window.addEventListener('resize', onResize)
+  // アドレスバーが出入りしても window の resize は届かないことがある。いま見えている高さ（visualViewport）の
+  // 変わり方を見て、測り直す。
+  window.visualViewport?.addEventListener('resize', onResize)
   // 手札に触れた指の下のカードを目立たせる（ADR-0034）。root に付けるので、描き直しても付いたまま。
   const unwireFinger = wireFingerOnHand(root, isPhoneWidth)
 
@@ -2426,6 +2459,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     dropPayList()
     phoneQuery.removeEventListener('change', onPhoneWidthChange)
     window.removeEventListener('resize', onResize)
+    window.visualViewport?.removeEventListener('resize', onResize)
+    stopWatchingControls()
     unwireFinger()
     window.removeEventListener('keydown', onKeyDown)
     window.removeEventListener('popstate', onPopState)

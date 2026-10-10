@@ -6020,22 +6020,36 @@ body {
  * PC の規則と同じ強さのものを上書くので、この塊はファイルの最後に置く。
  */
 @media (max-width: 768px) {
-  /* ---------- 外枠：上から 7 段を 1 列に積む ---------- */
+  /*
+   * ---------- 外枠：上から 6 段を 1 列に積み、操作の帯は画面の下端に固定する ----------
+   *
+   * 操作の帯（`.controls`）は、段の高さの測り方に頼らず、いつも画面の下に付ける。上の 6 段には、帯の高さぶんの
+   * 余白を下に取る（`--controls-height` は `phone-board.ts` が帯を測って置く）。上の 6 段が収まらないときは、
+   * `.duel` だけが縦に送られ、帯は動かない。ページ全体（`body`・`html`）は縦に送らない。
+   */
+
+  html:has(.duel),
+  body:has(.duel) {
+    height: 100dvh;
+    overflow: hidden;
+  }
 
   .duel {
+    position: relative;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto 2rem 1.5rem auto minmax(3.2rem, 1fr) auto auto;
+    grid-template-rows: auto 2rem 1.5rem auto minmax(3.2rem, 1fr) auto;
     grid-template-areas:
       'opp logbtn'
       'ohand ohand'
       'proc proc'
       'board board'
       'hand hand'
-      'own turn'
-      'ctrl ctrl';
+      'own turn';
     gap: 0.25rem;
     height: 100dvh;
-    padding: 0.4rem 0.5rem;
+    padding: 0.4rem 0.5rem calc(var(--controls-height, 4.8rem) + max(0.4rem, env(safe-area-inset-bottom, 0px)) + 0.25rem);
+    overflow: hidden auto;
+    overscroll-behavior: contain;
   }
 
   /* 列は無くし、中の部品を外枠の格子に直に並べる。DOM の順は変えない（Tab と読み上げの順は、クリックモードのまま）。 */
@@ -6276,9 +6290,12 @@ body {
     padding-left: 5.6rem;
   }
 
-  /* 捨札・リムーブの引き出しのつまみ。自分は右端、相手は左端。縦の位置は `phone-board.ts` が段に合わせる。 */
+  /*
+   * 捨札・リムーブの引き出しのつまみ。自分は右端、相手は左端。縦の位置は `phone-board.ts` が段に合わせる。
+   * `.duel` が縦に送られても段に付いてくるよう、画面ではなく `.duel` の中身に置く（`.duel` は位置の基準）。
+   */
   .duel .drawer {
-    position: fixed;
+    position: absolute;
     z-index: 20;
     display: flex;
     flex-direction: column;
@@ -6463,9 +6480,19 @@ body {
 
   /* ---------- 操作の帯：優先権の 1 行・一番よく押す手のボタン・「行える手（n）」のボタン ---------- */
 
+  /* 画面の下端に固定する。上の段が収まらずに送られても、帯は動かない。 */
   .duel .controls {
-    grid-area: ctrl;
+    position: fixed;
+    right: 0.5rem;
+    bottom: max(0.4rem, env(safe-area-inset-bottom, 0px));
+    left: 0.5rem;
+    z-index: 35;
     flex: none;
+  }
+
+  /* 行き先を選んでいる間は、低い詳細の帯が操作の帯のかわりになる。余白は残したまま、見えず、手も止まらない。 */
+  .duel:has(.peek) .controls:not(.phone-sheet--open) {
+    visibility: hidden;
   }
 
   /* 操作の帯は、内容より低く潰さない（高さが足りないときは、自分の手札の段が縮む）。 */
@@ -6552,6 +6579,204 @@ body {
   }
 
   .duel .phone-actions-open {
+    min-height: 2.75rem;
+    padding: 0 0.8rem;
+  }
+
+  /*
+   * ---------- 行き先を選んでいる間の、低い詳細の帯 ----------
+   *
+   * 行える手が「行き先を押して決まる 1 種類」だけのカードを押したときに、画面の下に付けて出す。行き先を選んでいる
+   * 間は操作の帯のかわりになり、案内の文とやめる口もこの中に持つ。高さは中身に合わせ、上は自分の手札の段の上端
+   * までしか伸ばさない（`phone-board.ts`）ので、盤面には重ならず、光った行き先をそのまま押せる。全部の詳細は
+   * 「詳細」で、いつものシートに出す。
+   */
+
+  .duel .peek {
+    position: fixed;
+    right: 0.5rem;
+    bottom: max(0.4rem, env(safe-area-inset-bottom, 0px));
+    left: 0.5rem;
+    /* 手札の見出し・操作の帯より手前。シートの幕（85）よりは奥。 */
+    z-index: 60;
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    background: #fffdf6;
+    box-shadow: 0 -2px 10px rgb(120 70 0 / 0.25);
+    overflow: hidden;
+  }
+
+  /* カードは帯の高さいっぱいに出す（幅は `phone-board.ts` が右の中身の高さから決める）。 */
+  .duel .peek > .card {
+    flex: none;
+    align-self: center;
+    margin: 0;
+    transform: none;
+  }
+
+  .duel .peek__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .duel .peek__head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .duel .peek__title {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .duel .peek__name {
+    margin: 0;
+    overflow: hidden;
+    color: var(--heading);
+    font-family: var(--heading-font);
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .duel .peek__kind {
+    margin: 0;
+    overflow: hidden;
+    color: #7d6848;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .duel .peek__more {
+    flex: none;
+    min-width: 3.2rem;
+    min-height: 2.75rem;
+    padding: 0 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  /* 数値は、項目名と値を分けた札にして横に並べる。元の値から変わっているものは色を変える。 */
+  .duel .peek__stats {
+    display: grid;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
+    gap: 0.3rem;
+    margin: 0;
+  }
+
+  .duel .peek__stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.15rem 0.2rem 0.2rem;
+    border: 1px solid rgb(220 166 64 / 0.7);
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .duel .peek__stat dt {
+    color: #7d6848;
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .duel .peek__stat dd {
+    margin: 0;
+    color: var(--ink);
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  /* カードの絵と同じ決まり（`.card__bp--上` など）：上がったら赤と ▲、下がったら青と ▼（色だけに頼らない）。 */
+  .duel .peek__stat--上 {
+    border-color: #d0452b;
+    background: #fff1ec;
+  }
+
+  .duel .peek__stat--上 dd {
+    color: #d4101c;
+  }
+
+  .duel .peek__stat--上 dd::after {
+    content: '▲';
+    font-size: 0.7em;
+  }
+
+  .duel .peek__stat--下 {
+    border-color: #3a6fd0;
+    background: #eef3ff;
+  }
+
+  .duel .peek__stat--下 dd {
+    color: #1553c8;
+  }
+
+  .duel .peek__stat--下 dd::after {
+    content: '▼';
+    font-size: 0.7em;
+  }
+
+  /* 受けているダメージは赤くする（▲▼ は付けない）。 */
+  .duel .peek__stat--受けている {
+    border-color: #d0452b;
+    background: #fff1ec;
+  }
+
+  .duel .peek__stat--受けている dd {
+    color: #d4101c;
+  }
+
+  /* テキストは中身の高さで出し、帯が上まで届いて収まらなければ、この枠の中で送る。 */
+  .duel .peek__text {
+    flex: 0 1 auto;
+    min-height: 1.8rem;
+    margin: 0;
+    padding: 0.3rem 0.45rem;
+    overflow-y: auto;
+    border-radius: 8px;
+    background: rgb(255 238 194 / 0.55);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: pre-line;
+  }
+
+  /* 一番下：何を待っているかの 1 行と、やめる口（親指が届く位置）。 */
+  .duel .peek__foot {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* 幅が足りず 2 行になるときは、言葉の途中で割らず、文の中に入れた切れ目（「を」の後ろ）でだけ割る。 */
+  .duel .peek__guide {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    color: var(--own);
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.35;
+    word-break: keep-all;
+  }
+
+  .duel .peek__cancel {
+    flex: none;
     min-height: 2.75rem;
     padding: 0 0.8rem;
   }
