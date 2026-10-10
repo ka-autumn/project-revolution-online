@@ -159,6 +159,11 @@ export interface BoardPicking {
    */
   readonly areaPointer?: AreaPointerStore
   /**
+   * 「このエリアを選ぶ」のシート（スマートフォン、ADR-0034）が開いている間の、シートを出したスクエア。
+   * そのエリアは、カーソルとフォーカスに関わらず強調する。閉じていれば渡されない。
+   */
+  readonly areaSheet?: Square
+  /**
    * 押せる裏向きのカードの置き場所（#127）。行える手を選ぶ場面では渡されない。
    *
    * 裏向きのカードは識別子を持たない（`view-model.ts` の `CardView`）ので、押せるかどうかも
@@ -1006,12 +1011,13 @@ interface AreaHighlight {
  * 写すだけである。カーソルとフォーカスの位置は要素ではなくスクエアで覚えるので、描き直して要素が
  * 作り直されても、描いた直後（`apply`）に同じ強調が付く。
  */
-function areaHighlightOf(store: AreaPointerStore): AreaHighlight {
+function areaHighlightOf(store: AreaPointerStore, sheet: Square | undefined): AreaHighlight {
   const nodes: { readonly square: Square; readonly node: HTMLElement }[] = []
   const apply = (): void => {
     const lit = highlightedSquares(
       store.read(),
       nodes.map((each) => each.square),
+      sheet,
     )
     for (const each of nodes) {
       each.node.classList.toggle(
@@ -1119,7 +1125,7 @@ function boardGridElement(
   const bank = place(waitingElement('バンク', view.bank), '3 / 1')
   const triggered = place(waitingElement('誘発した能力', view.triggered), '3 / 6')
 
-  const areas = picking?.areaPointer === undefined ? undefined : areaHighlightOf(picking.areaPointer)
+  const areas = picking?.areaPointer === undefined ? undefined : areaHighlightOf(picking.areaPointer, picking.areaSheet)
   const grid: HTMLElement[] = []
   view.squares.forEach((row, r) => {
     const first = row[0]
@@ -4333,6 +4339,69 @@ export function askElement(view: AskView, handlers: AskHandlers, detail?: HTMLEl
     if (event.target === layer) onCancel()
   })
   // 手を置くのは、開いたときの 1 回だけ（`dialog-focus.ts`）。ここで毎回置くと、描き直すたびに先頭へ戻る。
+
+  return layer
+}
+
+/** 「このエリアを選ぶ」のシートで押せるもの。 */
+export interface AreaSheetHandlers {
+  /** 「このエリアを選ぶ」を押した。答え（候補の番号）を送る。 */
+  readonly onChoose: () => void
+  /** 閉じる。何も送らない。 */
+  readonly onClose: () => void
+}
+
+/**
+ * 効果がエリアを選ばせている間、光っているスクエアを押したときの下からのシート（スマートフォン、ADR-0034）。
+ *
+ * 見出しはそのエリアの呼び名、上の段は、そのスクエアにいるユニットの詳細（空きスクエアなら無い）。一番下に
+ * 「このエリアを選ぶ」と「閉じる」を縦に並べ、「このエリアを選ぶ」を押して初めて答えを送る。
+ * 作りは `askElement` の手が 2 つ以上のときと同じで、送ったあとは返事が届くまでボタンを押せなくして
+ * 「通信中…」を出す。送った答えは取り消せないので、閉じる口も Esc も効かせない。
+ */
+export function areaSheetElement(heading: string, details: readonly HTMLElement[], handlers: AreaSheetHandlers): HTMLElement {
+  const layer = element('div', 'dialog dialog--エリア')
+  const box = element('div', 'dialog__box')
+  box.setAttribute('role', 'dialog')
+  box.setAttribute('aria-modal', 'true')
+  const title = element('h2', 'dialog__title', heading)
+  title.id = 'dialog-title'
+  const lead = element('p', 'dialog__lead', 'このエリアを選びますか')
+  lead.id = 'dialog-lead'
+  box.setAttribute('aria-labelledby', title.id)
+  box.setAttribute('aria-describedby', lead.id)
+  const sending = element('p', 'dialog__sending')
+  sending.setAttribute('role', 'status')
+  box.append(...details, title, lead, sending)
+
+  let sent = false
+  box.tabIndex = -1
+  const onClose = (): void => {
+    if (!sent) handlers.onClose()
+  }
+  const onChoose = (): void => {
+    if (sent) return
+    sent = true
+    // ボタンを押せなくすると、そこにあった手が外れる。先に箱へ移して、「通信中…」を読み上げさせる。
+    if (box.contains(document.activeElement)) box.focus({ preventScroll: true })
+    box.setAttribute('aria-busy', 'true')
+    sending.textContent = '通信中…'
+    for (const each of box.querySelectorAll('button')) each.disabled = true
+    handlers.onChoose()
+  }
+  const choose = button('このエリアを選ぶ', onChoose, true)
+  const actions = element('div', 'dialog__actions')
+  actions.append(choose)
+  const foot = element('div', 'dialog__cancel')
+  foot.append(button('閉じる', onClose))
+  box.append(actions, foot)
+  layer.append(box)
+
+  onLayerEscape(layer, onClose)
+  ignoreKeyRepeat(layer)
+  layer.addEventListener('click', (event) => {
+    if (event.target === layer) onClose()
+  })
 
   return layer
 }

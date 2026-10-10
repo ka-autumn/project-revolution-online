@@ -81,11 +81,20 @@ function sameSquare(square: Square, other: Square): boolean {
  * どちらも無ければ空。
  *
  * `areaSquares` は、エリアごと選んでいる場面で押せるスクエア（`PickableSquare` のうち `wholeArea` のもの）。
+ *
+ * スマートフォンで「このエリアを選ぶ」のシートが開いている間は、`sheet`（シートを出したスクエア）のエリアを、
+ * カーソルとフォーカスより優先して強調する。どのエリアを選ぼうとしているかを、シートの上に見せ続けるため。
+ * 押せるエリアのスクエアでなければ（選択が替わった）、シートは無いものとして扱う。
  */
-export function highlightedSquares(state: AreaPointer, areaSquares: readonly Square[]): readonly Square[] {
+export function highlightedSquares(
+  state: AreaPointer,
+  areaSquares: readonly Square[],
+  sheet?: Square,
+): readonly Square[] {
   const inArea = (square: Square | undefined): square is Square =>
     square !== undefined && areaSquares.some((each) => sameSquare(each, square))
-  const ordered = state.latest === 'フォーカス' ? [state.focus, state.cursor] : [state.cursor, state.focus]
+  const ordered =
+    state.latest === 'フォーカス' ? [sheet, state.focus, state.cursor] : [sheet, state.cursor, state.focus]
   const found = ordered.find(inArea)
   if (found === undefined) return []
 

@@ -6862,6 +6862,12 @@ body {
     outline: none;
   }
 
+  /* 「このエリアを選ぶ」のシート：選ぼうとしているエリアの強調（ADR-0031）が盤面で見えるよう、背面はぼかさず薄くだけ暗くする */
+  .duel .dialog--エリア {
+    background: rgb(60 30 0 / 0.2);
+    backdrop-filter: none;
+  }
+
   .duel .dialog__row {
     flex-direction: column-reverse;
   }

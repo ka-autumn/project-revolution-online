@@ -101,6 +101,7 @@ import {
   myShareListElement,
   nameElement,
   overlayElement,
+  areaSheetElement,
   askElement,
   pickElement,
   recipeElement,
@@ -147,6 +148,7 @@ import { PHONE_WIDTH_QUERY, initialPhone, isPhoneWidth, reducePhone, returnedToP
 import type { PhoneControl, PhonePending, PhoneScroll, PhoneState } from './phone.js'
 import { settlePhoneScroll } from './phone-scroll.js'
 import { settlePhoneBoard, watchControls } from './phone-board.js'
+import { areaSheetOf, tapOfSquare } from './phone-area.js'
 import { peekAimOf } from './phone-peek.js'
 import { wireFingerOnHand } from './phone-touch.js'
 import { settlePhoneFocus } from './phone-focus.js'
@@ -874,6 +876,9 @@ function draw(
     // エリアを選ぶ場面でなくなったら、カーソルとフォーカスの覚えは捨てる。次のエリアの選択に持ち越さない。
     const choosingArea = answering?.squares.some((each) => each.wholeArea === true) === true
     if (!choosingArea) duel.areaPointer.clear()
+    // スマートフォンで、光っているエリアのスクエアを押して開いた「このエリアを選ぶ」のシート（ADR-0034）。
+    // 出してよいかは `areaSheetOf` が決める。演出が出ている間は押せないので、シートも出さない。
+    const areaSheet = phone === undefined || !clicking ? undefined : areaSheetOf(phone.state.areaSheet, board, stage.choice, connected)
     const boardPicking: BoardPicking | undefined =
       view !== undefined
         ? {
@@ -907,6 +912,7 @@ function draw(
               picked: undefined,
               squares: answering.squares,
               ...(choosingArea ? { areaPointer: duel.areaPointer } : {}),
+              ...(areaSheet === undefined ? {} : { areaSheet: areaSheet.square }),
               // 裏向きのカードは識別子を持たないので、置き場所で押す（#127）。
               hidden: answering.hidden,
               onCard: (card) => answer(answering.answerOf(card)),
@@ -914,7 +920,16 @@ function draw(
               ...(stage.choice !== undefined && choiceView(board, stage.choice).mayCancel
                 ? { onCancelChoice: () => connection.send({ kind: '取り消す' }) }
                 : {}),
-              onSquare: (square) => answer(answering.answerOfSquare(square)),
+              onSquare: (square) => {
+                const pickable = answering.squares.find((each) => indexOfSquare(each.square) === indexOfSquare(square))
+                const choice = stage.choice
+                // エリアは、スマートフォンでだけ答えを送らずにシートを出す（`phone-area.ts`）。
+                if (tapOfSquare(phone !== undefined, pickable) === 'エリアのシートを出す' && phone !== undefined && choice !== undefined) {
+                  phone.send({ kind: 'エリアのシートを開く', square, choice })
+                  return
+                }
+                answer(answering.answerOfSquare(square))
+              },
               onHidden: (at) => answer(answering.answerOfHidden(at)),
             }
           : undefined
@@ -1129,16 +1144,39 @@ function draw(
             sheetDetailElement(viewedCard),
           )
         : undefined
+    // 効果がエリアを選ばせている間に光っているスクエアを押した、「このエリアを選ぶ」のシート。そのスクエアに
+    // ユニットがいれば詳細を一緒に出す。空きスクエアは見出しとボタンだけ。答えはここで送る。
+    const areaSheetNode =
+      phone === undefined || areaSheet === undefined || phone.state.areaSheet === undefined
+        ? undefined
+        : areaSheetElement(
+            areaSheet.heading,
+            (boardData.squares.flat().find((each) => indexOfSquare(each.square) === indexOfSquare(areaSheet.square))?.cards ?? []).flatMap(
+              (card) => sheetDetailElement(card) ?? [],
+            ),
+            {
+              onChoose: () => answer(areaSheet.answer),
+              onClose: () => {
+                closedByCancel()
+                phone.send({ kind: 'エリアのシートを閉じる' })
+              },
+            },
+          )
     const dialog =
       phone !== undefined
-        ? view?.sheet !== undefined && peek === undefined
-          ? askElement(view.sheet, askHandlers, sheetDetailElement(sheetCard))
-          : viewedSheet
+        ? (areaSheetNode ??
+          (view?.sheet !== undefined && peek === undefined
+            ? askElement(view.sheet, askHandlers, sheetDetailElement(sheetCard))
+            : viewedSheet))
         : view?.ask !== undefined
           ? askElement(view.ask, askHandlers)
           : undefined
     // 選びかけが替わる（別のカードを選ぶ・行き先を絞る）たびに、別のダイアログとして扱う。
-    if (dialog !== undefined) markDialog(dialog, viewedSheet !== undefined && viewed !== undefined ? viewed : picking.selection)
+    // エリアのシートは、開くたびに作る覚え（`PhoneState.areaSheet`）で、開いた単位を見分ける。
+    if (dialog !== undefined) {
+      const opened = areaSheetNode === undefined ? undefined : phone?.state.areaSheet
+      markDialog(dialog, opened ?? (viewedSheet !== undefined && viewed !== undefined ? viewed : picking.selection))
+    }
 
     // 捨札・リムーブの中身を見る一覧（ADR-0027）。押す前に選んでいる（`duel.viewingPile`）ものだけ出す。
     // スマートフォンでは、エネルギー・スマッシュの中身もこの一覧で見る。コストの選択中は、その一覧が
@@ -2049,6 +2087,15 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       editor: builderOpen && builder.screen === 'デッキを組む' && builder.draft !== undefined,
       duel: board !== undefined,
     })
+    // 「このエリアを選ぶ」のシートは、出してよくなくなったら（切断・選択が入れ替わった・無くなった）捨てる。
+    // 答えが受け入れられて選択が無くなったときも、ここで閉じる。
+    const choice = stage.kind === '打っている' ? stage.choice : undefined
+    if (
+      phoneState.areaSheet !== undefined &&
+      (board === undefined || areaSheetOf(phoneState.areaSheet, board, choice, link.kind === '繋がっている') === undefined)
+    ) {
+      phoneState = reducePhone(phoneState, { kind: 'エリアのシートを閉じる' })
+    }
     // 詳細を見ているカードが盤面から見えなくなった（手札に戻って裏向きになった、など）なら、閉じる。
     if (phoneState.viewedCard !== undefined && (board === undefined || !visibleCardViewsIn(board).has(phoneState.viewedCard.card))) {
       phoneState = reducePhone(phoneState, { kind: '対戦のカードを閉じる' })

@@ -84,3 +84,35 @@ describe('覚え先（描き直しをまたぐ）', () => {
     expect(highlightedSquares(store.read(), AREA_SQUARES)).toEqual([])
   })
 })
+
+describe('「このエリアを選ぶ」のシートが開いている間（スマートフォン）', () => {
+  it('シートを出したスクエアのエリアの、押せるスクエア全部を強調する', () => {
+    expect(highlightedSquares(NO_POINTER, AREA_SQUARES, at(1, 1))).toEqual(row(1))
+    expect(highlightedSquares(NO_POINTER, AREA_SQUARES, at(0, 2))).toEqual(row(0))
+  })
+
+  it('閉じれば（シートが無ければ）、その分の強調は外れる', () => {
+    expect(highlightedSquares(NO_POINTER, AREA_SQUARES, undefined)).toEqual([])
+    expect(highlightedSquares(NO_POINTER, AREA_SQUARES)).toEqual([])
+  })
+
+  it('カーソルやフォーカスが別のエリアにあっても、シートのエリアを優先する', () => {
+    const state = settle(focusIn(at(0, 0)), cursorIn(at(1, 0)))
+
+    expect(highlightedSquares(state, AREA_SQUARES, at(0, 1))).toEqual(row(0))
+    expect(highlightedSquares(state, AREA_SQUARES, at(1, 1))).toEqual(row(1))
+  })
+
+  it('閉じたあとは、カーソルとフォーカスの決まりに戻る', () => {
+    const state = settle(focusIn(at(0, 0)), cursorIn(at(1, 0)))
+
+    expect(highlightedSquares(state, AREA_SQUARES)).toEqual(row(1))
+  })
+
+  it('シートのスクエアが押せるエリアでなければ（選択が替わった）、シートは無いものとして扱う', () => {
+    const state = settle(cursorIn(at(0, 0)))
+
+    expect(highlightedSquares(state, AREA_SQUARES, at(2, 1))).toEqual(row(0))
+    expect(highlightedSquares(NO_POINTER, AREA_SQUARES, at(2, 1))).toEqual([])
+  })
+})
