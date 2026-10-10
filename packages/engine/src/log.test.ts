@@ -7,6 +7,7 @@ import { putInZone } from './duel.js'
 import { record } from './log.js'
 import { activateCourage, checkCourageCondition } from './courage.js'
 import {
+  AREAS,
   PLAYERS,
   activatedAbility,
   activateAbility,
@@ -95,6 +96,16 @@ const chooseSquare = defineStrategy({
   colors: ['赤'],
   effect: function* () {
     yield* choose([centerSquare])
+  },
+})
+
+/** エリアを 1 つ選ぶ（#278）。選ばれるのがカードでもスクエアでもない場面。 */
+const chooseArea = defineStrategy({
+  name: 'テスト・エリアを選ぶ',
+  level: 0,
+  colors: ['赤'],
+  effect: function* () {
+    yield* choose(AREAS)
   },
 })
 
@@ -280,6 +291,19 @@ describe('効果の記録', () => {
     const resolved = resolveEffect(board, chooseSquare.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(instructions(resolved)).toEqual([{ kind: '選ぶ', card: undefined, square: centerSquare }])
+  })
+
+  /**
+   * #278。エリアが選ばれたなら、盤面に固定した行が残る。呼び名では残さない——呼び名は見るプレイヤーに
+   * よって入れ替わる（総合ルール 第2部 第22章 6）ので、選んだ支配者から見た呼び名を行に直す。
+   */
+  it('エリアを選んだなら、どの行のエリアかが残る', () => {
+    const resolved = resolveEffect(board, chooseArea.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+    const byRear = resolveEffect(board, chooseArea.effect, { controller: '後攻', via: VIA, chooser: chooseFirst })
+
+    // 先頭の候補は味方エリア。先攻の味方エリアは row 0、後攻の味方エリアは row 2。
+    expect(instructions(resolved)).toEqual([{ kind: '選ぶ', card: undefined, square: undefined, areaRow: 0 }])
+    expect(instructions(byRear)).toEqual([{ kind: '選ぶ', card: undefined, square: undefined, areaRow: 2 }])
   })
 
   /** カードが選ばれたなら、スクエアのほうは空のままである。どちらか一方だけが埋まる。 */

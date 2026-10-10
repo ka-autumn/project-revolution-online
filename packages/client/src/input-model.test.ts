@@ -1372,6 +1372,99 @@ describe('候補を盤面から押す', () => {
 })
 
 /**
+ * #278。効果がエリアを選ばせる場面では、候補として並ぶのはエリアである。通信では盤面の行で届く
+ * （`protocol.ts` の `WireCandidate`）ので、呼び名にするのは受け取った側（総合ルール 第2部 第22章 6）。
+ * 光らせる行は、届いた候補の行そのものである（ADR-0010）。
+ *
+ * 押せるスクエアが番号を答えるところまでが、ここで確かめられる範囲である。スクエアを押す・
+ * キーボードの Enter・Space・スマートフォンのタップは、どれも光っているスクエア（`square--置き先`）の
+ * 同じ押下に行き着く（`render.ts` の `squareElement`、`board-keyboard.ts` の `activate`）ので、
+ * ここで返す番号がそのまま答えになる。
+ */
+describe('エリアの候補', () => {
+  const choice = (candidates: WireChoice['candidates']): WireChoice => ({
+    player: '先攻',
+    purpose: '効果の対象',
+    mayDecline: false,
+    answered: 0,
+    mayGoBack: true,
+    candidates,
+  })
+
+  it('番号のボタンには、選ぶ人から見たエリアの呼び名が出る', () => {
+    const asked = choice([
+      { kind: 'エリア', row: 2 },
+      { kind: 'エリア', row: 1 },
+    ])
+
+    expect(choiceView(board(), asked).candidates.map((each) => each.label)).toEqual([
+      '1 番目: 敵エリア',
+      '2 番目: 中央エリア',
+    ])
+    expect(choiceView({ ...board(), viewer: '後攻' }, asked).candidates.map((each) => each.label)).toEqual([
+      '1 番目: 味方エリア',
+      '2 番目: 中央エリア',
+    ])
+  })
+
+  it('押せるスクエアは、候補の数の 3 倍になる', () => {
+    const picking = choicePicking(board(), choice([{ kind: 'エリア', row: 0 }, { kind: 'エリア', row: 2 }]))
+
+    expect(picking.squares).toHaveLength(6)
+    expect(picking.squares.map((each) => each.square)).toEqual([
+      { row: 0, column: 0 },
+      { row: 0, column: 1 },
+      { row: 0, column: 2 },
+      { row: 2, column: 0 },
+      { row: 2, column: 1 },
+      { row: 2, column: 2 },
+    ])
+    expect(picking.squares.every((each) => each.wholeArea === true)).toBe(true)
+  })
+
+  it('エリアのどのスクエアを押しても、そのエリアの候補の番号で答える', () => {
+    const picking = choicePicking(board(), choice([{ kind: 'エリア', row: 0 }, { kind: 'エリア', row: 2 }]))
+
+    for (const column of [0, 1, 2] as const) {
+      expect(picking.answerOfSquare({ row: 0, column })).toBe(0)
+      expect(picking.answerOfSquare({ row: 2, column })).toBe(1)
+    }
+  })
+
+  it('候補になっていないエリアのスクエアは押せない', () => {
+    const picking = choicePicking(board(), choice([{ kind: 'エリア', row: 0 }]))
+
+    expect(picking.answerOfSquare({ row: 1, column: 1 })).toBeUndefined()
+    expect(picking.answerOfSquare({ row: 2, column: 0 })).toBeUndefined()
+  })
+
+  /** 読み上げに出る「押したら何が起きるか」。呼び名は選ぶ人から見たものになる。 */
+  it('スクエアの見出しは、エリアの呼び名で何を選ぶかを言う', () => {
+    const asked = choice([{ kind: 'エリア', row: 0 }])
+
+    expect(choicePicking(board(), asked).squares[0]?.label).toBe('味方エリアを選ぶ')
+    expect(choicePicking({ ...board(), viewer: '後攻' }, asked).squares[0]?.label).toBe('敵エリアを選ぶ')
+  })
+
+  it('候補が盤面から押せるので、番号のボタンは出さず、カードの一覧も出さない', () => {
+    const asked = choice([{ kind: 'エリア', row: 0 }, { kind: 'エリア', row: 1 }])
+    const picking = choicePicking(board(), asked)
+    const offBoard = offBoardCandidates(asked, picking)
+
+    expect(picking.onBoard).toContain(0)
+    expect(picking.onBoard).toContain(1)
+    expect(offBoard).toEqual([])
+    expect(showsChoicePicker(asked, offBoard)).toBe(false)
+  })
+
+  it('盤面から押さない時（ボタンモード）も、カードの一覧は出さない', () => {
+    const asked = choice([{ kind: 'エリア', row: 0 }])
+
+    expect(showsChoicePicker(asked, offBoardCandidates(asked, undefined))).toBe(false)
+  })
+})
+
+/**
  * #150。クリックで操作している間、盤面から押せる候補は操作パネルに出さない。行える手のほうは
  * すでにそうなっている（`pickView`、盤面の上で示せない手は、パネルの優先権の放棄とダイアログに出る）。
  *

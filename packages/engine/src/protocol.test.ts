@@ -18,7 +18,7 @@ import {
   putOnSquare,
   triggeredAbility,
 } from './index.js'
-import type { ActionProgress, CardInstance, Chooser, DuelState, LegalAction, Phase, Square } from './index.js'
+import type { ActionProgress, Area, CardInstance, Chooser, DuelState, LegalAction, Phase, Player, Square } from './index.js'
 
 /** 選択を求められたら常に最初の候補を選ぶ。盤面を進めるためだけに使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -638,6 +638,94 @@ describe('スクエアを選ぶ', () => {
 
     expectChoice(progress)
     expect(progress.choice.candidates.every((candidate) => candidate.kind !== 'スクエア')).toBe(true)
+  })
+})
+
+/**
+ * #278。効果がエリアを選ばせる場面では、候補として並ぶのはエリアである。
+ *
+ * エリアの呼び名は見るプレイヤーによって入れ替わる（総合ルール 第2部 第22章 6）ので、呼び名では
+ * 送らない。選ぶプレイヤー（能力の支配者、同 6-1）から見た呼び名を、盤面に固定した行に直して載せる。
+ */
+describe('エリアを選ぶ', () => {
+  const areaChooser = defineUnit({
+    name: 'テスト・エリアを選ぶユニット',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* () {
+        yield* choose<Area>(['味方エリア', '中央エリア', '敵エリア'])
+      }),
+    ],
+  })
+
+  /** エリアを選ばせる能力が、バンクで解決を待っている盤面。 */
+  function waitingToChooseArea(controller: Player): DuelState {
+    const square: Square = { row: 1, column: 1 }
+    const placed = putOnSquare(
+      phaseReadyToAct('メインフェイズ'),
+      square,
+      instantiate({ id: '選ばせるユニット', card: areaChooser, owner: controller }),
+    )
+    const [triggered] = areaChooser.abilities
+    if (triggered?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
+
+    return {
+      ...placed,
+      bank: [
+        {
+          ability: triggered,
+          source: '選ばせるユニット',
+          controller,
+          self: { id: '選ばせるユニット', square, card: areaChooser, controller },
+        },
+      ],
+    }
+  }
+
+  const PASS: LegalAction = { kind: '優先権を放棄する' }
+
+  // 総合ルール 第2部 第22章 6。先攻の味方エリアは row 0、敵エリアは row 2。
+  it('先攻が選ぶなら、先攻から見た呼び名の行で並ぶ', () => {
+    const progress = applyWithAnswers(waitingToChooseArea('先攻'), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.player).toBe('先攻')
+    expect(progress.choice.candidates).toEqual([
+      { kind: 'エリア', row: 0 },
+      { kind: 'エリア', row: 1 },
+      { kind: 'エリア', row: 2 },
+    ])
+  })
+
+  // 総合ルール 第2部 第22章 6-1。あるプレイヤーの味方エリアは、相手の敵エリアになる。
+  it('後攻が選ぶなら、同じ呼び名でも行が入れ替わる', () => {
+    const progress = applyWithAnswers(waitingToChooseArea('後攻'), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.player).toBe('後攻')
+    expect(progress.choice.candidates).toEqual([
+      { kind: 'エリア', row: 2 },
+      { kind: 'エリア', row: 1 },
+      { kind: 'エリア', row: 0 },
+    ])
+  })
+
+  /** エリアは盤面の位置であって、隠すものが無い。見えていないカードとしては並べない。 */
+  it('見えていないものとしては並ばない', () => {
+    const progress = applyWithAnswers(waitingToChooseArea('先攻'), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.candidates.some((candidate) => candidate.kind === '見えていない')).toBe(false)
+  })
+
+  /** 答えは番号のままである（ADR-0008）。 */
+  it('番号で答えると、そのエリアが選ばれて進む', () => {
+    const progress = applyWithAnswers(waitingToChooseArea('先攻'), PASS, [2])
+
+    expectAdvanced(progress)
   })
 })
 

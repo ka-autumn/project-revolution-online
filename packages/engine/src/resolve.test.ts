@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 // 差し替えるための関数であり、公開する API ではない。
 import { putInZone } from './duel.js'
 import {
+  AREAS,
+  areaOf,
   cardsIn,
   cardsOn,
   choose,
@@ -29,6 +31,7 @@ import {
   triggeredAbility,
 } from './index.js'
 import type {
+  Area,
   CardInZone,
   CardInstance,
   Chooser,
@@ -1568,5 +1571,106 @@ describe('効果が誘発型能力を作る', () => {
     expect(() =>
       resolveEffect(state, forge.effect, { controller: '先攻', via: VIA, chooser: chooseFirst }),
     ).toThrowError('効果に見せていないカードが対象にされた')
+  })
+})
+
+/**
+ * エリアを選ぶ（#278）。「エリアを 1 つ選び、そのエリアにいる（敵）全員に〜」。
+ *
+ * 候補に並べるエリアの呼び名は能力の支配者から見たものである（総合ルール 第2部 第22章 6-1）。
+ * 先攻の味方エリアは row 0、敵エリアは row 2、後攻ではそれが入れ替わる（`board.ts` の `areaOf`）。
+ */
+describe('エリアを選ぶ', () => {
+  /** 選んだエリアにいるユニット全員（味方も敵も）を破壊する。 */
+  const destroyAllInArea: Effect = function* (duel) {
+    const area = yield* choose(AREAS)
+    if (area === undefined) return
+    for (const unit of [...duel.allies(), ...duel.enemies()]) {
+      if (areaOf(duel.controller, unit.square) === area) yield* destroy(unit)
+    }
+    yield* damagePlayer(duel.opponent, 100)
+  }
+
+  /** 選んだエリアにいる敵だけを破壊する。 */
+  const destroyEnemiesInArea: Effect = function* (duel) {
+    const area = yield* choose(AREAS)
+    if (area === undefined) return
+    for (const enemy of duel.enemies()) {
+      if (areaOf(duel.controller, enemy.square) === area) yield* destroy(enemy)
+    }
+  }
+
+  const choosing =
+    (area: Area): Chooser =>
+    () =>
+      area
+
+  const resolveAs = (controller: '先攻' | '後攻', state: DuelState, effect: Effect, chooser: Chooser) =>
+    resolveEffect(state, effect, { controller, via: VIA, chooser })
+
+  const unit = (id: string, owner: '先攻' | '後攻') => instantiate({ id, card: vanilla, owner })
+
+  const executedInstructions = (state: DuelState) =>
+    state.log.flatMap((recorded) => (recorded.event.kind === '命令を実行した' ? [recorded.event.instruction] : []))
+
+  // 総合ルール 第2部 第22章 5・6
+  it('選んだエリアにいるユニットが全員、効果の対象になる', () => {
+    const state = boardOf(
+      [{ row: 1, column: 0 }, unit('中央の味方', '先攻')],
+      [{ row: 1, column: 2 }, unit('中央の敵', '後攻')],
+      [{ row: 2, column: 1 }, unit('敵エリアの敵', '後攻')],
+    )
+
+    const resolved = resolveAs('先攻', state, destroyAllInArea, choosing('中央エリア'))
+
+    expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['中央の味方'])
+    expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['中央の敵'])
+    expect(idsOf(cardsOn(resolved, { row: 2, column: 1 }))).toEqual(['敵エリアの敵'])
+  })
+
+  // 総合ルール 第2部 第22章 6
+  it('敵だけに作用する書き方もできる', () => {
+    const state = boardOf(
+      [{ row: 1, column: 0 }, unit('中央の味方', '先攻')],
+      [{ row: 1, column: 2 }, unit('中央の敵', '後攻')],
+    )
+
+    const resolved = resolveAs('先攻', state, destroyEnemiesInArea, choosing('中央エリア'))
+
+    expect(idsOf(cardsOn(resolved, { row: 1, column: 0 }))).toEqual(['中央の味方'])
+    expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['中央の敵'])
+  })
+
+  // 総合ルール 第2部 第22章 5。エリアはユニットがいなくても選べる。
+  it('ユニットのいないエリアを選んでも何も起きず、効果は続く', () => {
+    const state = boardOf([{ row: 1, column: 0 }, unit('中央の敵', '後攻')])
+
+    const resolved = resolveAs('先攻', state, destroyAllInArea, choosing('敵エリア'))
+
+    expect(idsOf(cardsOn(resolved, { row: 1, column: 0 }))).toEqual(['中央の敵'])
+    expect(resolved.damage['後攻']).toBe(100)
+  })
+
+  // 総合ルール 第2部 第22章 6-1。エリアの呼び名は、支配者から見て決まる。
+  it('支配者が後攻でも、敵エリアは後攻から見た敵の側の行を指す', () => {
+    const state = boardOf(
+      [{ row: 0, column: 1 }, unit('先攻の手前', '先攻')],
+      [{ row: 2, column: 1 }, unit('先攻の奥', '先攻')],
+    )
+
+    const resolved = resolveAs('後攻', state, destroyEnemiesInArea, choosing('敵エリア'))
+
+    expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['先攻の手前'])
+    expect(idsOf(cardsOn(resolved, { row: 2, column: 1 }))).toEqual(['先攻の奥'])
+  })
+
+  it('選んだことが、支配者から見た行に直してログに残る', () => {
+    const state = boardOf([{ row: 1, column: 0 }, unit('中央の敵', '後攻')])
+
+    const first = resolveAs('先攻', state, destroyEnemiesInArea, choosing('敵エリア'))
+    const second = resolveAs('後攻', state, destroyEnemiesInArea, choosing('敵エリア'))
+
+    expect(executedInstructions(first)[0]).toMatchObject({ kind: '選ぶ', areaRow: 2 })
+    expect(executedInstructions(second)[0]).toMatchObject({ kind: '選ぶ', areaRow: 0 })
   })
 })
