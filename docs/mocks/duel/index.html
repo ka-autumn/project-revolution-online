@@ -1785,9 +1785,19 @@ body {
    */
   .zone__symbol { position: relative; width: 3rem; height: 3rem; }
   .zone__symbol > svg { width: 100%; height: 100%; }
-  .zone__symbol > .zone__cross { position: absolute; inset: -0.1rem; width: auto; height: auto; }  /* コストの選択中は、ボタンを押せるものの色で囲む。やめる口は一覧の中にあるので、枠の札のボタンは出さない */
+  .zone__symbol > .zone__cross { position: absolute; inset: -0.1rem; width: auto; height: auto; }
+  .duel .zone__summary:disabled { opacity: 0.55; cursor: default; }
+  /*
+   * コストの選択中は、ボタンを押せるものの色で囲む。やめる口は一覧の中にあるので、枠の札のボタンは出さない。
+   * 枠は PC のように大きくしない（縮めた盤面では、大きくすると画面の端で切れる）
+   */
   .group--候補あり .zone__summary { border-color: #ff8a00; box-shadow: 0 0 0 3px rgb(255 138 0 / 0.45); }
+  .duel .zone--候補あり,
+  .duel .group--候補あり { transform: none; }
   .choosing-tab button { display: none; }
+
+  /* 払う一覧で、エネルギーとスマッシュを見出しで分ける */
+  .picker__section-title { margin: 0.5rem 0.8rem 0.2rem; color: var(--heading); font-family: var(--heading-font); font-size: 0.95rem; }
 
   /* 操作の帯：いま一番よく押す手と、行える手の一覧を開く口だけを出す */
   .controls { grid-area: ctrl; flex: none; }
@@ -2264,6 +2274,8 @@ function zone(title, count, content) {
       return `<span class="zone__symbol"><svg><use href="#${symbol}"/></svg>${cross}</span>`
     }).join('')
     summary.innerHTML = `<span class="zone__summary-name">${title}</span><strong>${count}</strong>${dots ? `<span class="zone__dots">${dots}</span>` : ''}`
+    // 0 枚なら押せない（捨札・リムーブのつまみと同じ）
+    summary.disabled = content.length === 0
     summary.addEventListener('click', () => openZoneList(node, title))
     node.append(summary)
   }
@@ -2574,39 +2586,72 @@ function pickInList(node) {
   const list = node.closest('.picker')
   if (node.classList.contains('card--押せる') && !list.hasAttribute('aria-busy')) node.classList.toggle('card--選択中')
   list.querySelector('.picker__detail').replaceChildren(...detailParts(node))
-  const count = list.querySelector('.picker__count')
-  if (count) count.textContent = `${list.querySelectorAll('.picker__cards .card--選択中').length} 枚を選んでいます`
+}
+// 払う一覧の中のカード：1 回押すと、その 1 枚を払う（本番は 1 枚ずつ答えを送る）。見本では一覧から外して払ったことにし、
+// 払えるカードが残っていなければ一覧を閉じる。裏向きのスマッシュも、払う候補なら押せる
+function payInList(node) {
+  const list = node.closest('.picker')
+  const detail = list.querySelector('.picker__detail')
+  if (node.dataset.name) detail.replaceChildren(...detailParts(node))
+  else detail.replaceChildren(Object.assign(document.createElement('p'), { className: 'detail__none', textContent: '裏向きのカード（中身は見られません）' }))
+  if (!node.classList.contains('card--押せる') || list.hasAttribute('aria-busy')) return
+  node.remove()
+  if (!list.querySelector('.picker__cards .card--押せる')) list.remove()
 }
 
 // エネルギー・スマッシュのボタンを押したとき：中身を大きく並べた一覧を開く。コストの選択中なら、
 // その一覧で支払うカードを選ぶ
 function openZoneList(zoneNode, title) {
   document.getElementById('zone-list')?.remove()
-  const whose = zoneNode.closest('.group--自分') ? '自分' : '相手'
-  const choosing = zoneNode.closest('.group--候補あり') !== null
-  const cardsInList = [...zoneNode.querySelectorAll('.zone__cards > .card')].map((c) => {
+  const group = zoneNode.closest('.group')
+  const whose = group.classList.contains('group--自分') ? '自分' : '相手'
+  const choosing = group.classList.contains('group--候補あり')
+  const copiesOf = (zone, onTap) => [...zone.querySelectorAll('.zone__cards > .card')].map((c) => {
     const copy = c.cloneNode(true)
-    copy.classList.remove('card--フリーズ', 'card--選択中')
-    if (c.classList.contains('card--フリーズ')) copy.classList.add('card--フリーズ')
-    if (copy.dataset.name) copy.addEventListener('click', () => pickInList(copy))
+    copy.classList.remove('card--選択中')
+    if (copy.dataset.name || copy.classList.contains('card--押せる')) copy.addEventListener('click', () => onTap(copy))
     return copy
   })
   const close = () => document.getElementById('zone-list')?.remove()
-  const node = choosing
-    ? picker('選ぶ', `${whose}の${title}ゾーン`, '支払うカードを選んでください（フリーズしているカードは選べません）', cardsInList,
-      '<span class="picker__count">0 枚を選んでいます</span><button type="button" data-zone-close>この行動をやめる</button><button type="button" class="button--primary" data-zone-close>これで払う</button>')
-    : picker('見る', `${whose}の${title}ゾーン（${cardsInList.length}）`, title === 'スマッシュ' ? '裏向きのカードは中身を見られません' : 'フリーズしているカードは横向き', cardsInList,
+  let node
+  if (choosing) {
+    // 払えるカードがあるゾーンを、見出しで分けて 1 つの一覧にまとめる（片方だけなら、そのゾーンだけ）
+    const zones = [...group.querySelectorAll('.zone')].filter((z) => z.querySelector('.zone__cards > .card--押せる'))
+    const names = zones.map((z) => z.classList.contains('zone--スマッシュ') ? 'スマッシュ' : 'エネルギー')
+    node = picker('選ぶ', `${whose}の${names.join('・')}`, '支払うカードを押してください（押すとその 1 枚を払います。フリーズしているカードは選べません）', [],
+      '<button type="button" data-zone-close>この行動をやめる</button><button type="button" data-zone-close>閉じる</button>')
+    const area = node.querySelector('.picker__cards')
+    const sections = zones.map((z, at) => {
+      const section = Object.assign(document.createElement('section'), { className: 'picker__section' })
+      section.dataset.zone = names[at]
+      section.append(Object.assign(document.createElement('h3'), { className: 'picker__section-title', textContent: names[at] }))
+      const cards = Object.assign(document.createElement('div'), { className: 'picker__cards' })
+      cards.append(...copiesOf(z, payInList))
+      section.append(cards)
+      return section
+    })
+    area.replaceWith(...sections)
+  } else {
+    const cardsInList = copiesOf(zoneNode, pickInList)
+    node = picker('見る', `${whose}の${title}ゾーン（${cardsInList.length}）`, title === 'スマッシュ' ? '裏向きのカードは中身を見られません' : 'フリーズしているカードは横向き', cardsInList,
       '<button type="button" data-zone-close>閉じる</button>')
+  }
   node.id = 'zone-list'
   node.classList.add('picker--開いている')
   for (const b of node.querySelectorAll('[data-zone-close]')) b.addEventListener('click', close)
   pickers.append(node)
+  // 押したゾーンの見出しが見える位置から出す
+  node.querySelector(`.picker__section[data-zone="${title}"]`)?.scrollIntoView({ block: 'start' })
 }
 
 document.getElementById('log-open').addEventListener('click', () => openSheet(document.getElementById('log')))
 document.getElementById('actions-open').addEventListener('click', () => openSheet(document.getElementById('controls')))
 document.getElementById('sheet-backdrop').addEventListener('click', closeSheets)
 for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', closeSheets)
+// 「行える手」のシートで手を押したら、シートを閉じる（送ったあとの様子は、操作の帯と盤面で見える）
+for (const b of document.querySelectorAll('.controls__actions button:not(#actions-open)')) {
+  b.addEventListener('click', () => { if (phone.matches) closeSheets() })
+}
 document.querySelector('.choice__back button').addEventListener('click', () => {
   document.querySelector('[data-show="show-picking"]').checked = false
   apply()
