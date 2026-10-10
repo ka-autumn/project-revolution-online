@@ -1390,6 +1390,12 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       if (before?.kind === '開き直す予定') {
         viewingPile = { player, zone: pressed }
         payScroll = before.scroll
+      } else if (before === undefined) {
+        // 届いた時点で開いた。押した方のゾーンの見出しから見せる。
+        viewingPile = { player, zone: pressed }
+        listShown = undefined
+        payReveal = pressed
+        payScroll = undefined
       }
     } else if (before?.kind === '開いている') {
       viewingPile = undefined
@@ -2287,14 +2293,23 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       }
       // 払う一覧は、答えたあとの盤面でいったん閉じ、続く選択が一覧のゾーンの候補を含めば開き直す（ADR-0034）。
       // 盤面だけでは選択が続くか行動が終わったのか分からないので、待たずに、次に届くもので決める。
+      // 候補が全部自分のエネルギー・スマッシュにある選択は、何も開いていなくても、届いた時点で払う一覧を開く
+      // （スマートフォンの並べ方で、繋がっている間だけ）。
       const stage = session.stage
-      if (payState !== undefined) {
-        if (stage.kind !== '打っている') dropPayList()
-        else if (message.kind === '盤面') {
-          const scroll = root.querySelector<HTMLElement>('.picker__zones')?.scrollTop ?? 0
-          settlePay({ kind: '盤面', actions: message.actions.length, scroll })
+      if (payState !== undefined && stage.kind !== '打っている') dropPayList()
+      else if (stage.kind === '打っている') {
+        if (message.kind === '盤面') {
+          if (payState !== undefined) {
+            const scroll = root.querySelector<HTMLElement>('.picker__zones')?.scrollTop ?? 0
+            settlePay({ kind: '盤面', actions: message.actions.length, scroll })
+          }
         } else if (message.kind === '選んでほしい' && stage.board !== undefined) {
-          settlePay({ kind: '選んでほしい', board: stage.board, choice: message.choice })
+          settlePay({
+            kind: '選んでほしい',
+            board: stage.board,
+            choice: message.choice,
+            autoOpen: isPhoneWidth() && link.kind === '繋がっている',
+          })
         } else if (message.kind === '行えなかった') settlePay({ kind: '断られた' })
       }
       // 開いている束が空になったら、見るものが無いので閉じる。払う一覧は、払い終えて空になるのを待たずに

@@ -83,22 +83,22 @@ describe('払う一覧の開閉', () => {
   })
 
   it('続く選択が一覧の置き場の候補を含めば、同じ一覧を開き直す', () => {
-    const reopened = settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY })
+    const reopened = settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY, autoOpen: true })
 
     expect(reopened).toEqual({ kind: '開いている', list: (open as { list: unknown }).list, answered: false })
   })
 
   it('一覧の片方の置き場だけ候補が残っていても、開き直す', () => {
-    expect(settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: ENERGY_ONLY })?.kind).toBe('開いている')
+    expect(settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: ENERGY_ONLY, autoOpen: true })?.kind).toBe('開いている')
   })
 
   it('続く選択が一覧の置き場の候補を含まなければ、予定を捨てる', () => {
-    expect(settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: elsewhere })).toBeUndefined()
+    expect(settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: elsewhere, autoOpen: true })).toBeUndefined()
   })
 
   it('選択が遅れて届いても、予定が残っていれば開き直す（待ち時間では見切らない）', () => {
     // 盤面のあと、ほかに何も届かないまま時間が過ぎても、状態は変わらない。
-    expect(settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY })?.kind).toBe('開いている')
+    expect(settlePayState(answeredBoard, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY, autoOpen: true })?.kind).toBe('開いている')
   })
 
   it('行動が終わった（行える手が付いてきた）盤面なら、予定も残さない', () => {
@@ -107,11 +107,12 @@ describe('払う一覧の開閉', () => {
     expect(settlePayState(answered, { kind: '盤面', actions: 3, scroll: 0 })).toBeUndefined()
   })
 
-  it('予定を捨てたあとに選択が遅れて届いても、開き直さない', () => {
+  it('予定を捨てたあとに選択が遅れて届いても、予定からは開き直さない', () => {
     const dropped = settlePayState(answeredBoard, { kind: '捨てる' })
 
     expect(dropped).toBeUndefined()
-    expect(settlePayState(dropped, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY })).toBeUndefined()
+    // 開いてよい場面でなければ（PC の並べ方、繋がっていない）、開かない。
+    expect(settlePayState(dropped, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY, autoOpen: false })).toBeUndefined()
   })
 
   it('予定のあとに、選択以外のもの（盤面・断られた）が届いたら、予定を捨てる', () => {
@@ -134,7 +135,91 @@ describe('払う一覧の開閉', () => {
     expect(settlePayState(answered, { kind: '断られた' })).toEqual(open)
   })
 
-  it('開いていなければ、何が届いても開かない', () => {
-    expect(settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: BOTH })).toBeUndefined()
+  it('開いていなければ、盤面や断られた・やめたが届いても開かない', () => {
+    expect(settlePayState(undefined, { kind: '盤面', actions: 0, scroll: 0 })).toBeUndefined()
+    expect(settlePayState(undefined, { kind: '断られた' })).toBeUndefined()
+    expect(settlePayState(undefined, { kind: 'やめた' })).toBeUndefined()
+  })
+})
+
+/** 候補が全部、自分のエネルギー・スマッシュにある選択は、届いた時点で払う一覧を開く（ADR-0034）。 */
+describe('選択が届いた時点で払う一覧を開く', () => {
+  /** 盤面のユニットも候補に混じる選択。 */
+  function withUnit(): WirePerspective {
+    const base = board()
+
+    return { ...base, squares: base.squares.map((each, at) => (at === 4 ? [instance('スクエアの1枚', '先攻')] : each)) }
+  }
+  const MIXED = choice([
+    { kind: '見えている', card: 'エネルギーの1枚' },
+    { kind: '見えている', card: 'スクエアの1枚' },
+  ])
+
+  it('候補が両方のゾーンにあれば、2 つをまとめた一覧が開く。先頭のゾーンの見出しから見せる', () => {
+    const opened = settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: BOTH, autoOpen: true })
+
+    expect(opened).toEqual({
+      kind: '開いている',
+      list: { player: '先攻', zones: ['エネルギーゾーン', 'スマッシュゾーン'], pressed: 'エネルギーゾーン' },
+      answered: false,
+    })
+  })
+
+  it('スマッシュだけ（裏向き）が候補でも開く。そのゾーンの見出しから見せる', () => {
+    const opened = settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY, autoOpen: true })
+
+    expect(opened).toMatchObject({ kind: '開いている', list: { zones: ['スマッシュゾーン'], pressed: 'スマッシュゾーン' } })
+  })
+
+  it('エネルギーだけが候補でも開く', () => {
+    const opened = settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: ENERGY_ONLY, autoOpen: true })
+
+    expect(opened).toMatchObject({ kind: '開いている', list: { zones: ['エネルギーゾーン'] } })
+  })
+
+  it('盤面のユニットなどが候補に混じる選択では、開かない', () => {
+    expect(settlePayState(undefined, { kind: '選んでほしい', board: withUnit(), choice: MIXED, autoOpen: true })).toBeUndefined()
+  })
+
+  it('相手のカードが候補に混じるときは、開かない', () => {
+    const opponents = choice([
+      { kind: '見えている', card: 'エネルギーの1枚' },
+      { kind: '見えていない', at: { player: '後攻', zone: 'スマッシュゾーン', index: 0 } },
+    ])
+
+    expect(settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: opponents, autoOpen: true })).toBeUndefined()
+  })
+
+  it('候補が無ければ、開かない', () => {
+    expect(settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: choice([]), autoOpen: true })).toBeUndefined()
+  })
+
+  it('開いてよい場面でなければ（PC の並べ方・繋がっていない間）、条件に合っていても開かない', () => {
+    expect(settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: BOTH, autoOpen: false })).toBeUndefined()
+  })
+
+  it('「閉じる」で閉じたあと（何も開いていない）は、その選択の間は開き直さない', () => {
+    const opened = settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: BOTH, autoOpen: true })
+    // 閉じる＝呼ぶ側が状態を捨てる。盤面の更新（行える手なし）が届いても、予定は無いので開き直さない。
+    const closed = settlePayState(opened, { kind: '捨てる' })
+
+    expect(settlePayState(closed, { kind: '盤面', actions: 0, scroll: 0 })).toBeUndefined()
+  })
+
+  it('次の選択が届けば、また条件を見て開く', () => {
+    const closed = settlePayState(settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: BOTH, autoOpen: true }), {
+      kind: '捨てる',
+    })
+
+    expect(closed).toBeUndefined()
+    expect(settlePayState(closed, { kind: '選んでほしい', board: board(), choice: SMASH_ONLY, autoOpen: true })?.kind).toBe('開いている')
+  })
+
+  it('開いている一覧は、同じ選択の描き直しのように選択が重ねて届いても、答え待ちを解いて開いたままにする', () => {
+    const opened = settlePayState(undefined, { kind: '選んでほしい', board: board(), choice: BOTH, autoOpen: true })
+    const answered = settlePayState(opened, { kind: '答えた' })
+    const again = settlePayState(answered, { kind: '選んでほしい', board: board(), choice: BOTH, autoOpen: true })
+
+    expect(again).toEqual(opened)
   })
 })
