@@ -31,6 +31,7 @@ import type {
   WireRoomRules,
 } from '@revolution/engine'
 import blackLevelIcon from './assets/level-icons/黒.svg'
+import cardBackMini from './assets/card-back-mini.svg'
 import blueLevelIcon from './assets/level-icons/青.svg'
 import greenLevelIcon from './assets/level-icons/緑.svg'
 import redLevelIcon from './assets/level-icons/赤.svg'
@@ -64,10 +65,14 @@ import type {
   PoolView,
   TypeCount,
 } from './deck-builder.js'
-import type { ActionView, AskOption, AskView, ChoiceView, DestinationView, PickView } from './input-model.js'
+import type { ActionView, AimKind, AskOption, AskView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import { countName, DISPLAY_NAME_LIMIT } from './name-count.js'
+import { zoneTally } from './zone-tally.js'
+import type { TallySymbol, TallyZone } from './zone-tally.js'
 import { PHONE_BACKDROP, PHONE_OPENER, PHONE_SHEET, rulesSummaryOf, tabAfterKey } from './phone.js'
-import type { BuilderTab, LobbyMode, PhoneControl } from './phone.js'
+import type { BuilderTab, DuelSheet, LobbyMode, PhoneControl } from './phone.js'
+import { peekGuide, peekStats } from './phone-peek.js'
+import type { PeekPlace } from './phone-peek.js'
 import { builderSight } from './phone-scroll.js'
 import { COLORLESS, emptyFilter, isFiltering, MOVE_SHAPES, toggled, typeShownAs } from './pool-filter.js'
 import type { FilterChoices, MoveShape, NumberRange, PoolFilter, StarChoice } from './pool-filter.js'
@@ -195,6 +200,9 @@ const KEEPS_PICKING = [
   '.picker', // カードの一覧（捨札・リムーブを見る一覧と、効果で選ぶ一覧）
   '.dialog', // 手を聞くダイアログ
   '.duel__right', // 右の列（カードの詳細）
+  '.peek', // スマートフォンで、行き先を選んでいる間の帯（案内の文やカードの絵を押しても、選びかけを外さない）
+  '.phone-sheet--open', // スマートフォンで開いているシート（操作パネル・ログ）
+  '.phone-sheet-backdrop', // 同じシートの外の暗い背面（押すとシートを閉じる）
 ].join(', ')
 
 /** 押されたものが、カードを選んでいる間の「押せるもの」か。そうなら選びかけを外さない。 */
@@ -564,24 +572,93 @@ function backCardElement(): HTMLElement {
  * 中のカードから選ぶ（コストなど）ゾーン。選べるカードがあるあいだ、枠ごと目立たせ、盤面のほかを
  * 暗くする。重ねて小さく並べるので、カードの縁の光だけだと、どこを見ればよいか分かりにくい。
  */
-const CHOOSING_ZONES: readonly string[] = ['エネルギーゾーン', 'スマッシュゾーン']
+const CHOOSING_ZONES = ['エネルギーゾーン', 'スマッシュゾーン'] as const
+type ChoosingZone = (typeof CHOOSING_ZONES)[number]
+
+function isChoosingZone(zone: ZoneView['zone']): zone is ChoosingZone {
+  return (CHOOSING_ZONES as readonly string[]).includes(zone)
+}
 
 /** そのゾーンの中のカードから選ぶか。どのカードが押せるかはここで決めず、カードの側と同じ `isPickable` で引く。 */
-function choosesFrom(zone: ZoneView, picking: BoardPicking | undefined): boolean {
-  return CHOOSING_ZONES.includes(zone.zone) && zone.cards.some((card) => isPickable(card, picking))
+export function choosesFrom(zone: ZoneView, picking: BoardPicking | undefined): boolean {
+  return isChoosingZone(zone.zone) && zone.cards.some((card) => isPickable(card, picking))
 }
 
 /**
  * 強調した枠の上端に付ける札。どこから選ぶかを文字で言い、行動をやめるボタンを枠のすぐ近くに置く
  * （盤面を暗くしても押せる）。やめられない場面ではボタンを出さない。
+ *
+ * スマートフォンでは、やめる口は開いた一覧の下に置く（ADR-0034）ので、文字だけにする。
  */
-function choosingTabElement(picking: BoardPicking | undefined): HTMLElement {
+function choosingTabElement(picking: BoardPicking | undefined, withCancel = true): HTMLElement {
   const tab = element('div', 'choosing-tab')
   tab.append(element('span', 'choosing-tab__label', 'ここから選択'))
-  if (picking?.onCancelChoice !== undefined) tab.append(button('この行動をやめる', picking.onCancelChoice))
+  if (withCancel && picking?.onCancelChoice !== undefined) tab.append(button('この行動をやめる', picking.onCancelChoice))
 
   return tab
 }
+
+/**
+ * エネルギー・スマッシュの印 1 つ（スマートフォン、ADR-0034）。エネルギーはその色のレベルアイコン、
+ * スマッシュはカードの裏面を小さくしたもの。フリーズの印は、白で縁取った太い赤い × を重ねる
+ * （縁取りは、赤のアイコンに重なっても埋もれないようにするため）。
+ */
+function zoneSymbolElement(symbol: TallySymbol, frozen: boolean): HTMLElement {
+  const node = element('span', 'zone__symbol')
+  const icon = document.createElement('img')
+  icon.alt = ''
+  icon.src = symbol === '裏' ? cardBackMini : LEVEL_ICON_URL[symbol]
+  node.append(icon)
+
+  if (frozen) {
+    const cross = svgElement('svg', { class: 'zone__cross', viewBox: '0 0 24 24', 'aria-hidden': 'true' })
+    const line = { d: 'M5 5 19 19M19 5 5 19', fill: 'none', 'stroke-linecap': 'round' }
+    cross.append(
+      svgElement('path', { ...line, stroke: '#fff', 'stroke-width': '7' }),
+      svgElement('path', { ...line, stroke: '#e01818', 'stroke-width': '3.6' }),
+    )
+    node.append(cross)
+  }
+
+  return node
+}
+
+/**
+ * エネルギー・スマッシュを、カードを並べずに押すボタンにする（スマートフォン、ADR-0034）。左端に名前と枚数を
+ * 縦に積み、右に種類ごとの「印＋枚数」を置く（数え方は `zone-tally.ts`）。押すと中のカードを大きく並べた一覧を
+ * 開く。読み上げの名前には、枚数とフリーズしている枚数、種類ごとの枚数を出す。
+ */
+function zoneSummaryElement(zone: ZoneView, name: TallyZone, onOpen: () => void): HTMLElement {
+  const tally = zoneTally(name, zone.cards)
+  const node = button('', onOpen)
+  node.classList.add('phone-only', 'zone__summary')
+  // 0 枚なら開いても見るものが無い。捨札・リムーブのつまみと同じく、押せない。
+  node.toggleAttribute('disabled', zone.count === 0)
+  node.setAttribute('aria-label', tally.label)
+  const head = element('span', 'zone__summary-head')
+  head.append(element('span', 'zone__summary-name', zone.zone.replace(/ゾーン$/, '')), element('strong', '', String(zone.count)))
+  node.append(head)
+
+  if (tally.kinds.length > 0) {
+    const kinds = element('span', `zone__tally zone__tally--${name.replace(/ゾーン$/, '')}`)
+    for (const kind of tally.kinds) {
+      const each = element(
+        'span',
+        `zone__kind${kind.frozen ? ' zone__kind--フリーズ' : ''}${kind.count === 0 ? ' zone__kind--無し' : ''}`,
+      )
+      each.style.gridColumn = String(kind.column)
+      each.style.gridRow = String(kind.row)
+      each.append(zoneSymbolElement(kind.symbol, kind.frozen), element('b', '', String(kind.count)))
+      kinds.append(each)
+    }
+    node.append(kinds)
+  }
+
+  return node
+}
+
+/** スマートフォンで、エネルギー・スマッシュのボタンを押したとき、そのゾーンの一覧を開く動き。 */
+type ZoneOpener = (zone: ChoosingZone) => () => void
 
 /**
  * 置き場の見出し。見た目は「ゾーン」を外した呼び名（「リムーブ（0）」）で、読み上げはゾーンの
@@ -598,16 +675,29 @@ function zoneTitleElement(zone: ZoneView): HTMLElement {
 /**
  * ゾーンを 1 つ描く。`framed` が偽のとき、ゾーン単独では強調しない（まとめて囲む枠が強調する）。
  */
-function zoneElement(zone: ZoneView, picking?: BoardPicking, options: FaceOptions = {}, framed = true): HTMLElement {
+function zoneElement(
+  zone: ZoneView,
+  picking?: BoardPicking,
+  options: FaceOptions = {},
+  framed = true,
+  phoneOpener?: ZoneOpener,
+): HTMLElement {
   const choosing = framed && choosesFrom(zone, picking)
   const node = element('section', `zone zone--${zone.zone}${choosing ? ' zone--候補あり' : ''}`)
+  // スマートフォンでは、エネルギー・スマッシュはカードを並べずに、一覧を開くボタンにする（ADR-0034）。
+  if (phoneOpener !== undefined && isChoosingZone(zone.zone)) {
+    node.append(zoneSummaryElement(zone, zone.zone, phoneOpener(zone.zone)))
+    if (choosing) node.append(choosingTabElement(picking, false))
+
+    return node
+  }
   node.append(zoneTitleElement(zone))
 
   const cards = element('div', 'zone__cards')
   if (zone.cards.length === 0) cards.append(element('div', 'zone__empty'))
   // 重ねて並べるゾーンは、枚数に応じて重なり幅を詰める（`style.css` の `--fit`）ので、枚数と
   // フリーズしている枚数を渡す。
-  if (CHOOSING_ZONES.includes(zone.zone)) {
+  if (isChoosingZone(zone.zone)) {
     cards.style.setProperty('--n', String(zone.cards.length))
     cards.style.setProperty('--nf', String(zone.cards.filter((card) => card.orientation === 'フリーズ').length))
   }
@@ -622,17 +712,27 @@ function zoneElement(zone: ZoneView, picking?: BoardPicking, options: FaceOption
  * エネルギーとスマッシュを囲む枠。選べるカードがあるゾーンが両方なら（プランのコスト）、2 つを
  * 1 つの枠で囲んで強調する。片方だけなら（プレイ・移動・起動のコスト）、そのゾーンだけを囲む。
  */
-function energyGroupElement(whose: '自分' | '相手', zones: readonly ZoneView[], picking?: BoardPicking): HTMLElement {
+function energyGroupElement(
+  whose: '自分' | '相手',
+  zones: readonly ZoneView[],
+  picking?: BoardPicking,
+  phoneOpener?: ZoneOpener,
+): HTMLElement {
   const lit = zones.filter((zone) => choosesFrom(zone, picking))
   const together = lit.length > 1 && lit.length === zones.length
   const node = groupElement(
     whose,
     'エネルギーゾーン',
-    zones.map((zone) => zoneElement(zone, picking, {}, !together)),
+    zones.map((zone) => zoneElement(zone, picking, {}, !together, phoneOpener)),
   )
+  // ボタンの名前は枚数の言い方だけなので、どちらのものかは枠の名前で伝える（ADR-0034）。
+  if (phoneOpener !== undefined) {
+    node.setAttribute('role', 'group')
+    node.setAttribute('aria-label', `${whose}のエネルギー・スマッシュ`)
+  }
   if (together) {
     node.classList.add('group--候補あり')
-    node.append(choosingTabElement(picking))
+    node.append(choosingTabElement(picking, phoneOpener === undefined))
   }
 
   return node
@@ -771,6 +871,37 @@ function areaLabelElement(area: Area): HTMLElement {
   return element('div', `area-label area-label--${area}`, area)
 }
 
+/**
+ * 中身を一覧で開ける置き場。捨札・リムーブは PC でも開ける。エネルギー・スマッシュは、スマートフォンだけが
+ * 一覧で開く（PC は盤面でカードを並べて見せる、ADR-0034）。
+ */
+export type ListZone = '捨札' | 'リムーブゾーン' | 'エネルギーゾーン' | 'スマッシュゾーン'
+
+/**
+ * 画面の端の引き出しのつまみ（スマートフォン、ADR-0034）。その側の捨札とリムーブを、名前と枚数を書いた
+ * ボタンにする。自分は右端、相手は左端で、縦の位置はそれぞれのエネルギーの段に合わせる（`phone-board.ts`）。
+ * 0 枚なら押せない。並びは PC の盤面と同じ（相手はリムーブ・捨札、自分は捨札・リムーブ）。
+ */
+function drawerElement(side: SideView, onOpen: (zone: '捨札' | 'リムーブゾーン') => void): HTMLElement {
+  const node = element('div', `phone-only drawer drawer--${side.whose}`)
+  node.dataset.side = side.whose
+  node.setAttribute('role', 'group')
+  node.setAttribute('aria-label', `${side.whose}の捨札とリムーブ`)
+
+  const zones: readonly ('捨札' | 'リムーブゾーン')[] = side.whose === '自分' ? ['捨札', 'リムーブゾーン'] : ['リムーブゾーン', '捨札']
+  for (const name of zones) {
+    const zone = zoneOf(side, name)
+    const each = button('', () => onOpen(name))
+    each.classList.add('drawer__knob')
+    each.toggleAttribute('disabled', zone.count === 0)
+    each.setAttribute('aria-label', `${side.whose}の${name}（${zone.count}）の一覧を開く`)
+    each.append(element('span', '', name.replace(/ゾーン$/, '')), element('strong', '', String(zone.count)))
+    node.append(each)
+  }
+
+  return node
+}
+
 /** バンク・誘発した能力。どちらも両者で共有する「解決を待つ能力」（ADR-0027）。 */
 function waitingElement(title: string, abilities: readonly AbilityView[]): HTMLElement {
   const node = element('section', 'waiting')
@@ -858,35 +989,58 @@ function squareElement(
 function boardGridElement(
   view: BoardView,
   picking: BoardPicking | undefined,
-  onOpenPile: (player: Player, zone: '捨札' | 'リムーブゾーン') => void,
+  onOpenPile: (player: Player, zone: ListZone) => void,
   keyboard: boolean,
+  phone: boolean,
 ): HTMLElement {
   const node = element('div', 'board')
   const place = (child: HTMLElement, area: string): HTMLElement => {
     child.style.gridArea = area
     return child
   }
-  const openerOf = (side: SideView, zone: '捨札' | 'リムーブゾーン'): (() => void) => () => onOpenPile(side.player, zone)
+  const openerOf = (side: SideView, zone: ListZone): (() => void) => () => onOpenPile(side.player, zone)
   const planOf = (side: SideView): CardView | undefined => zoneOf(side, 'プランゾーン').cards[0]
+  // スマートフォンでは、捨札・リムーブは盤面から外して画面の端のつまみにする（`drawerElement`）。
+  // エネルギー・スマッシュは、カードを並べずに一覧を開くボタンにする（`zoneSummaryElement`）。
+  const phoneOpener = (side: SideView): ZoneOpener | undefined =>
+    phone ? (zone) => openerOf(side, zone) : undefined
 
   const opponentStrip = element('div', 'strip strip--相手')
+  if (!phone) {
+    opponentStrip.append(
+      groupElement('相手', '捨札', [
+        pileZoneElement(zoneOf(view.opponent, 'リムーブゾーン'), '相手', openerOf(view.opponent, 'リムーブゾーン')),
+        pileZoneElement(zoneOf(view.opponent, '捨札'), '相手', openerOf(view.opponent, '捨札')),
+      ]),
+    )
+  }
   opponentStrip.append(
-    groupElement('相手', '捨札', [
-      pileZoneElement(zoneOf(view.opponent, 'リムーブゾーン'), '相手', openerOf(view.opponent, 'リムーブゾーン')),
-      pileZoneElement(zoneOf(view.opponent, '捨札'), '相手', openerOf(view.opponent, '捨札')),
-    ]),
-    energyGroupElement('相手', [zoneOf(view.opponent, 'スマッシュゾーン'), zoneOf(view.opponent, 'エネルギーゾーン')], picking),
+    energyGroupElement(
+      '相手',
+      [zoneOf(view.opponent, 'スマッシュゾーン'), zoneOf(view.opponent, 'エネルギーゾーン')],
+      picking,
+      phoneOpener(view.opponent),
+    ),
   )
   inRegion(opponentStrip, 'opp')
 
   const ownStrip = element('div', 'strip strip--自分')
   ownStrip.append(
-    energyGroupElement('自分', [zoneOf(view.own, 'エネルギーゾーン'), zoneOf(view.own, 'スマッシュゾーン')], picking),
-    groupElement('自分', '捨札', [
-      pileZoneElement(zoneOf(view.own, '捨札'), '自分', openerOf(view.own, '捨札')),
-      pileZoneElement(zoneOf(view.own, 'リムーブゾーン'), '自分', openerOf(view.own, 'リムーブゾーン')),
-    ]),
+    energyGroupElement(
+      '自分',
+      [zoneOf(view.own, 'エネルギーゾーン'), zoneOf(view.own, 'スマッシュゾーン')],
+      picking,
+      phoneOpener(view.own),
+    ),
   )
+  if (!phone) {
+    ownStrip.append(
+      groupElement('自分', '捨札', [
+        pileZoneElement(zoneOf(view.own, '捨札'), '自分', openerOf(view.own, '捨札')),
+        pileZoneElement(zoneOf(view.own, 'リムーブゾーン'), '自分', openerOf(view.own, 'リムーブゾーン')),
+      ]),
+    )
+  }
   inRegion(ownStrip, 'own')
 
   const opponentDeck = inRegion(
@@ -1285,6 +1439,95 @@ function phoneCloseElement(label: string, focusKey: string, onClose: () => void)
   node.dataset[KEEP_FOCUS] = focusKey
 
   return node
+}
+
+/** 対戦画面で、ログ・行える手のシートを開く口。閉じたとき、手をここへ戻す。 */
+function phoneOpenElement(label: string, className: string, sheet: DuelSheet, phone: PhoneControl): HTMLElement {
+  const node = button(label, () => phone.send({ kind: '対戦のシートを開く', sheet, opener: sheet }))
+  node.classList.add('phone-only', className)
+  node.setAttribute('aria-haspopup', 'dialog')
+  node.dataset[PHONE_OPENER] = sheet
+
+  return node
+}
+
+/** 行き先を選んでいる間の帯（スマートフォン、ADR-0034）の材料。 */
+export interface PeekProps {
+  readonly card: CardView & { readonly kind: '表' }
+  readonly place: PeekPlace
+  /** 行き先を絞る手の種類。案内の文を決める。 */
+  readonly aim: AimKind
+  /** 「詳細」を押した。いつものシートに詳細だけを出す。 */
+  readonly onDetail: () => void
+  /** 「選択をやめる」を押した。「カードの選択をやめる」と同じ処理。 */
+  readonly onCancel: () => void
+}
+
+/**
+ * 行き先を選んでいる間の、盤面を隠さない低い帯（スマートフォン、ADR-0034）。画面の下に付け、操作の帯のかわりに
+ * なる。左にカードの絵、右に上から、名前と特徴・「詳細」、数値の札、テキスト、案内の文と「選択をやめる」。
+ *
+ * 数値や案内の文は `phone-peek.ts` が決める。ここは並べるだけ。大きさ（上は自分の手札の段の上端まで、カードの絵は
+ * 右の中身の高さ）は、描いたあとに測って置く（`phone-board.ts`）。出たことが読み上げに伝わるよう、名前を付けた
+ * 領域にして、更新を丁寧に読ませる（`aria-live`）。手は帯の中へ移さない（選びかけの手の置き場所を崩さない）。
+ */
+export function peekElement(props: PeekProps): HTMLElement {
+  const { card } = props
+  const node = element('section', 'phone-only peek')
+  node.setAttribute('role', 'region')
+  node.setAttribute('aria-label', '選んでいるカード')
+  node.setAttribute('aria-live', 'polite')
+
+  // カードの絵。読み上げは右の中身が受け持つので、絵は隠す。手の止まる先にも、押す先にもしない。
+  const mini = cardElement(card)
+  mini.removeAttribute('tabindex')
+  mini.removeAttribute('aria-label')
+  mini.setAttribute('aria-hidden', 'true')
+  delete mini.dataset.cardId
+
+  const body = element('div', 'peek__body')
+
+  const title = element('div', 'peek__title')
+  const traits = [...card.attributes, ...(card.modified?.addedAttributes ?? []).map((attribute) => `+${attribute}`)]
+  title.append(element('p', 'peek__name', card.name), element('p', 'peek__kind', traits.join(' | ')))
+  const more = button('詳細', props.onDetail)
+  more.classList.add('peek__more')
+  more.setAttribute('aria-label', `${card.name}の詳細を全部見る`)
+  const head = element('div', 'peek__head')
+  head.append(title, more)
+
+  const stats = element('dl', 'peek__stats')
+  for (const stat of peekStats(card, props.place)) {
+    const each = element('div', `peek__stat${stat.change === undefined ? '' : ` peek__stat--${stat.change}`}`)
+    // 色と ▲▼ だけに頼らない。読み上げには、元の値も添えた文を読ませる。
+    const value = element('dd', '', String(stat.value))
+    if (stat.valueReading !== String(stat.value)) value.setAttribute('aria-label', stat.valueReading)
+    each.append(element('dt', '', stat.label), value)
+    stats.append(each)
+  }
+
+  const text = element('p', 'peek__text', card.text.length > 0 ? card.text.join('\n') : '（テキストなし）')
+
+  // 2 行になるときに割ってよい位置（「を」の後ろ）にだけ、切れ目を入れる。
+  const [first, second] = peekGuide(props.aim)
+  const guide = element('p', 'peek__guide')
+  guide.append(first, document.createElement('wbr'), second)
+  const cancel = button('選択をやめる', props.onCancel)
+  cancel.classList.add('peek__cancel')
+  const foot = element('div', 'peek__foot')
+  foot.append(guide, cancel)
+
+  body.append(head, stats, text, foot)
+  node.append(mini, body)
+
+  return node
+}
+
+/** 画面の隅に置く、ターンとフェイズの 1 行（「第 3 ターン・メイン」）。 */
+function phoneTurnLine(view: Pick<BoardView, 'turnNumber' | 'phases'>): string {
+  const phase = view.phases.find((each) => each.status === '今')?.phase
+
+  return phase === undefined ? view.turnNumber : `${view.turnNumber}・${phase.replace(/フェイズ$/, '')}`
 }
 
 /** 人型のシルエット。アイコンを選べるようにするのは別の Issue（#235）で、それまではこれを出す。 */
@@ -3939,8 +4182,12 @@ export interface AskHandlers {
  * その間に押されると 2 通目が送られ、サーバに断られて「行えませんでした」が出るので、送った時点で
  * すべてのボタンを押せなくし、通信中であることを出す。送った手は取り消せないので、キャンセルも
  * Esc も効かせない。アニメーションは使わない（描き直しで作り直されるため、ADR-0027）。
+ *
+ * スマートフォン（ADR-0034）では、下からのシートになる（見た目は `style.css`）。右の列が無いので、`detail`
+ * （カードの詳細）を一番上の段に一緒に出す。手が 1 つも無いときは、カードの詳細を見るだけのシートで、
+ * 閉じる口は「閉じる」にする。
  */
-export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
+export function askElement(view: AskView, handlers: AskHandlers, detail?: HTMLElement): HTMLElement {
   const layer = element('div', 'dialog')
   const box = element('div', 'dialog__box')
   box.setAttribute('role', 'dialog')
@@ -3957,6 +4204,7 @@ export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
   // 送っている間の表示の場所。読み上げに伝わるよう、中身が空のうちから置いておく。
   const sending = element('p', 'dialog__sending')
   sending.setAttribute('role', 'status')
+  if (detail !== undefined) box.append(detail)
   box.append(title, ...(subject === undefined ? [] : [subject]), lead, sending)
 
   let sent = false
@@ -3984,7 +4232,7 @@ export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
   const onCancel = (): void => {
     if (!sent) handlers.onCancel()
   }
-  const cancel = button('キャンセル', onCancel)
+  const cancel = button(view.options.length === 0 ? '閉じる' : 'キャンセル', onCancel)
   const first = view.options[0]
   if (view.options.length === 1 && first !== undefined) {
     const row = element('div', 'dialog__row')
@@ -3993,9 +4241,10 @@ export function askElement(view: AskView, handlers: AskHandlers): HTMLElement {
   } else {
     const actions = element('div', 'dialog__actions')
     for (const option of view.options) actions.append(choose(option))
+    if (view.options.length > 0) box.append(actions)
     const foot = element('div', 'dialog__cancel')
     foot.append(cancel)
-    box.append(actions, foot)
+    box.append(foot)
   }
   layer.append(box)
 
@@ -4265,10 +4514,12 @@ function playerPanelElement(side: SideView, name: string, picking: BoardPicking 
  * 相手の手札は表側が見えていない（`裏`）カードの並びとして届く（`zoneOf` がそのまま返す）ので、
  * ここで裏向きを作り出す必要は無い。
  */
-function handElement(whose: '自分' | '相手', hand: ZoneView, picking: BoardPicking | undefined): HTMLElement {
+function handElement(whose: '自分' | '相手', hand: ZoneView, picking: BoardPicking | undefined, phone: boolean): HTMLElement {
   const node = element('div', `hand hand--${whose}`)
   if (whose === '自分') inRegion(node, 'hand')
   node.setAttribute('aria-label', `${whose}の手札`)
+  // スマートフォンでは、枚数に応じてカードの重なりを決める（`style.css`）ので、枚数を渡す。PC の DOM は変えない。
+  if (phone) node.style.setProperty('--n', String(hand.cards.length))
   node.append(element('span', 'hand__label', `${whose}の手札（${hand.count}）`))
 
   const step = whose === '相手' ? -3 : 4
@@ -4313,15 +4564,43 @@ function detailPanelElement(): HTMLElement {
   return node
 }
 
+/** 拡大した面と、その下の補足の 1 行。 */
+function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
+  const big = element('div', `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大`)
+  big.append(faceElement(card, { big: true }))
+
+  return [big, element('p', 'detail__note', detailNoteOf(card))]
+}
+
 function fillDetailPanel(node: HTMLElement, card: (CardView & { readonly kind: '表' }) | undefined): void {
   if (card === undefined) {
     node.replaceChildren(detailGuideElement())
     return
   }
 
-  const big = element('div', `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大`)
-  big.append(faceElement(card, { big: true }))
-  node.replaceChildren(big, element('p', 'detail__note', detailNoteOf(card)))
+  node.replaceChildren(...detailParts(card))
+}
+
+/**
+ * カードの詳細（スマートフォン、ADR-0034）。右の列が無いので、シートの上の段・一覧の上の段に出す。
+ * 見せるカードが無いとき（表が見えていない、まだ何も押していない）は、`guide` があればその案内を出し、
+ * 無ければ何も出さない（`undefined`）。
+ */
+function phoneDetailElement(card: CardView | undefined, className: string, guide?: string): HTMLElement | undefined {
+  const shown = card?.kind === '表' ? card : undefined
+  if (shown === undefined && guide === undefined) return undefined
+
+  const node = element('div', `phone-only ${className}`)
+  node.setAttribute('aria-live', 'polite')
+  if (shown === undefined) node.append(element('p', 'detail__none', guide))
+  else node.append(...detailParts(shown))
+
+  return node
+}
+
+/** 選んだカードで行える手を並べるシートの上の段に出す、カードの詳細。 */
+export function sheetDetailElement(card: CardView | undefined): HTMLElement | undefined {
+  return phoneDetailElement(card, 'dialog__detail')
 }
 
 /**
@@ -4383,6 +4662,8 @@ function pickerElement(
   sending?: HTMLElement,
   /** Esc を押したときの動き。手がどこにあっても、一番上の層が受ける（ADR-0033）。 */
   onEscape?: () => void,
+  /** スマートフォンで、見出しの下に出す、最後に押したカードの詳細（ADR-0034）。 */
+  detail?: HTMLElement,
 ): HTMLElement {
   const node = element('div', `picker picker--${kind}`)
   node.setAttribute('role', 'dialog')
@@ -4405,6 +4686,7 @@ function pickerElement(
   }
   if (sending !== undefined) head.append(sending)
   box.append(head)
+  if (detail !== undefined) box.append(detail)
 
   const list = element('div', 'picker__cards')
   for (const card of cards) list.append(card)
@@ -4416,13 +4698,242 @@ function pickerElement(
   return node
 }
 
-/** 捨札・リムーブの中身を見る一覧（ADR-0027）。並べて、「閉じる」だけを置く。 */
-export function viewPileElement(zone: ZoneView, onClose: () => void): HTMLElement {
+/**
+ * スマートフォンで、カードの一覧の上の段に出す詳細と、カードを押したときの動き（ADR-0034）。
+ * 一覧は画面いっぱいに出て右の列が無いので、最後に押したカードの詳細を一覧の上に出す。
+ */
+export interface PhoneListOptions {
+  /** 最後に押したカード。まだ押していなければ `undefined`（案内を出す）。 */
+  readonly shown: CardView | undefined
+  /**
+   * カードを押した。覚えるだけで、描き直すかは `redraw` で言う。押すことがそのまま描き直しになる
+   * 一覧（選ぶ一覧）は、`redraw` を偽にして二重に描かない。
+   */
+  readonly onShow: (card: CardId, redraw: boolean) => void
+}
+
+/** 捨札・リムーブ・エネルギー・スマッシュの中身を見る一覧で、スマートフォンだけが足すもの。 */
+export interface PhoneViewList extends PhoneListOptions {
+  readonly whose: '自分' | '相手'
+}
+
+const LIST_DETAIL_GUIDE = 'カードを押すと、ここに詳細が出ます。'
+
+function listDetailElement(phone: PhoneListOptions): HTMLElement | undefined {
+  return phoneDetailElement(phone.shown, 'picker__detail', LIST_DETAIL_GUIDE)
+}
+
+/** 指でも、Enter・Space でも押せるものにする。 */
+function pressable(node: HTMLElement, onPress: () => void): void {
+  node.setAttribute('role', 'button')
+  node.tabIndex = 0
+  node.addEventListener('click', onPress)
+  node.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    onPress()
+  })
+}
+
+/** 指で押せるカードにする。押すと詳細に出す（`id` が無い裏向きは、押せるものにしない）。 */
+function tapToShow(node: HTMLElement, onTap: (id: CardId) => void): void {
+  const id = node.dataset.cardId
+  if (id === undefined) return
+
+  pressable(node, () => onTap(id))
+}
+
+/** 一覧の問いの文。ゾーンによって、見るときに知っておくことが違う。 */
+function viewLeadOf(zone: ZoneView['zone']): string {
+  switch (zone) {
+    case 'エネルギーゾーン':
+      return 'フリーズしているカードは横向き'
+    case 'スマッシュゾーン':
+      return '裏向きのカードは中身を見られません'
+    default:
+      return '上にあるカードほど後から置かれたカード'
+  }
+}
+
+/**
+ * 捨札・リムーブの中身を見る一覧（ADR-0027）。並べて、「閉じる」だけを置く。
+ *
+ * スマートフォン（ADR-0034）では、エネルギー・スマッシュの中身もこの一覧で見る。誰のものかを見出しに足し、
+ * 上の段に最後に押したカードの詳細を出す。
+ */
+export function viewPileElement(zone: ZoneView, onClose: () => void, phone?: PhoneViewList): HTMLElement {
   const cards = zone.cards.map((card) => cardElement(card))
   const foot = element('div', 'picker__foot')
   foot.append(button('閉じる', onClose))
+  if (phone === undefined) {
+    return pickerElement('見る', `${zone.zone}（${zone.count}）`, viewLeadOf(zone.zone), cards, foot, undefined, onClose)
+  }
 
-  return pickerElement('見る', `${zone.zone}（${zone.count}）`, '上にあるカードほど後から置かれたカード', cards, foot, undefined, onClose)
+  for (const node of cards) tapToShow(node, (id) => phone.onShow(id, true))
+
+  return pickerElement(
+    '見る',
+    `${phone.whose}の${zone.zone}（${zone.count}）`,
+    viewLeadOf(zone.zone),
+    cards,
+    foot,
+    undefined,
+    onClose,
+    listDetailElement(phone),
+  )
+}
+
+/**
+ * 送ったあと、返事が届いて描き直されるまで、押す先をすべて押せなくする（ADR-0031）。「選ぶ」一覧と
+ * エネルギー・スマッシュから払う一覧が同じ止め方をする。残ったままの一覧で押されると、2 通目が
+ * サーバに断られる。
+ */
+function senderLock(): {
+  readonly sending: HTMLElement
+  readonly isSent: () => boolean
+  readonly bind: (root: HTMLElement) => void
+  readonly once: <Args extends unknown[]>(run: (...args: Args) => void) => (...args: Args) => void
+} {
+  const sending = element('p', 'picker__sending')
+  sending.setAttribute('role', 'status')
+  let sent = false
+  let root: HTMLElement | undefined
+  const lock = (): void => {
+    sent = true
+    // 押せなくしたボタンから手が外れる。先に一覧の箱へ移して、「通信中…」を読み上げさせる。
+    if (root?.contains(document.activeElement) === true) root.focus({ preventScroll: true })
+    sending.textContent = '通信中…'
+    // `role="dialog"` を持つ外側の要素に付ける（確認ダイアログと同じ、`askElement`）。
+    root?.setAttribute('aria-busy', 'true')
+    for (const each of root?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? []) {
+      if (each instanceof HTMLButtonElement) {
+        each.disabled = true
+        continue
+      }
+      each.setAttribute('aria-disabled', 'true')
+      // 押せなくしたあとも「押せます」と読み上げない。選びかけの「（選択中）」は残す。
+      const label = each.getAttribute('aria-label')
+      if (label !== null) each.setAttribute('aria-label', label.replace('（押せます）', ''))
+    }
+  }
+
+  return {
+    sending,
+    isSent: () => sent,
+    bind: (node) => {
+      root = node
+    },
+    once:
+      <Args extends unknown[]>(run: (...args: Args) => void) =>
+      (...args: Args): void => {
+        if (sent) return
+        lock()
+        run(...args)
+      },
+  }
+}
+
+/** 払う一覧で押せるもの。 */
+export interface ChooseZoneHandlers {
+  /** 行動をやめる。やめられない場面では渡されない。 */
+  readonly onCancel?: () => void
+  /** 何も送らずに一覧を閉じる。選ぶのを待たれている間は、囲んだゾーンのボタンから開き直せる。 */
+  readonly onClose: () => void
+}
+
+/**
+ * エネルギー・スマッシュから払うカードを選ぶ一覧（スマートフォン、ADR-0034）。コストの選択中に、
+ * 払うカードがあるゾーンのボタンから開く。払えるゾーンが両方なら（プランのコスト）、2 つを「エネルギー」
+ * 「スマッシュ」の見出しで分けて 1 つにまとめる。
+ *
+ * 払うカードを 1 回押すと、その 1 枚を払う。答えは 1 枚ずつ送る（ADR-0008）ので、PC のクリックモードで
+ * 盤面のカードを押したときと同じく、確かめる段を挟まない。払う候補でないカード（フリーズしているなど）は、
+ * 詳細を上の段に出すだけ。裏向きのスマッシュも、払う候補なら押せる（置き場所で答える、#127）。
+ * 答えたあとの盤面でいったん閉じ、選択が続けば開き直す（`pay-list.ts`）ので、続けて次の 1 枚を選べる。
+ *
+ * 一覧の下には、「この行動をやめる」（やめられるときだけ）と、何も送らずに戻る「閉じる」を置く。
+ * 送ったあとの止め方は「選ぶ」一覧と同じ（`senderLock`）。`picking` が無いとき（演出が出ている間、
+ * 繋がっていない間）は、押せるカードの無い一覧になる。
+ */
+export function chooseZoneListElement(
+  zones: readonly ZoneView[],
+  whose: '自分' | '相手',
+  picking: BoardPicking | undefined,
+  rawHandlers: ChooseZoneHandlers,
+  phone: PhoneListOptions,
+): HTMLElement {
+  const lock = senderLock()
+  const handlers: ChooseZoneHandlers = {
+    onClose: () => {
+      if (!lock.isSent()) rawHandlers.onClose()
+    },
+    ...(rawHandlers.onCancel === undefined ? {} : { onCancel: lock.once(rawHandlers.onCancel) }),
+  }
+
+  const sectionOf = (zone: ZoneView): HTMLElement => {
+    const name = zone.zone.replace(/ゾーン$/, '')
+    const section = element('section', 'picker__section')
+    section.dataset.zone = zone.zone
+    section.setAttribute('role', 'group')
+    const title = element('h3', 'picker__section-title', name)
+    title.id = `picker-zone-${++pickerSequence}`
+    section.setAttribute('aria-labelledby', title.id)
+
+    const cards = element('div', 'picker__cards')
+    for (const card of zone.cards) {
+      const node = cardElement(card)
+      const pickable = isPickable(card, picking)
+      if (card.kind === '表') {
+        const id = card.id
+        node.classList.toggle('card--押せる', pickable)
+        node.classList.toggle('card--選べない', !pickable)
+        node.setAttribute('aria-label', `${card.controlledBy}の${card.name}${pickable ? '（押せます）' : '（選べません）'}`)
+        pressable(node, () => {
+          // 払う候補でないカードは、詳細を見るだけ。何も送らない。
+          if (!pickable) return phone.onShow(id, true)
+
+          // 払うと描き直すので、詳細は覚えるだけにして二重に描かない。
+          phone.onShow(id, false)
+          lock.once(() => picking?.onCard(id))()
+        })
+      } else if (pickable) {
+        // 裏向きは識別子が無いので、置き場所で答える。候補でない札は、押せるものにしない。
+        const at = card.at
+        node.classList.add('card--押せる')
+        pressable(node, () => lock.once(() => picking?.onHidden?.(at))())
+      }
+      cards.append(node)
+    }
+    section.append(title, cards)
+
+    return section
+  }
+
+  const names = zones.map((zone) => zone.zone.replace(/ゾーン$/, ''))
+  const area = element('div', 'picker__zones')
+  area.dataset[KEEP_SCROLL] = '払う一覧'
+  area.append(...zones.map(sectionOf))
+
+  const foot = element('div', 'picker__foot')
+  if (handlers.onCancel !== undefined) foot.append(button('この行動をやめる', handlers.onCancel))
+  foot.append(button('閉じる', handlers.onClose))
+
+  // Esc は「閉じる」と同じ。何も送らない。行動そのものを取り消すのは「この行動をやめる」だけ（ADR-0033）。
+  const root = pickerElement(
+    '選ぶ',
+    `${whose}の${names.join('・')}`,
+    '支払うカードを押してください（押すとその 1 枚を払います。フリーズしているカードは選べません）',
+    [],
+    foot,
+    lock.sending,
+    handlers.onClose,
+    listDetailElement(phone),
+  )
+  // 見出しで分けた並びを、カードの並びの代わりに置く（カードの並びの箱は、各ゾーンの中にある）。
+  root.querySelector('.picker__box > .picker__cards')?.replaceWith(area)
+  lock.bind(root)
+
+  return root
 }
 
 /** 「選ぶ」一覧で押せるもの。 */
@@ -4468,40 +4979,18 @@ export function choosePickerElement(
   mayCancel: boolean,
   rawHandlers: ChoosePickerHandlers,
   abilityLabels: readonly string[] = [],
+  /**
+   * スマートフォンのときだけ渡す（ADR-0034）。一覧の上の段に出す、最後に押した札・カードの詳細
+   * （能力なら発生源のカード）。
+   */
+  phone?: PhoneListOptions,
 ): HTMLElement {
-  const sending = element('p', 'picker__sending')
-  sending.setAttribute('role', 'status')
-  let sent = false
-  let root: HTMLElement | undefined
-  const lock = (): void => {
-    sent = true
-    // 押せなくしたボタンから手が外れる。先に一覧の箱へ移して、「通信中…」を読み上げさせる。
-    if (root?.contains(document.activeElement) === true) root.focus({ preventScroll: true })
-    sending.textContent = '通信中…'
-    // `role="dialog"` を持つ外側の要素に付ける（確認ダイアログと同じ、`askElement`）。
-    root?.setAttribute('aria-busy', 'true')
-    for (const each of root?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? []) {
-      if (each instanceof HTMLButtonElement) {
-        each.disabled = true
-        continue
-      }
-      each.setAttribute('aria-disabled', 'true')
-      // 押せなくしたあとも「押せます」と読み上げない。選びかけの「（選択中）」は残す。
-      const label = each.getAttribute('aria-label')
-      if (label !== null) each.setAttribute('aria-label', label.replace('（押せます）', ''))
-    }
-  }
-  const once =
-    <Args extends unknown[]>(run: (...args: Args) => void) =>
-    (...args: Args): void => {
-      if (sent) return
-      lock()
-      run(...args)
-    }
+  const lock = senderLock()
+  const { sending, once } = lock
   const handlers: ChoosePickerHandlers = {
     // 選びかけは何も送らない。もう送ったあとは動かさない。
     onPick: (index) => {
-      if (!sent) rawHandlers.onPick(index)
+      if (!lock.isSent()) rawHandlers.onPick(index)
     },
     onConfirm: once(rawHandlers.onConfirm),
     onDecline: once(rawHandlers.onDecline),
@@ -4543,7 +5032,12 @@ export function choosePickerElement(
     node.classList.toggle(isAbility ? 'picker__ability--選択中' : 'card--選択中', isPicked)
     node.setAttribute('role', 'button')
     node.tabIndex = 0
-    const pick = (): void => handlers.onPick(isPicked ? undefined : index)
+    // 押した札・カードの詳細を、一覧の上の段に出す。選び直すと描き直すので、覚えるだけにする。
+    const shownId = candidate.kind === '能力' ? candidate.source : candidate.kind === '見えている' ? candidate.card : undefined
+    const pick = (): void => {
+      if (phone !== undefined && shownId !== undefined) phone.onShow(shownId, false)
+      handlers.onPick(isPicked ? undefined : index)
+    }
     node.addEventListener('click', pick)
     // Tab でたどり着けても、Enter・Space が無ければキーボードでは選べない（#207）。
     node.addEventListener('keydown', (event) => {
@@ -4571,9 +5065,19 @@ export function choosePickerElement(
 
   // Esc は、選びかけを外すだけにする。行動そのものを取り消すのは「この行動をやめる」を押したときだけで、
   // Esc 1 回で行動全体を取り消さない（ADR-0033）。
-  root = pickerElement('選ぶ', '候補から選ぶ', asking, cards, foot, sending, () => {
-    if (picked !== undefined) handlers.onPick(undefined)
-  })
+  const root = pickerElement(
+    '選ぶ',
+    '候補から選ぶ',
+    asking,
+    cards,
+    foot,
+    sending,
+    () => {
+      if (picked !== undefined) handlers.onPick(undefined)
+    },
+    phone === undefined ? undefined : listDetailElement(phone),
+  )
+  lock.bind(root)
   // 能力の札は文字だけなので、枠の幅は中身に合わせて狭める（ADR-0031）。
   if (abilityOnly) root.classList.add('picker--ability')
 
@@ -4596,7 +5100,18 @@ export interface DuelElementProps {
    * DOM の順）はクリックモードにだけ掛ける。ボタンモードは変えない（ADR-0033）。
    */
   readonly clickMode: boolean
-  readonly onOpenPile: (player: Player, zone: '捨札' | 'リムーブゾーン') => void
+  readonly onOpenPile: (player: Player, zone: ListZone) => void
+  /**
+   * スマートフォンの並べ方の状態と窓口（ADR-0034）。PC の幅では渡さない。渡されたときだけ、1 列に積む
+   * ための部品（ログ・行える手のボタン、シート、捨札・リムーブのつまみ、エネルギー・スマッシュのボタン）を作る。
+   * 渡すときは `clickMode` も真にする（スマートフォンはクリックモードで描く）。
+   */
+  readonly phone?: PhoneControl
+  /**
+   * 行き先を選んでいる間の低い詳細の帯（スマートフォン、ADR-0034）の材料。行える手が「行き先を押して決まる 1 種類」
+   * だけのカードを選んでいる間だけ渡す（`phone` も渡されているときだけ作る）。
+   */
+  readonly peek?: PeekProps
   /** 開いている「見る」一覧。無ければ `undefined`。 */
   readonly viewingPile?: HTMLElement
   /** 開いている「選ぶ」一覧。無ければ `undefined`。 */
@@ -4626,8 +5141,16 @@ function partnerOf(side: SideView): (CardView & { readonly kind: '表' }) | unde
  * これまで通り、盤面はただ見るだけのものになる。
  */
 export function duelElement(props: DuelElementProps): HTMLElement {
-  const { view } = props
+  const { view, phone } = props
   const root = element('main', 'duel')
+
+  // スマートフォンで確認・選ぶシートや一覧、決着が出ている間は、ログ・行える手のシートは開かない（重ねない）。
+  // シートの状態も捨てる。層が閉じても出し直さない（状態の捨て方は `phone.ts`）。
+  const layered =
+    props.viewingPile !== undefined || props.choosePicker !== undefined || props.dialog !== undefined || view.result !== undefined
+  if (layered && phone?.state.duelSheet !== undefined) phone.settle({ kind: '対戦の層が開いた' })
+  const sheet = phone === undefined || layered ? undefined : phone.state.duelSheet
+  const closeSheet = (): void => phone?.send({ kind: '対戦のシートを閉じる' })
 
   const left = element('aside', 'duel__left')
   left.append(playerPanelElement(view.opponent, props.opponentName, props.picking))
@@ -4639,6 +5162,26 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   const actions = element('div', 'controls__actions')
   for (const child of props.controlsChildren) actions.append(child)
   controls.append(actions)
+  if (phone !== undefined) {
+    if (sheet === '行える手') {
+      // 操作パネルがそのままシートになる（見た目は `style.css`）。閉じる口は一番下に置く。
+      phoneSheetMarks(controls, '行える手', closeSheet, () => false)
+      controls.classList.add('phone-sheet--open')
+      controls.append(phoneCloseElement('閉じる', 'シート-閉じる', closeSheet))
+      // 手のボタンを押したら、シートを閉じる（送ったあとの様子は、操作の帯と盤面で見える）。手のボタン自身の
+      // 動きのあとに閉じるよう、あとから足す。
+      for (const each of actions.querySelectorAll('button')) {
+        each.addEventListener('click', () => phone.send({ kind: '対戦の手を押した' }))
+      }
+    } else {
+      // 操作の帯には、優先権の 1 行・一番よく押す手のボタンと、一覧を開く口だけを出す。
+      const count = props.controlsChildren.reduce(
+        (total, child) => total + child.querySelectorAll('.actions__list > button, .choice__list > button').length,
+        0,
+      )
+      actions.append(phoneOpenElement(`行える手（${count}）`, 'phone-actions-open', '行える手', phone))
+    }
+  }
   left.append(controls)
 
   left.append(playerPanelElement(view.own, props.ownName, props.picking))
@@ -4647,10 +5190,10 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   center.setAttribute('aria-label', '盤面')
   // 区画の中に手を置ける先が無いときの、手の戻し先（`board-keyboard.ts`）。Tab の止まる先には加えない。
   if (props.clickMode) center.tabIndex = -1
-  const opponentHand = handElement('相手', zoneOf(view.opponent, '手札'), props.picking)
+  const opponentHand = handElement('相手', zoneOf(view.opponent, '手札'), props.picking, phone !== undefined)
   const procedure = procedureElement(view.battle, view.smashJudgments)
-  const board = boardGridElement(view, props.picking, props.onOpenPile, props.clickMode)
-  const ownHand = handElement('自分', zoneOf(view.own, '手札'), props.picking)
+  const board = boardGridElement(view, props.picking, props.onOpenPile, props.clickMode, phone !== undefined)
+  const ownHand = handElement('自分', zoneOf(view.own, '手札'), props.picking, phone !== undefined)
   // クリックモードでは、自分の手札を盤面より先に置く。キーボードでたどる順を、手札 → 盤面にするため
   // （行は `style.css` で決めているので、画面の位置は動かない、ADR-0033）。
   if (props.clickMode) center.append(ownHand, procedure, board, opponentHand)
@@ -4658,22 +5201,70 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   // クリックモードでは、DOM の順を盤面 → 左の列 → 右の列にする。キーボードでたどる順を、盤面の
   // あとに操作パネルにするため（`style.css` の `order` で画面の位置は動かさない、ADR-0033）。
   // ボタンモードは、これまでの順（左の列が先）のまま。
-  if (props.clickMode) root.append(center, left)
-  else root.append(left, center)
+  // 捨札・リムーブは盤面から外し、画面の端のつまみにする（スマートフォン）。Tab の順は、盤面のすぐあとにする。
+  const openPile = (side: SideView) => (zone: '捨札' | 'リムーブゾーン') => props.onOpenPile(side.player, zone)
+  const drawers =
+    phone === undefined ? [] : [drawerElement(view.own, openPile(view.own)), drawerElement(view.opponent, openPile(view.opponent))]
+  if (props.clickMode) root.append(center, ...drawers, left)
+  else root.append(left, center, ...drawers)
 
-  const right = element('aside', 'duel__right')
-  right.append(logElement(view.log))
+  // 行き先を選んでいる間の帯は、操作の帯のかわりなので、操作の帯（左の列）のすぐあとに置く。
+  const peek = phone === undefined || props.peek === undefined ? undefined : peekElement(props.peek)
+  // 帯の出入りは、選びかけと送信の状態から描き直しで決まる。行き先を押すと、選びかけを外してから手を送る
+  // （`index.ts`）ので、返事（盤面・断り・切断）で描き直されるまで、帯と行き先の光は同じ時点まで残り、同時に消える。
+  // PC のクリックモードで行き先を押した直後と同じ見え方。
+  if (peek !== undefined) root.append(peek)
+
+  // スマートフォンでは、ログとカードの詳細は押したときだけ出すシートにする。ログは開いている間だけ作る。
+  // カードの詳細の置き場（右の列）は無く、押したカードの詳細は別のシートに出す（`index.ts`）。
   const detail = detailPanelElement()
-  right.append(detail)
-  root.append(right)
+  const right = element('aside', 'duel__right')
+  if (phone === undefined) {
+    right.append(logElement(view.log), detail)
+    root.append(right)
+  } else {
+    root.append(
+      phoneOpenElement('ログ', 'phone-log-open', 'ログ', phone),
+      element('p', 'phone-only phone-turn', phoneTurnLine(view)),
+    )
+    if (sheet === 'ログ') {
+      const log = logElement(view.log)
+      phoneSheetMarks(log, 'ログ', closeSheet, () => false)
+      log.classList.add('phone-sheet--open')
+      log.append(phoneCloseElement('閉じる', 'シート-閉じる', closeSheet))
+      right.append(log)
+      root.append(right)
+    }
+  }
 
   if (props.overlay !== undefined) root.append(props.overlay)
   if (props.viewingPile !== undefined) root.append(props.viewingPile)
   if (props.choosePicker !== undefined) root.append(props.choosePicker)
   if (props.dialog !== undefined) root.append(props.dialog)
 
+  if (phone !== undefined) {
+    // 開いているシートの外を暗くした背面。押すとシートを閉じる（確認・選ぶシートは自分の層で受ける）。
+    if (sheet !== undefined) root.append(phoneBackdropElement(closeSheet))
+    // カードを 1 回タップすると、詳細と、そのカードで行える手のシートを出す。押せるカードは、選びかけに入って
+    // シートが開く（`index.ts`）。ここで付けるのは、押せないカードの詳細だけを見るシートである。
+    // 光っているスクエアの中のユニットは、押すとそのスクエアに置く手になるので、詳細は出さない。
+    for (const node of root.querySelectorAll<HTMLElement>('.card[data-card-id]')) {
+      const id = node.dataset.cardId
+      if (id === undefined || node.matches('.card--押せる') || node.closest('.picker, .dialog, .square--置き先') !== null) continue
+
+      const showDetail = (): void => phone.send({ kind: '対戦のカードを見る', card: id })
+      node.addEventListener('click', showDetail)
+      node.addEventListener('keydown', (event) => {
+        if (event.repeat || event.target !== node || (event.key !== 'Enter' && event.key !== ' ')) return
+        event.preventDefault()
+        showDetail()
+      })
+    }
+  }
+
   if (props.clickMode) wireBoardKeyboard(root)
-  wireCardDetailHover(root, detail, props.cardsById, props.detailDefault ?? props.picking?.picked)
+  // スマートフォンには、乗せたカードを出す詳細の置き場（右の列）が無い。カードの詳細はシートと一覧の上の段に出す。
+  if (phone === undefined) wireCardDetailHover(root, detail, props.cardsById, props.detailDefault ?? props.picking?.picked)
 
   // 押せるもの以外のところを押したら、選びかけを外す（#249）。押せるカードを押した時は、その
   // カードが次の選択になるので外さない。

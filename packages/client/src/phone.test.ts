@@ -52,7 +52,7 @@ describe('スマートフォンの画面の中の状態（ADR-0034）', () => {
 })
 
 describe('画面を離れたときの状態の整理', () => {
-  const none = { lobby: false, deckList: false, editor: false }
+  const none = { lobby: false, deckList: false, editor: false, duel: false }
 
   it('出している画面の状態は触らない（同じ値を返す）', () => {
     const state = reducePhone(initialPhone(), { kind: 'デッキのシートを開く', opener: '変更' })
@@ -215,7 +215,74 @@ describe('デッキ構築のタブごとのスクロールの位置（ADR-0034�
     const state = reducePhone(initialPhone(), { kind: 'デッキ構築のタブ', tab: 'デッキ', sight: stuckAt(900) })
     const left = reducePhone(takeScroll(state).state, { kind: 'デッキ構築のタブ', tab: '探す', sight: stuckAt(300) })
     expect(Object.keys(left.builderScroll).sort()).toEqual(['デッキ', '探す'])
-    expect(settlePhone(left, { lobby: true, deckList: true, editor: false })).toEqual(initialPhone())
-    expect(settlePhone(left, { lobby: true, deckList: false, editor: true })).toBe(left)
+    expect(settlePhone(left, { lobby: true, deckList: true, editor: false, duel: false })).toEqual(initialPhone())
+    expect(settlePhone(left, { lobby: true, deckList: false, editor: true, duel: false })).toBe(left)
+  })
+})
+
+describe('対戦画面のシート（ADR-0034）', () => {
+  const none = { lobby: false, deckList: false, editor: false, duel: false }
+
+  it('ログ・行える手のシートを開けば手は中へ、閉じれば開いた元へ戻す', () => {
+    const opened = reducePhone(initialPhone(), { kind: '対戦のシートを開く', sheet: 'ログ', opener: 'ログ' })
+    expect(opened.duelSheet).toBe('ログ')
+    expect(takePending(opened).pending).toEqual({ kind: 'シートの中へ' })
+
+    const closed = reducePhone(takePending(opened).state, { kind: '対戦のシートを閉じる' })
+    expect(closed.duelSheet).toBeUndefined()
+    expect(closed.pending).toEqual({ kind: '元へ', opener: 'ログ' })
+  })
+
+  it('開いていないシートを閉じても、手を動かさない', () => {
+    const state = initialPhone()
+    expect(reducePhone(state, { kind: '対戦のシートを閉じる' })).toBe(state)
+    expect(reducePhone(state, { kind: '対戦のカードを閉じる' })).toBe(state)
+  })
+
+  it('行える手のシートで手を押したら、シートを閉じて開いた元へ手を戻す', () => {
+    const opened = takePending(reducePhone(initialPhone(), { kind: '対戦のシートを開く', sheet: '行える手', opener: '行える手' })).state
+    const pressed = reducePhone(opened, { kind: '対戦の手を押した' })
+    expect(pressed.duelSheet).toBeUndefined()
+    expect(pressed.pending).toEqual({ kind: '元へ', opener: '行える手' })
+  })
+
+  it('ログのシートは、中に手が無いので、手を押しても閉じない', () => {
+    const opened = takePending(reducePhone(initialPhone(), { kind: '対戦のシートを開く', sheet: 'ログ', opener: 'ログ' })).state
+    expect(reducePhone(opened, { kind: '対戦の手を押した' })).toBe(opened)
+    expect(reducePhone(initialPhone(), { kind: '対戦の手を押した' })).toEqual(initialPhone())
+  })
+
+  it('確認・選ぶシートや一覧などの層が開いたら、シートの状態を捨て、手の戻し先も残さない', () => {
+    for (const sheet of ['ログ', '行える手'] as const) {
+      const opened = reducePhone(initialPhone(), { kind: '対戦のシートを開く', sheet, opener: sheet })
+      const layered = reducePhone(opened, { kind: '対戦の層が開いた' })
+      expect(layered).toEqual(initialPhone())
+      // 層が閉じても出し直さない（層が閉じたことは、この状態には届かない）。
+      expect(takePending(layered).pending).toBeUndefined()
+    }
+  })
+
+  it('シートを開いていなければ、層が開いても状態を動かさない', () => {
+    const state = reducePhone(initialPhone(), { kind: '対戦のカードを見る', card: 'a' })
+    expect(reducePhone(state, { kind: '対戦の層が開いた' })).toBe(state)
+  })
+
+  it('カードの詳細だけのシートは、開くたびに別の入れ物になる', () => {
+    const first = reducePhone(initialPhone(), { kind: '対戦のカードを見る', card: 'a' })
+    const again = reducePhone(reducePhone(first, { kind: '対戦のカードを閉じる' }), { kind: '対戦のカードを見る', card: 'a' })
+    expect(first.viewedCard).toEqual(again.viewedCard)
+    expect(first.viewedCard).not.toBe(again.viewedCard)
+  })
+
+  it('対戦を離れたら、開いていたシートも詳細も捨てる', () => {
+    let state = reducePhone(initialPhone(), { kind: '対戦のシートを開く', sheet: '行える手', opener: '行える手' })
+    state = reducePhone(state, { kind: '対戦のカードを見る', card: 'a' })
+    expect(settlePhone(state, { ...none, duel: true })).toBe(state)
+    expect(settlePhone(state, none)).toEqual(initialPhone())
+  })
+
+  it('PC の幅を経て戻ったとき、シートを開いたままなら手を中へ置き直す', () => {
+    const opened = takePending(reducePhone(initialPhone(), { kind: '対戦のシートを開く', sheet: 'ログ', opener: 'ログ' })).state
+    expect(returnedToPhone(opened).pending).toEqual({ kind: 'シートの中へ' })
   })
 })

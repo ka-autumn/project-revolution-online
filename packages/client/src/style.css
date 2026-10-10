@@ -6007,3 +6007,1004 @@ body {
     min-height: 2.75rem;
   }
 }
+
+/*
+ * スマートフォンの縦向き：対戦画面と対戦中のダイアログ・一覧（ADR-0034）。
+ *
+ * 幅 768px 以下の並べ方。PC の大きさ（769px 以上）には届かないよう、メディアクエリの中にだけ書く。
+ * 部品の出入り（シート・つまみ・エネルギー・スマッシュのボタン）は、`phone.ts` の窓口が渡されたときだけ
+ * 作られる（`isPhoneWidth`）。境目を変えるときは、そちらの `PHONE_WIDTH_QUERY` も揃える。
+ *
+ * ダイアログ（`.dialog`）と一覧（`.picker`）は、`.duel` の直下に作られる。外枠の外には出ないので、
+ * ここの `.duel` から始まる書き方がそのまま届く（`root` 直下に作られる窓——デッキ構築の確認など——は別）。
+ * PC の規則と同じ強さのものを上書くので、この塊はファイルの最後に置く。
+ */
+@media (max-width: 768px) {
+  /*
+   * ---------- 外枠：上から 6 段を 1 列に積み、操作の帯は画面の下端に固定する ----------
+   *
+   * 操作の帯（`.controls`）は、段の高さの測り方に頼らず、いつも画面の下に付ける。上の 6 段には、帯の高さぶんの
+   * 余白を下に取る（`--controls-height` は `phone-board.ts` が帯を測って置く）。上の 6 段が収まらないときは、
+   * `.duel` だけが縦に送られ、帯は動かない。ページ全体（`body`・`html`）は縦に送らない。
+   */
+
+  html:has(.duel),
+  body:has(.duel) {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .duel {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto 2rem 1.5rem auto minmax(3.2rem, 1fr) auto;
+    grid-template-areas:
+      'opp logbtn'
+      'ohand ohand'
+      'proc proc'
+      'board board'
+      'hand hand'
+      'own turn';
+    gap: 0.25rem;
+    height: 100dvh;
+    padding: 0.4rem 0.5rem calc(var(--controls-height, 4.8rem) + max(0.4rem, env(safe-area-inset-bottom, 0px)) + 0.25rem);
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+  }
+
+  /* 列は無くし、中の部品を外枠の格子に直に並べる。DOM の順は変えない（Tab と読み上げの順は、クリックモードのまま）。 */
+  .duel .duel__left,
+  .duel .duel__center,
+  .duel .duel__right {
+    display: contents;
+  }
+
+  /* 盤面を暗くする幕は、盤面の列が無いので出さない（出すと画面全体を覆う）。 */
+  .duel .duel__center:has(.zone--候補あり, .group--候補あり)::after {
+    display: none;
+  }
+
+  /* ---------- 相手の札・自分の札：1 行に詰める。立ち絵は出さない ---------- */
+
+  .duel .player {
+    gap: 0.4rem;
+    min-height: 0;
+    height: 2.6rem;
+    padding: 0.15rem 0.5rem;
+  }
+
+  .duel .player--相手 {
+    grid-area: opp;
+  }
+
+  .duel .player--自分 {
+    grid-area: own;
+  }
+
+  .duel .player__portrait {
+    display: none;
+  }
+
+  .duel .player__body {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+  }
+
+  .duel .player__name {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+
+  .duel .player__damage {
+    flex: none;
+    margin: 0;
+    font-size: 0.7rem;
+    white-space: nowrap;
+  }
+
+  .duel .player__damage strong {
+    font-size: 0.95rem;
+  }
+
+  .duel .player__whose {
+    flex: none;
+    font-size: 0.6rem;
+  }
+
+  .duel .player__partner {
+    flex-direction: row;
+    gap: 0.2rem;
+    margin-left: auto;
+  }
+
+  .duel .player__partner-label {
+    font-size: 0.55rem;
+  }
+
+  .duel .player__partner .card {
+    --card-width: 1.6rem;
+  }
+
+  .duel .phone-log-open {
+    grid-area: logbtn;
+    align-self: center;
+    min-height: 2.75rem;
+    padding: 0 0.8rem;
+  }
+
+  .duel .phone-turn {
+    grid-area: turn;
+    align-self: center;
+    margin: 0;
+    color: var(--heading);
+    font-family: var(--heading-font);
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  /*
+   * ---------- 手札：相手は裏面の端だけ、自分は上半分だけ ----------
+   *
+   * 枚数が増えたら、カードの重なりを増やして詰める。`--n` は手札の枚数（`render.ts` がスマートフォンのときだけ渡す）、
+   * `--pitch` は隣のカードとの間隔（1 枚の見えている幅）。段の幅に収まる間隔を割り出し、ふだんの間隔より広げない。
+   * 相手の手札は見るだけなので、全部が見えるところまで詰める。自分の手札は押すものなので、間隔を 2.75rem より
+   * 狭くしない。それでも収まらなければ、段を横に送る。
+   * 扇の傾きと下がり方は、6 枚を超えたら、端で 6 枚のときの大きさ（真ん中から 2.5 枚ぶん）を超えないよう均す
+   * （`--fan-scale`）。PC の扇は変えない（このメディアクエリの中だけ）。
+   */
+
+  .duel .hand--相手,
+  .duel .hand--自分 {
+    container-type: inline-size;
+  }
+
+  .duel .hand--相手 {
+    grid-area: ohand;
+    overflow: hidden;
+  }
+
+  /* 左の余白は、扇の左端のカードが傾いて左へ出る分（これが無いと、送る前の 1 枚目の角が切れる）。 */
+  .duel .hand--自分 {
+    grid-area: hand;
+    justify-content: safe center;
+    padding: 0.6rem 0 0 0.6rem;
+    overflow: auto hidden;
+    scrollbar-width: none;
+  }
+
+  .duel .hand--相手 .card {
+    --card-width: 2rem;
+    --pitch: clamp(0.3rem, calc((100cqw - 2rem) / max(var(--n, 6) - 1, 1)), 1.4rem);
+    --fan-scale: min(1, 5 / max(var(--n, 6) - 1, 1));
+    flex: none;
+    margin: 0;
+    transform: rotate(calc(var(--r, 0deg) * var(--fan-scale))) translateY(calc(0rem - var(--y, 0rem) * var(--fan-scale) * var(--fan-scale)));
+  }
+
+  .duel .hand--相手 .card ~ .card {
+    margin-left: calc(var(--pitch) - 2rem);
+  }
+
+  .duel .hand--自分 .card {
+    --card-width: 4.4rem;
+    /* 2.2rem は、扇の端のカードが傾いて右へ出る分の余裕（これを引かないと、収まる枚数でも段が少し横に動く）。 */
+    --pitch: clamp(2.75rem, calc((100cqw - 4.4rem - 2.2rem) / max(var(--n, 6) - 1, 1)), 3.3rem);
+    --fan-scale: min(1, 5 / max(var(--n, 6) - 1, 1));
+    --fan: rotate(calc(var(--r, 0deg) * var(--fan-scale))) translateY(calc(var(--y, 0rem) * var(--fan-scale) * var(--fan-scale)));
+    flex: none;
+    margin: 0;
+    transform: var(--fan);
+  }
+
+  .duel .hand--自分 .card ~ .card {
+    margin-left: calc(var(--pitch) - 4.4rem);
+  }
+
+  /* マウスを乗せても浮き上がらない（指では乗せられない）。 */
+  .duel .hand--自分 .card:hover,
+  .duel .hand--自分 .card:focus-within {
+    z-index: auto;
+    transform: var(--fan);
+  }
+
+  /*
+   * 指が重なっているカード（`phone-touch.ts` が付ける）。手札を指でなぞって段を送っている間も、いま指の下に
+   * あるカードを手前に出して目立たせる（PC でマウスを乗せたときにあたる）。段は横に送るために上下を切るので、
+   * 段の外へは出せない。持ち上げるのは段の上の余白（0.6rem）の内側までにし、大きくするときは上端を動かさずに
+   * 下へ広げる（下は、もともと段の外に隠れている）。押せるものの色の光で囲む。指を離すと戻る。
+   */
+  .duel .hand--自分 .card.card--指の下,
+  .duel .hand--自分 .card.card--指の下:hover,
+  .duel .hand--自分 .card.card--指の下:focus-within {
+    z-index: 31;
+    transform-origin: 50% 0;
+    transform: translateY(-0.4rem) scale(1.1);
+    filter: drop-shadow(0 0 0.3rem #ff8a00) drop-shadow(0 0 0.1rem #ff8a00);
+  }
+
+  /* 選んでいる 1 枚だけ、少し上に出す（指を離したあとも乗せたままになる hover には頼らない）。 */
+  .duel .hand--自分 .card--選択中,
+  .duel .hand--自分 .card--選択中:hover,
+  .duel .hand--自分 .card--選択中:focus-within,
+  .duel .hand--自分 .card--選択中:not(:hover) {
+    z-index: 30;
+    transform: translateY(-0.5rem);
+  }
+
+  .duel .hand__label {
+    padding: 0 0.7rem;
+    font-size: 0.65rem;
+  }
+
+  .duel .hand--相手 .hand__label {
+    top: auto;
+    bottom: 0;
+  }
+
+  /*
+   * 自分の手札の見出しは、段を横に送っても真ん中に留める。並びの中に置いて左右の位置を留め（sticky）、
+   * 自分の幅ぶんを負の余白で打ち消して、カードの並びを押しのけないようにする。
+   */
+  .duel .hand--自分 .hand__label {
+    position: sticky;
+    top: auto;
+    bottom: auto;
+    left: calc(50% - 4rem);
+    flex: none;
+    align-self: flex-start;
+    width: 8rem;
+    margin: -0.6rem -8rem 0 0;
+    padding: 0;
+    text-align: center;
+    transform: none;
+  }
+
+  .duel .procedure {
+    grid-area: proc;
+    padding: 0 0.6rem;
+    font-size: 0.7rem;
+  }
+
+  /* ---------- 盤面：PC の形のまま縮める（縮める率 --board-zoom は `phone-board.ts` が測る） ---------- */
+
+  .duel .board {
+    grid-area: board;
+    grid-template-rows: auto repeat(3, 10.7rem) auto;
+    height: max-content;
+    zoom: var(--board-zoom, 0.5);
+  }
+
+  /* 捨札・リムーブは盤面に無い。空いた幅は、エネルギー・スマッシュの段に回す。 */
+  .duel .strip--自分,
+  .duel .strip--相手 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .duel .strip--自分 {
+    padding-right: 5.6rem;
+  }
+
+  .duel .strip--相手 {
+    padding-left: 5.6rem;
+  }
+
+  /*
+   * 捨札・リムーブの引き出しのつまみ。自分は右端、相手は左端。縦の位置は `phone-board.ts` が段に合わせる。
+   * `.duel` が縦に送られても段に付いてくるよう、画面ではなく `.duel` の中身に置く（`.duel` は位置の基準）。
+   */
+  .duel .drawer {
+    position: absolute;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .duel .drawer--自分 {
+    right: 0;
+  }
+
+  .duel .drawer--相手 {
+    left: 0;
+  }
+
+  .duel .drawer .drawer__knob {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 2.9rem;
+    min-height: 2.75rem;
+    padding: 0.15rem 0;
+    border: 1px solid var(--gold-deep);
+    color: var(--heading);
+    background: linear-gradient(90deg, #fffdf6, #ffe3a6);
+    box-shadow: 0 2px 6px rgb(120 60 0 / 0.35);
+    font-family: var(--heading-font);
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1.15;
+  }
+
+  .duel .drawer--自分 .drawer__knob {
+    border-right: 0;
+    border-radius: 8px 0 0 8px;
+  }
+
+  .duel .drawer--相手 .drawer__knob {
+    border-left: 0;
+    border-radius: 0 8px 8px 0;
+  }
+
+  .duel .drawer__knob strong {
+    color: var(--ink);
+    font-size: 0.8rem;
+  }
+
+  /*
+   * エネルギー・スマッシュ：左端に名前と枚数を縦に積み、その右に種類ごとの「印＋枚数」を置いたボタン。
+   * 高さは段いっぱいに伸ばして、隣のボタンとそろえる。
+   */
+  .duel .zone__summary {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 0.7rem;
+    width: 100%;
+    /* 盤面ごと縮めても、指で押す高さ（実寸で 2.75rem）を下回らないよう、縮める率で割り戻す。 */
+    min-height: calc(2.75rem / var(--board-zoom, 0.5));
+    padding: 0.3rem 0.6rem;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    color: var(--heading);
+    background: linear-gradient(180deg, #fffdf6, #ffeec2);
+    font-family: var(--heading-font);
+    font-size: 1.3rem;
+    font-weight: 700;
+  }
+
+  .duel .zone__summary-head {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.15;
+  }
+
+  .duel .zone__summary-name {
+    font-size: 1.1rem;
+    white-space: nowrap;
+  }
+
+  .duel .zone__summary strong {
+    color: var(--ink);
+    font-size: 2rem;
+  }
+
+  /*
+   * 中身は、1 枚ごとに印を並べず、種類ごとの枚数で出す（枚数が増えても枠からはみ出さない）。
+   * エネルギーは色 × 状態（リリース／フリーズ）ごと。列が色（赤・青・白・緑・黒の順で、あるものだけ）、上の段が
+   * リリース、下の段がフリーズ。スマッシュは色が無いので、上がリリース、下がフリーズの 2 つ。位置は要素の
+   * grid-column / grid-row が持つ。1 枚でもある色は片方が 0 枚でも両方を出し、0 枚は薄くする。
+   */
+  .duel .zone__tally {
+    display: grid;
+    flex: 0 1 auto;
+    grid-auto-columns: max-content;
+    min-width: 0;
+    gap: 0.15rem 0.6rem;
+  }
+
+  .duel .zone__kind {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .duel .zone__kind b {
+    color: var(--ink);
+    font-size: 1.7rem;
+    line-height: 1;
+  }
+
+  /* フリーズの数字は赤。 */
+  .duel .zone__kind--フリーズ b {
+    color: #c22d12;
+  }
+
+  .duel .zone__kind--無し {
+    opacity: 0.45;
+  }
+
+  .duel .zone__symbol {
+    position: relative;
+    flex: none;
+    width: 1.9rem;
+    height: 1.9rem;
+  }
+
+  .duel .zone__symbol > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* フリーズの印は、上に白で縁取った太い赤い × を重ねる。 */
+  .duel .zone__symbol > .zone__cross {
+    position: absolute;
+    inset: -0.1rem;
+    width: calc(100% + 0.2rem);
+    height: calc(100% + 0.2rem);
+  }
+
+  /* 0 枚なら押せない（捨札・リムーブのつまみと同じ）。 */
+  .duel .zone__summary:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  /* コストの選択中は、選べるカードがあるゾーンのボタンを押せるものの色で囲む。 */
+  .duel .zone--候補あり .zone__summary,
+  .duel .group--候補あり .zone__summary {
+    border-color: #ff8a00;
+    box-shadow: 0 0 0 3px rgb(255 138 0 / 0.45);
+  }
+
+  /* 枠は PC のように大きくしない。縮めた盤面では、大きくすると枠と「ここから選択」の札が画面の端で切れる。 */
+  .duel .zone--候補あり,
+  .duel .group--候補あり {
+    transform: none;
+  }
+
+  /* 払う一覧で、エネルギーとスマッシュを見出しで分けて縦に並べる。ゾーンごとのカードの並びは、一覧の並びと同じ。 */
+  .duel .picker__zones {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .duel .picker__section-title {
+    margin: 0.5rem 0.8rem 0.2rem;
+    color: var(--heading);
+    font-family: var(--heading-font);
+    font-size: 0.95rem;
+  }
+
+  .duel .picker__section .picker__cards {
+    overflow: visible;
+  }
+
+  /* ---------- 操作の帯：優先権の 1 行・一番よく押す手のボタン・「行える手（n）」のボタン ---------- */
+
+  /* 画面の下端に固定する。上の段が収まらずに送られても、帯は動かない。 */
+  .duel .controls {
+    position: fixed;
+    right: 0.5rem;
+    bottom: max(0.4rem, env(safe-area-inset-bottom, 0px));
+    left: 0.5rem;
+    z-index: 35;
+    flex: none;
+  }
+
+  /* 行き先を選んでいる間は、低い詳細の帯が操作の帯のかわりになる。余白は残したまま、見えず、手も止まらない。 */
+  .duel:has(.peek) .controls:not(.phone-sheet--open) {
+    visibility: hidden;
+  }
+
+  /* 操作の帯は、内容より低く潰さない（高さが足りないときは、自分の手札の段が縮む）。 */
+  .duel .controls:not(.phone-sheet--open) {
+    min-height: auto;
+  }
+
+  .duel .controls:not(.phone-sheet--open) .controls__turn,
+  .duel .controls:not(.phone-sheet--open) .phases,
+  .duel .controls:not(.phone-sheet--open) .leave,
+  .duel .controls:not(.phone-sheet--open) .actions .panel__head {
+    display: none;
+  }
+
+  .duel .controls:not(.phone-sheet--open) .controls__priority {
+    margin: 0.3rem 0.5rem 0;
+    padding: 0.1rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .duel .controls:not(.phone-sheet--open) .controls__actions {
+    flex: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem;
+    border-top: 0;
+  }
+
+  /* 節は消し、中のボタンと文を、帯の行に直に並べる。 */
+  .duel .controls:not(.phone-sheet--open) .actions,
+  .duel .controls:not(.phone-sheet--open) .choice,
+  .duel .controls:not(.phone-sheet--open) .actions__list,
+  .duel .controls:not(.phone-sheet--open) .choice__list {
+    display: contents;
+  }
+
+  /* 一番よく押す手だけを帯に出す。ほかの手と、選ぶ候補のボタンは「行える手」のシートに入れる。 */
+  .duel .controls:not(.phone-sheet--open) .actions__list button:not(.button--primary),
+  .duel .controls:not(.phone-sheet--open) .choice__list button {
+    display: none;
+  }
+
+  .duel .controls:not(.phone-sheet--open) .actions__list .button--primary {
+    flex: 1;
+    min-height: 2.75rem;
+  }
+
+  .duel .controls:not(.phone-sheet--open) .controls__reason,
+  .duel .controls:not(.phone-sheet--open) .controls__offline,
+  .duel .controls:not(.phone-sheet--open) .actions__none,
+  .duel .controls:not(.phone-sheet--open) .choice__none,
+  .duel .controls:not(.phone-sheet--open) .choice .panel__head {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 0.8rem;
+  }
+
+  /* 選ぶ候補を見出しの 1 行（何を選ぶのか）だけにして、帯を高くしない。 */
+  .duel .controls:not(.phone-sheet--open) .choice .panel__head {
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .duel .controls:not(.phone-sheet--open) .choice__title {
+    font-size: 0.85rem;
+  }
+
+  .duel .controls:not(.phone-sheet--open) .choice__back {
+    flex: 1;
+    margin: 0;
+  }
+
+  .duel .controls:not(.phone-sheet--open) .choice__back button {
+    width: 100%;
+    min-height: 2.75rem;
+  }
+
+  /* カードを選んでいる間は、選択をやめる口を優先し、手のボタンと一覧を開く口は引っ込める。 */
+  .duel .controls:not(.phone-sheet--open):has(.actions .choice__back button) .actions__list .button--primary,
+  .duel .controls:not(.phone-sheet--open):has(.actions .choice__back button) .phone-actions-open {
+    display: none;
+  }
+
+  .duel .phone-actions-open {
+    min-height: 2.75rem;
+    padding: 0 0.8rem;
+  }
+
+  /*
+   * ---------- 行き先を選んでいる間の、低い詳細の帯 ----------
+   *
+   * 行える手が「行き先を押して決まる 1 種類」だけのカードを押したときに、画面の下に付けて出す。行き先を選んでいる
+   * 間は操作の帯のかわりになり、案内の文とやめる口もこの中に持つ。高さは中身に合わせ、上は自分の手札の段の上端
+   * までしか伸ばさない（`phone-board.ts`）ので、盤面には重ならず、光った行き先をそのまま押せる。全部の詳細は
+   * 「詳細」で、いつものシートに出す。
+   */
+
+  .duel .peek {
+    position: fixed;
+    right: 0.5rem;
+    bottom: max(0.4rem, env(safe-area-inset-bottom, 0px));
+    left: 0.5rem;
+    /* 手札の見出し・操作の帯より手前。シートの幕（85）よりは奥。 */
+    z-index: 60;
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    background: #fffdf6;
+    box-shadow: 0 -2px 10px rgb(120 70 0 / 0.25);
+    overflow: hidden;
+  }
+
+  /* カードは帯の高さいっぱいに出す（幅は `phone-board.ts` が右の中身の高さから決める）。 */
+  .duel .peek > .card {
+    flex: none;
+    align-self: center;
+    margin: 0;
+    transform: none;
+  }
+
+  .duel .peek__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .duel .peek__head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .duel .peek__title {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .duel .peek__name {
+    margin: 0;
+    overflow: hidden;
+    color: var(--heading);
+    font-family: var(--heading-font);
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .duel .peek__kind {
+    margin: 0;
+    overflow: hidden;
+    color: #7d6848;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .duel .peek__more {
+    flex: none;
+    min-width: 3.2rem;
+    min-height: 2.75rem;
+    padding: 0 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  /* 数値は、項目名と値を分けた札にして横に並べる。元の値から変わっているものは色を変える。 */
+  .duel .peek__stats {
+    display: grid;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
+    gap: 0.3rem;
+    margin: 0;
+  }
+
+  .duel .peek__stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.15rem 0.2rem 0.2rem;
+    border: 1px solid rgb(220 166 64 / 0.7);
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .duel .peek__stat dt {
+    color: #7d6848;
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .duel .peek__stat dd {
+    margin: 0;
+    color: var(--ink);
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  /* カードの絵と同じ決まり（`.card__bp--上` など）：上がったら赤と ▲、下がったら青と ▼（色だけに頼らない）。 */
+  .duel .peek__stat--上 {
+    border-color: #d0452b;
+    background: #fff1ec;
+  }
+
+  .duel .peek__stat--上 dd {
+    color: #d4101c;
+  }
+
+  .duel .peek__stat--上 dd::after {
+    content: '▲';
+    font-size: 0.7em;
+  }
+
+  .duel .peek__stat--下 {
+    border-color: #3a6fd0;
+    background: #eef3ff;
+  }
+
+  .duel .peek__stat--下 dd {
+    color: #1553c8;
+  }
+
+  .duel .peek__stat--下 dd::after {
+    content: '▼';
+    font-size: 0.7em;
+  }
+
+  /* 受けているダメージは赤くする（▲▼ は付けない）。 */
+  .duel .peek__stat--受けている {
+    border-color: #d0452b;
+    background: #fff1ec;
+  }
+
+  .duel .peek__stat--受けている dd {
+    color: #d4101c;
+  }
+
+  /* テキストは中身の高さで出し、帯が上まで届いて収まらなければ、この枠の中で送る。 */
+  .duel .peek__text {
+    flex: 0 1 auto;
+    min-height: 1.8rem;
+    margin: 0;
+    padding: 0.3rem 0.45rem;
+    overflow-y: auto;
+    border-radius: 8px;
+    background: rgb(255 238 194 / 0.55);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: pre-line;
+  }
+
+  /* 一番下：何を待っているかの 1 行と、やめる口（親指が届く位置）。 */
+  .duel .peek__foot {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* 幅が足りず 2 行になるときは、言葉の途中で割らず、文の中に入れた切れ目（「を」の後ろ）でだけ割る。 */
+  .duel .peek__guide {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    color: var(--own);
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.35;
+    word-break: keep-all;
+  }
+
+  .duel .peek__cancel {
+    flex: none;
+    min-height: 2.75rem;
+    padding: 0 0.8rem;
+  }
+
+  /* ---------- 下からのシート：行える手（操作パネルの中身すべて）・ログ ---------- */
+
+  .duel .phone-sheet--open {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    max-height: 82dvh;
+    border-radius: 16px 16px 0 0;
+    background: linear-gradient(180deg, #fffdf6, #fff4dc);
+    box-shadow: 0 -8px 30px rgb(80 40 0 / 0.4);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    overflow-y: auto;
+  }
+
+  .duel .phone-sheet--open:focus {
+    outline: none;
+  }
+
+  /* 操作パネルの中身は、シートのほうがスクロールする（中で入れ子にスクロールさせない）。 */
+  .duel .controls.phone-sheet--open .controls__actions,
+  .duel .controls.phone-sheet--open .actions,
+  .duel .controls.phone-sheet--open .choice,
+  .duel .controls.phone-sheet--open .actions__list,
+  .duel .controls.phone-sheet--open .choice__list {
+    flex: none;
+    overflow: visible;
+  }
+
+  .duel .controls.phone-sheet--open button {
+    min-height: 2.75rem;
+  }
+
+  .duel .log.phone-sheet--open .log__list {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* 閉じる口はシートの一番下。スクロールしても見えるよう下に付ける。 */
+  .duel .phone-sheet__close {
+    position: sticky;
+    bottom: 0;
+    flex: none;
+    min-height: 2.75rem;
+    margin: 0.4rem 0.9rem 0.6rem;
+  }
+
+  /* ---------- 確認・選ぶシート（カードを押したときの手。詳細を上の段に一緒に出す） ---------- */
+
+  .duel .dialog {
+    inset: 0;
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .duel .dialog__box {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    max-height: 85%;
+    padding: 0.6rem 0.8rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
+    border-width: 2px 0 0;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .duel .dialog__box:focus {
+    outline: none;
+  }
+
+  .duel .dialog__row {
+    flex-direction: column-reverse;
+  }
+
+  .duel .dialog button {
+    min-height: 2.75rem;
+  }
+
+  .duel .dialog__actions button {
+    text-align: center;
+  }
+
+  .duel .dialog__cancel {
+    justify-content: stretch;
+  }
+
+  .duel .dialog__cancel button {
+    flex: 1;
+  }
+
+  /* シートの上の段：カードの詳細（PC では右の列に出ているもの） */
+  .duel .dialog__detail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0 0 0.6rem;
+  }
+
+  .duel .dialog__detail .card--拡大 {
+    --card-width: min(13rem, 60vw);
+  }
+
+  .duel .dialog__detail .card--拡大 .card__text {
+    max-height: 7rem;
+  }
+
+  /* ---------- 一覧（見る・選ぶ）：画面いっぱい。右の列は無いので空けない ---------- */
+
+  .duel .picker {
+    inset: 0;
+    padding: 0.5rem;
+  }
+
+  .duel .picker__box {
+    width: 100%;
+    height: 100%;
+  }
+
+  .duel .picker--ability .picker__box {
+    width: 100%;
+  }
+
+  .duel .picker__head {
+    flex: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+  }
+
+  .duel .picker__title {
+    flex: none;
+    font-size: 1rem;
+  }
+
+  .duel .picker__cards {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr));
+    align-content: start;
+    gap: 0.8rem 0.4rem;
+    padding: 0.6rem 0.4rem;
+  }
+
+  .duel .picker__cards:has(.picker__ability) {
+    grid-template-columns: 1fr;
+  }
+
+  .duel .picker__cards .card {
+    --card-width: 4.6rem;
+  }
+
+  .duel .picker__ability {
+    min-height: 2.75rem;
+  }
+
+  /* 一覧の上の段：最後に押したカード（能力なら発生源）の詳細 */
+  .duel .picker__detail {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    min-height: 3rem;
+    padding: 0.3rem;
+    border-bottom: 1px solid rgb(220 166 64 / 0.45);
+  }
+
+  .duel .picker__detail .card--拡大 {
+    --card-width: 8.5rem;
+    font-size: 0.6rem;
+  }
+
+  .duel .picker__detail .card--拡大 .card__title {
+    font-size: 0.8rem;
+  }
+
+  .duel .picker__detail .card--拡大 .card__text {
+    min-height: 0;
+    max-height: 4.5rem;
+    font-size: 0.65rem;
+  }
+
+  .duel .picker__detail .detail__note {
+    font-size: 0.7rem;
+  }
+
+  .duel .picker__foot {
+    flex: none;
+    flex-wrap: wrap;
+    padding-bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .duel .picker__foot .picker__count {
+    flex-basis: 100%;
+  }
+
+  .duel .picker__foot button {
+    flex: 1;
+    min-height: 2.75rem;
+    white-space: nowrap;
+  }
+
+  /* ---------- 演出・決着：幅に収める ---------- */
+
+  .duel .transition-banner {
+    font-size: 1.5rem;
+  }
+
+  .duel .cut-in__heading {
+    font-size: 1.3rem;
+  }
+
+  .duel .result__burst {
+    width: min(46rem, 120vw);
+    height: min(46rem, 120vw);
+  }
+
+  .duel .result__label {
+    font-size: clamp(2.6rem, 17vw, 5.5rem);
+    letter-spacing: 0.2em;
+    text-indent: 0.2em;
+  }
+
+  .duel .result__leave .choice__button {
+    padding: 0.75rem 2rem;
+    font-size: 1.1rem;
+  }
+}

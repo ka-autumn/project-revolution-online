@@ -20,7 +20,7 @@ function dashed(name: string): string {
 
 /** シートとその背面だけを残して、同じ画面の残りを操作できなくする。 */
 function blockBehind(sheet: HTMLElement): void {
-  const screen = sheet.closest<HTMLElement>('.lobby, .deckbuild')
+  const screen = sheet.closest<HTMLElement>('.lobby, .deckbuild, .duel')
   if (screen === null) return
 
   let on: HTMLElement = sheet

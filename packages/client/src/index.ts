@@ -60,6 +60,7 @@ import {
   automaticAction,
   choicePicking,
   choiceView,
+  abilityListSource,
   isAbilityChoice,
   offBoardCandidates,
   pickView,
@@ -85,7 +86,9 @@ import {
   KEEP_SCROLL,
   actionsElement,
   choiceElement,
+  chooseZoneListElement,
   choosePickerElement,
+  choosesFrom,
   confirmElement,
   deckEditorElement,
   deckListElement,
@@ -101,15 +104,20 @@ import {
   recipeElement,
   recipeListElement,
   shareDialogElement,
+  sheetDetailElement,
   viewPileElement,
   waitingForOverlayElement,
 } from './render.js'
 import type {
+  AskHandlers,
   BoardPicking,
   ChosenRules,
   DeckEditorHandlers,
   DeckListHandlers,
+  ListZone,
   MyShareHandlers,
+  PeekProps,
+  PhoneListOptions,
   RecipeListHandlers,
   RecipeViewHandlers,
   ShareDialogHandlers,
@@ -136,7 +144,12 @@ import { closedByCancel, escapeTopLayer, focusBefore, markDialog, settleFocus } 
 import { PHONE_WIDTH_QUERY, initialPhone, isPhoneWidth, reducePhone, returnedToPhone, settlePhone, takePending, takeScroll } from './phone.js'
 import type { PhoneControl, PhonePending, PhoneScroll, PhoneState } from './phone.js'
 import { settlePhoneScroll } from './phone-scroll.js'
+import { settlePhoneBoard, watchControls } from './phone-board.js'
+import { peekAimOf } from './phone-peek.js'
+import { wireFingerOnHand } from './phone-touch.js'
 import { settlePhoneFocus } from './phone-focus.js'
+import { openPayList, settlePayState } from './pay-list.js'
+import type { PayEvent, PayState } from './pay-list.js'
 
 /**
  * クライアントの起動点。
@@ -282,10 +295,28 @@ interface Picking {
  * 何であっても（クリック・ボタンのどちらの操作のしかたでも）出るので、その状態を混ぜない。
  */
 interface DuelInteraction {
-  /** 開いている「見る」一覧（捨札・リムーブの中身を見る）。無ければ何も開いていない。 */
-  readonly viewingPile: { readonly player: Player; readonly zone: '捨札' | 'リムーブゾーン' } | undefined
-  readonly onOpenPile: (player: Player, zone: '捨札' | 'リムーブゾーン') => void
+  /**
+   * 開いている一覧（捨札・リムーブの中身を見る。スマートフォンでは、エネルギー・スマッシュの中身も）。
+   * 無ければ何も開いていない。
+   */
+  readonly viewingPile: { readonly player: Player; readonly zone: ListZone } | undefined
+  readonly onOpenPile: (player: Player, zone: ListZone) => void
   readonly onClosePile: () => void
+  /**
+   * 一覧で最後に押したカード（スマートフォン、ADR-0034）。上の段に詳細を出す。まだ押していなければ
+   * `undefined`。`redraw` が偽なら覚えるだけで描き直さない（押すことが描き直しになる一覧）。
+   */
+  readonly listShown: CardId | undefined
+  readonly onListShow: (card: CardId, redraw: boolean) => void
+  /**
+   * 開いている、コストを払う一覧（スマートフォン、ADR-0034）。払うカードが無いゾーンの一覧は見るだけで、ここは
+   * 空になる。答えたあとの盤面でいったん閉じ、選択が続けば開き直す（`pay-list.ts`）。
+   */
+  readonly payState: PayState | undefined
+  /** 払う答えを 1 枚分送った。描き直さない（届く返事が描き直す）。 */
+  readonly onPayAnswered: () => void
+  /** 行動をやめる答えを送った。描き直さない。 */
+  readonly onPayCancelled: () => void
   /** 「選ぶ」一覧で選びかけている候補の番号。まだ無ければ `undefined`。 */
   readonly pickerPicked: number | undefined
   readonly onPickerPick: (index: number | undefined) => void
@@ -490,6 +521,15 @@ function restoreScroll(root: HTMLElement, positions: ReadonlyMap<string, ScrollP
     node.scrollTop = at.top
     node.scrollLeft = at.left
   }
+}
+
+/**
+ * 払う一覧を開いた直後に、押した方のゾーンの見出しが見える位置へ送る（ADR-0034）。片方のゾーンしか無ければ
+ * 動かない。描いたあと（`restoreScroll` で位置を戻したあと）に呼ぶ。
+ */
+function revealPayZone(root: HTMLElement, zone: ListZone): void {
+  const sections = [...root.querySelectorAll<HTMLElement>('.picker__section')]
+  sections.find((each) => each.dataset.zone === zone)?.scrollIntoView({ block: 'start' })
 }
 
 /**
@@ -804,8 +844,11 @@ function draw(
 
   if (stage.kind === '打っている' && stage.board !== undefined) {
     const board = stage.board
+    // スマートフォンでは、操作のしかたの切り替えを出さず、クリックモードで描く（ADR-0034）。切り替えた値
+    // （`picking.mode`）は書き換えない。幅が PC に戻れば、その値で描く。
+    const clickMode = phone !== undefined || picking.mode === 'クリック'
     // 演出が出ている間は手を送れない（#115）ので、盤面の上でも押せなくする。
-    const clicking = connected && picking.mode === 'クリック' && !showsOverlay(overlay)
+    const clicking = connected && clickMode && !showsOverlay(overlay)
     const view =
       clicking && stage.choice === undefined
         ? pickView(board, stage.actions, picking.selection, stage.passOutcome)
@@ -865,8 +908,8 @@ function draw(
             }
           : undefined
 
-    // 操作のしかたの切り替えは、行える手の見出しに添える（`render.ts` の `titleRow`）。
-    const mode = modeElement(picking)
+    // 操作のしかたの切り替えは、行える手の見出しに添える（`render.ts` の `titleRow`）。スマートフォンでは出さない。
+    const mode = phone === undefined ? modeElement(picking) : undefined
 
     const controlsChildren: HTMLElement[] = []
 
@@ -900,7 +943,7 @@ function draw(
     const showsPicker =
       connected &&
       stage.choice !== undefined &&
-      (showsChoicePicker(stage.choice, offBoard) || (picking.mode === 'クリック' && isAbilityChoice(stage.choice)))
+      (showsChoicePicker(stage.choice, offBoard) || (clickMode && isAbilityChoice(stage.choice)))
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (!connected) {
@@ -974,11 +1017,23 @@ function draw(
     // 番号が残っていても、「これに決める」で無効な番号を送らせない（#207）。
     const pickerPicked = offBoard.some(({ index }) => index === duel.pickerPicked) ? duel.pickerPicked : undefined
 
+    // スマートフォンの一覧は画面いっぱいに出て右の列が無いので、最後に押したカードの詳細を上の段に出す（ADR-0034）。
+    const phoneList: PhoneListOptions | undefined =
+      phone === undefined
+        ? undefined
+        : { shown: duel.listShown === undefined ? undefined : cardsById.get(duel.listShown), onShow: duel.onListShow }
+
     const choosePicker =
       showsPicker && stage.choice !== undefined
         ? (() => {
             const choice = stage.choice as NonNullable<typeof stage.choice>
             const meta = choiceView(board, choice, answering)
+            // 能力を選ぶ一覧は、開いた時点で発生源のカードの詳細を上の段に出す。札を押したら、押した札の発生源に替わる。
+            const source = isAbilityChoice(choice) ? abilityListSource(choice) : undefined
+            const pickerList: PhoneListOptions | undefined =
+              phoneList === undefined || phoneList.shown !== undefined || source === undefined
+                ? phoneList
+                : { ...phoneList, shown: cardsById.get(source) }
             return choosePickerElement(
               meta.asking,
               offBoard,
@@ -1008,6 +1063,7 @@ function draw(
                 },
               },
               isAbilityChoice(choice) ? abilityLabels(board, choice) : [],
+              pickerList,
             )
           })()
         : undefined
@@ -1017,36 +1073,118 @@ function draw(
 
     // 選んだカードの手を聞くダイアログ（#249）。出すのは `view` が立つ間（繋がっていて、演出が
     // 出ておらず、選ぶのを待たれていない）だけで、そうでなければ `view` が無いので開かない。
-    const dialog =
-      view?.ask !== undefined
-        ? askElement(view.ask, {
-            onChoose: (option) => {
-              if ('send' in option) {
-                picking.onCancel()
-                connection.send({ kind: '行動する', action: option.send })
-              } else {
-                picking.onAim(option.aim)
-              }
-            },
-            onCancel: () => {
-              closedByCancel()
-              picking.onDeselect()
-            },
-          })
+    const askHandlers: AskHandlers = {
+      onChoose: (option) => {
+        if ('send' in option) {
+          picking.onCancel()
+          connection.send({ kind: '行動する', action: option.send })
+        } else {
+          picking.onAim(option.aim)
+        }
+      },
+      onCancel: () => {
+        closedByCancel()
+        picking.onDeselect()
+      },
+    }
+    // スマートフォンでは、選んだカードで行える手を下からのシートで出し、上の段にカードの詳細を一緒に出す
+    // （ADR-0034）。聞くことが無く、行き先を押して決まるだけの手も、先にシートで手を選ばせる。
+    const sheetCard = view?.picked === undefined ? undefined : cardsById.get(view.picked)
+    // 行える手が「行き先を押して決まる 1 種類」だけのカードは、シートを挟まず、すぐ行き先を光らせて、盤面を
+    // 隠さない低い帯で詳細を見せる（ADR-0034）。帯の「詳細」から、いつものシートに詳細だけを出せる。
+    const peekAim = phone === undefined ? undefined : peekAimOf(view?.sheet)
+    const peek: PeekProps | undefined =
+      phone !== undefined && peekAim !== undefined && view?.picked !== undefined && sheetCard?.kind === '表'
+        ? {
+            card: sheetCard,
+            place: boardData.squares.some((row) => row.some((square) => square.cards.some((each) => each.kind === '表' && each.id === sheetCard.id)))
+              ? 'スクエア'
+              : '手札など',
+            aim: peekAim,
+            onDetail: () => phone.send({ kind: '対戦のカードを見る', card: sheetCard.id }),
+            // 「カードの選択をやめる」と同じ処理。
+            onCancel: askHandlers.onCancel,
+          }
         : undefined
+    // 詳細だけを見るシート（押せないカードをタップした）。手は無く、閉じる口は「閉じる」。選んでいる間は出さない
+    // （帯から開いた詳細は、選んでいる間も出す。閉じても行き先の選択は続く）。
+    const viewed = phone?.state.viewedCard
+    const viewedCard = viewed === undefined ? undefined : cardsById.get(viewed.card)
+    const viewedSheet =
+      phone !== undefined && viewed !== undefined && viewedCard?.kind === '表' && (view?.sheet === undefined || peek !== undefined)
+        ? askElement(
+            { heading: viewedCard.name, lead: 'カードの詳細', options: [] },
+            { onChoose: () => undefined, onCancel: () => phone.send({ kind: '対戦のカードを閉じる' }) },
+            sheetDetailElement(viewedCard),
+          )
+        : undefined
+    const dialog =
+      phone !== undefined
+        ? view?.sheet !== undefined && peek === undefined
+          ? askElement(view.sheet, askHandlers, sheetDetailElement(sheetCard))
+          : viewedSheet
+        : view?.ask !== undefined
+          ? askElement(view.ask, askHandlers)
+          : undefined
     // 選びかけが替わる（別のカードを選ぶ・行き先を絞る）たびに、別のダイアログとして扱う。
-    if (dialog !== undefined) markDialog(dialog, picking.selection)
+    if (dialog !== undefined) markDialog(dialog, viewedSheet !== undefined && viewed !== undefined ? viewed : picking.selection)
 
     // 捨札・リムーブの中身を見る一覧（ADR-0027）。押す前に選んでいる（`duel.viewingPile`）ものだけ出す。
+    // スマートフォンでは、エネルギー・スマッシュの中身もこの一覧で見る。コストの選択中は、その一覧が
+    // 払うカードを選ぶ一覧になる（ADR-0034）。払う一覧は、払い終えるまで開いたままにする（`pay-list.ts`）。
     const viewingPileElement =
       duel.viewingPile !== undefined
-        ? viewPileElement(
-            zoneOf(duel.viewingPile.player === stage.seat ? boardData.own : boardData.opponent, duel.viewingPile.zone),
-            () => {
+        ? (() => {
+            const side = duel.viewingPile.player === stage.seat ? boardData.own : boardData.opponent
+            const zone = zoneOf(side, duel.viewingPile.zone)
+            const close = (): void => {
               closedByCancel()
               duel.onClosePile()
-            },
-          )
+            }
+            if (phoneList === undefined) return viewPileElement(zone, close)
+
+            const paying = duel.payState?.kind === '開いている' ? duel.payState.list : undefined
+            if (paying === undefined) return viewPileElement(zone, close, { ...phoneList, whose: side.whose })
+
+            // 払えるゾーンは、開いたときに決めたものを並べる。払い終えて空になったゾーンは出さない。
+            const zones = paying.zones.map((each) => zoneOf(side, each)).filter((each) => each.cards.length > 0)
+            if (zones.length === 0) return undefined
+
+            // 答えを送ったあと返事を待つ間と、演出が出ている間は、押せるカードの無い一覧になる。
+            const choosing = answering !== undefined && boardPicking !== undefined && stage.choice !== undefined ? boardPicking : undefined
+            const paid: BoardPicking | undefined =
+              choosing === undefined
+                ? undefined
+                : {
+                    ...choosing,
+                    onCard: (card) => {
+                      duel.onPayAnswered()
+                      choosing.onCard(card)
+                    },
+                    onHidden: (at) => {
+                      duel.onPayAnswered()
+                      choosing.onHidden?.(at)
+                    },
+                  }
+            return chooseZoneListElement(
+              zones,
+              side.whose,
+              paid,
+              {
+                onClose: close,
+                // やめられるかは、パネルの「この行動をやめる」と同じ判断（`choiceView` の `mayCancel`）。
+                ...(choosing?.onCancelChoice === undefined
+                  ? {}
+                  : {
+                      onCancel: () => {
+                        duel.onPayCancelled()
+                        choosing.onCancelChoice?.()
+                      },
+                    }),
+              },
+              phoneList,
+            )
+          })()
         : undefined
     // 開くたびに別の一覧として扱う。盤面が届いて枚数が変わっても、同じ一覧の描き直しである。
     if (viewingPileElement !== undefined && duel.viewingPile !== undefined) markDialog(viewingPileElement, duel.viewingPile)
@@ -1068,7 +1206,9 @@ function draw(
         opponentName: opponentName(stage.opponent),
         controlsChildren,
         picking: boardPicking,
-        clickMode: picking.mode === 'クリック',
+        clickMode,
+        ...(phone === undefined ? {} : { phone }),
+        ...(peek === undefined ? {} : { peek }),
         onOpenPile: duel.onOpenPile,
         viewingPile: viewingPileElement,
         choosePicker,
@@ -1214,8 +1354,24 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let mode: PickMode = 'クリック'
   let selection: PickSelection = {}
 
-  /** 開いている「見る」一覧（捨札・リムーブの中身を見る、ADR-0027）。無ければ何も開いていない。 */
-  let viewingPile: { readonly player: Player; readonly zone: '捨札' | 'リムーブゾーン' } | undefined
+  /**
+   * 開いている一覧（捨札・リムーブの中身を見る、ADR-0027。スマートフォンでは、エネルギー・スマッシュの
+   * 中身も、ADR-0034）。無ければ何も開いていない。
+   */
+  let viewingPile: { readonly player: Player; readonly zone: ListZone } | undefined
+  /** 一覧で最後に押したカード（スマートフォン、ADR-0034）。開き直すたび、新しい選択が届くたびに捨てる。 */
+  let listShown: CardId | undefined
+  /**
+   * いま開いている一覧が、コストの選択中に開いた「払うカードを選ぶ」一覧なら、その状態（スマートフォン、
+   * ADR-0034）。答えたあとの盤面でいったん閉じ、選択が続けば開き直す予定を持つ。開閉は `pay-list.ts` が決める。
+   */
+  let payState: PayState | undefined
+  /** 操作の帯の高さの変わり方を見張るのを止める（スマートフォンの対戦画面。描き直すたびに付け直す）。 */
+  let stopWatchingControls: () => void = () => undefined
+  /** 払う一覧を開いた直後に、押した方のゾーンの見出しへ送る。描いたあとに 1 度だけ行う。 */
+  let payReveal: ListZone | undefined
+  /** 払う一覧を開き直したあと、一覧のスクロールを戻す位置。描いたあとに 1 度だけ行う。 */
+  let payScroll: number | undefined
   /**
    * 「選ぶ」一覧で、いま選びかけている候補の番号（ADR-0027）。まだ何も選んでいなければ
    * `undefined`。答えて（選ばない・これに決める）次の状況に移るたびに捨てる。
@@ -1243,6 +1399,38 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     if (selection.card === undefined && selection.deck !== true) return
     selection = {}
     redraw()
+  }
+
+  /**
+   * 払う一覧に出来事を伝える。一覧は、開いているかどうかを見る一覧の状態（`viewingPile`）にも映す。
+   * 開き直す予定は、閉じた状態で覚えておく。
+   */
+  const settlePay = (event: PayEvent): void => {
+    const before = payState
+    payState = settlePayState(before, event)
+    if (payState?.kind === '開いている') {
+      const { player, pressed } = payState.list
+      if (before?.kind === '開き直す予定') {
+        viewingPile = { player, zone: pressed }
+        payScroll = before.scroll
+      } else if (before === undefined) {
+        // 届いた時点で開いた。押した方のゾーンの見出しから見せる。
+        viewingPile = { player, zone: pressed }
+        listShown = undefined
+        payReveal = pressed
+        payScroll = undefined
+      }
+    } else if (before?.kind === '開いている') {
+      viewingPile = undefined
+    }
+  }
+
+  /** 払う一覧も開き直す予定も捨てる。開いている一覧は閉じる。 */
+  const dropPayList = (): void => {
+    if (payState?.kind === '開いている') viewingPile = undefined
+    payState = undefined
+    payReveal = undefined
+    payScroll = undefined
   }
 
   const picking = (): Picking => ({
@@ -1276,11 +1464,32 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     viewingPile,
     onOpenPile: (player, zone) => {
       viewingPile = { player, zone }
+      listShown = undefined
+      // コストの選択中に、払うカードがあるゾーンのボタンを押したなら、払う一覧にする。
+      const stage = session.stage
+      payState =
+        stage.kind === '打っている' && stage.board !== undefined ? openPayList(stage.board, stage.choice, player, zone) : undefined
+      payReveal = payState === undefined ? undefined : zone
+      payScroll = undefined
       redraw()
     },
     onClosePile: () => {
       viewingPile = undefined
+      dropPayList()
       redraw()
+    },
+    listShown,
+    onListShow: (card, again) => {
+      listShown = card
+      if (again) redraw()
+    },
+    payState,
+    // 答えは送るだけで、描き直さない（`onPickerAnswered` と同じ）。次の選択が続くかは、届いたもので決める。
+    onPayAnswered: () => {
+      settlePay({ kind: '答えた' })
+    },
+    onPayCancelled: () => {
+      settlePay({ kind: 'やめた' })
     },
     pickerPicked,
     onPickerPick: (index) => {
@@ -1819,11 +2028,17 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     const stage = session.stage
     const loaded = session.pool !== undefined && session.ownedDecks !== undefined
     const builderOpen = stage.kind === 'ロビー' && link.kind === '繋がっている' && builder.screen !== '閉じている' && loaded
+    const board = stage.kind === '打っている' ? stage.board : undefined
     phoneState = settlePhone(phoneState, {
       lobby: lobbyIsShown(session, link, builder),
       deckList: builderOpen && builder.screen === 'デッキを選ぶ',
       editor: builderOpen && builder.screen === 'デッキを組む' && builder.draft !== undefined,
+      duel: board !== undefined,
     })
+    // 詳細を見ているカードが盤面から見えなくなった（手札に戻って裏向きになった、など）なら、閉じる。
+    if (phoneState.viewedCard !== undefined && (board === undefined || !visibleCardViewsIn(board).has(phoneState.viewedCard.card))) {
+      phoneState = reducePhone(phoneState, { kind: '対戦のカードを閉じる' })
+    }
   }
 
   /** 描き直しに渡す窓口。押した動きで状態を進め、描き直す。 */
@@ -1832,6 +2047,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     send: (action) => {
       phoneState = reducePhone(phoneState, action)
       redraw()
+    },
+    settle: (action) => {
+      phoneState = reducePhone(phoneState, action)
     },
   })
 
@@ -1954,6 +2172,28 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       draw(root, session, link, connection, overlay, picking(), lobby(), naming(), building(), duelInteraction(), phone, pending)
       // デッキ構築のタブを替えたあとのページのスクロール。描いて高さが決まってから置く。
       settlePhoneScroll(root, scroll)
+      // 対戦画面の盤面を画面に合わせて縮め、捨札・リムーブのつまみの縦の位置を合わせる。描いて高さが決まってから測る。
+      // 操作の帯の高さが描き直さずに変わったときも、測り直す。描き直すたびに新しい帯へ付け直す。
+      stopWatchingControls()
+      stopWatchingControls = () => undefined
+      if (phone !== undefined) {
+        settlePhoneBoard(root)
+        stopWatchingControls = watchControls(root, () => {
+          if (isPhoneWidth()) settlePhoneBoard(root)
+        })
+      }
+      // 払う一覧を開いた直後は、押した方のゾーンの見出しが見える位置から出す。開き直したときは、前の位置へ戻す。
+      if (payScroll !== undefined) {
+        const top = payScroll
+        payScroll = undefined
+        payReveal = undefined
+        const area = root.querySelector<HTMLElement>('.picker__zones')
+        if (area !== null) area.scrollTop = top
+      } else if (payReveal !== undefined) {
+        const zone = payReveal
+        payReveal = undefined
+        revealPayZone(root, zone)
+      }
       // 描いたあとに送る。先に送ると、`draw` が戻すスクロールの位置で上書きされる。
       if (revealCpuDeck) {
         revealCpuDeck = false
@@ -2065,19 +2305,49 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       if (message.kind === '席についた') {
         viewingPile = undefined
         pickerPicked = undefined
+        listShown = undefined
+        dropPayList()
       }
       // 新しい選択が届いたら、選びかけの番号は前の選択のものなので捨てる。番号は選択ごとに
       // 振り直される（ADR-0008）ので、残すと範囲外や別の候補を指しうる。
-      if (message.kind === '選んでほしい') pickerPicked = undefined
+      if (message.kind === '選んでほしい') {
+        pickerPicked = undefined
+        listShown = undefined
+      }
       // 決着したら、どちらの状態も残さない。決着後は答えることも束を開くこともできる意味が
       // 無くなる（ADR-0010）うえ、次の対局に持ち越させないための重ねの備えでもある。
       if (message.kind === '盤面' && message.perspective.result !== undefined) {
         viewingPile = undefined
         pickerPicked = undefined
+        listShown = undefined
+        dropPayList()
       }
-      // 開いている束が空になったら、見るものが無いので閉じる。
+      // 払う一覧は、答えたあとの盤面でいったん閉じ、続く選択が一覧のゾーンの候補を含めば開き直す（ADR-0034）。
+      // 盤面だけでは選択が続くか行動が終わったのか分からないので、待たずに、次に届くもので決める。
+      // 候補が全部自分のエネルギー・スマッシュにある選択は、何も開いていなくても、届いた時点で払う一覧を開く
+      // （スマートフォンの並べ方で、繋がっている間だけ）。
+      const stage = session.stage
+      if (payState !== undefined && stage.kind !== '打っている') dropPayList()
+      else if (stage.kind === '打っている') {
+        if (message.kind === '盤面') {
+          if (payState !== undefined) {
+            const scroll = root.querySelector<HTMLElement>('.picker__zones')?.scrollTop ?? 0
+            settlePay({ kind: '盤面', actions: message.actions.length, scroll })
+          }
+        } else if (message.kind === '選んでほしい' && stage.board !== undefined) {
+          settlePay({
+            kind: '選んでほしい',
+            board: stage.board,
+            choice: message.choice,
+            autoOpen: isPhoneWidth() && link.kind === '繋がっている',
+          })
+        } else if (message.kind === '行えなかった') settlePay({ kind: '断られた' })
+      }
+      // 開いている束が空になったら、見るものが無いので閉じる。払う一覧は、払い終えて空になるのを待たずに
+      // 閉じるかどうかを上で決めている。
       if (
         viewingPile !== undefined &&
+        payState === undefined &&
         session.stage.kind === '打っている' &&
         session.stage.board !== undefined &&
         session.stage.board.zones[viewingPile.player][viewingPile.zone].length === 0
@@ -2100,7 +2370,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       link = value
       // 切れたら、聞いている途中のダイアログは何も送らずに閉じる（#249）。繋ぎ直した先で、その手が
       // まだ行えるとは限らない（ADR-0016）。
-      if (value.kind !== '繋がっている') selection = {}
+      if (value.kind !== '繋がっている') {
+        selection = {}
+        // 繋ぎ直した先で、払っていた選択が続いているとは限らない。開き直す予定も残さない。
+        dropPayList()
+      }
       // **切れている間に送ったものは届いていない**（`connection.ts`）ので、返事も来ない。待つのを
       // やめて、繋がり直したら確かめ直す。組みかけは画面が持っているので消えない。
       if (value.kind !== '繋がっている') updateBuilder({ ...builder, waiting: { kind: '無し' }, checking: 0 })
@@ -2141,7 +2415,14 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   // 開いていなければ、選びかけを外す（#249）。何も選んでいなければ何もしない。
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape') return
-    if (!escapeTopLayer(root)) deselect()
+    if (escapeTopLayer(root)) return
+    // スマートフォンで開いているシート（ログ・行える手）があれば、それを閉じる。選びかけは外さない。
+    if (isPhoneWidth() && phoneState.duelSheet !== undefined) {
+      phoneState = reducePhone(phoneState, { kind: '対戦のシートを閉じる' })
+      redraw()
+      return
+    }
+    deselect()
   }
 
   // スマートフォンの幅と PC の幅を行き来したら、部品の出入りが変わるので描き直す（ADR-0034）。
@@ -2152,6 +2433,16 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     redraw()
   }
   phoneQuery.addEventListener('change', onPhoneWidthChange)
+  // 画面の大きさが変わったら、盤面を縮める率とつまみの位置を測り直す（描き直しは要らない）。
+  const onResize = (): void => {
+    if (isPhoneWidth()) settlePhoneBoard(root)
+  }
+  window.addEventListener('resize', onResize)
+  // アドレスバーが出入りしても window の resize は届かないことがある。いま見えている高さ（visualViewport）の
+  // 変わり方を見て、測り直す。
+  window.visualViewport?.addEventListener('resize', onResize)
+  // 手札に触れた指の下のカードを目立たせる（ADR-0034）。root に付けるので、描き直しても付いたまま。
+  const unwireFinger = wireFingerOnHand(root, isPhoneWidth)
 
   redraw()
   window.addEventListener('keydown', onKeyDown)
@@ -2164,7 +2455,13 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
 
   return () => {
     if (overlayTimer !== undefined) clearTimeout(overlayTimer)
+    if (checkTimer !== undefined) clearTimeout(checkTimer)
+    dropPayList()
     phoneQuery.removeEventListener('change', onPhoneWidthChange)
+    window.removeEventListener('resize', onResize)
+    window.visualViewport?.removeEventListener('resize', onResize)
+    stopWatchingControls()
+    unwireFinger()
     window.removeEventListener('keydown', onKeyDown)
     window.removeEventListener('popstate', onPopState)
     window.removeEventListener('pointerdown', onPointerDown, true)
