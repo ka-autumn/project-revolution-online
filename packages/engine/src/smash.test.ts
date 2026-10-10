@@ -506,6 +506,35 @@ describe('希望ステップ', () => {
       expect(hopeStepWith(0).damage['先攻']).toBe(500)
     })
   })
+
+  // 総合ルール 第3部 第19章 1、第2部 第21章 7-2。表向きに置かれた自分自身は、スマッシュではない。
+  it('「希望」の効果が読む自分のスマッシュに、表向きに置かれた自分自身は含まれない', () => {
+    let count: number | undefined
+    let ids: readonly string[] | undefined
+    const reading = defineUnit({
+      name: 'テスト・希望・自分のスマッシュを読む',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [
+        hope(function* (duel) {
+          count = duel.smashCount(duel.controller)
+          ids = duel.smashZone().map((each) => each.id)
+        }),
+      ],
+    })
+    // 後攻には、すでに裏向きのスマッシュが 1 枚ある。希望ステップでもう 1 枚が表向きに置かれる。
+    const state = putInZone(withEnergy(smashedFromCenter(sp1000, [reading]), [vanilla]), '後攻', 'スマッシュゾーン', [
+      instantiate({ id: '前からあるスマッシュ', card: vanilla, owner: '後攻' }),
+    ])
+
+    const stepped = endStep(state)
+
+    expect(idsOf(cardsIn(stepped, '後攻', 'スマッシュゾーン'))).toContain('後攻の山札0')
+    expect(count).toBe(1)
+    expect(ids).toEqual(['前からあるスマッシュ'])
+  })
 })
 
 // 総合ルール 第3部 第20章 1（ADR-0006）
