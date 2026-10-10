@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { isArea, rowOfArea } from './board.js'
 import { AREAS, BATTLE_SPACE, LINES, areaOf, lineOf } from './index.js'
 
 // 総合ルール 第2部 第22章 2（ADR-0006）
@@ -66,5 +67,30 @@ describe('エリアとライン', () => {
 
     expect(lineOf('先攻', square)).toBe('中央ライン')
     expect(lineOf('後攻', square)).toBe('中央ライン')
+  })
+})
+
+describe('エリアの呼び名から行へ', () => {
+  // 総合ルール 第2部 第22章 6-1。`areaOf` の逆になる。
+  it('どのプレイヤーから見ても、行に直してから呼び名に戻すと元のエリアになる', () => {
+    for (const player of ['先攻', '後攻'] as const) {
+      for (const area of AREAS) {
+        expect(areaOf(player, { row: rowOfArea(player, area), column: 0 })).toBe(area)
+      }
+    }
+  })
+
+  // 総合ルール 第2部 第22章 6
+  it('同じ呼び名でも、見るプレイヤーによって指す行が入れ替わる', () => {
+    expect(rowOfArea('先攻', '敵エリア')).toBe(rowOfArea('後攻', '味方エリア'))
+    expect(rowOfArea('先攻', '敵エリア')).not.toBe(rowOfArea('後攻', '敵エリア'))
+    expect(rowOfArea('先攻', '中央エリア')).toBe(rowOfArea('後攻', '中央エリア'))
+  })
+
+  it('エリアの呼び名だけがエリアとして見分けられる', () => {
+    expect(isArea('敵エリア')).toBe(true)
+    expect(isArea('左ライン')).toBe(false)
+    expect(isArea({ row: 0, column: 0 })).toBe(false)
+    expect(isArea(undefined)).toBe(false)
   })
 })

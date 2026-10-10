@@ -816,6 +816,18 @@ describe('操作ログ', () => {
     expect(texts(board)).toEqual(['誘発'])
   })
 
+  it('能力が無効化されたことは、発生源と理由が出る', () => {
+    const board = withLog({ kind: '能力が無効化された', controller: '先攻', source: '置いてある' })
+
+    expect(texts(board)).toEqual(['テスト・置いてあるの能力は、条件を満たさなかったため無効になった'])
+  })
+
+  it('能力が無効化されたことは、発生源が名指しされていなければ「能力」と出る', () => {
+    const board = withLog({ kind: '能力が無効化された', controller: '先攻', source: undefined })
+
+    expect(texts(board)).toEqual(['能力は、条件を満たさなかったため無効になった'])
+  })
+
   it('効果が実行した命令が出る', () => {
     const board = withLog({
       kind: '命令を実行した',
@@ -851,6 +863,21 @@ describe('操作ログ', () => {
       })
 
       expect(texts(board)).toEqual(['中央エリアの中央ラインを選んだ'])
+    })
+
+    /**
+     * #278。エリアは盤面の行で記録されている。呼び名にするのは読む側で、同じ行でも見る人によって
+     * 呼び名が入れ替わる（総合ルール 第2部 第22章 6）。
+     */
+    it('エリアを選んだなら、見る人から見た呼び名で出る', () => {
+      const chosen: DuelEvent = {
+        kind: '命令を実行した',
+        controller: '後攻',
+        instruction: { kind: '選ぶ', card: undefined, square: undefined, areaRow: 0 },
+      }
+
+      expect(texts(withLog(chosen))).toEqual(['味方エリアを選んだ'])
+      expect(texts({ ...withLog(chosen), viewer: '後攻' })).toEqual(['敵エリアを選んだ'])
     })
 
     /** どちらも指していなければ、名前もスクエアも作り出さない（#95）。 */
@@ -1436,6 +1463,12 @@ describe('カットイン', () => {
     expect(views).toHaveLength(2)
     expect(views[0]?.lines).toEqual([`${NAME}を選んだ`])
     expect(views[1]?.lines).toEqual([`${NAME}を破壊した`])
+  })
+
+  it('無効化された能力は効果が実行されないので、カットインにならない', () => {
+    const fresh: readonly DuelEvent[] = [{ kind: '能力が無効化された', controller: '先攻', source: '置いてある' }]
+
+    expect(cutInViews(board, logged(fresh))).toEqual([])
   })
 
   it('「能力を解決した」で始まらない並びからは何も出ない', () => {

@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { defineStrategy, defineTrap, defineUnit, dream, pep, playSelfPlay, runSelfPlayBatch } from './index.js'
+import {
+  AREAS,
+  areaOf,
+  choose,
+  damageUnit,
+  defineStrategy,
+  defineTrap,
+  defineUnit,
+  dream,
+  pep,
+  playSelfPlay,
+  runSelfPlayBatch,
+  triggeredAbility,
+} from './index.js'
 import type { ActionPicker, Deck, DuelSetup, SelfPlayBatchResult, SelfPlayResult } from './index.js'
 
 /** 上下左右すべてのムーブアイコンを持つレベル 0 のユニット。 */
@@ -175,5 +188,47 @@ describe('複数シードの自己対戦', () => {
     expect(new Set([...decidedSeeds, ...failedSeeds])).toEqual(new Set(seeds))
     expect(decidedSeeds.length).toBeGreaterThan(0) // 本題: 決着した分の手数が捨てられていないこと
     expect(result.failures.every((failure) => failure.result.kind === '手数上限')).toBe(true)
+  })
+})
+
+// #278。エリアを選ばせる効果も、番号で答える選択のひとつである（ADR-0008）。自動で選ぶ側は
+// 候補の形を知らなくてよく、エリアの候補でも自己対戦は止まらない。
+describe('エリアを選ばせる効果を含む自己対戦', () => {
+  /** 登場した時、エリアを 1 つ選び、そのエリアにいる敵に 100 ダメージを与える。 */
+  const areaUnit = defineUnit({
+    name: 'テスト・自己対戦エリアユニット',
+    level: 0,
+    bp: 100,
+    sp: 100,
+    abilities: [
+      triggeredAbility('登場した時', function* (duel) {
+        const area = yield* choose(AREAS)
+        if (area === undefined) return
+        for (const enemy of duel.enemies()) {
+          if (areaOf(duel.controller, enemy.square) === area) yield* damageUnit(enemy, 100)
+        }
+      }),
+    ],
+  })
+
+  const deckWithAreaUnit = (): Deck => [...templates.slice(0, -1), areaUnit].flatMap((card) => Array.from({ length: 4 }, () => card))
+
+  it('例外も無限ループもなく完走し、エリアを選んだことがログに残る', () => {
+    const results = Array.from({ length: 10 }, (_, seed) =>
+      playSelfPlay({ setup: { decks: [deckWithAreaUnit(), deckWithAreaUnit()], seed }, maxActions: 3000 }),
+    )
+
+    expect(results.map((result) => result.kind)).toEqual(Array.from({ length: 10 }, () => '決着'))
+    const chosenAreas = results.flatMap((result) =>
+      result.kind === '決着'
+        ? result.state.log.filter(
+            (recorded) =>
+              recorded.event.kind === '命令を実行した' &&
+              recorded.event.instruction.kind === '選ぶ' &&
+              recorded.event.instruction.areaRow !== undefined,
+          )
+        : [],
+    )
+    expect(chosenAreas.length).toBeGreaterThan(0)
   })
 })

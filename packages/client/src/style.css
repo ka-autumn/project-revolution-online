@@ -2896,6 +2896,17 @@ body {
   cursor: pointer;
 }
 
+/*
+ * エリアごと選んでいる間（ADR-0031）、カーソルを載せた・フォーカスしたスクエアと同じエリアの
+ * 3 つ。光っている置き先と同じ橙のまま、枠を実線にして濃くし、行単位で選ぶことを見せる。
+ */
+.duel .square--エリア強調 {
+  border-style: solid;
+  border-color: #c25e00;
+  background: rgb(255 190 70 / 0.85);
+  box-shadow: inset 0 0 22px rgb(255 150 20 / 0.7), 0 0 10px rgb(255 160 40 / 0.55);
+}
+
 .duel .square .card {
   --card-width: 4.6rem;
 }
@@ -6849,6 +6860,12 @@ body {
 
   .duel .dialog__box:focus {
     outline: none;
+  }
+
+  /* 「このエリアを選ぶ」のシート：選ぼうとしているエリアの強調（ADR-0031）が盤面で見えるよう、背面はぼかさず薄くだけ暗くする */
+  .duel .dialog--エリア {
+    background: rgb(60 30 0 / 0.2);
+    backdrop-filter: none;
   }
 
   .duel .dialog__row {

@@ -7,16 +7,19 @@ import {
   applyWithAnswers,
   cardsIn,
   choose,
+  chooseAtMostOne,
   defineUnit,
   emptyDuelState,
   instantiate,
   passPriority,
+  perspectiveOf,
   planReplacing,
+  placeInZone,
   placeTopOfLibrary,
   putOnSquare,
   triggeredAbility,
 } from './index.js'
-import type { ActionProgress, CardInstance, Chooser, DuelState, LegalAction, Phase, Square } from './index.js'
+import type { ActionProgress, Area, CardInstance, Chooser, DuelState, LegalAction, Phase, Player, Square } from './index.js'
 
 /** 選択を求められたら常に最初の候補を選ぶ。盤面を進めるためだけに使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -339,6 +342,170 @@ describe('見えていない候補の置き場所', () => {
 })
 
 /**
+ * 効果が自分のスマッシュを選ぶ時の候補は、プランのコストの支払いと同じ「見えていない」候補
+ * として届く。通信の形は変えていない。
+ */
+describe('効果が選ぶスマッシュの候補', () => {
+  const secret = defineUnit({
+    name: 'テスト・効果が選ぶスマッシュ',
+    level: 2,
+    colors: ['黒'],
+    bp: 3000,
+    sp: 1500,
+  })
+
+  const discarder = defineUnit({
+    name: 'テスト・スマッシュを捨てる',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* (duel) {
+        const smash = yield* chooseAtMostOne(duel.smashZone())
+        if (smash !== undefined) yield* placeInZone(smash, '捨札', 'リリース')
+      }),
+    ],
+  })
+
+  /** 選んだスマッシュを手札へ置く以外は `discarder` と同じユニット。 */
+  const handler = defineUnit({
+    name: 'テスト・スマッシュを手札へ置く',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* (duel) {
+        const smash = yield* chooseAtMostOne(duel.smashZone())
+        if (smash !== undefined) yield* placeInZone(smash, '手札', 'リリース')
+      }),
+    ],
+  })
+
+  /** スマッシュを 2 枚持つ先攻の「登場した時」が、バンクで解決を待っている盤面。 */
+  function waiting(unit: typeof discarder = discarder): DuelState {
+    const square: Square = { row: 0, column: 1 }
+    const placed = putOnSquare(
+      putInZone(phaseReadyToAct('メインフェイズ'), '先攻', 'スマッシュゾーン', [
+        instantiate({ id: '裏のスマッシュ1', card: secret, owner: '先攻' }),
+        instantiate({ id: '裏のスマッシュ2', card: secret, owner: '先攻' }),
+      ]),
+      square,
+      instantiate({ id: '捨てさせるユニット', card: unit, owner: '先攻' }),
+    )
+    const [triggered] = unit.abilities
+    if (triggered?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
+    return {
+      ...placed,
+      bank: [
+        {
+          ability: triggered,
+          source: '捨てさせるユニット',
+          controller: '先攻',
+          self: { id: '捨てさせるユニット', square, card: unit, controller: '先攻' },
+        },
+      ],
+    }
+  }
+
+  it('見えていない候補として、置き場所つきで届く', () => {
+    const progress = applyWithAnswers(waiting(), { kind: '優先権を放棄する' }, [])
+
+    expectChoice(progress)
+    expect(progress.choice.mayDecline).toBe(true)
+    expect(progress.choice.candidates).toEqual([
+      { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 0 } },
+      { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 1 } },
+    ])
+  })
+
+  it('カードの中身も識別子も現れない', () => {
+    const progress = applyWithAnswers(waiting(), { kind: '優先権を放棄する' }, [])
+
+    expectChoice(progress)
+    const sent = JSON.stringify(progress.choice)
+    expect(sent).not.toContain('テスト・効果が選ぶスマッシュ')
+    expect(sent).not.toContain('裏のスマッシュ')
+  })
+
+  it('答えた番号のスマッシュが捨札に置かれる', () => {
+    const progress = applyWithAnswers(waiting(), { kind: '優先権を放棄する' }, [1])
+
+    expectAdvanced(progress)
+    expect(cardsIn(progress.state, '先攻', 'スマッシュゾーン').map((each) => each.id)).toEqual(['裏のスマッシュ1'])
+    expect(cardsIn(progress.state, '先攻', '捨札').map((each) => each.id)).toEqual(['裏のスマッシュ2'])
+  })
+
+  /** 選んだログの「選ぶ」の行（命令の部分）。 */
+  const chosenRows = (state: DuelState, viewer: (typeof PLAYERS)[number]) =>
+    perspectiveOf(state, viewer).log.flatMap(({ event }) =>
+      event.kind === '命令を実行した' && event.instruction.kind === '選ぶ' ? [event.instruction] : [],
+    )
+
+  it('スマッシュを選んだログは、どちらのプレイヤーにも、選んだカードを名指ししない', () => {
+    const progress = applyWithAnswers(waiting(), { kind: '優先権を放棄する' }, [1])
+
+    expectAdvanced(progress)
+    for (const viewer of PLAYERS) {
+      const rows = chosenRows(progress.state, viewer)
+      expect(rows).toHaveLength(1)
+      expect(rows.map((row) => row.card)).toEqual([undefined])
+    }
+  })
+
+  describe('スマッシュを手札へ置いた時', () => {
+    const afterTaking = () => {
+      const progress = applyWithAnswers(waiting(handler), { kind: '優先権を放棄する' }, [1])
+      expectAdvanced(progress)
+      return progress.state
+    }
+
+    it('相手の視点のログの「ゾーンへ置く」の行に、識別子が残らない', () => {
+      const rows = perspectiveOf(afterTaking(), '後攻').log.flatMap(({ event }) =>
+        event.kind === '命令を実行した' && event.instruction.kind === 'ゾーンへ置く' ? [event.instruction] : [],
+      )
+
+      expect(rows).toHaveLength(1)
+      expect(rows.map((row) => row.card)).toEqual([undefined])
+    })
+
+    it('相手の視点の、ログが名指しするカードの一覧にも出ない', () => {
+      const perspective = perspectiveOf(afterTaking(), '後攻')
+
+      expect(perspective.namedInLog.map((each) => each.id)).not.toContain('裏のスマッシュ1')
+      expect(JSON.stringify(perspective.log)).not.toContain('裏のスマッシュ')
+    })
+  })
+
+  // 捨札に置かれたスマッシュは表向きになる（総合ルール 第2部 第23章 1-1）ので、新しく見えた
+  // ものがあり、選び直しの前へは戻れない。
+  it('スマッシュを捨札に置いた後、同じ行動の中で次の選択をさせると、戻れない', () => {
+    const twice = defineUnit({
+      name: 'テスト・スマッシュを2回捨てる',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [
+        triggeredAbility('登場した時', function* (duel) {
+          const first = yield* chooseAtMostOne(duel.smashZone())
+          if (first === undefined) return
+          yield* placeInZone(first, '捨札', 'リリース')
+          const second = yield* chooseAtMostOne(duel.smashZone())
+          if (second !== undefined) yield* placeInZone(second, '捨札', 'リリース')
+        }),
+      ],
+    })
+
+    const progress = applyWithAnswers(waiting(twice), { kind: '優先権を放棄する' }, [1])
+
+    expectChoice(progress)
+    expect(progress.choice.mayGoBack).toBe(false)
+  })
+})
+
+/**
  * #14。**選ぶ余地が無いなら聞かない。**
  *
  * 候補が 1 つで、選ばないことも選べないなら、答えは 1 通りしかない。押させても盤面は同じ
@@ -554,6 +721,110 @@ describe('スクエアを選ぶ', () => {
 
     expectChoice(progress)
     expect(progress.choice.candidates.every((candidate) => candidate.kind !== 'スクエア')).toBe(true)
+  })
+})
+
+/**
+ * #278。効果がエリアを選ばせる場面では、候補として並ぶのはエリアである。
+ *
+ * エリアの呼び名は見るプレイヤーによって入れ替わる（総合ルール 第2部 第22章 6）ので、呼び名では
+ * 送らない。選ぶプレイヤー（能力の支配者、同 6-1）から見た呼び名を、盤面に固定した行に直して載せる。
+ */
+describe('エリアを選ぶ', () => {
+  const areaChooser = defineUnit({
+    name: 'テスト・エリアを選ぶユニット',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* () {
+        yield* choose<Area>(['味方エリア', '中央エリア', '敵エリア'])
+      }),
+    ],
+  })
+
+  /** エリアを選ばせる能力が、バンクで解決を待っている盤面。 */
+  function waitingToChooseArea(controller: Player): DuelState {
+    const square: Square = { row: 1, column: 1 }
+    const placed = putOnSquare(
+      phaseReadyToAct('メインフェイズ'),
+      square,
+      instantiate({ id: '選ばせるユニット', card: areaChooser, owner: controller }),
+    )
+    const [triggered] = areaChooser.abilities
+    if (triggered?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
+
+    return {
+      ...placed,
+      bank: [
+        {
+          ability: triggered,
+          source: '選ばせるユニット',
+          controller,
+          self: { id: '選ばせるユニット', square, card: areaChooser, controller },
+        },
+      ],
+    }
+  }
+
+  const PASS: LegalAction = { kind: '優先権を放棄する' }
+
+  // 総合ルール 第2部 第22章 6。先攻の味方エリアは row 0、敵エリアは row 2。
+  it('先攻が選ぶなら、先攻から見た呼び名の行で並ぶ', () => {
+    const progress = applyWithAnswers(waitingToChooseArea('先攻'), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.player).toBe('先攻')
+    expect(progress.choice.candidates).toEqual([
+      { kind: 'エリア', row: 0 },
+      { kind: 'エリア', row: 1 },
+      { kind: 'エリア', row: 2 },
+    ])
+  })
+
+  // 総合ルール 第2部 第22章 6-1。あるプレイヤーの味方エリアは、相手の敵エリアになる。
+  it('後攻が選ぶなら、同じ呼び名でも行が入れ替わる', () => {
+    const progress = applyWithAnswers(waitingToChooseArea('後攻'), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.player).toBe('後攻')
+    expect(progress.choice.candidates).toEqual([
+      { kind: 'エリア', row: 2 },
+      { kind: 'エリア', row: 1 },
+      { kind: 'エリア', row: 0 },
+    ])
+  })
+
+  /** エリアは盤面の位置であって、隠すものが無い。見えていないカードとしては並べない。 */
+  it('見えていないものとしては並ばない', () => {
+    const progress = applyWithAnswers(waitingToChooseArea('先攻'), PASS, [])
+
+    expectChoice(progress)
+    expect(progress.choice.candidates.some((candidate) => candidate.kind === '見えていない')).toBe(false)
+  })
+
+  /** 答えは番号のままである（ADR-0008）。 */
+  it('番号で答えると、そのエリアが選ばれて進む', () => {
+    const progress = applyWithAnswers(waitingToChooseArea('先攻'), PASS, [2])
+
+    expectAdvanced(progress)
+  })
+
+  /** 候補の番号と、記録に残るエリアの行が、先攻でも後攻でも対応している（番号とエリアがずれると落ちる）。 */
+  it('番号で答えた分のエリアの行が、選んだ記録に残る', () => {
+    const chosenRows = (controller: Player, answer: number): unknown[] => {
+      const progress = applyWithAnswers(waitingToChooseArea(controller), PASS, [answer])
+      expectAdvanced(progress)
+
+      return progress.state.log.flatMap(({ event }) =>
+        event.kind === '命令を実行した' && event.instruction.kind === '選ぶ' ? [event.instruction.areaRow] : [],
+      )
+    }
+
+    // 先攻の候補は味方エリア（row 0）・中央エリア（row 1）・敵エリア（row 2）の順。後攻は row 2・1・0 の順。
+    expect([0, 1, 2].map((answer) => chosenRows('先攻', answer))).toEqual([[0], [1], [2]])
+    expect([0, 1, 2].map((answer) => chosenRows('後攻', answer))).toEqual([[2], [1], [0]])
   })
 })
 

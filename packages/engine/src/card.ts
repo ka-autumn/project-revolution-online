@@ -4,13 +4,10 @@ import type {
   AttributeAddingAbility,
   CourageAbility,
   BpModifyingAbility,
-  DreamAbility,
-  PepAbility,
-  GutsAbility,
   HopeAbility,
   MoveCostingAbility,
+  PassiveKeyword,
   PlanReplacingAbility,
-  TrustAbility,
 } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
 import type { Effect, TrapEffect } from './effect.js'
@@ -46,6 +43,15 @@ export type CardType = (typeof CARD_TYPES)[number]
  * したがって綴りの揺れを engine 側では検出できない。
  */
 export type Attribute = string
+
+/**
+ * カードのメーカーシンボル（総合ルール 第2部 第13章 1-1）。
+ *
+ * 属性と同じく、総合ルールは一覧を定義しておらず閉じた集合として持てない（同 5 は属性
+ * についての規定だが、メーカーシンボルも属性に含まれる、同 1）。綴りの揺れは engine 側では
+ * 検出できない。
+ */
+export type MakerSymbol = string
 
 /**
  * 種別によらず、どのカードにも書かれていること（総合ルール 第2部 第2章 1）。
@@ -85,15 +91,30 @@ interface WrittenCard {
    * カードに書かれている属性（総合ルール 第2部 第13章）。
    *
    * 属性にはメーカーシンボル・メディアシンボル・詳細属性の 3 種類が含まれる（同 1）が、
-   * ここに持つのは詳細属性だけである。テキストが参照しているのが詳細属性だけで、他の 2 つは
-   * 参照する側がいないためである（ムーブアイコン・トリガーアイコンと同じ考え方）。区別が
-   * 要るテキストが出てきた時に、種類ごとに分ける。
+   * ここに持つのは詳細属性だけである。メーカーシンボルは `makerSymbols` に分けた。メーカー
+   * シンボルを参照するテキストが出てきたためで、属性の並びに混ぜると、属性を数える・加える
+   * 効果がメーカーシンボルまで巻き込む。メディアシンボルは参照する側がまだいないので持たない
+   * （ムーブアイコン・トリガーアイコンと同じ考え方）。区別が要るテキストが出てきた時に分ける。
    *
    * **効果によって属性が加わることがある**（同 4）ので、いま何の属性を持っているかは
    * ここだけでは決まらない。効果から見えるのは継続効果を適用した後の姿で、それを写すのは
    * `view.ts` である。
    */
   readonly attributes: readonly Attribute[]
+  /**
+   * カードに書かれているメーカーシンボル（総合ルール 第2部 第13章 1-1）。
+   *
+   * 効果と常在型能力が見るのは、この並びにあるシンボルを含むかどうかだけである
+   * （`hasMakerSymbol`）。あるシンボルを別のシンボルとして扱う決まり（同 1-1-1）は片方向で、
+   * 扱われる側のシンボルを持つカードだけが、もう一方としても数えられる（逆は成り立たない）。
+   * そのカードの側が、並びに両方を書く。扱われる先のシンボルしか持たないカードは、並びにも
+   * 先のシンボルだけを書く。engine は実在のメーカー名を 1 つも知らない（ADR-0001・ADR-0002）。
+   *
+   * メーカーシンボルを加える・失わせる効果を持つカードは無いので、書かれた並びがそのまま
+   * 継続効果を適用した後の姿でもある（総合ルールは属性一般の変更・追加を認めている。
+   * 同 第13章 3・4）。そうした効果が出てきた時は、属性と同じ形にする。
+   */
+  readonly makerSymbols: readonly MakerSymbol[]
   /** テキストが定義する能力（総合ルール 第2部 第10章 1）。改行ごとに別の能力になる（同 第4部 第1章 3）。 */
   readonly abilities: readonly Ability[]
   /**
@@ -202,6 +223,8 @@ interface CardSpec {
   readonly reverseStars?: number
   /** 省略した場合は属性を持たない。 */
   readonly attributes?: readonly Attribute[]
+  /** 省略した場合はメーカーシンボルを持たない。 */
+  readonly makerSymbols?: readonly MakerSymbol[]
   /**
    * 省略した場合はテキストを持たない（#93）。
    *
@@ -244,6 +267,7 @@ function written<T extends CardType>(type: T, spec: CardSpec) {
     stars: spec.stars ?? 0,
     reverseStars: spec.reverseStars ?? 0,
     attributes: spec.attributes ?? [],
+    makerSymbols: spec.makerSymbols ?? [],
     text: spec.text ?? [],
   }
 }
@@ -261,17 +285,32 @@ export function defineTrap(spec: TrapSpec): TrapCard {
 }
 
 /**
+ * そのカードが、そのメーカーシンボルを持つか（総合ルール 第2部 第13章 1-1）。
+ *
+ * 書かれた並びに含まれるかどうかだけを見る。メーカーシンボルを加える・失わせる効果を持つ
+ * カードは無いので、継続効果を適用した後の姿を通す必要が無い。別のシンボルとして扱われる
+ * シンボルは、そのカードの並びに両方が書かれている前提で、片方向に答える（`makerSymbols`）。
+ */
+export function hasMakerSymbol(card: Card, symbol: MakerSymbol): boolean {
+  return card.makerSymbols.includes(symbol)
+}
+
+/**
  * そのカードがそのキーワード能力を持つか。
  *
  * 常在型のキーワード能力だけを見る。テキストに書かれた能力のうち、名前だけで参照できて
  * 内容を持たないのはこの形のものである（`ability.ts` の `DreamAbility`・`PepAbility`）。
  * 常在型能力には内容を持つもの（`BpModifyingAbility`）もあるので、名前で引く前に
- * 名前を持つ側であることを確かめる。
+ * 名前を持つ側であることを確かめる。「友情」はその例で、ＢＰを修整する常在型能力に名前を
+ * 足した形（`FriendshipAbility`）で持つ。
+ *
+ * 見るのは、渡されたカードの `abilities` だけである。盤面から来た写し（`DuelView` の
+ * `allies`・`enemies`・`self` が返す、継続効果を適用した後の `card`）を渡す限り、与えられた能力も含めて正しく答える
+ * （与えられた能力は写しの `abilities` に載る形で表す。`effect.ts` の `DuelView.hasKeyword`）。
+ * カードの定義そのもの（`defineUnit` が返したもの）を渡すと、書かれた能力しか見ない。
+ * 盤面にいるユニットのことは `DuelView.hasKeyword` で尋ねるとよい。
  */
-function hasKeyword(
-  card: Card,
-  keyword: (DreamAbility | PepAbility | TrustAbility | GutsAbility)['keyword'],
-): boolean {
+export function hasKeyword(card: Card, keyword: PassiveKeyword): boolean {
   return card.abilities.some(
     (ability) => ability.kind === '常在型能力' && 'keyword' in ability && ability.keyword === keyword,
   )
@@ -295,6 +334,11 @@ export function hasTrust(card: Card): boolean {
 /** そのカードが「根性」を持つか（総合ルール 第5部 第6章 2）。 */
 export function hasGuts(card: Card): boolean {
   return hasKeyword(card, '根性')
+}
+
+/** そのカードが「友情」を持つか（総合ルール 第5部 第5章 2）。数値（友情－Ｘ のＸ）は問わない。 */
+export function hasFriendship(card: Card): boolean {
+  return hasKeyword(card, '友情')
 }
 
 /**

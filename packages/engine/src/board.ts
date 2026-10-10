@@ -87,6 +87,26 @@ export function areaOf(player: Player, square: Square): Area {
   return square.row === home ? '味方エリア' : '敵エリア'
 }
 
+/** 値がエリアの呼び名か。効果が選ばせる候補（`effect.ts` の `choose`）が、エリアかどうかを見分けるのに使う。 */
+export function isArea(value: unknown): value is Area {
+  return AREAS.some((area) => area === value)
+}
+
+/**
+ * そのプレイヤーから見たそのエリアが、盤面のどの行か（総合ルール 第2部 第22章 6）。
+ *
+ * `areaOf` の逆である。呼び名は見るプレイヤーによって入れ替わる（同 6）ので、呼び名のままでは
+ * 見る人の違う相手へ渡せない。盤面に固定した行にすれば、どちらから見ても同じものを指す。
+ * ルールがエリアを指定する場合は、そのルールに従って行動するプレイヤーから見て判断する
+ * （同 6-1）。
+ */
+export function rowOfArea(player: Player, area: Area): SquareIndex {
+  if (area === '中央エリア') return CENTER_ROW
+
+  const home = player === '先攻' ? HOME_ROW_OF_FIRST : oppositeIndex(HOME_ROW_OF_FIRST)
+  return area === '味方エリア' ? home : oppositeIndex(home)
+}
+
 /**
  * そのプレイヤーから見た、そのスクエアのあるライン（総合ルール 第2部 第22章 4）。
  *

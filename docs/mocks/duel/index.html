@@ -359,6 +359,24 @@ body {
   font-size: 0.85rem;
 }
 
+/* 選ばせている問いの行と、盤面から押す案内（実装の `choice__title`・`choice__none`） */
+.choice__title {
+  margin: 0.5rem 0.9rem 0;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.choice__title[hidden] { display: none; }
+
+.choice__none {
+  margin: 0.5rem 0.9rem;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+}
+
 .choice__back {
   display: flex;
   gap: 0.5rem;
@@ -778,6 +796,16 @@ body {
   background: rgb(255 214 120 / 0.55);
   box-shadow: inset 0 0 16px rgb(255 180 40 / 0.5);
   cursor: pointer;
+}
+
+/* 効果でエリアを選んでいる間（ADR-0031）、カーソルを載せた・フォーカスしたスクエアと同じエリアの
+   3 つ。光る橙のまま、枠を実線にして濃くする。モックでは先に敵エリアをこの状態にしてあり、
+   スクエアに乗せる・Tab で手を置くと、後から動いたほうのエリアに移り、離すと消える。 */
+.square--エリア強調 {
+  border-style: solid;
+  border-color: #c25e00;
+  background: rgb(255 190 70 / 0.85);
+  box-shadow: inset 0 0 22px rgb(255 150 20 / 0.7), 0 0 10px rgb(255 160 40 / 0.55);
 }
 
 .square .card { --card-width: 4.6rem; }
@@ -2000,6 +2028,12 @@ body {
 
   .log.sheet--開いている { padding-bottom: 0.6rem; }
 
+  /* 効果でエリアを選んでいる間に、光っているスクエアを押したときのシート。見出しはエリアの呼び名、ユニットがいれば詳細、
+     一番下に「このエリアを選ぶ」と「閉じる」。選ぼうとしているエリアの強調が見えるよう、背面はぼかさず薄くだけ暗くする */
+  .duel:has(.detail.sheet--エリア) .sheet-backdrop { background: rgb(60 30 0 / 0.2); }
+  .detail__area-title { margin: 0.2rem 0 0; color: var(--heading); font-size: 1.1rem; font-weight: 800; }
+  .detail__area-lead { margin: 0.2rem 0 0; color: var(--ink-dim); font-size: 0.8rem; }
+
   /* 一覧（見る・選ぶ）は画面いっぱいに出す。右の列は無いので空けない */
   .picker { inset: 0; padding: 0.5rem; }
   .picker.picker--開いている { display: flex; }
@@ -2095,6 +2129,7 @@ body {
         </div>
         <p class="controls__reason">相手が優先権を放棄しました</p>
         <p class="phone-only phone-priority">自分の優先権・相手が優先権を放棄しました</p>
+        <h3 class="choice__title" id="choice-asking" hidden>見本・メカナイト の効果の対象を選んでください</h3>
         <p class="actions__none" id="choice-guide" hidden>置く場所を選択してください</p>
         <div class="choice__back" id="choice" hidden>
           <button type="button">カードの選択をやめる</button>
@@ -2214,6 +2249,8 @@ body {
   <label><input type="checkbox" data-show="show-partner" checked>パートナーバトル</label>
   <label><input type="checkbox" data-show="show-plan" checked>プランにカードあり</label>
   <label><input type="checkbox" data-show="show-picking">クリックで選ぶ状態</label>
+  <label><input type="checkbox" data-show="show-area">効果でエリアを選ぶ（敵エリアと中央エリアが候補）</label>
+  <label><input type="checkbox" data-show="show-area-sheet">スマホ：エリアを選ぶシート（要「効果でエリアを選ぶ」。敵エリアのユニットのいるスクエアを押した）</label>
   <label><input type="checkbox" data-show="show-focus">山札にキーボードの手</label>
   <label><input type="checkbox" data-show="show-cost">コストの選択</label>
   <label><input type="checkbox" data-show="show-battle">バトル中</label>
@@ -2687,6 +2724,8 @@ function selected() {
   return document.querySelector('.card--選択中[data-name]')
 }
 function restoreDetail() {
+  // エリアのシートが開いている間は、シートの中身を替えない
+  if (areaSheetSquare !== null) return
   for (const n of document.querySelectorAll('.card--詳細中')) n.classList.remove('card--詳細中')
   renderDetail(selected())
 }
@@ -2697,6 +2736,8 @@ for (const node of document.querySelectorAll('.card[data-name]')) {
   node.addEventListener('blur', () => { if (!phone.matches) restoreDetail() })
   node.addEventListener('click', () => {
     if (!phone.matches) return
+    // 光っているエリアのスクエアの中のユニットは、押すとそのスクエアのシートになる（盤面のクリックで開く）
+    if (node.closest('.square--エリア選択')) return
     if (node.closest('.picker')) pickInList(node)
     else if (aimsOnly(node)) startAiming(node)
     else openCardSheet(node)
@@ -2755,6 +2796,7 @@ handOwn.addEventListener('pointermove', (event) => {
 handOwn.addEventListener('pointerleave', (event) => { if (event.pointerType === 'mouse') markUnderFinger() })
 // コストの選択で、払う一覧を自動で開いたか（開くのは選択に入ったときの 1 回だけ）
 let costOpened = false
+let wasAreaChoice = false
 const peek = document.getElementById('peek')
 function closePeek() {
   peek.hidden = true
@@ -2842,11 +2884,52 @@ window.addEventListener('resize', placePeek)
 // 見本：光った行き先を押すと、手を送ったことにして選択を終える
 document.getElementById('board').addEventListener('click', (event) => {
   if (!phone.matches || !event.target.closest('.square--置き先')) return
+  // エリアを選んでいる間は、答えずにそのエリアのシートを出す（置き先のスクエアは、今までどおり 1 回で答える）
+  const areaSquare = event.target.closest('.square--エリア選択')
+  if (areaSquare) {
+    openAreaSheet(areaSquare)
+    return
+  }
   document.querySelector('[data-show="show-picking"]').checked = false
   apply()
 })
+// シートを出したスクエア。開いている間、そのエリアを強調したままにする（`paintAreas`）
+let areaSheetSquare = null
 function closeSheets() {
   for (const n of document.querySelectorAll('.sheet--開いている')) n.classList.remove('sheet--開いている')
+  if (areaSheetSquare !== null) {
+    areaSheetSquare = null
+    detail.classList.remove('sheet--エリア')
+    duel.classList.remove('show-area-sheet')
+    document.querySelector('[data-show="show-area-sheet"]').checked = false
+    paintAreas()
+  }
+}
+// 光っているエリアのスクエアを押したときのシート。そのスクエアにユニットがいれば詳細を出す。空きスクエアも同じシートで、
+// 詳細は無い。同じエリアの別のユニットを読むときは、閉じて、そのスクエアを押す
+function openAreaSheet(square) {
+  const area = [...square.classList].find((name) => name.startsWith('square--') && name.endsWith('エリア'))?.replace('square--', '')
+  const units = [...square.querySelectorAll('.card[data-name]')]
+  const title = Object.assign(document.createElement('h2'), { className: 'detail__area-title', textContent: area })
+  const lead = Object.assign(document.createElement('p'), { className: 'detail__area-lead', textContent: 'このエリアを選びますか' })
+  const actions = Object.assign(document.createElement('div'), { className: 'detail__actions' })
+  const choose = Object.assign(document.createElement('button'), { type: 'button', className: 'button--primary', textContent: 'このエリアを選ぶ' })
+  // 答えを送ったことにして、選択を終える
+  choose.addEventListener('click', () => {
+    closeSheets()
+    document.querySelector('[data-show="show-area"]').checked = false
+    apply()
+  })
+  const close = Object.assign(document.createElement('button'), { type: 'button', textContent: '閉じる' })
+  close.addEventListener('click', closeSheets)
+  actions.append(choose, close)
+  detail.replaceChildren(...units.flatMap((unit) => detailParts(unit)), title, lead, actions)
+  openSheet(detail)
+  areaSheetSquare = square
+  detail.classList.add('sheet--エリア')
+  duel.classList.add('show-area-sheet')
+  document.querySelector('[data-show="show-area-sheet"]').checked = true
+  paintAreas()
 }
 function openSheet(node) {
   closeSheets()
@@ -3057,13 +3140,43 @@ function apply() {
   for (const c of document.querySelectorAll('.mock-pickable')) c.classList.toggle('card--押せる', picking)
   for (const s of document.querySelectorAll('.mock-target')) s.classList.toggle('square--置き先', picking)
   document.querySelector('.hand--自分 .card')?.classList.toggle('card--選択中', picking)
+  // 効果でエリアを選ぶ状態（#278、ADR-0031）。候補は敵エリアと中央エリアで、ユニットのいないスクエアも
+  // 含めて 3 つとも光る。味方エリアは候補に無いので光らない。押せるのはスクエアで、カードは押せない
+  const areaChoice = duel.classList.contains('show-area')
+  const areaCandidate = (sq) => !sq.classList.contains('square--味方エリア')
+  for (const sq of document.querySelectorAll('.board .square')) {
+    sq.classList.toggle('square--置き先', (picking && sq.classList.contains('mock-target')) || (areaChoice && areaCandidate(sq)))
+    sq.classList.toggle('square--エリア選択', areaChoice && areaCandidate(sq))
+    // 実装では、押せるスクエアが手を置ける先になる（クリックモードのキーボード、ADR-0033）
+    if (areaChoice && areaCandidate(sq)) sq.tabIndex = 0
+    else sq.removeAttribute('tabindex')
+  }
+  if (areaChoice && !wasAreaChoice) resetAreaPointer()
+  if (!areaChoice) clearAreaPointer()
+  wasAreaChoice = areaChoice
+  // スマホ：エリアのシート。切り替えで入れたときは、敵エリアのユニットのいるスクエアを押した体で開く。
+  // 切り替えを外した・エリアを選ぶ状態でなくなったときは閉じる
+  const areaSheetOn = duel.classList.contains('show-area-sheet')
+  if (areaSheetOn && areaChoice && phone.matches && areaSheetSquare === null) {
+    openAreaSheet(document.querySelector('.board .square--敵エリア .card[data-name]').closest('.square'))
+  } else if (areaSheetSquare !== null && !(areaSheetOn && areaChoice)) {
+    closeSheets()
+  }
+  paintAreas()
+  const guide = document.getElementById('choice-guide')
+  guide.textContent = areaChoice
+    ? '盤面の光っているところを押して選んでください'
+    : '置く場所を選択してください'
+  guide.className = areaChoice ? 'choice__none' : 'actions__none'
+  // 実装は、案内の上に何を選ぶ場面かの問いの行を出す（`choiceView` の `asking`）
+  document.getElementById('choice-asking').hidden = !areaChoice
   // 押せる山札（#249）と、そこにキーボードの手がある状態（ADR-0033）
   const focusing = duel.classList.contains('show-focus')
   const ownPile = ownDeck.querySelector('.pile')
   ownPile.classList.toggle('pile--押せる', picking || focusing)
   ownPile.classList.toggle('mock-focus', focusing)
   document.getElementById('choice').hidden = !picking
-  document.getElementById('choice-guide').hidden = !picking
+  document.getElementById('choice-guide').hidden = !(picking || areaChoice)
   // コストの選択: 自分のエネルギーとスマッシュの群を囲み、札を付け、選べるカード（立っているもの）を上に出す
   const cost = duel.classList.contains('show-cost')
   const costGroup = document.querySelector('.group--自分.group--エネルギー')
@@ -3094,6 +3207,43 @@ function apply() {
   // 画像に書き出す用：#…,detail=カード名 で、そのカードに乗せた状態にする
   const want = decodeURIComponent(location.hash).match(/detail=([^,]+)/)?.[1]
   if (want) renderDetail(document.querySelector(`.square .card[data-name="${want}"], .card[data-name="${want}"]`))
+}
+// エリアを選んでいる間、カーソルを載せた・フォーカスしたスクエアと同じエリアの 3 つをまとめて強調する
+// （実装は `area-highlight.ts` の決め方と `render.ts` の `areaHighlightOf`）。後から動いたほうのエリアだけを強調し、
+// 後から動いたほうが離れたら、もう一方がまだ押せるエリアのスクエアにあればそちらに戻る。
+const areaPointer = { cursor: null, focus: null, latest: null }
+function clearAreaPointer() {
+  areaPointer.cursor = null
+  areaPointer.focus = null
+  areaPointer.latest = null
+}
+// 見本の絵のために、エリアを選ぶ状態に入った時は敵エリアにカーソルがある体にする（離れれば消える）
+function resetAreaPointer() {
+  areaPointer.cursor = document.querySelector('.board .square--敵エリア')
+  areaPointer.focus = null
+  areaPointer.latest = 'cursor'
+}
+function paintAreas() {
+  const candidates = [...document.querySelectorAll('.board .square--エリア選択')]
+  // シートが開いている間は、シートを出したスクエアのエリアが先（カーソルとフォーカスより優先）
+  const order = [areaSheetSquare, ...(areaPointer.latest === 'focus' ? [areaPointer.focus, areaPointer.cursor] : [areaPointer.cursor, areaPointer.focus])]
+  const found = order.find((sq) => sq !== null && candidates.includes(sq))
+  const area = found === undefined ? undefined : [...found.classList].find((name) => name.startsWith('square--') && name.endsWith('エリア'))
+  for (const sq of document.querySelectorAll('.board .square')) {
+    sq.classList.toggle('square--エリア強調', area !== undefined && candidates.includes(sq) && sq.classList.contains(area))
+  }
+}
+function movePointer(kind, sq) {
+  const other = kind === 'cursor' ? 'focus' : 'cursor'
+  areaPointer[kind] = sq
+  areaPointer.latest = sq !== null ? kind : areaPointer[other] !== null ? other : null
+  paintAreas()
+}
+for (const sq of document.querySelectorAll('.board .square')) {
+  sq.addEventListener('mouseenter', () => movePointer('cursor', sq))
+  sq.addEventListener('mouseleave', () => movePointer('cursor', null))
+  sq.addEventListener('focusin', () => movePointer('focus', sq))
+  sq.addEventListener('focusout', () => movePointer('focus', null))
 }
 for (const box of document.querySelectorAll('.mock-switch input')) {
   box.addEventListener('change', apply)

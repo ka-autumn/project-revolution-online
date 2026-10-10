@@ -1,8 +1,9 @@
 import { BATTLE_SPACE } from './board.js'
+import { hasKeyword } from './card.js'
 import type { UnitCard } from './card.js'
-import { cardsIn } from './duel.js'
+import { cardsIn, smashesOf } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
-import type { CardInZone, DuelView, UnitOnSquare } from './effect.js'
+import type { CardInZone, DuelView, EnergyInZone, SmashCard, UnitOnSquare } from './effect.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import type { PlayerZone } from './zone.js'
@@ -131,6 +132,36 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
     // 枚数だけを返すので、見せたカードとして覚えるものが無い。数えたことによって、その
     // カードを対象にできるようにはならない。
     energyCount: (player) => cardsIn(currentState(), player, 'エネルギーゾーン').length,
-    energyZone: showZone('エネルギーゾーン'),
+    energyZone: () => {
+      const energies = cardsIn(currentState(), controller, 'エネルギーゾーン').map(
+        (instance): EnergyInZone => ({
+          id: instance.id,
+          zone: 'エネルギーゾーン',
+          card: instance.card,
+          orientation: instance.orientation,
+        }),
+      )
+      for (const energy of energies) source.show(energy.id)
+      return energies
+    },
+    // 数え方は `smashesOf` に任せる。表向きに置かれているカードを数えない判断をここで
+    // 繰り返さない。
+    smashCount: (player) => smashesOf(currentState(), player).length,
+    // 支配者自身のスマッシュだけを、中身を持たない形で見せる。持ち主であっても表側は見られない
+    // （総合ルール 第2部 第21章 7-3）ので、`card` を写さない。
+    smashZone: () => {
+      const smashes = smashesOf(currentState(), controller).map(
+        (instance): SmashCard => ({ id: instance.id, zone: 'スマッシュゾーン' }),
+      )
+      for (const smash of smashes) source.show(smash.id)
+      return smashes
+    },
+    // 継続効果を適用した後の姿を読む。与えられた能力は、能力を与える効果が入った時に、上の
+    // `units()` が返す写しの `card.abilities` に載せる形で表す（いまはそうした効果が無く、
+    // 写しの能力は書かれたものと同じ）。そうなればここは直さずに済み、直すのは写しを作る側
+    // （`continuous.ts` の `continuousData`）である。与えられた能力が生むＢＰ修整を集める側
+    // （`continuous.ts` の `gather`）は、書かれた能力から引いているので別に直す。写しが
+    // 見つからない（渡されたユニットがもうスクエアにいない）時は、渡された写しの能力を見る。
+    hasKeyword: (unit, keyword) => hasKeyword((units().find((each) => each.id === unit.id) ?? unit).card, keyword),
   }
 }

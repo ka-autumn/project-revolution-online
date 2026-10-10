@@ -1,5 +1,7 @@
 import { COLORS, DUEL_FORMATS } from '@revolution/engine'
 import { FOCUS_KEY_ATTRIBUTE, REGION_ATTRIBUTE, type Region, wireBoardKeyboard } from './board-keyboard.js'
+import { highlightedSquares } from './area-highlight.js'
+import type { AreaPointerStore } from './area-highlight.js'
 import { ignoreKeyRepeat, onLayerEscape } from './dialog-focus.js'
 import type {
   Area,
@@ -142,6 +144,8 @@ function element(tag: string, className: string, text?: string): HTMLElement {
 export interface PickableSquare {
   readonly square: Square
   readonly label: string
+  /** エリアごと選んでいる（効果がエリアを選ばせている場面、#278）。`input-model.ts` の同名の型と同じ。 */
+  readonly wholeArea?: true
 }
 
 export interface BoardPicking {
@@ -149,6 +153,16 @@ export interface BoardPicking {
   readonly picked: CardId | undefined
   /** 光らせるスクエア。押す先がカードだけの場面では空か、渡されない。 */
   readonly squares?: readonly PickableSquare[]
+  /**
+   * エリアごと選んでいる間の、カーソルとフォーカスのあるスクエアの覚え先（`area-highlight.ts`）。
+   * 描き直しをまたいで持つので、呼ぶ側（`index.ts`）が渡す。エリアを選ぶ場面でだけ渡される。
+   */
+  readonly areaPointer?: AreaPointerStore
+  /**
+   * 「このエリアを選ぶ」のシート（スマートフォン、ADR-0034）が開いている間の、シートを出したスクエア。
+   * そのエリアは、カーソルとフォーカスに関わらず強調する。閉じていれば渡されない。
+   */
+  readonly areaSheet?: Square
   /**
    * 押せる裏向きのカードの置き場所（#127）。行える手を選ぶ場面では渡されない。
    *
@@ -932,13 +946,15 @@ function squareElement(
   picking: BoardPicking | undefined,
   battle: BattleView | undefined,
   keyboard: boolean,
+  areas: AreaHighlight | undefined,
 ): HTMLElement {
   const pickable = pickableAt(picking, square.square)
   const inBattle =
     battle !== undefined && battle.square.row === square.square.row && battle.square.column === square.square.column
+  const wholeArea = pickable?.wholeArea === true
   const node = element(
     'div',
-    `square square--${square.area}${pickable === undefined ? '' : ' square--置き先'}${inBattle ? ' square--バトル中' : ''}`,
+    `square square--${square.area}${pickable === undefined ? '' : ' square--置き先'}${wholeArea ? ' square--エリア選択' : ''}${inBattle ? ' square--バトル中' : ''}`,
   )
   if (inBattle) node.append(element('span', 'square__battle', 'バトル中'))
   // 押せることを色だけで区別させない。読み上げにも出す。
@@ -969,10 +985,66 @@ function squareElement(
   if (pickable !== undefined && onSquare !== undefined) {
     const picked = pickable.square
     node.addEventListener('click', () => onSquare(picked))
+    if (wholeArea && areas !== undefined) areas.wire(node, picked)
   }
   for (const card of square.cards) node.append(cardElement(card, picking))
 
   return node
+}
+
+/** エリアごと選んでいる間、カーソルを載せた（またはフォーカスした）スクエアと同じエリアの 3 つに付ける class。 */
+export const AREA_HIGHLIGHT = 'square--エリア強調'
+
+/** 盤面 1 枚を描く間だけ持つ、エリアを選ぶスクエアの束ね役。 */
+interface AreaHighlight {
+  /** 押せるエリアのスクエアに、カーソル・フォーカスの出入りを聞かせる。 */
+  readonly wire: (node: HTMLElement, square: Square) => void
+  /** 覚えている位置から、強調する class を全スクエアに写す。 */
+  readonly apply: () => void
+}
+
+/**
+ * エリアを選んでいる間、カーソルを載せた（またはフォーカスした）スクエアと同じエリアの 3 つのスクエアを
+ * まとめて強調する（ADR-0031）。行単位で選んでいることが、押す前に見えるようにするため。
+ *
+ * どのエリアを強調するかは `area-highlight.ts` が決める。ここは、出入りを覚え先へ渡し、結果を class に
+ * 写すだけである。カーソルとフォーカスの位置は要素ではなくスクエアで覚えるので、描き直して要素が
+ * 作り直されても、描いた直後（`apply`）に同じ強調が付く。
+ */
+function areaHighlightOf(store: AreaPointerStore, sheet: Square | undefined): AreaHighlight {
+  const nodes: { readonly square: Square; readonly node: HTMLElement }[] = []
+  const apply = (): void => {
+    const lit = highlightedSquares(
+      store.read(),
+      nodes.map((each) => each.square),
+      sheet,
+    )
+    for (const each of nodes) {
+      each.node.classList.toggle(
+        AREA_HIGHLIGHT,
+        lit.some((square) => square.row === each.square.row && square.column === each.square.column),
+      )
+    }
+  }
+
+  return {
+    apply,
+    wire: (node, square) => {
+      nodes.push({ square, node })
+      const enter = (pointer: 'カーソル' | 'フォーカス') => (): void => {
+        store.send({ kind: '入った', pointer, square })
+        apply()
+      }
+      const leave = (pointer: 'カーソル' | 'フォーカス') => (): void => {
+        store.send({ kind: '出た', pointer })
+        apply()
+      }
+      node.addEventListener('mouseenter', enter('カーソル'))
+      node.addEventListener('mouseleave', leave('カーソル'))
+      node.addEventListener('focusin', enter('フォーカス'))
+      node.addEventListener('focusout', leave('フォーカス'))
+    },
+  }
 }
 
 /**
@@ -1053,13 +1125,14 @@ function boardGridElement(
   const bank = place(waitingElement('バンク', view.bank), '3 / 1')
   const triggered = place(waitingElement('誘発した能力', view.triggered), '3 / 6')
 
+  const areas = picking?.areaPointer === undefined ? undefined : areaHighlightOf(picking.areaPointer, picking.areaSheet)
   const grid: HTMLElement[] = []
   view.squares.forEach((row, r) => {
     const first = row[0]
     if (first === undefined) return
     grid.push(place(areaLabelElement(first.area), `${r + 2} / 2`))
     row.forEach((square, i) => {
-      const squareNode = inRegion(squareElement(square, picking, view.battle, keyboard), 'battle')
+      const squareNode = inRegion(squareElement(square, picking, view.battle, keyboard, areas), 'battle')
       // 矢印キーで、画面で見える向きのまま隣へ移るための位置。
       squareNode.dataset.screenRow = String(r)
       squareNode.dataset.screenColumn = String(i)
@@ -1072,6 +1145,16 @@ function boardGridElement(
   // ままにする（ADR-0033）。
   if (keyboard) node.append(ownStrip, ownTrap, ownDeck, ...grid, bank, triggered, opponentStrip, opponentDeck, opponentTrap)
   else node.append(opponentStrip, ownStrip, opponentDeck, opponentTrap, ownTrap, ownDeck, bank, triggered, ...grid)
+
+  if (areas !== undefined) {
+    // 描き直しの前にカーソル・フォーカスのあったエリアの強調を、作り直した盤面にも付ける。
+    areas.apply()
+    // 盤面の外へ出たら、カーソルは離れたことにする。描き直しで消えた要素の `mouseleave` は届かない。
+    node.addEventListener('mouseleave', () => {
+      picking?.areaPointer?.send({ kind: '出た', pointer: 'カーソル' })
+      areas.apply()
+    })
+  }
 
   return node
 }
@@ -4256,6 +4339,69 @@ export function askElement(view: AskView, handlers: AskHandlers, detail?: HTMLEl
     if (event.target === layer) onCancel()
   })
   // 手を置くのは、開いたときの 1 回だけ（`dialog-focus.ts`）。ここで毎回置くと、描き直すたびに先頭へ戻る。
+
+  return layer
+}
+
+/** 「このエリアを選ぶ」のシートで押せるもの。 */
+export interface AreaSheetHandlers {
+  /** 「このエリアを選ぶ」を押した。答え（候補の番号）を送る。 */
+  readonly onChoose: () => void
+  /** 閉じる。何も送らない。 */
+  readonly onClose: () => void
+}
+
+/**
+ * 効果がエリアを選ばせている間、光っているスクエアを押したときの下からのシート（スマートフォン、ADR-0034）。
+ *
+ * 見出しはそのエリアの呼び名、上の段は、そのスクエアにいるユニットの詳細（空きスクエアなら無い）。一番下に
+ * 「このエリアを選ぶ」と「閉じる」を縦に並べ、「このエリアを選ぶ」を押して初めて答えを送る。
+ * 作りは `askElement` の手が 2 つ以上のときと同じで、送ったあとは返事が届くまでボタンを押せなくして
+ * 「通信中…」を出す。送った答えは取り消せないので、閉じる口も Esc も効かせない。
+ */
+export function areaSheetElement(heading: string, details: readonly HTMLElement[], handlers: AreaSheetHandlers): HTMLElement {
+  const layer = element('div', 'dialog dialog--エリア')
+  const box = element('div', 'dialog__box')
+  box.setAttribute('role', 'dialog')
+  box.setAttribute('aria-modal', 'true')
+  const title = element('h2', 'dialog__title', heading)
+  title.id = 'dialog-title'
+  const lead = element('p', 'dialog__lead', 'このエリアを選びますか')
+  lead.id = 'dialog-lead'
+  box.setAttribute('aria-labelledby', title.id)
+  box.setAttribute('aria-describedby', lead.id)
+  const sending = element('p', 'dialog__sending')
+  sending.setAttribute('role', 'status')
+  box.append(...details, title, lead, sending)
+
+  let sent = false
+  box.tabIndex = -1
+  const onClose = (): void => {
+    if (!sent) handlers.onClose()
+  }
+  const onChoose = (): void => {
+    if (sent) return
+    sent = true
+    // ボタンを押せなくすると、そこにあった手が外れる。先に箱へ移して、「通信中…」を読み上げさせる。
+    if (box.contains(document.activeElement)) box.focus({ preventScroll: true })
+    box.setAttribute('aria-busy', 'true')
+    sending.textContent = '通信中…'
+    for (const each of box.querySelectorAll('button')) each.disabled = true
+    handlers.onChoose()
+  }
+  const choose = button('このエリアを選ぶ', onChoose, true)
+  const actions = element('div', 'dialog__actions')
+  actions.append(choose)
+  const foot = element('div', 'dialog__cancel')
+  foot.append(button('閉じる', onClose))
+  box.append(actions, foot)
+  layer.append(box)
+
+  onLayerEscape(layer, onClose)
+  ignoreKeyRepeat(layer)
+  layer.addEventListener('click', (event) => {
+    if (event.target === layer) onClose()
+  })
 
   return layer
 }

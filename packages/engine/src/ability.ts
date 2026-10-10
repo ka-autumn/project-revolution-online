@@ -87,26 +87,112 @@ export interface TriggeredAbility {
    * 絞り込みの軸（エリア・元のゾーン・色・レベル・属性…）は組み合わせで増えるため、
    * 値が破裂するからである。かわりに、きっかけを見て答えるこの述語で表す。
    *
-   * **ここに書かれるのはテキストの読み方なので、カードの側にあるのが正しい。** engine が
+   * ここに書かれるのはテキストの読み方なので、カードの側にあるのが正しい。engine が
    * 読み方を列挙して持つと、カードのためのルールが engine に漏れる（ADR-0002）。
    *
-   * 「～した時、～ならば」と書かれた条件付誘発型能力（総合ルール 第4部 第7章 8）とは別で
-   * ある。あちらは誘発する時と解決する時の両方で条件をチェックし、解決時に満たされて
-   * いなければ無効化されるが、これは**誘発イベントそのものの一部**として誘発する時に
-   * 1 度だけ判定する。解決時に「プランゾーンから登場した」を確かめようとしても、その
-   * 時点でプランゾーンは無くなっている（同 第2部 第21章 3-3）ので成立しない。
+   * 総合ルールの「誘発条件」（「～した時、～ならば」の「～ならば」）はこれではなく
+   * `condition` である。名前が似ているが別のもので、こちらは誘発イベントの絞り込みにあたる。
+   * `condition`（総合ルール 第4部 第7章 8）は誘発する時と解決する時の両方で盤面を見て
+   * 確かめ、解決時に満たされていなければ無効化されるが、これは誘発イベントそのものの
+   * 一部として誘発する時に 1 度だけ、きっかけを見て判定する。解決時に「プランゾーンから
+   * 登場した」を確かめようとしても、その時点でプランゾーンは無くなっている（同 第2部
+   * 第21章 3-3）ので成立しない。
    */
   readonly when?: TriggerCondition
+  /**
+   * 条件付誘発型能力の誘発条件（総合ルール 第4部 第3章 3、第7章 8）。省略すれば無条件。
+   *
+   * 誘発する時に満たされていなければ誘発しない。満たされて誘発しても、解決する時にもう
+   * 一度確かめ、満たされていなければ効果を実行せずにバンクから取り除く（無効化）。
+   * `when` と違い、盤面を読んで答える。きっかけは受け取らない。誘発の瞬間にしか分からない
+   * ことを確かめたいのなら `when` の仕事である。
+   *
+   * どの盤面を、どの姿で読むかは `TriggerCondition` の手前の表にまとめてある。
+   */
+  readonly condition?: TriggerRequirement
 }
 
+/*
+ * 絞り込み（`when`）と誘発条件（`condition`）が、いつの盤面を、どの姿で読むか。
+ *
+ * 「継続効果を適用した後」とは、継続効果がカードのデータ（属性・ＢＰ）を変えた後の姿の
+ * ことである（総合ルール 第4部 第12章 2、`continuous.ts`）。「書かれたまま」はそれを
+ * 適用していない、カードに書かれているデータである。
+ *
+ * - `when` のきっかけ（`DiscardOccasion`）
+ *   - いつ: 置かれる直前。置かれたユニットがまだスクエアにいる盤面（同 第7章 10）。
+ *   - 姿: 継続効果を適用した後（`discard.ts`）。
+ * - `when` の `self`
+ *   - いつ: 能力を探している盤面。捨札に置かれる時は、置かれる前。
+ *   - 姿: 書かれたまま。`self` の `id` を、きっかけの `id` と見比べる使い方を想定している。
+ * - `condition` の `duel`（誘発する時）
+ *   - いつ: 能力を探している盤面。捨札に置かれる時は、能力を持つユニットが同じ時に
+ *     置かれるかどうかによらず、置かれる前の盤面（同 第7章 10。残る味方が持つ能力に
+ *     ついては条文が明記していないので、全員を揃えた。運用が分かれば見直す）。
+ *   - 姿: 継続効果を適用した後。`duel.self()` も同じ。
+ * - `condition` の `duel`（解決する時）
+ *   - いつ: 解決する時の盤面。捨札に置かれる時の誘発でも、置かれた後の盤面。
+ *   - 姿: 継続効果を適用した後。`duel.self()` は、スクエアに残っていれば引き直した姿、
+ *     離れていれば誘発した時点の写し（同 第8章 2-5）で、写しは書かれたまま。
+ */
+
 /**
- * きっかけを見て、その能力が誘発するかを答える。
+ * きっかけを見て、その能力が誘発するかを答える。絞り込み（`when`）の型である。
+ *
+ * 総合ルールの「誘発条件」ではない。そちらは `TriggerRequirement`。
  *
  * 支配者を受け取るのは、エリアやラインの呼び名が見るプレイヤーによって入れ替わる
  * （総合ルール 第2部 第22章 4・6）ためである。「味方エリアに」は支配者から見た呼び方に
  * なる（同 6-1）。
+ *
+ * `self` は能力を持つユニット自身である。「自分自身が捨札に置かれた時」のように、きっかけが
+ * 自分についてのものかを確かめるために使う。
  */
-export type TriggerCondition = (occasion: TriggerOccasion, controller: Player) => boolean
+export type TriggerCondition<Occasion extends TriggerOccasion = TriggerOccasion> = (
+  occasion: Occasion,
+  controller: Player,
+  self: UnitOnSquare,
+) => boolean
+
+/**
+ * その誘発イベントが持つきっかけの型。きっかけを持たない誘発イベントは `never`。
+ *
+ * `triggeredAbility` が、書く述語に渡るきっかけを誘発イベントに合わせて絞るために使う。
+ * 「登場した時」の述語が `from` を読めるのは、ここで `AppearanceOccasion` に決まるからである。
+ */
+export type OccasionOf<Event extends TriggerEvent> = Event extends '登場した時'
+  ? AppearanceOccasion
+  : Event extends 'あなたのユニットがスクエアから捨札に置かれた時'
+    ? DiscardOccasion
+    : never
+
+/**
+ * その誘発イベントに付けられる絞り込み（`when`）の型。きっかけを持たない誘発イベントには
+ * 付けられない（`never`）。
+ *
+ * 引数が `never` の関数型には、どんな述語も代入できてしまう。述語の型ごと `never` にして、
+ * 付けた時点でコンパイルエラーになるようにしている。
+ */
+export type WhenFor<Event extends TriggerEvent> = [OccasionOf<Event>] extends [never]
+  ? never
+  : TriggerCondition<OccasionOf<Event>>
+
+/** `triggeredAbility` に名前を付けて渡す、絞り込み（`when`）と誘発条件（`condition`）。 */
+export interface TriggeredAbilityOptions<Event extends TriggerEvent> {
+  readonly when?: WhenFor<Event>
+  readonly condition?: TriggerRequirement
+}
+
+/**
+ * 条件付誘発型能力の誘発条件（総合ルール 第4部 第3章 3、第7章 8 の「～ならば」）を、盤面を
+ * 読んで答える。`TriggeredAbility.condition` の型である。絞り込み（`when`）ではない。
+ *
+ * `duel` は効果が盤面を読むのと同じ口である。支配者は `duel.controller`、能力を持つ
+ * ユニット自身は `duel.self()` で読む。誘発する時も解決する時も同じ口から読めるので、
+ * 発生源を別の引数で受け取る形にはしない（受け取ると、写しそのものと引き直した姿の
+ * 2 通りの自分自身ができる）。いつの盤面かは `TriggerCondition` の手前の表にまとめてある。
+ */
+export type TriggerRequirement = (duel: DuelView) => boolean
 
 /**
  * 誘発イベントのきっかけ。
@@ -123,11 +209,27 @@ export type TriggerCondition = (occasion: TriggerOccasion, controller: Player) =
  * 交わらないので 1 つの型にはまとめない。渡される形が経路ごとに決まっていれば、受け取る
  * カードの側にどのきっかけなのかを確かめる分岐が要らない。
  *
- * 誘発イベントごとに形が決まる。きっかけを持つのはいま「登場した時」だけで、他のイベントは
- * 誘発したこと自体以外に見るものが無い。必要になった時に足す（`card.ts` の属性・トリガー
- * アイコンと同じ考え方）。
+ * 誘発イベントごとに形が決まる。きっかけを持つのはいま「登場した時」と「あなたのユニットが
+ * スクエアから捨札に置かれた時」だけで、他のイベントは誘発したこと自体以外に見るものが
+ * 無い。必要になった時に足す（`card.ts` の属性・トリガーアイコンと同じ考え方）。
+ *
+ * どちらも置かれたスクエアを `square` に持つ。スクエアで絞り込む述語を、きっかけの種類を
+ * 分けずに書けるようにするためである。
  */
-export type TriggerOccasion = AppearanceOccasion
+export type TriggerOccasion = AppearanceOccasion | DiscardOccasion
+
+/**
+ * 「あなたのユニットがスクエアから捨札に置かれた時」のきっかけ（総合ルール 第4部 第7章 6）。
+ *
+ * 捨札に置かれたユニットの、置かれる直前の姿である。継続効果を適用した後のデータ
+ * （属性・ＢＰ）を持つ（総合ルール 第4部 第12章 2。いつの盤面でどの姿かは
+ * `TriggerCondition` の手前の表を見る）。置かれたユニットごとに 1 度ずつ、そのユニットを
+ * きっかけとして判定する。ユニット自身が持つ能力が「自分自身が置かれた時」だけ誘発する
+ * ようにしたいときは、`TriggerCondition` が受け取る `self` と `id` を比べる。
+ */
+export interface DiscardOccasion extends UnitOnSquare {
+  readonly kind: '捨札'
+}
 
 /** 「登場した時」のきっかけ（総合ルール 第2部 第20章 1-4-a）。 */
 export interface AppearanceOccasion {
@@ -284,6 +386,29 @@ export interface BpModifyingAbility {
    */
   readonly bpModifiers: (duel: DuelView) => readonly BpModifier[]
 }
+
+/**
+ * キーワード能力「友情」（総合ルール 第5部 第5章）。
+ *
+ * ＢＰを修整する常在型能力そのものであり（`friendship`）、修整の動きは `BpModifyingAbility`
+ * と変わらない。違うのは `keyword` で名前を持つ点だけで、「そのユニットが友情を持つか」を
+ * 他のキーワード能力と同じ流儀で答えられる（`card.ts` の `hasFriendship`、`DuelView.hasKeyword`）。
+ * 「夢」などが専用の型を持つのとは違い、効果を持つ側に名前を足した形である。
+ */
+export interface FriendshipAbility extends BpModifyingAbility {
+  readonly keyword: '友情'
+}
+
+/**
+ * 名前だけで参照できる、常在型のキーワード能力。
+ *
+ * 「そのカードがそのキーワード能力を持つか」を尋ねる側（`card.ts` の `hasKeyword`、
+ * `DuelView.hasKeyword`）が、尋ねられるキーワードの範囲として使う。「希望」「勇気」は常在型
+ * ではないのでここに含めない。
+ */
+export type PassiveKeywordAbility = DreamAbility | PepAbility | TrustAbility | GutsAbility | FriendshipAbility
+
+export type PassiveKeyword = PassiveKeywordAbility['keyword']
 
 /**
  * 属性を加える継続効果を生み出す常在型能力（総合ルール 第2部 第13章 4、
@@ -528,6 +653,7 @@ export type Ability =
   | GutsAbility
   | HopeAbility
   | BpModifyingAbility
+  | FriendshipAbility
   | AttributeAddingAbility
   | PlanReplacingAbility
   | MoveCostingAbility
@@ -535,15 +661,35 @@ export type Ability =
 /**
  * 誘発型能力を 1 つ書く。
  *
- * `when` を渡すと、誘発イベントを満たしたうえでそれが真の時だけ誘発する。渡せるのは
- * きっかけを持つ誘発イベント（いまは「登場した時」だけ、`TriggerOccasion`）に対してである。
+ * 3 番目の引数は、絞り込みの述語（`when`）そのものか、名前を付けた
+ * `{ when, condition }` のどちらか。
+ *
+ * - `triggeredAbility(event, effect, when)`: 誘発イベントを満たしたうえで `when` が真の
+ *   時だけ誘発する。渡せるのはきっかけを持つ誘発イベント（「登場した時」と「あなたの
+ *   ユニットがスクエアから捨札に置かれた時」、`TriggerOccasion`）に対してだけで、
+ *   持たない誘発イベントに渡すとコンパイルエラーになる
+ * - `triggeredAbility(event, effect, { condition })`: 条件付誘発型能力になる
+ *   （総合ルール 第4部 第7章 8）。`{ when, condition }` で両方を渡すこともできる
+ *
+ * 位置で並べると述語どうしを取り違えるので、2 つを一緒に渡す時は名前を付けて渡す。
  */
-export function triggeredAbility(
-  event: TriggerEvent,
+export function triggeredAbility<Event extends TriggerEvent>(
+  event: Event,
   effect: Effect,
-  when?: TriggerCondition,
+  options?: WhenFor<Event> | TriggeredAbilityOptions<Event>,
 ): TriggeredAbility {
-  return when === undefined ? { kind: '誘発型能力', event, effect } : { kind: '誘発型能力', event, effect, when }
+  // 述語が受け取るきっかけは誘発イベントごとに絞ってある（`WhenFor`）。能力として持つ
+  // 側は、どのイベントのものかを忘れて、きっかけの和集合で呼ぶ（`trigger.ts`）。
+  const { when, condition } = (
+    typeof options === 'function' ? { when: options } : (options ?? {})
+  ) as TriggeredAbilityOptions<TriggerEvent>
+  return {
+    kind: '誘発型能力',
+    event,
+    effect,
+    ...(when === undefined ? {} : { when: when as unknown as TriggerCondition }),
+    ...(condition === undefined ? {} : { condition }),
+  }
 }
 
 /**
@@ -650,22 +796,29 @@ export function attributeAdding(
  * 「友情－Ｘ」は「このカードの上下左右の隣のスクエアにあるすべての味方のＢＰ＋Ｘ」という
  * 常在型能力である（同 1・2）。斜めに接しているスクエアには影響を与えない（同 3）。
  *
- * 「気合」と同じく専用の型を持たないのは、種類も内容も「ＢＰを修整する常在型能力」
- * そのものだからである。専用の型が要るのは「夢」などのように、効果を持たず、ルールの側が
- * 能力の有無を見に行く必要があるものだけである。
+ * 種類も内容も「ＢＰを修整する常在型能力」そのものなので、専用の型が持つのは名前
+ * （`FriendshipAbility`）だけである。「夢」などは、効果を持たず、ルールの側が能力の有無を
+ * 見に行く必要があって専用の型を持ったが、「友情」は、他の効果（「他の、友情を持つ味方の
+ * ＢＰを＋Ｎ」）が能力の有無を見に行く必要があって名前を持つ。
  *
  * 自分自身は影響を受けない。自分がいるのは隣のスクエアではないので、隣接で絞った時点で
  * 外れる。テキストが「他の」と書いていないのは、書く必要が無いからである。
+ *
+ * 返す能力は `keyword: '友情'` を持つ。ＢＰの修整としての動きは、`bpModifying` で書いた
+ * ものと変わらない。
  */
-export function friendship(amount: number): BpModifyingAbility {
-  return bpModifying((duel) => {
-    const self = duel.self()
-    if (self === undefined) return []
+export function friendship(amount: number): FriendshipAbility {
+  return {
+    ...bpModifying((duel) => {
+      const self = duel.self()
+      if (self === undefined) return []
 
-    const adjacent = squaresAdjacent(self.square).map(indexOfSquare)
-    return duel
-      .allies()
-      .filter((ally) => adjacent.includes(indexOfSquare(ally.square)))
-      .map((ally) => bpPlus(ally, amount))
-  })
+      const adjacent = squaresAdjacent(self.square).map(indexOfSquare)
+      return duel
+        .allies()
+        .filter((ally) => adjacent.includes(indexOfSquare(ally.square)))
+        .map((ally) => bpPlus(ally, amount))
+    }),
+    keyword: '友情',
+  }
 }

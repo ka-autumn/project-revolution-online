@@ -1,6 +1,6 @@
 import type { BattleStep } from './battle.js'
-import { BATTLE_SPACE } from './board.js'
-import type { Square } from './board.js'
+import { BATTLE_SPACE, isArea, rowOfArea } from './board.js'
+import type { Square, SquareIndex } from './board.js'
 import type { CardId, DuelResult, DuelState } from './duel.js'
 import type { Instruction } from './effect.js'
 import type { LegalAction } from './legal-action.js'
@@ -104,6 +104,20 @@ export type DuelEvent =
       readonly controller: Player
       readonly via: ResolutionVia
       /** 発生源のカード。持たないか、見えていなければ `undefined`。 */
+      readonly source: CardId | undefined
+    }
+  /**
+   * 条件付誘発型能力が、解決する時に誘発条件を満たしておらず、無効化された（総合ルール
+   * 第4部 第7章 8）。
+   *
+   * 効果は実行されないので `能力を解決した` も `命令を実行した` も残らない。このできごとが
+   * 無いと、バンクにあった能力が何も言わずに消えたように見える。無効化が起こりうるのは
+   * バンクを経由する誘発型能力だけなので、経路は持たない。
+   */
+  | {
+      readonly kind: '能力が無効化された'
+      readonly controller: Player
+      /** 発生源のカード。見えていなければ `undefined`。 */
       readonly source: CardId | undefined
     }
   /** 効果が命令を 1 つ実行した（総合ルール 第4部 第1章 1）。 */
@@ -343,11 +357,25 @@ export type LoggedInstruction =
    * 効果が候補から 1 つ選んだ（総合ルール 第4部 第1章 1）。
    *
    * **選ばれるのはカードとは限らない。** 効果が置き先を選ばせる場合、候補として並ぶのは
-   * スクエアそのものである（`protocol.ts` の `describeCandidate`）。どちらか一方だけが
-   * 埋まり、両方が埋まることはない。スクエアは落とさない——盤面の位置であって、そこに何が
-   * あるかを言っていないためで、スクエアにあるカードは公開情報でもある（同 第2部 第23章 1-1）。
+   * スクエアそのものである（`protocol.ts` の `describeCandidate`）。エリアを選ばせる場合は
+   * エリアが並ぶ。`card`・`square`・`areaRow` のうち 1 つだけが埋まり、複数が埋まることは
+   * ない。スクエアは落とさない——盤面の位置であって、そこに何があるかを言っていないためで、
+   * スクエアにあるカードは公開情報でもある（同 第2部 第23章 1-1）。エリアも同じ盤面の位置
+   * なので落とさない。
+   *
+   * `areaRow` は選ばれたエリアの盤面の行である。エリアの呼び名は見るプレイヤーによって
+   * 入れ替わる（総合ルール 第2部 第22章 6）ので、呼び名のまま残すと、記録を読む側の
+   * 見え方と食い違う。呼び名にするのは読む側である（`WireCandidate` の `エリア` と同じ）。
+   *
+   * `areaRow` だけ省略可にしてあるのは、`card`・`square` を必須のままにして、既存の記録とテストの形を
+   * 変えないためである。
    */
-  | { readonly kind: '選ぶ'; readonly card: CardId | undefined; readonly square: Square | undefined }
+  | {
+      readonly kind: '選ぶ'
+      readonly card: CardId | undefined
+      readonly square: Square | undefined
+      readonly areaRow?: SquareIndex
+    }
   | { readonly kind: '破壊する'; readonly card: CardId | undefined }
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
   | { readonly kind: 'ユニットにダメージを与える'; readonly card: CardId | undefined; readonly amount: number }
@@ -505,6 +533,19 @@ export function squareOf(candidate: unknown): Square | undefined {
 }
 
 /**
+ * 候補や、選ばれたものがエリアであるとき、そのエリアの盤面の行。エリアでなければ `undefined`。
+ *
+ * 効果が見るエリアの呼び名は、選ぶプレイヤーから見たものである（`board.ts` の `rowOfArea`。
+ * ルールが指定するエリアは、それに従って行動するプレイヤーから見て判断する、総合ルール 第2部
+ * 第22章 6-1）。呼び名のままでは見る人によって指す行が変わるので、盤面に固定した行に直して
+ * 渡す。`squareOf` と同じく、記録する側（`loggedInstruction`）と通信に載せる側（`protocol.ts` の
+ * `describeCandidate`）の両方から通る。
+ */
+export function areaRowOf(candidate: unknown, chooser: Player): SquareIndex | undefined {
+  return isArea(candidate) ? rowOfArea(chooser, candidate) : undefined
+}
+
+/**
  * 実行した命令を、ログに残す形にする。
  *
  * 対象を持つ命令は、実行された時点で `resolve.ts` が engine の見せたカードであることを
@@ -512,11 +553,21 @@ export function squareOf(candidate: unknown): Square | undefined {
  *
  * `subject` は、**命令そのものには書かれていない、実際に触れたもの**である。選ばれたものと、
  * 位置で指定されて動いたカードの 2 つがこれにあたり、どちらも実行してみないと分からない。
+ *
+ * `controller` は効果の支配者で、選ぶのもこのプレイヤーである（総合ルール 第4部 第8章 2-3）。
+ * 選ばれたエリアの呼び名は、このプレイヤーから見たものとして行に直す（`areaRowOf`）。
  */
-export function loggedInstruction(instruction: Instruction, subject: unknown): LoggedInstruction {
+export function loggedInstruction(instruction: Instruction, subject: unknown, controller: Player): LoggedInstruction {
   switch (instruction.kind) {
-    case '選ぶ':
-      return { kind: '選ぶ', card: cardIdOf(subject), square: squareOf(subject) }
+    case '選ぶ': {
+      const areaRow = areaRowOf(subject, controller)
+      return {
+        kind: '選ぶ',
+        card: cardIdOf(subject),
+        square: squareOf(subject),
+        ...(areaRow === undefined ? {} : { areaRow }),
+      }
+    }
     case '破壊する':
       return { kind: '破壊する', card: instruction.target.id }
     case 'プレイヤーにダメージを与える':

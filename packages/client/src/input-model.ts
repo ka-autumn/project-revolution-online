@@ -13,7 +13,10 @@ import type {
 } from '@revolution/engine'
 import { indexOfSquare } from '@revolution/engine'
 import type { Session } from './session.js'
-import { drawnOnBoard, keyOfPosition, nameOf, namesIn, squareLabel } from './view-model.js'
+import { areaLabel, drawnOnBoard, keyOfPosition, nameOf, namesIn, squareLabel } from './view-model.js'
+
+/** エリアを構成するスクエアの列。 */
+const SQUARE_COLUMNS = [0, 1, 2] as const
 
 /**
  * 行える手と選ぶ候補から、画面に出す値を作る（#14）。
@@ -198,7 +201,8 @@ export function automaticAction(session: Session): LegalAction | undefined {
  * 呼び名は見る人によって入れ替わる（総合ルール 第2部 第22章 4・6）。選択は選ぶプレイヤーに
  * だけ届く（ADR-0008）ので、受け取った側から見た呼び名がそのまま答えになる。選ぶのは能力の
  * 支配者であり（同 第4部 第8章 2-3）、カードや能力が指すエリア・ラインもその支配者から見て
- * 決まる（同 第2部 第22章 4-1・6-1）ためである。
+ * 決まる（同 第2部 第22章 4-1・6-1）ためである。エリアが候補になる場面（#278）も同じで、
+ * 通信では盤面の行で届く（`protocol.ts` の `WireCandidate`）ので、受け取った側から見た呼び名にする。
  */
 function candidateLabel(
   candidate: WireCandidate,
@@ -216,6 +220,8 @@ function candidateLabel(
         : `${position}: ${nameOf(names, candidate.source)} の能力`
     case 'スクエア':
       return `${position}: ${squareLabel(viewer, candidate.square)}`
+    case 'エリア':
+      return `${position}: ${areaLabel(viewer, candidate.row)}`
     case '見えていない':
       return `${position}（裏向き）`
   }
@@ -398,6 +404,12 @@ export function destinationOf(action: LegalAction): Square | undefined {
 export interface PickableSquare {
   readonly square: Square
   readonly label: string
+  /**
+   * そのスクエアのあるエリアごと選んでいる（効果がエリアを選ばせている場面、#278）。
+   * 同じエリアの 3 つのスクエアが、同じ答えを持って並ぶ。描く側は、行単位で選んでいることが
+   * 見えるよう、カーソルを載せたスクエアと同じエリアをまとめて強調する。
+   */
+  readonly wholeArea?: true
 }
 
 /** 光らせるスクエア 1 つと、そこを押した時に送る手。 */
@@ -798,6 +810,7 @@ export interface ChoicePicking {
    *
    * ボタンを二重に出さないために `choiceView` が読む。**押せるかどうかを 2 か所で決めない**
    * ようにするための言い直しで、上の 3 つと同じものを番号の並びとして見せているだけである。
+   * 番号は昇順で、同じ番号は 1 度だけ並ぶ（エリアの候補は 3 つのスクエアが同じ番号を持つ）。
    */
   readonly onBoard: readonly number[]
 }
@@ -810,7 +823,8 @@ export interface ChoicePicking {
  * **盤面に出ている候補は、盤面のそこを押しても答えられる**ようにする。答えるのは番号のまま
  * なので、通信は変わらない。
  *
- * 押せるのは、見えているカード（`見えている`）、スクエア（#113）、そして**盤面のどこにあるかが
+ * 押せるのは、見えているカード（`見えている`）、スクエア（#113）、エリア（#278。そのエリアの 3 つの
+ * スクエアのどれを押しても同じ答えになる）、そして**盤面のどこにあるかが
  * 分かっている裏向きのカード**（#127）である。裏向きのカードも候補になる（プランのコスト、
  * 総合ルール 第2部 第21章 7-5）が、識別子は届かない。かわりに置き場所（`protocol.ts` の
  * `WireCardPosition`）で結び付ける。**能力の候補だけはボタンのまま**で、押す先が盤面に無い。
@@ -844,6 +858,16 @@ export function choicePicking(board: WirePerspective, choice: WireChoice): Choic
       const label = `${squareLabel(board.viewer, candidate.square)}を選ぶ`
       bySquare.set(key, { view: { square: candidate.square, label }, answer: index })
     }
+    if (candidate.kind === 'エリア') {
+      // エリアは盤面の行で届く。そのエリアの 3 つのスクエアのどれを押しても、この候補が答えになる。
+      // 光らせる行は、届いた候補の行そのものである（ADR-0010）。
+      const label = `${areaLabel(board.viewer, candidate.row)}を選ぶ`
+      for (const column of SQUARE_COLUMNS) {
+        const square: Square = { row: candidate.row, column }
+        const key = indexOfSquare(square)
+        if (!bySquare.has(key)) bySquare.set(key, { view: { square, label, wholeArea: true }, answer: index })
+      }
+    }
   })
 
   return {
@@ -853,10 +877,13 @@ export function choicePicking(board: WirePerspective, choice: WireChoice): Choic
     answerOfSquare: (square) => bySquare.get(indexOfSquare(square))?.answer,
     hidden: [...byPosition.values()].map((each) => each.at),
     answerOfHidden: (at) => byPosition.get(keyOfPosition(at))?.answer,
+    // エリアの候補は 3 つのスクエアに同じ番号が付くので、重ねずに 1 度だけ数える。
     onBoard: [
-      ...answers.values(),
-      ...[...bySquare.values()].map((each) => each.answer),
-      ...[...byPosition.values()].map((each) => each.answer),
+      ...new Set([
+        ...answers.values(),
+        ...[...bySquare.values()].map((each) => each.answer),
+        ...[...byPosition.values()].map((each) => each.answer),
+      ]),
     ].sort((a, b) => a - b),
   }
 }
@@ -901,7 +928,7 @@ export function offBoardCandidates(
  * 覆われてしまう（#207）。混ざる場合は、これまでどおり番号のボタンで並べる
  * （盤面から押せる分は `choiceView` が二重に出さない、#150）。
  *
- * 候補が全部盤面の外にあるとしても、能力やスクエアが混じる場面は番号のボタンのままにする。
+ * 候補が全部盤面の外にあるとしても、能力・スクエア・エリアが混じる場面は番号のボタンのままにする。
  * 一覧はカードの面を並べるためのものなので、カードではない候補を描く先が無い。
  */
 export function showsChoicePicker(
