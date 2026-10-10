@@ -9,10 +9,11 @@ import {
   locateOnSquares,
   moveToSquare,
   moveToZone,
+  setOrientationInEnergyZone,
   setOrientationOnSquare,
   topOfLibrary,
 } from './duel.js'
-import type { CardId, CardInstance, DuelState } from './duel.js'
+import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
 import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import { loggedInstruction, record } from './log.js'
 import type { ResolutionVia } from './log.js'
@@ -161,6 +162,23 @@ export function resolveEffect(state: DuelState, effect: Effect, context: EffectC
   }
 }
 
+/**
+ * 誘発した条件付誘発型能力の誘発条件を、解決する時の盤面で確かめる（総合ルール 第4部
+ * 第7章 8）。条件を持たない能力は常に満たす。
+ *
+ * 盤面の見せ方は効果と同じ（`effectView`）で、発生源がスクエアを離れていれば誘発した
+ * 時点の写しを使う（同 第8章 2-5）。確かめるだけで命令を出さないので、見せたカードの記録は
+ * 捨てる。
+ */
+export function conditionHolds(state: DuelState, instance: TriggeredInstance): boolean {
+  const { condition } = instance.ability
+  if (condition === undefined) return true
+
+  const context = { controller: instance.controller, self: instance.self }
+  const duel = effectView(() => state, context, new Set())
+  return condition(duel)
+}
+
 interface Outcome {
   readonly state: DuelState
   /** その命令が効果に返す値。 */
@@ -265,10 +283,17 @@ function apply(
         throw new Error('効果に見せていないカードが対象にされた')
       }
       // すでにその向きなら、リリースすることもフリーズすることもできない（総合ルール
-      // 第2部 第24章 1-1）ので、この行動は実行されない（同 第1部 第1章 3）。スクエアを
-      // 離れていた場合も同じで、どちらも `setOrientationOnSquare` が盤面をそのまま返す。
+      // 第2部 第24章 1-1）ので、この行動は実行されない（同 第1部 第1章 3）。スクエアや
+      // エネルギーゾーンを離れていた場合も同じで、どちらの手続きも盤面をそのまま返す。
+      // エネルギーを指す対象だけが `zone` を持つ（`effect.ts` の `EnergyInZone`）。向きを
+      // 変えられるのは支配者のエネルギーだけで、相手のエネルギーゾーンにあるカードを指して
+      // いても盤面は変わらない（見せたカードがそこへ移った場合など）。
+      const { target, orientation } = instruction
       return {
-        state: setOrientationOnSquare(state, instruction.target.id, instruction.orientation),
+        state:
+          'zone' in target
+            ? setOrientationInEnergyZone(state, context.controller, target.id, orientation)
+            : setOrientationOnSquare(state, target.id, orientation),
         value: undefined,
       }
     }
@@ -366,7 +391,11 @@ function apply(
  * 効果に見せる盤面。写し方そのものは `view.ts` にあり、ここは効果の経路に固有のところ
  * （発生源の引き直しと、見せたカードの記録）だけを渡す。
  */
-function effectView(currentState: () => DuelState, context: EffectContext, shown: Set<CardId>): DuelView {
+function effectView(
+  currentState: () => DuelState,
+  context: Pick<EffectContext, 'controller' | 'self'>,
+  shown: Set<CardId>,
+): DuelView {
   return duelView(currentState, {
     controller: context.controller,
     /**

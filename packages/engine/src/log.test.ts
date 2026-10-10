@@ -803,6 +803,16 @@ describe('視点ごとの落とし方', () => {
     expect(seen(state, '先攻')).toHaveLength(1)
   })
 
+  // 総合ルール 第4部 第7章 8
+  it('能力が無効化されたことの発生源も、見えていなければ落ちる', () => {
+    const event: DuelEvent = { kind: '能力が無効化された', controller: '後攻', source: hidden.id }
+
+    const state = logged(event)
+
+    expect(seen(state, '先攻')).toEqual([{ ...event, source: undefined }])
+    expect(seen(state, '後攻')).toEqual([event])
+  })
+
   it('命令の中のカードも落ちる', () => {
     const event: DuelEvent = {
       kind: '命令を実行した',

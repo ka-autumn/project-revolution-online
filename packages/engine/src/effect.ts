@@ -1,4 +1,4 @@
-import type { CreatedTrigger, CreatedTriggeredAbility, IntrusionOccasion } from './ability.js'
+import type { CreatedTrigger, CreatedTriggeredAbility, IntrusionOccasion, PassiveKeyword } from './ability.js'
 import type { Square } from './board.js'
 import type { Attribute, Card, UnitCard } from './card.js'
 import type { CardId, LibraryPosition } from './duel.js'
@@ -33,6 +33,40 @@ export interface CardInZone {
   /** そのカードがいまあるゾーン。 */
   readonly zone: PlayerZone
   readonly card: Card
+}
+
+/**
+ * 効果から見た、エネルギーゾーンにあるカード 1 枚（エネルギー）。
+ *
+ * `CardInZone` に、いまの向きを足したもの。エネルギーゾーンのカードは向きを持つ（総合ルール
+ * 第2部 第24章 1）ので、「リリース状態のエネルギーを 1 枚選び、フリーズする」のような
+ * テキストの候補をカードの側で絞れる。向きを変える命令（`freeze`・`release`）の対象にできる。
+ *
+ * 向きは読んだ時点のものである。命令で向きを変えても、すでに手元にある写しは変わらない。
+ *
+ * 命令（`freeze`・`release`）は、実行されたかどうかを効果に返さない。すでにその向きなら
+ * 何も起こらない（総合ルール 第2部 第24章 1-1）ので、「フリーズしてよい。そうしたら〜」の
+ * ように結果に続く処理を書く時は、フリーズする前にカードの側で向きを見て、候補を絞ること。
+ */
+export interface EnergyInZone extends CardInZone {
+  readonly zone: 'エネルギーゾーン'
+  readonly orientation: Orientation
+}
+
+/**
+ * 効果から見た、スマッシュゾーンにある裏向きのカード 1 枚（スマッシュ）。
+ *
+ * `CardInZone` と違って、カードの中身を持たない。スマッシュは両方のプレイヤーに対して
+ * 裏向きに置かれていて、持ち主であっても中身を見られない（総合ルール 第2部 第21章 7-3）。
+ * 効果が選んで動かすことはできるが、何を選んだかは分からない。支配者を持たないのは、効果に
+ * 見せるスマッシュゾーンが支配者自身のものだけだからである（`DuelView.smashZone`）。
+ *
+ * 通信では、このカードを選ぶ候補は「見えていない」候補として届く（`protocol.ts` の
+ * `describeCandidate`）。
+ */
+export interface SmashCard {
+  readonly id: CardId
+  readonly zone: 'スマッシュゾーン'
 }
 
 /**
@@ -110,8 +144,45 @@ export interface DuelView {
    * 中身も公開されている（同 6-3）ので相手のぶんも見せられるが、返すのは支配者自身の
    * ぶんだけにしている。相手のエネルギーゾーンから選ぶテキストの消費者がまだいないため
    * で、手札・捨札・プランゾーンと同じ形である。要るようになった時に足す。
+   *
+   * いまの向きも読める（`EnergyInZone`）。向きも公開されている情報である（同 第2部 第23章
+   * 1-1、第21章 6-4）。
    */
-  energyZone(): readonly CardInZone[]
+  energyZone(): readonly EnergyInZone[]
+  /**
+   * そのプレイヤーのスマッシュの枚数（総合ルール 第2部 第21章 7-2）。
+   *
+   * 数え方は `smash.ts` の `smashesOf` と同じで、スマッシュゾーンにある裏向きのカードだけを
+   * 数える。希望ステップで表向きに置かれているカードはスマッシュではない（同 第3部 第19章 1）
+   * ので数えない。スマッシュ判定中だからといって特別な扱いは足していない。
+   *
+   * どちらのプレイヤーぶんも読める。スマッシュの枚数は公開されている情報である（第2部 第21章 7-3。
+   * 表側は見られないが、いつでも両方のスマッシュゾーンの枚数を数えられる）。枚数だけを返す
+   * ので、数えたことによってそのカードを対象にできるようにはならない（`energyCount` と同じ）。
+   */
+  smashCount(player: Player): number
+  /**
+   * 支配者自身のスマッシュゾーンにある、スマッシュすべて。
+   *
+   * 中身は返さない（`SmashCard`）。ゾーンへ置く命令（`placeInZone`）の対象にできる。相手の
+   * スマッシュを返すアクセサは無い。選んで動かすテキストが無いためで、要る時に足す。
+   */
+  smashZone(): readonly SmashCard[]
+  /**
+   * そのユニットが、そのキーワード能力を持つか。
+   *
+   * 「他の、友情を持つ味方のＢＰを＋Ｎ」のように、持つ能力で対象を絞るテキストのために
+   * 要る。数値を持つキーワード能力でも、数値は問わない。
+   *
+   * 継続効果を適用した後の姿を読む。属性（`UnitOnSquare.card.attributes`）と同じ扱いで、
+   * 能力を与える効果が入った時は、与えられた能力が `units()` の返す写しの `card.abilities`
+   * に載る形で表す（いまはそうした効果が無く、カードに書かれた能力を見るだけである）。
+   * 尋ねる口はここなので、写しの作り方が変わってもカードの側は直さずに済む。ただし、与えられた
+   * 能力が生むＢＰ修整を集める側（`continuous.ts` の `gather`）は、書かれた能力から引いて
+   * いるので別に直す。盤面から来た写しの `card` に `card.ts` の `hasKeyword` を呼んでも
+   * 同じ答えになる。
+   */
+  hasKeyword(unit: UnitOnSquare, keyword: PassiveKeyword): boolean
 }
 
 /**
@@ -136,10 +207,10 @@ export type Instruction =
   | { readonly kind: '破壊する'; readonly target: UnitOnSquare }
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
   | { readonly kind: 'ユニットにダメージを与える'; readonly target: UnitOnSquare; readonly amount: number }
-  | { readonly kind: '向きを変える'; readonly target: UnitOnSquare; readonly orientation: Orientation }
+  | { readonly kind: '向きを変える'; readonly target: UnitOnSquare | EnergyInZone; readonly orientation: Orientation }
   | {
       readonly kind: 'ゾーンへ置く'
-      readonly card: CardInZone | UnitOnSquare
+      readonly card: CardInZone | UnitOnSquare | SmashCard
       readonly to: PlayerZone
       readonly orientation: Orientation
       readonly position: LibraryPosition
@@ -346,25 +417,25 @@ export function* damageUnit(target: UnitOnSquare, amount: number): EffectStep<vo
 }
 
 /**
- * スクエアにいるユニットをリリースする（総合ルール 第2部 第24章 1）。
+ * スクエアにいるユニット、または支配者のエネルギーをリリースする（総合ルール 第2部 第24章 1）。
  *
  * フリーズ状態のカードをリリース状態にすることを「リリースする」と呼ぶ。
  *
  * **すでにリリース状態のカードをリリースすることはできない**（同 1-1）。その場合この行動は
- * 実行されない（同 第1部 第1章 3）。効果はそのまま続く。対象がすでにスクエアを離れていた
- * 場合も同じである。
+ * 実行されない（同 第1部 第1章 3）。効果はそのまま続く。対象がすでにスクエアやエネルギー
+ * ゾーンを離れていた場合も同じである。
  *
  * これは向きを変えるだけで、ゾーンの移動ではない。置く経路（`placeOnSquare`）に同じ
  * スクエアを渡して代用しないこと。置く経路を通すと、ユニットがあるスクエアに同じ
  * プレイヤーの支配するユニットが置かれた時に働くルールエフェクト（同 第4部 第14章 4-7）の
  * 判定に、向きを変えただけのカードが紛れ込む。
  */
-export function* release(target: UnitOnSquare): EffectStep<void> {
+export function* release(target: UnitOnSquare | EnergyInZone): EffectStep<void> {
   yield { kind: '向きを変える', target, orientation: 'リリース' }
 }
 
 /**
- * スクエアにいるユニットをフリーズする（総合ルール 第2部 第24章 1）。
+ * スクエアにいるユニット、または支配者のエネルギーをフリーズする（総合ルール 第2部 第24章 1）。
  *
  * リリース状態のカードをフリーズ状態にすることを「フリーズする」と呼ぶ。すでにフリーズ
  * 状態のカードをフリーズすることはできない（同 1-1）。実行できない場合の扱いは `release`
@@ -374,7 +445,7 @@ export function* release(target: UnitOnSquare): EffectStep<void> {
  * こちらは効果が行うものである。コストとしてのフリーズは、フリーズできることを先に
  * 確かめたうえで支払われる。
  */
-export function* freeze(target: UnitOnSquare): EffectStep<void> {
+export function* freeze(target: UnitOnSquare | EnergyInZone): EffectStep<void> {
   yield { kind: '向きを変える', target, orientation: 'フリーズ' }
 }
 
@@ -397,12 +468,15 @@ export function* freeze(target: UnitOnSquare): EffectStep<void> {
  * （同 第2部 第21章 1-5）、それを見て誘発する能力がある（同 第4部 第7章 6）。カードを書く
  * 側はその場合 `destroy` を使うが、ここに捨札を渡された場合も誘発は起こる。
  *
+ * スマッシュ（`SmashCard`）も渡せる。「スマッシュを捨札に置く」は、スマッシュゾーンから
+ * 持ち主の捨札へ動かす、ふつうのゾーン移動である。中身は効果に見えないまま動く。
+ *
  * スクエアへ置く効果はここでは扱わない。プレイされたユニットがスクエアに置かれることは
  * 「登場」と呼ばれて効果によって置かれる場合と区別され（同 第2部 第20章 1-4-a）、
  * 「登場した時」の誘発や「根性」（同 第5部 第6章 3）が働くかどうかがそこで分かれるためである。
  */
 export function* placeInZone(
-  card: CardInZone | UnitOnSquare,
+  card: CardInZone | UnitOnSquare | SmashCard,
   to: PlayerZone,
   orientation: Orientation,
   position: LibraryPosition = '1番上',
