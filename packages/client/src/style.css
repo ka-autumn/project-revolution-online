@@ -6263,15 +6263,19 @@ body {
     font-size: 0.8rem;
   }
 
-  /* エネルギー・スマッシュ：名前・枚数と、1 枚につき 1 つの印を並べたボタン */
+  /*
+   * エネルギー・スマッシュ：左端に名前と枚数を縦に積み、その右に種類ごとの「印＋枚数」を置いたボタン。
+   * 高さは段いっぱいに伸ばして、隣のボタンとそろえる。
+   */
   .duel .zone__summary {
     display: flex;
-    flex-wrap: wrap;
+    flex: 1;
     align-items: center;
     justify-content: center;
-    gap: 0.2rem 0.5rem;
+    gap: 0.7rem;
     width: 100%;
-    min-height: 4.4rem;
+    /* 盤面ごと縮めても、指で押す高さ（実寸で 2.75rem）を下回らないよう、縮める率で割り戻す。 */
+    min-height: calc(2.75rem / var(--board-zoom, 0.5));
     padding: 0.3rem 0.6rem;
     border: 2px solid var(--gold);
     border-radius: 12px;
@@ -6282,23 +6286,64 @@ body {
     font-weight: 700;
   }
 
+  .duel .zone__summary-head {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.15;
+  }
+
+  .duel .zone__summary-name {
+    font-size: 1.1rem;
+    white-space: nowrap;
+  }
+
   .duel .zone__summary strong {
     color: var(--ink);
     font-size: 2rem;
   }
 
-  .duel .zone__dots {
+  /*
+   * 中身は、1 枚ごとに印を並べず、種類ごとの枚数で出す（枚数が増えても枠からはみ出さない）。
+   * エネルギーは色 × 状態（リリース／フリーズ）ごと。列が色（赤・青・白・緑・黒の順で、あるものだけ）、上の段が
+   * リリース、下の段がフリーズ。スマッシュは色が無いので、上がリリース、下がフリーズの 2 つ。位置は要素の
+   * grid-column / grid-row が持つ。1 枚でもある色は片方が 0 枚でも両方を出し、0 枚は薄くする。
+   */
+  .duel .zone__tally {
+    display: grid;
+    flex: 0 1 auto;
+    grid-auto-columns: max-content;
+    min-width: 0;
+    gap: 0.15rem 0.6rem;
+  }
+
+  .duel .zone__kind {
     display: flex;
-    flex-basis: 100%;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.35rem;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .duel .zone__kind b {
+    color: var(--ink);
+    font-size: 1.7rem;
+    line-height: 1;
+  }
+
+  /* フリーズの数字は赤。 */
+  .duel .zone__kind--フリーズ b {
+    color: #c22d12;
+  }
+
+  .duel .zone__kind--無し {
+    opacity: 0.45;
   }
 
   .duel .zone__symbol {
     position: relative;
-    width: 3rem;
-    height: 3rem;
+    flex: none;
+    width: 1.9rem;
+    height: 1.9rem;
   }
 
   .duel .zone__symbol > img {
@@ -6307,7 +6352,7 @@ body {
     height: 100%;
   }
 
-  /* フリーズしているカードは、印の上に白で縁取った太い赤い × を重ねる。 */
+  /* フリーズの印は、上に白で縁取った太い赤い × を重ねる。 */
   .duel .zone__symbol > .zone__cross {
     position: absolute;
     inset: -0.1rem;

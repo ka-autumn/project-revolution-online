@@ -67,6 +67,8 @@ import type {
 } from './deck-builder.js'
 import type { ActionView, AskOption, AskView, ChoiceView, DestinationView, PickView } from './input-model.js'
 import { countName, DISPLAY_NAME_LIMIT } from './name-count.js'
+import { zoneTally } from './zone-tally.js'
+import type { TallySymbol, TallyZone } from './zone-tally.js'
 import { PHONE_BACKDROP, PHONE_OPENER, PHONE_SHEET, rulesSummaryOf, tabAfterKey } from './phone.js'
 import type { BuilderTab, DuelSheet, LobbyMode, PhoneControl } from './phone.js'
 import { builderSight } from './phone-scroll.js'
@@ -594,18 +596,18 @@ function choosingTabElement(picking: BoardPicking | undefined, withCancel = true
 }
 
 /**
- * エネルギー・スマッシュの印 1 つ（スマートフォン、ADR-0034）。エネルギーはそのカードの色のレベルアイコン、
- * スマッシュはカードの裏面を小さくしたもの。フリーズしているカードは、白で縁取った太い赤い × を重ねる
+ * エネルギー・スマッシュの印 1 つ（スマートフォン、ADR-0034）。エネルギーはその色のレベルアイコン、
+ * スマッシュはカードの裏面を小さくしたもの。フリーズの印は、白で縁取った太い赤い × を重ねる
  * （縁取りは、赤のアイコンに重なっても埋もれないようにするため）。
  */
-function zoneSymbolElement(zone: ZoneView['zone'], card: CardView): HTMLElement {
+function zoneSymbolElement(symbol: TallySymbol, frozen: boolean): HTMLElement {
   const node = element('span', 'zone__symbol')
   const icon = document.createElement('img')
   icon.alt = ''
-  icon.src = zone === 'エネルギーゾーン' && card.kind === '表' ? LEVEL_ICON_URL[primaryColorOf(card.colors)] : cardBackMini
+  icon.src = symbol === '裏' ? cardBackMini : LEVEL_ICON_URL[symbol]
   node.append(icon)
 
-  if (card.orientation === 'フリーズ') {
+  if (frozen) {
     const cross = svgElement('svg', { class: 'zone__cross', viewBox: '0 0 24 24', 'aria-hidden': 'true' })
     const line = { d: 'M5 5 19 19M19 5 5 19', fill: 'none', 'stroke-linecap': 'round' }
     cross.append(
@@ -619,23 +621,34 @@ function zoneSymbolElement(zone: ZoneView['zone'], card: CardView): HTMLElement 
 }
 
 /**
- * エネルギー・スマッシュを、カードを並べずに押すボタンにする（スマートフォン、ADR-0034）。名前・枚数と、
- * 1 枚につき 1 つの印を並べる。押すと中のカードを大きく並べた一覧を開く。読み上げの名前には、枚数と
- * フリーズしている枚数を出す。
+ * エネルギー・スマッシュを、カードを並べずに押すボタンにする（スマートフォン、ADR-0034）。左端に名前と枚数を
+ * 縦に積み、右に種類ごとの「印＋枚数」を置く（数え方は `zone-tally.ts`）。押すと中のカードを大きく並べた一覧を
+ * 開く。読み上げの名前には、枚数とフリーズしている枚数、種類ごとの枚数を出す。
  */
-function zoneSummaryElement(zone: ZoneView, onOpen: () => void): HTMLElement {
-  const frozen = zone.cards.filter((card) => card.orientation === 'フリーズ').length
+function zoneSummaryElement(zone: ZoneView, name: TallyZone, onOpen: () => void): HTMLElement {
+  const tally = zoneTally(name, zone.cards)
   const node = button('', onOpen)
   node.classList.add('phone-only', 'zone__summary')
   // 0 枚なら開いても見るものが無い。捨札・リムーブのつまみと同じく、押せない。
   node.toggleAttribute('disabled', zone.count === 0)
-  node.setAttribute('aria-label', `${zone.zone}（${zone.count}、うちフリーズ ${frozen}）の一覧を開く`)
-  node.append(element('span', 'zone__summary-name', zone.zone.replace(/ゾーン$/, '')), element('strong', '', String(zone.count)))
+  node.setAttribute('aria-label', tally.label)
+  const head = element('span', 'zone__summary-head')
+  head.append(element('span', 'zone__summary-name', zone.zone.replace(/ゾーン$/, '')), element('strong', '', String(zone.count)))
+  node.append(head)
 
-  if (zone.cards.length > 0) {
-    const dots = element('span', 'zone__dots')
-    for (const card of zone.cards) dots.append(zoneSymbolElement(zone.zone, card))
-    node.append(dots)
+  if (tally.kinds.length > 0) {
+    const kinds = element('span', `zone__tally zone__tally--${name.replace(/ゾーン$/, '')}`)
+    for (const kind of tally.kinds) {
+      const each = element(
+        'span',
+        `zone__kind${kind.frozen ? ' zone__kind--フリーズ' : ''}${kind.count === 0 ? ' zone__kind--無し' : ''}`,
+      )
+      each.style.gridColumn = String(kind.column)
+      each.style.gridRow = String(kind.row)
+      each.append(zoneSymbolElement(kind.symbol, kind.frozen), element('b', '', String(kind.count)))
+      kinds.append(each)
+    }
+    node.append(kinds)
   }
 
   return node
@@ -670,7 +683,7 @@ function zoneElement(
   const node = element('section', `zone zone--${zone.zone}${choosing ? ' zone--候補あり' : ''}`)
   // スマートフォンでは、エネルギー・スマッシュはカードを並べずに、一覧を開くボタンにする（ADR-0034）。
   if (phoneOpener !== undefined && isChoosingZone(zone.zone)) {
-    node.append(zoneSummaryElement(zone, phoneOpener(zone.zone)))
+    node.append(zoneSummaryElement(zone, zone.zone, phoneOpener(zone.zone)))
     if (choosing) node.append(choosingTabElement(picking, false))
 
     return node
