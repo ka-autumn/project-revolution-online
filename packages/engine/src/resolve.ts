@@ -176,7 +176,7 @@ export function conditionHolds(state: DuelState, instance: TriggeredInstance): b
 
   const context = { controller: instance.controller, self: instance.self }
   const duel = effectView(() => state, context, new Set())
-  return condition(duel, instance.controller, instance.self)
+  return condition(duel)
 }
 
 interface Outcome {
