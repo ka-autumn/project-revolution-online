@@ -141,12 +141,26 @@ function focusInLayer(layer: HTMLElement, key: string | undefined): void {
   else holderOf(layer).focus(NO_SCROLL)
 }
 
+/**
+ * 開いた直後の手の置き先として、ボタンの側から名乗る印（属性）。送った答えを取り消せないダイアログ（エリアのシート、
+ * ADR-0034）が、最初の手を「閉じる」に置くために付ける。デッキ構築の確認が最初の手をキャンセルに置くのと同じ考え方。
+ */
+export const INITIAL_FOCUS_ATTRIBUTE = 'data-initial-focus'
+
+/**
+ * 最初に手を置く先を探す順。印のあるものが先で、無ければ今までどおり（手のボタン、次に止まる先、最後に箱）。
+ * 既存のダイアログには印が無いので、置き先は変わらない。
+ */
+export const INITIAL_FOCUS_SELECTORS: readonly string[] = [
+  `[${INITIAL_FOCUS_ATTRIBUTE}]:not(:disabled)`,
+  '.dialog__actions button, .dialog__row .button--primary',
+  '[tabindex]:not([role="dialog"]), button:not([disabled])',
+]
+
 /** ダイアログの中で、最初に手を置く先。 */
 function initialFocus(layer: HTMLElement): void {
-  const target =
-    layer.querySelector<HTMLElement>('.dialog__actions button, .dialog__row .button--primary') ??
-    layer.querySelector<HTMLElement>('[tabindex]:not([role="dialog"]), button:not([disabled])') ??
-    holderOf(layer)
+  const found = INITIAL_FOCUS_SELECTORS.reduce<HTMLElement | null>((hit, selector) => hit ?? layer.querySelector<HTMLElement>(selector), null)
+  const target = found ?? holderOf(layer)
   target.focus(NO_SCROLL)
 }
 

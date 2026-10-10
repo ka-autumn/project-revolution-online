@@ -2,7 +2,7 @@ import { COLORS, DUEL_FORMATS } from '@revolution/engine'
 import { FOCUS_KEY_ATTRIBUTE, REGION_ATTRIBUTE, type Region, wireBoardKeyboard } from './board-keyboard.js'
 import { highlightedSquares } from './area-highlight.js'
 import type { AreaPointerStore } from './area-highlight.js'
-import { ignoreKeyRepeat, onLayerEscape } from './dialog-focus.js'
+import { INITIAL_FOCUS_ATTRIBUTE, ignoreKeyRepeat, onLayerEscape } from './dialog-focus.js'
 import type {
   Area,
   CardId,
@@ -4354,12 +4354,23 @@ export interface AreaSheetHandlers {
 /**
  * 効果がエリアを選ばせている間、光っているスクエアを押したときの下からのシート（スマートフォン、ADR-0034）。
  *
- * 見出しはそのエリアの呼び名、上の段は、そのスクエアにいるユニットの詳細（空きスクエアなら無い）。一番下に
- * 「このエリアを選ぶ」と「閉じる」を縦に並べ、「このエリアを選ぶ」を押して初めて答えを送る。
- * 作りは `askElement` の手が 2 つ以上のときと同じで、送ったあとは返事が届くまでボタンを押せなくして
- * 「通信中…」を出す。送った答えは取り消せないので、閉じる口も Esc も効かせない。
+ * 並びは、見出し（そのエリアの呼び名）→ そのスクエアにいるユニットの詳細（空きスクエアなら無い）→ 聞く文 →
+ * 「通信中…」→ ボタン。詳細が先に来る確認・選ぶシートと違い、見出しを一番上に置く。見出しがカードでなくエリアを
+ * 指し、何を選ぶシートかを最初に伝えるため。強調したエリアがシートに隠れる場面でも、見出しが選ぶ対象を伝える。
+ * 一番下に「このエリアを選ぶ」と「閉じる」を縦に並べ、「このエリアを選ぶ」を押して初めて答えを送る。
+ *
+ * 詳細が多くても見出しとボタンが画面から出ないよう、詳細だけを包む枠（`dialog__details`）が縦に送れる。
+ * 開いた直後の手は「閉じる」に置く。送った答えは取り消せないので、戻せないことを聞く確認として扱う。
+ *
+ * 送ったかどうか（`sent`）は呼ぶ側の状態（`phone.ts` の `areaSheetSent`）が持つ。送ったあとは返事が届くまで、
+ * ボタンを押せなくして「通信中…」を出し、閉じる口（閉じる・Esc・背面）も効かせない。描き直されても同じ。
  */
-export function areaSheetElement(heading: string, details: readonly HTMLElement[], handlers: AreaSheetHandlers): HTMLElement {
+export function areaSheetElement(
+  heading: string,
+  details: readonly HTMLElement[],
+  sent: boolean,
+  handlers: AreaSheetHandlers,
+): HTMLElement {
   const layer = element('div', 'dialog dialog--エリア')
   const box = element('div', 'dialog__box')
   box.setAttribute('role', 'dialog')
@@ -4372,30 +4383,44 @@ export function areaSheetElement(heading: string, details: readonly HTMLElement[
   box.setAttribute('aria-describedby', lead.id)
   const sending = element('p', 'dialog__sending')
   sending.setAttribute('role', 'status')
-  box.append(...details, title, lead, sending)
-
-  let sent = false
-  box.tabIndex = -1
-  const onClose = (): void => {
-    if (!sent) handlers.onClose()
+  box.append(title)
+  if (details.length > 0) {
+    const frame = element('div', 'dialog__details')
+    frame.append(...details)
+    box.append(frame)
   }
-  const onChoose = (): void => {
-    if (sent) return
-    sent = true
+  box.append(lead, sending)
+
+  // 手を置ける箱にする（Tab の止まる先には加えない）。送ったあと、押せなくしたボタンから手を移す先。
+  box.tabIndex = -1
+  // 押した直後から、描き直しを待たずに止める。描き直したあとの分は、呼ぶ側の状態が `sent` で渡す。
+  let locked = sent
+  const onClose = (): void => {
+    if (!locked) handlers.onClose()
+  }
+  const lockSent = (): void => {
     // ボタンを押せなくすると、そこにあった手が外れる。先に箱へ移して、「通信中…」を読み上げさせる。
     if (box.contains(document.activeElement)) box.focus({ preventScroll: true })
     box.setAttribute('aria-busy', 'true')
     sending.textContent = '通信中…'
     for (const each of box.querySelectorAll('button')) each.disabled = true
+  }
+  const onChoose = (): void => {
+    if (locked) return
+    locked = true
+    lockSent()
     handlers.onChoose()
   }
   const choose = button('このエリアを選ぶ', onChoose, true)
   const actions = element('div', 'dialog__actions')
   actions.append(choose)
+  const close = button('閉じる', onClose)
+  close.setAttribute(INITIAL_FOCUS_ATTRIBUTE, '')
   const foot = element('div', 'dialog__cancel')
-  foot.append(button('閉じる', onClose))
+  foot.append(close)
   box.append(actions, foot)
   layer.append(box)
+  if (sent) lockSent()
 
   onLayerEscape(layer, onClose)
   ignoreKeyRepeat(layer)
@@ -5393,7 +5418,8 @@ export function duelElement(props: DuelElementProps): HTMLElement {
     if (sheet !== undefined) root.append(phoneBackdropElement(closeSheet))
     // カードを 1 回タップすると、詳細と、そのカードで行える手のシートを出す。押せるカードは、選びかけに入って
     // シートが開く（`index.ts`）。ここで付けるのは、押せないカードの詳細だけを見るシートである。
-    // 光っているスクエアの中のユニットは、押すとそのスクエアに置く手になるので、詳細は出さない。
+    // 光っているスクエアの中のユニットには付けない。置き先のスクエアなら、押すとそのスクエアに置く手になる。
+    // エリアのスクエアなら、押すとそのスクエアのシートが開き、ユニットの詳細はそのシートが出す。
     for (const node of root.querySelectorAll<HTMLElement>('.card[data-card-id]')) {
       const id = node.dataset.cardId
       if (id === undefined || node.matches('.card--押せる') || node.closest('.picker, .dialog, .square--置き先') !== null) continue

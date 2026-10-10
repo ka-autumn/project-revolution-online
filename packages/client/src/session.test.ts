@@ -188,6 +188,23 @@ describe('届いたものを畳む', () => {
     expect(stage.opponentConnected).toBe(false)
   })
 
+  /**
+   * エリアのシート（スマートフォン）は、開いた時点の選択を参照で覚え、同じ参照のうちは開いたままにする
+   * （`phone-area.ts` の `areaSheetOf`）。相手の繋がりの知らせで選択が作り直されると、読んでいる途中でシートが閉じる。
+   */
+  it('相手の繋がりを受けても、選択は同じ参照のまま保たれる', () => {
+    const asked = fold(SEATED, { kind: '選んでほしい', choice: CHOICE })
+    const asking = asked.stage
+    if (asking.kind !== '打っている') throw new Error('打っているはずだった')
+
+    const stage = applyMessage(asked, { kind: '相手の繋がり', connected: false }).stage
+    if (stage.kind !== '打っている') throw new Error('打っているはずだった')
+
+    expect(stage.choice).toBe(asking.choice)
+    expect(stage.choice).toBe(CHOICE)
+    expect(stage.opponentConnected).toBe(false)
+  })
+
   it('席についたら、盤面が届く前でも席は分かる', () => {
     const stage = fold(SEATED).stage
     if (stage.kind !== '打っている') throw new Error('打っているはずだった')
