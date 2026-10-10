@@ -36,6 +36,22 @@ export interface CardInZone {
 }
 
 /**
+ * 効果から見た、スマッシュゾーンにある裏向きのカード 1 枚（スマッシュ）。
+ *
+ * `CardInZone` と違って、**カードの中身を持たない。** スマッシュは両方のプレイヤーに対して
+ * 裏向きに置かれていて、持ち主であっても中身を見られない（総合ルール 第2部 第21章 7-3）。
+ * 効果が選んで動かすことはできるが、何を選んだかは分からない。支配者を持たないのは、効果に
+ * 見せるスマッシュゾーンが支配者自身のものだけだからである（`DuelView.smashZone`）。
+ *
+ * 通信では、このカードを選ぶ候補は「見えていない」候補として届く（`protocol.ts` の
+ * `describeCandidate`）。
+ */
+export interface SmashCard {
+  readonly id: CardId
+  readonly zone: 'スマッシュゾーン'
+}
+
+/**
  * 効果が盤面について問い合わせられること。
  *
  * 効果に渡されるのはこのインターフェースだけで、盤面そのものは渡さない。カードの実装が
@@ -112,6 +128,25 @@ export interface DuelView {
    * で、手札・捨札・プランゾーンと同じ形である。要るようになった時に足す。
    */
   energyZone(): readonly CardInZone[]
+  /**
+   * そのプレイヤーのスマッシュの枚数（総合ルール 第2部 第21章 7-2）。
+   *
+   * 数え方は `smash.ts` の `smashesOf` と同じで、スマッシュゾーンにある裏向きのカードだけを
+   * 数える。希望ステップで表向きに置かれているカードはスマッシュではない（同 第3部 第19章 1）
+   * ので数えない。スマッシュ判定中だからといって特別な扱いは足していない。
+   *
+   * どちらのプレイヤーぶんも読める。スマッシュの枚数は公開されている情報である（同 7-3。
+   * 表側は見られないが、いつでも両方のスマッシュゾーンの枚数を数えられる）。枚数だけを返す
+   * ので、数えたことによってそのカードを対象にできるようにはならない（`energyCount` と同じ）。
+   */
+  smashCount(player: Player): number
+  /**
+   * 支配者自身のスマッシュゾーンにある、スマッシュすべて。
+   *
+   * 中身は返さない（`SmashCard`）。ゾーンへ置く命令（`placeInZone`）の対象にできる。相手の
+   * スマッシュを返すアクセサは無い。選んで動かすテキストが無いためで、要る時に足す。
+   */
+  smashZone(): readonly SmashCard[]
 }
 
 /**
@@ -139,7 +174,7 @@ export type Instruction =
   | { readonly kind: '向きを変える'; readonly target: UnitOnSquare; readonly orientation: Orientation }
   | {
       readonly kind: 'ゾーンへ置く'
-      readonly card: CardInZone | UnitOnSquare
+      readonly card: CardInZone | UnitOnSquare | SmashCard
       readonly to: PlayerZone
       readonly orientation: Orientation
       readonly position: LibraryPosition
@@ -397,12 +432,15 @@ export function* freeze(target: UnitOnSquare): EffectStep<void> {
  * （同 第2部 第21章 1-5）、それを見て誘発する能力がある（同 第4部 第7章 6）。カードを書く
  * 側はその場合 `destroy` を使うが、ここに捨札を渡された場合も誘発は起こる。
  *
+ * スマッシュ（`SmashCard`）も渡せる。「スマッシュを捨札に置く」は、スマッシュゾーンから
+ * 持ち主の捨札へ動かす、ふつうのゾーン移動である。中身は効果に見えないまま動く。
+ *
  * スクエアへ置く効果はここでは扱わない。プレイされたユニットがスクエアに置かれることは
  * 「登場」と呼ばれて効果によって置かれる場合と区別され（同 第2部 第20章 1-4-a）、
  * 「登場した時」の誘発や「根性」（同 第5部 第6章 3）が働くかどうかがそこで分かれるためである。
  */
 export function* placeInZone(
-  card: CardInZone | UnitOnSquare,
+  card: CardInZone | UnitOnSquare | SmashCard,
   to: PlayerZone,
   orientation: Orientation,
   position: LibraryPosition = '1番上',

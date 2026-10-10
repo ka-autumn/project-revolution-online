@@ -156,6 +156,7 @@ export type {
   Effect,
   EffectStep,
   Instruction,
+  SmashCard,
   TrapEffect,
   UnitOnSquare,
 } from './effect.js'

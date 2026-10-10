@@ -7,11 +7,13 @@ import {
   applyWithAnswers,
   cardsIn,
   choose,
+  chooseAtMostOne,
   defineUnit,
   emptyDuelState,
   instantiate,
   passPriority,
   planReplacing,
+  placeInZone,
   placeTopOfLibrary,
   putOnSquare,
   triggeredAbility,
@@ -335,6 +337,88 @@ describe('見えていない候補の置き場所', () => {
       { kind: '見えていない', at: undefined },
       { kind: '見えていない', at: undefined },
     ])
+  })
+})
+
+/**
+ * 効果が自分のスマッシュを選ぶ時の候補は、プランのコストの支払いと同じ「見えていない」候補
+ * として届く。**通信の形は変えていない。**
+ */
+describe('効果が選ぶスマッシュの候補', () => {
+  const secret = defineUnit({
+    name: 'テスト・効果が選ぶスマッシュ',
+    level: 2,
+    colors: ['黒'],
+    bp: 3000,
+    sp: 1500,
+  })
+
+  const discarder = defineUnit({
+    name: 'テスト・スマッシュを捨てる',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* (duel) {
+        const smash = yield* chooseAtMostOne(duel.smashZone())
+        if (smash !== undefined) yield* placeInZone(smash, '捨札', 'リリース')
+      }),
+    ],
+  })
+
+  /** スマッシュを 2 枚持つ先攻の「登場した時」が、バンクで解決を待っている盤面。 */
+  function waiting(): DuelState {
+    const square: Square = { row: 0, column: 1 }
+    const placed = putOnSquare(
+      putInZone(phaseReadyToAct('メインフェイズ'), '先攻', 'スマッシュゾーン', [
+        instantiate({ id: '裏のスマッシュ1', card: secret, owner: '先攻' }),
+        instantiate({ id: '裏のスマッシュ2', card: secret, owner: '先攻' }),
+      ]),
+      square,
+      instantiate({ id: '捨てさせるユニット', card: discarder, owner: '先攻' }),
+    )
+    const [triggered] = discarder.abilities
+    if (triggered?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
+    return {
+      ...placed,
+      bank: [
+        {
+          ability: triggered,
+          source: '捨てさせるユニット',
+          controller: '先攻',
+          self: { id: '捨てさせるユニット', square, card: discarder, controller: '先攻' },
+        },
+      ],
+    }
+  }
+
+  it('見えていない候補として、置き場所つきで届く', () => {
+    const progress = applyWithAnswers(waiting(), { kind: '優先権を放棄する' }, [])
+
+    expectChoice(progress)
+    expect(progress.choice.mayDecline).toBe(true)
+    expect(progress.choice.candidates).toEqual([
+      { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 0 } },
+      { kind: '見えていない', at: { player: '先攻', zone: 'スマッシュゾーン', index: 1 } },
+    ])
+  })
+
+  it('カードの中身も識別子も現れない', () => {
+    const progress = applyWithAnswers(waiting(), { kind: '優先権を放棄する' }, [])
+
+    expectChoice(progress)
+    const sent = JSON.stringify(progress.choice)
+    expect(sent).not.toContain('テスト・効果が選ぶスマッシュ')
+    expect(sent).not.toContain('裏のスマッシュ')
+  })
+
+  it('答えた番号のスマッシュが捨札に置かれる', () => {
+    const progress = applyWithAnswers(waiting(), { kind: '優先権を放棄する' }, [1])
+
+    expectAdvanced(progress)
+    expect(cardsIn(progress.state, '先攻', 'スマッシュゾーン').map((each) => each.id)).toEqual(['裏のスマッシュ1'])
+    expect(cardsIn(progress.state, '先攻', '捨札').map((each) => each.id)).toEqual(['裏のスマッシュ2'])
   })
 })
 

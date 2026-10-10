@@ -1160,6 +1160,172 @@ describe('効果から見えるエネルギーゾーン', () => {
   })
 })
 
+// 総合ルール 第2部 第21章 7-2・7-3（ADR-0006）
+describe('効果から見えるスマッシュ', () => {
+  /** それぞれのプレイヤーのスマッシュゾーンに、その枚数のカードを置いた盤面。 */
+  function withSmashes(mineCount: number, theirsCount: number): DuelState {
+    const smashes = (player: '先攻' | '後攻', count: number) =>
+      Array.from({ length: count }, (_, index) =>
+        instantiate({ id: `${player}のスマッシュ${index}`, card: vanilla, owner: player }),
+      )
+    const board = putInZone(emptyDuelState(), '先攻', 'スマッシュゾーン', smashes('先攻', mineCount))
+    return putInZone(board, '後攻', 'スマッシュゾーン', smashes('後攻', theirsCount))
+  }
+
+  /** 効果が数えた、両方のプレイヤーのスマッシュの枚数。 */
+  function counted(state: DuelState): readonly number[] {
+    const seen: number[] = []
+    resolveEffect(
+      state,
+      function* (duel) {
+        seen.push(duel.smashCount(duel.controller), duel.smashCount(duel.opponent))
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+    return seen
+  }
+
+  /** 支配者自身のスマッシュを 1 枚まで選び、捨札に置く効果。選んだものを効果が覚えて返す。 */
+  function discardingASmash(state: DuelState, chooser: Chooser): { readonly state: DuelState; readonly seen: unknown } {
+    let seen: unknown = 'まだ選んでいない'
+    const resolved = resolveEffect(
+      state,
+      function* (duel) {
+        const smash = yield* chooseAtMostOne(duel.smashZone())
+        seen = smash
+        if (smash !== undefined) yield* placeInZone(smash, '捨札', 'リリース')
+      },
+      { controller: '先攻', via: VIA, chooser },
+    )
+    return { state: resolved, seen }
+  }
+
+  it('両方のプレイヤーのスマッシュの枚数を数えられる', () => {
+    expect(counted(withSmashes(3, 1))).toEqual([3, 1])
+  })
+
+  // 総合ルール 第2部 第21章 7-3。いつでも、両方のスマッシュゾーンの枚数を数えられる。
+  it('相手のスマッシュの枚数も数えられる', () => {
+    expect(counted(withSmashes(0, 2))).toEqual([0, 2])
+  })
+
+  it('スマッシュが 0 枚なら 0 と数える', () => {
+    expect(counted(withSmashes(0, 0))).toEqual([0, 0])
+  })
+
+  // 総合ルール 第3部 第19章 1。希望ステップで表向きに置かれたカードは、スマッシュではない。
+  it('スマッシュ判定中に表向きで置かれているカードは数えない', () => {
+    const state = withSmashes(3, 0)
+    const judging: DuelState = {
+      ...state,
+      smashJudgments: [
+        {
+          player: '先攻',
+          step: '希望ステップ',
+          repeats: 1,
+          round: 1,
+          faceUp: '先攻のスマッシュ0',
+          heldBank: [],
+          heldTriggered: [],
+          startedAt: 0,
+        },
+      ],
+    }
+
+    expect(counted(judging)).toEqual([2, 0])
+  })
+
+  it('支配者自身のスマッシュを 1 枚ずつ選べるが、中身は見えない', () => {
+    const { seen } = discardingASmash(withSmashes(2, 2), chooseFirst)
+
+    // 効果が受け取るのは識別子とゾーンだけで、カードそのものは含まれない（総合ルール 第2部
+    // 第21章 7-3）。
+    expect(seen).toEqual({ id: '先攻のスマッシュ0', zone: 'スマッシュゾーン' })
+  })
+
+  it('選んだスマッシュを捨札に置ける', () => {
+    const state = withSmashes(2, 2)
+
+    const { state: resolved } = discardingASmash(state, (candidates) => candidates[1])
+
+    expect(idsOf(cardsIn(resolved, '先攻', 'スマッシュゾーン'))).toEqual(['先攻のスマッシュ0'])
+    expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['先攻のスマッシュ1'])
+    // 相手のスマッシュには触れない。
+    expect(cardsIn(resolved, '後攻', 'スマッシュゾーン')).toHaveLength(2)
+  })
+
+  it('選んだスマッシュの分だけ、数えた枚数が減る', () => {
+    const counts: number[] = []
+    resolveEffect(
+      withSmashes(2, 0),
+      function* (duel) {
+        const smash = yield* choose(duel.smashZone())
+        if (smash === undefined) throw new Error('スマッシュがある盤面で試すこと')
+        yield* placeInZone(smash, '捨札', 'リリース')
+        counts.push(duel.smashCount(duel.controller))
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+
+    expect(counts).toEqual([1])
+  })
+
+  it('選ばないことも選べる', () => {
+    const state = withSmashes(2, 0)
+
+    const { state: resolved, seen } = discardingASmash(state, () => undefined)
+
+    expect(seen).toBeUndefined()
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  // 総合ルール 第1部 第1章 3。候補が無いなら選ぶ行動は実行されず、効果はそのまま続く。
+  it('スマッシュが 1 枚も無ければ、選べないまま効果が続く', () => {
+    const state = withSmashes(0, 2)
+
+    const { state: resolved, seen } = discardingASmash(state, chooseFirst)
+
+    expect(seen).toBeUndefined()
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  it('スマッシュ判定中に表向きで置かれているカードは、選ぶ候補にならない', () => {
+    const judging: DuelState = {
+      ...withSmashes(2, 0),
+      smashJudgments: [
+        {
+          player: '先攻',
+          step: '希望ステップ',
+          repeats: 1,
+          round: 1,
+          faceUp: '先攻のスマッシュ0',
+          heldBank: [],
+          heldTriggered: [],
+          startedAt: 0,
+        },
+      ],
+    }
+
+    const { seen } = discardingASmash(judging, chooseFirst)
+
+    expect(seen).toEqual({ id: '先攻のスマッシュ1', zone: 'スマッシュゾーン' })
+  })
+
+  it('見せていないスマッシュは対象にできない', () => {
+    const state = withSmashes(1, 0)
+
+    expect(() =>
+      resolveEffect(
+        state,
+        function* () {
+          yield* placeInZone({ id: '先攻のスマッシュ0', zone: 'スマッシュゾーン' }, '捨札', 'リリース')
+        },
+        { controller: '先攻', via: VIA, chooser: chooseFirst },
+      ),
+    ).toThrowError('効果に見せていないカードが対象にされた')
+  })
+})
+
 // 総合ルール 第4部 第3章 4（ADR-0006）
 describe('効果が誘発型能力を作る', () => {
   /** 味方を 1 枚選び、その味方をあなたのターンの終わりにエネルギーゾーンへ置く能力を作る。 */

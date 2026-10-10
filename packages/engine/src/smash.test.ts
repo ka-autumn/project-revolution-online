@@ -462,6 +462,50 @@ describe('希望ステップ', () => {
 
     expect(idsOf(cardsOn(endStep(state), centerSquare))).toEqual(['スマッシュ役'])
   })
+
+  // 総合ルール 第5部 第3章 2、第2部 第21章 7-3。「希望」で解決される効果は、相手のスマッシュの
+  // 枚数を読んで分岐できる。
+  describe('相手のスマッシュの枚数で分岐する「希望」', () => {
+    /** 先攻（スマッシュした側）のスマッシュゾーンに、その枚数のカードを置く。 */
+    function withOpponentSmashes(state: DuelState, count: number): DuelState {
+      return putInZone(
+        state,
+        '先攻',
+        'スマッシュゾーン',
+        Array.from({ length: count }, (_, index) =>
+          instantiate({ id: `先攻のスマッシュ${index}`, card: vanilla, owner: '先攻' }),
+        ),
+      )
+    }
+
+    const damagedUpToTwo = defineUnit({
+      name: 'テスト・希望・相手のスマッシュが 2 枚以下ならダメージ',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [
+        hope(function* (duel) {
+          if (duel.smashCount(duel.opponent) <= 2) yield* damagePlayer(duel.opponent, 500)
+        }),
+      ],
+    })
+
+    const hopeStepWith = (opponentSmashes: number) =>
+      endStep(withOpponentSmashes(withEnergy(smashedFromCenter(sp1000, [damagedUpToTwo]), [vanilla]), opponentSmashes))
+
+    it('相手のスマッシュが条件の枚数以下なら、効果が起こる', () => {
+      expect(hopeStepWith(2).damage['先攻']).toBe(500)
+    })
+
+    it('相手のスマッシュが条件の枚数より多ければ、効果は起こらない', () => {
+      expect(hopeStepWith(3).damage['先攻']).toBe(0)
+    })
+
+    it('相手のスマッシュが 0 枚でも、条件を満たす', () => {
+      expect(hopeStepWith(0).damage['先攻']).toBe(500)
+    })
+  })
 })
 
 // 総合ルール 第3部 第20章 1（ADR-0006）

@@ -2,9 +2,10 @@ import { BATTLE_SPACE } from './board.js'
 import type { UnitCard } from './card.js'
 import { cardsIn } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
-import type { CardInZone, DuelView, UnitOnSquare } from './effect.js'
+import type { CardInZone, DuelView, SmashCard, UnitOnSquare } from './effect.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
+import { smashesOf } from './smash.js'
 import type { PlayerZone } from './zone.js'
 
 /**
@@ -132,5 +133,17 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
     // カードを対象にできるようにはならない。
     energyCount: (player) => cardsIn(currentState(), player, 'エネルギーゾーン').length,
     energyZone: showZone('エネルギーゾーン'),
+    // 数え方は `smashesOf` に任せる。表向きに置かれているカードを数えない判断をここで
+    // 繰り返さない。
+    smashCount: (player) => smashesOf(currentState(), player).length,
+    // 支配者自身のスマッシュだけを、中身を持たない形で見せる。持ち主であっても表側は見られない
+    // （総合ルール 第2部 第21章 7-3）ので、`card` を写さない。
+    smashZone: () => {
+      const smashes = smashesOf(currentState(), controller).map(
+        (instance): SmashCard => ({ id: instance.id, zone: 'スマッシュゾーン' }),
+      )
+      for (const smash of smashes) source.show(smash.id)
+      return smashes
+    },
   }
 }
