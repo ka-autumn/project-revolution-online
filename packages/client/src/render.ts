@@ -5210,13 +5210,10 @@ export function duelElement(props: DuelElementProps): HTMLElement {
 
   // 行き先を選んでいる間の帯は、操作の帯のかわりなので、操作の帯（左の列）のすぐあとに置く。
   const peek = phone === undefined || props.peek === undefined ? undefined : peekElement(props.peek)
-  if (peek !== undefined) {
-    root.append(peek)
-    // 光った行き先を押すと手を送る。返事の盤面が届いて描き直されるまで、帯を残さない。
-    root.addEventListener('click', (event) => {
-      if (event.target instanceof Element && event.target.closest('.square--置き先, .zone--置き先') !== null) peek.remove()
-    })
-  }
+  // 帯の出入りは、選びかけと送信の状態から描き直しで決まる。行き先を押すと、選びかけを外してから手を送る
+  // （`index.ts`）ので、返事（盤面・断り・切断）で描き直されるまで、帯と行き先の光は同じ時点まで残り、同時に消える。
+  // PC のクリックモードで行き先を押した直後と同じ見え方。
+  if (peek !== undefined) root.append(peek)
 
   // スマートフォンでは、ログとカードの詳細は押したときだけ出すシートにする。ログは開いている間だけ作る。
   // カードの詳細の置き場（右の列）は無く、押したカードの詳細は別のシートに出す（`index.ts`）。

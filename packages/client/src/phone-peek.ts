@@ -5,7 +5,7 @@
  * 帯で詳細を見せる。ここは、帯を出すかどうかの判定と、帯に出す数値の札・案内の文を、届いた値だけから決める
  * 純粋な部分である。帯を作るのは `render.ts`、置き場所を測るのは `phone-board.ts`。
  *
- * **押せる手をここで作り足さない**（ADR-0010）。判定の材料は `input-model.ts` の `PickView.sheet`
+ * 押せる手をここで作り足さない（ADR-0010）。判定の材料は `input-model.ts` の `PickView.sheet`
  * （届いた手から作ったシートの並び）だけである。
  */
 import type { AimKind, AskView } from './input-model.js'
