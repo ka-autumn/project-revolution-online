@@ -48,6 +48,15 @@ export type CardType = (typeof CARD_TYPES)[number]
 export type Attribute = string
 
 /**
+ * カードのメーカーシンボル（総合ルール 第2部 第13章 1-1）。
+ *
+ * 属性と同じく、総合ルールは一覧を定義しておらず閉じた集合として持てない（同 5 は属性
+ * についての規定だが、メーカーシンボルも属性に含まれる、同 1）。綴りの揺れは engine 側では
+ * 検出できない。
+ */
+export type MakerSymbol = string
+
+/**
  * 種別によらず、どのカードにも書かれていること（総合ルール 第2部 第2章 1）。
  *
  * ムーブアイコンはユニットだけが持つので、ここではなく `UnitCard` に持たせている。
@@ -85,15 +94,27 @@ interface WrittenCard {
    * カードに書かれている属性（総合ルール 第2部 第13章）。
    *
    * 属性にはメーカーシンボル・メディアシンボル・詳細属性の 3 種類が含まれる（同 1）が、
-   * ここに持つのは詳細属性だけである。テキストが参照しているのが詳細属性だけで、他の 2 つは
-   * 参照する側がいないためである（ムーブアイコン・トリガーアイコンと同じ考え方）。区別が
-   * 要るテキストが出てきた時に、種類ごとに分ける。
+   * ここに持つのは詳細属性だけである。メーカーシンボルは `makerSymbols` に分けた。メーカー
+   * シンボルを参照するテキストが出てきたためで、属性の並びに混ぜると、属性を数える・加える
+   * 効果がメーカーシンボルまで巻き込む。メディアシンボルは参照する側がまだいないので持たない
+   * （ムーブアイコン・トリガーアイコンと同じ考え方）。区別が要るテキストが出てきた時に分ける。
    *
    * **効果によって属性が加わることがある**（同 4）ので、いま何の属性を持っているかは
    * ここだけでは決まらない。効果から見えるのは継続効果を適用した後の姿で、それを写すのは
    * `view.ts` である。
    */
   readonly attributes: readonly Attribute[]
+  /**
+   * カードに書かれているメーカーシンボル（総合ルール 第2部 第13章 1-1）。
+   *
+   * 効果と常在型能力が見るのは、この並びにあるシンボルを含むかどうかだけである
+   * （`hasMakerSymbol`）。複数のシンボルを同じものとして扱うカード（同 1-1-1）は、カードの
+   * 側が並びに両方を書く。engine は実在のメーカー名を 1 つも知らない（ADR-0001・ADR-0002）。
+   *
+   * 属性と違って、メーカーシンボルを加える・失わせる効果は無い。書かれた並びがそのまま
+   * 継続効果を適用した後の姿でもある。
+   */
+  readonly makerSymbols: readonly MakerSymbol[]
   /** テキストが定義する能力（総合ルール 第2部 第10章 1）。改行ごとに別の能力になる（同 第4部 第1章 3）。 */
   readonly abilities: readonly Ability[]
   /**
@@ -202,6 +223,8 @@ interface CardSpec {
   readonly reverseStars?: number
   /** 省略した場合は属性を持たない。 */
   readonly attributes?: readonly Attribute[]
+  /** 省略した場合はメーカーシンボルを持たない。 */
+  readonly makerSymbols?: readonly MakerSymbol[]
   /**
    * 省略した場合はテキストを持たない（#93）。
    *
@@ -244,6 +267,7 @@ function written<T extends CardType>(type: T, spec: CardSpec) {
     stars: spec.stars ?? 0,
     reverseStars: spec.reverseStars ?? 0,
     attributes: spec.attributes ?? [],
+    makerSymbols: spec.makerSymbols ?? [],
     text: spec.text ?? [],
   }
 }
@@ -258,6 +282,16 @@ export function defineStrategy(spec: StrategySpec): StrategyCard {
 
 export function defineTrap(spec: TrapSpec): TrapCard {
   return { ...written('トラップ', spec), triggerIcon: spec.triggerIcon ?? [], effect: spec.effect ?? noEffect }
+}
+
+/**
+ * そのカードが、そのメーカーシンボルを持つか（総合ルール 第2部 第13章 1-1）。
+ *
+ * 書かれた並びに含まれるかどうかだけを見る。メーカーシンボルを加える・失わせる効果は
+ * 無いので、継続効果を適用した後の姿を通す必要が無い。
+ */
+export function hasMakerSymbol(card: Card, symbol: MakerSymbol): boolean {
+  return card.makerSymbols.includes(symbol)
 }
 
 /**

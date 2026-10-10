@@ -18,6 +18,7 @@ import {
   defineUnit,
   emptyDuelState,
   friendship,
+  hasMakerSymbol,
   instantiate,
   passPriority,
   playCard,
@@ -266,6 +267,113 @@ describe('継続効果によって加わる属性', () => {
     const board = boardOf([homeRight, '味方', otherwiseAttributed])
 
     expect(attributesOn(board, '味方', otherwiseAttributed)).toEqual(['別のテスト属性'])
+  })
+})
+
+/** メーカーシンボル「テスト社」を持つユニット。 */
+const madeByTestCompany = defineUnit({
+  name: 'テスト・テスト社製',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  makerSymbols: ['テスト社'],
+})
+
+/** 「テスト社」と「テスト社・別名」の両方を並びに書いたユニット。同じものとして扱うカードの書き方。 */
+const madeByTestCompanyOrItsAlias = defineUnit({
+  name: 'テスト・テスト社と別名',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  makerSymbols: ['テスト社', 'テスト社・別名'],
+})
+
+/** 属性にだけ「テスト社」と同じ綴りを書いたユニット。メーカーシンボルとは別の並びであることを見る。 */
+const attributedLikeCompany = defineUnit({
+  name: 'テスト・属性が同じ綴り',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  attributes: ['テスト社'],
+})
+
+/** 「テスト社」のメーカーシンボルを持つ他の味方のＢＰを＋2000。 */
+const boostingMadeByTestCompany = defineUnit({
+  name: 'テスト・テスト社製を強化',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    bpModifying((duel) =>
+      duel
+        .allies()
+        .filter((ally) => ally.id !== duel.self()?.id && ally.card.makerSymbols.includes('テスト社'))
+        .map((ally) => bpPlus(ally, 2000)),
+    ),
+  ],
+})
+
+// 総合ルール 第2部 第13章 1-1・1-1-1（ADR-0006）
+describe('メーカーシンボル', () => {
+  it('持つかどうかは、書かれた並びに含まれるかで決まる', () => {
+    expect(hasMakerSymbol(madeByTestCompany, 'テスト社')).toBe(true)
+    expect(hasMakerSymbol(madeByTestCompany, '別のテスト社')).toBe(false)
+    expect(hasMakerSymbol(vanilla, 'テスト社')).toBe(false)
+  })
+
+  // 総合ルール 第2部 第13章 1-1-1。別名を同じものとして扱うカードは、並びに両方を書く。
+  it('別名と同じものとして扱うカードは、どちらのシンボルでも持つと答える', () => {
+    expect(hasMakerSymbol(madeByTestCompanyOrItsAlias, 'テスト社')).toBe(true)
+    expect(hasMakerSymbol(madeByTestCompanyOrItsAlias, 'テスト社・別名')).toBe(true)
+  })
+
+  it('属性の並びとは別で、属性に同じ綴りがあってもメーカーシンボルは持たない', () => {
+    expect(hasMakerSymbol(attributedLikeCompany, 'テスト社')).toBe(false)
+    expect(attributedLikeCompany.makerSymbols).toEqual([])
+    expect(madeByTestCompany.attributes).toEqual([])
+  })
+
+  it('メーカーシンボルを持つ味方のＢＰを、他の味方に限って修整できる', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingMadeByTestCompany],
+      [homeCenter, '対象の味方', madeByTestCompany],
+      [homeRight, '対象でない味方', vanilla],
+      [centerCenter, '属性だけが同じ味方', attributedLikeCompany],
+      [centerLeft, '対象の敵', madeByTestCompany, '後攻'],
+    )
+
+    expect(bpOn(board, '対象の味方', madeByTestCompany)).toBe(3000)
+    expect(bpOn(board, '対象でない味方', vanilla)).toBe(1000)
+    expect(bpOn(board, '属性だけが同じ味方', attributedLikeCompany)).toBe(1000)
+    expect(bpOn(board, '対象の敵', madeByTestCompany)).toBe(1000)
+  })
+
+  it('強化するユニット自身がメーカーシンボルを持っていても、他の味方に限るなら自分は修整されない', () => {
+    const selfMade = defineUnit({
+      name: 'テスト・テスト社製の強化役',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      makerSymbols: ['テスト社'],
+      abilities: boostingMadeByTestCompany.abilities,
+    })
+    const board = boardOf([homeLeft, '強化するユニット', selfMade])
+
+    expect(bpOn(board, '強化するユニット', selfMade)).toBe(1000)
+  })
+
+  it('継続効果を適用した後の姿も、書かれたメーカーシンボルのまま変わらない', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingMadeByTestCompany],
+      [homeCenter, '対象の味方', madeByTestCompany],
+    )
+
+    expect(continuousData(board)('対象の味方', madeByTestCompany).makerSymbols).toEqual(['テスト社'])
   })
 })
 

@@ -78,6 +78,7 @@ export {
   defineUnit,
   hasDream,
   hasGuts,
+  hasMakerSymbol,
   hasPep,
   hasTrust,
   hopeOf,
@@ -87,7 +88,7 @@ export {
   planReplacingAbilitiesOf,
   spOf,
 } from './card.js'
-export type { Attribute, Card, CardType, Color, PlanKeyword, StrategyCard, TrapCard, UnitCard } from './card.js'
+export type { Attribute, Card, CardType, Color, MakerSymbol, PlanKeyword, StrategyCard, TrapCard, UnitCard } from './card.js'
 export { bpModification } from './continuous.js'
 export type { BpModification } from './continuous.js'
 export { satisfiesLevel } from './cost.js'
