@@ -330,6 +330,23 @@ export function abilityLabels(board: WirePerspective, choice: WireChoice): reado
 }
 
 /**
+ * 能力を選ぶ一覧（スマートフォン、ADR-0034）を開いた時点で、上の段に詳細を出すカード。
+ *
+ * 届いた選択が発生源を持っていればそれ、無ければ能力の候補の発生源が 1 つにそろっているときのそれ。
+ * どちらも無ければ `undefined`（押すと詳細が出ることを案内する）。見えているかどうかは、呼ぶ側が
+ * 盤面で引いて決める。
+ */
+export function abilityListSource(choice: WireChoice): CardId | undefined {
+  if (choice.source !== undefined) return choice.source
+
+  const sources = new Set<CardId | undefined>()
+  for (const candidate of choice.candidates) sources.add(candidate.kind === '能力' ? candidate.source : undefined)
+  const [only] = sources
+
+  return sources.size === 1 ? only : undefined
+}
+
+/**
  * 盤面をクリックして操作する（#94）。
  *
  * **ルールの判断は増やさない**（ADR-0010）。どのカードを押せるか、どこを光らせるかは、

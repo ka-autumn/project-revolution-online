@@ -4633,19 +4633,24 @@ function listDetailElement(phone: PhoneListOptions): HTMLElement | undefined {
   return phoneDetailElement(phone.shown, 'picker__detail', LIST_DETAIL_GUIDE)
 }
 
+/** 指でも、Enter・Space でも押せるものにする。 */
+function pressable(node: HTMLElement, onPress: () => void): void {
+  node.setAttribute('role', 'button')
+  node.tabIndex = 0
+  node.addEventListener('click', onPress)
+  node.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    onPress()
+  })
+}
+
 /** 指で押せるカードにする。押すと詳細に出す（`id` が無い裏向きは、押せるものにしない）。 */
 function tapToShow(node: HTMLElement, onTap: (id: CardId) => void): void {
   const id = node.dataset.cardId
   if (id === undefined) return
 
-  node.setAttribute('role', 'button')
-  node.tabIndex = 0
-  node.addEventListener('click', () => onTap(id))
-  node.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    onTap(id)
-  })
+  pressable(node, () => onTap(id))
 }
 
 /** 一覧の問いの文。ゾーンによって、見るときに知っておくことが違う。 */
@@ -4697,6 +4702,8 @@ function senderLock(): {
   readonly sending: HTMLElement
   readonly isSent: () => boolean
   readonly bind: (root: HTMLElement) => void
+  /** 送ったあとの止め方を、いますぐかける。答えを送って返事を待っている間に作った一覧のため。 */
+  readonly lockNow: () => void
   readonly once: <Args extends unknown[]>(run: (...args: Args) => void) => (...args: Args) => void
 } {
   const sending = element('p', 'picker__sending')
@@ -4728,6 +4735,7 @@ function senderLock(): {
     bind: (node) => {
       root = node
     },
+    lockNow: lock,
     once:
       <Args extends unknown[]>(run: (...args: Args) => void) =>
       (...args: Args): void => {
@@ -4738,88 +4746,107 @@ function senderLock(): {
   }
 }
 
-/** 払うカードを選ぶ一覧で押せるもの。 */
+/** 払う一覧で押せるもの。 */
 export interface ChooseZoneHandlers {
-  /** 選びかけを替える。選んでいるカードをもう一度押すと `undefined`（外す）。 */
-  readonly onPick: (card: CardId | undefined) => void
-  /** 選んでいるカードで払う。押せるのは選んでいる間だけ。 */
-  readonly onConfirm: (card: CardId) => void
   /** 行動をやめる。やめられない場面では渡されない。 */
   readonly onCancel?: () => void
+  /** 何も送らずに一覧を閉じる。選ぶのを待たれている間は、囲んだゾーンのボタンから開き直せる。 */
+  readonly onClose: () => void
 }
 
 /**
  * エネルギー・スマッシュから払うカードを選ぶ一覧（スマートフォン、ADR-0034）。コストの選択中に、
- * 選べるカードがあるゾーンのボタンから開く。1 回のタップで選ぶ・外すが切り替わり、フリーズしているなど
- * 選べないカードは選べない。最後に押したカードの詳細は上の段に出す。やめる口・決める口は一覧の下に置く。
+ * 払うカードがあるゾーンのボタンから開く。払えるゾーンが両方なら（プランのコスト）、2 つを「エネルギー」
+ * 「スマッシュ」の見出しで分けて 1 つにまとめる。
  *
- * 払う答えは 1 枚ずつ送る（ADR-0008）ので、選べるのは 1 枚で、別のカードを押すとそちらに替わる。何枚目を
- * 選んでいるかは `answered` から出す。送ったあとの止め方は「選ぶ」一覧と同じ（`senderLock`）。
+ * 払うカードを 1 回押すと、その 1 枚を払う。答えは 1 枚ずつ送る（ADR-0008）ので、PC のクリックモードで
+ * 盤面のカードを押したときと同じく、確かめる段を挟まない。払う候補でないカード（フリーズしているなど）は、
+ * 詳細を上の段に出すだけ。裏向きのスマッシュも、払う候補なら押せる（置き場所で答える、#127）。
+ * 払い終えるまで開いたままで（`pay-list.ts`）、続けて次の 1 枚を選べる。
+ *
+ * 一覧の下には、「この行動をやめる」（やめられるときだけ）と、何も送らずに戻る「閉じる」を置く。
+ * 送ったあとの止め方は「選ぶ」一覧と同じ（`senderLock`）。`picking` が無いとき（演出が出ている、
+ * 次の選択を待っている）は、押せるカードの無い一覧になる。`waiting` なら、送ったあとの止め方を最初からかける。
  */
 export function chooseZoneListElement(
-  zone: ZoneView,
+  zones: readonly ZoneView[],
   whose: '自分' | '相手',
-  picking: BoardPicking,
-  picked: CardId | undefined,
-  answered: number,
+  picking: BoardPicking | undefined,
   rawHandlers: ChooseZoneHandlers,
   phone: PhoneListOptions,
+  waiting: boolean,
 ): HTMLElement {
   const lock = senderLock()
   const handlers: ChooseZoneHandlers = {
-    onPick: (card) => {
-      if (!lock.isSent()) rawHandlers.onPick(card)
+    onClose: () => {
+      if (!lock.isSent()) rawHandlers.onClose()
     },
-    onConfirm: lock.once(rawHandlers.onConfirm),
     ...(rawHandlers.onCancel === undefined ? {} : { onCancel: lock.once(rawHandlers.onCancel) }),
   }
 
-  const cards = zone.cards.map((card) => {
-    const node = cardElement(card)
-    if (card.kind !== '表') return node
+  const sectionOf = (zone: ZoneView): HTMLElement => {
+    const name = zone.zone.replace(/ゾーン$/, '')
+    const section = element('section', 'picker__section')
+    section.dataset.zone = zone.zone
+    section.setAttribute('role', 'group')
+    const title = element('h3', 'picker__section-title', name)
+    title.id = `picker-zone-${++pickerSequence}`
+    section.setAttribute('aria-labelledby', title.id)
 
-    const pickable = isPickable(card, picking)
-    const isPicked = picked === card.id
-    node.classList.toggle('card--押せる', pickable)
-    node.classList.toggle('card--選択中', isPicked)
-    node.classList.toggle('card--選べない', !pickable)
-    node.setAttribute('aria-label', `${card.controlledBy}の${card.name}${isPicked ? '（選択中）' : pickable ? '（押せます）' : '（選べません）'}`)
-    tapToShow(node, (id) => {
-      // 選べないカードは、詳細を見るだけ。選びかけは動かさない。
-      if (!pickable) return phone.onShow(id, true)
+    const cards = element('div', 'picker__cards')
+    for (const card of zone.cards) {
+      const node = cardElement(card)
+      const pickable = isPickable(card, picking)
+      if (card.kind === '表') {
+        const id = card.id
+        node.classList.toggle('card--押せる', pickable)
+        node.classList.toggle('card--選べない', !pickable)
+        node.setAttribute('aria-label', `${card.controlledBy}の${card.name}${pickable ? '（押せます）' : '（選べません）'}`)
+        pressable(node, () => {
+          // 払う候補でないカードは、詳細を見るだけ。何も送らない。
+          if (!pickable) return phone.onShow(id, true)
 
-      // 選びかけを替えると描き直すので、詳細を覚えるだけにして二重に描かない。
-      phone.onShow(id, false)
-      handlers.onPick(isPicked ? undefined : id)
-    })
+          // 払うと描き直すので、詳細は覚えるだけにして二重に描かない。
+          phone.onShow(id, false)
+          lock.once(() => picking?.onCard(id))()
+        })
+      } else if (pickable) {
+        // 裏向きは識別子が無いので、置き場所で答える。候補でない札は、押せるものにしない。
+        const at = card.at
+        node.classList.add('card--押せる')
+        pressable(node, () => lock.once(() => picking?.onHidden?.(at))())
+      }
+      cards.append(node)
+    }
+    section.append(title, cards)
 
-    return node
-  })
+    return section
+  }
+
+  const names = zones.map((zone) => zone.zone.replace(/ゾーン$/, ''))
+  const area = element('div', 'picker__zones')
+  area.dataset[KEEP_SCROLL] = '払う一覧'
+  area.append(...zones.map(sectionOf))
 
   const foot = element('div', 'picker__foot')
-  foot.append(element('span', 'picker__count', `${answered + 1} 枚目を選んでいます`))
   if (handlers.onCancel !== undefined) foot.append(button('この行動をやめる', handlers.onCancel))
-  const decide = button('これで払う', () => {
-    if (picked !== undefined) handlers.onConfirm(picked)
-  })
-  decide.classList.add('button--primary')
-  decide.toggleAttribute('disabled', picked === undefined)
-  foot.append(decide)
+  foot.append(button('閉じる', handlers.onClose))
 
-  // Esc は、選びかけを外すだけにする。行動そのものを取り消すのは「この行動をやめる」だけ（ADR-0033）。
+  // Esc は「閉じる」と同じ。何も送らない。行動そのものを取り消すのは「この行動をやめる」だけ（ADR-0033）。
   const root = pickerElement(
     '選ぶ',
-    `${whose}の${zone.zone}`,
-    '支払うカードを選んでください（フリーズしているカードは選べません）',
-    cards,
+    `${whose}の${names.join('・')}`,
+    '支払うカードを押してください（押すとその 1 枚を払います。フリーズしているカードは選べません）',
+    [],
     foot,
     lock.sending,
-    () => {
-      if (picked !== undefined) handlers.onPick(undefined)
-    },
+    handlers.onClose,
     listDetailElement(phone),
   )
+  // 見出しで分けた並びを、カードの並びの代わりに置く（カードの並びの箱は、各ゾーンの中にある）。
+  root.querySelector('.picker__box > .picker__cards')?.replaceWith(area)
   lock.bind(root)
+  if (waiting) lock.lockNow()
 
   return root
 }
@@ -5027,8 +5054,11 @@ export function duelElement(props: DuelElementProps): HTMLElement {
   const { view, phone } = props
   const root = element('main', 'duel')
 
-  // スマートフォンで確認・選ぶシートや一覧が出ている間は、ログ・行える手のシートは開かない（重ねない）。
-  const layered = props.viewingPile !== undefined || props.choosePicker !== undefined || props.dialog !== undefined
+  // スマートフォンで確認・選ぶシートや一覧、決着が出ている間は、ログ・行える手のシートは開かない（重ねない）。
+  // シートの状態も捨てる。層が閉じても出し直さない（状態の捨て方は `phone.ts`）。
+  const layered =
+    props.viewingPile !== undefined || props.choosePicker !== undefined || props.dialog !== undefined || view.result !== undefined
+  if (layered && phone?.state.duelSheet !== undefined) phone.settle({ kind: '対戦の層が開いた' })
   const sheet = phone === undefined || layered ? undefined : phone.state.duelSheet
   const closeSheet = (): void => phone?.send({ kind: '対戦のシートを閉じる' })
 
@@ -5048,6 +5078,11 @@ export function duelElement(props: DuelElementProps): HTMLElement {
       phoneSheetMarks(controls, '行える手', closeSheet, () => false)
       controls.classList.add('phone-sheet--open')
       controls.append(phoneCloseElement('閉じる', 'シート-閉じる', closeSheet))
+      // 手のボタンを押したら、シートを閉じる（送ったあとの様子は、操作の帯と盤面で見える）。手のボタン自身の
+      // 動きのあとに閉じるよう、あとから足す。
+      for (const each of actions.querySelectorAll('button')) {
+        each.addEventListener('click', () => phone.send({ kind: '対戦の手を押した' }))
+      }
     } else {
       // 操作の帯には、優先権の 1 行・一番よく押す手のボタンと、一覧を開く口だけを出す。
       const count = props.controlsChildren.reduce(

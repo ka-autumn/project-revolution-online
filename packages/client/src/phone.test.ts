@@ -239,6 +239,34 @@ describe('対戦画面のシート（ADR-0034）', () => {
     expect(reducePhone(state, { kind: '対戦のカードを閉じる' })).toBe(state)
   })
 
+  it('行える手のシートで手を押したら、シートを閉じて開いた元へ手を戻す', () => {
+    const opened = takePending(reducePhone(initialPhone(), { kind: '対戦のシートを開く', sheet: '行える手', opener: '行える手' })).state
+    const pressed = reducePhone(opened, { kind: '対戦の手を押した' })
+    expect(pressed.duelSheet).toBeUndefined()
+    expect(pressed.pending).toEqual({ kind: '元へ', opener: '行える手' })
+  })
+
+  it('ログのシートは、中に手が無いので、手を押しても閉じない', () => {
+    const opened = takePending(reducePhone(initialPhone(), { kind: '対戦のシートを開く', sheet: 'ログ', opener: 'ログ' })).state
+    expect(reducePhone(opened, { kind: '対戦の手を押した' })).toBe(opened)
+    expect(reducePhone(initialPhone(), { kind: '対戦の手を押した' })).toEqual(initialPhone())
+  })
+
+  it('確認・選ぶシートや一覧などの層が開いたら、シートの状態を捨て、手の戻し先も残さない', () => {
+    for (const sheet of ['ログ', '行える手'] as const) {
+      const opened = reducePhone(initialPhone(), { kind: '対戦のシートを開く', sheet, opener: sheet })
+      const layered = reducePhone(opened, { kind: '対戦の層が開いた' })
+      expect(layered).toEqual(initialPhone())
+      // 層が閉じても出し直さない（層が閉じたことは、この状態には届かない）。
+      expect(takePending(layered).pending).toBeUndefined()
+    }
+  })
+
+  it('シートを開いていなければ、層が開いても状態を動かさない', () => {
+    const state = reducePhone(initialPhone(), { kind: '対戦のカードを見る', card: 'a' })
+    expect(reducePhone(state, { kind: '対戦の層が開いた' })).toBe(state)
+  })
+
   it('カードの詳細だけのシートは、開くたびに別の入れ物になる', () => {
     const first = reducePhone(initialPhone(), { kind: '対戦のカードを見る', card: 'a' })
     const again = reducePhone(reducePhone(first, { kind: '対戦のカードを閉じる' }), { kind: '対戦のカードを見る', card: 'a' })

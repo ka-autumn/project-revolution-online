@@ -3,6 +3,7 @@ import { CHOICE_PURPOSES, indexOfSquare } from '@revolution/engine'
 import type { LegalAction, PassOutcome, Player, WireCardFace, WireChoice, WirePerspective } from '@revolution/engine'
 import {
   abilityLabels,
+  abilityListSource,
   isAbilityChoice,
   actionViews,
   automaticAction,
@@ -1678,5 +1679,36 @@ describe('isAbilityChoice・abilityLabels', () => {
   it('カードだけの候補・能力とカードが混じる候補は、能力の選択とは見なさない', () => {
     expect(isAbilityChoice(choice([{ kind: '見えている', card: 'スクエアの1枚' }]))).toBe(false)
     expect(isAbilityChoice(choice([{ kind: '能力', source: undefined }, { kind: '見えている', card: 'スクエアの1枚' }]))).toBe(false)
+  })
+})
+
+/** 能力を選ぶ一覧を開いた時点で、上の段に出す詳細のカード（スマートフォン、ADR-0034）。 */
+describe('abilityListSource', () => {
+  const choice = (candidates: WireChoice['candidates'], source?: string): WireChoice => ({
+    player: '先攻',
+    purpose: '解決する能力',
+    mayDecline: false,
+    answered: 0,
+    mayGoBack: false,
+    candidates,
+    ...(source === undefined ? {} : { source }),
+  })
+
+  it('届いた選択の発生源があれば、それ', () => {
+    expect(abilityListSource(choice([{ kind: '能力', source: undefined }], 'スクエアの1枚'))).toBe('スクエアの1枚')
+  })
+
+  it('選択に発生源が無くても、能力の候補の発生源が 1 つにそろっていれば、それ', () => {
+    expect(
+      abilityListSource(choice([{ kind: '能力', source: 'スクエアの1枚' }, { kind: '能力', source: 'スクエアの1枚' }])),
+    ).toBe('スクエアの1枚')
+  })
+
+  it('発生源が分かれている・無いなら、出すカードは無い', () => {
+    expect(
+      abilityListSource(choice([{ kind: '能力', source: 'スクエアの1枚' }, { kind: '能力', source: 'てふだの1枚' }])),
+    ).toBeUndefined()
+    expect(abilityListSource(choice([{ kind: '能力', source: undefined }]))).toBeUndefined()
+    expect(abilityListSource(choice([]))).toBeUndefined()
   })
 })

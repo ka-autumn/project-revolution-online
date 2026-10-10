@@ -116,6 +116,13 @@ export type PhoneAction =
   | { readonly kind: 'カードのシートを閉じる' }
   | { readonly kind: '対戦のシートを開く'; readonly sheet: DuelSheet; readonly opener: string }
   | { readonly kind: '対戦のシートを閉じる' }
+  /** 「行える手」のシートの中の手を押した。そのシートを閉じる（送ったあとの様子は、操作の帯と盤面で見える）。 */
+  | { readonly kind: '対戦の手を押した' }
+  /**
+   * 確認・選ぶシート、払う一覧、能力・カードの一覧、決着などの層が開いた。「ログ」「行える手」のシートは
+   * 捨て、層が閉じても出し直さない。層が手を受け持つので、開いた元へ手を戻す置き直しもしない。
+   */
+  | { readonly kind: '対戦の層が開いた' }
   | { readonly kind: '対戦のカードを見る'; readonly card: string }
   | { readonly kind: '対戦のカードを閉じる' }
 
@@ -147,6 +154,10 @@ export function reducePhone(state: PhoneState, action: PhoneAction): PhoneState 
       return { ...state, duelSheet: action.sheet, opener: action.opener, pending: { kind: 'シートの中へ' } }
     case '対戦のシートを閉じる':
       return state.duelSheet === undefined ? state : closedSheet({ ...state, duelSheet: undefined })
+    case '対戦の手を押した':
+      return state.duelSheet === '行える手' ? closedSheet({ ...state, duelSheet: undefined }) : state
+    case '対戦の層が開いた':
+      return state.duelSheet === undefined ? state : { ...state, duelSheet: undefined, opener: undefined, pending: undefined }
     case '対戦のカードを見る':
       // 手を置き直すのは、層（`.dialog`）の手の置き直し（`dialog-focus.ts`）が受け持つ。
       return { ...state, viewedCard: { card: action.card } }
@@ -262,6 +273,11 @@ export function returnedToPhone(state: PhoneState): PhoneState {
 export interface PhoneControl {
   readonly state: PhoneState
   readonly send: (action: PhoneAction) => void
+  /**
+   * 描き直さずに状態だけ進める。描いている最中に、層が開いたことを受けるためのもの
+   * （そこで描き直すと、描き直しが終わらない）。
+   */
+  readonly settle: (action: PhoneAction) => void
 }
 
 /**

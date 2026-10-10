@@ -60,7 +60,7 @@ import {
   automaticAction,
   choicePicking,
   choiceView,
-  choosesFromZone,
+  abilityListSource,
   isAbilityChoice,
   offBoardCandidates,
   pickView,
@@ -145,6 +145,8 @@ import type { PhoneControl, PhonePending, PhoneScroll, PhoneState } from './phon
 import { settlePhoneScroll } from './phone-scroll.js'
 import { settlePhoneBoard } from './phone-board.js'
 import { settlePhoneFocus } from './phone-focus.js'
+import { openPayList, settlePayList } from './pay-list.js'
+import type { PayList, PayListEvent } from './pay-list.js'
 
 /**
  * クライアントの起動点。
@@ -303,11 +305,15 @@ interface DuelInteraction {
    */
   readonly listShown: CardId | undefined
   readonly onListShow: (card: CardId, redraw: boolean) => void
-  /** コストの選択中に、エネルギー・スマッシュの一覧で選びかけているカード（スマートフォン、ADR-0034）。 */
-  readonly listPicked: CardId | undefined
-  readonly onListPick: (card: CardId | undefined) => void
-  /** 答えて（これで払う・やめる）次の状況に移る。選びかけを捨てる。 */
-  readonly onListAnswered: () => void
+  /**
+   * 開いている、コストを払う一覧（スマートフォン、ADR-0034）。払うカードが無いゾーンの一覧は見るだけで、ここは
+   * 空になる。払い終えるまで開いたままにする（`pay-list.ts`）。
+   */
+  readonly payList: PayList | undefined
+  /** 払う答えを 1 枚分送った。描き直さない（届く返事が描き直す）。 */
+  readonly onPayAnswered: () => void
+  /** 行動をやめる答えを送った。描き直さない。 */
+  readonly onPayCancelled: () => void
   /** 「選ぶ」一覧で選びかけている候補の番号。まだ無ければ `undefined`。 */
   readonly pickerPicked: number | undefined
   readonly onPickerPick: (index: number | undefined) => void
@@ -513,6 +519,21 @@ function restoreScroll(root: HTMLElement, positions: ReadonlyMap<string, ScrollP
     node.scrollLeft = at.left
   }
 }
+
+/**
+ * 払う一覧を開いた直後に、押した方のゾーンの見出しが見える位置へ送る（ADR-0034）。片方のゾーンしか無ければ
+ * 動かない。描いたあと（`restoreScroll` で位置を戻したあと）に呼ぶ。
+ */
+function revealPayZone(root: HTMLElement, zone: ListZone): void {
+  const sections = [...root.querySelectorAll<HTMLElement>('.picker__section')]
+  sections.find((each) => each.dataset.zone === zone)?.scrollIntoView({ block: 'start' })
+}
+
+/**
+ * 払う答えを送ったあと、選択が続かないと見切るまでの時間。サーバは盤面と選んでほしいことを続けて送る
+ * ので、続くなら待たずに届く。届かなければ行動が終わっているので、払う一覧を閉じる。
+ */
+const PAY_LIST_GRACE_MS = 400
 
 /**
  * 選び直した CPU のデッキのサムネイルが見えるところまで、列を横に送る（ADR-0029）。見えていれば動かさない。
@@ -1010,6 +1031,12 @@ function draw(
         ? (() => {
             const choice = stage.choice as NonNullable<typeof stage.choice>
             const meta = choiceView(board, choice, answering)
+            // 能力を選ぶ一覧は、開いた時点で発生源のカードの詳細を上の段に出す。札を押したら、押した札の発生源に替わる。
+            const source = isAbilityChoice(choice) ? abilityListSource(choice) : undefined
+            const pickerList: PhoneListOptions | undefined =
+              phoneList === undefined || phoneList.shown !== undefined || source === undefined
+                ? phoneList
+                : { ...phoneList, shown: cardsById.get(source) }
             return choosePickerElement(
               meta.asking,
               offBoard,
@@ -1039,7 +1066,7 @@ function draw(
                 },
               },
               isAbilityChoice(choice) ? abilityLabels(board, choice) : [],
-              phoneList,
+              pickerList,
             )
           })()
         : undefined
@@ -1090,7 +1117,7 @@ function draw(
 
     // 捨札・リムーブの中身を見る一覧（ADR-0027）。押す前に選んでいる（`duel.viewingPile`）ものだけ出す。
     // スマートフォンでは、エネルギー・スマッシュの中身もこの一覧で見る。コストの選択中は、その一覧が
-    // 払うカードを選ぶ一覧になる（ADR-0034）。
+    // 払うカードを選ぶ一覧になる（ADR-0034）。払う一覧は、払い終えるまで開いたままにする（`pay-list.ts`）。
     const viewingPileElement =
       duel.viewingPile !== undefined
         ? (() => {
@@ -1102,36 +1129,48 @@ function draw(
             }
             if (phoneList === undefined) return viewPileElement(zone, close)
 
-            if (answering !== undefined && boardPicking !== undefined && stage.choice !== undefined && choosesFrom(zone, boardPicking)) {
-              const choosing = boardPicking
-              // 前の選択の選びかけが残っていても、いま押せないカードを「これで払う」で送らせない。
-              const picked = duel.listPicked !== undefined && choosing.pickable.includes(duel.listPicked) ? duel.listPicked : undefined
-              return chooseZoneListElement(
-                zone,
-                side.whose,
-                choosing,
-                picked,
-                stage.choice.answered,
-                {
-                  onPick: duel.onListPick,
-                  onConfirm: (card) => {
-                    duel.onListAnswered()
-                    choosing.onCard(card)
-                  },
-                  ...(choosing.onCancelChoice === undefined
-                    ? {}
-                    : {
-                        onCancel: () => {
-                          duel.onListAnswered()
-                          choosing.onCancelChoice?.()
-                        },
-                      }),
-                },
-                phoneList,
-              )
-            }
+            const paying = duel.payList
+            if (paying === undefined) return viewPileElement(zone, close, { ...phoneList, whose: side.whose })
 
-            return viewPileElement(zone, close, { ...phoneList, whose: side.whose })
+            // 払えるゾーンは、開いたときに決めたものを並べる。払い終えて空になったゾーンは出さない。
+            const zones = paying.zones.map((each) => zoneOf(side, each)).filter((each) => each.cards.length > 0)
+            if (zones.length === 0) return undefined
+
+            // 答えを送ったあと返事を待つ間と、演出が出ている間は、押せるカードの無い一覧になる。
+            const choosing = answering !== undefined && boardPicking !== undefined && stage.choice !== undefined ? boardPicking : undefined
+            const paid: BoardPicking | undefined =
+              choosing === undefined
+                ? undefined
+                : {
+                    ...choosing,
+                    onCard: (card) => {
+                      duel.onPayAnswered()
+                      choosing.onCard(card)
+                    },
+                    onHidden: (at) => {
+                      duel.onPayAnswered()
+                      choosing.onHidden?.(at)
+                    },
+                  }
+            return chooseZoneListElement(
+              zones,
+              side.whose,
+              paid,
+              {
+                onClose: close,
+                // やめられるかは、パネルの「この行動をやめる」と同じ判断（`choiceView` の `mayCancel`）。
+                ...(choosing?.onCancelChoice === undefined
+                  ? {}
+                  : {
+                      onCancel: () => {
+                        duel.onPayCancelled()
+                        choosing.onCancelChoice?.()
+                      },
+                    }),
+              },
+              phoneList,
+              paying.awaiting,
+            )
           })()
         : undefined
     // 開くたびに別の一覧として扱う。盤面が届いて枚数が変わっても、同じ一覧の描き直しである。
@@ -1308,13 +1347,15 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let viewingPile: { readonly player: Player; readonly zone: ListZone } | undefined
   /** 一覧で最後に押したカード（スマートフォン、ADR-0034）。開き直すたび、新しい選択が届くたびに捨てる。 */
   let listShown: CardId | undefined
-  /** コストの選択中に、エネルギー・スマッシュの一覧で選びかけているカード。答えるたびに捨てる。 */
-  let listPicked: CardId | undefined
   /**
-   * いま開いている一覧が、コストの選択中に開いた「払うカードを選ぶ」一覧か（スマートフォン、ADR-0034）。
-   * そうなら、選び終えて（次に選ぶ先がそのゾーンに無くなって）選ぶのを待たれなくなったら、一覧を閉じる。
+   * いま開いている一覧が、コストの選択中に開いた「払うカードを選ぶ」一覧なら、その状態（スマートフォン、
+   * ADR-0034）。払い終えるまで開いたままにし、閉じるかどうかは `pay-list.ts` の `settlePayList` が決める。
    */
-  let listChoosing = false
+  let payList: PayList | undefined
+  /** 払う一覧を開いた直後に、押した方のゾーンの見出しへ送る。描いたあとに 1 度だけ行う。 */
+  let payReveal: ListZone | undefined
+  /** 答えたあと、選択が続かないまま待ちきれた時に、払う一覧を閉じるタイマー。 */
+  let payTimer: ReturnType<typeof setTimeout> | undefined
   /**
    * 「選ぶ」一覧で、いま選びかけている候補の番号（ADR-0027）。まだ何も選んでいなければ
    * `undefined`。答えて（選ばない・これに決める）次の状況に移るたびに捨てる。
@@ -1344,16 +1385,27 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     redraw()
   }
 
-  /**
-   * いま開いている一覧が、コストの選択中にそのゾーンから払うカードを選ぶものか（スマートフォン、
-   * ADR-0034）。選ぶのを待たれている候補と、そのゾーンのカードを突き合わせる（`choosesFromZone`）。
-   */
-  const choosingFromList = (): boolean => {
-    const stage = session.stage
-    if (viewingPile === undefined || stage.kind !== '打っている' || stage.board === undefined || stage.choice === undefined) return false
+  /** 払う一覧に出来事を伝える。閉じることになったら、見る一覧ごと閉じる。 */
+  const settlePay = (event: PayListEvent): void => {
+    if (payList === undefined) return
 
-    const { player, zone } = viewingPile
-    return (zone === 'エネルギーゾーン' || zone === 'スマッシュゾーン') && choosesFromZone(stage.board, stage.choice, player, zone)
+    payList = settlePayList(payList, event)
+    if (payList === undefined) {
+      viewingPile = undefined
+      clearPayTimer()
+    }
+  }
+
+  const clearPayTimer = (): void => {
+    if (payTimer !== undefined) clearTimeout(payTimer)
+    payTimer = undefined
+  }
+
+  /** 払う一覧を捨てる（見る一覧も閉じる）。 */
+  const dropPayList = (): void => {
+    clearPayTimer()
+    payList = undefined
+    payReveal = undefined
   }
 
   const picking = (): Picking => ({
@@ -1388,13 +1440,16 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     onOpenPile: (player, zone) => {
       viewingPile = { player, zone }
       listShown = undefined
-      listPicked = undefined
-      listChoosing = choosingFromList()
+      // コストの選択中に、払うカードがあるゾーンのボタンを押したなら、払う一覧にする。
+      const stage = session.stage
+      payList =
+        stage.kind === '打っている' && stage.board !== undefined ? openPayList(stage.board, stage.choice, player, zone) : undefined
+      payReveal = payList === undefined ? undefined : zone
       redraw()
     },
     onClosePile: () => {
       viewingPile = undefined
-      listChoosing = false
+      dropPayList()
       redraw()
     },
     listShown,
@@ -1402,14 +1457,13 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       listShown = card
       if (again) redraw()
     },
-    listPicked,
-    onListPick: (card) => {
-      listPicked = card
-      redraw()
+    payList,
+    // 答えは送るだけで、描き直さない（`onPickerAnswered` と同じ）。次の選択が続くかは、届いたもので決める。
+    onPayAnswered: () => {
+      settlePay({ kind: '答えた' })
     },
-    // 答えは送るだけで、描き直さない（`onPickerAnswered` と同じ）。
-    onListAnswered: () => {
-      listPicked = undefined
+    onPayCancelled: () => {
+      settlePay({ kind: 'やめた' })
     },
     pickerPicked,
     onPickerPick: (index) => {
@@ -1968,6 +2022,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       phoneState = reducePhone(phoneState, action)
       redraw()
     },
+    settle: (action) => {
+      phoneState = reducePhone(phoneState, action)
+    },
   })
 
   const lobby = (): Lobby => ({
@@ -2091,6 +2148,12 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       settlePhoneScroll(root, scroll)
       // 対戦画面の盤面を画面に合わせて縮め、捨札・リムーブのつまみの縦の位置を合わせる。描いて高さが決まってから測る。
       if (phone !== undefined) settlePhoneBoard(root)
+      // 払う一覧を開いた直後は、押した方のゾーンの見出しが見える位置から出す。2 枚目以降は、位置を戻すだけ（`KEEP_SCROLL`）。
+      if (payReveal !== undefined) {
+        const zone = payReveal
+        payReveal = undefined
+        revealPayZone(root, zone)
+      }
       // 描いたあとに送る。先に送ると、`draw` が戻すスクロールの位置で上書きされる。
       if (revealCpuDeck) {
         revealCpuDeck = false
@@ -2203,15 +2266,13 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         viewingPile = undefined
         pickerPicked = undefined
         listShown = undefined
-        listPicked = undefined
-        listChoosing = false
+        dropPayList()
       }
       // 新しい選択が届いたら、選びかけの番号は前の選択のものなので捨てる。番号は選択ごとに
       // 振り直される（ADR-0008）ので、残すと範囲外や別の候補を指しうる。
       if (message.kind === '選んでほしい') {
         pickerPicked = undefined
         listShown = undefined
-        listPicked = undefined
       }
       // 決着したら、どちらの状態も残さない。決着後は答えることも束を開くこともできる意味が
       // 無くなる（ADR-0010）うえ、次の対局に持ち越させないための重ねの備えでもある。
@@ -2219,23 +2280,38 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         viewingPile = undefined
         pickerPicked = undefined
         listShown = undefined
-        listPicked = undefined
-        listChoosing = false
+        dropPayList()
       }
-      // 開いている束が空になったら、見るものが無いので閉じる。
+      // 払う一覧は、払い終えるまで開いたままにする（ADR-0034）。答えを受け取るたびに、サーバは盤面、選んでほしいの
+      // 順に送る。盤面だけでは次の選択が続くか分からないので、続けて届く選択が一覧のゾーンの候補を含むかで決める。
+      const stage = session.stage
+      if (payList !== undefined && stage.kind === '打っている') {
+        if (message.kind === '盤面') settlePay({ kind: '盤面', actions: message.actions.length })
+        else if (message.kind === '選んでほしい' && stage.board !== undefined) {
+          settlePay({ kind: '選んでほしい', board: stage.board, choice: message.choice })
+        } else if (message.kind === '行えなかった') settlePay({ kind: '断られた' })
+
+        clearPayTimer()
+        // 答えたあとの盤面で行える手が空なら、選択が続くのか、行動が終わって相手に優先権が渡ったのか分からない。
+        // 続くなら選んでほしいがすぐ届くので、少し待って届かなければ閉じる。
+        if (payList?.awaiting === true && stage.choice === undefined) {
+          payTimer = setTimeout(() => {
+            payTimer = undefined
+            settlePay({ kind: '続かなかった' })
+            redraw()
+          }, PAY_LIST_GRACE_MS)
+        }
+      }
+      // 開いている束が空になったら、見るものが無いので閉じる。払う一覧は、払い終えて空になるのを待たずに
+      // 閉じるかどうかを上で決めている。
       if (
         viewingPile !== undefined &&
+        payList === undefined &&
         session.stage.kind === '打っている' &&
         session.stage.board !== undefined &&
         session.stage.board.zones[viewingPile.player][viewingPile.zone].length === 0
       ) {
         viewingPile = undefined
-        listChoosing = false
-      }
-      // 払うカードを選ぶ一覧は、選び終えて、そのゾーンから選ぶのを待たれなくなったら閉じる（ADR-0034）。
-      if (listChoosing && !choosingFromList()) {
-        viewingPile = undefined
-        listChoosing = false
       }
       enqueueOverlays()
       redraw()
