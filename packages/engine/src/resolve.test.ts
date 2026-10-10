@@ -1652,7 +1652,8 @@ describe('エリアを選ぶ', () => {
   const executedInstructions = (state: DuelState) =>
     state.log.flatMap((recorded) => (recorded.event.kind === '命令を実行した' ? [recorded.event.instruction] : []))
 
-  // 総合ルール 第2部 第22章 5・6
+  // 総合ルール 第2部 第22章 5・6。エリアはスクエア 3 つの集まりで、呼び名は支配者から見て決まる。
+  // 解釈として、選んだエリアのスクエアにいるユニットが全員、対象になるものとする。
   it('選んだエリアにいるユニットが全員、効果の対象になる', () => {
     const state = boardOf(
       [{ row: 1, column: 0 }, unit('中央の味方', '先攻')],
@@ -1680,7 +1681,8 @@ describe('エリアを選ぶ', () => {
     expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['中央の敵'])
   })
 
-  // 総合ルール 第2部 第22章 5。エリアはユニットがいなくても選べる。
+  // 総合ルール 第2部 第22章 5。エリアはスクエア 3 つの集まりという定義で、ユニットの有無は入っていない。
+  // 解釈として、ユニットがいなくても選べるものとする。
   it('ユニットのいないエリアを選んでも何も起きず、効果は続く', () => {
     const state = boardOf([{ row: 1, column: 0 }, unit('中央の敵', '後攻')])
 

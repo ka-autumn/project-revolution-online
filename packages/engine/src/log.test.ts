@@ -306,6 +306,18 @@ describe('効果の記録', () => {
     expect(instructions(byRear)).toEqual([{ kind: '選ぶ', card: undefined, square: undefined, areaRow: 2 }])
   })
 
+  /** 盤面の行で持つので、相手の視点に写しても落ちず、同じ値で残る（呼び名にするのは読む側）。 */
+  it('エリアを選んだ記録の行は、選んだ人にも相手にも同じ値で見える', () => {
+    const resolved = resolveEffect(board, chooseArea.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+    const rowsSeenBy = (viewer: Player): unknown[] =>
+      perspectiveOf(resolved, viewer).log.flatMap(({ event }) =>
+        event.kind === '命令を実行した' && event.instruction.kind === '選ぶ' ? [event.instruction.areaRow] : [],
+      )
+
+    expect(rowsSeenBy('先攻')).toEqual([0])
+    expect(rowsSeenBy('後攻')).toEqual([0])
+  })
+
   /** カードが選ばれたなら、スクエアのほうは空のままである。どちらか一方だけが埋まる。 */
   it('カードを選んだなら、スクエアは空のままになる', () => {
     const resolved = resolveEffect(board, chooseAndDestroy.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })

@@ -810,6 +810,22 @@ describe('エリアを選ぶ', () => {
 
     expectAdvanced(progress)
   })
+
+  /** 候補の番号と、記録に残るエリアの行が、先攻でも後攻でも対応している（番号とエリアがずれると落ちる）。 */
+  it('番号で答えた分のエリアの行が、選んだ記録に残る', () => {
+    const chosenRows = (controller: Player, answer: number): unknown[] => {
+      const progress = applyWithAnswers(waitingToChooseArea(controller), PASS, [answer])
+      expectAdvanced(progress)
+
+      return progress.state.log.flatMap(({ event }) =>
+        event.kind === '命令を実行した' && event.instruction.kind === '選ぶ' ? [event.instruction.areaRow] : [],
+      )
+    }
+
+    // 先攻の候補は味方エリア（row 0）・中央エリア（row 1）・敵エリア（row 2）の順。後攻は row 2・1・0 の順。
+    expect([0, 1, 2].map((answer) => chosenRows('先攻', answer))).toEqual([[0], [1], [2]])
+    expect([0, 1, 2].map((answer) => chosenRows('後攻', answer))).toEqual([[2], [1], [0]])
+  })
 })
 
 // #14。候補だけでは何を聞かれているか分からないので、何のための選択かを載せる。
