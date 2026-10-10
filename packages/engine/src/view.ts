@@ -1,4 +1,5 @@
 import { BATTLE_SPACE } from './board.js'
+import { hasKeyword } from './card.js'
 import type { UnitCard } from './card.js'
 import { cardsIn } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
@@ -156,5 +157,10 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
       for (const smash of smashes) source.show(smash.id)
       return smashes
     },
+    // 継続効果を適用した後の姿を読む。いまは能力を与える・失わせる効果が無く、適用の前後で
+    // 能力は同じだが、そうした効果が入る時は `units()` が返す写しに反映されるので、ここは
+    // 直さずに済む（直すのは `continuous.ts` の `continuousData`）。写しが見つからない
+    // （渡されたユニットがもうスクエアにいない）時は、渡された写しの能力を見る。
+    hasKeyword: (unit, keyword) => hasKeyword((units().find((each) => each.id === unit.id) ?? unit).card, keyword),
   }
 }

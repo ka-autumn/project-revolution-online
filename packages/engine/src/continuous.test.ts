@@ -17,7 +17,9 @@ import {
   cardsOn,
   defineUnit,
   emptyDuelState,
+  dream,
   friendship,
+  hasFriendship,
   hasMakerSymbol,
   instantiate,
   passPriority,
@@ -467,6 +469,124 @@ describe('「友情－Ｘ」', () => {
     const board = boardOf([homeCenter, '友情を持つユニット', friendly], [homeLeft, '左隣の味方', vanilla])
 
     expect(bpOn(board, '友情を持つユニット', friendly)).toBe(1000)
+  })
+
+  it('友情という名前を持つ', () => {
+    expect(friendship(1000).keyword).toBe('友情')
+    expect(hasFriendship(friendly)).toBe(true)
+    expect(hasFriendship(vanilla)).toBe(false)
+  })
+})
+
+/** 友情－500。数値が違っても、友情を持つことに変わりは無いことを見るために使う。 */
+const mildlyFriendly = defineUnit({
+  name: 'テスト・小さな友情',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [friendship(500)],
+})
+
+/** 友情ではない、名前を持つキーワード能力（夢）を持つユニット。 */
+const dreamer = defineUnit({
+  name: 'テスト・夢',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [dream],
+})
+
+/** 「他の、友情を持つ味方のＢＰを＋2000」。隣かどうか、数値がいくつかは問わない。 */
+const boostingFriendly = defineUnit({
+  name: 'テスト・友情持ちを強化',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    bpModifying((duel) =>
+      duel
+        .allies()
+        .filter((ally) => ally.id !== duel.self()?.id && duel.hasKeyword(ally, '友情'))
+        .map((ally) => bpPlus(ally, 2000)),
+    ),
+  ],
+})
+
+// 総合ルール 第5部 第5章 2、第4部 第12章 5-2 の(5)（ADR-0006）
+describe('友情を持つユニットで対象を絞るＢＰの修整', () => {
+  it('友情を持つ味方のＢＰを修整する。隣かどうかも、数値がいくつかも問わない', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingFriendly],
+      [centerCenter, '遠くの友情', friendly],
+      [homeRight, '数値の違う友情', mildlyFriendly],
+    )
+
+    expect(bpOn(board, '遠くの友情', friendly)).toBe(3000)
+    expect(bpOn(board, '数値の違う友情', mildlyFriendly)).toBe(3000)
+  })
+
+  it('友情を持たない味方は修整されない。ほかのキーワード能力を持っていても同じ', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingFriendly],
+      [homeCenter, '何も持たない味方', vanilla],
+      [homeRight, '夢を持つ味方', dreamer],
+    )
+
+    expect(bpOn(board, '何も持たない味方', vanilla)).toBe(1000)
+    expect(bpOn(board, '夢を持つ味方', dreamer)).toBe(1000)
+  })
+
+  it('友情を持つ敵は修整されない', () => {
+    const board = boardOf([homeLeft, '強化するユニット', boostingFriendly], [centerCenter, '敵の友情', friendly, '後攻'])
+
+    expect(bpOn(board, '敵の友情', friendly)).toBe(1000)
+  })
+
+  it('強化するユニット自身が友情を持っていても、「他の」と書けば自分は修整されない', () => {
+    const friendlyBooster = defineUnit({
+      name: 'テスト・友情持ちの強化役',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [friendship(0), ...boostingFriendly.abilities],
+    })
+    const board = boardOf([homeLeft, '強化するユニット', friendlyBooster])
+
+    expect(bpOn(board, '強化するユニット', friendlyBooster)).toBe(1000)
+  })
+
+  // 友情を持つ味方は、この修整と、隣の友情からの修整の両方を受ける。
+  it('隣の友情からの修整と、重なる', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingFriendly],
+      [homeCenter, '友情を持つ味方', friendly],
+      [homeRight, '隣の友情', friendly],
+    )
+
+    // 書かれた 1000 に、隣の友情の＋1000 と、友情を持つことによる＋2000。
+    expect(bpOn(board, '友情を持つ味方', friendly)).toBe(4000)
+    // 隣の友情からは、友情を持つ味方のほうが＋1000 を受けている。
+    expect(bpOn(board, '隣の友情', friendly)).toBe(4000)
+  })
+
+  it('尋ねられるのは、いま写しているユニットが持つ能力である', () => {
+    const board = boardOf([homeLeft, '見るユニット', vanilla], [homeCenter, '友情を持つ味方', friendly], [homeRight, '夢を持つ味方', dreamer])
+    const answers: boolean[] = []
+
+    resolveEffect(
+      board,
+      function* (duel) {
+        for (const ally of duel.allies()) answers.push(duel.hasKeyword(ally, '友情'))
+        for (const ally of duel.allies()) answers.push(duel.hasKeyword(ally, '夢'))
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+
+    expect(answers).toEqual([false, true, false, false, false, true])
   })
 })
 

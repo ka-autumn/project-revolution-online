@@ -344,6 +344,29 @@ export interface BpModifyingAbility {
 }
 
 /**
+ * キーワード能力「友情」（総合ルール 第5部 第5章）。
+ *
+ * ＢＰを修整する常在型能力そのものであり（`friendship`）、修整の動きは `BpModifyingAbility`
+ * と変わらない。違うのは `keyword` で名前を持つ点だけで、「そのユニットが友情を持つか」を
+ * 他のキーワード能力と同じ流儀で答えられる（`card.ts` の `hasFriendship`、`DuelView.hasKeyword`）。
+ * 「夢」などが専用の型を持つのとは違い、効果を持つ側に名前を足した形である。
+ */
+export interface FriendshipAbility extends BpModifyingAbility {
+  readonly keyword: '友情'
+}
+
+/**
+ * 名前だけで参照できる、常在型のキーワード能力。
+ *
+ * 「そのカードがそのキーワード能力を持つか」を尋ねる側（`card.ts` の `hasKeyword`、
+ * `DuelView.hasKeyword`）が、尋ねられるキーワードの範囲として使う。「希望」「勇気」は常在型
+ * ではないのでここに含めない。
+ */
+export type PassiveKeywordAbility = DreamAbility | PepAbility | TrustAbility | GutsAbility | FriendshipAbility
+
+export type PassiveKeyword = PassiveKeywordAbility['keyword']
+
+/**
  * 属性を加える継続効果を生み出す常在型能力（総合ルール 第2部 第13章 4、
  * 第4部 第12章 5-2 の(3)）。
  *
@@ -586,6 +609,7 @@ export type Ability =
   | GutsAbility
   | HopeAbility
   | BpModifyingAbility
+  | FriendshipAbility
   | AttributeAddingAbility
   | PlanReplacingAbility
   | MoveCostingAbility
@@ -721,22 +745,29 @@ export function attributeAdding(
  * 「友情－Ｘ」は「このカードの上下左右の隣のスクエアにあるすべての味方のＢＰ＋Ｘ」という
  * 常在型能力である（同 1・2）。斜めに接しているスクエアには影響を与えない（同 3）。
  *
- * 「気合」と同じく専用の型を持たないのは、種類も内容も「ＢＰを修整する常在型能力」
- * そのものだからである。専用の型が要るのは「夢」などのように、効果を持たず、ルールの側が
- * 能力の有無を見に行く必要があるものだけである。
+ * 種類も内容も「ＢＰを修整する常在型能力」そのものなので、専用の型が持つのは名前
+ * （`FriendshipAbility`）だけである。「夢」などは、効果を持たず、ルールの側が能力の有無を
+ * 見に行く必要があって専用の型を持ったが、「友情」は、他の効果（「他の、友情を持つ味方の
+ * ＢＰを＋Ｎ」）が能力の有無を見に行く必要があって名前を持つ。
  *
  * 自分自身は影響を受けない。自分がいるのは隣のスクエアではないので、隣接で絞った時点で
  * 外れる。テキストが「他の」と書いていないのは、書く必要が無いからである。
+ *
+ * 返す能力は `keyword: '友情'` を持つ。ＢＰの修整としての動きは、`bpModifying` で書いた
+ * ものと変わらない。
  */
-export function friendship(amount: number): BpModifyingAbility {
-  return bpModifying((duel) => {
-    const self = duel.self()
-    if (self === undefined) return []
+export function friendship(amount: number): FriendshipAbility {
+  return {
+    ...bpModifying((duel) => {
+      const self = duel.self()
+      if (self === undefined) return []
 
-    const adjacent = squaresAdjacent(self.square).map(indexOfSquare)
-    return duel
-      .allies()
-      .filter((ally) => adjacent.includes(indexOfSquare(ally.square)))
-      .map((ally) => bpPlus(ally, amount))
-  })
+      const adjacent = squaresAdjacent(self.square).map(indexOfSquare)
+      return duel
+        .allies()
+        .filter((ally) => adjacent.includes(indexOfSquare(ally.square)))
+        .map((ally) => bpPlus(ally, amount))
+    }),
+    keyword: '友情',
+  }
 }

@@ -4,13 +4,10 @@ import type {
   AttributeAddingAbility,
   CourageAbility,
   BpModifyingAbility,
-  DreamAbility,
-  PepAbility,
-  GutsAbility,
   HopeAbility,
   MoveCostingAbility,
+  PassiveKeyword,
   PlanReplacingAbility,
-  TrustAbility,
 } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
 import type { Effect, TrapEffect } from './effect.js'
@@ -300,12 +297,13 @@ export function hasMakerSymbol(card: Card, symbol: MakerSymbol): boolean {
  * 常在型のキーワード能力だけを見る。テキストに書かれた能力のうち、名前だけで参照できて
  * 内容を持たないのはこの形のものである（`ability.ts` の `DreamAbility`・`PepAbility`）。
  * 常在型能力には内容を持つもの（`BpModifyingAbility`）もあるので、名前で引く前に
- * 名前を持つ側であることを確かめる。
+ * 名前を持つ側であることを確かめる。「友情」はその例で、ＢＰを修整する常在型能力に名前を
+ * 足した形（`FriendshipAbility`）で持つ。
+ *
+ * **盤面にいるユニットが持つかどうかは、これを直接呼ばず `DuelView.hasKeyword` で尋ねる。**
+ * ここが見るのはカードに書かれている能力だけで、継続効果を適用した後の姿ではない。
  */
-function hasKeyword(
-  card: Card,
-  keyword: (DreamAbility | PepAbility | TrustAbility | GutsAbility)['keyword'],
-): boolean {
+export function hasKeyword(card: Card, keyword: PassiveKeyword): boolean {
   return card.abilities.some(
     (ability) => ability.kind === '常在型能力' && 'keyword' in ability && ability.keyword === keyword,
   )
@@ -329,6 +327,11 @@ export function hasTrust(card: Card): boolean {
 /** そのカードが「根性」を持つか（総合ルール 第5部 第6章 2）。 */
 export function hasGuts(card: Card): boolean {
   return hasKeyword(card, '根性')
+}
+
+/** そのカードが「友情」を持つか（総合ルール 第5部 第5章 2）。数値（友情－Ｘ のＸ）は問わない。 */
+export function hasFriendship(card: Card): boolean {
+  return hasKeyword(card, '友情')
 }
 
 /**

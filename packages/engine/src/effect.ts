@@ -1,4 +1,4 @@
-import type { CreatedTrigger, CreatedTriggeredAbility, IntrusionOccasion } from './ability.js'
+import type { CreatedTrigger, CreatedTriggeredAbility, IntrusionOccasion, PassiveKeyword } from './ability.js'
 import type { Square } from './board.js'
 import type { Attribute, Card, UnitCard } from './card.js'
 import type { CardId, LibraryPosition } from './duel.js'
@@ -164,6 +164,18 @@ export interface DuelView {
    * スマッシュを返すアクセサは無い。選んで動かすテキストが無いためで、要る時に足す。
    */
   smashZone(): readonly SmashCard[]
+  /**
+   * そのユニットが、そのキーワード能力を持つか。
+   *
+   * 「他の、友情を持つ味方のＢＰを＋Ｎ」のように、持つ能力で対象を絞るテキストのために
+   * 要る。数値を持つキーワード能力でも、数値は問わない。
+   *
+   * **継続効果を適用した後の姿を読む。** 属性（`UnitOnSquare.card.attributes`）と同じ扱いで、
+   * いまは能力を与える・失わせる効果が無いのでカードに書かれた能力を見るだけだが、そうした
+   * 効果が入った時に直す場所を `view.ts` の 1 か所にするために、カードの能力を直に読まず
+   * ここを通す。
+   */
+  hasKeyword(unit: UnitOnSquare, keyword: PassiveKeyword): boolean
 }
 
 /**
