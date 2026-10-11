@@ -8,6 +8,7 @@ import type {
   PlayerZone,
   Procedure,
   Progress,
+  ResolutionVia,
   Square,
   Turn,
   WireCardInstance,
@@ -1485,6 +1486,23 @@ describe('カットイン', () => {
     const fresh: readonly DuelEvent[] = [{ kind: '能力を解決した', controller: '先攻', via: '発動', source: undefined }]
 
     expect(cutInViews(board, logged(fresh))[0]?.heading).toBe('トラップを発動！')
+  })
+
+  /**
+   * サーバが先に新しくなると、開いたままの画面には、その画面が知らない経路が届く（#285）。
+   * 型の上では起きないので、型を外して組む。経路を言わない見出しにして、カットインは出す。
+   */
+  it.each([
+    ['置いてある', `${NAME}の効果！`],
+    [undefined, '効果！'],
+  ] as const)('この画面が知らない経路なら、経路を言わない見出しになる（発生源 %s）', (source, heading) => {
+    const via = 'この画面が知らない経路' as unknown as ResolutionVia
+    const fresh: readonly DuelEvent[] = [
+      { kind: '能力を解決した', controller: '先攻', via, source },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
+    ]
+
+    expect(cutInViews(board, logged(fresh))).toEqual([{ whose: '自分', heading, lines: [`${NAME}を破壊した`] }])
   })
 
   it('本文は命令 1 つにつき 1 行になる', () => {

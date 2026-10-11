@@ -1332,6 +1332,12 @@ function headingOf(via: ResolutionVia, name: string | undefined): string {
       return name === undefined ? 'カードをプレイ！' : `${name}をプレイ！`
     case '希望':
       return name === undefined ? '希望！' : `${name}の希望！`
+    // この画面が知らない経路（#285）。サーバが先に新しくなると、開いたままの画面に届く。
+    // どの言葉づかいに寄せるかを決められないので、経路を言わない。誰のカードの効果かと、
+    // 下に並ぶ命令は読めているので、カットインそのものは出す。
+    default:
+      via satisfies never
+      return name === undefined ? '効果！' : `${name}の効果！`
   }
 }
 
