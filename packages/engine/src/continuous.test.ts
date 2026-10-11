@@ -284,29 +284,6 @@ const madeByTestCompany = defineUnit({
   makerSymbols: ['テスト社'],
 })
 
-/**
- * 「テスト社」を、「テスト社・別名」としても扱うユニット。扱われる側のシンボル（テスト社）を
- * 持つカードは、並びに両方を書く。
- */
-const madeByTestCompanyOrItsAlias = defineUnit({
-  name: 'テスト・テスト社と別名',
-  level: 1,
-  colors: ['赤'],
-  bp: 1000,
-  sp: 1000,
-  makerSymbols: ['テスト社', 'テスト社・別名'],
-})
-
-/** 「テスト社・別名」だけを持つユニット。扱う先のシンボルしか持たないので、「テスト社」としては数えられない。 */
-const madeByTheAliasOnly = defineUnit({
-  name: 'テスト・別名のみ',
-  level: 1,
-  colors: ['赤'],
-  bp: 1000,
-  sp: 1000,
-  makerSymbols: ['テスト社・別名'],
-})
-
 /** 属性にだけ「テスト社」と同じ綴りを書いたユニット。メーカーシンボルとは別の並びであることを見る。 */
 const attributedLikeCompany = defineUnit({
   name: 'テスト・属性が同じ綴り',
@@ -342,16 +319,12 @@ describe('メーカーシンボル', () => {
     expect(hasMakerSymbol(vanilla, 'テスト社')).toBe(false)
   })
 
-  // 総合ルール 第2部 第13章 1-1-1。あるシンボルを別のシンボルとして扱うのは片方向である。
-  it('別のシンボルとして扱われるシンボルを持つカードは、どちらのシンボルでも持つと答える', () => {
-    expect(hasMakerSymbol(madeByTestCompanyOrItsAlias, 'テスト社')).toBe(true)
-    expect(hasMakerSymbol(madeByTestCompanyOrItsAlias, 'テスト社・別名')).toBe(true)
-  })
-
-  // 総合ルール 第2部 第13章 1-1-1。逆は成り立たない。
-  it('扱われる先のシンボルしか持たないカードは、もう一方のシンボルでは数えられない', () => {
-    expect(hasMakerSymbol(madeByTheAliasOnly, 'テスト社・別名')).toBe(true)
-    expect(hasMakerSymbol(madeByTheAliasOnly, 'テスト社')).toBe(false)
+  // 総合ルール 第2部 第13章 1-1-1。あるシンボルを別のシンボルとして扱う読み替えは、カードのデータを
+  // 書く時に済ませる。読み替えた先のシンボルを書いたカードは、そのシンボルで数えられ、
+  // エンジンは読み替えをしない（並びに無い、読み替える前のシンボルでは数えられない）。
+  it('読み替えた先のシンボルを書いたカードは、そのシンボルで数えられ、並びに無いシンボルでは数えられない', () => {
+    expect(hasMakerSymbol(madeByTestCompany, 'テスト社')).toBe(true)
+    expect(hasMakerSymbol(madeByTestCompany, 'テスト社・読み替える前')).toBe(false)
   })
 
   it('属性の並びとは別で、属性に同じ綴りがあってもメーカーシンボルは持たない', () => {
