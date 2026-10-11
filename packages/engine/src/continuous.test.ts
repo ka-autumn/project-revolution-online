@@ -274,29 +274,31 @@ describe('継続効果によって加わる属性', () => {
   })
 })
 
-/** メーカーシンボル「テスト社」を持つユニット。 */
-const madeByTestCompany = defineUnit({
-  name: 'テスト・テスト社製',
+// 以下の「QXA」「QXB」「QXZ」は架空のメーカーシンボルの略号（半角）。実在の略号ではない。
+
+/** メーカーシンボル「QXA」を持つユニット。 */
+const madeByQxa = defineUnit({
+  name: 'テスト・QXA製',
   level: 1,
   colors: ['赤'],
   bp: 1000,
   sp: 1000,
-  makerSymbols: ['テスト社'],
+  makerSymbols: ['QXA'],
 })
 
-/** 属性にだけ「テスト社」と同じ綴りを書いたユニット。メーカーシンボルとは別の並びであることを見る。 */
-const attributedLikeCompany = defineUnit({
+/** 属性にだけ「QXA」と同じ綴りを書いたユニット。メーカーシンボルとは別の欄であることを見る。 */
+const attributedLikeQxa = defineUnit({
   name: 'テスト・属性が同じ綴り',
   level: 1,
   colors: ['赤'],
   bp: 1000,
   sp: 1000,
-  attributes: ['テスト社'],
+  attributes: ['QXA'],
 })
 
-/** 「テスト社」のメーカーシンボルを持つ他の味方のＢＰを＋2000。 */
-const boostingMadeByTestCompany = defineUnit({
-  name: 'テスト・テスト社製を強化',
+/** 「QXA」のメーカーシンボルを持つ他の味方のＢＰを＋2000。 */
+const boostingMadeByQxa = defineUnit({
+  name: 'テスト・QXA製を強化',
   level: 1,
   colors: ['赤'],
   bp: 1000,
@@ -305,7 +307,7 @@ const boostingMadeByTestCompany = defineUnit({
     bpModifying((duel) =>
       duel
         .allies()
-        .filter((ally) => ally.id !== duel.self()?.id && ally.card.makerSymbols.includes('テスト社'))
+        .filter((ally) => ally.id !== duel.self()?.id && ally.card.makerSymbols.includes('QXA'))
         .map((ally) => bpPlus(ally, 2000)),
     ),
   ],
@@ -313,50 +315,84 @@ const boostingMadeByTestCompany = defineUnit({
 
 // 総合ルール 第2部 第13章 1-1・1-1-1（ADR-0006）
 describe('メーカーシンボル', () => {
-  it('持つかどうかは、書かれた並びに含まれるかで決まる', () => {
-    expect(hasMakerSymbol(madeByTestCompany, 'テスト社')).toBe(true)
-    expect(hasMakerSymbol(madeByTestCompany, '別のテスト社')).toBe(false)
-    expect(hasMakerSymbol(vanilla, 'テスト社')).toBe(false)
+  it('持つかどうかは、メーカーシンボルの欄に含まれるかで決まる', () => {
+    expect(hasMakerSymbol(madeByQxa, 'QXA')).toBe(true)
+    expect(hasMakerSymbol(madeByQxa, 'QXB')).toBe(false)
+    expect(hasMakerSymbol(vanilla, 'QXA')).toBe(false)
   })
 
   // 総合ルール 第2部 第13章 1-1-1。あるシンボルを別のシンボルとして扱う読み替えは、カードのデータを
-  // 書く時に済ませる。読み替えた先のシンボルを書いたカードは、そのシンボルで数えられ、
-  // エンジンは読み替えをしない（並びに無い、読み替える前のシンボルでは数えられない）。
-  it('読み替えた先のシンボルを書いたカードは、そのシンボルで数えられ、並びに無いシンボルでは数えられない', () => {
-    expect(hasMakerSymbol(madeByTestCompany, 'テスト社')).toBe(true)
-    expect(hasMakerSymbol(madeByTestCompany, 'テスト社・読み替える前')).toBe(false)
-  })
-
-  it('属性の並びとは別で、属性に同じ綴りがあってもメーカーシンボルは持たない', () => {
-    expect(hasMakerSymbol(attributedLikeCompany, 'テスト社')).toBe(false)
-    expect(attributedLikeCompany.makerSymbols).toEqual([])
-    expect(madeByTestCompany.attributes).toEqual([])
-  })
-
-  it('メーカーシンボルを持つ味方のＢＰを、他の味方に限って修整できる', () => {
-    const board = boardOf(
-      [homeLeft, '強化するユニット', boostingMadeByTestCompany],
-      [homeCenter, '対象の味方', madeByTestCompany],
-      [homeRight, '対象でない味方', vanilla],
-      [centerCenter, '属性だけが同じ味方', attributedLikeCompany],
-      [centerLeft, '対象の敵', madeByTestCompany, '後攻'],
-    )
-
-    expect(bpOn(board, '対象の味方', madeByTestCompany)).toBe(3000)
-    expect(bpOn(board, '対象でない味方', vanilla)).toBe(1000)
-    expect(bpOn(board, '属性だけが同じ味方', attributedLikeCompany)).toBe(1000)
-    expect(bpOn(board, '対象の敵', madeByTestCompany)).toBe(1000)
-  })
-
-  it('強化するユニット自身がメーカーシンボルを持っていても、他の味方に限るなら自分は修整されない', () => {
-    const selfMade = defineUnit({
-      name: 'テスト・テスト社製の強化役',
+  // 書く時に済ませる。ここでは「QXZ は QXA として扱われる」とする。エンジンは読み替えをしないので、
+  // 読み替える前の QXZ だけを欄に書いたユニットは、QXA を持つ味方を強化する能力の対象にならない。
+  it('読み替える前のシンボルだけを欄に書いたユニットは、読み替えた先のシンボルで数えられない', () => {
+    const writtenBeforeReading = defineUnit({
+      name: 'テスト・QXZのまま書いた',
       level: 1,
       colors: ['赤'],
       bp: 1000,
       sp: 1000,
-      makerSymbols: ['テスト社'],
-      abilities: boostingMadeByTestCompany.abilities,
+      makerSymbols: ['QXZ'],
+    })
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingMadeByQxa],
+      [homeCenter, '読み替えを済ませた味方', madeByQxa],
+      [homeRight, '読み替えを済ませていない味方', writtenBeforeReading],
+    )
+
+    expect(bpOn(board, '読み替えを済ませた味方', madeByQxa)).toBe(3000)
+    expect(bpOn(board, '読み替えを済ませていない味方', writtenBeforeReading)).toBe(1000)
+  })
+
+  it('欄に複数のメーカーシンボルを持つカードは、それぞれのシンボルで数えられる', () => {
+    const madeByQxaAndQxb = defineUnit({
+      name: 'テスト・QXAとQXB製',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      makerSymbols: ['QXA', 'QXB'],
+    })
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingMadeByQxa],
+      [homeCenter, '複数持つ味方', madeByQxaAndQxb],
+    )
+
+    expect(hasMakerSymbol(madeByQxaAndQxb, 'QXA')).toBe(true)
+    expect(hasMakerSymbol(madeByQxaAndQxb, 'QXB')).toBe(true)
+    expect(hasMakerSymbol(madeByQxaAndQxb, 'QXC')).toBe(false)
+    expect(bpOn(board, '複数持つ味方', madeByQxaAndQxb)).toBe(3000)
+  })
+
+  it('属性とは別の欄で、属性に同じ綴りがあってもメーカーシンボルは持たない', () => {
+    expect(hasMakerSymbol(attributedLikeQxa, 'QXA')).toBe(false)
+    expect(attributedLikeQxa.makerSymbols).toEqual([])
+    expect(madeByQxa.attributes).toEqual([])
+  })
+
+  it('メーカーシンボルを持つ味方のＢＰを、他の味方に限って修整できる', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingMadeByQxa],
+      [homeCenter, '対象の味方', madeByQxa],
+      [homeRight, '対象でない味方', vanilla],
+      [centerCenter, '属性だけが同じ味方', attributedLikeQxa],
+      [centerLeft, '対象の敵', madeByQxa, '後攻'],
+    )
+
+    expect(bpOn(board, '対象の味方', madeByQxa)).toBe(3000)
+    expect(bpOn(board, '対象でない味方', vanilla)).toBe(1000)
+    expect(bpOn(board, '属性だけが同じ味方', attributedLikeQxa)).toBe(1000)
+    expect(bpOn(board, '対象の敵', madeByQxa)).toBe(1000)
+  })
+
+  it('強化するユニット自身がメーカーシンボルを持っていても、他の味方に限るなら自分は修整されない', () => {
+    const selfMade = defineUnit({
+      name: 'テスト・QXA製の強化役',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      makerSymbols: ['QXA'],
+      abilities: boostingMadeByQxa.abilities,
     })
     const board = boardOf([homeLeft, '強化するユニット', selfMade])
 
@@ -365,11 +401,11 @@ describe('メーカーシンボル', () => {
 
   it('継続効果を適用した後の姿も、書かれたメーカーシンボルのまま変わらない', () => {
     const board = boardOf(
-      [homeLeft, '強化するユニット', boostingMadeByTestCompany],
-      [homeCenter, '対象の味方', madeByTestCompany],
+      [homeLeft, '強化するユニット', boostingMadeByQxa],
+      [homeCenter, '対象の味方', madeByQxa],
     )
 
-    expect(continuousData(board)('対象の味方', madeByTestCompany).makerSymbols).toEqual(['テスト社'])
+    expect(continuousData(board)('対象の味方', madeByQxa).makerSymbols).toEqual(['QXA'])
   })
 })
 
