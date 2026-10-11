@@ -3,6 +3,7 @@ import { indexOfSquare } from '@revolution/engine'
 import type {
   DuelEvent,
   LoggedEvent,
+  LoggedInstruction,
   Player,
   PlayerZone,
   Procedure,
@@ -1234,6 +1235,16 @@ describe('操作ログ', () => {
       expect(texts(board)).toEqual(['ダメージ 2 を受けた', '（表示できないログ）', 'ダメージ 1 を受けた'])
     })
 
+    /** できごとの種類は読めても、中の命令の種類を知らないことがある。同じ行にする。 */
+    it('知らない種類の命令も、同じ 1 行になる', () => {
+      const instruction = { kind: 'この画面が知らない命令', card: '置いてある' } as unknown as LoggedInstruction
+      const board = withLog({ kind: '命令を実行した', controller: '後攻', instruction })
+
+      expect(logLines(board)).toEqual([
+        { kind: 'できごと', whose: undefined, text: '（表示できないログ）', depth: 0 },
+      ])
+    })
+
     it('続けて届いても、まとめずに 1 件ずつ出る', () => {
       expect(texts(withLog(UNKNOWN, UNKNOWN))).toEqual(['（表示できないログ）', '（表示できないログ）'])
     })
@@ -1484,6 +1495,31 @@ describe('カットイン', () => {
     ]
 
     expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を選んだ`, `${NAME}を破壊した`])
+  })
+
+  /**
+   * この画面が知らない種類の命令（#285）。カットインは読める分を見せる演出なので、読めない行は
+   * 並べない。読めなかったことはログの欄が言う。
+   */
+  describe('この画面が知らない種類の命令', () => {
+    const UNKNOWN = { kind: 'この画面が知らない命令', card: '置いてある' } as unknown as LoggedInstruction
+    const RESOLVED: DuelEvent = { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' }
+
+    it('その行だけが省かれ、読める命令は並ぶ', () => {
+      const fresh: readonly DuelEvent[] = [
+        RESOLVED,
+        { kind: '命令を実行した', controller: '先攻', instruction: UNKNOWN },
+        { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
+      ]
+
+      expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を破壊した`])
+    })
+
+    it('命令が全部読めなければ、見出しだけになる', () => {
+      const fresh: readonly DuelEvent[] = [RESOLVED, { kind: '命令を実行した', controller: '先攻', instruction: UNKNOWN }]
+
+      expect(cutInViews(board, logged(fresh))).toEqual([{ whose: '自分', heading: `${NAME}の効果、誘発！`, lines: [] }])
+    })
   })
 
   /** 解決 → 命令 → 行動 → 解決 → 命令、で 2 つのカットインに切れる。 */
