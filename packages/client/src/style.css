@@ -2896,6 +2896,17 @@ body {
   cursor: pointer;
 }
 
+/*
+ * エリアごと選んでいる間（ADR-0031）、カーソルを載せた・フォーカスしたスクエアと同じエリアの
+ * 3 つ。光っている置き先と同じ橙のまま、枠を実線にして濃くし、行単位で選ぶことを見せる。
+ */
+.duel .square--エリア強調 {
+  border-style: solid;
+  border-color: #c25e00;
+  background: rgb(255 190 70 / 0.85);
+  box-shadow: inset 0 0 22px rgb(255 150 20 / 0.7), 0 0 10px rgb(255 160 40 / 0.55);
+}
+
 .duel .square .card {
   --card-width: 4.6rem;
 }
@@ -6849,6 +6860,36 @@ body {
 
   .duel .dialog__box:focus {
     outline: none;
+  }
+
+  /* 「このエリアを選ぶ」のシート：選ぼうとしているエリアの強調（ADR-0031）が盤面で見えるよう、背面はぼかさず薄くだけ暗くする */
+  .duel .dialog--エリア {
+    background: rgb(60 30 0 / 0.2);
+    backdrop-filter: none;
+  }
+
+  /*
+   * 同じシートの並び：見出し（上）→ 詳細の枠 → 聞く文 → 通信中 → ボタン（下）。バトル中で 2 体いるなど詳細が
+   * 多くても、見出しとボタンは常に見えるよう、箱は送らず（既定の overflow-y: auto を打ち消す）、詳細の枠だけを送る。
+   * 箱の高さの上限は 85%（幅 375×高さ 812 なら約 690px）。見出し・聞く文・ボタン 2 つ・余白で約 185px を使う
+   * （「通信中…」が出ている間はさらに約 30px）ので、詳細の枠には約 470〜505px が残り、それを超えた分は枠の中で縦に送る。
+   * 詳細が 2 体ぶんなら約 690px になり、枠の中で送ることになる（モックで実測）。
+   */
+  .duel .dialog--エリア .dialog__box {
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;
+  }
+
+  .duel .dialog--エリア .dialog__box > * {
+    flex: none;
+  }
+
+  .duel .dialog--エリア .dialog__box > .dialog__details {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .duel .dialog__row {

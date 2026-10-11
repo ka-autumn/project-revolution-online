@@ -210,7 +210,7 @@ function recorded(before: DuelState, outcome: Outcome, instruction: Instruction,
     {
       kind: '命令を実行した',
       controller,
-      instruction: loggedInstruction(instruction, outcome.subject),
+      instruction: loggedInstruction(instruction, outcome.subject, controller),
     },
     before,
   )

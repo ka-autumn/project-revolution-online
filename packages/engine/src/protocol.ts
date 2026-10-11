@@ -1,11 +1,11 @@
-import type { Square } from './board.js'
+import type { Square, SquareIndex } from './board.js'
 import type { CardType, Color } from './card.js'
 import type { DeckViolation, DuelFormat } from './deck.js'
 import { cardsIn } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
-import { cardIdOf, squareOf } from './log.js'
+import { areaRowOf, cardIdOf, squareOf } from './log.js'
 import { visibleIdsOf } from './perspective.js'
 import type { PassOutcome } from './progress.js'
 import { PLAYERS } from './player.js'
@@ -416,7 +416,8 @@ export interface WireCardPosition {
  * 扱いにはしない。何をする能力かは見せられない（効果は関数なので通信に載らない）。
  *
  * カードが並ばない場面もある。効果が置き先を選ばせる場合（「◯◯に登場させる」）に並ぶのは
- * スクエアで、**そこに何があるかではなく、盤面のどこかが選ばれている。**
+ * スクエアで、そこに何があるかではなく、盤面のどこかが選ばれている。エリアを選ばせる
+ * 効果（「エリアを 1 つ選び、そのエリアの〜」）なら、並ぶのはエリアである。
  */
 export type WireCandidate =
   | { readonly kind: '見えている'; readonly card: CardId }
@@ -434,6 +435,16 @@ export type WireCandidate =
    * 入れ替わる（総合ルール 第2部 第22章 4・6）ので、呼び名にするのは受け取った側である。
    */
   | { readonly kind: 'スクエア'; readonly square: Square }
+  /**
+   * カードでもスクエアでもなく、バトルスペースの横 1 列（エリア）そのもの。
+   *
+   * 呼び名（味方エリア・中央エリア・敵エリア）では送らない。呼び名は見るプレイヤーによって
+   * 入れ替わる（総合ルール 第2部 第22章 6）。効果の中のエリアは選ぶプレイヤー（能力の支配者）から
+   * 見た呼び名なので、`describeCandidate` がその行に直して載せる。受け取った側は、`Square.row` と
+   * 同じ盤面に固定した行として読み、自分から見た呼び名にする。スクエアと同じく盤面の位置であって、
+   * 隠すものは無い。
+   */
+  | { readonly kind: 'エリア'; readonly row: SquareIndex }
   /**
    * 表側が見えていないカード。**盤面のどこにあるかだけを持つ**（#127）。
    *
@@ -954,13 +965,15 @@ function positionOf(board: DuelState, id: CardId): WireCardPosition | undefined 
  * **候補の型は選ばせる場面ごとに違う。** `Chooser` が候補を `unknown` として受け取るのはその
  * ためで、候補そのものからは何であるか尋ねられない。何が来るかを知っているのは呼んだ側なので、
  * **何のための選択か**（`ChoicePurpose`）から読み方を決める。効果が選ばせている場面
- * （`効果の対象`）だけは、カードとスクエアのどちらも来るので、候補の形で見分ける。
+ * （`効果の対象`）だけは、カード・スクエア・エリアのどれも来るので、候補の形で見分ける。
+ * エリアの呼び名は選ぶプレイヤー（`chooser`）から見たものとして、盤面の行に直す。
  */
 function describeCandidate(
   candidate: unknown,
   purpose: ChoicePurpose,
   visible: ReadonlySet<CardId>,
   board: DuelState,
+  chooser: Player,
 ): WireCandidate {
   // 能力が並ぶ場面。カードではないので、発生源のカードで指す。
   if (purpose === '解決する能力' || purpose === 'プランの置き換え') {
@@ -977,6 +990,10 @@ function describeCandidate(
   // 決まっている。
   const square = squareOf(candidate)
   if (square !== undefined) return { kind: 'スクエア', square }
+
+  // エリアも盤面の位置なので、隠すものが無い。
+  const row = areaRowOf(candidate, chooser)
+  if (row !== undefined) return { kind: 'エリア', row }
 
   return { kind: '見えていない', at: undefined }
 }
@@ -1013,7 +1030,7 @@ function describeChoice(
     mayDecline,
     answered,
     mayGoBack: [...visible].every((card) => before.has(card)),
-    candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, visible, board)),
+    candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, visible, board, player)),
   }
 }
 

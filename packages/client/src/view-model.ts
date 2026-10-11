@@ -582,6 +582,16 @@ export function squareLabel(viewer: Player, square: Square): string {
 }
 
 /**
+ * 見る人から見たエリアの呼び方（総合ルール 第2部 第22章 6）。
+ *
+ * 通信にはエリアが盤面に固定した行で届く（`protocol.ts` の `WireCandidate` の `エリア`）。呼び名に
+ * 直すのは受け取った側の仕事で、行のどの列のスクエアから見ても同じエリアなので、列は決め打ちでよい。
+ */
+export function areaLabel(viewer: Player, row: SquareIndex): string {
+  return areaOf(viewer, { row, column: 0 })
+}
+
+/**
  * 印刷された図に描かれたスクエアの呼び方（トリガーアイコン）。
  *
  * 印刷は支配者の手前を基準にしている（`board.ts` の `squareFromView`）。先攻がその基準の向き
@@ -1198,9 +1208,14 @@ function instructionLine(
 ): string {
   switch (instruction.kind) {
     case '選ぶ': {
-      // 選ばれたのはカードかスクエアのどちらかである（`log.ts` の `選ぶ`）。スクエアは
-      // 見る人から見た呼び名で言う（総合ルール 第2部 第22章 6）。
-      const where = instruction.square === undefined ? undefined : squareLabel(board.viewer, instruction.square)
+      // 選ばれたのはカード・スクエア・エリアのどれかである（`log.ts` の `選ぶ`）。スクエアと
+      // エリアは見る人から見た呼び名で言う（総合ルール 第2部 第22章 6）。
+      const where =
+        instruction.square !== undefined
+          ? squareLabel(board.viewer, instruction.square)
+          : instruction.areaRow !== undefined
+            ? areaLabel(board.viewer, instruction.areaRow)
+            : undefined
       return about(named(instruction.card) ?? where, 'を', '選んだ')
     }
     case '破壊する':

@@ -865,6 +865,21 @@ describe('操作ログ', () => {
       expect(texts(board)).toEqual(['中央エリアの中央ラインを選んだ'])
     })
 
+    /**
+     * #278。エリアは盤面の行で記録されている。呼び名にするのは読む側で、同じ行でも見る人によって
+     * 呼び名が入れ替わる（総合ルール 第2部 第22章 6）。
+     */
+    it('エリアを選んだなら、見る人から見た呼び名で出る', () => {
+      const chosen: DuelEvent = {
+        kind: '命令を実行した',
+        controller: '後攻',
+        instruction: { kind: '選ぶ', card: undefined, square: undefined, areaRow: 0 },
+      }
+
+      expect(texts(withLog(chosen))).toEqual(['味方エリアを選んだ'])
+      expect(texts({ ...withLog(chosen), viewer: '後攻' })).toEqual(['敵エリアを選んだ'])
+    })
+
     /** どちらも指していなければ、名前もスクエアも作り出さない（#95）。 */
     it('どちらも指していなければ、選んだことだけが出る', () => {
       const board = withLog({

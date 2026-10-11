@@ -6,6 +6,7 @@
  * `isPhoneWidth` が偽の間は `PhoneControl` を渡さず、描く側（`render.ts`）は渡されなければスマートフォン向けの
  * 部品を作らない。幅を戻したときに PC の画面が壊れないのは、そのためである。
  */
+import type { AreaSheetOpen } from './phone-area.js'
 
 /** `style.css` のスマートフォンの並べ方の境目と同じ。食い違うと、並べ方と部品の出入りがずれる。 */
 export const PHONE_WIDTH_QUERY = '(max-width: 768px)'
@@ -79,6 +80,14 @@ export interface PhoneState {
   readonly duelSheet: DuelSheet | undefined
   /** 対戦画面で、詳細だけを見ているカード。 */
   readonly viewedCard: ViewedCard | undefined
+  /** 対戦画面で、効果がエリアを選ばせている間に開いている「このエリアを選ぶ」のシート（`phone-area.ts`）。 */
+  readonly areaSheet: AreaSheetOpen | undefined
+  /**
+   * エリアのシートで「このエリアを選ぶ」を押して答えを送り、返事を待っているか。描き直しをまたいで持つ。
+   * シートの中（DOM）にだけ持つと、返事の前の描き直し（相手の繋がりの知らせなど）で押せる状態に戻り、
+   * 答えを 2 通送れてしまう。`areaSheet` が無いときは偽。
+   */
+  readonly areaSheetSent: boolean
   /** 開いているシートを開いた押せるものの印。閉じたとき、手をここへ戻す。 */
   readonly opener: string | undefined
   readonly pending: PhonePending | undefined
@@ -97,6 +106,8 @@ export function initialPhone(): PhoneState {
     sheetCard: undefined,
     duelSheet: undefined,
     viewedCard: undefined,
+    areaSheet: undefined,
+    areaSheetSent: false,
     opener: undefined,
     pending: undefined,
   }
@@ -125,6 +136,13 @@ export type PhoneAction =
   | { readonly kind: '対戦の層が開いた' }
   | { readonly kind: '対戦のカードを見る'; readonly card: string }
   | { readonly kind: '対戦のカードを閉じる' }
+  /** 効果がエリアを選ばせている間、光っているスクエアを押した。答えは送らず、そのエリアのシートを開く。 */
+  | ({ readonly kind: 'エリアのシートを開く' } & AreaSheetOpen)
+  | { readonly kind: 'エリアのシートを閉じる' }
+  /** 「このエリアを選ぶ」を押して答えを送った。返事が届くまで、シートは押せず閉じられない。 */
+  | { readonly kind: 'エリアの答えを送った' }
+  /** サーバが答えを断った。送ったあとのシートを閉じて捨てる（送っていないシートには関係しない）。 */
+  | { readonly kind: 'エリアの答えが断られた' }
 
 /** 状態を進める。シートを開けば手は中へ、閉じれば開いた元へ戻す。 */
 export function reducePhone(state: PhoneState, action: PhoneAction): PhoneState {
@@ -163,6 +181,16 @@ export function reducePhone(state: PhoneState, action: PhoneAction): PhoneState 
       return { ...state, viewedCard: { card: action.card } }
     case '対戦のカードを閉じる':
       return state.viewedCard === undefined ? state : { ...state, viewedCard: undefined }
+    case 'エリアのシートを開く':
+      // 手を置き直すのは、層（`.dialog`）の手の置き直し（`dialog-focus.ts`）が受け持つ。
+      return { ...state, areaSheet: { square: action.square, choice: action.choice }, areaSheetSent: false }
+    case 'エリアのシートを閉じる':
+      // 送ったあとに閉じられないのは、シートの側で止める（`render.ts`）。ここへ来るのは、返事で出してよくなくなったとき。
+      return state.areaSheet === undefined ? state : { ...state, areaSheet: undefined, areaSheetSent: false }
+    case 'エリアの答えを送った':
+      return state.areaSheet === undefined || state.areaSheetSent ? state : { ...state, areaSheetSent: true }
+    case 'エリアの答えが断られた':
+      return state.areaSheet === undefined || !state.areaSheetSent ? state : { ...state, areaSheet: undefined, areaSheetSent: false }
   }
 }
 
@@ -242,8 +270,8 @@ export function settlePhone(state: PhoneState, shown: ShownScreens): PhoneState 
       builderSettings: false,
     }
   }
-  if (!shown.duel && (next.duelSheet !== undefined || next.viewedCard !== undefined)) {
-    next = { ...next, duelSheet: undefined, viewedCard: undefined }
+  if (!shown.duel && (next.duelSheet !== undefined || next.viewedCard !== undefined || next.areaSheet !== undefined)) {
+    next = { ...next, duelSheet: undefined, viewedCard: undefined, areaSheet: undefined, areaSheetSent: false }
   }
   if (next !== state && !next.deckSheet && next.sheetCard === undefined && next.duelSheet === undefined) {
     next = { ...next, opener: undefined, pending: undefined }
