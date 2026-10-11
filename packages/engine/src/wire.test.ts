@@ -158,6 +158,7 @@ describe('通信に載せる形', () => {
   })
 
   // 項目を 1 つずつ書き写しているので、カードに項目が増えても勝手には載らない（ADR-0035）。
+  // 架空の略号 QXWIREMARK は、通信に載るほかの文字列に偶然含まれないよう、長く特徴のある綴りにした。
   it('メーカーシンボルと「友情」を持つユニットでも、通信の形は変わらない', () => {
     const annotated = defineUnit({
       name: 'テスト・メーカーシンボルと友情',
@@ -165,7 +166,7 @@ describe('通信に載せる形', () => {
       colors: ['赤'],
       bp: 1000,
       sp: 1000,
-      makerSymbols: ['テスト社'],
+      makerSymbols: ['QXWIREMARK'],
       abilities: [friendship(500)],
     })
     const state = putOnSquare(
@@ -179,7 +180,7 @@ describe('通信に載せる形', () => {
 
     expect(face).not.toHaveProperty('makerSymbols')
     expect(JSON.stringify(sent)).not.toContain('makerSymbols')
-    expect(JSON.stringify(sent)).not.toContain('テスト社')
+    expect(JSON.stringify(sent)).not.toContain('QXWIREMARK')
     expect(face?.keywords).toEqual([])
     expect(face?.keywords).not.toContain('友情')
   })
