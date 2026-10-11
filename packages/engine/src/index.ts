@@ -30,12 +30,14 @@ export type {
   CreatedTriggeredAbility,
   DiscardOccasion,
   DreamAbility,
+  FriendshipAbility,
   GutsAbility,
   HopeAbility,
   IntrusionOccasion,
   MoveCost,
   MoveCostingAbility,
   MovementOccasion,
+  PassiveKeyword,
   PepAbility,
   PlanReplacingAbility,
   OccasionOf,
@@ -79,7 +81,10 @@ export {
   defineTrap,
   defineUnit,
   hasDream,
+  hasFriendship,
   hasGuts,
+  hasKeyword,
+  hasMakerSymbol,
   hasPep,
   hasTrust,
   hopeOf,
@@ -89,7 +94,7 @@ export {
   planReplacingAbilitiesOf,
   spOf,
 } from './card.js'
-export type { Attribute, Card, CardType, Color, PlanKeyword, StrategyCard, TrapCard, UnitCard } from './card.js'
+export type { Attribute, Card, CardType, Color, MakerSymbol, PlanKeyword, StrategyCard, TrapCard, UnitCard } from './card.js'
 export { bpModification } from './continuous.js'
 export type { BpModification } from './continuous.js'
 export { satisfiesLevel } from './cost.js'
@@ -156,7 +161,9 @@ export type {
   DuelView,
   Effect,
   EffectStep,
+  EnergyInZone,
   Instruction,
+  SmashCard,
   TrapEffect,
   UnitOnSquare,
 } from './effect.js'

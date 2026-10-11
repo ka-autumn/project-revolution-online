@@ -28,7 +28,16 @@ import {
   squaresBeside,
   triggeredAbility,
 } from './index.js'
-import type { CardInZone, CardInstance, Chooser, DuelState, ResolutionVia, Square, UnitOnSquare } from './index.js'
+import type {
+  CardInZone,
+  CardInstance,
+  Chooser,
+  DuelState,
+  Effect,
+  ResolutionVia,
+  Square,
+  UnitOnSquare,
+} from './index.js'
 
 /**
  * このファイルのテストはどの経路で解決されたかを見ていないので、決め打ちで 1 つ使い回す
@@ -1157,6 +1166,391 @@ describe('効果から見えるエネルギーゾーン', () => {
 
     expect(idsOf(cardsOn(resolved, mySquare))).toEqual(['先攻のエネルギー0'])
     expect(cardsIn(resolved, '先攻', 'エネルギーゾーン')).toEqual([])
+  })
+})
+
+// 総合ルール 第2部 第24章 1・1-1（ADR-0006）
+describe('効果によるエネルギーの向きの変更', () => {
+  /** 先攻のエネルギーゾーンに、指定した向きのカードを置いた盤面。後攻にもリリース状態を 1 枚置く。 */
+  function withEnergies(...orientations: readonly ('リリース' | 'フリーズ')[]): DuelState {
+    const board = putInZone(
+      emptyDuelState(),
+      '先攻',
+      'エネルギーゾーン',
+      orientations.map((orientation, index) =>
+        instantiate({ id: `先攻のエネルギー${index}`, card: vanilla, owner: '先攻', orientation }),
+      ),
+    )
+    return putInZone(board, '後攻', 'エネルギーゾーン', [
+      instantiate({ id: '後攻のエネルギー', card: vanilla, owner: '後攻' }),
+    ])
+  }
+
+  const orientationsOf = (state: DuelState, player: '先攻' | '後攻' = '先攻') =>
+    cardsIn(state, player, 'エネルギーゾーン').map((card) => card.orientation)
+
+  /**
+   * 「あなたのエネルギーを 1 枚まで選び、フリーズしてよい。そうしたら、ダメージを受ける」。
+   * 選べるのはリリース状態のエネルギーだけで、選んだ時にだけ続きが起こる。
+   */
+  const freezeAnEnergy: Effect = function* (duel) {
+    const energy = yield* chooseAtMostOne(duel.energyZone().filter((each) => each.orientation === 'リリース'))
+    if (energy === undefined) return
+    yield* freeze(energy)
+    yield* damagePlayer(duel.controller, 500)
+  }
+
+  const resolve = (state: DuelState, effect: Effect, chooser: Chooser = chooseFirst) =>
+    resolveEffect(state, effect, { controller: '先攻', via: VIA, chooser })
+
+  /** ログに残った、実行された命令。 */
+  const executedInstructions = (state: DuelState) =>
+    state.log.flatMap((recorded) => (recorded.event.kind === '命令を実行した' ? [recorded.event.instruction] : []))
+
+  it('効果から見たエネルギーは、いまの向きを持つ', () => {
+    let seen: readonly (string | undefined)[] = []
+    resolve(withEnergies('リリース', 'フリーズ'), function* (duel) {
+      seen = duel.energyZone().map((energy) => energy.orientation)
+    })
+
+    expect(seen).toEqual(['リリース', 'フリーズ'])
+  })
+
+  it('リリース状態のエネルギーをフリーズする', () => {
+    const resolved = resolve(withEnergies('リリース', 'リリース'), freezeAnEnergy)
+
+    expect(orientationsOf(resolved)).toEqual(['フリーズ', 'リリース'])
+    // 「そうしたら」の続きが起こる。
+    expect(resolved.damage['先攻']).toBe(500)
+  })
+
+  it('フリーズ状態のエネルギーをリリースする', () => {
+    const resolved = resolve(withEnergies('フリーズ', 'フリーズ'), function* (duel) {
+      const energy = yield* choose(duel.energyZone())
+      if (energy !== undefined) yield* release(energy)
+    })
+
+    expect(orientationsOf(resolved)).toEqual(['リリース', 'フリーズ'])
+  })
+
+  it('選ぶ候補はカードの側で向きによって絞れ、フリーズ状態のものは候補に並ばない', () => {
+    let offered: readonly unknown[] = []
+    resolve(withEnergies('フリーズ', 'リリース', 'フリーズ'), freezeAnEnergy, (candidates) => {
+      offered = candidates
+      return candidates[0]
+    })
+
+    expect(offered).toHaveLength(1)
+    expect(offered).toMatchObject([{ id: '先攻のエネルギー1', orientation: 'リリース' }])
+  })
+
+  it('選ばなければ、何も起こらず、続きも起こらない', () => {
+    const state = withEnergies('リリース', 'リリース')
+
+    const resolved = resolve(state, freezeAnEnergy, () => undefined)
+
+    expect(orientationsOf(resolved)).toEqual(['リリース', 'リリース'])
+    expect(resolved.damage['先攻']).toBe(0)
+  })
+
+  // 総合ルール 第1部 第1章 3。候補が無ければ選ぶ行動が実行されず、続きも起こらない。
+  it('エネルギーが全部フリーズ状態なら、候補が無く、何も起こらない', () => {
+    const state = withEnergies('フリーズ', 'フリーズ')
+    let asked = false
+
+    const resolved = resolve(state, freezeAnEnergy, (candidates) => {
+      asked = true
+      return candidates[0]
+    })
+
+    expect(asked).toBe(false)
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  it('エネルギーが 0 枚なら、候補が無く、何も起こらない', () => {
+    const state = withEnergies()
+
+    const resolved = resolve(state, freezeAnEnergy)
+
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  // 総合ルール 第2部 第24章 1-1。
+  it('すでにフリーズ状態のエネルギーはフリーズできず、効果はそのまま続く', () => {
+    const state = withEnergies('フリーズ')
+
+    const resolved = resolve(state, function* (duel) {
+      const [energy] = duel.energyZone()
+      if (energy === undefined) throw new Error('エネルギーがある盤面で試すこと')
+      yield* freeze(energy)
+      yield* damagePlayer(duel.controller, 500)
+    })
+
+    expect(orientationsOf(resolved)).toEqual(['フリーズ'])
+    expect(resolved.damage['先攻']).toBe(500)
+    // 実行されなかった行動は、ログにも残らない。
+    expect(executedInstructions(resolved).map((instruction) => instruction.kind)).toEqual([
+      'プレイヤーにダメージを与える',
+    ])
+  })
+
+  // 総合ルール 第2部 第24章 1-1。
+  it('すでにリリース状態のエネルギーはリリースできない', () => {
+    const state = withEnergies('リリース')
+
+    const resolved = resolve(state, function* (duel) {
+      const [energy] = duel.energyZone()
+      if (energy === undefined) throw new Error('エネルギーがある盤面で試すこと')
+      yield* release(energy)
+    })
+
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  it('向きを変えたことは、これまでと同じ形でログに残る', () => {
+    const resolved = resolve(withEnergies('リリース'), freezeAnEnergy)
+
+    expect(executedInstructions(resolved)).toContainEqual({
+      kind: '向きを変える',
+      card: '先攻のエネルギー0',
+      orientation: 'フリーズ',
+    })
+  })
+
+  it('すでにエネルギーゾーンを離れたエネルギーの向きは変わらないが、効果はそのまま続く', () => {
+    const state = withEnergies('リリース')
+
+    const resolved = resolve(state, function* (duel) {
+      const [energy] = duel.energyZone()
+      if (energy === undefined) throw new Error('エネルギーがある盤面で試すこと')
+      yield* placeInZone(energy, '捨札', 'リリース')
+      yield* freeze(energy)
+      yield* damagePlayer(duel.controller, 500)
+    })
+
+    expect(orientationsOf(resolved)).toEqual([])
+    expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['先攻のエネルギー0'])
+    expect(cardsIn(resolved, '先攻', '捨札')[0]?.orientation).toBe('リリース')
+    expect(resolved.damage['先攻']).toBe(500)
+  })
+
+  it('相手のエネルギーには触れない', () => {
+    const resolved = resolve(withEnergies('リリース'), freezeAnEnergy)
+
+    expect(orientationsOf(resolved, '後攻')).toEqual(['リリース'])
+  })
+
+  // 見せたカードが相手のエネルギーゾーンへ移ると、その識別子を指すエネルギーは相手のものになる。
+  it('相手のエネルギーゾーンにあるカードを指していても、向きは変わらず、ログにも残らない', () => {
+    const state = putOnSquare(
+      withEnergies('リリース'),
+      enemySquare,
+      instantiate({ id: '相手のユニット', card: vanilla, owner: '後攻' }),
+    )
+
+    const resolved = resolve(state, function* (duel) {
+      const enemy = yield* choose(duel.enemies())
+      if (enemy === undefined) throw new Error('相手のユニットがいる盤面で試すこと')
+      yield* placeInZone(enemy, 'エネルギーゾーン', 'リリース')
+      yield* freeze({ id: enemy.id, zone: 'エネルギーゾーン', card: enemy.card, orientation: 'リリース' })
+    })
+
+    expect(idsOf(cardsIn(resolved, '後攻', 'エネルギーゾーン'))).toContain('相手のユニット')
+    expect(orientationsOf(resolved, '後攻')).toEqual(['リリース', 'リリース'])
+    expect(executedInstructions(resolved).map((instruction) => instruction.kind)).not.toContain('向きを変える')
+  })
+
+  it('ユニットとして読んだ写しのカードがエネルギーゾーンへ移った後にフリーズしても、エネルギーの向きは変わらない', () => {
+    const state = putOnSquare(
+      withEnergies('リリース'),
+      mySquare,
+      instantiate({ id: '味方のユニット', card: vanilla, owner: '先攻' }),
+    )
+
+    const resolved = resolve(state, function* (duel) {
+      const ally = yield* choose(duel.allies())
+      if (ally === undefined) throw new Error('味方のユニットがいる盤面で試すこと')
+      yield* placeInZone(ally, 'エネルギーゾーン', 'リリース')
+      yield* freeze(ally)
+    })
+
+    expect(idsOf(cardsIn(resolved, '先攻', 'エネルギーゾーン'))).toContain('味方のユニット')
+    expect(orientationsOf(resolved)).toEqual(['リリース', 'リリース'])
+    expect(executedInstructions(resolved).map((instruction) => instruction.kind)).not.toContain('向きを変える')
+  })
+
+  it('見せていないエネルギーは対象にできない', () => {
+    expect(() =>
+      resolve(withEnergies('リリース'), function* () {
+        yield* freeze({ id: '先攻のエネルギー0', zone: 'エネルギーゾーン', card: vanilla, orientation: 'リリース' })
+      }),
+    ).toThrowError('効果に見せていないカードが対象にされた')
+  })
+})
+
+// 総合ルール 第2部 第21章 7-2・7-3（ADR-0006）
+describe('効果から見えるスマッシュ', () => {
+  /** それぞれのプレイヤーのスマッシュゾーンに、その枚数のカードを置いた盤面。 */
+  function withSmashes(mineCount: number, theirsCount: number): DuelState {
+    const smashes = (player: '先攻' | '後攻', count: number) =>
+      Array.from({ length: count }, (_, index) =>
+        instantiate({ id: `${player}のスマッシュ${index}`, card: vanilla, owner: player }),
+      )
+    const board = putInZone(emptyDuelState(), '先攻', 'スマッシュゾーン', smashes('先攻', mineCount))
+    return putInZone(board, '後攻', 'スマッシュゾーン', smashes('後攻', theirsCount))
+  }
+
+  /** 効果が数えた、両方のプレイヤーのスマッシュの枚数。 */
+  function counted(state: DuelState): readonly number[] {
+    const seen: number[] = []
+    resolveEffect(
+      state,
+      function* (duel) {
+        seen.push(duel.smashCount(duel.controller), duel.smashCount(duel.opponent))
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+    return seen
+  }
+
+  /** 支配者自身のスマッシュを 1 枚まで選び、捨札に置く効果。選んだものを効果が覚えて返す。 */
+  function discardingASmash(state: DuelState, chooser: Chooser): { readonly state: DuelState; readonly seen: unknown } {
+    let seen: unknown = 'まだ選んでいない'
+    const resolved = resolveEffect(
+      state,
+      function* (duel) {
+        const smash = yield* chooseAtMostOne(duel.smashZone())
+        seen = smash
+        if (smash !== undefined) yield* placeInZone(smash, '捨札', 'リリース')
+      },
+      { controller: '先攻', via: VIA, chooser },
+    )
+    return { state: resolved, seen }
+  }
+
+  it('両方のプレイヤーのスマッシュの枚数を数えられる', () => {
+    expect(counted(withSmashes(3, 1))).toEqual([3, 1])
+  })
+
+  // 総合ルール 第2部 第21章 7-3。いつでも、両方のスマッシュゾーンの枚数を数えられる。
+  it('相手のスマッシュの枚数も数えられる', () => {
+    expect(counted(withSmashes(0, 2))).toEqual([0, 2])
+  })
+
+  it('スマッシュが 0 枚なら 0 と数える', () => {
+    expect(counted(withSmashes(0, 0))).toEqual([0, 0])
+  })
+
+  // 総合ルール 第3部 第19章 1。希望ステップで表向きに置かれたカードは、スマッシュではない。
+  it('スマッシュ判定中に表向きで置かれているカードは数えない', () => {
+    const state = withSmashes(3, 0)
+    const judging: DuelState = {
+      ...state,
+      smashJudgments: [
+        {
+          player: '先攻',
+          step: '希望ステップ',
+          repeats: 1,
+          round: 1,
+          faceUp: '先攻のスマッシュ0',
+          heldBank: [],
+          heldTriggered: [],
+          startedAt: 0,
+        },
+      ],
+    }
+
+    expect(counted(judging)).toEqual([2, 0])
+  })
+
+  it('支配者自身のスマッシュを 1 枚ずつ選べるが、中身は見えない', () => {
+    const { seen } = discardingASmash(withSmashes(2, 2), chooseFirst)
+
+    // 効果が受け取るのは識別子とゾーンだけで、カードそのものは含まれない（総合ルール 第2部
+    // 第21章 7-3）。
+    expect(seen).toEqual({ id: '先攻のスマッシュ0', zone: 'スマッシュゾーン' })
+  })
+
+  it('選んだスマッシュを捨札に置ける', () => {
+    const state = withSmashes(2, 2)
+
+    const { state: resolved } = discardingASmash(state, (candidates) => candidates[1])
+
+    expect(idsOf(cardsIn(resolved, '先攻', 'スマッシュゾーン'))).toEqual(['先攻のスマッシュ0'])
+    expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['先攻のスマッシュ1'])
+    // 相手のスマッシュには触れない。
+    expect(cardsIn(resolved, '後攻', 'スマッシュゾーン')).toHaveLength(2)
+  })
+
+  it('選んだスマッシュの分だけ、数えた枚数が減る', () => {
+    const counts: number[] = []
+    resolveEffect(
+      withSmashes(2, 0),
+      function* (duel) {
+        const smash = yield* choose(duel.smashZone())
+        if (smash === undefined) throw new Error('スマッシュがある盤面で試すこと')
+        yield* placeInZone(smash, '捨札', 'リリース')
+        counts.push(duel.smashCount(duel.controller))
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+
+    expect(counts).toEqual([1])
+  })
+
+  it('選ばないことも選べる', () => {
+    const state = withSmashes(2, 0)
+
+    const { state: resolved, seen } = discardingASmash(state, () => undefined)
+
+    expect(seen).toBeUndefined()
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  // 総合ルール 第1部 第1章 3。候補が無いなら選ぶ行動は実行されず、効果はそのまま続く。
+  it('スマッシュが 1 枚も無ければ、選べないまま効果が続く', () => {
+    const state = withSmashes(0, 2)
+
+    const { state: resolved, seen } = discardingASmash(state, chooseFirst)
+
+    expect(seen).toBeUndefined()
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  it('スマッシュ判定中に表向きで置かれているカードは、選ぶ候補にならない', () => {
+    const judging: DuelState = {
+      ...withSmashes(2, 0),
+      smashJudgments: [
+        {
+          player: '先攻',
+          step: '希望ステップ',
+          repeats: 1,
+          round: 1,
+          faceUp: '先攻のスマッシュ0',
+          heldBank: [],
+          heldTriggered: [],
+          startedAt: 0,
+        },
+      ],
+    }
+
+    const { seen } = discardingASmash(judging, chooseFirst)
+
+    expect(seen).toEqual({ id: '先攻のスマッシュ1', zone: 'スマッシュゾーン' })
+  })
+
+  it('見せていないスマッシュは対象にできない', () => {
+    const state = withSmashes(1, 0)
+
+    expect(() =>
+      resolveEffect(
+        state,
+        function* () {
+          yield* placeInZone({ id: '先攻のスマッシュ0', zone: 'スマッシュゾーン' }, '捨札', 'リリース')
+        },
+        { controller: '先攻', via: VIA, chooser: chooseFirst },
+      ),
+    ).toThrowError('効果に見せていないカードが対象にされた')
   })
 })
 

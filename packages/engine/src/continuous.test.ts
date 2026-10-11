@@ -15,9 +15,14 @@ import {
   bpPlus,
   cardsIn,
   cardsOn,
+  choose,
   defineUnit,
+  destroy,
   emptyDuelState,
+  dream,
   friendship,
+  hasFriendship,
+  hasMakerSymbol,
   instantiate,
   passPriority,
   playCard,
@@ -269,6 +274,141 @@ describe('継続効果によって加わる属性', () => {
   })
 })
 
+// 以下の「QXA」「QXB」「QXZ」は架空のメーカーシンボルの略号（半角）。実在の略号ではない。
+
+/** メーカーシンボル「QXA」を持つユニット。 */
+const madeByQxa = defineUnit({
+  name: 'テスト・QXA製',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  makerSymbols: ['QXA'],
+})
+
+/** 属性にだけ「QXA」と同じ綴りを書いたユニット。メーカーシンボルとは別の欄であることを見る。 */
+const attributedLikeQxa = defineUnit({
+  name: 'テスト・属性が同じ綴り',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  attributes: ['QXA'],
+})
+
+/** 「QXA」のメーカーシンボルを持つ他の味方のＢＰを＋2000。 */
+const boostingMadeByQxa = defineUnit({
+  name: 'テスト・QXA製を強化',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    bpModifying((duel) =>
+      duel
+        .allies()
+        .filter((ally) => ally.id !== duel.self()?.id && ally.card.makerSymbols.includes('QXA'))
+        .map((ally) => bpPlus(ally, 2000)),
+    ),
+  ],
+})
+
+// 総合ルール 第2部 第13章 1-1・1-1-1（ADR-0006）
+describe('メーカーシンボル', () => {
+  it('持つかどうかは、メーカーシンボルの欄に含まれるかで決まる', () => {
+    expect(hasMakerSymbol(madeByQxa, 'QXA')).toBe(true)
+    expect(hasMakerSymbol(madeByQxa, 'QXB')).toBe(false)
+    expect(hasMakerSymbol(vanilla, 'QXA')).toBe(false)
+  })
+
+  // 総合ルール 第2部 第13章 1-1-1。あるシンボルを別のシンボルとして扱う読み替えは、カードのデータを
+  // 書く時に済ませる。ここでは「QXZ は QXA として扱われる」とする。エンジンは読み替えをしないので、
+  // 読み替える前の QXZ だけを欄に書いたユニットは、QXA を持つ味方を強化する能力の対象にならない。
+  it('読み替える前のシンボルだけを欄に書いたユニットは、読み替えた先のシンボルで数えられない', () => {
+    const writtenBeforeReading = defineUnit({
+      name: 'テスト・QXZのまま書いた',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      makerSymbols: ['QXZ'],
+    })
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingMadeByQxa],
+      [homeCenter, '読み替えを済ませた味方', madeByQxa],
+      [homeRight, '読み替えを済ませていない味方', writtenBeforeReading],
+    )
+
+    expect(bpOn(board, '読み替えを済ませた味方', madeByQxa)).toBe(3000)
+    expect(bpOn(board, '読み替えを済ませていない味方', writtenBeforeReading)).toBe(1000)
+  })
+
+  it('欄に複数のメーカーシンボルを持つカードは、それぞれのシンボルで数えられる', () => {
+    const madeByQxaAndQxb = defineUnit({
+      name: 'テスト・QXAとQXB製',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      makerSymbols: ['QXA', 'QXB'],
+    })
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingMadeByQxa],
+      [homeCenter, '複数持つ味方', madeByQxaAndQxb],
+    )
+
+    expect(hasMakerSymbol(madeByQxaAndQxb, 'QXA')).toBe(true)
+    expect(hasMakerSymbol(madeByQxaAndQxb, 'QXB')).toBe(true)
+    expect(hasMakerSymbol(madeByQxaAndQxb, 'QXC')).toBe(false)
+    expect(bpOn(board, '複数持つ味方', madeByQxaAndQxb)).toBe(3000)
+  })
+
+  it('属性とは別の欄で、属性に同じ綴りがあってもメーカーシンボルは持たない', () => {
+    expect(hasMakerSymbol(attributedLikeQxa, 'QXA')).toBe(false)
+    expect(attributedLikeQxa.makerSymbols).toEqual([])
+    expect(madeByQxa.attributes).toEqual([])
+  })
+
+  it('メーカーシンボルを持つ味方のＢＰを、他の味方に限って修整できる', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingMadeByQxa],
+      [homeCenter, '対象の味方', madeByQxa],
+      [homeRight, '対象でない味方', vanilla],
+      [centerCenter, '属性だけが同じ味方', attributedLikeQxa],
+      [centerLeft, '対象の敵', madeByQxa, '後攻'],
+    )
+
+    expect(bpOn(board, '対象の味方', madeByQxa)).toBe(3000)
+    expect(bpOn(board, '対象でない味方', vanilla)).toBe(1000)
+    expect(bpOn(board, '属性だけが同じ味方', attributedLikeQxa)).toBe(1000)
+    expect(bpOn(board, '対象の敵', madeByQxa)).toBe(1000)
+  })
+
+  it('強化するユニット自身がメーカーシンボルを持っていても、他の味方に限るなら自分は修整されない', () => {
+    const selfMade = defineUnit({
+      name: 'テスト・QXA製の強化役',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      makerSymbols: ['QXA'],
+      abilities: boostingMadeByQxa.abilities,
+    })
+    const board = boardOf([homeLeft, '強化するユニット', selfMade])
+
+    expect(bpOn(board, '強化するユニット', selfMade)).toBe(1000)
+  })
+
+  it('継続効果を適用した後の姿も、書かれたメーカーシンボルのまま変わらない', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingMadeByQxa],
+      [homeCenter, '対象の味方', madeByQxa],
+    )
+
+    expect(continuousData(board)('対象の味方', madeByQxa).makerSymbols).toEqual(['QXA'])
+  })
+})
+
 // 総合ルール 第4部 第12章 5-2 の【例】（ADR-0006）
 describe('別の種類に属する継続効果の適用の順序', () => {
   // 同 5-2 の【例】: 「他の〈属性〉の味方のＢＰを＋1000」と「あなたのユニットの属性に
@@ -359,6 +499,144 @@ describe('「友情－Ｘ」', () => {
     const board = boardOf([homeCenter, '友情を持つユニット', friendly], [homeLeft, '左隣の味方', vanilla])
 
     expect(bpOn(board, '友情を持つユニット', friendly)).toBe(1000)
+  })
+
+  it('友情という名前を持つ', () => {
+    expect(friendship(1000).keyword).toBe('友情')
+    expect(hasFriendship(friendly)).toBe(true)
+    expect(hasFriendship(vanilla)).toBe(false)
+  })
+})
+
+/** 友情－500。数値が違っても、友情を持つことに変わりは無いことを見るために使う。 */
+const mildlyFriendly = defineUnit({
+  name: 'テスト・小さな友情',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [friendship(500)],
+})
+
+/** 友情ではない、名前を持つキーワード能力（夢）を持つユニット。 */
+const dreamer = defineUnit({
+  name: 'テスト・夢',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [dream],
+})
+
+/** 「他の、友情を持つ味方のＢＰを＋2000」。隣かどうか、数値がいくつかは問わない。 */
+const boostingFriendly = defineUnit({
+  name: 'テスト・友情持ちを強化',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    bpModifying((duel) =>
+      duel
+        .allies()
+        .filter((ally) => ally.id !== duel.self()?.id && duel.hasKeyword(ally, '友情'))
+        .map((ally) => bpPlus(ally, 2000)),
+    ),
+  ],
+})
+
+// 総合ルール 第5部 第5章 2、第4部 第12章 5-2 の(5)（ADR-0006）
+describe('友情を持つユニットで対象を絞るＢＰの修整', () => {
+  it('友情を持つ味方のＢＰを修整する。隣かどうかも、数値がいくつかも問わない', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingFriendly],
+      [centerCenter, '遠くの友情', friendly],
+      [homeRight, '数値の違う友情', mildlyFriendly],
+    )
+
+    expect(bpOn(board, '遠くの友情', friendly)).toBe(3000)
+    expect(bpOn(board, '数値の違う友情', mildlyFriendly)).toBe(3000)
+  })
+
+  it('友情を持たない味方は修整されない。ほかのキーワード能力を持っていても同じ', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingFriendly],
+      [homeCenter, '何も持たない味方', vanilla],
+      [homeRight, '夢を持つ味方', dreamer],
+    )
+
+    expect(bpOn(board, '何も持たない味方', vanilla)).toBe(1000)
+    expect(bpOn(board, '夢を持つ味方', dreamer)).toBe(1000)
+  })
+
+  it('友情を持つ敵は修整されない', () => {
+    const board = boardOf([homeLeft, '強化するユニット', boostingFriendly], [centerCenter, '敵の友情', friendly, '後攻'])
+
+    expect(bpOn(board, '敵の友情', friendly)).toBe(1000)
+  })
+
+  it('強化するユニット自身が友情を持っていても、「他の」と書けば自分は修整されない', () => {
+    const friendlyBooster = defineUnit({
+      name: 'テスト・友情持ちの強化役',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [friendship(0), ...boostingFriendly.abilities],
+    })
+    const board = boardOf([homeLeft, '強化するユニット', friendlyBooster])
+
+    expect(bpOn(board, '強化するユニット', friendlyBooster)).toBe(1000)
+  })
+
+  // 友情を持つ味方は、この修整と、隣の友情からの修整の両方を受ける。
+  it('隣の友情からの修整と、重なる', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingFriendly],
+      [homeCenter, '友情を持つ味方', friendly],
+      [homeRight, '隣の友情', friendly],
+    )
+
+    // 書かれた 1000 に、隣の友情の＋1000 と、友情を持つことによる＋2000。
+    expect(bpOn(board, '友情を持つ味方', friendly)).toBe(4000)
+    // 隣の友情からは、友情を持つ味方のほうが＋1000 を受けている。
+    expect(bpOn(board, '隣の友情', friendly)).toBe(4000)
+  })
+
+  it('尋ねられるのは、いま写しているユニットが持つ能力である', () => {
+    const board = boardOf([homeLeft, '見るユニット', vanilla], [homeCenter, '友情を持つ味方', friendly], [homeRight, '夢を持つ味方', dreamer])
+    const answers: boolean[] = []
+
+    resolveEffect(
+      board,
+      function* (duel) {
+        for (const ally of duel.allies()) answers.push(duel.hasKeyword(ally, '友情'))
+        for (const ally of duel.allies()) answers.push(duel.hasKeyword(ally, '夢'))
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+
+    expect(answers).toEqual([false, true, false, false, false, true])
+  })
+
+  // スクエアを離れた写しは、継続効果の及ばない場所にいる（総合ルール 第4部 第12章 4-1）ので、
+  // 渡された写しがそのまま持つ能力を答える。
+  it('スクエアを離れた写しを渡された時は、その写しが持つ能力を答える', () => {
+    const board = boardOf([homeLeft, '見るユニット', vanilla], [homeCenter, '離れる友情', friendly])
+    const answers: boolean[] = []
+
+    resolveEffect(
+      board,
+      function* (duel) {
+        const leaving = yield* choose(duel.allies().filter((ally) => ally.id === '離れる友情'))
+        if (leaving === undefined) throw new Error('味方がいる盤面で試すこと')
+        yield* destroy(leaving)
+        answers.push(duel.hasKeyword(leaving, '友情'), duel.hasKeyword(leaving, '夢'))
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+
+    expect(answers).toEqual([true, false])
   })
 })
 

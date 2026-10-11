@@ -470,6 +470,22 @@ export function cardsIn(state: DuelState, player: Player, zone: PlayerZone): rea
 }
 
 /**
+ * そのプレイヤーのスマッシュ（総合ルール 第2部 第21章 7-2）。
+ *
+ * スマッシュゾーンにある「裏向きの」カードだけがスマッシュである。希望ステップで表向きに
+ * 置かれているカードはスマッシュではない（同 第3部 第19章 1）ので、7 枚以上で敗北する
+ * ルールエフェクト（同 第4部 第14章 4-1）はこれを数える。
+ *
+ * ここに置くのは、効果に盤面を見せる `view.ts` が読むためである。`smash.ts` に置くと、
+ * `view.ts` から `smash.ts`、`resolve.ts` を経て `view.ts` へ戻る import の輪ができる。
+ * `smash.ts` からも同じ名前で使える（再公開している）。
+ */
+export function smashesOf(state: DuelState, player: Player): readonly CardInstance[] {
+  const faceUp = state.smashJudgments.map((judgment) => judgment.faceUp)
+  return cardsIn(state, player, 'スマッシュゾーン').filter((card) => !faceUp.includes(card.id))
+}
+
+/**
  * カードをスクエアに置く。
  *
  * プレイされたユニットがスクエアに置かれることは「登場」と呼ばれ（総合ルール 第2部
@@ -864,6 +880,32 @@ export function setOrientationOnSquare(state: DuelState, id: CardId, orientation
       cards.map((card) => (card.id === id ? { ...card, orientation } : card)),
     ),
   }
+}
+
+/**
+ * そのプレイヤーのエネルギーゾーンにあるカードの向きを変える（総合ルール 第2部 第24章 1）。
+ * そのプレイヤーのエネルギーゾーンに無ければ盤面はそのまま。
+ *
+ * `setOrientationOnSquare` と同じく、すでにその向きのカードに対して行うことはできない
+ * （同 1-1）ので、その場合も盤面をそのまま返す。効果が向きを変えられるのは支配者自身の
+ * エネルギーだけ（`effect.ts` の `DuelView.energyZone`）なので、プレイヤーは呼ぶ側が言う。
+ * 相手のエネルギーゾーンにあるカードの識別子を渡されても、触れない。
+ */
+export function setOrientationInEnergyZone(
+  state: DuelState,
+  player: Player,
+  id: CardId,
+  orientation: Orientation,
+): DuelState {
+  const found = findInZone(state, player, 'エネルギーゾーン', id)
+  if (found === undefined || found.orientation === orientation) return state
+
+  return putInZone(
+    state,
+    player,
+    'エネルギーゾーン',
+    cardsIn(state, player, 'エネルギーゾーン').map((card) => (card.id === id ? { ...card, orientation } : card)),
+  )
 }
 
 /**

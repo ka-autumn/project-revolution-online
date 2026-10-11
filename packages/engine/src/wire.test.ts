@@ -10,6 +10,7 @@ import {
   defineUnit,
   dream,
   emptyDuelState,
+  friendship,
   instantiate,
   perspectiveOf,
   putOnSquare,
@@ -154,6 +155,34 @@ describe('通信に載せる形', () => {
     const square = wire.squares.flat()[0]
 
     expect(square?.card).not.toHaveProperty('abilities')
+  })
+
+  // 項目を 1 つずつ書き写しているので、カードに項目が増えても勝手には載らない（ADR-0035）。
+  // 架空の略号 QXWIREMARK は、通信に載るほかの文字列に偶然含まれないよう、長く特徴のある綴りにした。
+  it('メーカーシンボルと「友情」を持つユニットでも、通信の形は変わらない', () => {
+    const annotated = defineUnit({
+      name: 'テスト・メーカーシンボルと友情',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      makerSymbols: ['QXWIREMARK'],
+      abilities: [friendship(500)],
+    })
+    const state = putOnSquare(
+      emptyDuelState(),
+      { row: 1, column: 1 },
+      instantiate({ id: '先攻-注釈つき', card: annotated, owner: '先攻' }),
+    )
+
+    const sent = toWire(perspectiveOf(state, '先攻'))
+    const face = sent.squares.flat()[0]?.card
+
+    expect(face).not.toHaveProperty('makerSymbols')
+    expect(JSON.stringify(sent)).not.toContain('makerSymbols')
+    expect(JSON.stringify(sent)).not.toContain('QXWIREMARK')
+    expect(face?.keywords).toEqual([])
+    expect(face?.keywords).not.toContain('友情')
   })
 
   it('見えていないカードは、表記も持たないまま載る', () => {
