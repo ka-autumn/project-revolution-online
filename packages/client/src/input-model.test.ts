@@ -486,6 +486,27 @@ describe('選ぶ候補', () => {
 
     expect(new Set(asked).size).toBe(CHOICE_PURPOSES.length)
   })
+
+  /**
+   * サーバが先に新しくなると、開いたままの画面には、その画面が知らない種類の目的が届く（#285）。
+   * 何のための選択かを言えないので、目的を言わない文にする。空のままにしない。
+   */
+  it('この画面が知らない種類なら、目的を言わない文になる', () => {
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: 'この画面が知らない目的' as unknown as WireChoice['purpose'],
+      source: 'スクエアの1枚',
+      mayDecline: false,
+      answered: 0,
+      mayGoBack: true,
+      candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
+    }
+
+    const view = choiceView(board(), choice)
+
+    expect(view.asking).toBe('選んでください')
+    expect(view.candidates.map((candidate) => candidate.label)).toEqual(['1 番目: テスト・手札の戦士'])
+  })
 })
 
 /**

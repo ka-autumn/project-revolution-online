@@ -301,6 +301,11 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
       return 'プランのめくりを置き換える能力を選んでください'
     case '効果の対象':
       return source === undefined ? '効果の対象を選んでください' : `${source} の効果の対象を選んでください`
+    // この画面が知らない種類（#285）。サーバが先に新しくなると、開いたままの画面に届く。
+    // 何のための選択かを言えないので、目的を言わない文にする。候補は読めていて、選ぶことはできる。
+    default:
+      purpose satisfies never
+      return '選んでください'
   }
 }
 
