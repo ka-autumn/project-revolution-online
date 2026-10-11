@@ -489,6 +489,36 @@ describe('選ぶ候補', () => {
 })
 
 /**
+ * サーバが先に新しくなると、開いたままの画面には、その画面が知らない種類の手が届く（#285）。
+ * 何をする手かも、どのカードを指すかも読めない。手は送ると取り消せないので、読めないものは
+ * 押させない（ADR-0010）。型の上では起きないので、型を外して組む。
+ */
+describe('この画面が知らない種類の手', () => {
+  const UNKNOWN = { kind: 'この画面が知らない手', card: 'てふだの1枚' } as unknown as LegalAction
+  const PASS: LegalAction = { kind: '優先権を放棄する' }
+  const PLACE: LegalAction = { kind: 'エネルギーを置く', card: 'てふだの1枚' }
+
+  it('ボタンの並びに出ない。読める手は、届いた順のまま並ぶ', () => {
+    const views = actionViews(board(), [PASS, UNKNOWN, PLACE], undefined)
+
+    expect(views.map((view) => view.action)).toEqual([PASS, PLACE])
+  })
+
+  it('クリックで操作する時も、パネルにも、押せるカードにも出ない', () => {
+    const view = pickView(board(), [PASS, UNKNOWN], {}, undefined)
+
+    expect(view.untargeted.map((each) => each.action)).toEqual([PASS])
+    expect(view.pickable).toEqual([])
+  })
+
+  it('選んだカードで行える手にも混じらない', () => {
+    const view = pickView(board(), [UNKNOWN, PLACE], { card: 'てふだの1枚' }, undefined)
+
+    expect(view.ask?.options).toEqual([{ label: 'エネルギーとして置く', send: PLACE }])
+  })
+})
+
+/**
  * 押させずに送ってよい手。
  *
  * **ルールの判断ではない**（ADR-0010）。届いた並びの中身を見ているだけで、何が行えるかを
@@ -516,6 +546,16 @@ describe('自動で送る手', () => {
     const session = receiving([{ kind: '優先権を放棄する' }, { kind: 'プランする' }])
 
     expect(automaticAction(session)).toBeUndefined()
+  })
+
+  /**
+   * この画面が知らない種類の手（#285）は画面に出さないが、サーバから見れば放棄のほかに行える手が
+   * ある。選ぶ余地があるので、放棄を勝手に送らない。
+   */
+  it('放棄のほかに、この画面が知らない種類の手があれば、送らない', () => {
+    const unknown = { kind: 'この画面が知らない手' } as unknown as LegalAction
+
+    expect(automaticAction(receiving([{ kind: '優先権を放棄する' }, unknown]))).toBeUndefined()
   })
 
   /** 優先権を持っていない側には空で届く（`server` の `room.ts` の `boards`）。 */

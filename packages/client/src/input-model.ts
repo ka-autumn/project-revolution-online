@@ -140,10 +140,43 @@ function labelOf(
 }
 
 /**
+ * この画面が読める手の種類。値は使わない。型で全部の種類を並べさせるために、対応の形にしている
+ * （エンジンに種類を足すと、ここに書くまで型検査で止まる）。
+ */
+const READABLE_ACTION_KINDS: Readonly<Record<LegalAction['kind'], true>> = {
+  優先権を放棄する: true,
+  エネルギーを置く: true,
+  プランする: true,
+  スマッシュする: true,
+  トラップを廃棄する: true,
+  カードをプレイする: true,
+  トラップとしてプレイする: true,
+  トラップを発動する: true,
+  ユニットを移動する: true,
+  起動型能力を起動する: true,
+  '「勇気」を起動する': true,
+}
+
+/**
+ * 届いた手のうち、この画面が読める種類のもの（#285、ADR-0010）。
+ *
+ * サーバが先に新しくなると、開いたままの画面に、その画面が知らない種類の手が届く。何をする手かも、
+ * どのカードを指すかも読めない。手は送ると取り消せないので、読めないものを押させない。候補
+ * （`candidateLabel`）は答えないと進めないので番号だけでも出すが、手は読めるものが別にある。
+ *
+ * 画面に出す所（`actionViews`・`pickView`）だけがこれを通す。自動で送る判断（`automaticAction`）は
+ * 届いた並びをそのまま見る——サーバから見れば放棄のほかに行える手があるので、放棄を自動では送らない。
+ */
+function readableActions(actions: readonly LegalAction[]): readonly LegalAction[] {
+  return actions.filter((action) => Object.hasOwn(READABLE_ACTION_KINDS, action.kind))
+}
+
+/**
  * 行える手を、押せるボタンの並びにする。
  *
  * 届いた並びのまま並べる。**間引かない。** どれを行えるかを決めているのはサーバで、ここが
- * 減らせば行える手が画面から消える（ADR-0010）。
+ * 減らせば行える手が画面から消える（ADR-0010）。外すのは、この画面が読めない種類の手だけである
+ * （`readableActions`）。
  */
 export function actionViews(
   board: WirePerspective,
@@ -152,7 +185,7 @@ export function actionViews(
 ): readonly ActionView[] {
   const names = namesIn(board)
 
-  return actions.map((action) => ({
+  return readableActions(actions).map((action) => ({
     action,
     label: labelOf(action, board.viewer, names, passOutcome),
     primary: isPrimaryAction(action),
@@ -678,10 +711,11 @@ function guideOf(view: PickBody, board: WirePerspective): string | undefined {
 /** 行き先とダイアログを組む。案内文は `pickView` が添える。 */
 function arrange(
   board: WirePerspective,
-  actions: readonly LegalAction[],
+  received: readonly LegalAction[],
   selection: PickSelection,
   passOutcome: PassOutcome | undefined,
 ): PickBody {
+  const actions = readableActions(received)
   const names = namesIn(board)
   const view = (action: LegalAction): ActionView => ({
     action,
