@@ -101,6 +101,10 @@ function passLabel(outcome: PassOutcome | undefined): string {
     case 'ステップが進む':
     case 'ターンの終わりの能力が誘発する':
       return '優先権を放棄する'
+    // この画面が知らない種類の結果（#285）。何が起きるかを言えないので、届かなかった時と同じにする。
+    default:
+      outcome satisfies never
+      return '優先権を放棄する'
   }
 }
 
@@ -136,10 +140,43 @@ function labelOf(
 }
 
 /**
+ * この画面が読める手の種類。値は使わない。型で全部の種類を並べさせるために、対応の形にしている
+ * （エンジンに種類を足すと、ここに書くまで型検査で止まる）。
+ */
+const READABLE_ACTION_KINDS: Readonly<Record<LegalAction['kind'], true>> = {
+  優先権を放棄する: true,
+  エネルギーを置く: true,
+  プランする: true,
+  スマッシュする: true,
+  トラップを廃棄する: true,
+  カードをプレイする: true,
+  トラップとしてプレイする: true,
+  トラップを発動する: true,
+  ユニットを移動する: true,
+  起動型能力を起動する: true,
+  '「勇気」を起動する': true,
+}
+
+/**
+ * 届いた手のうち、この画面が読める種類のもの（#285、ADR-0010）。
+ *
+ * サーバが先に新しくなると、開いたままの画面に、その画面が知らない種類の手が届く。何をする手かも、
+ * どのカードを指すかも読めない。手は送ると取り消せないので、読めないものを押させない。候補
+ * （`candidateLabel`）は答えないと進めないので番号だけでも出すが、手は読めるものが別にある。
+ *
+ * 画面に出す所（`actionViews`・`pickView`）だけがこれを通す。自動で送る判断（`automaticAction`）は
+ * 届いた並びをそのまま見る——サーバから見れば放棄のほかに行える手があるので、放棄を自動では送らない。
+ */
+function readableActions(actions: readonly LegalAction[]): readonly LegalAction[] {
+  return actions.filter((action) => Object.hasOwn(READABLE_ACTION_KINDS, action.kind))
+}
+
+/**
  * 行える手を、押せるボタンの並びにする。
  *
  * 届いた並びのまま並べる。**間引かない。** どれを行えるかを決めているのはサーバで、ここが
- * 減らせば行える手が画面から消える（ADR-0010）。
+ * 減らせば行える手が画面から消える（ADR-0010）。外すのは、この画面が読めない種類の手だけである
+ * （`readableActions`）。
  */
 export function actionViews(
   board: WirePerspective,
@@ -148,7 +185,7 @@ export function actionViews(
 ): readonly ActionView[] {
   const names = namesIn(board)
 
-  return actions.map((action) => ({
+  return readableActions(actions).map((action) => ({
     action,
     label: labelOf(action, board.viewer, names, passOutcome),
     primary: isPrimaryAction(action),
@@ -224,6 +261,12 @@ function candidateLabel(
       return `${position}: ${areaLabel(viewer, candidate.row)}`
     case '見えていない':
       return `${position}（裏向き）`
+    // この画面が知らない形（#285）。サーバが先に新しくなると、開いたままの画面に届く。何を指す
+    // 候補かは読めないが、答えは番号なので（ADR-0008）、番号だけは必ず出す。盤面から押せる候補にも
+    // ならない（`choicePicking` は知っている形しか拾わない）ので、ボタンから消えることは無い。
+    default:
+      candidate satisfies never
+      return `${position}（表示できない候補）`
   }
 }
 
@@ -258,6 +301,11 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
       return 'プランのめくりを置き換える能力を選んでください'
     case '効果の対象':
       return source === undefined ? '効果の対象を選んでください' : `${source} の効果の対象を選んでください`
+    // この画面が知らない種類（#285）。サーバが先に新しくなると、開いたままの画面に届く。
+    // 何のための選択かを言えないので、目的を言わない文にする。候補は読めていて、選ぶことはできる。
+    default:
+      purpose satisfies never
+      return '選んでください'
   }
 }
 
@@ -668,10 +716,11 @@ function guideOf(view: PickBody, board: WirePerspective): string | undefined {
 /** 行き先とダイアログを組む。案内文は `pickView` が添える。 */
 function arrange(
   board: WirePerspective,
-  actions: readonly LegalAction[],
+  received: readonly LegalAction[],
   selection: PickSelection,
   passOutcome: PassOutcome | undefined,
 ): PickBody {
+  const actions = readableActions(received)
   const names = namesIn(board)
   const view = (action: LegalAction): ActionView => ({
     action,

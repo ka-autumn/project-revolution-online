@@ -376,5 +376,10 @@ export function applyMessage(session: Session, message: ToClient, fallbackOwnNam
       return { ...session, recipeView: { recipe: message.recipe } }
     case 'レシピの一覧':
       return { ...session, recipeList: { order: message.order, recipes: message.recipes } }
+    // この画面が知らない種類（#285）。サーバが先に新しくなると、開いたままの画面に届く。
+    // 何も返さないと、いまの状態ごと失って画面が描けなくなる。置く先が無いので捨てる。
+    default:
+      message satisfies never
+      return session
   }
 }

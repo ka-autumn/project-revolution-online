@@ -999,8 +999,14 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         const subject = source === undefined ? '能力' : `${source}の能力`
         return { whose: whose(event.controller), text: `${subject}は、条件を満たさなかったため無効になった` }
       }
-      case '命令を実行した':
-        return { whose: whose(event.controller), text: instructionLine(event.instruction, board, named, whose) }
+      case '命令を実行した': {
+        // 知らない種類の命令は、知らない種類のできごとと同じ行にする。支配者は届いているが、
+        // 同じ文が 2 通りの見た目で出ないよう、誰のものかは言わない。
+        const text = instructionLine(event.instruction, board, named, whose)
+        return text === undefined
+          ? { whose: undefined, text: UNREADABLE_LOG }
+          : { whose: whose(event.controller), text }
+      }
       case 'ダメージを受けた':
         return { whose: whose(event.player), text: `ダメージ ${event.amount} を受けた` }
       // フェイズやステップの始めに自動で行われる処理（#157）。**行われた時しか届かない**
@@ -1085,9 +1091,24 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         return { whose: whose(event.player), text: 'スマッシュ判定が待機中になった' }
       case 'スマッシュ判定が戻った':
         return { whose: whose(event.player), text: 'スマッシュ判定が戻った' }
+      // この画面が知らない種類（#285）。サーバが先に新しくなると、開いたままの画面に届く。
+      // 中身を読めないので、誰のものかも言わない。黙って飛ばすと、盤面が動いたのにログに何も
+      // 無いことになるので、読めなかったことだけを 1 行にする。
+      default:
+        event satisfies never
+        return { whose: undefined, text: UNREADABLE_LOG }
     }
   }
 }
+
+/**
+ * この画面が知らない種類のできごと・命令を受け取った時に、ログに出す文（#285）。
+ *
+ * 画面は `main` へのマージで配られ、サーバは手で配る。配る順を守っても、開いたままのタブは
+ * 古い画面のまま新しいサーバと話す。型の上では起きないが、届く。種類ごとの分岐が何も返さないと、
+ * 行を作るところで落ちて盤面ごと描けなくなるので、分岐の最後で受ける。
+ */
+const UNREADABLE_LOG = '（表示できないログ）'
 
 /**
  * 組み立て途中の 1 行（#133）。字下げは後から付く（`depthOf`）ので、ここには無い。
@@ -1205,7 +1226,7 @@ function instructionLine(
   board: WirePerspective,
   named: (card: CardId | undefined) => string | undefined,
   whose: (player: Player) => '自分' | '相手',
-): string {
+): string | undefined {
   switch (instruction.kind) {
     case '選ぶ': {
       // 選ばれたのはカード・スクエア・エリアのどれかである（`log.ts` の `選ぶ`）。スクエアと
@@ -1238,6 +1259,11 @@ function instructionLine(
       return `${whose(instruction.player)}のプランを裏返した`
     case 'カードを引く':
       return `${whose(instruction.player)}が引いた：${cardsLabel(instruction.count, instruction.cards, named)}`
+    // この画面が知らない種類の命令（#285、`UNREADABLE_LOG`）。文を作り出さず、読めなかったことを
+    // 呼ぶ側に返す。ログとカットインで出し方が違うので、ここでは決めない。
+    default:
+      instruction satisfies never
+      return undefined
   }
 }
 
@@ -1306,6 +1332,12 @@ function headingOf(via: ResolutionVia, name: string | undefined): string {
       return name === undefined ? 'カードをプレイ！' : `${name}をプレイ！`
     case '希望':
       return name === undefined ? '希望！' : `${name}の希望！`
+    // この画面が知らない経路（#285）。サーバが先に新しくなると、開いたままの画面に届く。
+    // どの言葉づかいに寄せるかを決められないので、経路を言わない。誰のカードの効果かと、
+    // 下に並ぶ命令は読めているので、カットインそのものは出す。
+    default:
+      via satisfies never
+      return name === undefined ? '効果！' : `${name}の効果！`
   }
 }
 
@@ -1335,7 +1367,10 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
       continue
     }
     if (event.kind === '命令を実行した' && open !== undefined) {
-      open.lines.push(instructionLine(event.instruction, board, named, whose))
+      // 知らない種類の命令（#285）は並べない。カットインは読める分を見せる演出で、読めなかった
+      // ことはログの欄が言う（`UNREADABLE_LOG`）。全部が読めなければ、見出しだけになる。
+      const line = instructionLine(event.instruction, board, named, whose)
+      if (line !== undefined) open.lines.push(line)
       continue
     }
     open = undefined

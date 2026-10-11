@@ -597,6 +597,18 @@ describe('共有とレシピ', () => {
     expect(session.recipeList).toEqual({ order: 'コピー数', recipes })
   })
 
+  /**
+   * サーバが先に新しくなると、開いたままの画面には、その画面が知らない種類のものが届く（#285）。
+   * 読めないものは捨てる。置く先が無いだけで、いまの画面はそのまま使える。
+   */
+  it('この画面が知らない種類のものが届いても、何も変わらない', () => {
+    const before = fold({ kind: '相手を待っている', room: 'あいことば' })
+
+    const after = applyMessage(before, { kind: 'この画面が知らないもの' } as unknown as ToClient)
+
+    expect(after).toBe(before)
+  })
+
   it('共有にまつわるものが届いても、いる場面は変わらない', () => {
     const lobby: ToClient = { kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [], own: 'ぬし' }
     const before = fold(lobby)
