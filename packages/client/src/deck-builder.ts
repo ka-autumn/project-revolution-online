@@ -757,6 +757,12 @@ export function violationLine(violation: DeckViolation): string {
       return violation.maximum === 0
         ? `禁止カード「${violation.name}」が入っています`
         : `制限カード「${violation.name}」が ${violation.count} 枚入っています（${violation.maximum} 枚まで）`
+    // この画面が知らない種類（#285）。サーバが先に新しくなると、開いたままの画面に届く。
+    // 規定を満たしていないことと件数は種類を見ずに出るので、行だけが空になる。件数と行の数が
+    // 合うよう、読めなかったことを 1 行にする。
+    default:
+      violation satisfies never
+      return '（表示できない不備）'
   }
 }
 
