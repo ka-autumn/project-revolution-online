@@ -1085,9 +1085,24 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         return { whose: whose(event.player), text: 'スマッシュ判定が待機中になった' }
       case 'スマッシュ判定が戻った':
         return { whose: whose(event.player), text: 'スマッシュ判定が戻った' }
+      // この画面が知らない種類（#285）。サーバが先に新しくなると、開いたままの画面に届く。
+      // 中身を読めないので、誰のものかも言わない。黙って飛ばすと、盤面が動いたのにログに何も
+      // 無いことになるので、読めなかったことだけを 1 行にする。
+      default:
+        event satisfies never
+        return { whose: undefined, text: UNREADABLE_LOG }
     }
   }
 }
+
+/**
+ * この画面が知らない種類のできごと・命令を受け取った時に、ログに出す文（#285）。
+ *
+ * 画面は `main` へのマージで配られ、サーバは手で配る。配る順を守っても、開いたままのタブは
+ * 古い画面のまま新しいサーバと話す。型の上では起きないが、届く。種類ごとの分岐が何も返さないと、
+ * 行を作るところで落ちて盤面ごと描けなくなるので、分岐の最後で受ける。
+ */
+const UNREADABLE_LOG = '（表示できないログ）'
 
 /**
  * 組み立て途中の 1 行（#133）。字下げは後から付く（`depthOf`）ので、ここには無い。

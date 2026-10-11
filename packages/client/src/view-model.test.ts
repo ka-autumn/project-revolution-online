@@ -1212,6 +1212,44 @@ describe('操作ログ', () => {
   })
 
   /**
+   * サーバが先に新しくなると、開いたままの画面には、その画面が知らない種類のできごとが届く（#285）。
+   * 型の上では起きないので、型を外して組む。
+   */
+  describe('この画面が知らない種類のできごと', () => {
+    const UNKNOWN = { kind: 'この画面が知らないできごと', player: '後攻' } as unknown as DuelEvent
+
+    it('表示できないことを言う 1 行になる。誰のものでもない', () => {
+      expect(logLines(withLog(UNKNOWN))).toEqual([
+        { kind: 'できごと', whose: undefined, text: '（表示できないログ）', depth: 0 },
+      ])
+    })
+
+    it('前後の読めるできごとは、そのまま出る', () => {
+      const board = withLog(
+        { kind: 'ダメージを受けた', player: '先攻', amount: 1 },
+        UNKNOWN,
+        { kind: 'ダメージを受けた', player: '後攻', amount: 2 },
+      )
+
+      expect(texts(board)).toEqual(['ダメージ 2 を受けた', '（表示できないログ）', 'ダメージ 1 を受けた'])
+    })
+
+    it('続けて届いても、まとめずに 1 件ずつ出る', () => {
+      expect(texts(withLog(UNKNOWN, UNKNOWN))).toEqual(['（表示できないログ）', '（表示できないログ）'])
+    })
+
+    /** 字下げは他の行と同じ規則で決まる（手順の中の行は、囲む手順の深さに立つ）。 */
+    it('入れ子の手順の中で届けば、他の行と同じだけ字下げされる', () => {
+      const nested: readonly Procedure[] = [{ kind: 'バトル' }, { kind: 'スマッシュ判定', player: '先攻' }]
+      const board = { ...emptyBoard('先攻'), log: [{ event: UNKNOWN, during: nested }] }
+
+      expect(logLines(board)).toEqual([
+        { kind: 'できごと', whose: undefined, text: '（表示できないログ）', depth: 1 },
+      ])
+    })
+  })
+
+  /**
    * 進行そのもの（#133）。**進行はどちらのプレイヤーのものでもない。** ターンにも判定にも
    * 持ち主はいるが、進行させているのはルールである。
    */

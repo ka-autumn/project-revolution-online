@@ -101,6 +101,10 @@ function passLabel(outcome: PassOutcome | undefined): string {
     case 'ステップが進む':
     case 'ターンの終わりの能力が誘発する':
       return '優先権を放棄する'
+    // この画面が知らない種類の結果（#285）。何が起きるかを言えないので、届かなかった時と同じにする。
+    default:
+      outcome satisfies never
+      return '優先権を放棄する'
   }
 }
 
@@ -224,6 +228,12 @@ function candidateLabel(
       return `${position}: ${areaLabel(viewer, candidate.row)}`
     case '見えていない':
       return `${position}（裏向き）`
+    // この画面が知らない形（#285）。サーバが先に新しくなると、開いたままの画面に届く。何を指す
+    // 候補かは読めないが、答えは番号なので（ADR-0008）、番号だけは必ず出す。盤面から押せる候補にも
+    // ならない（`choicePicking` は知っている形しか拾わない）ので、ボタンから消えることは無い。
+    default:
+      candidate satisfies never
+      return `${position}（表示できない候補）`
   }
 }
 

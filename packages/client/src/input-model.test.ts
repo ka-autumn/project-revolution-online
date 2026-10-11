@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { CHOICE_PURPOSES, indexOfSquare } from '@revolution/engine'
-import type { LegalAction, PassOutcome, Player, WireCardFace, WireChoice, WirePerspective } from '@revolution/engine'
+import type {
+  LegalAction,
+  PassOutcome,
+  Player,
+  WireCandidate,
+  WireCardFace,
+  WireChoice,
+  WirePerspective,
+} from '@revolution/engine'
 import {
   abilityLabels,
   abilityListSource,
@@ -169,6 +177,11 @@ describe('行える手', () => {
       ['ターンの終わりの能力が誘発する'],
     ] as const)('%s 場面では、言い換えない', (kind) => {
       expect(labelOf(PASS, '先攻', { kind })).toBe('優先権を放棄する')
+    })
+
+    /** この画面が知らない種類の結果（#285）。何が起きるかを言えないので、言い換えない。 */
+    it('知らない種類の結果が届いたら、総合ルールの語のまま', () => {
+      expect(labelOf(PASS, '先攻', { kind: 'この画面が知らない結果' } as unknown as PassOutcome)).toBe('優先権を放棄する')
     })
 
     /** 届いていなければ作らない。放棄が行えない場面ではそもそもボタンが出ない。 */
@@ -1528,6 +1541,36 @@ describe('盤面から押せる候補は、ボタンに出さない', () => {
 
     expect(choiceView(board(), asked).candidates.map((candidate) => candidate.index)).toEqual([0, 1])
     expect(choiceView(board(), asked).guide).toBeUndefined()
+  })
+
+  /**
+   * サーバが先に新しくなると、開いたままの画面には、その画面が知らない形の候補が届く（#285）。
+   * 型の上では起きないので、型を外して組む。何を指す候補かが読めないので盤面からは押せないが、
+   * 答えは候補の番号なので（ADR-0008）、番号のボタンがあれば答えられる。
+   */
+  describe('この画面が知らない形の候補', () => {
+    const UNKNOWN = { kind: 'この画面が知らない形', somewhere: 1 } as unknown as WireCandidate
+
+    it('番号と、表示できないことを言うボタンになる', () => {
+      const asked = choice([{ kind: '見えている', card: 'てふだの1枚' }, UNKNOWN])
+
+      expect(choiceView(board(), asked).candidates).toEqual([
+        { index: 0, label: '1 番目: テスト・手札の戦士' },
+        { index: 1, label: '2 番目（表示できない候補）' },
+      ])
+    })
+
+    it('盤面から押して答えている間も、ボタンとして残る。番号は届いたまま', () => {
+      const asked = choice([{ kind: '見えている', card: 'スクエアの1枚' }, UNKNOWN])
+
+      expect(viewWithPicking(board(), asked).candidates).toEqual([{ index: 1, label: '2 番目（表示できない候補）' }])
+    })
+
+    it('読める候補は、今までどおり盤面から押せる', () => {
+      const asked = choice([UNKNOWN, { kind: '見えている', card: 'スクエアの1枚' }])
+
+      expect(choicePicking(board(), asked).onBoard).toEqual([1])
+    })
   })
 
   /** ボタンが 1 つも残らないと、押すところが無いように見える。どこを押すのかを 1 行で言う。 */
