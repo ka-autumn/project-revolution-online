@@ -816,6 +816,18 @@ describe('操作ログ', () => {
     expect(texts(board)).toEqual(['誘発'])
   })
 
+  it('能力が無効化されたことは、発生源と理由が出る', () => {
+    const board = withLog({ kind: '能力が無効化された', controller: '先攻', source: '置いてある' })
+
+    expect(texts(board)).toEqual(['テスト・置いてあるの能力は、条件を満たさなかったため無効になった'])
+  })
+
+  it('能力が無効化されたことは、発生源が名指しされていなければ「能力」と出る', () => {
+    const board = withLog({ kind: '能力が無効化された', controller: '先攻', source: undefined })
+
+    expect(texts(board)).toEqual(['能力は、条件を満たさなかったため無効になった'])
+  })
+
   it('効果が実行した命令が出る', () => {
     const board = withLog({
       kind: '命令を実行した',
@@ -1436,6 +1448,12 @@ describe('カットイン', () => {
     expect(views).toHaveLength(2)
     expect(views[0]?.lines).toEqual([`${NAME}を選んだ`])
     expect(views[1]?.lines).toEqual([`${NAME}を破壊した`])
+  })
+
+  it('無効化された能力は効果が実行されないので、カットインにならない', () => {
+    const fresh: readonly DuelEvent[] = [{ kind: '能力が無効化された', controller: '先攻', source: '置いてある' }]
+
+    expect(cutInViews(board, logged(fresh))).toEqual([])
   })
 
   it('「能力を解決した」で始まらない並びからは何も出ない', () => {

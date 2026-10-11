@@ -1,7 +1,8 @@
 import type { AppearanceOccasion, TriggerEvent, TriggerOccasion } from './ability.js'
 import { locateOnSquares } from './duel.js'
 import type { BankedAbility, CardId, CreatedAbilityInstance, DuelState } from './duel.js'
-import { resolveEffect } from './resolve.js'
+import { record } from './log.js'
+import { conditionHolds, resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
 import { addTriggered, triggeredBy } from './trigger.js'
 
@@ -17,7 +18,7 @@ function triggerSelf(state: DuelState, id: CardId, event: TriggerEvent, occasion
   const located = locateOnSquares(state, id)
   if (located === undefined) return state
 
-  return addTriggered(state, triggeredBy(located, event, occasion))
+  return addTriggered(state, triggeredBy(state, located, event, occasion))
 }
 
 /**
@@ -125,6 +126,13 @@ function resolveBanked(state: DuelState, banked: BankedAbility, chooser: Chooser
       handed: [affected],
     })
   }
+  // 解決する時に誘発条件を満たしていなければ無効化される（総合ルール 第4部 第7章 8）。
+  // 効果を実行せず、解決を始めたことも残さない。かわりに無効化されたことを残す。
+  // バンクから取り除くのは呼び出し元である。
+  if (!conditionHolds(state, banked)) {
+    return record(state, { kind: '能力が無効化された', controller: banked.controller, source: banked.source })
+  }
+
   return resolveEffect(state, banked.ability.effect, {
     controller: banked.controller,
     via: '誘発',

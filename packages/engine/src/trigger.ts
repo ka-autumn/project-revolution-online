@@ -1,10 +1,12 @@
 import type { TriggerEvent, TriggerOccasion, TriggeredAbility } from './ability.js'
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
+import { continuousData } from './continuous.js'
 import { locateOnSquares } from './duel.js'
 import type { BankedAbility, CardInstance, CreatedAbility, DuelState, TriggeredInstance } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
+import { duelView } from './view.js'
 
 /**
  * その誘発イベントを満たしたことで、誘発型能力を誘発させる。
@@ -83,8 +85,12 @@ export function addTriggered(state: DuelState, triggered: readonly BankedAbility
  * 能力が絞り込みの述語（`TriggeredAbility.when`）を持つ場合、きっかけを渡してそれが真の
  * ものだけが誘発する。きっかけを持つ誘発イベントは限られている（`TriggerOccasion`）ので、
  * それ以外のイベントでは `occasion` を渡さない。
+ *
+ * 誘発条件（`TriggeredAbility.condition`）を持つ場合は、`state` を読んでそれが真のものだけが
+ * 誘発する（総合ルール 第4部 第7章 8）。`state` は能力を探している盤面である。
  */
 export function triggeredBy(
+  state: DuelState,
   located: { readonly instance: CardInstance; readonly square: Square },
   event: TriggerEvent,
   occasion?: TriggerOccasion,
@@ -98,35 +104,62 @@ export function triggeredBy(
   const self: UnitOnSquare = { id: instance.id, square, card, controller: instance.controller }
 
   return card.abilities.flatMap((ability) =>
-    ability.kind === '誘発型能力' && ability.event === event && triggers(ability, occasion, instance.controller)
+    ability.kind === '誘発型能力' && ability.event === event && triggers(state, ability, occasion, self)
       ? [{ ability, source: instance.id, controller: instance.controller, self }]
       : [],
   )
 }
 
 /**
- * 絞り込みの述語を満たすか。述語を持たない能力は、誘発イベントを満たすたびに誘発する。
+ * 誘発するか。絞り込みの述語（`when`）と誘発条件（`condition`）の両方を満たす必要がある。
+ * どちらも持たない能力は、誘発イベントを満たすたびに誘発する。
  *
  * きっかけを持たない誘発イベントに述語が付いていた場合は、確かめようがないので投げる。
  * カードの書き間違いであって、盤面から起こり得る状態ではない。
  */
-function triggers(ability: TriggeredAbility, occasion: TriggerOccasion | undefined, controller: Player): boolean {
-  if (ability.when === undefined) return true
-  if (occasion === undefined) {
-    throw new Error('きっかけを持たない誘発イベントに絞り込みが付いている')
+function triggers(
+  state: DuelState,
+  ability: TriggeredAbility,
+  occasion: TriggerOccasion | undefined,
+  self: UnitOnSquare,
+): boolean {
+  if (ability.when !== undefined) {
+    if (occasion === undefined) {
+      throw new Error('きっかけを持たない誘発イベントに絞り込みが付いている')
+    }
+    if (!ability.when(occasion, self.controller, self)) return false
   }
-  return ability.when(occasion, controller)
+  if (ability.condition === undefined) return true
+
+  // 誘発する時の条件は、能力を探しているこの盤面で確かめる。誘発してから解決するまでに
+  // 盤面が変わっても、ここで見るのは誘発の瞬間の姿である。確かめるだけで命令を出さない
+  // ので、見せたカードは覚えない。ここで読んだカードが、効果の対象に取れるようになる
+  // ことは無い。
+  const duel = duelView(() => state, {
+    controller: self.controller,
+    self: () => self,
+    show: () => {},
+    data: continuousData,
+  })
+  return ability.condition(duel)
 }
 
-/** スクエアにあるカードのうち、`matches` を満たすものが持つ、その誘発イベントで誘発する能力。 */
+/**
+ * スクエアにあるカードのうち、`matches` を満たすものが持つ、その誘発イベントで誘発する能力。
+ *
+ * `occasion` は、絞り込みの述語（`TriggeredAbility.when`）に渡すきっかけ。
+ */
 export function triggeredOnSquares(
   state: DuelState,
   event: TriggerEvent,
   matches: (instance: CardInstance) => boolean = () => true,
+  occasion?: TriggerOccasion,
 ): readonly TriggeredInstance[] {
   return state.squares.flatMap((cards, index) => {
     const square = BATTLE_SPACE[index]
     if (square === undefined) return []
-    return cards.flatMap((instance) => (matches(instance) ? triggeredBy({ instance, square }, event) : []))
+    return cards.flatMap((instance) =>
+      matches(instance) ? triggeredBy(state, { instance, square }, event, occasion) : [],
+    )
   })
 }

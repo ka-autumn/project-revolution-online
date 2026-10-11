@@ -984,6 +984,11 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         const source = named(event.source)
         return { whose: whose(event.controller), text: source === undefined ? event.via : `${event.via}：${source}` }
       }
+      case '能力が無効化された': {
+        const source = named(event.source)
+        const subject = source === undefined ? '能力' : `${source}の能力`
+        return { whose: whose(event.controller), text: `${subject}は、条件を満たさなかったため無効になった` }
+      }
       case '命令を実行した':
         return { whose: whose(event.controller), text: instructionLine(event.instruction, board, named, whose) }
       case 'ダメージを受けた':

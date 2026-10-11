@@ -363,6 +363,7 @@ function mapEventCards(event: DuelEvent, map: CardMapping): DuelEvent {
     case '行動した':
       return { ...event, card: map(event.card) }
     case '能力を解決した':
+    case '能力が無効化された':
       return { ...event, source: map(event.source) }
     case '命令を実行した':
       return { ...event, instruction: mapInstructionCard(event.instruction, map) }

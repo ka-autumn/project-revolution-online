@@ -1002,7 +1002,11 @@ describe('誘発イベントの絞り込み', () => {
       colors: ['赤'],
       bp: 1000,
       sp: 1000,
-      abilities: [triggeredAbility('スマッシュフェイズの始め', function* () {}, () => true)],
+      abilities: [
+        // 型が止める（`trigger-condition.test.ts`）。止まらないよう通して作る。実行時の守りを確かめるため。
+        // @ts-expect-error きっかけを持たない誘発イベントには絞り込みを付けられない
+        triggeredAbility('スマッシュフェイズの始め', function* () {}, () => true),
+      ],
     })
     const state = putOnSquare(mainPhase(), homeSquare, instantiate({ id: '壊れた', card: broken, owner: '先攻' }))
 
