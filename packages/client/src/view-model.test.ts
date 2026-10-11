@@ -1259,6 +1259,37 @@ describe('操作ログ', () => {
         { kind: 'できごと', whose: undefined, text: '（表示できないログ）', depth: 1 },
       ])
     })
+
+    /**
+     * 画面が実際に通す道筋。届いた盤面は `boardView` で組まれ、新しく届いた分は演出と
+     * 優先権の理由を作るところにも渡る。どこか 1 つでも投げれば、盤面ごと描けなくなる。
+     */
+    describe('盤面を組む道筋に通しても落ちない', () => {
+      const RESOLVED: DuelEvent = { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' }
+      const fresh: readonly DuelEvent[] = [
+        RESOLVED,
+        UNKNOWN,
+        { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
+      ]
+      const board = withLog(...fresh)
+
+      it('盤面の見た目が組めて、ログに表示できないことを言う行が入る', () => {
+        expect(boardView(board).log.map((line) => line.text)).toContain('（表示できないログ）')
+      })
+
+      /** 知らない種類のできごとも「別種のできごと」なので、そこでカットインが切れる。 */
+      it('カットインは見出しだけになり、後ろの命令は並ばない', () => {
+        expect(cutInViews(board, logged(fresh))).toMatchObject([{ whose: '自分', lines: [] }])
+      })
+
+      it('フェイズ・ターンの切り替わりは出ない', () => {
+        expect(transitionViews(logged(fresh), board)).toEqual([])
+      })
+
+      it('優先権が来た理由は出ない', () => {
+        expect(priorityReason(board, logged(fresh))).toBeUndefined()
+      })
+    })
   })
 
   /**
