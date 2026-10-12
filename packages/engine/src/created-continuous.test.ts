@@ -7,11 +7,14 @@ import {
   bpModifying,
   bpOf,
   bpPlus,
+  cardsIn,
+  cardsOn,
   choose,
   createContinuousEffect,
   defineUnit,
   emptyDuelState,
   instantiate,
+  passPriority,
   perspectiveOf,
   putOnSquare,
   resolveEffect,
@@ -63,6 +66,8 @@ const choosing =
   (id: CardId): Chooser =>
   (candidates) =>
     (candidates as readonly { readonly id: CardId }[]).find((candidate) => candidate.id === id)
+
+const chooseFirst: Chooser = (candidates) => candidates[0]
 
 /** 味方を 1 枚選び、「ターンの終わりまで、ＢＰを＋Ｎ」の継続効果を作る効果。 */
 const boostAlly = (amount: number): Effect =>
@@ -221,7 +226,8 @@ describe('作成された継続効果と、カードの移動', () => {
     expect(moveToZone(made(), 'B', '捨札').createdContinuousEffects).toEqual([])
   })
 
-  // 手札に戻して同じターンに出し直したユニットは、効果を受けていないカードとして出る。
+  // 総合ルール 第2部 第21章 1-4。ゾーンを移ったカードは新しいカードとして扱われるので、手札に
+  // 戻して同じターンに出し直したユニットは、効果を受けていないカードとして出る。
   it('対象が手札へ戻り、出し直されても、効果は付き直さない', () => {
     const returned = moveToZone(made(), 'B', '手札')
     const replayed = moveToSquare(returned, 'B', middle, { controller: '先攻', orientation: 'リリース' })
@@ -281,6 +287,26 @@ describe('ＢＰが 0 を下回る時', () => {
     // 1000 - 3000 + 1500 = -500 → 0。0 に 1500 を足した 1500 にはならない。
     expect(bpOn(state, '味方')).toBe(0)
     expect(bpOn(reduce(state, 1000), '味方')).toBe(500)
+  })
+
+  // 総合ルール 第4部 第14章 4-5。ＢＰが 0 以下のユニットは、次に優先権が発生する時に捨札に置かれる。
+  // 取り除かれたユニットあての効果は、ゾーンを移った時に消える（同 第2部 第21章 1-4）。
+  it('作成された継続効果でＢＰが 0 以下になったユニットは、次に優先権が発生する時に捨札に置かれ、その効果も消える', () => {
+    // 山札が空のプレイヤーは敗北する（同 第4部 第14章 4-2）ので、決着しないよう 1 枚ずつ置く。
+    const stocked = putInZone(
+      putInZone(boardOf([middle, '味方']), '先攻', '山札', [unit('先攻の山札')]),
+      '後攻',
+      '山札',
+      [instantiate({ id: '後攻の山札', card: vanilla, owner: '後攻' })],
+    )
+    const lowered = reduce(stocked, -3000)
+    expect(cardsOn(lowered, middle).map((card) => card.id)).toEqual(['味方'])
+
+    const after = passPriority(lowered, chooseFirst)
+
+    expect(cardsOn(after, middle)).toEqual([])
+    expect(cardsIn(after, '先攻', '捨札').map((card) => card.id)).toEqual(['味方'])
+    expect(after.createdContinuousEffects).toEqual([])
   })
 
   it('下げる変更を、ログに符号つきで残す', () => {
