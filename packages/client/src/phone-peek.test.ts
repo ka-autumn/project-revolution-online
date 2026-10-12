@@ -134,6 +134,22 @@ describe('数値の札', () => {
     expect(peekStats(lowered, 'スクエア')[0]).toMatchObject({ label: 'BP', value: 1000, change: '下', valueReading: '1000（元は 2000）' })
     expect(peekStats(raised, 'スクエア')[1]).toMatchObject({ label: 'SP', change: undefined, valueReading: '1000' })
   })
+
+  it('SP が元の値より上がっていれば「上」、下がっていれば「下」で、読み上げに元の値を添える', () => {
+    const placed = instance('1枚', '先攻', { card: unitFace('テスト・戦士', { sp: 1000 }) })
+    const squareBoard: WirePerspective = {
+      ...emptyBoard('先攻'),
+      squares: emptyBoard('先攻').squares.map((each, index) => (index === 0 ? [placed] : each)),
+      effective: [{ card: '1枚', bp: 1000, sp: 2000, attributes: [] }],
+    }
+    const raised = visibleCardViewsIn(squareBoard).get('1枚')
+    const lowered = visibleCardViewsIn({ ...squareBoard, effective: [{ card: '1枚', bp: 1000, sp: 0, attributes: [] }] }).get('1枚')
+    if (raised?.kind !== '表' || lowered?.kind !== '表') throw new Error('表のはず')
+
+    expect(peekStats(raised, 'スクエア')[1]).toMatchObject({ label: 'SP', value: 2000, change: '上', valueReading: '2000（元は 1000）' })
+    expect(peekStats(lowered, 'スクエア')[1]).toMatchObject({ label: 'SP', value: 0, change: '下', valueReading: '0（元は 1000）' })
+    expect(peekStats(raised, 'スクエア')[0]).toMatchObject({ label: 'BP', change: undefined })
+  })
 })
 
 describe('帯の大きさ', () => {

@@ -308,6 +308,42 @@ describe('継続効果を適用した後のデータ', () => {
     expect(view.kind === '表' && view.modified?.bpDirection).toBe(expected)
   })
 
+  // 総合ルール 第4部 第12章 5-2 の(5)。ＢＰと同じ決まりで、ＳＰの変わった値と向きを出す。
+  it('ＳＰが変わっていれば、変更後のＳＰと向きが出る。ＢＰは変わっていないので出ない', () => {
+    const raised = unitView(withEffective([{ card: unit.id, bp: 1000, sp: 1500, attributes: [] }]))
+    const lowered = unitView(withEffective([{ card: unit.id, bp: 1000, sp: 0, attributes: [] }]))
+
+    expect(raised.kind === '表' && raised.modified).toMatchObject({
+      sp: 1500,
+      spDirection: '上',
+      bp: undefined,
+      bpDirection: undefined,
+    })
+    expect(lowered.kind === '表' && lowered.modified).toMatchObject({ sp: 0, spDirection: '下' })
+    expect(raised.kind === '表' && raised.sp).toBe(1000)
+  })
+
+  it('ＢＰとＳＰが別々の向きに変わっていれば、それぞれの向きが出る', () => {
+    const view = unitView(withEffective([{ card: unit.id, bp: 3000, sp: 500, attributes: [] }]))
+
+    expect(view.kind === '表' && view.modified).toMatchObject({ bpDirection: '上', spDirection: '下' })
+  })
+
+  it('ＳＰが書かれている数字と同じなら、変更後のＳＰを出さない', () => {
+    const view = unitView(withEffective([{ card: unit.id, bp: 3000, sp: 1000, attributes: [] }]))
+
+    expect(view.kind === '表' && view.modified?.sp).toBeUndefined()
+    expect(view.kind === '表' && view.modified?.spDirection).toBeUndefined()
+  })
+
+  // ＳＰは後から足した項目。古いサーバのデータには無く、そのときは変わっていないものとして扱う。
+  it('適用後のデータにＳＰが無くても（古いサーバ）、落ちず、ＳＰは変わっていないものとして扱う', () => {
+    const oldWire = { card: unit.id, bp: 3000, attributes: [] } as unknown as WirePerspective['effective'][number]
+    const view = unitView(withEffective([oldWire]))
+
+    expect(view.kind === '表' && view.modified).toMatchObject({ bp: 3000, sp: undefined, spDirection: undefined })
+  })
+
   /** 加わった属性はカードに書かれていない（総合ルール 第4部 第12章 5-2 の(3)）ので、分けて出す。 */
   it('加わった属性が、書かれている属性と見分けられる形で出る', () => {
     const attributed = instance('属性を持つ1枚', '先攻', {
@@ -1098,6 +1134,22 @@ describe('操作ログ', () => {
 
       it('名指しされていなければ、名前を添えない', () => {
         expect(texts(withLog(created(undefined, 2000)))).toEqual(['ターンの終わりまでBP+2000'])
+      })
+
+      it('ＳＰの変更は、SP の文で出る。符号の付け方はＢＰと同じ', () => {
+        const spCreated = (amount: number): DuelEvent => ({
+          kind: '命令を実行した',
+          controller: '先攻',
+          instruction: {
+            kind: '継続効果を作成する',
+            card: '置いてある',
+            duration: 'ターンの終わりまで',
+            change: { kind: 'ＳＰの変更', amount },
+          },
+        })
+
+        expect(texts(withLog(spCreated(1000)))).toEqual(['テスト・置いてあるはターンの終わりまでSP+1000'])
+        expect(texts(withLog(spCreated(-500)))).toEqual(['テスト・置いてあるはターンの終わりまでSP-500'])
       })
 
       // 変更の種類を足したのに画面が古いと、BP の文として出てしまう（#285）。読めなかったことを出す。

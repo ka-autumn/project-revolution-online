@@ -76,6 +76,10 @@ export interface ModifiedData {
    * （render.ts に判断を持たせない）。
    */
   readonly bpDirection: '上' | '下' | undefined
+  /** 修整後のＳＰ。書かれている数字と同じなら `undefined`。 */
+  readonly sp: number | undefined
+  /** `sp` が書かれている数字から上がったか、下がったか。`bpDirection` と同じ決まり。 */
+  readonly spDirection: '上' | '下' | undefined
   /** 継続効果によって加わった属性だけ。加わっていなければ空。 */
   readonly addedAttributes: readonly Attribute[]
 }
@@ -113,11 +117,11 @@ export type CardView =
       /** ユニットだけが持つ（総合ルール 第2部 第15章 1）。ユニットでなければ `undefined`。 */
       readonly sp: number | undefined
       /**
-       * 継続効果を適用した後のＢＰと属性（#91）。修整を受けていなければ `undefined`。
+       * 継続効果を適用した後のＢＰ・ＳＰと属性（#91）。修整を受けていなければ `undefined`。
        *
-       * **持つのはスクエアにいるユニットだけである。** 継続効果がデータを変えるのはそこに
+       * 持つのはスクエアにいるユニットだけである。継続効果がデータを変えるのはそこに
        * いるユニットで（総合ルール 第4部 第12章）、盤面もその分だけを送ってくる
-       * （`perspective.ts` の `EffectiveUnitData`）。ＳＰを修整する規定は無いので、`bp` だけ持つ。
+       * （`perspective.ts` の `EffectiveUnitData`）。
        */
       readonly modified: ModifiedData | undefined
       readonly stars: number
@@ -674,12 +678,17 @@ function modifiedDataOf(
   const bp = face.type === 'ユニット' && applied.bp !== face.bp ? applied.bp : undefined
   const bpDirection: ModifiedData['bpDirection'] =
     face.type === 'ユニット' && bp !== undefined ? (bp > face.bp ? '上' : '下') : undefined
+  // ＳＰは後から足した項目なので、古いサーバのデータには無い。無ければ変わっていないものとして扱う。
+  const appliedSp: number | undefined = applied.sp
+  const sp = face.type === 'ユニット' && appliedSp !== undefined && appliedSp !== face.sp ? appliedSp : undefined
+  const spDirection: ModifiedData['spDirection'] =
+    face.type === 'ユニット' && sp !== undefined ? (sp > face.sp ? '上' : '下') : undefined
   const addedAttributes = [...new Set(applied.attributes)].filter(
     (attribute) => !face.attributes.includes(attribute),
   )
-  if (bp === undefined && addedAttributes.length === 0) return undefined
+  if (bp === undefined && sp === undefined && addedAttributes.length === 0) return undefined
 
-  return { bp, bpDirection, addedAttributes }
+  return { bp, bpDirection, sp, spDirection, addedAttributes }
 }
 
 function faceUpView(

@@ -55,7 +55,7 @@ type FaceUp = CardView & { readonly kind: '表' }
  * 数値の札。スクエアのユニットは BP・SP・ダメージ、手札のカードは Lv・BP・SP（BP・SP を持たないカードは持つ値だけ）。
  *
  * BP の変わり方は、PC のカードの絵と同じ判定（`view-model.ts` の `ModifiedData`、継続効果を適用した後の値と向き）を
- * そのまま使う。SP を変える継続効果は無いので、SP は元の値のまま。ここで修整を計算し直さない。
+ * そのまま使う。SP も同じ。ここで修整を計算し直さない。
  */
 export function peekStats(card: FaceUp, place: PeekPlace): readonly PeekStat[] {
   const stat = (
@@ -71,7 +71,7 @@ export function peekStats(card: FaceUp, place: PeekPlace): readonly PeekStat[] {
   })
 
   const bp = card.bp === undefined ? [] : [stat('BP', card.modified?.bp ?? card.bp, card.modified?.bpDirection, card.bp)]
-  const sp = card.sp === undefined ? [] : [stat('SP', card.sp, undefined)]
+  const sp = card.sp === undefined ? [] : [stat('SP', card.modified?.sp ?? card.sp, card.modified?.spDirection, card.sp)]
   if (place === 'スクエア') return [...bp, ...sp, stat('ダメージ', card.damage, card.damage > 0 ? '受けている' : undefined)]
 
   return [stat('Lv', card.level, undefined), ...bp, ...sp]
