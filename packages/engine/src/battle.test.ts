@@ -469,6 +469,25 @@ describe('バトルダメージの応酬', () => {
     expect(idsOf(cardsIn(second, '後攻', '捨札'))).toEqual(['攻撃された'])
   })
 
+  // 総合ルール 第1部 第2章 2、第4部 第14章 4-5、ADR-0036。作成された継続効果でＢＰが 0 以下になった
+  // ユニットは、ダメージステップの手前で捨札に置かれるので、ダメージを与えるところまで行かない。
+  it('作成された継続効果でＢＰが 0 以下になった攻撃したユニットは、ダメージを与えず、相手は受けない', () => {
+    const battle = battling(vanilla, vanilla)
+    const lowered: DuelState = {
+      ...battle,
+      createdContinuousEffects: [
+        { target: '攻撃した', change: { kind: 'ＢＰの変更', amount: -5000 }, until: 'ターンの終わりまで', controller: '先攻' },
+      ],
+    }
+
+    const after = afterBattle(pass(lowered))
+
+    expect(idsOf(cardsIn(after, '先攻', '捨札'))).toEqual(['攻撃した'])
+    expect(after.createdContinuousEffects).toEqual([])
+    expect(damageOn(after, homeSquare, '攻撃された')).toBe(0)
+    expect(after.log.some(({ event }) => event.kind === 'バトルダメージを与えた' && event.from === '攻撃した')).toBe(false)
+  })
+
   it('バトルを発生させたユニットの一方がスクエアを離れていれば、バトルダメージは発生しない', () => {
     // ＢＰ1000 の「元気」持ちが第１ダメージステップでＢＰ1000 の相手を捨札に送るので、
     // 第２ダメージステップにはもう一方がいない。

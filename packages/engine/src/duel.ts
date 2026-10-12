@@ -3,7 +3,7 @@ import type { Battle } from './battle.js'
 import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
-import type { UnitOnSquare } from './effect.js'
+import type { ContinuousChange, Duration, UnitOnSquare } from './effect.js'
 import type { RecordedEvent } from './log.js'
 import { ORIENTED_ZONES } from './orientation.js'
 import type { Orientation, OrientedZone } from './orientation.js'
@@ -130,6 +130,24 @@ export interface DuelState {
    * （`trigger.ts` の `triggeredOnSquares`）。盤面が直接持つ場所がここになる。
    */
   readonly createdAbilities: readonly CreatedAbility[]
+  /**
+   * カードや能力の解決が作った、期限まで続く継続効果（総合ルール 第4部 第12章 3）。
+   *
+   * 常在型能力の継続効果は盤面に書き込まず読むたびに集め直す（`continuous.ts`）が、解決が
+   * 残すものは、作ったカードがすぐ捨札へ行くので集め直す元が無い。盤面が値として持つ。
+   * 発生した順を保つ（同 第12章 5-4 の順序を扱う時に要る）。取り除くのは、期限が来た時
+   * （リカバリーフェイズの始めの処理、`progress.ts`）と、対象が「スクエアからスクエア」以外の
+   * ゾーン移動をした時（`moveToZone` ほか）である。
+   */
+  readonly createdContinuousEffects: readonly CreatedContinuousEffect[]
+  /**
+   * リカバリーフェイズの手順（総合ルール 第3部 第10章 4・5）の途中経過。
+   *
+   * `turn` に持たせないのは、`turn` はそのまま通信に載る（`perspective.ts`）ためである。ここは
+   * 進行の記録で、画面が読むものではない。リカバリーフェイズを出る時に初期値へ戻す
+   * （`progress.ts` の `beginNextPhase`）。
+   */
+  readonly recovery: RecoveryProgress
   /**
    * 中央エリアのスクエアを指定してプレイされ、そのスクエアに置かれたユニット
    * （総合ルール 第4部 第14章 4-9・4-10）。
@@ -282,6 +300,51 @@ export interface CreatedAbility {
 }
 
 /**
+ * 盤面が持っている、作成された継続効果 1 件（総合ルール 第4部 第12章 3）。
+ *
+ * 「どのカードに・何を・いつまで・誰の効果か」を値で持つ。対象は必ずカードを名指しする。
+ * 盤面を見て対象を決め直す形は持たない——値は解決の時に 1 度だけ決まり（同 3-3）、発生した
+ * 時点で影響を受けなかったカードには影響しない（同 3-2）ので、名指しと値で持てば、書く側が
+ * 気をつけなくてもそれが守られる。
+ */
+export interface CreatedContinuousEffect {
+  /** 影響を受けるカード。 */
+  readonly target: CardId
+  readonly change: ContinuousChange
+  readonly until: Duration
+  /** 効果の支配者。作った効果の支配者である（同 第4部 第7章 1）。 */
+  readonly controller: Player
+}
+
+/**
+ * リカバリーフェイズの手順の途中経過（`DuelState.recovery`）。
+ *
+ * 4 は、1〜3 の間に誘発イベントかルールエフェクトが発生していたら、1 からやり直すと決めている。
+ * 5 は、「リカバリーフェイズの始め」と「ターンの終わり」の能力は、そのターン中に 1 度だけ誘発
+ * すると決めている。やり直しが終わるのは、この 2 つが揃っているからである。
+ */
+export interface RecoveryProgress {
+  /**
+   * 1〜3 の間に、能力が実際に誘発したか、ルールエフェクトが発生したか。
+   * `priority.ts` の `settleBeforePriority` が立て、やり直す時に倒す。
+   */
+  readonly occurred: boolean
+  /** すでにやり直しの回か。やり直しの回では、3 で誘発する能力が無ければ放棄を挟まない。 */
+  readonly repeated: boolean
+  /** このターンにすでに誘発した、1 度だけ誘発する能力（`trigger.ts`）。 */
+  readonly triggered: readonly TriggeredOnce[]
+}
+
+/**
+ * そのターンにすでに誘発した、1 度だけ誘発する能力 1 つ。カードに書かれた能力を、発生源の
+ * カードと能力そのもので指す（`DuelState` は保存されず、入力から作り直される。ADR-0018）。
+ */
+export interface TriggeredOnce {
+  readonly source: CardId
+  readonly ability: TriggeredAbility
+}
+
+/**
  * 誘発した、作成された誘発型能力 1 つ。
  *
  * `TriggeredInstance` と同じく、誘発してからバンクに入るまでの間も、バンクにある間も同じ形で
@@ -418,6 +481,9 @@ export function instantiate(spec: InstanceSpec): CardInstance {
   }
 }
 
+/** リカバリーフェイズに入る前の、手順の途中経過。 */
+export const INITIAL_RECOVERY: RecoveryProgress = { occurred: false, repeated: false, triggered: [] }
+
 /**
  * カードが 1 枚も置かれていない、デュエルの最初のターンの盤面。
  *
@@ -433,6 +499,8 @@ export function emptyDuelState(): DuelState {
     resolveZone: [],
     triggered: [],
     createdAbilities: [],
+    createdContinuousEffects: [],
+    recovery: INITIAL_RECOVERY,
     playedIntoCenter: [],
     trapConditionsMet: [],
     courageConditionsMet: [],
@@ -590,7 +658,7 @@ export function moveToZone(
 
   const { card } = detached
   // 行き先がスクエアではないので、これは必ず「スクエアからスクエア」以外のゾーン移動である。
-  const vanished = withoutPlayedIntoCenter(withoutCreatedAbilitiesAffecting(detached.state, id), id)
+  const vanished = withoutPlayedIntoCenter(withoutEffectsCreatedOn(detached.state, id), id)
   const flipped = zone === '山札' && position === '1番上' ? faceDownPlan(vanished, card.owner) : vanished
 
   const moved: CardInstance = { ...card, controller: card.owner, orientation, damage: 0 }
@@ -628,7 +696,7 @@ export function moveToResolveZone(state: DuelState, id: CardId): DuelState {
   const detached = detach(state, id)
   if (detached === undefined) return state
 
-  const vanished = withoutCreatedAbilitiesAffecting(detached.state, id)
+  const vanished = withoutEffectsCreatedOn(detached.state, id)
   return { ...vanished, resolveZone: [...vanished.resolveZone, detached.card] }
 }
 
@@ -656,7 +724,7 @@ export function moveToSquare(
   const detached = detach(state, id)
   if (detached === undefined) return state
 
-  const vanished = fromSquare ? detached.state : withoutCreatedAbilitiesAffecting(detached.state, id)
+  const vanished = fromSquare ? detached.state : withoutEffectsCreatedOn(detached.state, id)
   return putOnSquare(vanished, square, { ...detached.card, ...placement })
 }
 
@@ -712,16 +780,37 @@ function detach(state: DuelState, id: CardId): { readonly state: DuelState; read
 }
 
 /**
- * そのカードに影響を与える、作成された誘発型能力を消滅させる（総合ルール 第4部 第3章 4-1）。
- * 無ければ盤面はそのまま。
+ * そのカードに影響を与える、作成された誘発型能力を消滅させ（総合ルール 第4部 第3章 4-1）、
+ * そのカードあての作成された継続効果を取り除く（同 第12章。ADR-0036）。無ければ盤面は
+ * そのまま。
+ *
+ * ゾーンを移ったカードは新しいカードとして扱われる（同 第2部 第21章 1-4）。engine の中では
+ * 同じ識別子を持ち続ける（#284）ので、取り除かなければ、手札に戻って同じターンに出し直した
+ * ユニットに効果がまた付く。作ったカードの側が動いても、ここでは何もしない——効果は
+ * 期限まで続く（同 第12章 3-1）。
  *
  * 呼ぶのは「スクエアからスクエア」以外のゾーン移動をした時だけである。`detach` の中ではなく
  * 呼ぶ側に置いているのは、`detach` からはどこへ動かすのかが見えないためで、スクエアから
  * スクエアへの移動（`moveToSquare`）だけがこれを呼ばない。
  */
-function withoutCreatedAbilitiesAffecting(state: DuelState, id: CardId): DuelState {
-  if (!state.createdAbilities.some((created) => created.affecting === id)) return state
-  return { ...state, createdAbilities: state.createdAbilities.filter((created) => created.affecting !== id) }
+function withoutEffectsCreatedOn(state: DuelState, id: CardId): DuelState {
+  const abilities = state.createdAbilities.filter((created) => created.affecting !== id)
+  const effects = state.createdContinuousEffects.filter((created) => created.target !== id)
+  // 新しいカードの能力は、このターンにまだ誘発していない（総合ルール 第3部 第10章 5）。
+  const once = state.recovery.triggered.filter((fired) => fired.source !== id)
+  if (
+    abilities.length === state.createdAbilities.length &&
+    effects.length === state.createdContinuousEffects.length &&
+    once.length === state.recovery.triggered.length
+  ) {
+    return state
+  }
+  return {
+    ...state,
+    createdAbilities: abilities,
+    createdContinuousEffects: effects,
+    recovery: { ...state.recovery, triggered: once },
+  }
 }
 
 /**
@@ -730,7 +819,7 @@ function withoutCreatedAbilitiesAffecting(state: DuelState, id: CardId): DuelSta
  * 呼ぶのは、そのカードがスクエアを離れてゾーンへ動く時だけである。中央エリア指定の
  * ルールエフェクトが見るのは「いずれかのスクエアに置かれていれば」（総合ルール 第3部
  * 第16章 2-2）なので、スクエアからスクエアへ動いたユニットは対象のままでなければ
- * ならない。`withoutCreatedAbilitiesAffecting` と同じく `detach` の中に置けないのは
+ * ならない。`withoutEffectsCreatedOn` と同じく `detach` の中に置けないのは
  * このためである。
  */
 function withoutPlayedIntoCenter(state: DuelState, id: CardId): DuelState {

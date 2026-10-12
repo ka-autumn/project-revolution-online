@@ -391,6 +391,12 @@ function mapEventCards(event: DuelEvent, map: CardMapping): DuelEvent {
       }
     case 'カードを引いた':
       return { ...event, card: map(event.card) }
+    // 終わった効果の対象。落とすのは名指しだけで、見えない対象の分は並びから外れる。
+    case '継続効果が終了した':
+      return {
+        ...event,
+        effects: event.effects.flatMap((ended) => mapped(map(ended.card)).map((card) => ({ ...ended, card }))),
+      }
     // 進行そのもののできごと（#133）はカードを名指ししない。フェイズもステップも誰の
     // スマッシュ判定かも公開情報である（総合ルール 第2部 第23章 1-1）。
     case '進行が変わった':

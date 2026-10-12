@@ -1,7 +1,7 @@
 import { phaseBeginning } from './ability.js'
 import { resolveFromBank } from './bank.js'
 import { advanceBattle } from './battle.js'
-import { draw, frozenCardsOf, hasEnded, releaseAll, removeAllDamage, topOfLibrary } from './duel.js'
+import { INITIAL_RECOVERY, draw, frozenCardsOf, hasEnded, releaseAll, removeAllDamage, topOfLibrary } from './duel.js'
 import type { DuelState } from './duel.js'
 import { record } from './log.js'
 import type { Progress } from './log.js'
@@ -30,6 +30,11 @@ export type PassOutcome =
   | { readonly kind: 'ステップが進む' }
   /** リカバリーフェイズで「ターンの終わり」の能力が誘発する（同 第10章 3）。フェイズは終わらない。 */
   | { readonly kind: 'ターンの終わりの能力が誘発する' }
+  /**
+   * リカバリーフェイズが終わらず、1 からやり直す（同 第10章 4）。1〜3 の間に、誘発した能力か
+   * ルールエフェクトの発生があった時に起きる。
+   */
+  | { readonly kind: 'リカバリーフェイズをやり直す' }
   /** そのターンの次のフェイズが始まる。とばされるフェイズは飛ばした後の名前が入る（同 第4章 5）。 */
   | { readonly kind: 'フェイズが変わる'; readonly next: Phase }
   /** ターンが終わり、相手のターンになる。 */
@@ -90,8 +95,9 @@ export function passPriority(state: DuelState, chooser: Chooser): DuelState {
   if (battle !== undefined) {
     return grantPriorityToInactive(advanceBattle(cleared, battle))
   }
-  if (turn.phase === 'リカバリーフェイズ' && !turn.endOfTurnTriggered) {
-    return endTurnAbilities(cleared)
+  if (turn.phase === 'リカバリーフェイズ') {
+    if (!turn.endOfTurnTriggered) return endTurnAbilities(cleared)
+    if (cleared.recovery.occurred) return repeatRecovery(cleared)
   }
   return beginNextPhase(cleared)
 }
@@ -114,8 +120,9 @@ export function passOutcome(state: DuelState): PassOutcome | undefined {
   if (turn.passedBy === undefined) return { kind: '相手に渡る' }
   if (state.bank.length > 0) return { kind: 'バンクを解決する' }
   if (state.smashJudgments.length > 0 || state.battles.length > 0) return { kind: 'ステップが進む' }
-  if (turn.phase === 'リカバリーフェイズ' && !turn.endOfTurnTriggered) {
-    return { kind: 'ターンの終わりの能力が誘発する' }
+  if (turn.phase === 'リカバリーフェイズ') {
+    if (!turn.endOfTurnTriggered && waitsAfterEndOfTurn(state)) return { kind: 'ターンの終わりの能力が誘発する' }
+    if (state.recovery.occurred) return { kind: 'リカバリーフェイズをやり直す' }
   }
 
   const after = turnAfter(turn)
@@ -132,19 +139,54 @@ export function passOutcome(state: DuelState): PassOutcome | undefined {
  * 「ターンの終わり」の能力がバンクに入り、それらを解決した後、もう一度バンクが空で連続して
  * 放棄された時に終了する（同 3・4）。
  *
- * 同 4 には、1〜3 の間に誘発イベントかルールエフェクトが発生していた場合は 1 からやり直す
- * とある。やり直しても結果が変わらないため、まだ実装していない。やり直しで行うのは
- * ダメージの除去と「ターンの終わりまで」の効果の終了（同 1）だが、ダメージを与えるのは
- * バトルダメージだけ（`battle.ts`）で、バトルが発生するにはユニットがスクエアに置かれる
- * 必要があり、リカバリーフェイズにそれは起こらない。継続効果は盤面がまだ持っていない。
- * 「リカバリーフェイズの始め」と「ターンの終わり」の能力はそのターン中に 1 度しか誘発
- * しない（同 5）ので、能力が誘発し直すこともない。
+ * 同 4 は、1〜3 の間に誘発イベントかルールエフェクトが発生していた場合は 1 からやり直すと
+ * 決めている（`repeatRecovery`）。「発生した」は、能力が実際に誘発したか、ルールエフェクトが
+ * 発生したか、と読む（`priority.ts` の `occurred`）。プレイヤーの行動（トラップの発動・
+ * 勇気の起動）だけでは、やり直さない。
+ *
+ * 最初の回は、何も誘発しなくても、ここで優先権が発生して 2 度目の連続放棄を求める。
+ * やり直しの回で、ここで誘発する能力が 1 つも無ければ、放棄を挟まずに 4 の判定へ進む
+ * （`waitsAfterEndOfTurn`）。何も起きなかった直後の、同じ盤面での放棄を求めても、誰の
+ * 手も変わらないためである。
  */
 function endTurnAbilities(state: DuelState): DuelState {
   const triggered = trigger(state, 'ターンの終わり')
-  return grantPriorityToInactive({
-    ...triggered,
-    turn: { ...triggered.turn, endOfTurnTriggered: true },
+  const marked = { ...triggered, turn: { ...triggered.turn, endOfTurnTriggered: true } }
+  if (waitsAfterEndOfTurn(state)) return grantPriorityToInactive(marked)
+  return marked.recovery.occurred ? repeatRecovery(marked) : beginNextPhase(marked)
+}
+
+/**
+ * 「ターンの終わり」の能力を誘発させた後、それを待って 2 度目の連続放棄を求めるか。
+ *
+ * 最初の回は常に求める。やり直しの回は、誘発した能力があった時だけ求める。`passOutcome` が
+ * 実際の進み方を言い当てるのに、同じ判定を通す。
+ */
+function waitsAfterEndOfTurn(state: DuelState): boolean {
+  if (!state.recovery.repeated) return true
+  return trigger(state, 'ターンの終わり').triggered.length > state.triggered.length
+}
+
+/**
+ * リカバリーフェイズを 1 からやり直す（総合ルール 第3部 第10章 4）。
+ *
+ * ダメージの除去と「ターンの終わりまで」の効果の終了（同 1）、「リカバリーフェイズの始め」に
+ * 誘発する能力のバンクへの投入、非アクティブプレイヤーへの優先権の発生を、もう一度行う。
+ * そのターンにすでに誘発した能力は誘発し直さない（同 5。`trigger.ts`）ので、新しく誘発する
+ * 能力が無くなれば、やり直しは終わる。
+ *
+ * やり直したことを、`進行が変わった` を `from` も `to` も同じリカバリーフェイズにして積む。
+ * 取り除くダメージも終わる効果も無い回は、ほかに何も積まれず、連続して放棄したのにフェイズが
+ * 終わらない理由がログから読めなくなる。積むのは始めの処理より前で、やり直しの始めの処理が
+ * 積む行は、この行の後に並ぶ。通信の形は変わらない。
+ */
+function repeatRecovery(state: DuelState): DuelState {
+  const { turn } = state
+  const restarted = record(state, { kind: '進行が変わった', from: progressOf(turn), to: progressOf(turn) })
+  return beginCurrentPhase({
+    ...restarted,
+    recovery: { ...restarted.recovery, occurred: false, repeated: true },
+    turn: { ...turn, priority: opponentOf(turn.active), passedBy: undefined, endOfTurnTriggered: false },
   })
 }
 
@@ -161,7 +203,7 @@ function endTurnAbilities(state: DuelState): DuelState {
 function beginNextPhase(state: DuelState): DuelState {
   const after = turnAfter(state.turn)
   const changed = record(state, { kind: '進行が変わった', from: progressOf(state.turn), to: progressOf(after) })
-  return beginCurrentPhase({ ...changed, turn: after })
+  return beginCurrentPhase({ ...changed, turn: after, recovery: INITIAL_RECOVERY })
 }
 
 /** ターンのうち、進行がどこまで来ているかを表すところだけ（`log.ts` の `Progress`）。 */
@@ -211,9 +253,8 @@ function beginCurrentPhase(state: DuelState): DuelState {
  * ほか、各フェイズの 1）。
  *
  * 行うのはリリースフェイズのリリース（同 第5章 1）と、ドローフェイズのドロー（同
- * 第6章 1-1）と、リカバリーフェイズのダメージの除去（同 第10章 1）である。ダメージと
- * 同時に終了する「ターンの終わりまで」「このターンの間」の効果（同）は、継続効果を盤面が
- * 持つようになってから足す。
+ * 第6章 1-1）と、リカバリーフェイズのダメージの除去、およびそれと同時に終了する
+ * 「ターンの終わりまで」の効果の終了（同 第10章 1）である。
  *
  * **どれも積む（#157）。** 自動で行われる処理は、盤面だけを見ても何が起きたのか読めない。
  * ただし**行われなかった処理は積まない**——リリースするカードが無いフェイズに「リリース
@@ -222,7 +263,7 @@ function beginCurrentPhase(state: DuelState): DuelState {
 function takeBeginningAction(state: DuelState): DuelState {
   if (state.turn.phase === 'リリースフェイズ') return release(state)
   if (state.turn.phase === 'ドローフェイズ') return drawOne(state)
-  if (state.turn.phase === 'リカバリーフェイズ') return removeDamage(state)
+  if (state.turn.phase === 'リカバリーフェイズ') return endContinuousEffects(removeDamage(state))
   return state
 }
 
@@ -269,6 +310,25 @@ function removeDamage(state: DuelState): DuelState {
   if (removed === state) return state
 
   return record(removed, { kind: 'ダメージが取り除かれた' }, state)
+}
+
+/**
+ * リカバリーフェイズの始めに、「ターンの終わりまで」の作成された継続効果を終える
+ * （総合ルール 第3部 第10章 1。ADR-0036）。ダメージの除去と同時に起こる。
+ *
+ * 終わる効果が無ければ盤面は変わらず、何も積まない。終わった効果は、発生した順に 1 件に
+ * まとめて積む（`継続効果が終了した`）。
+ */
+function endContinuousEffects(state: DuelState): DuelState {
+  const ending = state.createdContinuousEffects.filter((created) => created.until === 'ターンの終わりまで')
+  if (ending.length === 0) return state
+
+  const remaining = state.createdContinuousEffects.filter((created) => !ending.includes(created))
+  return record(
+    { ...state, createdContinuousEffects: remaining },
+    { kind: '継続効果が終了した', effects: ending.map(({ target, change }) => ({ card: target, change })) },
+    state,
+  )
 }
 
 /**

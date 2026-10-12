@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 // ダメージを与えるためだけに `dealDamage` と `damagePlayer` を使う。engine の中から盤面を
 // 組み替えるための関数であり、公開する API ではない。
-import { damagePlayer, dealDamage, putInZone } from './duel.js'
+import { damagePlayer, dealDamage, moveToSquare, moveToZone, putInZone } from './duel.js'
 import {
+  bpModification,
+  bpPlus,
   cardsIn,
   cardsOn,
+  createContinuousEffect,
+  createTriggeredAbility,
+  defineStrategy,
   defineUnit,
   instantiate,
   passOutcome,
@@ -13,15 +18,18 @@ import {
   placeInZone,
   prepareDuel,
   putOnSquare,
+  resolveEffect,
   triggeredAbility,
 } from './index.js'
 import type {
   Chooser,
   CourageConditionMet,
   CreatedAbility,
+  CreatedContinuousEffect,
   Deck,
   DuelEvent,
   DuelState,
+  Effect,
   Phase,
   Player,
   Square,
@@ -358,13 +366,18 @@ describe('リカバリーフェイズ', () => {
     expect(banked.turn.phase).toBe('リカバリーフェイズ')
   })
 
-  it('バンクに入った能力を解決してから終了する', () => {
+  // 同 4: 3 の間に能力が誘発したので、解決した後は終了せず、1 からやり直す。
+  it('バンクに入った能力を解決しても、誘発があったので終了せず、1 からやり直す', () => {
     const banked = pass(pass(recoveryPhaseWithUnit()))
     const resolved = pass(pass(banked))
 
     expect(resolved.bank).toEqual([])
     expect(resolved.turn.phase).toBe('リカバリーフェイズ')
-    expect(pass(pass(resolved)).turn.number).toBe(2)
+
+    const repeated = pass(pass(resolved))
+    expect(repeated.turn).toMatchObject({ number: 1, phase: 'リカバリーフェイズ', priority: '後攻', passedBy: undefined })
+    // やり直しでは、誘発済みの能力は誘発し直さない（同 5）ので、次の連続放棄で終了する。
+    expect(pass(pass(repeated)).turn.number).toBe(2)
   })
 
   // 総合ルール 第3部 第10章 1
@@ -400,6 +413,360 @@ describe('リカバリーフェイズ', () => {
 
     expect(ended.turn.number).toBe(2)
     expect(ended.bank).toEqual([])
+  })
+})
+
+/**
+ * 総合ルール 第3部 第10章 1・4・5（ADR-0006、ADR-0036）。
+ *
+ * 「ターンの終わりまで」の作成された継続効果は、リカバリーフェイズの始めの処理で、ダメージの
+ * 除去と同時に終わる。1〜3 の間に能力が誘発するかルールエフェクトが発生すれば 1 からやり直し、
+ * その時に終わる効果もある。
+ */
+describe('リカバリーフェイズと作成された継続効果', () => {
+  const someSquare: Square = { row: 2, column: 1 }
+  const otherSquare: Square = { row: 2, column: 2 }
+
+  const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, bp: 1000, sp: 1000 })
+
+  /** 「ターンの終わり」に、自分自身のＢＰをターンの終わりまで＋1000 する能力を持つユニット。 */
+  const boostsAtEnd = defineUnit({
+    name: 'テスト・ターンの終わりに強化',
+    level: 1,
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('ターンの終わり', function* (duel) {
+        const self = duel.self()
+        if (self !== undefined) yield* createContinuousEffect('ターンの終わりまで', bpPlus(self, 1000))
+      }),
+    ],
+  })
+
+  /** 優先権を獲得する手前で捨札に置かれる、スクエアのストラテジー（総合ルール 第4部 第14章 4-3）。 */
+  const strayStrategy = () =>
+    instantiate({ id: '場に出たストラテジー', card: defineStrategy({ name: 'テスト・ストラテジー', level: 1 }), owner: '先攻' })
+
+  /** 「リカバリーフェイズの始め」に誘発する能力を持つ、何もしないユニット（総合ルール 第3部 第10章 5）。 */
+  const startsRecovery = defineUnit({
+    name: 'テスト・リカバリーの始め',
+    level: 1,
+    bp: 1000,
+    sp: 1000,
+    abilities: [triggeredAbility('リカバリーフェイズの始め', function* () {})],
+  })
+
+  /** ターンが替わるまで放棄し続ける。やり直しが終わらなくなった時は、固まらずに落ちる。 */
+  function passUntilTurnEnds(state: DuelState, limit = 100): DuelState {
+    let current = state
+    for (let step = 0; step < limit && current.turn.number === state.turn.number; step += 1) current = pass(current)
+    if (current.turn.number === state.turn.number) throw new Error('やり直しが終わらない')
+
+    return current
+  }
+
+  const plantTarget = defineUnit({ name: 'テスト・作られた能力の対象', level: 1, bp: 1000, sp: 1000 })
+
+  /** 「ターンの終わり」に、味方 1 枚に、「あなたのターンの終わり」にエネルギーゾーンへ置く能力を作る。 */
+  const planter = defineUnit({
+    name: 'テスト・能力を作る',
+    level: 1,
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('ターンの終わり', function* (duel) {
+        const ally = duel.allies().find((each) => each.id === '対象')
+        if (ally === undefined) return
+        yield* createTriggeredAbility(ally, 'あなたのターンの終わり', function* (_duel, affected) {
+          yield* placeInZone(affected, 'エネルギーゾーン', 'フリーズ')
+        })
+      }),
+    ],
+  })
+
+  const effectOn = (target: string, amount: number): CreatedContinuousEffect => ({
+    target,
+    change: { kind: 'ＢＰの変更', amount },
+    until: 'ターンの終わりまで',
+    controller: '先攻',
+  })
+
+  /** そのターンのリカバリーフェイズが始まったところまで進めた盤面。 */
+  function toRecovery(state: DuelState): DuelState {
+    let current = state
+    while (current.turn.phase !== 'リカバリーフェイズ') current = endPhase(current)
+    return current
+  }
+
+  const eventsOf = (state: DuelState): readonly DuelEvent[] => state.log.map((recorded) => recorded.event)
+
+  /** 第 1 ターンのリカバリーフェイズより前に、そのユニットとそのユニットあての効果を置いた盤面。 */
+  function withEffectBefore(...effects: readonly CreatedContinuousEffect[]): DuelState {
+    const board = putOnSquare(startedDuel(), someSquare, instantiate({ id: '対象', card: vanilla, owner: '先攻' }))
+    return { ...board, createdContinuousEffects: effects }
+  }
+
+  // 同 1: ダメージの除去と同時に、「ターンの終わりまで」の効果が終了する。
+  it('始めの処理で、ダメージの除去と同時に、効果が終わる', () => {
+    const board = dealDamage(withEffectBefore(effectOn('対象', 500)), '対象', 700)
+    // ＢＰ 1000＋500 のユニットが 700 のダメージを受けている。効果が終わるとＢＰは 1000 に戻る。
+    expect(board.createdContinuousEffects).toHaveLength(1)
+
+    const recovery = toRecovery(board)
+
+    expect(cardsOn(recovery, someSquare)[0]?.damage).toBe(0)
+    expect(recovery.createdContinuousEffects).toEqual([])
+    expect(bpModification(recovery)('対象')).toBe(0)
+  })
+
+  it('効果が終わったことが、ダメージの除去のあとに別のできごととして積まれる', () => {
+    const board = dealDamage(withEffectBefore(effectOn('対象', 500), effectOn('対象', -200)), '対象', 700)
+
+    const recovery = toRecovery(board)
+    const kinds = eventsOf(recovery).map((event) => event.kind)
+
+    expect(kinds.slice(-2)).toEqual(['ダメージが取り除かれた', '継続効果が終了した'])
+    expect(eventsOf(recovery).at(-1)).toEqual({
+      kind: '継続効果が終了した',
+      effects: [
+        { card: '対象', change: { kind: 'ＢＰの変更', amount: 500 } },
+        { card: '対象', change: { kind: 'ＢＰの変更', amount: -200 } },
+      ],
+    })
+  })
+
+  it('終わる効果が無ければ、終わったことを積まない', () => {
+    const recovery = toRecovery(withEffectBefore())
+
+    expect(eventsOf(recovery).map((event) => event.kind)).not.toContain('継続効果が終了した')
+  })
+
+  it('ダメージが無くても、効果は終わる。効果が無くても、ダメージは取り除かれる', () => {
+    const effectOnly = toRecovery(withEffectBefore(effectOn('対象', 500)))
+    expect(eventsOf(effectOnly).map((event) => event.kind)).not.toContain('ダメージが取り除かれた')
+    expect(eventsOf(effectOnly).map((event) => event.kind)).toContain('継続効果が終了した')
+
+    const damageOnly = toRecovery(dealDamage(withEffectBefore(), '対象', 700))
+    expect(eventsOf(damageOnly).map((event) => event.kind)).toContain('ダメージが取り除かれた')
+    expect(eventsOf(damageOnly).map((event) => event.kind)).not.toContain('継続効果が終了した')
+  })
+
+  it('スクエア間を移っていた対象も、効果が終わる', () => {
+    const board = withEffectBefore(effectOn('対象', 500))
+    const moved = moveToSquare(board, '対象', otherSquare, { controller: '先攻', orientation: 'リリース' })
+
+    expect(toRecovery(moved).createdContinuousEffects).toEqual([])
+  })
+
+  // 同 4: 始めの処理より後に作られた効果は、やり直しで始めの処理へ戻った時に終わる。
+  describe('リカバリーフェイズのやり直し', () => {
+    /** ターンの終わりに自分のＢＰを強化する能力を持つユニットが、スクエアにいるリカバリーフェイズ。 */
+    function recoveryWithBooster(): DuelState {
+      const unit = instantiate({ id: '強化するユニット', card: boostsAtEnd, owner: '先攻' })
+      return toRecovery(putOnSquare(startedDuel(), someSquare, unit))
+    }
+
+    /** 「ターンの終わり」の能力が解決され、その効果ができた盤面（4 の手前）。 */
+    function afterEndOfTurnResolved(): DuelState {
+      const resolved = pass(pass(pass(pass(recoveryWithBooster()))))
+      expect(resolved.bank).toEqual([])
+      return resolved
+    }
+
+    it('始めの処理より後に作られた効果は、いったん盤面に残る', () => {
+      const resolved = afterEndOfTurnResolved()
+
+      expect(resolved.turn.phase).toBe('リカバリーフェイズ')
+      expect(resolved.createdContinuousEffects.map((each) => each.change.amount)).toEqual([1000])
+      expect(bpModification(resolved)('強化するユニット')).toBe(1000)
+    })
+
+    it('能力が誘発していたので、次の連続放棄では終了せず、1 からやり直して効果を終える', () => {
+      const repeated = pass(pass(afterEndOfTurnResolved()))
+
+      expect(repeated.turn).toMatchObject({ number: 1, phase: 'リカバリーフェイズ', priority: '後攻', passedBy: undefined })
+      expect(repeated.createdContinuousEffects).toEqual([])
+      expect(eventsOf(repeated).at(-1)?.kind).toBe('継続効果が終了した')
+    })
+
+    // 取り除くダメージも終わる効果も無い回は、ほかに何も積まれないので、やり直したことを
+    // 同じフェイズへの「進行が変わった」で積む。始めの処理が積む行より前に並ぶ。
+    it('やり直した時に、同じフェイズへの「進行が変わった」を、始めの処理の行より前に積む', () => {
+      const events = eventsOf(pass(pass(afterEndOfTurnResolved())))
+      const index = events.map((event) => event.kind).lastIndexOf('進行が変わった')
+      const here = { turn: 1, active: '先攻', phase: 'リカバリーフェイズ' }
+
+      expect(events[index]).toEqual({ kind: '進行が変わった', from: here, to: here })
+      expect(events.slice(index + 1).map((event) => event.kind)).toEqual(['継続効果が終了した'])
+    })
+
+    it('最初の回には、同じフェイズへの「進行が変わった」が積まれない', () => {
+      const first = eventsOf(toRecovery(withEffectBefore(effectOn('対象', 500))))
+
+      expect(first.filter((event) => event.kind === '進行が変わった' && event.from?.phase === event.to.phase)).toEqual([])
+    })
+
+    it('やり直しの回で、新しく誘発する能力が無ければ、放棄を挟まずに終了の判定へ進む', () => {
+      const repeated = pass(pass(afterEndOfTurnResolved()))
+
+      // 1 度目の連続放棄で、「ターンの終わり」の能力が誘発し直すことは無い（同 5）。誘発が無く、
+      // 1〜3 の間に何も発生していないので、そのまま終了してターンが替わる。
+      const ended = pass(pass(repeated))
+      expect(ended.turn.number).toBe(2)
+      expect(ended.bank).toEqual([])
+    })
+
+    it('1 度だけ誘発する能力を覚えておき、次のターンのために忘れる', () => {
+      const repeated = pass(pass(afterEndOfTurnResolved()))
+      expect(repeated.recovery.triggered.map((fired) => fired.source)).toEqual(['強化するユニット'])
+
+      const ended = pass(pass(repeated))
+      expect(ended.recovery).toEqual({ occurred: false, repeated: false, triggered: [] })
+    })
+
+    // 総合ルール 第2部 第21章 1-4。ゾーンを移ったカードは新しいカードとして扱われるので、
+    // 誘発済みの能力を持つカードが場を離れて戻れば、その能力は誘発し直せる（第3部 第10章 5）。
+    it('そのターンに誘発済みの能力を持つカードが場を離れて戻れば、新しいカードとして誘発し直す', () => {
+      const repeated = pass(pass(afterEndOfTurnResolved()))
+      const returned = moveToSquare(
+        moveToZone(repeated, '強化するユニット', '手札'),
+        '強化するユニット',
+        someSquare,
+        { controller: '先攻', orientation: 'リリース' },
+      )
+
+      // やり直しの回で、戻ってきたカードの「ターンの終わり」の能力がバンクに入る。
+      expect(pass(pass(returned)).bank.map((ability) => ability.source)).toEqual(['強化するユニット'])
+    })
+
+    // 同 第10章 4 の「ルールエフェクトが発生していた場合」。やり直しの回でも同じである。
+    it('やり直しの回で、ルールエフェクトが発生していれば、もう一度やり直す', () => {
+      const repeated = pass(pass(afterEndOfTurnResolved()))
+      const occurred = pass(putOnSquare(repeated, otherSquare, strayStrategy()))
+      expect(occurred.recovery.occurred).toBe(true)
+
+      expect(passOutcome(occurred)).toEqual({ kind: 'リカバリーフェイズをやり直す' })
+      const again = pass(occurred)
+      expect(again.turn).toMatchObject({ number: 1, phase: 'リカバリーフェイズ', passedBy: undefined })
+      expect(again.recovery).toMatchObject({ occurred: false, repeated: true })
+    })
+
+    // やり直しの回で、新しく作られた「ターンの終わり」の能力があれば、放棄の後にバンクに入る。
+    it('やり直しの回で、新しく誘発する能力があれば、放棄の直前に「誘発する」と言い、放棄の後にバンクに入る', () => {
+      const unit = instantiate({ id: '能力を作るユニット', card: planter, owner: '先攻' })
+      const target = instantiate({ id: '対象', card: plantTarget, owner: '先攻' })
+      const board = toRecovery(putOnSquare(putOnSquare(startedDuel(), someSquare, unit), otherSquare, target))
+      // 1 回目で「能力を作る」能力が解決され、作られた「ターンの終わり」の能力が盤面に残ったまま、やり直しの回に入る。
+      const repeated = pass(pass(pass(pass(pass(pass(board))))))
+      expect(repeated.recovery.repeated).toBe(true)
+      expect(repeated.createdAbilities).toHaveLength(1)
+
+      const passed = pass(repeated)
+      expect(passOutcome(passed)).toEqual({ kind: 'ターンの終わりの能力が誘発する' })
+      expect(pass(passed).bank).toHaveLength(1)
+    })
+
+    // 放棄した時に起きることは、実際の進み方と一致する（ADR-0010）。
+    it('放棄した時に起きることを、やり直しなら「やり直す」、終わるなら「ターンが終わる」と言う', () => {
+      const resolved = afterEndOfTurnResolved()
+      expect(passOutcome(pass(resolved))).toEqual({ kind: 'リカバリーフェイズをやり直す' })
+
+      const repeated = pass(pass(resolved))
+      // やり直しの回で、誘発する能力が無い。放棄すればそのまま終了するので、そう言う。
+      expect(passOutcome(pass(repeated))).toEqual({ kind: 'ターンが終わる' })
+    })
+
+    it('最初の回は、何も誘発しなくても 2 度の連続放棄を求める', () => {
+      const recovery = toRecovery(withEffectBefore())
+
+      expect(passOutcome(pass(recovery))).toEqual({ kind: 'ターンの終わりの能力が誘発する' })
+      expect(passOutcome(pass(pass(pass(recovery))))).toEqual({ kind: 'ターンが終わる' })
+    })
+  })
+
+  // 後から増えた能力だけが、やり直しの 3 で誘発する（同 5）。
+  describe('やり直しの中で、新しく作られた「ターンの終わり」の能力', () => {
+    it('作られた能力は、やり直しで、そのターンのうちに誘発して解決される', () => {
+      const board = putOnSquare(
+        putOnSquare(startedDuel(), someSquare, instantiate({ id: '能力を作るユニット', card: planter, owner: '先攻' })),
+        otherSquare,
+        instantiate({ id: '対象', card: plantTarget, owner: '先攻' }),
+      )
+
+      const ended = endPhase(toRecovery(board))
+
+      expect(ended.turn.number).toBe(2)
+      expect(cardsIn(ended, '先攻', 'エネルギーゾーン').map((card) => card.id)).toEqual(['対象'])
+      expect(ended.createdAbilities).toEqual([])
+      expect(ended.bank).toEqual([])
+    })
+  })
+
+  // 同 第10章 4 の、やり直す条件。能力の誘発（上）のほか、ルールエフェクトの発生でもやり直す。
+  describe('やり直しを起こす発生', () => {
+    it('ルールエフェクトが発生していれば、2 度目の連続放棄で終了せず、1 からやり直す', () => {
+      const recovery = toRecovery(startedDuel())
+      const occurred = pass(putOnSquare(recovery, someSquare, strayStrategy()))
+      expect(occurred.recovery.occurred).toBe(true)
+
+      // 1 度目で「ターンの終わり」の能力が誘発し（何も無くても最初の回は求める）、2 度目で判定する。
+      const waiting = pass(pass(occurred))
+      expect(passOutcome(waiting)).toEqual({ kind: 'リカバリーフェイズをやり直す' })
+
+      const repeated = pass(waiting)
+      expect(repeated.turn).toMatchObject({ number: 1, phase: 'リカバリーフェイズ' })
+      expect(repeated.recovery).toMatchObject({ occurred: false, repeated: true })
+      expect(passUntilTurnEnds(repeated).turn.number).toBe(2)
+    })
+
+    // 第4部 第14章 4-12。スマッシュ判定の発生もルールエフェクトの 1 つである。
+    it('スマッシュ判定が発生していれば、判定が終わった後に、やり直してから終了する', () => {
+      const recovery = toRecovery(startedDuel())
+      const judging = pass(damagePlayer(recovery, '後攻', 1000))
+      expect(judging.smashJudgments).toHaveLength(1)
+      expect(judging.recovery.occurred).toBe(true)
+
+      const ended = passUntilTurnEnds(judging)
+
+      expect(ended.turn.number).toBe(2)
+      // やり直しは、同じターンの同じフェイズへの「進行が変わった」で積まれる。
+      expect(eventsOf(ended).filter((event) => event.kind === '進行が変わった' && event.from?.phase === event.to.phase)).toHaveLength(1)
+    })
+
+    // 同 5: 「リカバリーフェイズの始め」の能力も、そのターン中に 1 度だけ誘発する。外すと、
+    // やり直しのたびに誘発して、終わらなくなる。
+    it('「リカバリーフェイズの始め」の能力は、誘発してやり直した後は、誘発し直さずに終了する', () => {
+      const unit = instantiate({ id: '始めに誘発するユニット', card: startsRecovery, owner: '先攻' })
+      const recovery = toRecovery(putOnSquare(startedDuel(), someSquare, unit))
+      expect(recovery.triggered.length + recovery.bank.length).toBe(1)
+
+      const ended = passUntilTurnEnds(recovery)
+
+      expect(ended.turn.number).toBe(2)
+      expect(eventsOf(ended).filter((event) => event.kind === '能力を解決した')).toHaveLength(1)
+    })
+  })
+
+  // 条文の 4 は「誘発イベントやルールエフェクト」で、プレイヤーの行動は含まない。
+  describe('誘発を伴わずに作られた効果', () => {
+    const boost: Effect = function* (duel) {
+      const [ally] = duel.allies()
+      if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+      yield* createContinuousEffect('ターンの終わりまで', bpPlus(ally, 1000))
+    }
+
+    it('やり直しを起こさず、次のターンのリカバリーフェイズの始めまで続く', () => {
+      const recovery = toRecovery(withEffectBefore())
+      // トラップの発動などで、リカバリーフェイズ中に効果が作られた（能力の誘発は伴わない）。
+      const made = resolveEffect(recovery, boost, { controller: '先攻', via: '発動', chooser: chooseFirst })
+      expect(made.createdContinuousEffects).toHaveLength(1)
+
+      const nextTurn = endPhase(made)
+      expect(nextTurn.turn.number).toBe(2)
+      expect(nextTurn.createdContinuousEffects).toHaveLength(1)
+
+      expect(toRecovery(nextTurn).createdContinuousEffects).toEqual([])
+    })
   })
 })
 

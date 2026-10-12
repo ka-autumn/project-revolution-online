@@ -2,7 +2,7 @@ import type { BattleStep } from './battle.js'
 import { BATTLE_SPACE, isArea, rowOfArea } from './board.js'
 import type { Square, SquareIndex } from './board.js'
 import type { CardId, DuelResult, DuelState } from './duel.js'
-import type { Instruction } from './effect.js'
+import type { ContinuousChange, Duration, Instruction } from './effect.js'
 import type { LegalAction } from './legal-action.js'
 import type { Orientation, OrientedZone } from './orientation.js'
 import { seenByOf } from './perspective.js'
@@ -187,6 +187,9 @@ export type DuelEvent =
    * `to` は**行き着いた先**をそのまま持つ。とばされるフェイズがある（同 5）ので、`from` の
    * 次に並んでいるフェイズとは限らない。
    *
+   * リカバリーフェイズのやり直し（同 第10章 4）の時は、`from` も `to` も同じターンの同じ
+   * フェイズを指す。フェイズは終わっておらず、始めの処理をもう一度行う、という意味である。
+   *
    * `from` は、デュエルが始まって最初のターンに入った時だけ `undefined` になる
    * （`setup.ts` の `prepareDuel`、総合ルール 第3部 第2章）。そこには「前」が無い。
    */
@@ -225,6 +228,18 @@ export type DuelEvent =
    * プレイヤーを持たない。どこにもダメージが無ければ積まない。
    */
   | { readonly kind: 'ダメージが取り除かれた' }
+  /**
+   * リカバリーフェイズの始めに、期限が来た作成された継続効果が終わった（総合ルール 第3部
+   * 第10章 1。ADR-0036）。
+   *
+   * ダメージの除去と同時に起こるが、`ダメージが取り除かれた` とは別のできごととして積む。終わった
+   * 効果を、発生した順に「対象・何をいくつ」で持つ。終わる効果が無ければ積まない。
+   * ダメージの除去と並べて積むので、どちらか一方だけが起きた時はそちらだけが積まれる。
+   *
+   * 対象のゾーン移動で取り除かれた時は積まない。カードが場を離れたことは、移動のできごとが
+   * 言っている。
+   */
+  | { readonly kind: '継続効果が終了した'; readonly effects: readonly EndedContinuousEffect[] }
   /**
    * 回復ステップで、プレイヤーが受けたダメージを回復した（総合ルール 第3部 第18章 1、#157）。
    *
@@ -343,6 +358,17 @@ export interface ReleasedFromZone {
 }
 
 /**
+ * 終わった作成された継続効果 1 件（`継続効果が終了した`）。対象と、何をいくつ変えていたか。
+ *
+ * 対象が射影で見えなくなった時は、並びから外れる（`ReleasedFromZone` と同じく、並びの中に
+ * `undefined` は混ぜない。通信は JSON を通る）。
+ */
+export interface EndedContinuousEffect {
+  readonly card: CardId
+  readonly change: ContinuousChange
+}
+
+/**
  * ログに残す形にした命令 1 つ。
  *
  * `Instruction`（`effect.ts`）をそのまま持てない。命令はカードそのもの（`UnitOnSquare` や
@@ -384,6 +410,17 @@ export type LoggedInstruction =
   | { readonly kind: '山札の1番上をゾーンへ置く'; readonly card: CardId | undefined; readonly to: PlayerZone }
   | { readonly kind: 'スクエアへ置く'; readonly card: CardId | undefined; readonly square: Square }
   | { readonly kind: '誘発型能力を作る'; readonly card: CardId | undefined }
+  /**
+   * 解決が、作成された継続効果を 1 件作った（総合ルール 第4部 第12章 3）。
+   *
+   * 対象 1 枚、変更 1 つにつき 1 件である。複数のカードに作れば、その数だけ並ぶ。
+   */
+  | {
+      readonly kind: '継続効果を作成する'
+      readonly card: CardId | undefined
+      readonly duration: Duration
+      readonly change: ContinuousChange
+    }
   | { readonly kind: 'プランを裏返す'; readonly player: Player }
   /**
    * 効果がカードを引かせた（総合ルール 第2部 第21章 1-5）。
@@ -585,6 +622,13 @@ export function loggedInstruction(instruction: Instruction, subject: unknown, co
       return { kind: 'スクエアへ置く', card: instruction.card.id, square: instruction.square }
     case '誘発型能力を作る':
       return { kind: '誘発型能力を作る', card: instruction.affecting.id }
+    case '継続効果を作成する':
+      return {
+        kind: '継続効果を作成する',
+        card: instruction.target,
+        duration: instruction.duration,
+        change: instruction.change,
+      }
     case 'プランを裏返す':
       return { kind: 'プランを裏返す', player: instruction.player }
     case 'カードを引く': {

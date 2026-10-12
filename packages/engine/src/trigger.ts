@@ -1,9 +1,10 @@
+import { phaseBeginning } from './ability.js'
 import type { TriggerEvent, TriggerOccasion, TriggeredAbility } from './ability.js'
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
 import { continuousData } from './continuous.js'
 import { locateOnSquares } from './duel.js'
-import type { BankedAbility, CardInstance, CreatedAbility, DuelState, TriggeredInstance } from './duel.js'
+import type { BankedAbility, CardId, CardInstance, CreatedAbility, DuelState, TriggeredInstance } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
 import type { Player } from './player.js'
 import { duelView } from './view.js'
@@ -24,7 +25,31 @@ import { duelView } from './view.js'
  * 誘発することもある。ここではイベント 1 つにつき 1 度ずつ積む。
  */
 export function trigger(state: DuelState, event: TriggerEvent): DuelState {
-  return addTriggered(triggerCreated(state, event), triggeredOnSquares(state, event))
+  const created = triggerCreated(state, event)
+  if (!isOncePerTurn(event)) return addTriggered(created, triggeredOnSquares(state, event))
+
+  // 「リカバリーフェイズの始め」と「ターンの終わり」に誘発する能力は、そのターン中に 1 度だけ
+  // 誘発する（総合ルール 第3部 第10章 5、第4部 第3章 4）。リカバリーフェイズのやり直しで、
+  // 誘発済みの能力が誘発し直さないように、誘発した能力を覚える。
+  const fresh = triggeredOnSquares(state, event).filter(
+    (instance) => !hasTriggeredThisTurn(state, instance.source, instance.ability),
+  )
+  const remembered = fresh.map(({ source, ability }) => ({ source, ability }))
+  return addTriggered(
+    { ...created, recovery: { ...created.recovery, triggered: [...created.recovery.triggered, ...remembered] } },
+    fresh,
+  )
+}
+
+/** そのターン中に 1 度だけ誘発する、リカバリーフェイズの誘発イベント。 */
+const ONCE_PER_TURN: readonly TriggerEvent[] = [phaseBeginning('リカバリーフェイズ'), 'ターンの終わり']
+
+function isOncePerTurn(event: TriggerEvent): boolean {
+  return ONCE_PER_TURN.includes(event)
+}
+
+function hasTriggeredThisTurn(state: DuelState, source: CardId, ability: TriggeredAbility): boolean {
+  return state.recovery.triggered.some((fired) => fired.source === source && fired.ability === ability)
 }
 
 /**

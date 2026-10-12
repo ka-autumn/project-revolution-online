@@ -97,9 +97,11 @@ function passLabel(outcome: PassOutcome | undefined): string {
       return `${outcome.next}に進む`
     case 'ターンが終わる':
       return 'ターンを終える'
+    // やり直しも、フェイズが終わるわけではない。押した後にまた優先権が回ってくるので、言い換えない。
     case 'バンクを解決する':
     case 'ステップが進む':
     case 'ターンの終わりの能力が誘発する':
+    case 'リカバリーフェイズをやり直す':
       return '優先権を放棄する'
     // この画面が知らない種類の結果（#285）。何が起きるかを言えないので、届かなかった時と同じにする。
     default:

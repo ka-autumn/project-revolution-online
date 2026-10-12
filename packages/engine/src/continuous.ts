@@ -1,4 +1,4 @@
-import { attributeAddingAbilitiesOf, bpModifyingAbilitiesOf } from './card.js'
+import { attributeAddingAbilitiesOf, bpModifyingAbilitiesOf, bpOf } from './card.js'
 import type { Attribute } from './card.js'
 import type { CardId, DuelState } from './duel.js'
 import type { DuelView, UnitOnSquare } from './effect.js'
@@ -6,11 +6,11 @@ import { duelView, unitsOnSquares } from './view.js'
 import type { UnitData } from './view.js'
 
 /**
- * いま盤面にあるユニットの、継続効果によるＢＰの修整の合計を引くもの。
- * 修整を受けていないユニットは 0 になる。
+ * いま盤面にあるユニットの、継続効果によるＢＰの変更の合計を引くもの。
+ * 変更を受けていないユニットは 0 になる。合計は負のまま持ち、0 として読むのは `bpOf` である。
  *
  * 表そのものではなく関数として返すのは、読む側が `bpOf(instance.card, modification(id))` と
- * 書けるようにするためである。表を渡すと、読む側それぞれが「修整が無ければ 0」を書くことに
+ * 書けるようにするためである。表を渡すと、読む側それぞれが「変更が無ければ 0」を書くことに
  * なる。
  */
 export type BpModification = (id: CardId) => number
@@ -34,29 +34,32 @@ export function continuousData(state: DuelState): UnitData {
     const attributes = added(id)
     const modifier = modification(id)
     if (attributes.length === 0 && modifier === 0) return written
-    return { ...written, attributes: [...written.attributes, ...attributes], bp: written.bp + modifier }
+    return { ...written, attributes: [...written.attributes, ...attributes], bp: bpOf(written, modifier) }
   }
 }
 
 /**
- * いま発生している、ＢＰを修整する継続効果をすべて集める（総合ルール 第4部 第12章）。
+ * いま発生している、ＢＰを変更する継続効果をすべて集める（総合ルール 第4部 第12章）。
  *
- * **ＢＰを読むたびに集め直す。** 常在型能力の生み出す継続効果は、能力を持つカードが必要な
- * ゾーンに置かれている間ずっと続き（同 4-1）、発生した時点で影響を受けなかったカードにも
- * 影響を与える（同 4-2）。集め直す形にすれば、発生元がスクエアを離れた時に修整を取り消す
- * 処理も、後から置かれたユニットに効かせる処理も要らない。
+ * **常在型能力のぶんは、ＢＰを読むたびに集め直す。** 常在型能力の生み出す継続効果は、能力を
+ * 持つカードが必要なゾーンに置かれている間ずっと続き（同 4-1）、発生した時点で影響を受け
+ * なかったカードにも影響を与える（同 4-2）。集め直す形にすれば、発生元がスクエアを離れた時に
+ * 変更を取り消す処理も、後から置かれたユニットに効かせる処理も要らない。
+ *
+ * 解決が残した、作成された継続効果は、盤面が持つものをそこへ足す（同 3、ADR-0036）。
+ * こちらは集め直す元が無いので、盤面が値として持っている（`DuelState.createdContinuousEffects`）。
  */
 export function bpModification(state: DuelState): BpModification {
   return bpModifiedBy(state, applying(attributesAddedOn(state)))
 }
 
 /**
- * ＢＰの修整を、渡された写し方の上で集める。
+ * ＢＰの変更を、渡された写し方の上で集める。
  *
- * 修整を決める能力に見せるのは、属性が加わった後の盤面である（総合ルール 第4部 第12章 5-2）。
+ * 変更を決める能力に見せるのは、属性が加わった後の盤面である（総合ルール 第4部 第12章 5-2）。
  * 「〈属性〉の味方のＢＰを＋Ｘ」は、継続効果によって属性が加わったユニットも数える。
- * **ＢＰのほうはまだ修整されていない。** 同じ種類どうしの順序と依存（同 5-3・5-4）を
- * 扱えるようになるまで、他の修整の結果を見る修整は書けない。
+ * **ＢＰのほうはまだ変更されていない。** 同じ種類どうしの順序と依存（同 5-3・5-4）を
+ * 扱えるようになるまで、他の変更の結果を見る変更は書けない。
  */
 function bpModifiedBy(state: DuelState, data: UnitData): BpModification {
   const total = new Map<CardId, number>()
@@ -66,6 +69,13 @@ function bpModifiedBy(state: DuelState, data: UnitData): BpModification {
   )) {
     if (!onSquare(state, modifier.target)) continue
     total.set(modifier.target, (total.get(modifier.target) ?? 0) + modifier.amount)
+  }
+
+  // 作成された継続効果は、集め直す元が無いので盤面が持っている（ADR-0036）。常在型能力から
+  // 集めた分に足す。同じ対象に重なれば、その分だけ足される。
+  for (const created of state.createdContinuousEffects) {
+    if (!onSquare(state, created.target)) continue
+    total.set(created.target, (total.get(created.target) ?? 0) + created.change.amount)
   }
 
   return (id) => total.get(id) ?? 0

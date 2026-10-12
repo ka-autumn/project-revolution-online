@@ -363,6 +363,20 @@ function apply(
       }
       return { state: { ...state, createdAbilities: [...state.createdAbilities, created] }, value: undefined }
     }
+    case '継続効果を作成する': {
+      if (!shown.has(instruction.target)) {
+        throw new Error('効果に見せていないカードが対象にされた')
+      }
+      // 支配者は作った効果の支配者である（総合ルール 第4部 第7章 1）。並びの末尾に足すので、
+      // 発生した順が保たれる。
+      const created = {
+        target: instruction.target,
+        change: instruction.change,
+        until: instruction.duration,
+        controller: context.controller,
+      }
+      return { state: { ...state, createdContinuousEffects: [...state.createdContinuousEffects, created] }, value: undefined }
+    }
     case 'プランを裏返す': {
       // プランが無ければこの行動は実行されない（総合ルール 第1部 第1章 3）。効果は続く。
       // `faceDownPlan` がプランの無い盤面をそのまま返すので、ここでは何も足さない。
