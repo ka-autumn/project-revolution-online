@@ -477,9 +477,15 @@ export function bpOf(unit: UnitCard, modifier: number): number {
  * そのユニットのＳＰ（総合ルール 第2部 第15章 1）。スマッシュした時に相手プレイヤーに
  * 与えるダメージの数値である（同 第3部 第9章 1）。
  *
- * ＢＰと同じ理由で、修整を持つようになった時に直す場所を 1 か所にするために置いている
- * （`bpOf` 参照）。
+ * カードに書かれている数字に、継続効果による変更を足したものになる（`bpOf` と同じ形）。
+ * 読む側が `continuous.ts` の `spModification` で集めてから渡す。引数を省略できるように
+ * していないのは、渡し忘れた呼び出しが書かれている数字をＳＰとして読むのを、型で防ぐ
+ * ためである。
+ *
+ * 0 を下回る時は 0 として読む（総合ルール 第1部 第2章 2）。変更の合計は負のまま持つ。
+ * ＢＰと違って、0 として読んだＳＰは実際のダメージに現れる（ＳＰが 0 以下でもユニットは
+ * 捨札に置かれず、スマッシュのダメージは 0 に敵エリアのぶんを足したものになる）。
  */
-export function spOf(unit: UnitCard): number {
-  return unit.sp
+export function spOf(unit: UnitCard, modifier: number): number {
+  return Math.max(0, unit.sp + modifier)
 }

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { damagePlayer, dealDamage, moveToSquare, moveToZone, putInZone } from './duel.js'
 import {
   bpModification,
+  spModification,
   bpPlus,
   cardsIn,
   cardsOn,
@@ -531,6 +532,30 @@ describe('リカバリーフェイズと作成された継続効果', () => {
       effects: [
         { card: '対象', change: { kind: 'ＢＰの変更', amount: 500 } },
         { card: '対象', change: { kind: 'ＢＰの変更', amount: -200 } },
+      ],
+    })
+  })
+
+  // 同 1: ＳＰを変える効果も、ＢＰを変える効果と同じ時に終わる。
+  it('ＳＰの変更も、始めの処理で終わり、終わったことがログに積まれる', () => {
+    const spEffect: CreatedContinuousEffect = {
+      target: '対象',
+      change: { kind: 'ＳＰの変更', amount: 500 },
+      until: 'ターンの終わりまで',
+      controller: '先攻',
+    }
+    const board = withEffectBefore(effectOn('対象', 300), spEffect)
+    expect(spModification(board)('対象')).toBe(500)
+
+    const recovery = toRecovery(board)
+
+    expect(recovery.createdContinuousEffects).toEqual([])
+    expect(spModification(recovery)('対象')).toBe(0)
+    expect(eventsOf(recovery).at(-1)).toEqual({
+      kind: '継続効果が終了した',
+      effects: [
+        { card: '対象', change: { kind: 'ＢＰの変更', amount: 300 } },
+        { card: '対象', change: { kind: 'ＳＰの変更', amount: 500 } },
       ],
     })
   })

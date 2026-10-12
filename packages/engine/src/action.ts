@@ -2,6 +2,7 @@ import type { PlanReplacingAbility } from './ability.js'
 import { areaOf } from './board.js'
 import type { Area } from './board.js'
 import { planReplacingAbilitiesOf, spOf } from './card.js'
+import { spModification } from './continuous.js'
 import { payPlanCost } from './cost.js'
 import {
   cardsIn,
@@ -272,7 +273,9 @@ function smashingUnit(
   const area: Area = areaOf(player, square)
   if (area === '味方エリア') return undefined
 
-  return { damage: spOf(instance.card) + (area === '敵エリア' ? ENEMY_AREA_BONUS : 0) }
+  // 継続効果による変更を受けた後のＳＰを読む（総合ルール 第4部 第12章 2）。
+  const sp = spOf(instance.card, spModification(state)(instance.id))
+  return { damage: sp + (area === '敵エリア' ? ENEMY_AREA_BONUS : 0) }
 }
 
 /**

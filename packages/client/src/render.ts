@@ -425,8 +425,8 @@ function appendTraitsAndStats(
   if (card.type === 'ユニット' && card.bp !== undefined && card.sp !== undefined) {
     const stats = element('div', 'card__stats')
     stats.append(
-      statElement('bp', 'ＢＰ', card.bp, card.modified?.bp, card.modified?.bpDirection),
-      statElement('sp', 'ＳＰ', card.sp, undefined, undefined),
+      statElement('bp', 'BP', card.bp, card.modified?.bp, card.modified?.bpDirection),
+      statElement('sp', 'SP', card.sp, card.modified?.sp, card.modified?.spDirection),
     )
     bottom.append(stats)
   }
@@ -4716,7 +4716,8 @@ function detailNoteOf(card: CardView & { readonly kind: '表' }): string {
   const notes = [`${card.controlledBy}のカード`]
   if (card.ownedBy !== undefined) notes.push(`持ち主：${card.ownedBy}`)
   if (card.orientation === 'フリーズ') notes.push('フリーズ')
-  if (card.modified?.bp !== undefined) notes.push(`ＢＰ ${card.bp}→${card.modified.bp}`)
+  if (card.modified?.bp !== undefined) notes.push(`BP ${card.bp}→${card.modified.bp}`)
+  if (card.modified?.sp !== undefined) notes.push(`SP ${card.sp}→${card.modified.sp}`)
   if (card.damage > 0) notes.push(`ダメージ ${card.damage}`)
 
   return notes.join('／')

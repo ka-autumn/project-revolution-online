@@ -34,6 +34,13 @@ export interface EffectiveUnitData {
   readonly card: CardId
   /** 修整を適用した後のＢＰ（総合ルール 第4部 第12章 5-2 の(5)）。 */
   readonly bp: number
+  /**
+   * 修整を適用した後のＳＰ（同 5-2 の(5)）。
+   *
+   * 後から足した項目なので、これを知らないサーバの送ったデータには無い。受ける側は、無ければ
+   * 変わっていないものとして扱う。
+   */
+  readonly sp: number
   /** 加わったものを含む属性（同 5-2 の(3)）。 */
   readonly attributes: readonly Attribute[]
 }
@@ -490,7 +497,7 @@ function effectiveUnitData(state: DuelState): readonly EffectiveUnitData[] {
 
   return unitsOnSquares(state).map((unit) => {
     const applied = data(unit.id, unit.card)
-    return { card: unit.id, bp: applied.bp, attributes: applied.attributes }
+    return { card: unit.id, bp: applied.bp, sp: applied.sp, attributes: applied.attributes }
   })
 }
 

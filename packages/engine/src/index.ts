@@ -95,8 +95,8 @@ export {
   spOf,
 } from './card.js'
 export type { Attribute, Card, CardType, Color, MakerSymbol, PlanKeyword, StrategyCard, TrapCard, UnitCard } from './card.js'
-export { bpModification } from './continuous.js'
-export type { BpModification } from './continuous.js'
+export { bpModification, spModification } from './continuous.js'
+export type { BpModification, SpModification } from './continuous.js'
 export { satisfiesLevel } from './cost.js'
 export {
   CONSTRUCTED_DECK_MINIMUM,
@@ -157,12 +157,14 @@ export {
   placeOnSquare,
   placeTopOfLibrary,
   release,
+  spPlus,
 } from './effect.js'
 export type {
   AttributeAddition,
   BpModifier,
   CardInZone,
   ContinuousChange,
+  ContinuousModifier,
   CreatedAbilityEffect,
   DuelView,
   Duration,
@@ -171,6 +173,7 @@ export type {
   EnergyInZone,
   Instruction,
   SmashCard,
+  SpModifier,
   TrapEffect,
   UnitOnSquare,
 } from './effect.js'

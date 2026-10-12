@@ -1,7 +1,7 @@
-import { attributeAddingAbilitiesOf, bpModifyingAbilitiesOf, bpOf } from './card.js'
+import { attributeAddingAbilitiesOf, bpModifyingAbilitiesOf, bpOf, spOf } from './card.js'
 import type { Attribute } from './card.js'
 import type { CardId, DuelState } from './duel.js'
-import type { DuelView, UnitOnSquare } from './effect.js'
+import type { ContinuousChange, DuelView, UnitOnSquare } from './effect.js'
 import { duelView, unitsOnSquares } from './view.js'
 import type { UnitData } from './view.js'
 
@@ -16,6 +16,13 @@ import type { UnitData } from './view.js'
 export type BpModification = (id: CardId) => number
 
 /**
+ * いま盤面にあるユニットの、継続効果によるＳＰの変更の合計を引くもの（`BpModification` と
+ * 同じ形）。変更を受けていないユニットは 0 になる。合計は負のまま持ち、0 として読むのは
+ * `spOf` である。
+ */
+export type SpModification = (id: CardId) => number
+
+/**
  * 継続効果を適用した後の、スクエアにいるユニットのデータ（総合ルール 第4部 第12章 2）。
  *
  * **盤面（`DuelState`）はカードに書かれているデータを持ち、効果に見せる写し（`DuelView`）は
@@ -24,17 +31,65 @@ export type BpModification = (id: CardId) => number
  * 出ない。総合ルールの「データ」には属性もＢＰも含まれる（同 第2部 第2章 2）。
  *
  * 適用の順番は種類ごとに決まっている（同 第4部 第12章 5-2）。ここで扱うのは(3)属性を変更
- * する継続効果と(5)ＢＰを変更する継続効果の 2 つで、この順に適用する。
+ * する継続効果と(5)ＢＰ・ＳＰを変更する継続効果で、この順に適用する。ＢＰの変更とＳＰの
+ * 変更は同じ種類（同 5-2 の(5)）だが、互いの値は見ないので、適用の順で結果は変わらない。
  */
 export function continuousData(state: DuelState): UnitData {
   const added = attributesAddedOn(state)
-  const modification = bpModifiedBy(state, applying(added))
+  const bpModifier = bpModifiedBy(state, applying(added))
+  const spModifier = spModification(state)
 
   return (id, written) => {
     const attributes = added(id)
-    const modifier = modification(id)
-    if (attributes.length === 0 && modifier === 0) return written
-    return { ...written, attributes: [...written.attributes, ...attributes], bp: bpOf(written, modifier) }
+    const bpChange = bpModifier(id)
+    const spChange = spModifier(id)
+    if (attributes.length === 0 && bpChange === 0 && spChange === 0) return written
+    return {
+      ...written,
+      attributes: [...written.attributes, ...attributes],
+      bp: bpOf(written, bpChange),
+      sp: spOf(written, spChange),
+    }
+  }
+}
+
+/**
+ * いま発生している、ＳＰを変更する継続効果をすべて集める（総合ルール 第4部 第12章）。
+ *
+ * ＳＰを変える常在型能力はまだ無いので、集めるのは盤面が持つ、作成された継続効果
+ * （`DuelState.createdContinuousEffects`、ADR-0036）だけである。同じ対象に重なれば、その分
+ * だけ足される。
+ */
+export function spModification(state: DuelState): SpModification {
+  const total = createdChangeTotals(state, 'ＳＰの変更')
+  return (id) => total.get(id) ?? 0
+}
+
+/**
+ * 盤面が持つ、作成された継続効果のうち、その種類のものを対象ごとに足し合わせる。
+ * スクエアにいないユニットあてのものは数えない。
+ */
+function createdChangeTotals(state: DuelState, kind: ContinuousChange['kind']): Map<CardId, number> {
+  const total = new Map<CardId, number>()
+  for (const created of state.createdContinuousEffects) {
+    if (created.change.kind !== kind) continue
+    if (!onSquare(state, created.target)) continue
+    total.set(created.target, (total.get(created.target) ?? 0) + amountOf(created.change))
+  }
+  return total
+}
+
+/**
+ * 変更の量。種類を足したら、ここで型検査が止まる。種類を引数に取るだけでは、足した種類が
+ * どのデータにも適用されないまま通ってしまうため。
+ */
+function amountOf(change: ContinuousChange): number {
+  switch (change.kind) {
+    case 'ＢＰの変更':
+    case 'ＳＰの変更':
+      return change.amount
+    default:
+      return change satisfies never
   }
 }
 
@@ -73,9 +128,8 @@ function bpModifiedBy(state: DuelState, data: UnitData): BpModification {
 
   // 作成された継続効果は、集め直す元が無いので盤面が持っている（ADR-0036）。常在型能力から
   // 集めた分に足す。同じ対象に重なれば、その分だけ足される。
-  for (const created of state.createdContinuousEffects) {
-    if (!onSquare(state, created.target)) continue
-    total.set(created.target, (total.get(created.target) ?? 0) + created.change.amount)
+  for (const [target, amount] of createdChangeTotals(state, 'ＢＰの変更')) {
+    total.set(target, (total.get(target) ?? 0) + amount)
   }
 
   return (id) => total.get(id) ?? 0
