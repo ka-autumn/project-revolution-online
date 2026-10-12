@@ -680,8 +680,10 @@ export function faceDownPlan(state: DuelState, player: Player): DuelState {
   const [plan] = cardsIn(state, player, 'プランゾーン')
   if (plan === undefined) return state
 
-  const emptied = putInZone(state, player, 'プランゾーン', [])
-  return putInZone(emptied, player, '山札', [plan, ...cardsIn(emptied, player, '山札')])
+  // 山札へ移すので、ほかのゾーン移動と同じく `moveToZone` を通す（そのカードあての作成された
+  // 継続効果を取り除くため）。`moveToZone` は山札の 1 番上に置く時にもう一度これを呼ぶが、
+  // その時にはプランがもう無いので、そこで終わる。
+  return moveToZone(state, plan.id, '山札', plan.orientation)
 }
 
 /**
@@ -876,13 +878,9 @@ export function draw(state: DuelState, player: Player): DuelState {
   const top = topOfLibrary(state, player)
   if (top === undefined) return state
 
-  const taken = detach(state, top.id)
-  if (taken === undefined) return state
-
-  return putInZone(taken.state, player, '手札', [
-    ...cardsIn(taken.state, player, '手札'),
-    { ...top, controller: top.owner },
-  ])
+  // 手札の末尾に加える。ゾーンを移るので、`moveToZone` を通して、そのカードあての作成された
+  // 継続効果も取り除く（総合ルール 第2部 第21章 1-4）。
+  return moveToZone(state, top.id, '手札', top.orientation, '1番下')
 }
 
 /**

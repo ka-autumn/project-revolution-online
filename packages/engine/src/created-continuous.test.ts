@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { bpModification, continuousData, spModification } from './continuous.js'
 // ゾーンを移したり盤面を組んだりするためだけに使う。engine の中から盤面を組み替える関数であり、
 // 公開する API ではない。
-import { moveToSquare, moveToZone, putInZone } from './duel.js'
+import { draw, faceDownPlan, moveToSquare, moveToZone, putInZone } from './duel.js'
 import {
   bpModifying,
   bpOf,
@@ -254,6 +254,69 @@ describe('作成された継続効果と、カードの移動', () => {
 
   it('対象ではないカードが動いても、取り除かれない', () => {
     expect(moveToZone(made(), 'A', '手札').createdContinuousEffects).toHaveLength(1)
+  })
+
+  // 総合ルール 第2部 第21章 1-4。スクエアを通らないゾーン移動でも、新しいカードとして扱う。
+  describe('スクエアを通らないゾーン移動', () => {
+    const effectOn = (target: CardId) => ({
+      target,
+      change: { kind: 'ＢＰの変更', amount: 3000 } as const,
+      until: 'ターンの終わりまで' as const,
+      controller: '先攻' as const,
+    })
+
+    /** 山札の 1 番上のカードに効果がある盤面。プランゾーンは無い。 */
+    function libraryTop(): DuelState {
+      const stocked = putInZone(emptyDuelState(), '先攻', '山札', [unit('上'), unit('下')])
+      return { ...stocked, createdContinuousEffects: [effectOn('上'), effectOn('下')] }
+    }
+
+    /** プランゾーンのカードに効果がある盤面。 */
+    function planned(): DuelState {
+      const stocked = putInZone(putInZone(emptyDuelState(), '先攻', '山札', [unit('次')]), '先攻', 'プランゾーン', [
+        unit('プラン'),
+      ])
+      return { ...stocked, createdContinuousEffects: [effectOn('プラン'), effectOn('次')] }
+    }
+
+    it('山札の 1 番上を引くと、引いたカードあての分が取り除かれる', () => {
+      const drawn = draw(libraryTop(), '先攻')
+
+      expect(cardsIn(drawn, '先攻', '手札').map((card) => card.id)).toEqual(['上'])
+      expect(drawn.createdContinuousEffects.map((each) => each.target)).toEqual(['下'])
+    })
+
+    it('プランゾーンのカードを引くと、そのカードあての分が取り除かれる', () => {
+      const drawn = draw(planned(), '先攻')
+
+      expect(cardsIn(drawn, '先攻', '手札').map((card) => card.id)).toEqual(['プラン'])
+      expect(drawn.createdContinuousEffects.map((each) => each.target)).toEqual(['次'])
+    })
+
+    it('プランを裏返して山札に戻すと、そのカードあての分が取り除かれる', () => {
+      const flipped = faceDownPlan(planned(), '先攻')
+
+      expect(cardsIn(flipped, '先攻', 'プランゾーン')).toEqual([])
+      expect(cardsIn(flipped, '先攻', '山札').map((card) => card.id)).toEqual(['プラン', '次'])
+      expect(flipped.createdContinuousEffects.map((each) => each.target)).toEqual(['次'])
+    })
+
+    it('山札の 1 番上に別のカードを置いてプランが裏返る時も、取り除かれる', () => {
+      const returned = moveToZone(putInZone(planned(), '先攻', '手札', [unit('戻すカード')]), '戻すカード', '山札')
+
+      expect(cardsIn(returned, '先攻', 'プランゾーン')).toEqual([])
+      expect(returned.createdContinuousEffects.map((each) => each.target)).toEqual(['次'])
+    })
+
+    it('引いたカードは、手札の末尾に加わり、向きを保つ', () => {
+      const held = unit('持っていた')
+      const frozen = { ...unit('上'), orientation: 'フリーズ' as const }
+      const state = putInZone(putInZone(emptyDuelState(), '先攻', '手札', [held]), '先攻', '山札', [frozen])
+
+      const drawn = draw(state, '先攻')
+
+      expect(cardsIn(drawn, '先攻', '手札')).toEqual([held, frozen])
+    })
   })
 
   it('対象が別の効果の対象でもあれば、動いた対象あての分だけが取り除かれる', () => {
