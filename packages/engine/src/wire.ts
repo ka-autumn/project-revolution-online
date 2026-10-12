@@ -7,6 +7,7 @@ import type { LoggedEvent } from './log.js'
 import type { Orientation } from './orientation.js'
 import type {
   DuelPerspective,
+  EffectiveKeywords,
   EffectiveUnitData,
   VisibleAbility,
   VisibleBattle,
@@ -152,6 +153,14 @@ export interface WirePerspective {
    * 属性の並びだけなので、書き出す必要が無い。
    */
   readonly effective: readonly EffectiveUnitData[]
+  /**
+   * 継続効果を適用した後の、プランゾーンのカードのキーワード能力（`perspective.ts` の
+   * `EffectiveKeywords`）。書かれた能力と違うカードの分だけ。
+   *
+   * 後から足した項目なので、これを知らないサーバの送ったデータには無い。受ける側は、無ければ
+   * 書かれたキーワード能力のままとして扱う。
+   */
+  readonly effectiveKeywords: readonly EffectiveKeywords[]
   readonly zones: Readonly<Record<Player, Readonly<Record<PlayerZone, readonly WireVisibleCard[]>>>>
   readonly damage: Readonly<Record<Player, number>>
   readonly turn: Turn
@@ -267,6 +276,7 @@ export function toWire(perspective: DuelPerspective): WirePerspective {
     squares: perspective.squares.map((square) => square.map(instanceToWire)),
     namedInLog: perspective.namedInLog.map(instanceToWire),
     effective: perspective.effective,
+    effectiveKeywords: perspective.effectiveKeywords,
     zones: Object.fromEntries(PLAYERS.map((owner) => [owner, zonesOf(owner)])) as WirePerspective['zones'],
     resolveZone: perspective.resolveZone.map(instanceToWire),
     trapConditionsMet: perspective.trapConditionsMet.map((met) => ({

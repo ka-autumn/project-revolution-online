@@ -205,6 +205,7 @@ export type { Orientation, OrientedZone } from './orientation.js'
 export { perspectiveOf } from './perspective.js'
 export type {
   DuelPerspective,
+  EffectiveKeywords,
   EffectiveUnitData,
   VisibleAbility,
   VisibleBattle,

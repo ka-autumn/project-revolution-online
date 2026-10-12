@@ -6,6 +6,7 @@ import type {
   CardId,
   CardType,
   Color,
+  EffectiveKeywords,
   EffectiveUnitData,
   DuelEvent,
   DuelResult,
@@ -502,7 +503,10 @@ function visibleInstances(board: WirePerspective): readonly WireCardInstance[] {
  */
 export function visibleCardViewsIn(board: WirePerspective): ReadonlyMap<CardId, CardView> {
   return new Map(
-    visibleInstances(board).map((instance) => [instance.id, faceUpView(instance, board.viewer, board.effective)]),
+    visibleInstances(board).map((instance) => [
+      instance.id,
+      faceUpView(instance, board.viewer, board.effective, effectiveKeywordsOf(board)),
+    ]),
   )
 }
 
@@ -691,13 +695,27 @@ function modifiedDataOf(
   return { bp, bpDirection, sp, spDirection, addedAttributes }
 }
 
+/**
+ * 継続効果を適用した後のキーワード能力の並び（ADR-0036）。盤面が送ってきたものを、そのまま渡す。
+ *
+ * 後から足した項目なので、古いサーバのデータには無い。無ければ、どのカードも書かれた
+ * キーワード能力のままとして扱う（`modifiedDataOf` の `sp` と同じ備え）。
+ */
+function effectiveKeywordsOf(board: WirePerspective): readonly EffectiveKeywords[] {
+  const sent: readonly EffectiveKeywords[] | undefined = board.effectiveKeywords
+  return sent ?? []
+}
+
 function faceUpView(
   instance: WireCardInstance,
   viewer: Player,
   effective: readonly EffectiveUnitData[] = [],
+  effectiveKeywords: readonly EffectiveKeywords[] = [],
 ): CardView {
   const modified = modifiedDataOf(instance, effective)
   const face = instance.card
+  // 与えられた能力を含めた並びで、書かれたキーワード能力と同じアイコンを出す（ADR-0027）。
+  const applied = effectiveKeywords.find((each) => each.card === instance.id)
 
   return {
     kind: '表',
@@ -707,6 +725,7 @@ function faceUpView(
     ownedBy: instance.owner === instance.controller ? undefined : whoseLabel(viewer, instance.owner),
     modified,
     ...faceFieldsOf(face),
+    ...(applied === undefined ? {} : { keywords: applied.keywords }),
     orientation: instance.orientation,
     damage: instance.damage,
   }
@@ -718,9 +737,14 @@ function faceUpView(
  * 裏向きのカードには置き場所を持たせる（#127）。届いた並びの何番目かがそのまま位置になる
  * （`protocol.ts` の `WireCardPosition`）ので、数え直さない。
  */
-function cardView(card: WireVisibleCard, viewer: Player, at: WireCardPosition): CardView {
+function cardView(
+  card: WireVisibleCard,
+  viewer: Player,
+  at: WireCardPosition,
+  effectiveKeywords: readonly EffectiveKeywords[],
+): CardView {
   return card.kind === '見えている'
-    ? faceUpView(card.instance, viewer)
+    ? faceUpView(card.instance, viewer, [], effectiveKeywords)
     : { kind: '裏', orientation: card.orientation, at }
 }
 
@@ -745,7 +769,9 @@ function zoneView(board: WirePerspective, owner: Player, zone: PlayerZone): Zone
     count: counted.length,
     cards: COUNTED_ZONES.includes(zone)
       ? []
-      : cards.map((card, index) => cardView(card, board.viewer, { player: owner, zone, index })),
+      : cards.map((card, index) =>
+          cardView(card, board.viewer, { player: owner, zone, index }, effectiveKeywordsOf(board)),
+        ),
   }
 }
 

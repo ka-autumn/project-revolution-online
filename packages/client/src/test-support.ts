@@ -32,6 +32,7 @@ export function emptyBoard(viewer: Player): WirePerspective {
     viewer,
     squares: BATTLE_SPACE.map(() => []),
     effective: [],
+    effectiveKeywords: [],
     zones: { 先攻: emptyZones(), 後攻: emptyZones() },
     damage: { 先攻: 0, 後攻: 0 },
     turn: {

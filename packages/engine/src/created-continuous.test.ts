@@ -746,3 +746,36 @@ describe('能力を与える作成された継続効果', () => {
     })
   })
 })
+
+// ADR-0036。スクエアの外のカードの適用した後の姿は、通信に載る（アイコンのため）。
+describe('プランゾーンのカードに与えられた能力の射影', () => {
+  const grantToPlan: Effect = function* (duel) {
+    const [plan] = duel.planZone()
+    if (plan !== undefined) yield* createContinuousEffect('ターンの終わりまで', granting(plan, dream))
+  }
+  const planned = (card = vanilla) => putInZone(emptyDuelState(), '先攻', 'プランゾーン', [unit('プラン', card)])
+  const dreaming = defineUnit({ name: 'テスト・夢持ち', level: 1, colors: ['赤'], bp: 1000, sp: 1000, abilities: [dream] })
+
+  it('書かれていない「夢」が与えられたカードは、適用した後のキーワード能力を持つ。どちらの視点にも同じ', () => {
+    const state = resolved(planned(), grantToPlan, 'プラン')
+
+    expect(perspectiveOf(state, '先攻').effectiveKeywords).toEqual([{ card: 'プラン', keywords: ['夢'] }])
+    expect(perspectiveOf(state, '後攻').effectiveKeywords).toEqual([{ card: 'プラン', keywords: ['夢'] }])
+  })
+
+  it('与えられていなければ、持たない', () => {
+    expect(perspectiveOf(planned(), '先攻').effectiveKeywords).toEqual([])
+  })
+
+  it('すでに「夢」を持つカードは、書かれたものと違わないので載せない', () => {
+    const state = resolved(planned(dreaming), grantToPlan, 'プラン')
+
+    expect(perspectiveOf(state, '先攻').effectiveKeywords).toEqual([])
+  })
+
+  it('期限が来たり、ゾーンを移ったりして与えられた能力が無くなれば、載らなくなる', () => {
+    const state = resolved(planned(), grantToPlan, 'プラン')
+
+    expect(perspectiveOf(draw(state, '先攻'), '先攻').effectiveKeywords).toEqual([])
+  })
+})
