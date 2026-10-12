@@ -459,13 +459,18 @@ export function moveCostingAbilitiesOf(card: Card): readonly MoveCostingAbility[
  * そのユニットのＢＰ（総合ルール 第2部 第14章 1）。バトルで比較され、ダメージと比べられる
  * 数値である（同 第4部 第14章 4-5・4-6）。
  *
- * カードに書かれている数字に、継続効果による修整を足したものになる（同 第4部 第12章）。
- * 修整は盤面に書き込まれていないので、読む側が `continuous.ts` の `bpModification` で
- * 集めてから渡す。**引数を省略できるようにしていない。** 省略できると、修整を渡し忘れた
+ * カードに書かれている数字に、継続効果による変更を足したものになる（同 第4部 第12章）。
+ * 変更は盤面に書き込まれていないので、読む側が `continuous.ts` の `bpModification` で
+ * 集めてから渡す。**引数を省略できるようにしていない。** 省略できると、変更を渡し忘れた
  * 呼び出しが書かれている数字をＢＰとして読んでしまい、それが型では見つからないためである。
+ *
+ * **0 を下回る時は 0 として読む**（総合ルール 第1部 第2章 2）。変更の合計は負のまま持ち、
+ * 読む所（ここ）で切り上げる。「その数値が変更される時には、マイナスになった数値を元に計算」
+ * が、足して持って読む時に切り上げる形で自然に満たされる。判定に使う値も、画面と効果に
+ * 見せる値（`continuous.ts` の `continuousData`）も、ここを通す。
  */
 export function bpOf(unit: UnitCard, modifier: number): number {
-  return unit.bp + modifier
+  return Math.max(0, unit.bp + modifier)
 }
 
 /**

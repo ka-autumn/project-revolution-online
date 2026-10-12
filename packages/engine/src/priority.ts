@@ -45,24 +45,37 @@ export function settleBeforePriority(state: DuelState): DuelState {
     // ルールエフェクトはカードをスクエアから取り除くだけなので、いつか発生しなくなる。
     const checked = checkRuleEffects(current)
     if (checked !== current) {
-      current = checked
+      current = occurred(checked)
       continue
     }
     // 回復ステップでダメージが 1000 未満に戻る（総合ルール 第3部 第18章 1）ので、
     // 同じダメージで何度も発生することはなく、この繰り返しはいつか終わる。
     const judging = startSmashJudgmentIfAny(current)
     if (judging !== current) {
-      current = toInactive(judging)
+      current = toInactive(occurred(judging))
       continue
     }
     const started = startBattleIfAny(current)
     if (started !== current) {
-      current = toInactive(started)
+      current = toInactive(occurred(started))
       continue
     }
     if (current.triggered.length === 0) return current
-    current = putTriggeredIntoBank(current)
+    current = putTriggeredIntoBank(occurred(current))
   }
+}
+
+/**
+ * リカバリーフェイズ中に、誘発した能力かルールエフェクトの発生があったと覚える
+ * （総合ルール 第3部 第10章 4）。他のフェイズでは何もしない。
+ *
+ * ルールエフェクトも誘発した能力も、優先権を獲得する手前のここ（`settleBeforePriority`）を
+ * 通ってから解決される。発生を見るのはここ 1 か所でよい。バトルとスマッシュ判定の発生も、
+ * ルールエフェクトの 1 つである（同 第4部 第14章 4-4・4-12）。
+ */
+function occurred(state: DuelState): DuelState {
+  if (state.turn.phase !== 'リカバリーフェイズ' || state.recovery.occurred) return state
+  return { ...state, recovery: { ...state.recovery, occurred: true } }
 }
 
 /**

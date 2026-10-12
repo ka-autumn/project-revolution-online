@@ -230,6 +230,13 @@ export type Instruction =
       /** その能力が影響を与える特定のカード（総合ルール 第4部 第3章 4-1）。 */
       readonly affecting: CardInZone | UnitOnSquare
     }
+  | {
+      readonly kind: '継続効果を作成する'
+      readonly duration: Duration
+      /** 影響を受けるカード。作った後は、このカードあての値として盤面が持つ。 */
+      readonly target: CardId
+      readonly change: ContinuousChange
+    }
 
 /**
  * 効果の途中経過。`T` はその手順が効果に返す値。
@@ -282,14 +289,15 @@ export type TrapEffect = (duel: DuelView, occasion: IntrusionOccasion) => Effect
 export type CreatedAbilityEffect = (duel: DuelView, affected: UnitOnSquare) => EffectStep<void>
 
 /**
- * 継続効果が 1 枚のユニットのＢＰに与える修整（総合ルール 第4部 第12章 5-2 の(5)）。
+ * 継続効果が 1 枚のユニットのＢＰに与える変更（総合ルール 第4部 第12章 5-2 の(5)）。
  *
  * 単発効果と違って命令にならない。命令は engine が 1 つずつ実行して盤面を変えていくもの
  * だが、継続効果は盤面を変えず、効果が続いている間ずっとＢＰの読み方を変えるだけだから
- * である（同 第12章 1）。engine はこれを盤面に書き込まず、ＢＰを読むたびに集める
- * （`continuous.ts`）。
+ * である（同 第12章 1）。常在型能力が返したものは、engine が盤面に書き込まず、ＢＰを読む
+ * たびに集める（`continuous.ts`）。解決が残す継続効果は、これを `createContinuousEffect` に
+ * 渡して作り、盤面が期限まで持つ（`CreatedContinuousEffect`）。
  *
- * どのユニットへの修整かを `UnitOnSquare` ではなく `CardId` で持つのは、修整を集める
+ * どのユニットへの変更かを `UnitOnSquare` ではなく `CardId` で持つのは、変更を集める
  * 側が id で引けるようにするためである。写しを持ち回っても、集めた後に必要になるのは
  * 「誰に」だけになる。
  */
@@ -299,7 +307,26 @@ export interface BpModifier {
 }
 
 /**
- * 「そのユニットのＢＰを＋Ｘ」。減らす修整は負の数で書く。
+ * 作成された継続効果が続く期限（総合ルール 第4部 第12章 3-1）。
+ *
+ * 述語にしないのは、取りうる期限が数えられるほどしか無いためである（作成された誘発型能力の
+ * 誘発するできごと `CREATED_TRIGGERS` と同じ形）。「このターンの間」は「ターンの終わりまで」と
+ * 同じ時に終わる（同 第3部 第10章 1）ので、そのテキストが出た時に値を足す。
+ */
+export const DURATIONS = ['ターンの終わりまで'] as const
+
+export type Duration = (typeof DURATIONS)[number]
+
+/**
+ * 作成された継続効果が、カードのデータをどう変えるか（総合ルール 第4部 第12章 5-2）。
+ *
+ * 種類の札（`kind`）で分かれる。いまはＢＰの変更だけで、ＳＰの変更と能力の付与は、それを
+ * 書くテキストが出た時に並べる。盤面もログも、この型をそのまま持つ。
+ */
+export type ContinuousChange = { readonly kind: 'ＢＰの変更'; readonly amount: number }
+
+/**
+ * 「そのユニットのＢＰを＋Ｘ」。減らす変更は負の数で書く。
  *
  * 対象に取れるのは engine が `DuelView` を通して見せたユニットだけである。カードは盤面を
  * 自分で探せないので、ここに渡せるものはすべて engine が見せたものになる。
@@ -582,4 +609,21 @@ export function* createTriggeredAbility(
   effect: CreatedAbilityEffect,
 ): EffectStep<void> {
   yield { kind: '誘発型能力を作る', ability: { kind: '作成された誘発型能力', trigger, effect }, affecting }
+}
+
+/**
+ * 作成された継続効果を作る（総合ルール 第4部 第12章 3）。
+ *
+ * 「ターンの終わりまで、そのユニットのＢＰを＋Ｘ」のように、解決が残す継続効果である。盤面が
+ * 値として持ち、期限が来るまで、ＢＰを読むたびに常在型能力の分へ足される（`continuous.ts`）。
+ * 作ったカードがすぐ捨札へ行っても続く（同 3-1）。
+ *
+ * 渡された変更 1 つにつき 1 件を作る。対象は作る時に決まり、値は解決の時に 1 度だけ決まる
+ * （同 3-2・3-3）。後から置かれたカードには及ばない。対象は engine が見せたユニットでなければ
+ * ならない（`resolve.ts` の `shown`）。いま渡せるのはＢＰの変更（`bpPlus`）だけである。
+ */
+export function* createContinuousEffect(duration: Duration, ...modifiers: readonly BpModifier[]): EffectStep<void> {
+  for (const { target, amount } of modifiers) {
+    yield { kind: '継続効果を作成する', duration, target, change: { kind: 'ＢＰの変更', amount } }
+  }
 }

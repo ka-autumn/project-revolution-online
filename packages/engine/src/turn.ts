@@ -56,6 +56,9 @@ export interface Turn {
    * リカバリーフェイズは、連続放棄を 2 度必要とする唯一のフェイズである。1 度目で
    * 「ターンの終わり」の能力が誘発し、2 度目でフェイズが終わる（同 3・4）。その 1 度目が
    * 済んでいるかどうかをここで覚えておく。他のフェイズでは常に `false` のまま。
+   *
+   * 2 度目で終わらず、1 からやり直すこともある（同 4。`progress.ts` の `repeatRecovery`）。
+   * その時は `false` に戻す。やり直しの手順の途中経過は `DuelState.recovery` が持つ。
    */
   readonly endOfTurnTriggered: boolean
   /**
