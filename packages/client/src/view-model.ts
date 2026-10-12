@@ -1201,6 +1201,11 @@ function progressLines(
     separator('===', whose(at.active), `${whose(at.active)}の第 ${at.turn} ターン${edge}（${at.phase}${edge}）`)
 
   if (from === undefined) return [turnLine(to, '開始')]
+  // 同じターンの同じフェイズへの移り変わりは、リカバリーフェイズのやり直しである（`log.ts` の
+  // `進行が変わった`）。フェイズは終わっていないので、「終了」とは言わない。
+  if (from.turn === to.turn && from.active === to.active && from.phase === to.phase) {
+    return [separator('===', whose(to.active), `${whose(to.active)}の${to.phase}開始（再）`)]
+  }
   if (from.turn === to.turn && from.active === to.active) {
     return [separator('===', whose(to.active), `${whose(to.active)}の${from.phase}終了／${to.phase}開始`)]
   }
@@ -1233,10 +1238,20 @@ function about(name: string | undefined, particle: 'を' | 'に' | 'は', text: 
   return name === undefined ? text : `${name}${particle}${text}`
 }
 
-/** 継続効果が何をいくつ変えるか。`BP+2000`、`BP-1000` の形（符号は常に付ける）。 */
-function continuousChangeLabel(change: ContinuousChange): string {
-  const sign = change.amount < 0 ? '-' : '+'
-  return `BP${sign}${Math.abs(change.amount)}`
+/**
+ * 継続効果が何をいくつ変えるか。ＢＰの変更は `BP+2000`、`BP-1000` の形（符号は常に付ける）。
+ *
+ * 種類ごとに分ける。エンジンが種類を足すと、ここで画面の型検査が止まる。この画面が知らない
+ * 種類は、誤った文を作り出さず、読めなかったことを呼ぶ側に返す（#285、`UNREADABLE_LOG`）。
+ */
+function continuousChangeLabel(change: ContinuousChange): string | undefined {
+  switch (change.kind) {
+    case 'ＢＰの変更':
+      return `BP${change.amount < 0 ? '-' : '+'}${Math.abs(change.amount)}`
+    default:
+      change.kind satisfies never
+      return undefined
+  }
 }
 
 /** 命令 1 つを 1 行にする。 */
@@ -1276,8 +1291,10 @@ function instructionLine(
       return about(named(instruction.card), 'に', '能力を作った')
     // 期限は、いつ戻るかが行から読めるように出す。ＢＰの数字は、画面のほかの所と同じく半角の
     // `BP` で書く（符号を添える。負の時は `-`）。
-    case '継続効果を作成する':
-      return about(named(instruction.card), 'は', `${instruction.duration}${continuousChangeLabel(instruction.change)}`)
+    case '継続効果を作成する': {
+      const change = continuousChangeLabel(instruction.change)
+      return change === undefined ? undefined : about(named(instruction.card), 'は', `${instruction.duration}${change}`)
+    }
     case 'プランを裏返す':
       return `${whose(instruction.player)}のプランを裏返した`
     case 'カードを引く':
@@ -1416,6 +1433,9 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
  * 両方変わっていれば 1 つの変わり目から 2 枚作る——ターンの案内だけでは、どのフェイズから
  * 始まったかが分からない。できごと 1 件を 2 行に割るログ（`logLines` の `progressLines`）と
  * 同じ形である。**何枚で見せるかを決めるのはここである。**
+ *
+ * リカバリーフェイズのやり直しは、同じターンの同じフェイズへの移り変わりで届く
+ * （`log.ts` の `進行が変わった`）。ターンもフェイズも変わっていないので、何も出さない。
  *
  * デュエルが始まって最初のターンに入った時は `from` が `undefined` で（`setup.ts`）、そこには
  * 「前」が無いので何も出さない。もっとも、最初の盤面と入り直しでは `fresh` が空になる

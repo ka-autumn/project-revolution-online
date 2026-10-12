@@ -1100,6 +1100,24 @@ describe('操作ログ', () => {
         expect(texts(withLog(created(undefined, 2000)))).toEqual(['ターンの終わりまでBP+2000'])
       })
 
+      // 変更の種類を足したのに画面が古いと、BP の文として出てしまう（#285）。読めなかったことを出す。
+      it('この画面が知らない種類の変更は、誤った文を出さず、表示できないログにする', () => {
+        const unknown = {
+          kind: '命令を実行した',
+          controller: '先攻',
+          instruction: {
+            kind: '継続効果を作成する',
+            card: '置いてある',
+            duration: 'ターンの終わりまで',
+            change: { kind: 'この画面が知らない変更', amount: 1000 },
+          },
+        } as unknown as DuelEvent
+
+        expect(logLines(withLog(unknown))).toEqual([
+          { kind: 'できごと', whose: undefined, text: '（表示できないログ）', depth: 0 },
+        ])
+      })
+
       // 同 第3部 第10章 1。ダメージの除去とは別のできごとで、誰のものにもならない。
       describe('終わったこと', () => {
         const ended = (...cards: readonly string[]): DuelEvent => ({
@@ -1428,6 +1446,25 @@ describe('操作ログ', () => {
     })
 
     /**
+     * 総合ルール 第3部 第10章 4。リカバリーフェイズのやり直しは、同じターンの同じフェイズへの
+     * 移り変わりで届く。フェイズは終わっていないので、「終了」とは言わない。
+     */
+    it.each([
+      ['先攻', '自分'],
+      ['後攻', '相手'],
+    ] as const)('リカバリーフェイズのやり直しは、%s のターンなら「%s」の開始（再）の 1 行になる', (active, whose) => {
+      const board = withLog({
+        kind: '進行が変わった',
+        from: at(2, active, 'リカバリーフェイズ'),
+        to: at(2, active, 'リカバリーフェイズ'),
+      })
+
+      expect(logLines(board)).toEqual([
+        { kind: '区切り', whose, text: `=== ${whose}のリカバリーフェイズ開始（再） ===`, depth: 0 },
+      ])
+    })
+
+    /**
      * 総合ルール 第3部 第11章 3。呼び名は条文の語をそのまま使う。ステップの区切りは
      * 手順の中にあるが、区切りとして読ませるので字下げしない。
      */
@@ -1731,6 +1768,14 @@ describe('フェイズ・ターンの切り替わり', () => {
     const views = transitionViews(moved(start, { ...start, phase: 'スマッシュフェイズ' }), board)
 
     expect(views).toEqual([{ heading: 'スマッシュフェイズ' }])
+  })
+
+  // リカバリーフェイズのやり直し（総合ルール 第3部 第10章 4）は、同じターンの同じフェイズへ
+  // 届く。ターンもフェイズも変わっていないので、切り替わりの演出は出さない。
+  it('同じターンの同じフェイズへの移り変わり（やり直し）は、何も出ない', () => {
+    const recovery: Progress = { turn: 1, active: '先攻', phase: 'リカバリーフェイズ' }
+
+    expect(transitionViews(moved(recovery, recovery), board)).toEqual([])
   })
 
   it('ターン数だけ変わっていれば、ターンの見出しだけ出る', () => {

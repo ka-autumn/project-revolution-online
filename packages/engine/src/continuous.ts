@@ -46,7 +46,7 @@ export function continuousData(state: DuelState): UnitData {
  * なかったカードにも影響を与える（同 4-2）。集め直す形にすれば、発生元がスクエアを離れた時に
  * 変更を取り消す処理も、後から置かれたユニットに効かせる処理も要らない。
  *
- * **解決が残した、作成された継続効果は、盤面が持つものをそこへ足す**（同 3、ADR-0036）。
+ * 解決が残した、作成された継続効果は、盤面が持つものをそこへ足す（同 3、ADR-0036）。
  * こちらは集め直す元が無いので、盤面が値として持っている（`DuelState.createdContinuousEffects`）。
  */
 export function bpModification(state: DuelState): BpModification {

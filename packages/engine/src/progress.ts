@@ -144,7 +144,7 @@ export function passOutcome(state: DuelState): PassOutcome | undefined {
  * 発生したか、と読む（`priority.ts` の `occurred`）。プレイヤーの行動（トラップの発動・
  * 勇気の起動）だけでは、やり直さない。
  *
- * **最初の回は、何も誘発しなくても、ここで優先権が発生して 2 度目の連続放棄を求める。**
+ * 最初の回は、何も誘発しなくても、ここで優先権が発生して 2 度目の連続放棄を求める。
  * やり直しの回で、ここで誘発する能力が 1 つも無ければ、放棄を挟まずに 4 の判定へ進む
  * （`waitsAfterEndOfTurn`）。何も起きなかった直後の、同じ盤面での放棄を求めても、誰の
  * 手も変わらないためである。
@@ -174,12 +174,18 @@ function waitsAfterEndOfTurn(state: DuelState): boolean {
  * 誘発する能力のバンクへの投入、非アクティブプレイヤーへの優先権の発生を、もう一度行う。
  * そのターンにすでに誘発した能力は誘発し直さない（同 5。`trigger.ts`）ので、新しく誘発する
  * 能力が無くなれば、やり直しは終わる。
+ *
+ * やり直したことを、`進行が変わった` を `from` も `to` も同じリカバリーフェイズにして積む。
+ * 取り除くダメージも終わる効果も無い回は、ほかに何も積まれず、連続して放棄したのにフェイズが
+ * 終わらない理由がログから読めなくなる。積むのは始めの処理より前で、やり直しの始めの処理が
+ * 積む行は、この行の後に並ぶ。通信の形は変わらない。
  */
 function repeatRecovery(state: DuelState): DuelState {
   const { turn } = state
+  const restarted = record(state, { kind: '進行が変わった', from: progressOf(turn), to: progressOf(turn) })
   return beginCurrentPhase({
-    ...state,
-    recovery: { ...state.recovery, occurred: false, repeated: true },
+    ...restarted,
+    recovery: { ...restarted.recovery, occurred: false, repeated: true },
     turn: { ...turn, priority: opponentOf(turn.active), passedBy: undefined, endOfTurnTriggered: false },
   })
 }
