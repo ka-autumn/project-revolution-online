@@ -1061,6 +1061,69 @@ describe('操作ログ', () => {
       ])
     })
 
+    // 総合ルール 第4部 第12章 3（ADR-0036）。「〈カード名〉はターンの終わりまでBP+2000」。
+    describe('作成された継続効果', () => {
+      const created = (card: string | undefined, amount: number): DuelEvent => ({
+        kind: '命令を実行した',
+        controller: '先攻',
+        instruction: {
+          kind: '継続効果を作成する',
+          card,
+          duration: 'ターンの終わりまで',
+          change: { kind: 'ＢＰの変更', amount },
+        },
+      })
+
+      it('作ったことは、対象の名前と期限と変更の内容で出る', () => {
+        expect(logLines(withLog(created('置いてある', 2000)))).toEqual([
+          { kind: 'できごと', whose: '自分', text: 'テスト・置いてあるはターンの終わりまでBP+2000', depth: 0 },
+        ])
+      })
+
+      it('下げる変更は、マイナスの符号で出る', () => {
+        expect(texts(withLog(created('置いてある', -1000)))).toEqual(['テスト・置いてあるはターンの終わりまでBP-1000'])
+      })
+
+      it('名指しされていなければ、名前を添えない', () => {
+        expect(texts(withLog(created(undefined, 2000)))).toEqual(['ターンの終わりまでBP+2000'])
+      })
+
+      // 同 第3部 第10章 1。ダメージの除去とは別のできごとで、誰のものにもならない。
+      describe('終わったこと', () => {
+        const ended = (...cards: readonly string[]): DuelEvent => ({
+          kind: '継続効果が終了した',
+          effects: cards.map((card) => ({ card, change: { kind: 'ＢＰの変更', amount: 1000 } as const })),
+        })
+
+        /** 名前を引けるカードが 2 枚スクエアにある盤面。 */
+        function withTwoUnits(event: DuelEvent): WirePerspective {
+          const board = withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('置いてある', '先攻'), instance('別のユニット', '先攻')])
+          return { ...board, log: logged([event]) }
+        }
+
+        it('名前を「、」で区切って出す。名前に「・」が入っていても紛れない', () => {
+          expect(logLines(withTwoUnits(ended('置いてある', '別のユニット')))).toEqual([
+            {
+              kind: 'できごと',
+              whose: undefined,
+              text: 'ターンの終わりまでの効果が終わった：テスト・置いてある、テスト・別のユニット',
+              depth: 0,
+            },
+          ])
+        })
+
+        it('同じカードの効果が重なっていても、名前は 1 度だけ出す', () => {
+          expect(texts(withTwoUnits(ended('置いてある', '置いてある')))).toEqual([
+            'ターンの終わりまでの効果が終わった：テスト・置いてある',
+          ])
+        })
+
+        it('名指しされたカードが 1 枚も無ければ、名前を添えない', () => {
+          expect(texts(withLog(ended()))).toEqual(['ターンの終わりまでの効果が終わった'])
+        })
+      })
+    })
+
     // 総合ルール 第3部 第18章 1
     it('回復ステップで回復した量が出る', () => {
       const board = withLog({ kind: 'ダメージを回復した', player: '後攻', amount: 2000 })

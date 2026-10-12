@@ -6,6 +6,7 @@ import type {
   CardId,
   CardType,
   Color,
+  ContinuousChange,
   EffectiveUnitData,
   DuelEvent,
   DuelResult,
@@ -1019,6 +1020,18 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
       // 両者のカードとプレイヤーからまとめて取り除かれるので、誰のものでもない。
       case 'ダメージが取り除かれた':
         return { whose: undefined, text: 'ダメージが取り除かれた' }
+      // ダメージの除去と同時に起こるが、別のできごととして届く。名前は 1 度だけ出し、区切りは
+      // 「、」にする（カード名に「・」が入るため。#171）。見えない対象は並びから外れて届くので、
+      // 1 枚も名指しできなければ、名前を添えない。
+      case '継続効果が終了した': {
+        const cards = [...new Set(event.effects.map(({ card }) => named(card)))].filter(
+          (name): name is string => name !== undefined,
+        )
+        return {
+          whose: undefined,
+          text: `ターンの終わりまでの効果が終わった${cards.length === 0 ? '' : `：${cards.join('、')}`}`,
+        }
+      }
       case 'ダメージを回復した':
         return { whose: whose(event.player), text: `ダメージ ${event.amount} を回復した` }
       case 'バトルが始まった': {
@@ -1216,8 +1229,14 @@ function fullWidthDigits(value: number): string {
  *
  * 助詞を呼ぶ側から渡すのは、**名前が落ちた時に助詞だけが残らないようにする**ためである。
  */
-function about(name: string | undefined, particle: 'を' | 'に', text: string): string {
+function about(name: string | undefined, particle: 'を' | 'に' | 'は', text: string): string {
   return name === undefined ? text : `${name}${particle}${text}`
+}
+
+/** 継続効果が何をいくつ変えるか。`BP+2000`、`BP-1000` の形（符号は常に付ける）。 */
+function continuousChangeLabel(change: ContinuousChange): string {
+  const sign = change.amount < 0 ? '-' : '+'
+  return `BP${sign}${Math.abs(change.amount)}`
 }
 
 /** 命令 1 つを 1 行にする。 */
@@ -1255,6 +1274,10 @@ function instructionLine(
       return about(named(instruction.card), 'を', `${squareLabel(board.viewer, instruction.square)}へ`)
     case '誘発型能力を作る':
       return about(named(instruction.card), 'に', '能力を作った')
+    // 期限は、いつ戻るかが行から読めるように出す。ＢＰの数字は、画面のほかの所と同じく半角の
+    // `BP` で書く（符号を添える。負の時は `-`）。
+    case '継続効果を作成する':
+      return about(named(instruction.card), 'は', `${instruction.duration}${continuousChangeLabel(instruction.change)}`)
     case 'プランを裏返す':
       return `${whose(instruction.player)}のプランを裏返した`
     case 'カードを引く':
