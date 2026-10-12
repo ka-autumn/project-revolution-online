@@ -22,6 +22,7 @@ export type {
   ActivatedAbility,
   ActivationCost,
   ActivationTiming,
+  AllyAppearanceOccasion,
   AppearanceOccasion,
   AttributeAddingAbility,
   CourageAbility,

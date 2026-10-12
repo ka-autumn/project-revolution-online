@@ -44,6 +44,8 @@ export const TRIGGER_EVENTS = [
   // 総合ルール 第3部 第10章 3。ターンの終わりはリカバリーフェイズの中に来る。
   'ターンの終わり',
   '登場した時',
+  // 登場した本人だけでなく、同じ支配者のスクエアのユニット全員が見る（ADR-0037）。
+  '味方が登場した時',
   // 総合ルール 第4部 第6章 2-5。
   '移動が起動された時',
   // バトルの中で起こる順（総合ルール 第3部 第12章 1、第14章 1、第16章 1・2-3）。
@@ -122,13 +124,20 @@ export interface TriggeredAbility {
  * - `when` のきっかけ（`DiscardOccasion`）
  *   - いつ: 置かれる直前。置かれたユニットがまだスクエアにいる盤面（同 第7章 10）。
  *   - 姿: 継続効果を適用した後（`discard.ts`）。
+ * - `when` のきっかけ（`AllyAppearanceOccasion`）
+ *   - いつ: 置かれた直後。登場したユニットがもうスクエアにいる盤面。
+ *   - 姿: 継続効果を適用した後（`bank.ts` の `triggerAllyAppearance`）。
  * - `when` の `self`
- *   - いつ: 能力を探している盤面。捨札に置かれる時は、置かれる前。
+ *   - いつ: 能力を探している盤面。捨札に置かれる時は、置かれる前。味方が登場した時は、
+ *     登場したユニットを置いた後。
  *   - 姿: 書かれたまま。`self` の `id` を、きっかけの `id` と見比べる使い方を想定している。
+ *     登場した本人が能力を持つ時は、同じユニットが `self` では書かれたまま、きっかけの
+ *     `appeared` では継続効果を適用した後の姿になる。
  * - `condition` の `duel`（誘発する時）
  *   - いつ: 能力を探している盤面。捨札に置かれる時は、能力を持つユニットが同じ時に
  *     置かれるかどうかによらず、置かれる前の盤面（同 第7章 10。残る味方が持つ能力に
  *     ついては条文が明記していないので、全員を揃えた。運用が分かれば見直す）。
+ *     味方が登場した時は、登場したユニットを置いた後の盤面。
  *   - 姿: 継続効果を適用した後。`duel.self()` も同じ。
  * - `condition` の `duel`（解決する時）
  *   - いつ: 解決する時の盤面。捨札に置かれる時の誘発でも、置かれた後の盤面。
@@ -162,9 +171,11 @@ export type TriggerCondition<Occasion extends TriggerOccasion = TriggerOccasion>
  */
 export type OccasionOf<Event extends TriggerEvent> = Event extends '登場した時'
   ? AppearanceOccasion
-  : Event extends 'あなたのユニットがスクエアから捨札に置かれた時'
-    ? DiscardOccasion
-    : never
+  : Event extends '味方が登場した時'
+    ? AllyAppearanceOccasion
+    : Event extends 'あなたのユニットがスクエアから捨札に置かれた時'
+      ? DiscardOccasion
+      : never
 
 /**
  * その誘発イベントに付けられる絞り込み（`when`）の型。きっかけを持たない誘発イベントには
@@ -209,14 +220,15 @@ export type TriggerRequirement = (duel: DuelView) => boolean
  * 交わらないので 1 つの型にはまとめない。渡される形が経路ごとに決まっていれば、受け取る
  * カードの側にどのきっかけなのかを確かめる分岐が要らない。
  *
- * 誘発イベントごとに形が決まる。きっかけを持つのはいま「登場した時」と「あなたのユニットが
- * スクエアから捨札に置かれた時」だけで、他のイベントは誘発したこと自体以外に見るものが
- * 無い。必要になった時に足す（`card.ts` の属性・トリガーアイコンと同じ考え方）。
+ * 誘発イベントごとに形が決まる。きっかけを持つのはいま「登場した時」「味方が登場した時」と
+ * 「あなたのユニットがスクエアから捨札に置かれた時」だけで、他のイベントは誘発したこと自体
+ * 以外に見るものが無い。必要になった時に足す（`card.ts` の属性・トリガーアイコンと同じ
+ * 考え方）。
  *
- * どちらも置かれたスクエアを `square` に持つ。スクエアで絞り込む述語を、きっかけの種類を
+ * どれも置かれたスクエアを `square` に持つ。スクエアで絞り込む述語を、きっかけの種類を
  * 分けずに書けるようにするためである。
  */
-export type TriggerOccasion = AppearanceOccasion | DiscardOccasion
+export type TriggerOccasion = AppearanceOccasion | AllyAppearanceOccasion | DiscardOccasion
 
 /**
  * 「あなたのユニットがスクエアから捨札に置かれた時」のきっかけ（総合ルール 第4部 第7章 6）。
@@ -238,6 +250,25 @@ export interface AppearanceOccasion {
   readonly square: Square
   /** プレイされたゾーン。手札かプランゾーンのいずれかである（同 第4部 第6章 1）。 */
   readonly from: PlayerZone
+}
+
+/**
+ * 「味方が登場した時」のきっかけ（総合ルール 第2部 第20章 1-4-a、ADR-0037）。
+ *
+ * 「登場した時」のきっかけに、登場したユニットを足した形である。「登場した時」は登場した
+ * 本人の能力だけが見るので誰が登場したかを持たなくてよいが、こちらは同じ支配者のスクエアの
+ * ユニット全員が見るので、誰の登場かを持つ。「他の味方が登場した時」のように自分自身の
+ * 登場を除きたいときは、`TriggerCondition` が受け取る `self` と `appeared` の `id` を比べる
+ * （`DiscardOccasion` と同じ使い方）。
+ */
+export interface AllyAppearanceOccasion {
+  readonly kind: '味方の登場'
+  /** 置かれたスクエア。`appeared.square` と同じ。 */
+  readonly square: Square
+  /** プレイされたゾーン。手札かプランゾーンのいずれかである（同 第4部 第6章 1）。 */
+  readonly from: PlayerZone
+  /** 登場したユニット。置かれた直後の、継続効果を適用した後の姿である。 */
+  readonly appeared: UnitOnSquare
 }
 
 /**
@@ -665,8 +696,8 @@ export type Ability =
  * `{ when, condition }` のどちらか。
  *
  * - `triggeredAbility(event, effect, when)`: 誘発イベントを満たしたうえで `when` が真の
- *   時だけ誘発する。渡せるのはきっかけを持つ誘発イベント（「登場した時」と「あなたの
- *   ユニットがスクエアから捨札に置かれた時」、`TriggerOccasion`）に対してだけで、
+ *   時だけ誘発する。渡せるのはきっかけを持つ誘発イベント（「登場した時」「味方が登場した時」
+ *   と「あなたのユニットがスクエアから捨札に置かれた時」、`TriggerOccasion`）に対してだけで、
  *   持たない誘発イベントに渡すとコンパイルエラーになる
  * - `triggeredAbility(event, effect, { condition })`: 条件付誘発型能力になる
  *   （総合ルール 第4部 第7章 8）。`{ when, condition }` で両方を渡すこともできる

@@ -1047,6 +1047,28 @@ describe('効果によってスクエアに置くことは「登場」ではな�
     expect(resolved.triggered).toEqual([])
   })
 
+  // ADR-0037。置かれた本人が持つ能力も、先にスクエアにいる味方が持つ能力も誘発しない。
+  it('「味方が登場した時」に誘発する能力は誘発しない', () => {
+    const allyWatching = defineUnit({
+      name: 'テスト・味方の登場誘発',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [triggeredAbility('味方が登場した時', function* () {})],
+    })
+    const state = putOnSquare(
+      withInDiscard(instantiate({ id: '味方の登場誘発持ち', card: allyWatching, owner: '先攻' })),
+      nextEnemySquare,
+      instantiate({ id: '先客', card: allyWatching, owner: '先攻' }),
+    )
+
+    const resolved = resolveEffect(state, reviving.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+    expect(cardsOn(resolved, enemySquare)[0]?.id).toBe('味方の登場誘発持ち')
+    expect(resolved.triggered).toEqual([])
+  })
+
   // 総合ルール 第5部 第6章 3
   it('「根性」は働かず、指定した向きのまま置かれる', () => {
     const state = withInDiscard(instantiate({ id: '根性持ち', card: gutsy, owner: '先攻' }))

@@ -1,6 +1,6 @@
 import { cannot, done } from './action.js'
 import type { ActionOutcome, ActionViolation } from './action.js'
-import { triggerAppearance } from './bank.js'
+import { triggerAllyAppearance, triggerAppearance } from './bank.js'
 import { areaOf } from './board.js'
 import type { Square } from './board.js'
 import { hasDream, hasGuts } from './card.js'
@@ -204,7 +204,9 @@ function checkSquare(state: DuelState, player: Player, square: Square): ActionVi
  *
  * プレイされたユニットがスクエアに置かれることを「登場する」と表現する（同 1-4-a）。
  * 登場したことで、置かれたそのユニット自身の「登場した時」に誘発する能力が誘発する
- * （`triggerAppearance`）。効果によってスクエアに置かれる場合はここを通らないので誘発しない。
+ * （`triggerAppearance`）。あわせて、同じ支配者のスクエアのユニット全員（置かれた本人を
+ * 含む）の「味方が登場した時」に誘発する能力が誘発する（`triggerAllyAppearance`）。
+ * 効果によってスクエアに置かれる場合はここを通らないので、どちらも誘発しない。
  * 「根性」が効果によって置かれる時には働かない（同 第5部 第6章 3）のも、ここを通らない
  * ことがそのまま境目になっている。
  */
@@ -218,7 +220,8 @@ function placePlayedUnit(
 ): DuelState {
   const orientation = hasGuts(card) ? 'リリース' : 'フリーズ'
   const moved = moveToSquare(state, id, square, { controller: player, orientation })
-  const placed = triggerAppearance(moved, id, { kind: '登場', square, from })
+  const selfTriggered = triggerAppearance(moved, id, { kind: '登場', square, from })
+  const placed = triggerAllyAppearance(selfTriggered, id, from)
   // 置かれたユニットが相手のトラップのトリガーアイコンのスクエアに置かれたなら「侵入」に
   // なり、そのトラップの支配者が発動する権利を得る（総合ルール 第2部 第20章 3-6）。相手から
   // 見て味方エリアか中央エリアなら、あわせて「勇気」の起動条件も満たされる（同 第5部 第2章 2）。
