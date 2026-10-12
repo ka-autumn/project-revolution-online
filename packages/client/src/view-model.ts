@@ -6,11 +6,12 @@ import type {
   CardId,
   CardType,
   Color,
-  ContinuousChange,
+  EffectiveKeywords,
   EffectiveUnitData,
   DuelEvent,
   DuelResult,
   LegalAction,
+  LoggedContinuousChange,
   LoggedEvent,
   LoggedInstruction,
   MoveDirection,
@@ -502,7 +503,10 @@ function visibleInstances(board: WirePerspective): readonly WireCardInstance[] {
  */
 export function visibleCardViewsIn(board: WirePerspective): ReadonlyMap<CardId, CardView> {
   return new Map(
-    visibleInstances(board).map((instance) => [instance.id, faceUpView(instance, board.viewer, board.effective)]),
+    visibleInstances(board).map((instance) => [
+      instance.id,
+      faceUpView(instance, board.viewer, board.effective, effectiveKeywordsOf(board)),
+    ]),
   )
 }
 
@@ -691,13 +695,27 @@ function modifiedDataOf(
   return { bp, bpDirection, sp, spDirection, addedAttributes }
 }
 
+/**
+ * 継続効果を適用した後のキーワード能力の並び（ADR-0036）。盤面が送ってきたものを、そのまま渡す。
+ *
+ * 後から足した項目なので、古いサーバのデータには無い。無ければ、どのカードも書かれた
+ * キーワード能力のままとして扱う（`modifiedDataOf` の `sp` と同じ備え）。
+ */
+function effectiveKeywordsOf(board: WirePerspective): readonly EffectiveKeywords[] {
+  const sent: readonly EffectiveKeywords[] | undefined = board.effectiveKeywords
+  return sent ?? []
+}
+
 function faceUpView(
   instance: WireCardInstance,
   viewer: Player,
   effective: readonly EffectiveUnitData[] = [],
+  effectiveKeywords: readonly EffectiveKeywords[] = [],
 ): CardView {
   const modified = modifiedDataOf(instance, effective)
   const face = instance.card
+  // 与えられた能力を含めた並びで、書かれたキーワード能力と同じアイコンを出す（ADR-0027）。
+  const applied = effectiveKeywords.find((each) => each.card === instance.id)
 
   return {
     kind: '表',
@@ -707,6 +725,7 @@ function faceUpView(
     ownedBy: instance.owner === instance.controller ? undefined : whoseLabel(viewer, instance.owner),
     modified,
     ...faceFieldsOf(face),
+    ...(applied === undefined ? {} : { keywords: applied.keywords }),
     orientation: instance.orientation,
     damage: instance.damage,
   }
@@ -718,9 +737,14 @@ function faceUpView(
  * 裏向きのカードには置き場所を持たせる（#127）。届いた並びの何番目かがそのまま位置になる
  * （`protocol.ts` の `WireCardPosition`）ので、数え直さない。
  */
-function cardView(card: WireVisibleCard, viewer: Player, at: WireCardPosition): CardView {
+function cardView(
+  card: WireVisibleCard,
+  viewer: Player,
+  at: WireCardPosition,
+  effectiveKeywords: readonly EffectiveKeywords[],
+): CardView {
   return card.kind === '見えている'
-    ? faceUpView(card.instance, viewer)
+    ? faceUpView(card.instance, viewer, [], effectiveKeywords)
     : { kind: '裏', orientation: card.orientation, at }
 }
 
@@ -745,7 +769,9 @@ function zoneView(board: WirePerspective, owner: Player, zone: PlayerZone): Zone
     count: counted.length,
     cards: COUNTED_ZONES.includes(zone)
       ? []
-      : cards.map((card, index) => cardView(card, board.viewer, { player: owner, zone, index })),
+      : cards.map((card, index) =>
+          cardView(card, board.viewer, { player: owner, zone, index }, effectiveKeywordsOf(board)),
+        ),
   }
 }
 
@@ -1249,18 +1275,21 @@ function about(name: string | undefined, particle: 'を' | 'に' | 'は', text: 
 }
 
 /**
- * 継続効果が何をいくつ変えるか。ＢＰの変更は `BP+2000`、`BP-1000`、ＳＰの変更は `SP+1000` の形
- * （符号は常に付ける）。
+ * 継続効果が何を変えるか。ＢＰの変更は `BP+2000`、`BP-1000`、ＳＰの変更は `SP+1000` の形
+ * （符号は常に付ける）。能力の付与は `「夢」を得た` の形で、期限と続けて
+ * 「〈カード名〉はターンの終わりまで「夢」を得た」と読める。
  *
  * 種類ごとに分ける。エンジンが種類を足すと、ここで画面の型検査が止まる。この画面が知らない
  * 種類は、誤った文を作り出さず、読めなかったことを呼ぶ側に返す（#285、`UNREADABLE_LOG`）。
  */
-function continuousChangeLabel(change: ContinuousChange): string | undefined {
+function continuousChangeLabel(change: LoggedContinuousChange): string | undefined {
   switch (change.kind) {
     case 'ＢＰの変更':
       return `BP${signed(change.amount)}`
     case 'ＳＰの変更':
       return `SP${signed(change.amount)}`
+    case '能力の付与':
+      return `「${change.keyword}」を得た`
     default:
       change satisfies never
       return undefined

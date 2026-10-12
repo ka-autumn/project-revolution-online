@@ -1152,6 +1152,21 @@ describe('操作ログ', () => {
         expect(texts(withLog(spCreated(-500)))).toEqual(['テスト・置いてあるはターンの終わりまでSP-500'])
       })
 
+      it('能力の付与は、「〈カード名〉はターンの終わりまで「夢」を得た」の文で出る', () => {
+        const granted: DuelEvent = {
+          kind: '命令を実行した',
+          controller: '先攻',
+          instruction: {
+            kind: '継続効果を作成する',
+            card: '置いてある',
+            duration: 'ターンの終わりまで',
+            change: { kind: '能力の付与', keyword: '夢' },
+          },
+        }
+
+        expect(texts(withLog(granted))).toEqual(['テスト・置いてあるはターンの終わりまで「夢」を得た'])
+      })
+
       // 変更の種類を足したのに画面が古いと、BP の文として出てしまう（#285）。読めなかったことを出す。
       it('この画面が知らない種類の変更は、誤った文を出さず、表示できないログにする', () => {
         const unknown = {
@@ -2292,5 +2307,42 @@ describe('visibleCardViewsIn', () => {
     ])
 
     expect(visibleCardViewsIn(board).get('別のカード')).toBeUndefined()
+  })
+})
+
+// ADR-0036。プランゾーンのカードに与えられたキーワード能力は、書かれたものと同じ並びで出る
+// （アイコンを作る関数は同じ。ADR-0027）。
+describe('継続効果を適用した後のキーワード能力', () => {
+  const plan = instance('プラン', '先攻', { card: unitFace('テスト・プラン', { keywords: ['希望'] }) })
+  const onPlanZone = (extra: Partial<WirePerspective> = {}): WirePerspective => ({
+    ...withZone(emptyBoard('先攻'), '先攻', 'プランゾーン', [{ kind: '見えている', instance: plan }]),
+    ...extra,
+  })
+  const planKeywords = (board: WirePerspective) => {
+    const [card] = zoneOf(boardView(board), '自分', 'プランゾーン').cards
+    return card?.kind === '表' ? card.keywords : undefined
+  }
+
+  it('与えられていなければ、書かれたキーワード能力が出る', () => {
+    expect(planKeywords(onPlanZone())).toEqual(['希望'])
+  })
+
+  it('適用した後の並びが届けば、その並びが出る', () => {
+    const board = onPlanZone({ effectiveKeywords: [{ card: 'プラン', keywords: ['夢', '希望'] }] })
+
+    expect(planKeywords(board)).toEqual(['夢', '希望'])
+  })
+
+  it('別のカードの分は、効かない', () => {
+    const board = onPlanZone({ effectiveKeywords: [{ card: '別のカード', keywords: ['夢'] }] })
+
+    expect(planKeywords(board)).toEqual(['希望'])
+  })
+
+  // 画面とサーバは別々に配られる。古いサーバはこの項目を送らない。
+  it('古いサーバでこの項目が届かなくても、落ちずに書かれたキーワード能力が出る', () => {
+    const { effectiveKeywords: _, ...old } = onPlanZone()
+
+    expect(planKeywords(old as unknown as WirePerspective)).toEqual(['希望'])
   })
 })

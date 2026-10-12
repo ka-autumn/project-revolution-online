@@ -23,6 +23,7 @@ import {
   emptyDuelState,
   guts,
   instantiate,
+  legalActions,
   passPriority,
   playAsTrap,
   playCard,
@@ -35,6 +36,7 @@ import type {
   ActionOutcome,
   CardInstance,
   Chooser,
+  CreatedContinuousEffect,
   DuelState,
   Phase,
   PlayDeclaration,
@@ -1289,6 +1291,54 @@ describe('プランゾーンからのプレイ', () => {
     // プランゾーンにあるカードが他のゾーンに動いたので、プランゾーンはなくなる
     // （総合ルール 第2部 第21章 3-3）。
     expect(cardsIn(after, '先攻', 'プランゾーン')).toEqual([])
+  })
+
+  // 総合ルール 第4部 第12章 5-2 の(2)。与えられた「夢」も、プランゾーンからのプレイを許す。
+  describe('与えられた「夢」', () => {
+    const granted = (target: string): CreatedContinuousEffect => ({
+      target,
+      change: { kind: '能力の付与', ability: dream },
+      until: 'ターンの終わりまで',
+      controller: '先攻',
+    })
+
+    const withGrant = (target: string): DuelState => ({
+      ...planned(instantiate({ id: '夢なし', card: redUnit, owner: '先攻' })),
+      createdContinuousEffects: [granted(target)],
+    })
+
+    it('書かれた「夢」を持たなくても、与えられていればプランゾーンからプレイできる', () => {
+      const after = stateOf(play(withGrant('夢なし'), { card: '夢なし', square: homeSquare }))
+
+      expect(idsOf(cardsOn(after, homeSquare))).toEqual(['夢なし'])
+      expect(cardsIn(after, '先攻', 'プランゾーン')).toEqual([])
+    })
+
+    it('プレイしてスクエアへ移ると、与えられた能力は取り除かれる', () => {
+      const after = stateOf(play(withGrant('夢なし'), { card: '夢なし', square: homeSquare }))
+
+      expect(after.createdContinuousEffects).toEqual([])
+    })
+
+    it('別のカードに与えられていても、プランゾーンのカードはプレイできない', () => {
+      expect(violationOf(play(withGrant('別のカード'), { card: '夢なし', square: homeSquare }))).toBe(
+        'プランゾーンからプレイできない',
+      )
+    })
+
+    it('押せる手に、そのカードのプレイが現れる。与えられていなければ現れない', () => {
+      const playsFromPlan = (state: DuelState) =>
+        legalActions(state).some((action) => action.kind === 'カードをプレイする' && action.declaration.card === '夢なし')
+
+      expect(playsFromPlan(withGrant('夢なし'))).toBe(true)
+      expect(playsFromPlan(withGrant('別のカード'))).toBe(false)
+    })
+
+    // 総合ルール 第2部 第20章 3-1。「夢」のあるカードであっても、プランゾーンからトラップとしては
+    // プレイできない。与えられた「夢」も同じ。
+    it('トラップとしては、与えられていてもプランゾーンからプレイできない', () => {
+      expect(violationOf(playAsTrap(withGrant('夢なし'), '夢なし'))).toBe('そのゾーンにない')
+    })
   })
 
   it('「夢」を持たないカードはプランゾーンからプレイできない', () => {

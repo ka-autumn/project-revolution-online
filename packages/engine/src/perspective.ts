@@ -1,6 +1,7 @@
 import type { Battle } from './battle.js'
-import type { Attribute } from './card.js'
-import { continuousData } from './continuous.js'
+import { planKeywordsOf } from './card.js'
+import type { Attribute, PlanKeyword } from './card.js'
+import { appliedCard, continuousData } from './continuous.js'
 import { cardsIn, findAnywhere } from './duel.js'
 import type {
   BankedAbility,
@@ -43,6 +44,19 @@ export interface EffectiveUnitData {
   readonly sp: number
   /** 加わったものを含む属性（同 5-2 の(3)）。 */
   readonly attributes: readonly Attribute[]
+}
+
+/**
+ * 継続効果を適用した後の、プランゾーンのカードのキーワード能力（総合ルール 第4部 第12章 2、
+ * ADR-0027・ADR-0036）。
+ *
+ * カードに書かれた能力と違うカードの分だけを送る。プランゾーンのカードは公開情報であり（同
+ * 第2部 第23章 1-1）、どちらのプレイヤーにも同じものを送る。`EffectiveUnitData` と対になる項目で、
+ * 受ける側は、ここに無いカードは書かれたキーワード能力のままとして扱う。
+ */
+export interface EffectiveKeywords {
+  readonly card: CardId
+  readonly keywords: readonly PlanKeyword[]
 }
 
 /**
@@ -148,6 +162,11 @@ export interface DuelPerspective {
    * 盤面を持つここだけなので、**書かれている値とは別のものとして**添える。
    */
   readonly effective: readonly EffectiveUnitData[]
+  /**
+   * 継続効果を適用した後の、プランゾーンのカードのキーワード能力。書かれた能力と違うカードの分
+   * だけ。能力を与える効果が、スクエアの外のカードに及ぶためである。
+   */
+  readonly effectiveKeywords: readonly EffectiveKeywords[]
   readonly zones: Readonly<Record<Player, Readonly<Record<PlayerZone, readonly VisibleCard[]>>>>
   readonly damage: Readonly<Record<Player, number>>
   readonly turn: Turn
@@ -501,12 +520,30 @@ function effectiveUnitData(state: DuelState): readonly EffectiveUnitData[] {
   })
 }
 
+/**
+ * 継続効果を適用した後の、プランゾーンのカードのキーワード能力。書かれた能力と違うカードの分だけ。
+ *
+ * 与えられた能力を足すのは `continuous.ts` の `appliedCard` で、ここでは並べるだけである。
+ * 見比べるのは、アイコンを `planKeywordsOf` の同じ判定で作り、書かれた分と同じ見た目で出すため。
+ */
+function effectiveKeywordsOf(state: DuelState): readonly EffectiveKeywords[] {
+  return PLAYERS.flatMap((player) =>
+    cardsIn(state, player, 'プランゾーン').flatMap(({ id, card }) => {
+      const keywords = planKeywordsOf(appliedCard(state, id, card))
+      const written = planKeywordsOf(card)
+      const same = keywords.length === written.length && keywords.every((keyword, index) => keyword === written[index])
+      return same ? [] : [{ card: id, keywords }]
+    }),
+  )
+}
+
 /** ログ以外の射影。 */
 function projectBoard(state: DuelState, viewer: Player): DuelPerspective {
   return {
     viewer,
     squares: state.squares,
     effective: effectiveUnitData(state),
+    effectiveKeywords: effectiveKeywordsOf(state),
     zones: projectZones(state, viewer),
     damage: state.damage,
     turn: state.turn,

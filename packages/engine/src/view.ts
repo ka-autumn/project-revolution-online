@@ -156,11 +156,10 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
       for (const smash of smashes) source.show(smash.id)
       return smashes
     },
-    // 継続効果を適用した後の姿を読む。与えられた能力は、能力を与える効果が入った時に、上の
-    // `units()` が返す写しの `card.abilities` に載せる形で表す（いまはそうした効果が無く、
-    // 写しの能力は書かれたものと同じ）。そうなればここは直さずに済み、直すのは写しを作る側
-    // （`continuous.ts` の `continuousData`）である。与えられた能力が生むＢＰ修整を集める側
-    // （`continuous.ts` の `gather`）は、書かれた能力から引いているので別に直す。写しが
+    // 継続効果を適用した後の姿を読む。与えられた能力は、上の `units()` が返す写しの
+    // `card.abilities` に載っている（`continuous.ts` の `continuousData`）ので、ここは書かれた
+    // 能力と区別せずに読める。与えられた能力が生むＢＰの変更を集める側（`continuous.ts` の
+    // `gather`）は、書かれた能力から引いているので、与えられる種類を増やす時に別に直す。写しが
     // 見つからない（渡されたユニットがもうスクエアにいない）時は、渡された写しの能力を見る。
     hasKeyword: (unit, keyword) => hasKeyword((units().find((each) => each.id === unit.id) ?? unit).card, keyword),
   }
