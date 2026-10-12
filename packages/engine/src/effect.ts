@@ -302,9 +302,25 @@ export type CreatedAbilityEffect = (duel: DuelView, affected: UnitOnSquare) => E
  * 「誰に」だけになる。
  */
 export interface BpModifier {
+  readonly kind: 'ＢＰの変更'
   readonly target: CardId
   readonly amount: number
 }
+
+/**
+ * 継続効果が 1 枚のユニットのＳＰに与える変更（総合ルール 第4部 第12章 5-2 の(5)）。
+ *
+ * `BpModifier` と対になる。解決が残す継続効果（`createContinuousEffect`）にだけ渡せる。
+ * ＳＰを変える常在型能力は、書くテキストが出た時に口を足す。
+ */
+export interface SpModifier {
+  readonly kind: 'ＳＰの変更'
+  readonly target: CardId
+  readonly amount: number
+}
+
+/** `createContinuousEffect` に渡せる変更。種類の札（`kind`）で、何を変えるかが決まる。 */
+export type ContinuousModifier = BpModifier | SpModifier
 
 /**
  * 作成された継続効果が続く期限（総合ルール 第4部 第12章 3-1）。
@@ -320,10 +336,12 @@ export type Duration = (typeof DURATIONS)[number]
 /**
  * 作成された継続効果が、カードのデータをどう変えるか（総合ルール 第4部 第12章 5-2）。
  *
- * 種類の札（`kind`）で分かれる。いまはＢＰの変更だけで、ＳＰの変更と能力の付与は、それを
+ * 種類の札（`kind`）で分かれる。いまはＢＰの変更とＳＰの変更で、能力の付与は、それを
  * 書くテキストが出た時に並べる。盤面もログも、この型をそのまま持つ。
  */
-export type ContinuousChange = { readonly kind: 'ＢＰの変更'; readonly amount: number }
+export type ContinuousChange =
+  | { readonly kind: 'ＢＰの変更'; readonly amount: number }
+  | { readonly kind: 'ＳＰの変更'; readonly amount: number }
 
 /**
  * 「そのユニットのＢＰを＋Ｘ」。減らす変更は負の数で書く。
@@ -332,7 +350,14 @@ export type ContinuousChange = { readonly kind: 'ＢＰの変更'; readonly amou
  * 自分で探せないので、ここに渡せるものはすべて engine が見せたものになる。
  */
 export function bpPlus(target: UnitOnSquare, amount: number): BpModifier {
-  return { target: target.id, amount }
+  return { kind: 'ＢＰの変更', target: target.id, amount }
+}
+
+/**
+ * 「そのユニットのＳＰを＋Ｘ」。減らす変更は負の数で書く。対象の取り方は `bpPlus` と同じ。
+ */
+export function spPlus(target: UnitOnSquare, amount: number): SpModifier {
+  return { kind: 'ＳＰの変更', target: target.id, amount }
 }
 
 /**
@@ -620,10 +645,14 @@ export function* createTriggeredAbility(
  *
  * 渡された変更 1 つにつき 1 件を作る。対象は作る時に決まり、値は解決の時に 1 度だけ決まる
  * （同 3-2・3-3）。後から置かれたカードには及ばない。対象は engine が見せたユニットでなければ
- * ならない（`resolve.ts` の `shown`）。いま渡せるのはＢＰの変更（`bpPlus`）だけである。
+ * ならない（`resolve.ts` の `shown`）。いま渡せるのはＢＰの変更（`bpPlus`）とＳＰの変更
+ * （`spPlus`）で、何を変えるかは渡された値の種類の札で決まる。
  */
-export function* createContinuousEffect(duration: Duration, ...modifiers: readonly BpModifier[]): EffectStep<void> {
-  for (const { target, amount } of modifiers) {
-    yield { kind: '継続効果を作成する', duration, target, change: { kind: 'ＢＰの変更', amount } }
+export function* createContinuousEffect(
+  duration: Duration,
+  ...modifiers: readonly ContinuousModifier[]
+): EffectStep<void> {
+  for (const { kind, target, amount } of modifiers) {
+    yield { kind: '継続効果を作成する', duration, target, change: { kind, amount } }
   }
 }

@@ -124,10 +124,10 @@ describe('数値の札', () => {
     const squareBoard: WirePerspective = {
       ...emptyBoard('先攻'),
       squares: emptyBoard('先攻').squares.map((each, index) => (index === 0 ? [placed] : each)),
-      effective: [{ card: '1枚', bp: 3000, attributes: [] }],
+      effective: [{ card: '1枚', bp: 3000, sp: 1000, attributes: [] }],
     }
     const raised = visibleCardViewsIn(squareBoard).get('1枚')
-    const lowered = visibleCardViewsIn({ ...squareBoard, effective: [{ card: '1枚', bp: 1000, attributes: [] }] }).get('1枚')
+    const lowered = visibleCardViewsIn({ ...squareBoard, effective: [{ card: '1枚', bp: 1000, sp: 1000, attributes: [] }] }).get('1枚')
     if (raised?.kind !== '表' || lowered?.kind !== '表') throw new Error('表のはず')
 
     expect(peekStats(raised, 'スクエア')[0]).toMatchObject({ label: 'BP', value: 3000, change: '上', valueReading: '3000（元は 2000）' })

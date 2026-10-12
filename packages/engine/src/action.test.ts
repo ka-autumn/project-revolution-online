@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { bpModification } from './continuous.js'
 // 手札やエネルギーゾーンを組み立てるためだけに `putInZone` を使う。engine の中から
 // ゾーンを差し替えるための関数であり、公開する API ではない。
 import { putInZone } from './duel.js'
@@ -364,6 +365,52 @@ describe('スマッシュする', () => {
     const after = stateOf(smash(smashPhaseWith([enemySquare, 'スマッシュ役', sp0]), 'スマッシュ役'))
 
     expect(after.damage['後攻']).toBe(500)
+  })
+
+  /** そのユニットあての、ターンの終わりまでのＳＰの変更を足した盤面。 */
+  function withSpChange(state: DuelState, target: string, ...amounts: readonly number[]): DuelState {
+    return {
+      ...state,
+      createdContinuousEffects: [
+        ...state.createdContinuousEffects,
+        ...amounts.map((amount) => ({
+          target,
+          change: { kind: 'ＳＰの変更', amount } as const,
+          until: 'ターンの終わりまで' as const,
+          controller: '先攻' as const,
+        })),
+      ],
+    }
+  }
+
+  // 総合ルール 第4部 第12章 5-2 の(5)、第3部 第9章 1: ＳＰの変更を受けた後の数字がダメージになる。
+  it('ＳＰの変更を受けていれば、変更後のＳＰと同じダメージを与える', () => {
+    const raised = withSpChange(smashPhaseWith([centerSquare, 'スマッシュ役', sp500]), 'スマッシュ役', 200)
+    const lowered = withSpChange(smashPhaseWith([centerSquare, 'スマッシュ役', sp500]), 'スマッシュ役', -300)
+
+    expect(stateOf(smash(raised, 'スマッシュ役')).damage['後攻']).toBe(700)
+    expect(stateOf(smash(lowered, 'スマッシュ役')).damage['後攻']).toBe(200)
+  })
+
+  it('ＳＰの変更が重なっていれば、その分だけ足される。ほかのユニットの変更は受けない', () => {
+    const board = withSpChange(smashPhaseWith([centerSquare, 'スマッシュ役', sp500]), 'スマッシュ役', 100, 200)
+    const another = withSpChange(board, '別のユニット', 4000)
+
+    expect(stateOf(smash(another, 'スマッシュ役')).damage['後攻']).toBe(800)
+  })
+
+  // 同 第1部 第2章 2: 0 を下回る時は 0 として扱う。ＳＰが 0 以下でも、ユニットは捨札に置かれない。
+  it('ＳＰが 0 を下回る時は 0 として扱い、敵エリアのぶんだけを加える', () => {
+    const board = smashPhaseWith([enemySquare, 'スマッシュ役', sp500])
+    const lowered = withSpChange(board, 'スマッシュ役', -800)
+
+    expect(stateOf(smash(lowered, 'スマッシュ役')).damage['後攻']).toBe(500)
+  })
+
+  it('ＳＰの変更は、ＢＰの変更には影響しない', () => {
+    const board = withSpChange(smashPhaseWith([centerSquare, 'スマッシュ役', sp500]), 'スマッシュ役', 200)
+
+    expect(bpModification(board)('スマッシュ役')).toBe(0)
   })
 
   it('味方エリアのユニットではスマッシュできない', () => {

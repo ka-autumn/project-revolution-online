@@ -275,21 +275,21 @@ describe('継続効果を適用した後のデータ', () => {
   }
 
   it('修整を受けていれば、修整後のＢＰが出る', () => {
-    const view = unitView(withEffective([{ card: unit.id, bp: 3000, attributes: [] }]))
+    const view = unitView(withEffective([{ card: unit.id, bp: 3000, sp: 1000, attributes: [] }]))
 
     expect(view.kind === '表' && view.modified?.bp).toBe(3000)
   })
 
   /** 印刷された数字を消さない。どちらがカードに書かれている値かも要る（別の項目として持つ）。 */
   it('印刷された数字と、修整後の数字が、どちらも出る', () => {
-    const view = unitView(withEffective([{ card: unit.id, bp: 3000, attributes: [] }]))
+    const view = unitView(withEffective([{ card: unit.id, bp: 3000, sp: 1000, attributes: [] }]))
 
     expect(view.kind === '表' && view.bp).toBe(1000)
     expect(view.kind === '表' && view.modified?.bp).toBe(3000)
   })
 
   it('修整を受けていなければ、修整後のＢＰを出さない', () => {
-    const view = unitView(withEffective([{ card: unit.id, bp: 1000, attributes: [] }]))
+    const view = unitView(withEffective([{ card: unit.id, bp: 1000, sp: 1000, attributes: [] }]))
 
     expect(view.kind === '表' && view.modified).toBeUndefined()
     expect(view.kind === '表' && view.bp).toBe(1000)
@@ -303,7 +303,7 @@ describe('継続効果を適用した後のデータ', () => {
     ['上がっていれば「上」', 3000, '上'],
     ['下がっていれば「下」', 200, '下'],
   ] as const)('%s', (_, bp, expected) => {
-    const view = unitView(withEffective([{ card: unit.id, bp, attributes: [] }]))
+    const view = unitView(withEffective([{ card: unit.id, bp, sp: 1000, attributes: [] }]))
 
     expect(view.kind === '表' && view.modified?.bpDirection).toBe(expected)
   })
@@ -315,7 +315,7 @@ describe('継続効果を適用した後のデータ', () => {
     })
     const board: WirePerspective = {
       ...withSquare(emptyBoard('先攻'), SQUARE, [attributed]),
-      effective: [{ card: attributed.id, bp: 1000, attributes: ['目印', '夢'] }],
+      effective: [{ card: attributed.id, bp: 1000, sp: 1000, attributes: ['目印', '夢'] }],
     }
     const view = unitView(board)
 
@@ -328,7 +328,7 @@ describe('継続効果を適用した後のデータ', () => {
     const enemy = instance('相手の1枚', '後攻', { card: unitFace('テスト・相手', { bp: 1000 }) })
     const board: WirePerspective = {
       ...withSquare(emptyBoard('先攻'), SQUARE, [enemy]),
-      effective: [{ card: enemy.id, bp: 2000, attributes: [] }],
+      effective: [{ card: enemy.id, bp: 2000, sp: 1000, attributes: [] }],
     }
     const view = unitView(board)
 

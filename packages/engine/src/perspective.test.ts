@@ -331,6 +331,6 @@ describe('継続効果を適用した後のデータ', () => {
   it('修整を受けていなくても、そのユニットの分は載る', () => {
     const perspective = perspectiveOf(filledState(), '先攻')
 
-    expect(perspective.effective[0]).toEqual({ card: INVADER.id, bp: 1000, attributes: [] })
+    expect(perspective.effective[0]).toEqual({ card: INVADER.id, bp: 1000, sp: INVADER.card.sp, attributes: [] })
   })
 })

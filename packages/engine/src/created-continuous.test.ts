@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bpModification, continuousData } from './continuous.js'
+import { bpModification, continuousData, spModification } from './continuous.js'
 // ゾーンを移したり盤面を組んだりするためだけに使う。engine の中から盤面を組み替える関数であり、
 // 公開する API ではない。
 import { moveToSquare, moveToZone, putInZone } from './duel.js'
@@ -18,6 +18,8 @@ import {
   perspectiveOf,
   putOnSquare,
   resolveEffect,
+  spOf,
+  spPlus,
 } from './index.js'
 import type { CardId, Chooser, DuelEvent, DuelState, Effect, ResolutionVia, Square } from './index.js'
 
@@ -321,11 +323,175 @@ describe('ＢＰが 0 を下回る時', () => {
 })
 
 describe('作成された継続効果は、通信に載らない', () => {
-  it('射影した盤面は、効果の一覧を持たない。適用した後のＢＰだけを持つ', () => {
+  it('射影した盤面は、効果の一覧を持たない。適用した後のデータを持つ', () => {
     const state = resolved(boardOf([middle, '味方']), boostAlly(3000), '味方')
     const projected = perspectiveOf(state, '先攻')
 
     expect(projected).not.toHaveProperty('createdContinuousEffects')
     expect(projected.effective.find((data) => data.card === '味方')?.bp).toBe(4000)
+  })
+})
+
+/** 味方を 1 枚選び、「ターンの終わりまで、ＳＰを＋Ｎ」の継続効果を作る効果。 */
+const raiseSp = (amount: number): Effect =>
+  function* (duel) {
+    const ally = yield* choose(duel.allies())
+    if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+    yield* createContinuousEffect('ターンの終わりまで', spPlus(ally, amount))
+  }
+
+/** そのユニットのＳＰ。継続効果を適用した後の値で読む。 */
+const spOn = (state: DuelState, id: CardId, card = vanilla) => spOf(card, spModification(state)(id))
+
+// 総合ルール 第4部 第12章 5-2 の(5)。ＢＰの変更とＳＰの変更は同じ種類で、同じ仕組みに乗る（ADR-0036）
+describe('ＳＰを変える作成された継続効果', () => {
+  it('作った効果を、盤面が値として持つ', () => {
+    const state = resolved(boardOf([middle, '味方']), raiseSp(500), '味方')
+
+    expect(state.createdContinuousEffects).toEqual([
+      { target: '味方', change: { kind: 'ＳＰの変更', amount: 500 }, until: 'ターンの終わりまで', controller: '先攻' },
+    ])
+  })
+
+  // 同 第12章 2
+  it('作った後のＳＰに、変更が現れる。作る前は、カードに書かれた数字のままである', () => {
+    const board = boardOf([middle, '味方'])
+    const state = resolved(board, raiseSp(500), '味方')
+
+    expect(spOn(board, '味方')).toBe(1000)
+    expect(spOn(state, '味方')).toBe(1500)
+    expect(continuousData(state)('味方', vanilla).sp).toBe(1500)
+  })
+
+  it('効果が複数あれば、その分だけ足される', () => {
+    const board = boardOf([left, '先に選ぶ味方'], [middle, '味方'])
+    const state = resolved(resolved(resolved(board, raiseSp(500), '味方'), raiseSp(300), '先に選ぶ味方'), raiseSp(200), '味方')
+
+    expect(spOn(state, '味方')).toBe(1000 + 500 + 200)
+    expect(spOn(state, '先に選ぶ味方')).toBe(1000 + 300)
+  })
+
+  // 同 第12章 3-2・3-3
+  it('作った後にスクエアに置かれたユニットには、及ばない', () => {
+    const made = resolved(boardOf([middle, '味方']), raiseSp(500), '味方')
+    const later = putOnSquare(made, right, unit('後から置かれた味方'))
+
+    expect(spOn(later, '後から置かれた味方')).toBe(1000)
+  })
+
+  // 同 第12章 5-2 の(5): どちらも「ＢＰやＳＰを変更する継続効果」だが、互いの値は見ない。
+  it('ＢＰの変更と同じ対象に作っても、互いの値に影響しない', () => {
+    const board = boardOf([middle, '味方'])
+    const state = resolved(resolved(board, boostAlly(3000), '味方'), raiseSp(500), '味方')
+
+    expect(bpOn(state, '味方')).toBe(4000)
+    expect(spOn(state, '味方')).toBe(1500)
+    expect(bpModification(state)('味方')).toBe(3000)
+    expect(spModification(state)('味方')).toBe(500)
+    const data = continuousData(state)('味方', vanilla)
+    expect([data.bp, data.sp]).toEqual([4000, 1500])
+  })
+
+  it('1 つの命令でＢＰとＳＰの変更を渡せば、1 件ずつ作る', () => {
+    const effect: Effect = function* (duel) {
+      const [ally] = duel.allies()
+      if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+      yield* createContinuousEffect('ターンの終わりまで', bpPlus(ally, 1000), spPlus(ally, 200))
+    }
+    const state = resolveEffect(boardOf([middle, '味方']), effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+    expect(state.createdContinuousEffects.map((each) => each.change)).toEqual([
+      { kind: 'ＢＰの変更', amount: 1000 },
+      { kind: 'ＳＰの変更', amount: 200 },
+    ])
+  })
+
+  // 常在型能力が返す型はＢＰの変更に絞られるので、ＳＰの変更を返す能力は型で書けない。
+  it('常在型能力のＢＰの変更は、ＳＰに影響しない', () => {
+    const board = boardOf([left, '強化するユニット', boosting], [middle, '味方'])
+
+    expect(bpOn(board, '味方')).toBe(3000)
+    expect(spOn(board, '味方')).toBe(1000)
+  })
+
+  it('作ったことが、ログに積まれる', () => {
+    const state = resolved(boardOf([middle, '味方']), raiseSp(500), '味方')
+
+    expect(
+      eventsOf(state).flatMap((event) => (event.kind === '命令を実行した' ? [event.instruction] : [])),
+    ).toContainEqual({
+      kind: '継続効果を作成する',
+      card: '味方',
+      duration: 'ターンの終わりまで',
+      change: { kind: 'ＳＰの変更', amount: 500 },
+    })
+  })
+
+  // 同 第12章 3-1、第3章 4-1 と同じ場所で取り除く（ADR-0036）
+  it('対象がスクエアからスクエアへ移動しても、続く。それ以外のゾーン移動で取り除かれる', () => {
+    const made = resolved(boardOf([middle, '味方']), raiseSp(500), '味方')
+    const moved = moveToSquare(made, '味方', right, { controller: '先攻', orientation: 'リリース' })
+
+    expect(spOn(moved, '味方')).toBe(1500)
+    expect(moveToZone(made, '味方', '捨札').createdContinuousEffects).toEqual([])
+    const replayed = moveToSquare(moveToZone(made, '味方', '手札'), '味方', middle, {
+      controller: '先攻',
+      orientation: 'リリース',
+    })
+    expect(spOn(replayed, '味方')).toBe(1000)
+  })
+
+  it('射影した盤面は、効果の一覧を持たない。適用した後のＳＰを持つ', () => {
+    const state = resolved(boardOf([middle, '味方']), raiseSp(500), '味方')
+    const projected = perspectiveOf(state, '先攻')
+
+    expect(projected).not.toHaveProperty('createdContinuousEffects')
+    expect(projected.effective.find((data) => data.card === '味方')).toMatchObject({ bp: 1000, sp: 1500 })
+  })
+})
+
+// 総合ルール 第1部 第2章 2（ADR-0036）
+describe('ＳＰが 0 を下回る時', () => {
+  const reduce = (state: DuelState, amount: number) => resolved(state, raiseSp(amount), '味方')
+
+  it('読む所では 0 として扱う', () => {
+    const state = reduce(boardOf([middle, '味方']), -1500)
+
+    expect(spOn(state, '味方')).toBe(0)
+    expect(continuousData(state)('味方', vanilla).sp).toBe(0)
+  })
+
+  it('変更の合計は、負のまま持つ', () => {
+    expect(spModification(reduce(boardOf([middle, '味方']), -1500))('味方')).toBe(-1500)
+  })
+
+  it('さらに足す時は、マイナスになった数値を元に計算する', () => {
+    const state = reduce(reduce(boardOf([middle, '味方']), -1500), 1000)
+
+    // 1000 - 1500 + 1000 = 500。0 に 1000 を足した 1000 にはならない。
+    expect(spOn(state, '味方')).toBe(500)
+  })
+
+  // 同 第4部 第14章 4-5・4-6 はＢＰの規定である。ＳＰが 0 以下でも、ユニットは捨札に置かれない。
+  it('ＳＰが 0 以下になったユニットは、捨札に置かれない', () => {
+    const stocked = putInZone(
+      putInZone(boardOf([middle, '味方']), '先攻', '山札', [unit('先攻の山札')]),
+      '後攻',
+      '山札',
+      [instantiate({ id: '後攻の山札', card: vanilla, owner: '後攻' })],
+    )
+    const after = passPriority(reduce(stocked, -1500), chooseFirst)
+
+    expect(cardsOn(after, middle).map((card) => card.id)).toEqual(['味方'])
+  })
+
+  it('下げる変更を、ログに符号つきで残す', () => {
+    const state = reduce(boardOf([middle, '味方']), -1500)
+
+    expect(
+      eventsOf(state).flatMap((event) => (event.kind === '命令を実行した' ? [event.instruction] : [])),
+    ).toContainEqual(
+      expect.objectContaining({ kind: '継続効果を作成する', change: { kind: 'ＳＰの変更', amount: -1500 } }),
+    )
   })
 })
