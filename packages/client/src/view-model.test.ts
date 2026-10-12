@@ -903,6 +903,18 @@ describe('操作ログ', () => {
     ])
   })
 
+  /** カード名には「・」が入るものが多いので、区切りに使うと何枚なのか読めなくなる（#171）。 */
+  it('捨札に置かれたカードが複数でも、名前は「、」で区切られる', () => {
+    const board = withSquare(emptyBoard('先攻'), ON_SQUARE, [
+      { ...instance('置いてある', '先攻'), card: unitFace('テスト・アルファ・ベータ') },
+      { ...instance('もう1枚', '先攻'), card: unitFace('テスト・ガンマ・デルタ・イプシロン') },
+    ])
+
+    expect(
+      texts({ ...board, log: logged([{ kind: 'ルールで捨札に置かれた', cards: ['置いてある', 'もう1枚'] }]) }),
+    ).toEqual(['ルールで捨札：テスト・アルファ・ベータ、テスト・ガンマ・デルタ・イプシロン'])
+  })
+
   it('決着は、見る人から見た言い方で出る', () => {
     const board = withLog({ kind: '決着した', result: { kind: '勝利', winner: '後攻' } })
 

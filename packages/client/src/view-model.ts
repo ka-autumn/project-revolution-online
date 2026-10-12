@@ -1055,7 +1055,7 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
       }
       case 'ルールで捨札に置かれた': {
         const cards = event.cards.map((card) => nameOf(names, card))
-        return { whose: undefined, text: `ルールで捨札：${cards.join('・')}` }
+        return { whose: undefined, text: `ルールで捨札：${cards.join('、')}` }
       }
       case '決着した':
         return { whose: undefined, text: `決着：${resultLabel(event.result, board.viewer)}` }
