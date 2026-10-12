@@ -4,6 +4,8 @@ import { appliedCard, bpModification, continuousData, spModification } from './c
 // 公開する API ではない。
 import { draw, faceDownPlan, moveToSquare, moveToZone, putInZone } from './duel.js'
 import {
+  alsoTreatedAs,
+  attributeAdding,
   bpModifying,
   bpOf,
   bpPlus,
@@ -648,9 +650,11 @@ describe('能力を与える作成された継続効果', () => {
     expect(answers).toEqual([false, true])
   })
 
-  // 同 5-2。テキストを変更する継続効果は、ＢＰを変更する継続効果より先に適用する。ＢＰを変える
-  // 常在型能力が見る盤面には、与えられた能力が載っている。
-  it('ＢＰを変更する常在型能力が見る盤面には、与えられた能力が先に載っている', () => {
+  // 同 5-2。テキストを変更する継続効果は、ＢＰを変更する継続効果・属性を変更する継続効果より先に
+  // 適用する。それらの常在型能力が見る盤面には、与えられた能力が載っている。読む経路は 2 つある
+  // （効果が読む `bpModification` と、通信に載る適用した後のデータを作る `continuousData`）ので、
+  // どちらも確かめる。
+  describe('常在型能力が見る盤面には、与えられた能力が先に載っている', () => {
     const dreamBooster = defineUnit({
       name: 'テスト・夢を持つ味方を強化',
       level: 1,
@@ -666,12 +670,49 @@ describe('能力を与える作成された継続効果', () => {
         ),
       ],
     })
-    const board = boardOf([left, '強化するユニット', dreamBooster], [middle, '味方'])
-    expect(bpOn(board, '味方')).toBe(1000)
+    const dreamMarker = defineUnit({
+      name: 'テスト・夢を持つ味方に属性を加える',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [
+        attributeAdding((duel) =>
+          duel
+            .allies()
+            .filter((ally) => duel.hasKeyword(ally, '夢'))
+            .map((ally) => alsoTreatedAs(ally, 'テスト属性')),
+        ),
+      ],
+    })
 
-    const state = resolved(board, grantDreamToAlly, '味方')
+    it('ＢＰを変更する常在型能力は、効果が読む経路でも、与えられた味方を数える', () => {
+      const board = boardOf([left, '強化するユニット', dreamBooster], [middle, '味方'])
+      expect(bpOn(board, '味方')).toBe(1000)
 
-    expect(bpOn(state, '味方')).toBe(3000)
+      expect(bpOn(resolved(board, grantDreamToAlly, '味方'), '味方')).toBe(3000)
+    })
+
+    it('ＢＰを変更する常在型能力は、通信に載る適用した後のデータでも、与えられた味方を数える', () => {
+      const board = boardOf([left, '強化するユニット', dreamBooster], [middle, '味方'])
+      const state = resolved(board, grantDreamToAlly, '味方')
+
+      expect(continuousData(board)('味方', vanilla).bp).toBe(1000)
+      expect(continuousData(state)('味方', vanilla).bp).toBe(3000)
+      expect(perspectiveOf(state, '先攻').effective.find((data) => data.card === '味方')?.bp).toBe(3000)
+    })
+
+    it('属性を加える常在型能力は、与えられた味方に属性を加える', () => {
+      const board = boardOf([left, '属性を加えるユニット', dreamMarker], [middle, '味方'])
+      expect(continuousData(board)('味方', vanilla).attributes).not.toContain('テスト属性')
+
+      const state = resolved(board, grantDreamToAlly, '味方')
+
+      expect(continuousData(state)('味方', vanilla).attributes).toContain('テスト属性')
+      expect(perspectiveOf(state, '先攻').effective.find((data) => data.card === '味方')?.attributes).toContain(
+        'テスト属性',
+      )
+    })
   })
 
   it('同じ対象に、ＢＰの変更と能力の付与が重なっても、互いに影響しない', () => {
@@ -747,7 +788,8 @@ describe('能力を与える作成された継続効果', () => {
   })
 })
 
-// ADR-0036。スクエアの外のカードの適用した後の姿は、通信に載る（アイコンのため）。
+// ADR-0036。スクエアの外のカードの適用した後の姿は、通信に載る（アイコンのため）。プランゾーンの
+// カードは公開情報なので、どちらの視点にも同じものを送る（総合ルール 第2部 第23章 1-1）。
 describe('プランゾーンのカードに与えられた能力の射影', () => {
   const grantToPlan: Effect = function* (duel) {
     const [plan] = duel.planZone()

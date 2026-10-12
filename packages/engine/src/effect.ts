@@ -177,7 +177,7 @@ export interface DuelView {
    * 継続効果を適用した後の姿を読む。属性（`UnitOnSquare.card.attributes`）と同じ扱いで、
    * 能力を与える効果（`granting`）が与えた能力は、`units()` の返す写しの `card.abilities`
    * に載る（`continuous.ts` の `continuousData`）。尋ねる口はここなので、写しの作り方が
-   * 変わってもカードの側は直さずに済む。ただし、与えられた能力が生むＢＰ修整を集める側
+   * 変わってもカードの側は直さずに済む。ただし、与えられた能力が生むＢＰの変更を集める側
    * （`continuous.ts` の `gather`）は、書かれた能力から引いているので、与えられる種類
    * （`GrantableAbility`）を増やす時に別に直す。盤面から来た写しの `card` に `card.ts` の
    * `hasKeyword` を呼んでも同じ答えになる。

@@ -112,8 +112,9 @@ export function spModification(state: DuelState): SpModification {
 /**
  * 盤面が持つ、作成された継続効果のうち、その種類のものを対象ごとに足し合わせる。
  *
- * スクエアにいないユニットあてのものは数えない。ＢＰ・ＳＰを持つのはスクエアにいるユニットだけ
- * （総合ルール 第4部 第12章）で、数えなくても、対象がゾーンを移った時（`duel.ts` の
+ * スクエアにいないユニットあてのものは数えない。engine がＢＰ・ＳＰを読むのは、スクエアにいる
+ * ユニットの分だけである（`continuousData`・`bpModification`・`spModification` の読み手は
+ * `unitsOnSquares` のユニットだけ）。数えなくても、対象がゾーンを移った時（`duel.ts` の
  * `withoutEffectsCreatedOn`）か期限が来た時に取り除かれる。
  */
 function createdChangeTotals(state: DuelState, kind: ContinuousChange['kind']): Map<CardId, number> {

@@ -158,7 +158,7 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
     },
     // 継続効果を適用した後の姿を読む。与えられた能力は、上の `units()` が返す写しの
     // `card.abilities` に載っている（`continuous.ts` の `continuousData`）ので、ここは書かれた
-    // 能力と区別せずに読める。与えられた能力が生むＢＰ修整を集める側（`continuous.ts` の
+    // 能力と区別せずに読める。与えられた能力が生むＢＰの変更を集める側（`continuous.ts` の
     // `gather`）は、書かれた能力から引いているので、与えられる種類を増やす時に別に直す。写しが
     // 見つからない（渡されたユニットがもうスクエアにいない）時は、渡された写しの能力を見る。
     hasKeyword: (unit, keyword) => hasKeyword((units().find((each) => each.id === unit.id) ?? unit).card, keyword),
