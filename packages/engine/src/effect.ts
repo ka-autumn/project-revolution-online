@@ -175,12 +175,12 @@ export interface DuelView {
    * 要る。数値を持つキーワード能力でも、数値は問わない。
    *
    * 継続効果を適用した後の姿を読む。属性（`UnitOnSquare.card.attributes`）と同じ扱いで、
-   * 能力を与える効果が入った時は、与えられた能力が `units()` の返す写しの `card.abilities`
-   * に載る形で表す（いまはそうした効果が無く、カードに書かれた能力を見るだけである）。
-   * 尋ねる口はここなので、写しの作り方が変わってもカードの側は直さずに済む。ただし、与えられた
-   * 能力が生むＢＰ修整を集める側（`continuous.ts` の `gather`）は、書かれた能力から引いて
-   * いるので別に直す。盤面から来た写しの `card` に `card.ts` の `hasKeyword` を呼んでも
-   * 同じ答えになる。
+   * 能力を与える効果（`granting`）が与えた能力は、`units()` の返す写しの `card.abilities`
+   * に載る（`continuous.ts` の `continuousData`）。尋ねる口はここなので、写しの作り方が
+   * 変わってもカードの側は直さずに済む。ただし、与えられた能力が生むＢＰ修整を集める側
+   * （`continuous.ts` の `gather`）は、書かれた能力から引いているので、与えられる種類
+   * （`GrantableAbility`）を増やす時に別に直す。盤面から来た写しの `card` に `card.ts` の
+   * `hasKeyword` を呼んでも同じ答えになる。
    */
   hasKeyword(unit: UnitOnSquare, keyword: PassiveKeyword): boolean
 }
