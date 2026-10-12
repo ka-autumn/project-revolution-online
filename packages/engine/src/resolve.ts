@@ -340,7 +340,8 @@ function apply(
         throw new Error('効果に見せていないカードが対象にされた')
       }
       // 「登場」ではないので、`play.ts` の `placePlayedUnit` を通さない。ここを通らない
-      // ことで、「登場した時」の誘発（`triggerAppearance`）も「根性」による向きの置換
+      // ことで、「登場した時」「味方が登場した時」の誘発（`triggerAppearance`・
+      // `triggerAllyAppearance`）も「根性」による向きの置換
       // （総合ルール 第5部 第6章 3）も起こらない。指定された向きがそのまま使われる。
       return {
         state: moveToSquare(state, instruction.card.id, instruction.square, {

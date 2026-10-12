@@ -436,6 +436,194 @@ describe('登場', () => {
   })
 })
 
+/**
+ * 総合ルール 第2部 第20章 1-4-a（ADR-0006、ADR-0037）。
+ *
+ * 「味方が登場した時」は、登場した本人だけでなく、同じ支配者のスクエアのユニット全員が見る。
+ * プレイされてスクエアに置かれたユニットは、その時点でスクエアにある自分のユニットなので、
+ * 本人も数に入る。
+ */
+describe('味方の登場', () => {
+  /** 「味方が登場した時」に誘発する能力を持つレベル 2 の赤いユニット。 */
+  const allyWatcher = defineUnit({
+    name: 'テスト・味方の登場を見るユニット',
+    level: 2,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [triggeredAbility('味方が登場した時', function* () {})],
+  })
+
+  /** 「他の味方が登場した時」に誘発する能力を持つレベル 2 の赤いユニット。自分自身の登場は除く。 */
+  const otherAllyWatcher = defineUnit({
+    name: 'テスト・他の味方の登場を見るユニット',
+    level: 2,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility(
+        '味方が登場した時',
+        function* () {},
+        (occasion, _controller, self) => occasion.appeared.id !== self.id,
+      ),
+    ],
+  })
+
+  /** 誘発した能力の発生源。並びはルール上の意味を持たない（総合ルール 第4部 第7章 3）ので揃える。 */
+  const sourcesOf = (state: DuelState) => state.bank.map((banked) => banked.source).sort()
+
+  function resolvedAbilities(state: DuelState): number {
+    return state.log.filter((recorded) => recorded.event.kind === '能力を解決した').length
+  }
+
+  /** 先攻が次に行動できるところまで、互いに優先権を放棄する。バンクにある能力はその間に解決される。 */
+  function untilActiveMayAct(state: DuelState): DuelState {
+    let current = state
+    while (current.bank.length > 0 || current.turn.priority !== '先攻') current = passPriority(current, chooseFirst)
+    return current
+  }
+
+  it('同じ支配者のスクエアのユニット全員の「味方が登場した時」の能力が誘発する', () => {
+    const newUnit = instantiate({ id: '新入り', card: redUnit, owner: '先攻' })
+    const state = [
+      [otherHomeSquare, instantiate({ id: '見張り1', card: allyWatcher, owner: '先攻' })] as const,
+      [centerSquare, instantiate({ id: '見張り2', card: allyWatcher, owner: '先攻' })] as const,
+    ].reduce((board, [square, card]) => putOnSquare(board, square, card), readyToPlay([newUnit], twoEnergies()))
+
+    const after = stateOf(play(state, { card: '新入り', square: homeSquare }))
+
+    expect(sourcesOf(after)).toEqual(['見張り1', '見張り2'])
+  })
+
+  it('登場した本人が持つ「味方が登場した時」の能力も誘発する', () => {
+    const unit = instantiate({ id: '新入り', card: allyWatcher, owner: '先攻' })
+
+    const after = stateOf(play(readyToPlay([unit], twoEnergies()), { card: '新入り', square: homeSquare }))
+
+    expect(sourcesOf(after)).toEqual(['新入り'])
+  })
+
+  // 相手のユニットから見れば、登場したのは敵である。
+  it('相手の支配するユニットの能力は誘発しない', () => {
+    const newUnit = instantiate({ id: '新入り', card: redUnit, owner: '先攻' })
+    const theirs = instantiate({ id: '相手の見張り', card: allyWatcher, owner: '後攻' })
+    const state = putOnSquare(readyToPlay([newUnit], twoEnergies()), enemySquare, theirs)
+
+    const after = stateOf(play(state, { card: '新入り', square: homeSquare }))
+
+    expect(sourcesOf(after)).toEqual([])
+  })
+
+  describe('きっかけの絞り込みで「他の味方が登場した時」に限る', () => {
+    it('他の味方が登場したなら誘発する', () => {
+      const newUnit = instantiate({ id: '新入り', card: redUnit, owner: '先攻' })
+      const already = instantiate({ id: '見張り', card: otherAllyWatcher, owner: '先攻' })
+      const state = putOnSquare(readyToPlay([newUnit], twoEnergies()), otherHomeSquare, already)
+
+      const after = stateOf(play(state, { card: '新入り', square: homeSquare }))
+
+      expect(sourcesOf(after)).toEqual(['見張り'])
+    })
+
+    it('自分自身が登場しても誘発しない', () => {
+      const unit = instantiate({ id: '新入り', card: otherAllyWatcher, owner: '先攻' })
+
+      const after = stateOf(play(readyToPlay([unit], twoEnergies()), { card: '新入り', square: homeSquare }))
+
+      expect(sourcesOf(after)).toEqual([])
+    })
+  })
+
+  it('きっかけは、置かれたスクエア・プレイされたゾーン・登場したユニットを持つ', () => {
+    const seen: unknown[] = []
+    const recorder = defineUnit({
+      name: 'テスト・きっかけを写すユニット',
+      level: 2,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [
+        triggeredAbility(
+          '味方が登場した時',
+          function* () {},
+          ({ square, from, appeared }) => {
+            seen.push({ square, from, id: appeared.id, controller: appeared.controller, at: appeared.square })
+            return true
+          },
+        ),
+      ],
+    })
+    const newUnit = instantiate({ id: '新入り', card: redUnit, owner: '先攻' })
+    const already = instantiate({ id: '見張り', card: recorder, owner: '先攻' })
+    const state = putOnSquare(readyToPlay([newUnit], twoEnergies()), otherHomeSquare, already)
+
+    play(state, { card: '新入り', square: homeSquare })
+
+    expect(seen).toEqual([{ square: homeSquare, from: '手札', id: '新入り', controller: '先攻', at: homeSquare }])
+  })
+
+  // 総合ルール 第4部 第7章 6。誘発イベントを満たすたびに 1 度ずつ誘発する。
+  it('同じターンに味方が 2 回登場すれば、2 回誘発して 2 回解決される', () => {
+    const hand = ['新入り1', '新入り2'].map((id) => instantiate({ id, card: redUnit, owner: '先攻' }))
+    const energies = [...twoEnergies(), energy('赤エネ2', '赤'), energy('青エネ2', '青')]
+    const already = instantiate({ id: '見張り', card: allyWatcher, owner: '先攻' })
+    const state = putOnSquare(readyToPlay(hand, energies), centerSquare, already)
+
+    const once = untilActiveMayAct(stateOf(play(state, { card: '新入り1', square: homeSquare })))
+    const twice = untilActiveMayAct(stateOf(play(once, { card: '新入り2', square: otherHomeSquare })))
+
+    expect(resolvedAbilities(once)).toBe(1)
+    expect(resolvedAbilities(twice)).toBe(2)
+    expect(twice.turn).toEqual(state.turn)
+  })
+
+  describe('これまでの「登場した時」は変わらない', () => {
+    it('「登場した時」だけを持つユニットが、能力を持たない味方のいる盤面に登場すれば、誘発するのは本人の 1 件だけ', () => {
+      const newUnit = instantiate({ id: '新入り', card: appearingUnit, owner: '先攻' })
+      const already = instantiate({ id: '先客', card: redUnit, owner: '先攻' })
+      const state = putOnSquare(readyToPlay([newUnit], twoEnergies()), otherHomeSquare, already)
+
+      const after = stateOf(play(state, { card: '新入り', square: homeSquare }))
+
+      expect(after.bank.map(({ source, ability }) => [source, ability.kind === '誘発型能力' && ability.event])).toEqual(
+        [['新入り', '登場した時']],
+      )
+    })
+
+    it('味方の「登場した時」は、「味方が登場した時」が足されても誘発しない', () => {
+      const newUnit = instantiate({ id: '新入り', card: allyWatcher, owner: '先攻' })
+      const already = instantiate({ id: '先客', card: appearingUnit, owner: '先攻' })
+      const state = putOnSquare(readyToPlay([newUnit], twoEnergies()), otherHomeSquare, already)
+
+      const after = stateOf(play(state, { card: '新入り', square: homeSquare }))
+
+      expect(sourcesOf(after)).toEqual(['新入り'])
+    })
+
+    // 総合ルール 第4部 第7章 3、第8章 1-1。同時にバンクに入り、どれから解決するかは支配者が選ぶ。
+    it.each(['新入り', '見張り'])(
+      '本人の「登場した時」と味方の「味方が登場した時」は同時にバンクに入り、支配者は %s の能力から解決できる',
+      (first) => {
+        const newUnit = instantiate({ id: '新入り', card: appearingUnit, owner: '先攻' })
+        const already = instantiate({ id: '見張り', card: allyWatcher, owner: '先攻' })
+        const state = putOnSquare(readyToPlay([newUnit], twoEnergies()), otherHomeSquare, already)
+        const chooseThat: Chooser = (candidates, _player, purpose) =>
+          purpose === '解決する能力'
+            ? candidates.find((candidate) => (candidate as { source?: string }).source === first)
+            : candidates[0]
+
+        const banked = stateOf(play(state, { card: '新入り', square: homeSquare }))
+        // 優先権は非アクティブプレイヤーにある。両者が続けて放棄すると、能力が 1 つ解決される。
+        const resolved = passPriority(passPriority(banked, chooseThat), chooseThat)
+
+        expect(sourcesOf(banked)).toEqual(['新入り', '見張り'].sort())
+        expect(sourcesOf(resolved)).toEqual(['新入り', '見張り'].filter((source) => source !== first))
+      },
+    )
+  })
+})
+
 // 総合ルール 第2部 第20章 1-1（ADR-0006）
 describe('カードをプレイできる時', () => {
   const unit = () => instantiate({ id: 'ユニット', card: redUnit, owner: '先攻' })

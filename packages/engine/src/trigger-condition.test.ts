@@ -266,8 +266,14 @@ describe('絞り込みの型', () => {
     triggeredAbility(discardEvent, nothing, (occasion, _controller, self) => occasion.id === self.id)
     triggeredAbility(discardEvent, nothing, { when: (occasion) => occasion.card.bp > 0, condition: () => true })
 
+    triggeredAbility('味方が登場した時', nothing, (occasion, _controller, self) => occasion.appeared.id !== self.id)
+
     // @ts-expect-error 登場のきっかけは id を持たない
     triggeredAbility('登場した時', nothing, (occasion) => occasion.id === '別のユニット')
+    // @ts-expect-error 登場のきっかけは、登場したユニットを持たない。本人の能力だけが見るため
+    triggeredAbility('登場した時', nothing, (occasion) => occasion.appeared.id === '別のユニット')
+    // @ts-expect-error 味方の登場のきっかけは、ユニットそのものではない
+    triggeredAbility('味方が登場した時', nothing, (occasion) => occasion.id === '別のユニット')
     // @ts-expect-error 捨札のきっかけは from を持たない
     triggeredAbility(discardEvent, nothing, (occasion) => occasion.from === '手札')
     // @ts-expect-error 名前を付けて渡しても取り違えは止まる

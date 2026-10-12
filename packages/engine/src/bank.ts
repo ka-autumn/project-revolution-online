@@ -1,10 +1,11 @@
-import type { AppearanceOccasion, TriggerEvent, TriggerOccasion } from './ability.js'
+import type { AllyAppearanceOccasion, AppearanceOccasion, TriggerEvent, TriggerOccasion } from './ability.js'
+import { continuousData } from './continuous.js'
 import { locateOnSquares } from './duel.js'
 import type { BankedAbility, CardId, CreatedAbilityInstance, DuelState } from './duel.js'
 import { record } from './log.js'
 import { conditionHolds, resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
-import { addTriggered, triggeredBy } from './trigger.js'
+import { addTriggered, triggeredBy, triggeredOnSquares } from './trigger.js'
 
 /**
  * 誘発イベントを満たしたそのカード自身の能力だけを誘発させる。
@@ -35,6 +36,43 @@ function triggerSelf(state: DuelState, id: CardId, event: TriggerEvent, occasion
  */
 export function triggerAppearance(state: DuelState, id: CardId, occasion: AppearanceOccasion): DuelState {
   return triggerSelf(state, id, '登場した時', occasion)
+}
+
+/**
+ * プレイされたユニットがスクエアに置かれたことで、同じ支配者のスクエアのユニット全員の
+ * 「味方が登場した時」を誘発させる（総合ルール 第2部 第20章 1-4-a、ADR-0037）。
+ *
+ * 登場した本人も、その時点でスクエアにある自分のユニットなので数に入る。`state` は
+ * 登場したユニットをもうスクエアに置いた盤面である。相手のユニットの能力は誘発しない。
+ *
+ * 呼ぶのは `triggerAppearance` と同じく、プレイされたユニットを置いた側（`play.ts`）だけで
+ * ある。効果によってスクエアに置かれる場合は「登場」ではないので、ここも通らない。
+ *
+ * 登場したユニットごとに 1 度ずつ誘発する（同 第4部 第7章 6）。能力の側は、登場したのが
+ * 自分自身かどうかをきっかけ（`AllyAppearanceOccasion`）から確かめられる。
+ */
+export function triggerAllyAppearance(
+  state: DuelState,
+  id: CardId,
+  { square, from }: Pick<AllyAppearanceOccasion, 'square' | 'from'>,
+): DuelState {
+  const located = locateOnSquares(state, id)
+  if (located === undefined) return state
+
+  const { instance } = located
+  const { card, controller } = instance
+  if (card.type !== 'ユニット') return state
+
+  const occasion: AllyAppearanceOccasion = {
+    kind: '味方の登場',
+    square,
+    from,
+    appeared: { id, square, card: continuousData(state)(id, card), controller },
+  }
+  return addTriggered(
+    state,
+    triggeredOnSquares(state, '味方が登場した時', (each) => each.controller === controller, occasion),
+  )
 }
 
 /**
