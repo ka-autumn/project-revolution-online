@@ -220,8 +220,8 @@ function placePlayedUnit(
 ): DuelState {
   const orientation = hasGuts(card) ? 'リリース' : 'フリーズ'
   const moved = moveToSquare(state, id, square, { controller: player, orientation })
-  const appeared = triggerAppearance(moved, id, { kind: '登場', square, from })
-  const placed = triggerAllyAppearance(appeared, id, { square, from })
+  const selfTriggered = triggerAppearance(moved, id, { kind: '登場', square, from })
+  const placed = triggerAllyAppearance(selfTriggered, id, from)
   // 置かれたユニットが相手のトラップのトリガーアイコンのスクエアに置かれたなら「侵入」に
   // なり、そのトラップの支配者が発動する権利を得る（総合ルール 第2部 第20章 3-6）。相手から
   // 見て味方エリアか中央エリアなら、あわせて「勇気」の起動条件も満たされる（同 第5部 第2章 2）。

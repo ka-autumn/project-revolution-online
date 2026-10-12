@@ -5,7 +5,11 @@ import { putInZone } from './duel.js'
 import {
   PLAYERS,
   activateTrap,
+  alsoTreatedAs,
   areaOf,
+  attributeAdding,
+  bpModifying,
+  bpPlus,
   cardsIn,
   cardsInResolveZone,
   cardsOn,
@@ -561,6 +565,62 @@ describe('味方の登場', () => {
     play(state, { card: '新入り', square: homeSquare })
 
     expect(seen).toEqual([{ square: homeSquare, from: '手札', id: '新入り', controller: '先攻', at: homeSquare }])
+  })
+
+  // 総合ルール 第2部 第21章 3-3。プレイされたゾーンは、登場した本人の「登場した時」と同じく
+  // 出来事の瞬間に捕まえて渡す。
+  it('プランゾーンからプレイされた味方の登場では、きっかけのプレイされたゾーンがプランゾーンになる', () => {
+    const fromPlanWatcher = defineUnit({
+      name: 'テスト・プランゾーンからの味方の登場を見るユニット',
+      level: 2,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [triggeredAbility('味方が登場した時', function* () {}, (occasion) => occasion.from === 'プランゾーン')],
+    })
+    const already = instantiate({ id: '見張り', card: fromPlanWatcher, owner: '先攻' })
+    const board = putOnSquare(readyToPlay([], twoEnergies()), otherHomeSquare, already)
+    const dreamer = (id: string) => instantiate({ id, card: dreamingUnit, owner: '先攻' })
+
+    const fromPlan = play(putInZone(board, '先攻', 'プランゾーン', [dreamer('プランの主')]), {
+      card: 'プランの主',
+      square: homeSquare,
+    })
+    const fromHand = play(putInZone(board, '先攻', '手札', [dreamer('手札の主')]), { card: '手札の主', square: homeSquare })
+
+    expect(sourcesOf(stateOf(fromPlan))).toEqual(['見張り'])
+    expect(sourcesOf(stateOf(fromHand))).toEqual([])
+  })
+
+  // 総合ルール 第4部 第12章 2。登場したユニットは、置かれた直後の、継続効果を適用した後の姿で渡る。
+  it('継続効果で属性とＢＰが変わる盤面に登場した時は、変わった後の値を絞り込みが読める', () => {
+    const seen: { readonly bp: number; readonly attributes: readonly string[] }[] = []
+    const strengtheningWatcher = defineUnit({
+      name: 'テスト・味方を強くして登場を見るユニット',
+      level: 2,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [
+        bpModifying((duel) => duel.allies().map((ally) => bpPlus(ally, 500))),
+        attributeAdding((duel) => duel.allies().map((ally) => alsoTreatedAs(ally, 'テスト属性'))),
+        triggeredAbility(
+          '味方が登場した時',
+          function* () {},
+          ({ appeared }) => {
+            seen.push({ bp: appeared.card.bp, attributes: appeared.card.attributes })
+            return true
+          },
+        ),
+      ],
+    })
+    const newUnit = instantiate({ id: '新入り', card: redUnit, owner: '先攻' })
+    const already = instantiate({ id: '見張り', card: strengtheningWatcher, owner: '先攻' })
+    const state = putOnSquare(readyToPlay([newUnit], twoEnergies()), otherHomeSquare, already)
+
+    play(state, { card: '新入り', square: homeSquare })
+
+    expect(seen).toEqual([{ bp: 1500, attributes: ['テスト属性'] }])
   })
 
   // 総合ルール 第4部 第7章 6。誘発イベントを満たすたびに 1 度ずつ誘発する。

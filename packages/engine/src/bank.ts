@@ -51,15 +51,12 @@ export function triggerAppearance(state: DuelState, id: CardId, occasion: Appear
  * 登場したユニットごとに 1 度ずつ誘発する（同 第4部 第7章 6）。能力の側は、登場したのが
  * 自分自身かどうかをきっかけ（`AllyAppearanceOccasion`）から確かめられる。
  */
-export function triggerAllyAppearance(
-  state: DuelState,
-  id: CardId,
-  { square, from }: Pick<AllyAppearanceOccasion, 'square' | 'from'>,
-): DuelState {
+export function triggerAllyAppearance(state: DuelState, id: CardId, from: AllyAppearanceOccasion['from']): DuelState {
   const located = locateOnSquares(state, id)
   if (located === undefined) return state
 
-  const { instance } = located
+  // 置かれたスクエアは盤面から引く。引数で受け取ると、実際にいるスクエアと食い違いうる。
+  const { instance, square } = located
   const { card, controller } = instance
   if (card.type !== 'ユニット') return state
 
