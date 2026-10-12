@@ -1,4 +1,4 @@
-import type { CreatedTrigger, CreatedTriggeredAbility, IntrusionOccasion, PassiveKeyword } from './ability.js'
+import type { CreatedTrigger, CreatedTriggeredAbility, DreamAbility, IntrusionOccasion, PassiveKeyword } from './ability.js'
 import type { Square } from './board.js'
 import type { Attribute, Card, UnitCard } from './card.js'
 import type { CardId, LibraryPosition } from './duel.js'
@@ -319,8 +319,36 @@ export interface SpModifier {
   readonly amount: number
 }
 
+/**
+ * 継続効果が与えられる能力（総合ルール 第4部 第12章 5-2 の(2)）。
+ *
+ * 型で絞っているのは、engine が「与えられた分」まで読むようにした種類だけである。いまは
+ * 「夢」だけで、それ以外を渡すとコンパイルの時点で弾かれる。与えたのに働かない能力を、
+ * 書けないようにするためである。種類を足す時は、その種類を読む所（`continuous.ts` の
+ * `gather` など、書かれた能力から引いている所）を、適用した後の姿から読むように切り替えてから、
+ * ここに足す。
+ */
+export type GrantableAbility = DreamAbility
+
+/** 与えられる能力のキーワードの名前。ログが持つのはこちらである（`LoggedContinuousChange`）。 */
+export type GrantableKeyword = GrantableAbility['keyword']
+
+/**
+ * 継続効果が 1 枚のカードに与える能力（総合ルール 第4部 第12章 5-2 の(2)、第1章 1）。
+ *
+ * カードのテキストを変更する継続効果である。`BpModifier` と違い、対象はスクエアにいるユニット
+ * とは限らない。プランゾーンのユニットに「夢」を与えるように、スクエアの外のカードにも与えられる。
+ * 与える能力そのものを持つのは、数値を持つキーワード能力を与えるテキストを、同じ形で書けるように
+ * するためである。
+ */
+export interface GrantModifier {
+  readonly kind: '能力の付与'
+  readonly target: CardId
+  readonly ability: GrantableAbility
+}
+
 /** `createContinuousEffect` に渡せる変更。種類の札（`kind`）で、何を変えるかが決まる。 */
-export type ContinuousModifier = BpModifier | SpModifier
+export type ContinuousModifier = BpModifier | SpModifier | GrantModifier
 
 /**
  * 作成された継続効果が続く期限（総合ルール 第4部 第12章 3-1）。
@@ -336,12 +364,35 @@ export type Duration = (typeof DURATIONS)[number]
 /**
  * 作成された継続効果が、カードのデータをどう変えるか（総合ルール 第4部 第12章 5-2）。
  *
- * 種類の札（`kind`）で分かれる。いまはＢＰの変更とＳＰの変更で、能力の付与は、それを
- * 書くテキストが出た時に並べる。盤面もログも、この型をそのまま持つ。
+ * 種類の札（`kind`）で分かれる。盤面はこの型を持つ。ログが持つのは、能力そのものを
+ * キーワードの名前に置き換えた `LoggedContinuousChange` である（ログは通信にそのまま載る）。
  */
 export type ContinuousChange =
   | { readonly kind: 'ＢＰの変更'; readonly amount: number }
   | { readonly kind: 'ＳＰの変更'; readonly amount: number }
+  | { readonly kind: '能力の付与'; readonly ability: GrantableAbility }
+
+/**
+ * ログに残す形にした `ContinuousChange`。数値の変更はそのまま、能力の付与は能力の
+ * キーワードの名前だけを持つ。
+ */
+export type LoggedContinuousChange =
+  | { readonly kind: 'ＢＰの変更'; readonly amount: number }
+  | { readonly kind: 'ＳＰの変更'; readonly amount: number }
+  | { readonly kind: '能力の付与'; readonly keyword: GrantableKeyword }
+
+/** 継続効果の変更を、ログに残す形にする。 */
+export function loggedChangeOf(change: ContinuousChange): LoggedContinuousChange {
+  switch (change.kind) {
+    case 'ＢＰの変更':
+    case 'ＳＰの変更':
+      return change
+    case '能力の付与':
+      return { kind: '能力の付与', keyword: change.ability.keyword }
+    default:
+      return change satisfies never
+  }
+}
 
 /**
  * 「そのユニットのＢＰを＋Ｘ」。減らす変更は負の数で書く。
@@ -358,6 +409,17 @@ export function bpPlus(target: UnitOnSquare, amount: number): BpModifier {
  */
 export function spPlus(target: UnitOnSquare, amount: number): SpModifier {
   return { kind: 'ＳＰの変更', target: target.id, amount }
+}
+
+/**
+ * 「そのカードに、ターンの終わりまで、その能力を与える」。
+ *
+ * 対象に取れるのは engine が `DuelView` を通して見せたカードで、スクエアにいるユニットに
+ * 限らない（プランゾーンのユニットに「夢」を与えるテキストのため）。与えられる能力の種類は
+ * `GrantableAbility` で絞られる。
+ */
+export function granting(target: UnitOnSquare | CardInZone, ability: GrantableAbility): GrantModifier {
+  return { kind: '能力の付与', target: target.id, ability }
 }
 
 /**
@@ -644,15 +706,28 @@ export function* createTriggeredAbility(
  * 作ったカードがすぐ捨札へ行っても続く（同 3-1）。
  *
  * 渡された変更 1 つにつき 1 件を作る。対象は作る時に決まり、値は解決の時に 1 度だけ決まる
- * （同 3-2・3-3）。後から置かれたカードには及ばない。対象は engine が見せたユニットでなければ
- * ならない（`resolve.ts` の `shown`）。いま渡せるのはＢＰの変更（`bpPlus`）とＳＰの変更
- * （`spPlus`）で、何を変えるかは渡された値の種類の札で決まる。
+ * （同 3-2・3-3）。後から置かれたカードには及ばない。対象は engine が見せたカードでなければ
+ * ならない（`resolve.ts` の `shown`）。渡せるのはＢＰの変更（`bpPlus`）・ＳＰの変更
+ * （`spPlus`）・能力の付与（`granting`）で、何を変えるかは渡された値の種類の札で決まる。
  */
 export function* createContinuousEffect(
   duration: Duration,
   ...modifiers: readonly ContinuousModifier[]
 ): EffectStep<void> {
-  for (const { kind, target, amount } of modifiers) {
-    yield { kind: '継続効果を作成する', duration, target, change: { kind, amount } }
+  for (const modifier of modifiers) {
+    yield { kind: '継続効果を作成する', duration, target: modifier.target, change: changeOf(modifier) }
+  }
+}
+
+/** 渡された値を、盤面が持つ変更にする。種類を足したら、ここで型検査が止まる。 */
+function changeOf(modifier: ContinuousModifier): ContinuousChange {
+  switch (modifier.kind) {
+    case 'ＢＰの変更':
+    case 'ＳＰの変更':
+      return { kind: modifier.kind, amount: modifier.amount }
+    case '能力の付与':
+      return { kind: '能力の付与', ability: modifier.ability }
+    default:
+      return modifier satisfies never
   }
 }

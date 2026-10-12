@@ -96,7 +96,7 @@ export {
   spOf,
 } from './card.js'
 export type { Attribute, Card, CardType, Color, MakerSymbol, PlanKeyword, StrategyCard, TrapCard, UnitCard } from './card.js'
-export { bpModification, spModification } from './continuous.js'
+export { appliedCard, bpModification, spModification } from './continuous.js'
 export type { BpModification, SpModification } from './continuous.js'
 export { satisfiesLevel } from './cost.js'
 export {
@@ -154,6 +154,7 @@ export {
   drawCards,
   flipPlan,
   freeze,
+  granting,
   placeInZone,
   placeOnSquare,
   placeTopOfLibrary,
@@ -172,7 +173,11 @@ export type {
   Effect,
   EffectStep,
   EnergyInZone,
+  GrantableAbility,
+  GrantableKeyword,
+  GrantModifier,
   Instruction,
+  LoggedContinuousChange,
   SmashCard,
   SpModifier,
   TrapEffect,

@@ -3,6 +3,7 @@ import { resolveFromBank } from './bank.js'
 import { advanceBattle } from './battle.js'
 import { INITIAL_RECOVERY, draw, frozenCardsOf, hasEnded, releaseAll, removeAllDamage, topOfLibrary } from './duel.js'
 import type { DuelState } from './duel.js'
+import { loggedChangeOf } from './effect.js'
 import { record } from './log.js'
 import type { Progress } from './log.js'
 import { opponentOf } from './player.js'
@@ -326,7 +327,7 @@ function endContinuousEffects(state: DuelState): DuelState {
   const remaining = state.createdContinuousEffects.filter((created) => !ending.includes(created))
   return record(
     { ...state, createdContinuousEffects: remaining },
-    { kind: '継続効果が終了した', effects: ending.map(({ target, change }) => ({ card: target, change })) },
+    { kind: '継続効果が終了した', effects: ending.map(({ target, change }) => ({ card: target, change: loggedChangeOf(change) })) },
     state,
   )
 }

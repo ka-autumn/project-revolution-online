@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bpModification, continuousData, spModification } from './continuous.js'
+import { appliedCard, bpModification, continuousData, spModification } from './continuous.js'
 // ゾーンを移したり盤面を組んだりするためだけに使う。engine の中から盤面を組み替える関数であり、
 // 公開する API ではない。
 import { draw, faceDownPlan, moveToSquare, moveToZone, putInZone } from './duel.js'
@@ -12,7 +12,11 @@ import {
   choose,
   createContinuousEffect,
   defineUnit,
+  dream,
   emptyDuelState,
+  granting,
+  guts,
+  hasDream,
   instantiate,
   passPriority,
   perspectiveOf,
@@ -21,7 +25,7 @@ import {
   spOf,
   spPlus,
 } from './index.js'
-import type { CardId, Chooser, DuelEvent, DuelState, Effect, ResolutionVia, Square } from './index.js'
+import type { CardId, Chooser, ContinuousChange, DuelEvent, DuelState, Effect, ResolutionVia, Square } from './index.js'
 
 /**
  * 作成された継続効果（総合ルール 第4部 第12章 3、ADR-0036）。
@@ -87,6 +91,9 @@ function resolved(state: DuelState, effect: Effect, target: CardId): DuelState {
 /** そのユニットのＢＰ。継続効果を適用した後の値で読む。 */
 const bpOn = (state: DuelState, id: CardId, card = vanilla) => bpOf(card, bpModification(state)(id))
 
+/** 数値を変える変更の量。能力の付与は数値を持たない。 */
+const amountOfChange = (change: ContinuousChange) => ('amount' in change ? change.amount : undefined)
+
 const eventsOf = (state: DuelState): readonly DuelEvent[] => state.log.map((recorded) => recorded.event)
 
 // 総合ルール 第4部 第12章 3（ADR-0006）
@@ -135,7 +142,7 @@ describe('作成された継続効果を作る', () => {
     const second = resolved(first, boostAlly(2500), '先に選ぶ味方')
     const third = resolved(second, boostAlly(500), '味方')
 
-    expect(third.createdContinuousEffects.map((effect) => [effect.target, effect.change.amount])).toEqual([
+    expect(third.createdContinuousEffects.map((effect) => [effect.target, amountOfChange(effect.change)])).toEqual([
       ['味方', 1000],
       ['先に選ぶ味方', 2500],
       ['味方', 500],
@@ -156,7 +163,7 @@ describe('作成された継続効果を作る', () => {
       chooser: (candidates) => candidates[0],
     })
 
-    expect(state.createdContinuousEffects.map((each) => [each.target, each.change.amount])).toEqual([
+    expect(state.createdContinuousEffects.map((each) => [each.target, amountOfChange(each.change)])).toEqual([
       ['A', 1000],
       ['B', 2000],
     ])
@@ -556,5 +563,186 @@ describe('ＳＰが 0 を下回る時', () => {
     ).toContainEqual(
       expect.objectContaining({ kind: '継続効果を作成する', change: { kind: 'ＳＰの変更', amount: -1500 } }),
     )
+  })
+})
+
+// 総合ルール 第4部 第12章 5-2 の(2)（ADR-0036）。カードのテキストを変更する継続効果
+describe('能力を与える作成された継続効果', () => {
+  const dreaming = defineUnit({ name: 'テスト・夢持ち', level: 1, colors: ['赤'], bp: 1000, sp: 1000, abilities: [dream] })
+
+  /** 味方を 1 枚選び、ターンの終わりまで「夢」を与える効果。 */
+  const grantDreamToAlly: Effect = function* (duel) {
+    const ally = yield* choose(duel.allies())
+    if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+    yield* createContinuousEffect('ターンの終わりまで', granting(ally, dream))
+  }
+
+  /** 自分のプランゾーンのカードに、ターンの終わりまで「夢」を与える効果。選ばせない。 */
+  const grantDreamToPlan: Effect = function* (duel) {
+    const [plan] = duel.planZone()
+    if (plan === undefined) return
+    yield* createContinuousEffect('ターンの終わりまで', granting(plan, dream))
+  }
+
+  /** プランゾーンにカードがある盤面。 */
+  const planned = (card = vanilla) => putInZone(emptyDuelState(), '先攻', 'プランゾーン', [unit('プラン', card)])
+
+  const grantedOn = (state: DuelState) => state.createdContinuousEffects.map((each) => [each.target, each.change.kind])
+
+  it('作った効果を、与える能力そのものを持つ値として、盤面が持つ', () => {
+    const state = resolved(boardOf([middle, '味方']), grantDreamToAlly, '味方')
+
+    expect(state.createdContinuousEffects).toEqual([
+      { target: '味方', change: { kind: '能力の付与', ability: dream }, until: 'ターンの終わりまで', controller: '先攻' },
+    ])
+  })
+
+  // 同 第12章 2・5-2 の(2)
+  it('スクエアのユニットの適用した後の姿に、与えた能力が載る。ＢＰ・ＳＰは変わらない', () => {
+    const board = boardOf([middle, '味方'])
+    const state = resolved(board, grantDreamToAlly, '味方')
+
+    expect(continuousData(board)('味方', vanilla).abilities).not.toContain(dream)
+    const data = continuousData(state)('味方', vanilla)
+    expect(data.abilities).toContain(dream)
+    expect([data.bp, data.sp]).toEqual([1000, 1000])
+    // 盤面が持つ、書かれたカードは変わらない。
+    expect(vanilla.abilities).not.toContain(dream)
+  })
+
+  it('スクエアの外のカードの適用した後の姿にも、与えた能力が載る', () => {
+    const board = planned()
+    const state = resolved(board, grantDreamToPlan, 'プラン')
+
+    expect(grantedOn(state)).toEqual([['プラン', '能力の付与']])
+    expect(appliedCard(board, 'プラン', vanilla).abilities).not.toContain(dream)
+    expect(appliedCard(state, 'プラン', vanilla).abilities).toContain(dream)
+    expect(vanilla.abilities).not.toContain(dream)
+  })
+
+  it('与えられていないカードは、渡されたカードがそのまま返る', () => {
+    const state = resolved(planned(), grantDreamToPlan, 'プラン')
+
+    expect(appliedCard(state, '別のカード', vanilla)).toBe(vanilla)
+  })
+
+  it('すでに「夢」を持つカードに与えても、持つことは変わらない', () => {
+    const state = resolved(planned(dreaming), grantDreamToPlan, 'プラン')
+
+    expect(grantedOn(state)).toEqual([['プラン', '能力の付与']])
+    expect(hasDream(appliedCard(state, 'プラン', dreaming))).toBe(true)
+  })
+
+  // 効果が尋ねる「キーワード能力を持つか」は、適用した後の姿を読む。
+  it('効果が「キーワード能力を持つか」を尋ねると、与えられた能力を見る', () => {
+    const answers: boolean[] = []
+    const ask: Effect = function* (duel) {
+      for (const ally of duel.allies()) answers.push(duel.hasKeyword(ally, '夢'))
+    }
+    const board = boardOf([middle, '味方'])
+    const asked = (state: DuelState) => resolveEffect(state, ask, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+    asked(board)
+    asked(resolved(board, grantDreamToAlly, '味方'))
+
+    expect(answers).toEqual([false, true])
+  })
+
+  // 同 5-2。テキストを変更する継続効果は、ＢＰを変更する継続効果より先に適用する。ＢＰを変える
+  // 常在型能力が見る盤面には、与えられた能力が載っている。
+  it('ＢＰを変更する常在型能力が見る盤面には、与えられた能力が先に載っている', () => {
+    const dreamBooster = defineUnit({
+      name: 'テスト・夢を持つ味方を強化',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [
+        bpModifying((duel) =>
+          duel
+            .allies()
+            .filter((ally) => duel.hasKeyword(ally, '夢'))
+            .map((ally) => bpPlus(ally, 2000)),
+        ),
+      ],
+    })
+    const board = boardOf([left, '強化するユニット', dreamBooster], [middle, '味方'])
+    expect(bpOn(board, '味方')).toBe(1000)
+
+    const state = resolved(board, grantDreamToAlly, '味方')
+
+    expect(bpOn(state, '味方')).toBe(3000)
+  })
+
+  it('同じ対象に、ＢＰの変更と能力の付与が重なっても、互いに影響しない', () => {
+    const board = boardOf([middle, '味方'])
+    const state = resolved(resolved(board, boostAlly(500), '味方'), grantDreamToAlly, '味方')
+
+    expect(bpOn(state, '味方')).toBe(1500)
+    expect(continuousData(state)('味方', vanilla).abilities).toContain(dream)
+  })
+
+  it('後から置かれたカードには及ばない', () => {
+    const made = resolved(boardOf([middle, '味方']), grantDreamToAlly, '味方')
+    const later = putOnSquare(made, right, unit('後から置かれた味方'))
+
+    expect(continuousData(later)('後から置かれた味方', vanilla).abilities).not.toContain(dream)
+  })
+
+  // 与えられる種類は型で絞る。ここが通る間は、与えた能力が働かない事態は起きない。
+  it('与えられる能力は「夢」だけで、それ以外は型で弾かれる', () => {
+    const attempt: Effect = function* (duel) {
+      const [ally] = duel.allies()
+      if (ally === undefined) return
+      // @ts-expect-error 「夢」以外は、与えても働かないので渡せない
+      yield* createContinuousEffect('ターンの終わりまで', granting(ally, guts))
+    }
+    expect(typeof attempt).toBe('function')
+  })
+
+  it('作ったことが、能力のキーワードの名前だけを持つ形で、ログに積まれる', () => {
+    const state = resolved(boardOf([middle, '味方']), grantDreamToAlly, '味方')
+
+    expect(
+      eventsOf(state).flatMap((event) => (event.kind === '命令を実行した' ? [event.instruction] : [])),
+    ).toContainEqual({
+      kind: '継続効果を作成する',
+      card: '味方',
+      duration: 'ターンの終わりまで',
+      change: { kind: '能力の付与', keyword: '夢' },
+    })
+  })
+
+  // 総合ルール 第2部 第21章 1-4。ゾーンを移ったカードは新しいカードとして扱う。
+  describe('対象のカードが動いた時', () => {
+    const made = () => resolved(planned(), grantDreamToPlan, 'プラン')
+
+    it('プランゾーンからスクエアへ置かれると、取り除かれる', () => {
+      const moved = moveToSquare(made(), 'プラン', middle, { controller: '先攻', orientation: 'リリース' })
+
+      expect(moved.createdContinuousEffects).toEqual([])
+      expect(appliedCard(moved, 'プラン', vanilla).abilities).not.toContain(dream)
+    })
+
+    it('引かれると、取り除かれる', () => {
+      expect(draw(made(), '先攻').createdContinuousEffects).toEqual([])
+    })
+
+    it('裏返されて山札へ戻ると、取り除かれる', () => {
+      expect(faceDownPlan(made(), '先攻').createdContinuousEffects).toEqual([])
+    })
+
+    it('捨札に置かれると、取り除かれる', () => {
+      expect(moveToZone(made(), 'プラン', '捨札').createdContinuousEffects).toEqual([])
+    })
+
+    it('スクエアのユニットがスクエアからスクエアへ移っても、続く', () => {
+      const state = resolved(boardOf([middle, '味方']), grantDreamToAlly, '味方')
+
+      const moved = moveToSquare(state, '味方', right, { controller: '先攻', orientation: 'リリース' })
+
+      expect(grantedOn(moved)).toEqual([['味方', '能力の付与']])
+      expect(continuousData(moved)('味方', vanilla).abilities).toContain(dream)
+    })
   })
 })

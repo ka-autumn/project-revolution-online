@@ -2,7 +2,8 @@ import type { BattleStep } from './battle.js'
 import { BATTLE_SPACE, isArea, rowOfArea } from './board.js'
 import type { Square, SquareIndex } from './board.js'
 import type { CardId, DuelResult, DuelState } from './duel.js'
-import type { ContinuousChange, Duration, Instruction } from './effect.js'
+import { loggedChangeOf } from './effect.js'
+import type { Duration, Instruction, LoggedContinuousChange } from './effect.js'
 import type { LegalAction } from './legal-action.js'
 import type { Orientation, OrientedZone } from './orientation.js'
 import { seenByOf } from './perspective.js'
@@ -365,7 +366,7 @@ export interface ReleasedFromZone {
  */
 export interface EndedContinuousEffect {
   readonly card: CardId
-  readonly change: ContinuousChange
+  readonly change: LoggedContinuousChange
 }
 
 /**
@@ -419,7 +420,7 @@ export type LoggedInstruction =
       readonly kind: '継続効果を作成する'
       readonly card: CardId | undefined
       readonly duration: Duration
-      readonly change: ContinuousChange
+      readonly change: LoggedContinuousChange
     }
   | { readonly kind: 'プランを裏返す'; readonly player: Player }
   /**
@@ -627,7 +628,7 @@ export function loggedInstruction(instruction: Instruction, subject: unknown, co
         kind: '継続効果を作成する',
         card: instruction.target,
         duration: instruction.duration,
-        change: instruction.change,
+        change: loggedChangeOf(instruction.change),
       }
     case 'プランを裏返す':
       return { kind: 'プランを裏返す', player: instruction.player }

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 // 組み替えるための関数であり、公開する API ではない。
 import { damagePlayer, dealDamage, moveToSquare, moveToZone, putInZone } from './duel.js'
 import {
+  appliedCard,
   bpModification,
   spModification,
   bpPlus,
@@ -12,6 +13,7 @@ import {
   createTriggeredAbility,
   defineStrategy,
   defineUnit,
+  dream,
   instantiate,
   passOutcome,
   passPriority,
@@ -24,6 +26,7 @@ import {
 } from './index.js'
 import type {
   Chooser,
+  ContinuousChange,
   CourageConditionMet,
   CreatedAbility,
   CreatedContinuousEffect,
@@ -36,6 +39,9 @@ import type {
   Square,
   UnitOnSquare,
 } from './index.js'
+
+/** 数値を変える変更の量。能力の付与は数値を持たない。 */
+const amountOfChange = (change: ContinuousChange) => ('amount' in change ? change.amount : undefined)
 
 /** 60 枚すべてが別々の名前のデッキ。同じカード名は 4 枚までという規定を避けるため。 */
 function testDeck(prefix: string): Deck {
@@ -560,6 +566,30 @@ describe('リカバリーフェイズと作成された継続効果', () => {
     })
   })
 
+  // 同 1: 能力を与える効果も、同じ時に終わる。対象はスクエアの外のカードでもよい。
+  it('能力の付与も、始めの処理で終わり、終わったことがログに積まれる', () => {
+    const grant: CreatedContinuousEffect = {
+      target: 'プラン',
+      change: { kind: '能力の付与', ability: dream },
+      until: 'ターンの終わりまで',
+      controller: '先攻',
+    }
+    const board: DuelState = {
+      ...putInZone(startedDuel(), '先攻', 'プランゾーン', [instantiate({ id: 'プラン', card: vanilla, owner: '先攻' })]),
+      createdContinuousEffects: [grant],
+    }
+    expect(appliedCard(board, 'プラン', vanilla).abilities).toContain(dream)
+
+    const recovery = toRecovery(board)
+
+    expect(recovery.createdContinuousEffects).toEqual([])
+    expect(appliedCard(recovery, 'プラン', vanilla).abilities).not.toContain(dream)
+    expect(eventsOf(recovery).at(-1)).toEqual({
+      kind: '継続効果が終了した',
+      effects: [{ card: 'プラン', change: { kind: '能力の付与', keyword: '夢' } }],
+    })
+  })
+
   it('終わる効果が無ければ、終わったことを積まない', () => {
     const recovery = toRecovery(withEffectBefore())
 
@@ -602,7 +632,7 @@ describe('リカバリーフェイズと作成された継続効果', () => {
       const resolved = afterEndOfTurnResolved()
 
       expect(resolved.turn.phase).toBe('リカバリーフェイズ')
-      expect(resolved.createdContinuousEffects.map((each) => each.change.amount)).toEqual([1000])
+      expect(resolved.createdContinuousEffects.map((each) => amountOfChange(each.change))).toEqual([1000])
       expect(bpModification(resolved)('強化するユニット')).toBe(1000)
     })
 

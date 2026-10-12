@@ -6,11 +6,11 @@ import type {
   CardId,
   CardType,
   Color,
-  ContinuousChange,
   EffectiveUnitData,
   DuelEvent,
   DuelResult,
   LegalAction,
+  LoggedContinuousChange,
   LoggedEvent,
   LoggedInstruction,
   MoveDirection,
@@ -1249,18 +1249,21 @@ function about(name: string | undefined, particle: 'を' | 'に' | 'は', text: 
 }
 
 /**
- * 継続効果が何をいくつ変えるか。ＢＰの変更は `BP+2000`、`BP-1000`、ＳＰの変更は `SP+1000` の形
- * （符号は常に付ける）。
+ * 継続効果が何を変えるか。ＢＰの変更は `BP+2000`、`BP-1000`、ＳＰの変更は `SP+1000` の形
+ * （符号は常に付ける）。能力の付与は `「夢」を得た` の形で、期限と続けて
+ * 「〈カード名〉はターンの終わりまで「夢」を得た」と読める。
  *
  * 種類ごとに分ける。エンジンが種類を足すと、ここで画面の型検査が止まる。この画面が知らない
  * 種類は、誤った文を作り出さず、読めなかったことを呼ぶ側に返す（#285、`UNREADABLE_LOG`）。
  */
-function continuousChangeLabel(change: ContinuousChange): string | undefined {
+function continuousChangeLabel(change: LoggedContinuousChange): string | undefined {
   switch (change.kind) {
     case 'ＢＰの変更':
       return `BP${signed(change.amount)}`
     case 'ＳＰの変更':
       return `SP${signed(change.amount)}`
+    case '能力の付与':
+      return `「${change.keyword}」を得た`
     default:
       change satisfies never
       return undefined

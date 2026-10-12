@@ -1152,6 +1152,21 @@ describe('操作ログ', () => {
         expect(texts(withLog(spCreated(-500)))).toEqual(['テスト・置いてあるはターンの終わりまでSP-500'])
       })
 
+      it('能力の付与は、「〈カード名〉はターンの終わりまで「夢」を得た」の文で出る', () => {
+        const granted: DuelEvent = {
+          kind: '命令を実行した',
+          controller: '先攻',
+          instruction: {
+            kind: '継続効果を作成する',
+            card: '置いてある',
+            duration: 'ターンの終わりまで',
+            change: { kind: '能力の付与', keyword: '夢' },
+          },
+        }
+
+        expect(texts(withLog(granted))).toEqual(['テスト・置いてあるはターンの終わりまで「夢」を得た'])
+      })
+
       // 変更の種類を足したのに画面が古いと、BP の文として出てしまう（#285）。読めなかったことを出す。
       it('この画面が知らない種類の変更は、誤った文を出さず、表示できないログにする', () => {
         const unknown = {
