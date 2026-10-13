@@ -3007,6 +3007,11 @@ function fillPoolDetail(node: HTMLElement, detail: CardDetail | undefined): void
   title.append(...stars, document.createTextNode(detail.name))
   info.append(title)
 
+  // 注記の本文はテキストの下で、下へ送らないと見えない。あること自体は、送らなくても見える
+  // 名前のすぐ下に印で知らせる（ADR-0028）。
+  const noted = detail.operationalNote.length > 0
+  if (noted) info.append(element('p', 'detail__operational-mark', '注記あり'))
+
   const rows = element('dl', 'detail__rows')
   for (const row of detail.rows) rows.append(element('dt', '', row.label), element('dd', '', row.value))
   info.append(rows)
@@ -3016,6 +3021,8 @@ function fillPoolDetail(node: HTMLElement, detail: CardDetail | undefined): void
     for (const line of detail.text) text.append(element('p', '', line))
     info.append(text)
   }
+
+  if (noted) info.append(operationalNoteElement(detail.operationalNote))
 
   node.replaceChildren(poolCardElement(detail.face, { big: true }), info)
 }
@@ -4736,12 +4743,33 @@ function detailPanelElement(): HTMLElement {
   return node
 }
 
-/** 拡大した面と、その下の補足の 1 行。 */
+/**
+ * 運用の注記の枠（ADR-0043）。見出しと、注記の行。印刷されたテキストではないので、面の外に、
+ * 面とは違う色の枠で出す。対戦画面とデッキを組む画面で同じ作りにする。
+ */
+function operationalNoteElement(lines: readonly string[]): HTMLElement {
+  const box = element('div', 'detail__operational')
+  box.append(element('p', 'detail__operational-title', '運用の注記'))
+  for (const line of lines) box.append(element('p', '', line))
+
+  return box
+}
+
+/** 拡大した面と、運用の注記（持つカードだけ）と、その下の補足の 1 行。 */
 function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
-  const big = element('div', `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大`)
+  const noted = card.operationalNote.length > 0
+  // 右の列は高さが固定なので、注記を持つカードは面を小さくして場所を空ける（ADR-0027）。
+  const big = element(
+    'div',
+    `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大${noted ? ' card--注記つき' : ''}`,
+  )
   big.append(faceElement(card, { big: true }))
 
-  return [big, element('p', 'detail__note', detailNoteOf(card))]
+  return [
+    big,
+    ...(noted ? [operationalNoteElement(card.operationalNote)] : []),
+    element('p', 'detail__note', detailNoteOf(card)),
+  ]
 }
 
 function fillDetailPanel(node: HTMLElement, card: (CardView & { readonly kind: '表' }) | undefined): void {

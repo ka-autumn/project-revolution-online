@@ -3516,6 +3516,45 @@ body {
   font-size: 0.75rem;
 }
 
+/*
+ * 運用の注記（ADR-0043）。印刷されたテキストではないので、面の外に、面とは違う色の枠で出す
+ * （ADR-0027）。対戦画面でもデッキを組む画面でも同じ色にする。
+ */
+.detail__operational {
+  align-self: stretch;
+  margin: 0.4rem 0 0;
+  padding: 0.3rem 0.5rem;
+  border-left: 3px solid #4f6f8f;
+  border-radius: 0 6px 6px 0;
+  color: var(--ink);
+  background: rgb(79 111 143 / 0.13);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.detail__operational p {
+  margin: 0;
+}
+
+.detail__operational .detail__operational-title {
+  color: #3d5a78;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+/*
+ * 右の列は高さが固定なので、注記を持つカードだけ面を小さくして場所を空け、長い注記は枠の中で
+ * 送る。スマートフォンのシートと一覧の上の段は高さが固定でないので、ここには含めない。
+ */
+.duel .detail .card--注記つき {
+  --card-width: 11.5rem;
+}
+
+.duel .detail .detail__operational {
+  max-height: 4.4rem;
+  overflow-y: auto;
+}
+
 .card--拡大 {
   --card-width: 14.5rem;
   font-size: 0.8rem;
@@ -4614,6 +4653,26 @@ body {
 
 .deckbuild .detail__text p {
   margin: 0 0 0.2rem;
+}
+
+/* 運用の注記があることの印（ADR-0028）。本文は下へ送った先にあるので、名前のすぐ下に出す。 */
+.deckbuild .detail__operational-mark {
+  width: fit-content;
+  margin: 0 0 0.3rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid #4f6f8f;
+  border-radius: 999px;
+  color: #3d5a78;
+  background: rgb(79 111 143 / 0.13);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* 文字の大きさは、右の欄のほかの文字に揃える。 */
+.deckbuild .detail__operational {
+  font-size: inherit;
 }
 
 /* ---------- 真ん中：カードプール ---------- */
