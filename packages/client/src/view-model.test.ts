@@ -153,6 +153,26 @@ describe('カードのテキスト', () => {
     expect(view.kind === '表' && view.text).toEqual([])
   })
 
+  // 総合ルール 第2部 第2章 2（ADR-0006）。テキストは印刷されている表記なので、注記を混ぜない。
+  it('運用の注記を持つカードは、テキストとは別に注記が出て、テキストは書かれたままである', () => {
+    const face = unitFace('テスト・注記あり', { text: TEXT, operationalNote: ['注記の行'] })
+    // 相手のカードでも同じに出る（ADR-0043）。
+    const unit = instance('注記を持つ1枚', '後攻', { card: face })
+    const view = unitView(withSquare(emptyBoard('先攻'), SQUARE, [unit]))
+
+    expect(view.kind === '表' && view.operationalNote).toEqual(['注記の行'])
+    expect(view.kind === '表' && view.text).toEqual(TEXT)
+  })
+
+  /** 持たないカードには項目ごと載らない。古いサーバも送らない。どちらも注記なしとして読む。 */
+  it('運用の注記が届かなければ、注記なしとして出す', () => {
+    const unit = instance('注記のない1枚', '先攻')
+    const view = unitView(withSquare(emptyBoard('先攻'), SQUARE, [unit]))
+
+    expect(unit.card).not.toHaveProperty('operationalNote')
+    expect(view.kind === '表' && view.operationalNote).toEqual([])
+  })
+
   /** 裏向きのカードは表記そのものが届かないので、テキストも出しようがない。 */
   it('裏向きのカードには、テキストが無い', () => {
     const board = withZone(emptyBoard('先攻'), '後攻', '手札', [{ kind: '見えていない', orientation: 'リリース' }])

@@ -185,6 +185,54 @@ describe('通信に載せる形', () => {
     expect(face?.keywords).not.toContain('友情')
   })
 
+  /**
+   * 運用の注記（ADR-0043）。印刷されたテキストと違う扱いをしている行があることを、カードの
+   * 詳細で知らせるための欄で、テキストとは別の項目として載る。
+   */
+  describe('運用の注記', () => {
+    const noted = defineUnit({
+      name: 'テスト・運用の注記を持つユニット',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      text: ['テスト用の、印刷されたテキストの行。'],
+      operationalNote: ['テスト用の、運用の注記の行。'],
+    })
+
+    function faceOnSquare(card: Card) {
+      const state = putOnSquare(
+        emptyDuelState(),
+        { row: 1, column: 1 },
+        instantiate({ id: '先攻-スクエア', card, owner: '先攻' }),
+      )
+
+      return toWire(perspectiveOf(state, '後攻')).squares.flat()[0]?.card
+    }
+
+    // 総合ルール 第2部 第2章 2（ADR-0006）。テキストは印刷されている表記なので、注記を混ぜずに載せる。
+    it('注記を持つカードは、テキストとは別の項目に注記が載り、テキストは書かれたままである', () => {
+      const face = faceOnSquare(noted)
+
+      expect(face?.operationalNote).toEqual(['テスト用の、運用の注記の行。'])
+      expect(face?.text).toEqual(['テスト用の、印刷されたテキストの行。'])
+    })
+
+    // 総合ルール 第2部 第2章 2（ADR-0006）。持たないカードの表記は、項目が増える前と同じ形のままである。
+    it('注記を持たないカードには、項目ごと載らない', () => {
+      const face = faceOnSquare(CARDS.見えているカード)
+
+      expect(face).not.toHaveProperty('operationalNote')
+      expect(JSON.stringify(face)).not.toContain('operationalNote')
+    })
+
+    it('注記を持つカードも、JSON にして戻しても変わらない', () => {
+      const face = faceOnSquare(noted)
+
+      expect(JSON.parse(JSON.stringify(face))).toEqual(face)
+    })
+  })
+
   it('見えていないカードは、表記も持たないまま載る', () => {
     expect(wire.zones.後攻.手札[0]).toEqual({ kind: '見えていない', orientation: 'リリース' })
   })

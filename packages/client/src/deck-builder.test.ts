@@ -672,7 +672,25 @@ describe('詳しく出す', () => {
         { label: '属性', value: 'テスト属性' },
       ],
       text: ['一行め'],
+      operationalNote: [],
     })
+  })
+
+  // 総合ルール 第2部 第2章 2（ADR-0006）。テキストは印刷されている表記なので、注記を混ぜない。
+  it('運用の注記を持つカードは、テキストとは別に注記が出て、テキストは書かれたままである', () => {
+    const face = unitFace('テスト・注記あり', { text: ['印刷された行'], operationalNote: ['注記の行'] })
+    const detail = cardDetailOf([{ key: 'ち', face, expansions: [] }], 'ち')
+
+    expect(detail?.operationalNote).toEqual(['注記の行'])
+    expect(detail?.text).toEqual(['印刷された行'])
+  })
+
+  /** 持たないカードには項目ごと載らない。古いサーバも送らない。どちらも注記なしとして読む。 */
+  it('運用の注記が届かなければ、注記なしとして出す', () => {
+    const face = unitFace('テスト・注記なし')
+
+    expect(face).not.toHaveProperty('operationalNote')
+    expect(cardDetailOf([{ key: 'な', face, expansions: [] }], 'な')?.operationalNote).toEqual([])
   })
 
   it('属性が複数あれば「 | 」でつなぐ', () => {

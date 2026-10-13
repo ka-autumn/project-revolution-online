@@ -142,6 +142,11 @@ export type CardView =
        * そのまま読ませる文である。行の並びのまま渡して、改行を潰さずに出す。
        */
       readonly text: readonly string[]
+      /**
+       * 運用の注記（ADR-0043）。カードに印刷されていない、このサービスでの扱いを知らせる行。
+       * 持たなければ空。テキストとは別の枠に出す（ADR-0027）。
+       */
+      readonly operationalNote: readonly string[]
       readonly orientation: Orientation
       /** 乗っているダメージ（総合ルール 第2部 第16章）。 */
       readonly damage: number
@@ -641,6 +646,7 @@ export interface FaceFields {
   readonly keywords: readonly PlanKeyword[]
   readonly attributes: readonly Attribute[]
   readonly text: readonly string[]
+  readonly operationalNote: readonly string[]
 }
 
 export function faceFieldsOf(face: WireCardFace): FaceFields {
@@ -660,6 +666,8 @@ export function faceFieldsOf(face: WireCardFace): FaceFields {
     keywords: face.keywords ?? [],
     attributes: face.attributes,
     text: face.text,
+    // 持たないカードには項目ごと載らない。古いサーバも送らない。どちらも注記なしとして扱う。
+    operationalNote: face.operationalNote ?? [],
   }
 }
 
