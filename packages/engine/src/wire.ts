@@ -54,6 +54,17 @@ interface WireWrittenCard {
    * （`perspective.ts` の `VisibleCard`）、テキストもその中の 1 項目だからである。
    */
   readonly text: readonly string[]
+  /**
+   * 運用の注記（ADR-0043）。カードに印刷されていない、このサービスでの扱いを知らせる行
+   * （`card.ts` の `WrittenCard.operationalNote`）。
+   *
+   * 持たないカードには、項目ごと載らない。空の並びを載せないのは、持たないカードの表記を
+   * この項目が増える前と同じ形に保つためである。項目を送らない古いサーバの表記も、同じ
+   * 読み方（無ければ注記なし）で読める。
+   *
+   * `text` と同じく、見えていないカードには載らない。
+   */
+  readonly operationalNote?: readonly string[]
 }
 
 /** 通信に載せる `UnitCard` の表記。 */
@@ -208,6 +219,7 @@ function written(card: Card): WireWrittenCard & { readonly type: CardType } {
     attributes: card.attributes,
     keywords: planKeywordsOf(card),
     text: card.text,
+    ...(card.operationalNote === undefined ? {} : { operationalNote: card.operationalNote }),
   }
 }
 

@@ -1,6 +1,6 @@
 // 見本のカード（架空）。名前・属性・テキストは実在のカードと関係が無い。種類・レベル・色・BP・SP などの幅は、レイアウトを確かめるために実際の値に寄せてある。
 window.POOL = [
-  {"key":"MHA-01","face":{"type":"ユニット","name":"見本・もちぬい","level":2,"colors":["黒"],"stars":0,"reverseStars":0,"attributes":["案内係","あやかし","♀"],"keywords":[],"text":["気合（キーワード能力）"],"bp":4000,"sp":1000,"moveIcon":["上","右","左"]},"expansions":["見本デッキ A"]},
+  {"key":"MHA-01","face":{"type":"ユニット","name":"見本・もちぬい","level":2,"colors":["黒"],"stars":0,"reverseStars":0,"attributes":["案内係","あやかし","♀"],"keywords":[],"text":["このユニットが登場した時、相手と握手をしたなら、カードを 1 枚引く。","気合（キーワード能力）"],"operationalNote":["「相手と握手をしたなら」の行は、このサービスでは効果を持たない行として扱います。"],"bp":4000,"sp":1000,"moveIcon":["上","右","左"]},"expansions":["見本デッキ A"]},
   {"key":"MHA-02","face":{"type":"ユニット","name":"見本・朝凪こより","level":2,"colors":["白"],"stars":0,"reverseStars":0,"attributes":["見本学園","♀"],"keywords":["夢"],"text":["夢（キーワード能力）"],"bp":3000,"sp":1000,"moveIcon":["上"]},"expansions":["見本デッキ A"]},
   {"key":"MHA-03","face":{"type":"ユニット","name":"見本・霧島透","level":3,"colors":["黒"],"stars":0,"reverseStars":0,"attributes":["見本町","霧島家","♂"],"keywords":[],"text":["味方のユニット全員のＳＰを＋500。","味方のユニット全員のＳＰを＋500。","気合（キーワード能力）"],"bp":4500,"sp":1000,"moveIcon":["上","右","左"]},"expansions":["見本デッキ A"]},
   {"key":"MHA-04","face":{"type":"ユニット","name":"見本・ポコ","level":3,"colors":["白"],"stars":0,"reverseStars":0,"attributes":["星間調査団","異星人","♂"],"keywords":["夢"],"text":["夢（キーワード能力）"],"bp":3000,"sp":1000,"moveIcon":["上","右","左"]},"expansions":["見本デッキ A"]},

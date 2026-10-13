@@ -664,6 +664,8 @@ export interface CardDetail {
   readonly rows: readonly DetailRow[]
   /** 印刷されているテキスト。改行ごとに 1 行（`view-model.ts` の `CardView` と同じ）。 */
   readonly text: readonly string[]
+  /** 運用の注記（ADR-0043）。持たなければ空。テキストの下に、別の枠で出す（ADR-0028）。 */
+  readonly operationalNote: readonly string[]
 }
 
 /** プールから引いて、詳しく出す形にする。プールに無ければ `undefined`。 */
@@ -671,7 +673,14 @@ export function cardDetailOf(pool: readonly WirePoolCard[], key: string): CardDe
   const card = pool.find((each) => each.key === key)
   if (card === undefined) return undefined
 
-  return { name: card.face.name, face: card.face, rows: printedDetailsOf(card.face, card.expansions), text: card.face.text }
+  return {
+    name: card.face.name,
+    face: card.face,
+    rows: printedDetailsOf(card.face, card.expansions),
+    text: card.face.text,
+    // 持たないカードには項目ごと載らない。古いサーバも送らない。どちらも注記なしとして扱う。
+    operationalNote: card.face.operationalNote ?? [],
+  }
 }
 
 /**

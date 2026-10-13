@@ -226,6 +226,11 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
 .deckbuild .detail__rows dd { margin: 0; font-weight: 600; }
 .deckbuild .detail__text { margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid rgb(220 166 64 / 0.5); line-height: 1.5; }
 .deckbuild .detail__text p { margin: 0 0 0.2rem; }
+/* 運用の注記（ADR-0043）。印刷されたテキストではないので、テキストの下に、違う色の枠で出す */
+.deckbuild .detail__operational { margin-top: 0.4rem; padding: 0.3rem 0.5rem; border-left: 3px solid #4f6f8f; border-radius: 0 6px 6px 0; background: rgb(79 111 143 / 0.13); line-height: 1.45; }
+.deckbuild .detail__operational p { margin: 0; }
+.deckbuild .detail__operational-title { color: #3d5a78; font-size: 0.68rem; font-weight: 800; }
+.deckbuild .detail__operational-mark { width: fit-content; margin: 0 0 0.3rem; padding: 0.05rem 0.4rem; border: 1px solid #4f6f8f; border-radius: 999px; color: #3d5a78; background: rgb(79 111 143 / 0.13); font-size: 0.62rem; font-weight: 700; line-height: 1.4; white-space: nowrap; }
 
 /* ---------- カードの面：ブロックのロゴ（BP・SP の間） ---------- */
 .deckbuild .card__stats { align-items: center; gap: 0.2em; }

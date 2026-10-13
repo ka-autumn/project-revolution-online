@@ -689,6 +689,9 @@ function detailNodes(c) {
   for (const s of [star(c.face.stars, false), star(c.face.reverseStars, true)]) if (s) title.append(s)
   title.append(el('span', '', c.face.name))
   info.append(title)
+  // 注記の本文は下へ送った先にあるので、あること自体は、送らなくても見える名前のすぐ下に印で知らせる。
+  // 名前の行に入れないのは、欄が狭く、名前が途中で折り返すため
+  if (c.face.operationalNote?.length) info.append(el('p', 'detail__operational-mark', '注記あり'))
   const dl = el('dl', 'detail__rows')
   const rows = [
     ['種別', c.face.type],
@@ -707,6 +710,12 @@ function detailNodes(c) {
   for (const [k, v] of rows) dl.append(el('dt', '', k), el('dd', '', v))
   info.append(dl)
   if (c.face.text.length) { const t = el('div', 'detail__text'); for (const p of c.face.text) t.append(el('p', '', p)); info.append(t) }
+  // 運用の注記（ADR-0043）。印刷されたテキストの下に、別の色の枠で出す。持たないカードには枠ごと出さない
+  if (c.face.operationalNote?.length) {
+    const n = el('div', 'detail__operational'); n.append(el('p', 'detail__operational-title', '注記'))
+    for (const p of c.face.operationalNote) n.append(el('p', '', p))
+    info.append(n)
+  }
   return [cardEl(c, true), info]
 }
 
@@ -899,6 +908,7 @@ function go(screen) { location.href = `../${screen}/index.html` }
 // 撮影用の指定
 const params = new URLSearchParams(location.search)
 if (params.get('pin') === 'auto') state.pinned = (pool.find((c) => c.face.keywords.length && c.face.stars > 0) ?? pool.find((c) => c.face.keywords.length))?.key
+else if (known.has(params.get('pin'))) state.pinned = params.get('pin')
 if (params.get('open') === '1') state.filterOpen = true
 if (params.get('view') === 'list') state.view = 'list'
 if (params.get('rows') === '1') { state.poolView = '一覧'; state.shown = BATCH.一覧 }

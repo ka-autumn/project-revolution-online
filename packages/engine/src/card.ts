@@ -138,6 +138,18 @@ interface WrittenCard {
    * が出てきた時に決める。
    */
   readonly text: readonly string[]
+  /**
+   * 運用の注記（ADR-0043）。カードに印刷されていない、このサービスでの扱いを知らせる行。
+   *
+   * エンジンはこれを読まない。`text` と同じく、画面に出すためだけのデータである。`text` に
+   * 書き足さないのは、テキストはカードに印刷されている表記（総合ルール 第2部 第2章 2）で、
+   * 原本のままにしておくためである。
+   *
+   * 印刷されたテキストと違う扱いをしている行があるカードだけが持つ。持たないカードは欄ごと
+   * 書かない。空の並びにしないのは、通信の表記（`wire.ts`）に項目を載せるかどうかを、欄の
+   * 有無だけで決めるためである。
+   */
+  readonly operationalNote?: readonly string[]
 }
 
 /** スクエアに置いて使うカード（総合ルール 第2部 第20章 1）。 */
@@ -236,6 +248,8 @@ interface CardSpec {
    * 読まない**ので、書かなくてもルールの検証には何の影響も無い。
    */
   readonly text?: readonly string[]
+  /** 省略した場合は運用の注記を持たない（ADR-0043）。持たないカードは、欄ごと持たない。 */
+  readonly operationalNote?: readonly string[]
 }
 
 interface UnitSpec extends CardSpec {
@@ -273,6 +287,10 @@ function written<T extends CardType>(type: T, spec: CardSpec) {
     attributes: spec.attributes ?? [],
     makerSymbols: spec.makerSymbols ?? [],
     text: spec.text ?? [],
+    // 空の並びは、持たないものとして扱う。欄の有無だけで、通信の表記に載せるかが決まるためである。
+    ...(spec.operationalNote === undefined || spec.operationalNote.length === 0
+      ? {}
+      : { operationalNote: spec.operationalNote }),
   }
 }
 

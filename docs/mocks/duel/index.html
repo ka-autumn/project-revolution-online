@@ -1259,6 +1259,39 @@ body {
   font-size: 0.75rem;
 }
 
+/*
+ * 運用の注記（ADR-0043）。印刷されたテキストではないので、面の外に、面とは違う色の枠で出す。
+ */
+.detail__operational {
+  align-self: stretch;
+  margin: 0.4rem 0 0;
+  padding: 0.3rem 0.5rem;
+  border-left: 3px solid #4f6f8f;
+  border-radius: 0 6px 6px 0;
+  color: var(--ink);
+  background: rgb(79 111 143 / 0.13);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.detail__operational p { margin: 0; }
+
+.detail__operational-title {
+  color: #3d5a78;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+/*
+ * 右の列は高さが固定なので、注記を持つカードだけ面の高さを詰めて場所を空ける（幅は変えない）。
+ * 空けた高さは、見出しと注記 3 行の分で、それを超える注記は枠の中で送る。
+ * スマートフォンのシートと一覧の上の段は高さが固定でないので、ここには含めない。
+ */
+@media (min-width: 769px) {
+  .detail .card--注記つき { aspect-ratio: auto; height: calc(14.5rem * 1.5 - 5.2rem); }
+  .detail .detail__operational { max-height: 4.8rem; overflow-y: auto; }
+}
+
 .card--拡大 {
   --card-width: 14.5rem;
   font-size: 0.8rem;
@@ -2379,6 +2412,11 @@ const cards = {
 }
 cards['見本・苦労人の騎士'] = { lv: 3, color: '緑', kind: 'ユニット', bp: 3000, sp: 1000, reverseStars: 1, keywords: ['苦労'], traits: '騎士・♂', move: ['上', '左'], text: ['●元気（キーワード能力）'] }
 cards['見本・霧島透'].stars = 2
+// 運用の注記を持つカード（ADR-0043）。自分のカードと相手のカードに 1 枚ずつ
+cards['見本・もちぬい'].text = ['●このユニットが登場した時、相手と握手をしたなら、カードを 1 枚引く。']
+cards['見本・もちぬい'].note = ['「相手と握手をしたなら」の行は、このサービスでは効果を持たない行として扱います。']
+cards['見本・森の守護者'].text = ['●相手が早起きをしているなら、このユニットの BP を +1000 する。']
+cards['見本・森の守護者'].note = ['「相手が早起きをしているなら」の条件は、このサービスでは常に満たすものとして扱います。対戦の外のことは確かめられないため、条件の無い行として動きます。']
 cards['見本・パルフェ・若葉'].stars = 1
 
 // スターアイコン。1 個なら ★ だけ、2 個以上は数字入りの ★（ダブルスター）
@@ -2801,14 +2839,23 @@ function detailParts(node) {
   const name = node.dataset.name
   const c = cards[name]
   const big = document.createElement('div')
-  big.className = `card card--拡大 card--${node.dataset.whose} card--色-${c.color}`
+  big.className = `card card--拡大 card--${node.dataset.whose} card--色-${c.color}${c.note ? ' card--注記つき' : ''}`
   big.innerHTML = faceHtml(name, { text: true, bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage })
   const notes = [`${node.dataset.whose}のカード`]
   if (node.dataset.freeze) notes.push('フリーズ')
   if (node.dataset.bp && Number(node.dataset.bp) !== c.bp) notes.push(`BP ${c.bp}→${node.dataset.bp}`)
   if (node.dataset.sp && Number(node.dataset.sp) !== c.sp) notes.push(`SP ${c.sp}→${node.dataset.sp}`)
   if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
-  return [big, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
+  const parts = [big]
+  if (c.note) parts.push(operationalNote(c.note))
+  return [...parts, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
+}
+// 運用の注記の枠。見出しと、注記の行
+function operationalNote(lines) {
+  const box = Object.assign(document.createElement('div'), { className: 'detail__operational' })
+  box.append(Object.assign(document.createElement('p'), { className: 'detail__operational-title', textContent: '注記' }))
+  for (const line of lines) box.append(Object.assign(document.createElement('p'), { textContent: line }))
+  return box
 }
 function selected() {
   return document.querySelector('.card--選択中[data-name]')
