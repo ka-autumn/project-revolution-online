@@ -287,7 +287,10 @@ function written<T extends CardType>(type: T, spec: CardSpec) {
     attributes: spec.attributes ?? [],
     makerSymbols: spec.makerSymbols ?? [],
     text: spec.text ?? [],
-    ...(spec.operationalNote === undefined ? {} : { operationalNote: spec.operationalNote }),
+    // 空の並びは、持たないものとして扱う。欄の有無だけで、通信の表記に載せるかが決まるためである。
+    ...(spec.operationalNote === undefined || spec.operationalNote.length === 0
+      ? {}
+      : { operationalNote: spec.operationalNote }),
   }
 }
 

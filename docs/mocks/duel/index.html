@@ -1283,12 +1283,13 @@ body {
 }
 
 /*
- * 右の列は高さが固定なので、注記を持つカードだけ面を小さくして場所を空け、長い注記は枠の中で送る。
+ * 右の列は高さが固定なので、注記を持つカードだけ面の高さを詰めて場所を空ける（幅は変えない）。
+ * 空けた高さは、見出しと注記 3 行の分で、それを超える注記は枠の中で送る。
  * スマートフォンのシートと一覧の上の段は高さが固定でないので、ここには含めない。
  */
 @media (min-width: 769px) {
-  .detail .card--注記つき { --card-width: 11.5rem; }
-  .detail .detail__operational { max-height: 4.4rem; overflow-y: auto; }
+  .detail .card--注記つき { aspect-ratio: auto; height: calc(14.5rem * 1.5 - 5.2rem); }
+  .detail .detail__operational { max-height: 4.8rem; overflow-y: auto; }
 }
 
 .card--拡大 {

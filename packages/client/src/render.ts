@@ -4758,7 +4758,7 @@ function operationalNoteElement(lines: readonly string[]): HTMLElement {
 /** 拡大した面と、運用の注記（持つカードだけ）と、その下の補足の 1 行。 */
 function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   const noted = card.operationalNote.length > 0
-  // 右の列は高さが固定なので、注記を持つカードは面を小さくして場所を空ける（ADR-0027）。
+  // 右の列は高さが固定なので、注記を持つカードは面の高さを詰めて場所を空ける（ADR-0027）。
   const big = element(
     'div',
     `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大${noted ? ' card--注記つき' : ''}`,

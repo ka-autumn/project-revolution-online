@@ -226,6 +226,13 @@ describe('通信に載せる形', () => {
       expect(JSON.stringify(face)).not.toContain('operationalNote')
     })
 
+    it('注記を空の並びで書いたカードにも、項目ごと載らない', () => {
+      const empty = defineUnit({ name: 'テスト・注記が空のユニット', level: 1, bp: 1000, sp: 1000, operationalNote: [] })
+
+      expect(empty).not.toHaveProperty('operationalNote')
+      expect(faceOnSquare(empty)).not.toHaveProperty('operationalNote')
+    })
+
     it('注記を持つカードも、JSON にして戻しても変わらない', () => {
       const face = faceOnSquare(noted)
 
