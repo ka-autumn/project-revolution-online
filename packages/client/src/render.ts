@@ -4749,7 +4749,7 @@ function detailPanelElement(): HTMLElement {
  */
 function operationalNoteElement(lines: readonly string[]): HTMLElement {
   const box = element('div', 'detail__operational')
-  box.append(element('p', 'detail__operational-title', '運用の注記'))
+  box.append(element('p', 'detail__operational-title', '注記'))
   for (const line of lines) box.append(element('p', '', line))
 
   return box

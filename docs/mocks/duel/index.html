@@ -2853,7 +2853,7 @@ function detailParts(node) {
 // 運用の注記の枠。見出しと、注記の行
 function operationalNote(lines) {
   const box = Object.assign(document.createElement('div'), { className: 'detail__operational' })
-  box.append(Object.assign(document.createElement('p'), { className: 'detail__operational-title', textContent: '運用の注記' }))
+  box.append(Object.assign(document.createElement('p'), { className: 'detail__operational-title', textContent: '注記' }))
   for (const line of lines) box.append(Object.assign(document.createElement('p'), { textContent: line }))
   return box
 }

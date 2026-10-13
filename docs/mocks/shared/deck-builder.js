@@ -712,7 +712,7 @@ function detailNodes(c) {
   if (c.face.text.length) { const t = el('div', 'detail__text'); for (const p of c.face.text) t.append(el('p', '', p)); info.append(t) }
   // 運用の注記（ADR-0043）。印刷されたテキストの下に、別の色の枠で出す。持たないカードには枠ごと出さない
   if (c.face.operationalNote?.length) {
-    const n = el('div', 'detail__operational'); n.append(el('p', 'detail__operational-title', '運用の注記'))
+    const n = el('div', 'detail__operational'); n.append(el('p', 'detail__operational-title', '注記'))
     for (const p of c.face.operationalNote) n.append(el('p', '', p))
     info.append(n)
   }
