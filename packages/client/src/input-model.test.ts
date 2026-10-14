@@ -538,6 +538,27 @@ describe('選ぶ候補', () => {
       expect(view.asking).toBe('テスト・盤上の戦士 を発動するきっかけを選んでください')
     })
 
+    it('「勇気」の候補は、トリガーアイコンと関係が無いので「侵入」ではなく「置かれた」と出す', () => {
+      const asked = {
+        ...choice([
+          { kind: 'きっかけ', occasion: { kind: '置かれた', unit: { card: 'てふだの1枚', square: { row: 1, column: 1 } } } },
+        ]),
+        purpose: '勇気のきっかけ' as const,
+      }
+
+      expect(choiceView(board(), asked).candidates.map((candidate) => candidate.label)).toEqual([
+        '1 番目: 置かれた テスト・手札の戦士（中央エリアの中央ライン）',
+      ])
+    })
+
+    it('この画面が知らない種類のきっかけは、番号だけを出す', () => {
+      const unknown = { kind: 'きっかけ', occasion: { kind: 'この画面が知らない種類' } } as unknown as WireCandidate
+
+      expect(choiceView(board(), choice([unknown])).candidates.map((candidate) => candidate.label)).toEqual([
+        '1 番目（表示できない候補）',
+      ])
+    })
+
     it('「勇気」の起動では、ダメージを与えるユニットを選ばせる', () => {
       const view = choiceView(board(), {
         ...choice([occasion('てふだの1枚', { row: 1, column: 1 })]),

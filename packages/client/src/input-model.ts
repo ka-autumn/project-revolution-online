@@ -265,12 +265,34 @@ function candidateLabel(
       return `${position}（裏向き）`
     // できごとの写しなので、いま盤面にいるかどうかは問わない。ユニットの名前とスクエアで指す。
     case 'きっかけ':
-      return `${position}: 侵入 ${nameOf(names, candidate.occasion.invader.card)}（${squareLabel(viewer, candidate.occasion.invader.square)}）`
+      return occasionLabel(candidate.occasion, position, viewer, names)
     // この画面が知らない形（#285）。サーバが先に新しくなると、開いたままの画面に届く。何を指す
     // 候補かは読めないが、答えは番号なので（ADR-0008）、番号だけは必ず出す。盤面から押せる候補にも
     // ならない（`choicePicking` は知っている形しか拾わない）ので、ボタンから消えることは無い。
     default:
       candidate satisfies never
+      return `${position}（表示できない候補）`
+  }
+}
+
+/**
+ * きっかけの候補の出し方。トラップは「侵入」、「勇気」は「置かれた」と呼び分ける（ADR-0039）。
+ *
+ * この画面が知らない種類のきっかけ（サーバが先に新しくなった時）は、番号だけを出す。
+ */
+function occasionLabel(
+  occasion: Extract<WireCandidate, { kind: 'きっかけ' }>['occasion'],
+  position: string,
+  viewer: Player,
+  names: ReadonlyMap<CardId, string>,
+): string {
+  switch (occasion.kind) {
+    case '侵入':
+      return `${position}: 侵入 ${nameOf(names, occasion.invader.card)}（${squareLabel(viewer, occasion.invader.square)}）`
+    case '置かれた':
+      return `${position}: 置かれた ${nameOf(names, occasion.unit.card)}（${squareLabel(viewer, occasion.unit.square)}）`
+    default:
+      occasion satisfies never
       return `${position}（表示できない候補）`
   }
 }

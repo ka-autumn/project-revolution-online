@@ -990,9 +990,10 @@ describe('「勇気」を起動するきっかけを選ぶ', () => {
     expectChoice(progress)
     expect(progress.choice.purpose).toBe('勇気のきっかけ')
     expect(progress.choice.source).toBe('勇気')
+    // トリガーアイコンとは関係が無いので、「侵入」とは呼ばない。
     expect(progress.choice.candidates).toEqual([
-      { kind: 'きっかけ', occasion: { kind: '侵入', invader: { card: '1 体目', square: { row: 2, column: 1 } } } },
-      { kind: 'きっかけ', occasion: { kind: '侵入', invader: { card: '2 体目', square: { row: 2, column: 0 } } } },
+      { kind: 'きっかけ', occasion: { kind: '置かれた', unit: { card: '1 体目', square: { row: 2, column: 1 } } } },
+      { kind: 'きっかけ', occasion: { kind: '置かれた', unit: { card: '2 体目', square: { row: 2, column: 0 } } } },
     ])
   })
 })

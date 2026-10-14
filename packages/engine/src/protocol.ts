@@ -468,11 +468,17 @@ export type WireCandidate =
    * できごとが起きた時点の姿の写しなので、いまの盤面のカードではなく、置かれたユニットの識別子と
    * スクエアで指す。発動までにそのユニットがスクエアを離れていても、同じユニットが 2 度置かれて
    * いても、候補として並べられる。スクエアにいるユニットは公開情報（総合ルール 第2部 第23章
-   * 1-1）なので、隠すものは無い。`occasion` の種類は、単位 5 で攻撃・スマッシュが足される。
+   * 1-1）なので、隠すものは無い。
+   *
+   * `occasion` の種類は、トラップの `侵入`（トリガーアイコンに描かれたスクエアに置かれたこと）と、
+   * 「勇気」の `置かれた`（味方エリアか中央エリアに置かれたこと）。後者はトリガーアイコンと関係が
+   * 無く、用語「侵入」とは呼べない（CONTEXT.md）。単位 5 で攻撃・スマッシュが足される。
    */
   | {
       readonly kind: 'きっかけ'
-      readonly occasion: { readonly kind: '侵入'; readonly invader: { readonly card: CardId; readonly square: Square } }
+      readonly occasion:
+        | { readonly kind: '侵入'; readonly invader: { readonly card: CardId; readonly square: Square } }
+        | { readonly kind: '置かれた'; readonly unit: { readonly card: CardId; readonly square: Square } }
     }
 
 /** 選んでほしいこと 1 つ。**選ぶプレイヤーにだけ送る**（ADR-0008）。 */
@@ -1001,7 +1007,7 @@ function describeCandidate(
   }
   if (purpose === '勇気のきっかけ') {
     const { placed } = candidate as CourageConditionMet
-    return { kind: 'きっかけ', occasion: { kind: '侵入', invader: { card: placed.id, square: placed.square } } }
+    return { kind: 'きっかけ', occasion: { kind: '置かれた', unit: { card: placed.id, square: placed.square } } }
   }
 
   const id = cardIdOf(candidate)
