@@ -117,8 +117,9 @@ function inSpecialProcedure(state: DuelState): boolean {
  * 得た後は次に得るまで結果が変わらない。
  *
  * 「優先権を得る時に発生した」ものだけでなく、進行中のバトル・スマッシュ判定すべてで権利を
- * 止めている。進行中の最中に条件が満たされることが、いまは無いためである（`trap.ts` の
- * `trapRightOf`）。
+ * 止めている。効果でユニットが置かれれば、進行中の最中にも条件は満たされうるが、その場合も
+ * 終わるまで止まる。条件が満たされた後に発生したものだけを止める形に改めることは、ADR-0039
+ * で決まっている（`trap.ts` の `trapRightOf`）。
  */
 export function deferringRights(state: DuelState): boolean {
   return inSpecialProcedure(state)

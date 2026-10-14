@@ -9,9 +9,12 @@ import {
   cardsOn,
   choose,
   chooseAtMostOne,
+  courage,
   createTriggeredAbility,
   damagePlayer,
   damageUnit,
+  defineStrategy,
+  defineTrap,
   defineUnit,
   destroy,
   drawCards,
@@ -32,6 +35,7 @@ import {
 } from './index.js'
 import type {
   Area,
+  Card,
   CardInZone,
   CardInstance,
   Chooser,
@@ -1735,5 +1739,200 @@ describe('エリアを選ぶ', () => {
 
     expect(executedInstructions(first)[0]).toMatchObject({ kind: '選ぶ', areaRow: 2 })
     expect(executedInstructions(second)[0]).toMatchObject({ kind: '選ぶ', areaRow: 0 })
+  })
+})
+
+/**
+ * 総合ルール 第2部 第20章 3-6、第5部 第2章 2、ADR-0039（ADR-0006）。
+ *
+ * どちらの条文も「相手のユニットが置かれた」とだけ書き、置き方を限っていない。効果によって
+ * スクエアに置かれた場合も、登場や移動と同じく、侵入になり、「勇気」の起動条件も満たす。
+ * ゾーンから置いた場合も、別のスクエアから置き直した場合も同じに扱う。置き直しを含めるのは
+ * 条文に明示の無い読みで、ADR-0039 による。
+ */
+describe('効果によってスクエアに置かれた時の侵入と「勇気」', () => {
+  /** 後攻の味方エリアのスクエア。先攻から見れば敵エリアにあたる。 */
+  const invadedSquare: Square = { row: 2, column: 1 }
+  /** 先攻のユニットが元からいるスクエア。置き直す前の位置として使う。 */
+  const startSquare: Square = { row: 1, column: 0 }
+
+  /**
+   * トリガーアイコンに `invadedSquare` を持つトラップ。後攻が支配する時に使うので、印刷された
+   * スクエアは後攻から見た向き（行を折り返した位置）で書く。
+   */
+  const trapOnInvaded = defineTrap({
+    name: 'テスト・侵入トラップ',
+    level: 1,
+    colors: ['赤'],
+    triggerIcon: [{ row: 0, column: 1 }],
+  })
+
+  /** 先攻が支配する時に、`invadedSquare` を指すトラップ。先攻から見た向きのまま書く。 */
+  const ownTrapOnInvaded = defineTrap({
+    name: 'テスト・自分の侵入トラップ',
+    level: 1,
+    colors: ['赤'],
+    triggerIcon: [invadedSquare],
+  })
+
+  const courageCard = defineUnit({
+    name: 'テスト・勇気',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [courage(4000)],
+  })
+
+  const strategyCard = defineStrategy({ name: 'テスト・ストラテジー', level: 1, colors: ['赤'], effect: function* () {} })
+
+  /** 先攻の捨札にあるカードを 1 枚選び、`invadedSquare` に置く効果。 */
+  const placeFromDiscard: Effect = function* (duel) {
+    const card = yield* choose(duel.discardPile())
+    if (card === undefined) throw new Error('捨札にカードがある盤面で試すこと')
+    yield* placeOnSquare(card, invadedSquare, 'リリース')
+  }
+
+  /** 先攻のスクエアにいるユニットを 1 体選び、`invadedSquare` に置き直す効果。 */
+  const placeFromSquare: Effect = function* (duel) {
+    const ally = yield* choose(duel.allies())
+    if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+    yield* placeOnSquare(ally, invadedSquare, 'リリース')
+  }
+
+  const resolve = (state: DuelState, effect: Effect) =>
+    resolveEffect(state, effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+  /** 後攻のトラップゾーンにそのトラップを置いた盤面。 */
+  function withTrapOf(state: DuelState, owner: '先攻' | '後攻' = '後攻', card = trapOnInvaded): DuelState {
+    return putInZone(state, owner, 'トラップゾーン', [instantiate({ id: 'トラップ', card, owner })])
+  }
+
+  /** 先攻の捨札にそのカードを 1 枚置いた盤面。 */
+  function inDiscard(state: DuelState, card: Card = vanilla): DuelState {
+    return putInZone(state, '先攻', '捨札', [instantiate({ id: '置かれるユニット', card, owner: '先攻' })])
+  }
+
+  /** 後攻の手札に「勇気」を、エネルギーゾーンに同じ色のカードを 1 枚置いた盤面。 */
+  function withCourage(state: DuelState): DuelState {
+    const withHand = putInZone(state, '後攻', '手札', [instantiate({ id: '勇気', card: courageCard, owner: '後攻' })])
+    return putInZone(withHand, '後攻', 'エネルギーゾーン', [
+      instantiate({ id: '後攻のエネルギー', card: vanilla, owner: '後攻' }),
+    ])
+  }
+
+  describe('侵入', () => {
+    it('捨札からトリガーアイコンのスクエアに置くと、発動条件が満たされる', () => {
+      const resolved = resolve(withTrapOf(inDiscard(emptyDuelState())), placeFromDiscard)
+
+      expect(resolved.trapConditionsMet).toEqual([
+        {
+          trap: 'トラップ',
+          occasion: {
+            kind: '侵入',
+            invader: { id: '置かれるユニット', square: invadedSquare, card: vanilla, controller: '先攻' },
+          },
+        },
+      ])
+    })
+
+    it('別のスクエアから置き直しても、発動条件が満たされる', () => {
+      const state = withTrapOf(
+        putOnSquare(emptyDuelState(), startSquare, instantiate({ id: '置き直すユニット', card: vanilla, owner: '先攻' })),
+      )
+
+      const resolved = resolve(state, placeFromSquare)
+
+      expect(resolved.trapConditionsMet.map((met) => met.occasion.invader)).toEqual([
+        { id: '置き直すユニット', square: invadedSquare, card: vanilla, controller: '先攻' },
+      ])
+    })
+
+    // 「相手のユニットが」なので、置いた効果の支配者が支配するトラップは対象にならない。
+    it('自分のトラップのトリガーアイコンのスクエアに置いても、発動条件は満たされない', () => {
+      const resolved = resolve(withTrapOf(inDiscard(emptyDuelState()), '先攻', ownTrapOnInvaded), placeFromDiscard)
+
+      expect(resolved.trapConditionsMet).toEqual([])
+    })
+
+    // 「ユニットが」なので、ユニットでないカードが置かれても侵入にはならない。
+    it('ユニットでないカードを置いても、発動条件は満たされない', () => {
+      const resolved = resolve(withTrapOf(inDiscard(emptyDuelState(), strategyCard)), placeFromDiscard)
+
+      expect(cardsOn(resolved, invadedSquare).map((card) => card.id)).toEqual(['置かれるユニット'])
+      expect(resolved.trapConditionsMet).toEqual([])
+    })
+  })
+
+  describe('「勇気」', () => {
+    it('相手の味方エリアに置くと、相手の起動条件が満たされる', () => {
+      const resolved = resolve(withCourage(inDiscard(emptyDuelState())), placeFromDiscard)
+
+      expect(resolved.courageConditionsMet).toEqual([
+        {
+          player: '後攻',
+          placed: { id: '置かれるユニット', square: invadedSquare, card: vanilla, controller: '先攻' },
+          satisfied: ['勇気'],
+        },
+      ])
+    })
+
+    it('別のスクエアから置き直しても、起動条件が満たされる', () => {
+      const state = withCourage(
+        putOnSquare(emptyDuelState(), startSquare, instantiate({ id: '置き直すユニット', card: vanilla, owner: '先攻' })),
+      )
+
+      const resolved = resolve(state, placeFromSquare)
+
+      expect(resolved.courageConditionsMet.map((met) => met.placed.id)).toEqual(['置き直すユニット'])
+    })
+  })
+
+  /**
+   * 1 つの効果が続けて置くと、パスを挟まずに満たし直される。いまは最初のできごとを持ち続ける。
+   * ADR-0039 はできごとごとに 1 件ずつ持つと決めていて、権利の判定をきっかけごとにする時に
+   * この期待も改める。
+   */
+  describe('1 つの効果が続けて 2 体置いた時', () => {
+    /** `invadedSquare` の隣の、後攻の味方エリアのスクエア。 */
+    const nextInvadedSquare: Square = { row: 2, column: 2 }
+
+    /** 2 つのスクエアをトリガーアイコンに持つトラップ。後攻から見た向きで書く。 */
+    const trapOnBoth = defineTrap({
+      name: 'テスト・2 マスの侵入トラップ',
+      level: 1,
+      colors: ['赤'],
+      triggerIcon: [
+        { row: 0, column: 1 },
+        { row: 0, column: 2 },
+      ],
+    })
+
+    /** 先攻の捨札の 1 枚目を `invadedSquare` に、2 枚目を `nextInvadedSquare` に置く効果。 */
+    const placeTwo: Effect = function* (duel) {
+      const [first, second] = duel.discardPile()
+      if (first === undefined || second === undefined) throw new Error('捨札に 2 枚ある盤面で試すこと')
+      yield* placeOnSquare(first, invadedSquare, 'リリース')
+      yield* placeOnSquare(second, nextInvadedSquare, 'リリース')
+    }
+
+    function twoInDiscard(): DuelState {
+      return putInZone(emptyDuelState(), '先攻', '捨札', [
+        instantiate({ id: '1 体目', card: vanilla, owner: '先攻' }),
+        instantiate({ id: '2 体目', card: vanilla, owner: '先攻' }),
+      ])
+    }
+
+    it('トラップは、1 体目の侵入のきっかけを持ち続ける', () => {
+      const resolved = resolve(withTrapOf(twoInDiscard(), '後攻', trapOnBoth), placeTwo)
+
+      expect(resolved.trapConditionsMet.map((met) => met.occasion.invader.id)).toEqual(['1 体目'])
+    })
+
+    it('「勇気」は、1 体目が置かれたできごとを持ち続ける', () => {
+      const resolved = resolve(withCourage(twoInDiscard()), placeTwo)
+
+      expect(resolved.courageConditionsMet.map((met) => met.placed.id)).toEqual(['1 体目'])
+    })
   })
 })
