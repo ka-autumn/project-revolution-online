@@ -3192,7 +3192,7 @@ body {
   margin-top: auto;
 }
 
-/* ムーブアイコン（ユニット）・トリガーアイコン（侵入のトラップ）は右側 */
+/* ムーブアイコン（ユニット）は右側。トリガーアイコン（トラップ）は左側（card__icons--trigger） */
 .card__icons {
   display: flex;
   justify-content: flex-end;
