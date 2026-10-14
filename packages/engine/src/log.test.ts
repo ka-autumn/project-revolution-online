@@ -393,6 +393,7 @@ describe('解決の入口ごとの言葉', () => {
       name: 'テスト・発動トラップ',
       level: 1,
       colors: ['赤'],
+      triggerIcon: { kind: '侵入', squares: [] },
       effect: function* (duel) {
         const target = yield* choose(duel.enemies())
         if (target !== undefined) yield* destroy(target)

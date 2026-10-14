@@ -23,7 +23,7 @@ import { COLORLESS, emptyFilter } from './pool-filter.js'
 import type { PoolFilter } from './pool-filter.js'
 import type { SharingState } from './recipe.js'
 import type { ChosenRules } from './render.js'
-import { squareLabel } from './view-model.js'
+import { squareLabel, triggerIconLabel } from './view-model.js'
 import type { DetailRow, HandRefusal } from './view-model.js'
 
 /**
@@ -702,8 +702,8 @@ export function printedDetailsOf(face: WireCardFace, expansions: readonly string
     rows.push({ label: 'ＢＰ', value: String(face.bp) }, { label: 'ＳＰ', value: String(face.sp) })
     if (face.moveIcon.length > 0) rows.push({ label: 'ムーブアイコン', value: face.moveIcon.join('・') })
   }
-  if (face.type === 'トラップ' && face.triggerIcon.length > 0) {
-    rows.push({ label: 'トリガーアイコン', value: face.triggerIcon.map((square) => squareLabel('先攻', square)).join('・') })
+  if (face.type === 'トラップ') {
+    rows.push({ label: 'トリガーアイコン', value: triggerIconLabel(face.triggerIcon, (square) => squareLabel('先攻', square)) })
   }
   if (face.stars > 0) rows.push({ label: 'スター', value: String(face.stars) })
   if (face.reverseStars > 0) rows.push({ label: 'リバーススター', value: String(face.reverseStars) })

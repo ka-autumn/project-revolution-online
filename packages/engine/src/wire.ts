@@ -1,5 +1,5 @@
 import type { MoveDirection, Square } from './board.js'
-import type { Attribute, Card, CardType, Color, PlanKeyword, UnitCard } from './card.js'
+import type { Attribute, Card, CardType, Color, PlanKeyword, TriggerIcon, UnitCard } from './card.js'
 import { planKeywordsOf } from './card.js'
 import type { CardId, CardInstance, DuelResult } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
@@ -83,7 +83,7 @@ export interface WireStrategyFace extends WireWrittenCard {
 /** 通信に載せる `TrapCard` の表記。 */
 export interface WireTrapFace extends WireWrittenCard {
   readonly type: 'トラップ'
-  readonly triggerIcon: readonly Square[]
+  readonly triggerIcon: TriggerIcon
 }
 
 /**

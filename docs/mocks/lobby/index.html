@@ -749,7 +749,33 @@ function moveIcon(dirs) {
   s.append(svg('path', { d: 'M10 0.6 19.4 10 10 19.4 0.6 10Z', fill: '#2a2a2a', stroke: '#fff', 'stroke-width': '0.8' }), svg('path', { d: 'M10 2.6 12.4 6H7.6Z', fill: on('上') }), svg('path', { d: 'M10 17.4 12.4 14H7.6Z', fill: on('下') }), svg('path', { d: 'M2.6 10 6 7.6V12.4Z', fill: on('左') }), svg('path', { d: 'M17.4 10 14 7.6V12.4Z', fill: on('右') }), svg('circle', { cx: '10', cy: '10', r: '2.6', fill: '#c81c1c', stroke: '#fff', 'stroke-width': '0.6' }))
   return s
 }
-function triggerIcon(cells) {
+// トリガーアイコン（ADR-0039）。種類つきの値。攻撃・スマッシュは印刷をなぞる（デッキ構築のモックと同じ描き方）
+const COLOR_ENGLISH = { 赤: 'Red', 黒: 'Black', 青: 'Blue', 白: 'White', 緑: 'Green' }
+function iconText(text, x, y, size, maxWidth) {
+  const natural = [...text].reduce((sum, ch) => sum + (ch.codePointAt(0) > 255 ? size : size * 0.6), 0)
+  return `<text x="${x}" y="${y}" font-size="${size}" font-weight="500" font-family="sans-serif" fill="#fff" textLength="${Math.min(natural, maxWidth)}" lengthAdjust="spacingAndGlyphs">${text}</text>`
+}
+const iconCard = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="0.6" fill="#fff" stroke="#2a4fb0" stroke-width="0.5"/>`
+const iconBand = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#9a9a9a"/>`
+function triggerIcon(icon) {
+  const dark = '<rect x="0" y="0" width="20.6" height="20.6" rx="1.4" fill="#4a4440"/>'
+  if (icon.kind === '攻撃') {
+    const f = icon.filter
+    const text = f ? (f.axis === '色' ? COLOR_ENGLISH[f.value] : f.value) : ''
+    const s = svg('svg', { class: 'trigger-icon', viewBox: '0 0 20.6 20.6' })
+    s.innerHTML = `${dark}${iconText('Attack', 1, 4, 2.7, 9.6)}${iconCard(11.6, 1.2, 7.8, 8.6)}${iconBand(12.1, 1.7, 6.8, 1.4)}
+      ${iconCard(7, 8.2, 9, 11.2)}${iconBand(7.6, 15.2, 7.8, 1.6)}${iconBand(7.6, 17.3, 7.8, 1.2)}
+      <path d="M12.6 5.6V12" stroke="#f08a1c" stroke-width="1.4" fill="none"/><path d="M9.8 11.2H15.4L12.6 15Z" fill="#e8501a"/>${text ? iconText(text, 1, 18.6, 2.8, 5.6) : ''}`
+    return s
+  }
+  if (icon.kind === 'スマッシュ') {
+    const s = svg('svg', { class: 'trigger-icon', viewBox: '0 0 20.6 20.6' })
+    s.innerHTML = `${dark}${iconText('Smash', 1, 4, 2.7, 8.6)}${iconCard(10.6, 6.4, 8.8, 12.8)}${iconBand(11.2, 7, 7.6, 1.2)}${iconBand(11.2, 8.6, 7.6, 1.4)}
+      ${iconCard(1.2, 5.2, 12.4, 8.6)}${iconBand(10, 5.8, 1.4, 7.4)}${iconBand(11.8, 5.8, 1.2, 7.4)}
+      <path d="M14.6 17.6C10.6 17.6 7.6 16.6 7.2 13.6" stroke="#f08a1c" stroke-width="1.3" fill="none"/><path d="M5 14.4H9.4L7.2 11.2Z" fill="#e8501a"/>`
+    return s
+  }
+  const cells = icon.squares
   const s = svg('svg', { class: 'trigger-icon', viewBox: '0 0 20.6 20.6' })
   s.append(svg('rect', { x: '0', y: '0', width: '20.6', height: '20.6', rx: '1.4', fill: '#fff', stroke: '#222', 'stroke-width': '0.6' }))
   for (let row = 0; row < 3; row++) for (let column = 0; column < 3; column++) {
@@ -775,8 +801,8 @@ function face(f) {
   title.append(el('span', 'card__name', f.name))
   node.append(title)
   const bottom = el('div', 'card__bottom')
-  const icon = f.moveIcon?.length ? moveIcon(f.moveIcon) : f.triggerIcon?.length ? triggerIcon(f.triggerIcon) : undefined
-  if (icon) { const d = el('div', 'card__icons'); d.append(icon); bottom.append(d) }
+  const icon = f.moveIcon?.length ? moveIcon(f.moveIcon) : f.triggerIcon ? triggerIcon(f.triggerIcon) : undefined
+  if (icon) { const d = el('div', f.moveIcon?.length ? 'card__icons' : 'card__icons card__icons--trigger'); d.append(icon); bottom.append(d) }
   if (f.attributes.length) bottom.append(el('span', 'card__traits', f.attributes.join(' | ')))
   const stats = el('div', `card__stats${f.type === 'ユニット' ? '' : ' card__stats--ロゴだけ'}`)
   if (f.type === 'ユニット') stats.append(el('span', 'card__bp', String(f.bp)), el('span', 'card__sp', String(f.sp)))

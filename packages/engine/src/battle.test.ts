@@ -246,7 +246,12 @@ function damageOn(state: DuelState, square: Square, id: string): number | undefi
 const blueCard = defineUnit({ name: 'テスト・青', level: 1, colors: ['青'], bp: 3000, sp: 1000 })
 
 /** 発動しても何も起こらないトラップ。 */
-const someTrap = defineTrap({ name: 'テスト・トラップ', level: 1, colors: ['赤'] })
+const someTrap = defineTrap({
+  name: 'テスト・トラップ',
+  level: 1,
+  colors: ['赤'],
+  triggerIcon: { kind: '侵入', squares: [] },
+})
 
 /** 行えたはずの行動の結果の盤面。 */
 function stateOf(outcome: ActionOutcome): DuelState {

@@ -57,12 +57,13 @@ export const MOVE_SHAPES: readonly MoveShape[] = [
 /**
  * トラップの発動条件で絞り込む時の値（ADR-0028）。プールの中身に関わらず固定で並べる。
  *
- * いまカードの表記から見分けられるのは「侵入された時」（トリガーアイコンを 1 つ以上持つ
- * トラップ）だけである。ほかの発動条件は、カードの表記に載せてから足す（#232）。
+ * いまカードの表記から見分けられるのは、トリガーアイコンの種類で表せる 3 つである
+ * （ADR-0039）。絞り込みつきの攻撃も「攻撃された時」に入る。《 》のテキストが表す発動条件は、
+ * カードの表記に載せてから足す（#232）。
  */
-export type TriggerCondition = '侵入された時'
+export type TriggerCondition = '侵入された時' | '攻撃された時' | 'スマッシュされた時'
 
-export const TRIGGER_CONDITIONS: readonly TriggerCondition[] = ['侵入された時']
+export const TRIGGER_CONDITIONS: readonly TriggerCondition[] = ['侵入された時', '攻撃された時', 'スマッシュされた時']
 
 /**
  * 種別を画面に出す時の短い呼び方（ADR-0028）。超必殺ストラテジー！は「超必殺」と出す。読み上げと
@@ -156,9 +157,23 @@ function moveShapeLabelsOf(face: WireCardFace): readonly string[] {
   ).map((shape) => shape.label)
 }
 
-/** カードが当たる発動条件。「侵入された時」はトリガーアイコンを持つトラップ（`TRIGGER_CONDITIONS`）。 */
+/**
+ * カードが当たる発動条件。トラップのトリガーアイコンの種類で振り分ける（`TRIGGER_CONDITIONS`）。
+ * 知らない種類は、どの発動条件にも当たらない（ADR-0038）。
+ */
 function triggerConditionsOf(face: WireCardFace): readonly TriggerCondition[] {
-  return face.type === 'トラップ' && face.triggerIcon.length > 0 ? ['侵入された時'] : []
+  if (face.type !== 'トラップ') return []
+  switch (face.triggerIcon.kind) {
+    case '侵入':
+      return ['侵入された時']
+    case '攻撃':
+      return ['攻撃された時']
+    case 'スマッシュ':
+      return ['スマッシュされた時']
+    default:
+      face.triggerIcon satisfies never
+      return []
+  }
 }
 
 /** カード 1 種が条件に合うか。 */

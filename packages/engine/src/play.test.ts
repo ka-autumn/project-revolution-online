@@ -132,6 +132,7 @@ const redTrap = defineTrap({
   name: 'テスト・赤トラップ',
   level: 2,
   colors: ['赤'],
+  triggerIcon: { kind: '侵入', squares: [] },
   effect: function* (duel) {
     const enemy = yield* choose(duel.enemies())
     if (enemy !== undefined) yield* destroy(enemy)
@@ -922,6 +923,7 @@ describe('発動したトラップの効果に渡されるきっかけ', () => {
     name: 'テスト・エリアトラップ',
     level: 1,
     colors: ['赤'],
+    triggerIcon: { kind: '侵入', squares: [] },
     effect: function* (duel, occasion) {
       const invaded = areaOf(duel.controller, occasion.invader.square)
       for (const enemy of duel.enemies().filter((each) => areaOf(duel.controller, each.square) === invaded)) {
@@ -940,7 +942,7 @@ describe('発動したトラップの効果に渡されるきっかけ', () => {
     name: 'テスト・侵入者トラップ',
     level: 1,
     colors: ['赤'],
-    triggerIcon: [{ row: 2, column: 1 }],
+    triggerIcon: { kind: '侵入', squares: [{ row: 2, column: 1 }] },
     effect: function* (_duel, occasion) {
       yield* destroy(occasion.invader)
     },
@@ -1047,7 +1049,11 @@ describe('トラップの発動条件（侵入）', () => {
   // 中央エリアのスクエアは先攻・後攻どちらから見ても同じ位置なので、トリガーアイコンが
   // 支配者から見た向きで解釈されること（`board.ts` の `squareFromView`）に関わらず、
   // ここでは絶対のスクエアとして中央エリアのスクエアを使う。
-  const intrusionTrap = defineTrap({ name: 'テスト・侵入トラップ', level: 1, triggerIcon: [centerSquare] })
+  const intrusionTrap = defineTrap({
+    name: 'テスト・侵入トラップ',
+    level: 1,
+    triggerIcon: { kind: '侵入', squares: [centerSquare] },
+  })
 
   /** 後攻のトラップゾーンに侵入トラップがある、先攻が行動できるメインフェイズの盤面。 */
   function readyWithOpponentTrap(): DuelState {
@@ -1115,6 +1121,28 @@ describe('トラップの発動条件（侵入）', () => {
     expect(passedTwice.turn.priority).toBe('後攻')
     expect(violationOf(activateTrap(passedTwice, 'トラップ', chooseFirst))).toBe('発動する権利がない')
   })
+
+  // 攻撃・スマッシュの発動条件を判定する処理は、まだ無い（単位 5、ADR-0039）。値として持てる
+  // だけで、ユニットが登場しても権利を得ず、発動もできない。判定を足す時に、この期待を書き換える。
+  it.each([
+    ['攻撃', defineTrap({ name: 'テスト・攻撃トラップ', level: 1, triggerIcon: { kind: '攻撃' } })],
+    ['スマッシュ', defineTrap({ name: 'テスト・スマッシュトラップ', level: 1, triggerIcon: { kind: 'スマッシュ' } })],
+  ])('%sのトラップは、相手のユニットが登場しても権利を得ず、発動できない', (_kind, card) => {
+    const trap = instantiate({ id: 'トラップ', card, owner: '後攻' })
+    const state = putInZone(
+      putInZone(putInZone(mainPhase(), '後攻', 'トラップゾーン', [trap]), '先攻', '手札', [
+        instantiate({ id: 'ユニット', card: redUnit, owner: '先攻' }),
+      ]),
+      '先攻',
+      'エネルギーゾーン',
+      twoEnergies(),
+    )
+
+    const played = stateOf(play(state, { card: 'ユニット', square: centerSquare }))
+
+    expect(trapsMet(played)).toEqual([])
+    expect(violationOf(activateTrap(played, 'トラップ', chooseFirst))).toBe('発動する権利がない')
+  })
 })
 
 // 総合ルール 第2部 第20章 3-8 ただし書き、第3部 第11章 5（ADR-0006）
@@ -1124,7 +1152,7 @@ describe('侵入と同時にバトルが発生した場合の権利', () => {
     name: 'テスト・侵入トラップ（赤）',
     level: 1,
     colors: ['赤'],
-    triggerIcon: [centerSquare],
+    triggerIcon: { kind: '侵入', squares: [centerSquare] },
   })
 
   /**
@@ -1198,7 +1226,7 @@ describe('効果によってスクエアに置かれた時の権利', () => {
     name: 'テスト・侵入トラップ（赤）',
     level: 1,
     colors: ['赤'],
-    triggerIcon: [centerSquare],
+    triggerIcon: { kind: '侵入', squares: [centerSquare] },
   })
 
   /** レベル 1 の赤い「勇気」。 */

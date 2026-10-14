@@ -207,7 +207,11 @@ describe('配るカードプール', () => {
         // 効果は関数なので、配る形には載らない。載っていないことを見るために書いておく。
         *effect() {},
       }),
-      'テスト-T': defineTrap({ name: 'テスト・トラップ', level: 1, triggerIcon: [{ row: 0, column: 1 }] }),
+      'テスト-T': defineTrap({
+        name: 'テスト・トラップ',
+        level: 1,
+        triggerIcon: { kind: '侵入', squares: [{ row: 0, column: 1 }] },
+      }),
     }
 
     expect(poolFacesOf({ pool })).toEqual([
@@ -239,7 +243,7 @@ describe('配るカードプール', () => {
           attributes: [],
           keywords: [],
           text: [],
-          triggerIcon: [{ row: 0, column: 1 }],
+          triggerIcon: { kind: '侵入', squares: [{ row: 0, column: 1 }] },
         },
       },
     ])

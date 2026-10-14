@@ -38,7 +38,11 @@ const strategyCard = defineStrategy({ name: 'テスト・自己対戦ストラ�
  * トリガーアイコンを持つトラップ（総合ルール 第2部 第20章 3）。相手のユニットが敵エリアの
  * 中央寄りのスクエアに侵入すると発動する権利を得るので、トラップの発動・廃棄の経路を通す。
  */
-const trapCard = defineTrap({ name: 'テスト・自己対戦トラップ', level: 0, triggerIcon: [{ row: 2, column: 1 }] })
+const trapCard = defineTrap({
+  name: 'テスト・自己対戦トラップ',
+  level: 0,
+  triggerIcon: { kind: '侵入', squares: [{ row: 2, column: 1 }] },
+})
 
 /** 能力を持たないレベル 0 のユニット。テンプレートの残りを埋める。 */
 const plainUnits = Array.from({ length: 9 }, (_, index) =>

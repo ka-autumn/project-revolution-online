@@ -1764,7 +1764,7 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
     name: 'テスト・侵入トラップ',
     level: 1,
     colors: ['赤'],
-    triggerIcon: [{ row: 0, column: 1 }],
+    triggerIcon: { kind: '侵入', squares: [{ row: 0, column: 1 }] },
   })
 
   /** 先攻が支配する時に、`invadedSquare` を指すトラップ。先攻から見た向きのまま書く。 */
@@ -1772,7 +1772,7 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
     name: 'テスト・自分の侵入トラップ',
     level: 1,
     colors: ['赤'],
-    triggerIcon: [invadedSquare],
+    triggerIcon: { kind: '侵入', squares: [invadedSquare] },
   })
 
   const courageCard = defineUnit({
@@ -1902,10 +1902,13 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
       name: 'テスト・2 マスの侵入トラップ',
       level: 1,
       colors: ['赤'],
-      triggerIcon: [
-        { row: 0, column: 1 },
-        { row: 0, column: 2 },
-      ],
+      triggerIcon: {
+        kind: '侵入',
+        squares: [
+          { row: 0, column: 1 },
+          { row: 0, column: 2 },
+        ],
+      },
     })
 
     /** 先攻の捨札の 1 枚目を `invadedSquare` に、2 枚目を `nextInvadedSquare` に置く効果。 */

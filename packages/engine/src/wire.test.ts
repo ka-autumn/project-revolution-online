@@ -10,6 +10,7 @@ import {
   defineUnit,
   dream,
   emptyDuelState,
+  faceOf,
   friendship,
   instantiate,
   perspectiveOf,
@@ -36,7 +37,11 @@ const CARDS = {
   }),
   見えているカード: defineUnit({ name: 'テスト・見えているカード', level: 1, colors: ['白'], bp: 2000, sp: 500 }),
   隠されるカード: defineUnit({ name: 'テスト・隠されるカード', level: 2, colors: ['黒'], bp: 3000, sp: 1500 }),
-  トラップ: defineTrap({ name: 'テスト・トラップ', level: 1, triggerIcon: [{ row: 1, column: 1 }] }),
+  トラップ: defineTrap({
+    name: 'テスト・トラップ',
+    level: 1,
+    triggerIcon: { kind: '侵入', squares: [{ row: 1, column: 1 }] },
+  }),
   ストラテジー: defineStrategy({ name: 'テスト・ストラテジー', level: 1, colors: ['赤'] }),
 } as const satisfies Readonly<Record<string, Card>>
 
@@ -131,8 +136,45 @@ describe('通信に載せる形', () => {
       keywords: [],
       // テキストを書いていないカードは、空のまま載る。
       text: [],
-      triggerIcon: [{ row: 1, column: 1 }],
+      triggerIcon: { kind: '侵入', squares: [{ row: 1, column: 1 }] },
     })
+  })
+
+  // 攻撃・スマッシュ・絞り込みつきのアイコンも、値のまま通信に載る（ADR-0039）。JSON を通しても
+  // 形が変わらない。発動条件を判定する処理は無いが、値として画面まで届く。
+  it.each([
+    ['攻撃', defineTrap({ name: 'テスト・攻撃トラップ', level: 1, triggerIcon: { kind: '攻撃' } })],
+    [
+      '絞り込みつきの攻撃',
+      defineTrap({
+        name: 'テスト・絞り込み攻撃トラップ',
+        level: 1,
+        triggerIcon: { kind: '攻撃', filter: { axis: 'メーカーシンボル', value: 'QXWIREMARK' } },
+      }),
+    ],
+    ['スマッシュ', defineTrap({ name: 'テスト・スマッシュトラップ', level: 1, triggerIcon: { kind: 'スマッシュ' } })],
+  ])('%sのトリガーアイコンは、値のまま通信に載る', (_kind, card) => {
+    const face = JSON.parse(JSON.stringify(faceOf(card))) as { triggerIcon: unknown }
+
+    expect(face.triggerIcon).toEqual(card.triggerIcon)
+  })
+
+  /**
+   * 古い画面は、トリガーアイコンをスクエアの並びとして読む（`face.triggerIcon.length > 0`）。
+   * 種類つきの値は並びではないので、その読み方でも例外にならない。落ちるかどうかを確かめる
+   * ためのもので、古い画面の読み方そのものを写している。古い画面ではトリガーアイコンが
+   * 出ない（読み込み直すまで）ことは、ADR-0039 が移行の間のこととして受け入れている。
+   */
+  it.each([
+    ['侵入', CARDS.トラップ],
+    ['攻撃', defineTrap({ name: 'テスト・攻撃トラップ', level: 1, triggerIcon: { kind: '攻撃' } })],
+    ['スマッシュ', defineTrap({ name: 'テスト・スマッシュトラップ', level: 1, triggerIcon: { kind: 'スマッシュ' } })],
+  ])('古い画面の読み方でも、%sのトリガーアイコンで例外にならない', (_kind, card) => {
+    const face = JSON.parse(JSON.stringify(faceOf(card))) as { type: string; triggerIcon: { length: number } }
+    const oldClientDrawsIcon = (): boolean => face.type === 'トラップ' && face.triggerIcon.length > 0
+
+    expect(oldClientDrawsIcon).not.toThrow()
+    expect(oldClientDrawsIcon()).toBe(false)
   })
 
   /** ストラテジーはムーブアイコンもトリガーアイコンも持たない（`card.ts` の `WrittenCard`）。 */

@@ -25,6 +25,8 @@ import type {
   ShareKey,
   ShareVisibility,
   Square,
+  TriggerFilter,
+  TriggerIcon,
   WireCandidate,
   WireCardFace,
   WireCardPosition,
@@ -108,6 +110,8 @@ import {
   printedSquareLabel,
   ROOM_TABS,
   roomListView,
+  triggerFilterText,
+  triggerIconLabel,
   zoneOf,
 } from './view-model.js'
 
@@ -342,52 +346,160 @@ function moveIconElement(directions: readonly MoveDirection[]): SVGElement {
   return svg
 }
 
+/** 角の丸い長方形 1 つ。トリガーアイコンの図を組み立てる時に使う。 */
+function iconRect(x: number, y: number, width: number, height: number, attributes: Readonly<Record<string, string>>): SVGElement {
+  return svgElement('rect', {
+    x: String(x),
+    y: String(y),
+    width: String(width),
+    height: String(height),
+    rx: '0.6',
+    ...attributes,
+  })
+}
+
+/** トリガーアイコンの図の中に書く文字。幅に収まらなければ、`maxWidth` に詰める。 */
+function iconText(text: string, x: number, y: number, size: number, maxWidth: number): SVGElement {
+  // 全角は文字の高さと同じ幅、半角は 6 割として、書いた時の幅を見積もる。
+  const natural = [...text].reduce((sum, char) => sum + ((char.codePointAt(0) ?? 0) > 255 ? size : size * 0.6), 0)
+  const node = svgElement('text', {
+    x: String(x),
+    y: String(y),
+    'font-size': String(size),
+    'font-weight': '500',
+    'font-family': 'sans-serif',
+    fill: '#fff',
+    textLength: String(Math.min(natural, maxWidth)),
+    lengthAdjust: 'spacingAndGlyphs',
+  })
+  node.textContent = text
+
+  return node
+}
+
+/** 暗い地の左上に書く「Attack」「Smash」の文字と、地そのもの。印刷されたアイコンの枠である。 */
+function iconBackground(caption: string, captionWidth: number): readonly SVGElement[] {
+  return [
+    svgElement('rect', { x: '0', y: '0', width: '20.6', height: '20.6', rx: '1.4', fill: '#4a4440' }),
+    iconText(caption, 1, 4, 2.7, captionWidth),
+  ]
+}
+
+/** 印刷されたカードの絵。縦横どちらにも使う。枠は青、帯は灰色。 */
+function iconCard(x: number, y: number, width: number, height: number): SVGElement {
+  return iconRect(x, y, width, height, { fill: '#fff', stroke: '#2a4fb0', 'stroke-width': '0.5' })
+}
+
+/** カードの絵の中の帯（カードの下端か上端を示す灰色の筋）。 */
+function iconBand(x: number, y: number, width: number, height: number): SVGElement {
+  return svgElement('rect', { x: String(x), y: String(y), width: String(width), height: String(height), fill: '#9a9a9a' })
+}
+
 /**
- * トリガーアイコン。侵入の対象のスクエアは赤、ほかは濃い灰色にする（総合ルール 第2部
+ * 攻撃のトリガーアイコン。印刷をなぞる（ADR-0039）。上の相手のカード（帯が上で、相手の向き）から、
+ * 下の味方のカードへ、矢印が下りる。絞り込みは、左下に文字で書く。
+ */
+function attackIconParts(filter: TriggerFilter | undefined): readonly SVGElement[] {
+  const parts = [
+    ...iconBackground('Attack', 9.6),
+    iconCard(11.6, 1.2, 7.8, 8.6),
+    iconBand(12.1, 1.7, 6.8, 1.4),
+    iconCard(7, 8.2, 9, 11.2),
+    iconBand(7.6, 15.2, 7.8, 1.6),
+    iconBand(7.6, 17.3, 7.8, 1.2),
+    svgElement('path', { d: 'M12.6 5.6V12', stroke: '#f08a1c', 'stroke-width': '1.4', fill: 'none' }),
+    svgElement('path', { d: 'M9.8 11.2H15.4L12.6 15Z', fill: '#e8501a' }),
+  ]
+  if (filter !== undefined) parts.push(iconText(triggerFilterText(filter), 1, 18.6, 2.8, 5.6))
+
+  return parts
+}
+
+/**
+ * スマッシュのトリガーアイコン。印刷をなぞる（ADR-0039）。相手の縦向き（リリース状態）のカード
+ * （上下逆）から、横向き（フリーズ状態）のカードへ、曲がった矢印が上る。横向きのカードを上に重ねる。
+ */
+function smashIconParts(): readonly SVGElement[] {
+  return [
+    ...iconBackground('Smash', 8.6),
+    iconCard(10.6, 6.4, 8.8, 12.8),
+    iconBand(11.2, 7, 7.6, 1.2),
+    iconBand(11.2, 8.6, 7.6, 1.4),
+    iconCard(1.2, 5.2, 12.4, 8.6),
+    iconBand(10, 5.8, 1.4, 7.4),
+    iconBand(11.8, 5.8, 1.2, 7.4),
+    svgElement('path', {
+      d: 'M14.6 17.6C10.6 17.6 7.6 16.6 7.2 13.6',
+      stroke: '#f08a1c',
+      'stroke-width': '1.3',
+      fill: 'none',
+    }),
+    svgElement('path', { d: 'M5 14.4H9.4L7.2 11.2Z', fill: '#e8501a' }),
+  ]
+}
+
+/**
+ * 侵入のトリガーアイコン。侵入の対象のスクエアは赤、ほかは濃い灰色にする（総合ルール 第2部
  * 第12章）。図は印刷された向き（支配者の手前を基準にした向き、`printedSquareLabel`）のまま。
  */
-function triggerIconElement(cells: readonly Square[]): SVGElement {
-  const label = cells.map(printedSquareLabel).join('・')
+function intrusionIconParts(cells: readonly Square[]): readonly SVGElement[] {
+  const parts = [
+    svgElement('rect', { x: '0', y: '0', width: '20.6', height: '20.6', rx: '1.4', fill: '#fff', stroke: '#222', 'stroke-width': '0.6' }),
+  ]
+  for (let row = 0; row < 3; row++) {
+    for (let column = 0; column < 3; column++) {
+      const hit = cells.some((square) => square.row === row && square.column === column)
+      // 印刷の行 0 は支配者の味方エリア（手前）なので、図では下段に描く。
+      parts.push(iconRect(1 + column * 6.2, 1 + (2 - row) * 6.2, 5.6, 5.6, { fill: hit ? '#e8202a' : '#4d4d4d' }))
+    }
+  }
+
+  return parts
+}
+
+/**
+ * トリガーアイコンの図。種類ごとに描き分ける（ADR-0039）。知らない種類は、図を描かず、読めない
+ * と言う（ADR-0038）。古いサーバが送るスクエアの並びも、種類を持たないので、ここに落ちる。
+ */
+function triggerIconElement(icon: TriggerIcon): SVGElement {
   const svg = svgElement('svg', {
     class: 'trigger-icon',
     viewBox: '0 0 20.6 20.6',
     role: 'img',
-    'aria-label': `トリガーアイコン：${label}`,
+    'aria-label': `トリガーアイコン：${triggerIconLabel(icon, printedSquareLabel)}`,
   })
-  svg.append(
-    svgElement('rect', { x: '0', y: '0', width: '20.6', height: '20.6', rx: '1.4', fill: '#fff', stroke: '#222', 'stroke-width': '0.6' }),
-  )
-  for (let row = 0; row < 3; row++) {
-    for (let column = 0; column < 3; column++) {
-      const hit = cells.some((square) => square.row === row && square.column === column)
-      svg.append(
-        svgElement('rect', {
-          x: String(1 + column * 6.2),
-          // 印刷の行 0 は支配者の味方エリア（手前）なので、図では下段に描く。
-          y: String(1 + (2 - row) * 6.2),
-          width: '5.6',
-          height: '5.6',
-          rx: '0.6',
-          fill: hit ? '#e8202a' : '#4d4d4d',
-        }),
-      )
-    }
+  switch (icon.kind) {
+    case '侵入':
+      svg.append(...intrusionIconParts(icon.squares))
+      break
+    case '攻撃':
+      svg.append(...attackIconParts(icon.filter))
+      break
+    case 'スマッシュ':
+      svg.append(...smashIconParts())
+      break
+    default:
+      icon satisfies never
   }
 
   return svg
 }
 
-/** ムーブアイコン（ユニット）・トリガーアイコン（トラップ）を、右寄せの枠に入れる。どちらも無ければ `undefined`。 */
+/**
+ * ムーブアイコン（ユニット）・トリガーアイコン（トラップ）を、枠に入れる。どちらも無ければ
+ * `undefined`。ムーブアイコンは右、トリガーアイコンは印刷と同じくテキストの側の左に置く
+ * （`card__icons--trigger`、ADR-0027）。
+ */
 function iconsElement(card: Pick<FaceFields, 'moveIcon' | 'triggerIcon'>): HTMLElement | undefined {
   const icon =
     card.moveIcon.length > 0
       ? moveIconElement(card.moveIcon)
-      : card.triggerIcon.length > 0
+      : card.triggerIcon !== undefined
         ? triggerIconElement(card.triggerIcon)
         : undefined
   if (icon === undefined) return undefined
 
-  const node = element('div', 'card__icons')
+  const node = element('div', card.moveIcon.length > 0 ? 'card__icons' : 'card__icons card__icons--trigger')
   node.append(icon)
 
   return node

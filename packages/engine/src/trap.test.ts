@@ -3,7 +3,7 @@ import type { TrapConditionMet } from './duel.js'
 import { putInZone } from './duel.js'
 import { checkIntrusion, loseTrapRightOnPass, trapRightOf } from './trap.js'
 import { defineTrap, defineUnit, emptyDuelState, instantiate } from './index.js'
-import type { Battle, DuelState, Player, SmashJudgment, Square, UnitOnSquare } from './index.js'
+import type { Battle, DuelState, Player, SmashJudgment, Square, TrapCard, UnitOnSquare } from './index.js'
 
 const targetSquare: Square = { row: 0, column: 1 }
 const otherSquare: Square = { row: 2, column: 2 }
@@ -11,10 +11,34 @@ const otherSquare: Square = { row: 2, column: 2 }
 const mirroredSquare: Square = { row: 2, column: 1 }
 
 /** トリガーアイコンに `targetSquare` を持つトラップ。 */
-const trapWithIcon = defineTrap({ name: 'テスト・トリガーアイコン持ち', level: 1, triggerIcon: [targetSquare] })
+const trapWithIcon = defineTrap({
+  name: 'テスト・トリガーアイコン持ち',
+  level: 1,
+  triggerIcon: { kind: '侵入', squares: [targetSquare] },
+})
 
-/** トリガーアイコンを持たないトラップ。 */
-const trapWithoutIcon = defineTrap({ name: 'テスト・トリガーアイコン無し', level: 1 })
+/**
+ * 侵入のトリガーアイコンに、スクエアが書かれていないトラップ。侵入は「置かれたスクエアが
+ * 赤く塗られていること」を求める（総合ルール 第2部 第20章 3-6）ので、どこでも満たされない（ADR-0039）。
+ */
+const trapWithoutSquares = defineTrap({
+  name: 'テスト・スクエア指定無し',
+  level: 1,
+  triggerIcon: { kind: '侵入', squares: [] },
+})
+
+/** 攻撃のトリガーアイコンを持つトラップ。絞り込みは無い。 */
+const attackTrap = defineTrap({ name: 'テスト・攻撃トラップ', level: 1, triggerIcon: { kind: '攻撃' } })
+
+/** 絞り込みつきの攻撃のトリガーアイコンを持つトラップ。 */
+const filteredAttackTrap = defineTrap({
+  name: 'テスト・絞り込み攻撃トラップ',
+  level: 1,
+  triggerIcon: { kind: '攻撃', filter: { axis: '色', value: '赤' } },
+})
+
+/** スマッシュのトリガーアイコンを持つトラップ。 */
+const smashTrap = defineTrap({ name: 'テスト・スマッシュトラップ', level: 1, triggerIcon: { kind: 'スマッシュ' } })
 
 const unitCard = defineUnit({ name: 'テスト・侵入するユニット', level: 1, bp: 1000, sp: 1000 })
 
@@ -34,7 +58,7 @@ function trapsMet(state: DuelState): readonly string[] {
 }
 
 /** そのトラップが、指定したプレイヤー（省略時は先攻）のトラップゾーンにある盤面。 */
-function withTrap(card = trapWithIcon, owner: Player = '先攻'): DuelState {
+function withTrap(card: TrapCard = trapWithIcon, owner: Player = '先攻'): DuelState {
   const trap = instantiate({ id: 'トラップ', card, owner })
   return putInZone(emptyDuelState(), owner, 'トラップゾーン', [trap])
 }
@@ -60,8 +84,20 @@ describe('侵入', () => {
     expect(trapsMet(after)).toEqual([])
   })
 
-  it('トリガーアイコンを持たないカードは侵入で発動条件が満たされない', () => {
-    const after = checkIntrusion(withTrap(trapWithoutIcon), intruder('後攻', targetSquare))
+  it('スクエアが書かれていない侵入のトリガーアイコンは、どのスクエアでも発動条件が満たされない', () => {
+    const after = checkIntrusion(withTrap(trapWithoutSquares), intruder('後攻', targetSquare))
+
+    expect(trapsMet(after)).toEqual([])
+  })
+
+  // 攻撃・スマッシュの発動条件を判定する処理は、まだ無い（単位 5、ADR-0039）。値として持てる
+  // だけで、侵入が起きても満たされない。判定を足す時に、この期待を書き換える。
+  it.each([
+    ['攻撃', attackTrap],
+    ['絞り込みつきの攻撃', filteredAttackTrap],
+    ['スマッシュ', smashTrap],
+  ])('%sのトリガーアイコンは、侵入が起きても発動条件が満たされない', (_kind, card) => {
+    const after = checkIntrusion(withTrap(card), intruder('後攻', targetSquare))
 
     expect(trapsMet(after)).toEqual([])
   })
