@@ -12,6 +12,8 @@
  * URL に ?trap-icons を付けて開くと、自分の手札が、攻撃・絞り込みつきの攻撃 3 種（記号・色・属性）・
  * スマッシュのトリガーアイコンの見本 5 枚に替わる（ADR-0039）。対戦の大きさのカードに載せた時の、
  * 絞り込みの小さな文字の読みやすさと、アイコンが左に寄る様子を見るためのもの。
+ * URL に ?trap-occasions を付けて開くと、トラップを発動する時に、権利が発生しているきっかけが複数ある
+ * 場面の選択（問いの行と、番号つきの候補）の見本が、行える手の欄に出る（ADR-0039）。
  */
 body {
   margin: 0;
@@ -3486,6 +3488,19 @@ for (const box of document.querySelectorAll('.mock-switch input')) {
   if (location.hash) box.checked = decodeURIComponent(location.hash).slice(1).split(',').includes(box.dataset.show)
 }
 apply()
+
+// ?trap-occasions を付けて開くと、発動するきっかけを選ぶ場面の見本が、行える手の欄に出る（ADR-0039）。
+// 候補は「侵入 〈ユニット名〉（〈スクエアの呼び名〉）」。番号のボタンだけで、盤面のカードを押す形にはしない。
+if (new URLSearchParams(location.search).has('trap-occasions')) {
+  const asking = document.getElementById('choice-asking')
+  asking.hidden = false
+  asking.textContent = '見本・まるまる砲 を発動するきっかけを選んでください'
+  document.querySelector('.controls__list').replaceChildren(
+    ...['1 番目: 侵入 見本・霧島透（敵エリアの左ライン）', '2 番目: 侵入 見本・もちぬい（敵エリアの右ライン）'].map((label) =>
+      Object.assign(document.createElement('button'), { type: 'button', textContent: label }),
+    ),
+  )
+}
 </script>
 <div class="rotate-cover" role="alert">
   <span class="rotate-cover__icon" aria-hidden="true">⟲</span>
