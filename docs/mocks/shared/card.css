@@ -306,6 +306,7 @@
 
 .deckbuild .card__text .card__icons--trigger {
   order: -1;
+  align-self: center;
 }
 
 .deckbuild .card__traits {
