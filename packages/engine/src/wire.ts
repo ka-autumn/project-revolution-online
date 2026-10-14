@@ -291,13 +291,16 @@ export function toWire(perspective: DuelPerspective): WirePerspective {
     effectiveKeywords: perspective.effectiveKeywords,
     zones: Object.fromEntries(PLAYERS.map((owner) => [owner, zonesOf(owner)])) as WirePerspective['zones'],
     resolveZone: perspective.resolveZone.map(instanceToWire),
-    trapConditionsMet: perspective.trapConditionsMet.map((met) => ({
-      ...met,
-      occasion: { ...met.occasion, invader: unitToWire(met.occasion.invader) },
+    // `metAt` は権利の判定にだけ使う値（`priority.ts` の `deferringRights`）なので、載せない。
+    // 発動できるかどうかは行える手に現れる（ADR-0010）。
+    trapConditionsMet: perspective.trapConditionsMet.map(({ trap, occasion }) => ({
+      trap,
+      occasion: { ...occasion, invader: unitToWire(occasion.invader) },
     })),
-    courageConditionsMet: perspective.courageConditionsMet.map((met) => ({
-      ...met,
-      placed: unitToWire(met.placed),
+    courageConditionsMet: perspective.courageConditionsMet.map(({ player, satisfied, placed }) => ({
+      player,
+      satisfied,
+      placed: unitToWire(placed),
     })),
   }
 }

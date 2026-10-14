@@ -4,6 +4,7 @@ import type {
   LegalAction,
   PassOutcome,
   Player,
+  Square,
   WireCandidate,
   WireCardFace,
   WireChoice,
@@ -508,6 +509,95 @@ describe('選ぶ候補', () => {
 
     expect(view.asking).toBe('選んでください')
     expect(view.candidates.map((candidate) => candidate.label)).toEqual(['1 番目: テスト・手札の戦士'])
+  })
+
+  // 発動・起動の中で、権利が発生しているきっかけが複数ある時に選ばせる（ADR-0039）。
+  describe('きっかけの選択', () => {
+    const occasion = (card: string, square: Square): WireCandidate => ({
+      kind: 'きっかけ',
+      occasion: { kind: '侵入', invader: { card, square } },
+    })
+
+    /** 先攻が、きっかけの候補から選ぶ場面。 */
+    const choice = (candidates: readonly WireCandidate[]): WireChoice => ({
+      player: '先攻',
+      purpose: 'トラップのきっかけ',
+      mayDecline: false,
+      answered: 0,
+      mayGoBack: true,
+      candidates,
+    })
+
+    it('トラップの発動では、発動するトラップを名指しして、きっかけを選ばせる', () => {
+      const view = choiceView(board(), {
+        ...choice([occasion('てふだの1枚', { row: 1, column: 1 })]),
+        purpose: 'トラップのきっかけ',
+        source: 'スクエアの1枚',
+      })
+
+      expect(view.asking).toBe('テスト・盤上の戦士 を発動するきっかけを選んでください')
+    })
+
+    it('「勇気」の起動では、ダメージを与えるユニットを選ばせる', () => {
+      const view = choiceView(board(), {
+        ...choice([occasion('てふだの1枚', { row: 1, column: 1 })]),
+        purpose: '勇気のきっかけ',
+        source: 'スクエアの1枚',
+      })
+
+      expect(view.asking).toBe('テスト・盤上の戦士 でダメージを与えるユニットを選んでください')
+    })
+
+    it('候補は、侵入してきたユニットの名前とスクエアで指す。盤面のカードを押す形にはしない', () => {
+      const asked = {
+        ...choice([occasion('てふだの1枚', { row: 1, column: 1 }), occasion('スクエアの1枚', { row: 2, column: 1 })]),
+        purpose: 'トラップのきっかけ' as const,
+      }
+
+      expect(choiceView(board(), asked).candidates.map((candidate) => candidate.label)).toEqual([
+        '1 番目: 侵入 テスト・手札の戦士（中央エリアの中央ライン）',
+        '2 番目: 侵入 テスト・盤上の戦士（敵エリアの中央ライン）',
+      ])
+      expect(choicePicking(board(), asked).onBoard).toEqual([])
+    })
+
+    /**
+     * 画面を読み込み直す前の古い画面は、この目的も候補の形も知らない（#285 の枝）。古い画面の
+     * 読み方を写している。落ちずに、番号だけで答えられる。何を選んでいるかが読めないことは、
+     * 移行の間のこととして受け入れる（ADR-0039）。
+     */
+    it('古い画面の読み方でも、落ちずに番号で答えられる', () => {
+      const oldAsking = (purpose: string): string => {
+        switch (purpose) {
+          case 'プレイのコスト':
+          case 'プランのコスト':
+          case '移動のコスト':
+          case '起動のコスト':
+          case '解決する能力':
+          case 'プランの置き換え':
+          case '効果の対象':
+            return '知っている目的'
+          default:
+            return '選んでください'
+        }
+      }
+      const oldLabel = (kind: string, position: string): string => {
+        switch (kind) {
+          case '見えている':
+          case '能力':
+          case 'スクエア':
+          case 'エリア':
+          case '見えていない':
+            return `${position}: 知っている形`
+          default:
+            return `${position}（表示できない候補）`
+        }
+      }
+
+      expect(oldAsking('トラップのきっかけ')).toBe('選んでください')
+      expect(oldAsking('勇気のきっかけ')).toBe('選んでください')
+      expect(oldLabel('きっかけ', '1 番目')).toBe('1 番目（表示できない候補）')
+    })
   })
 })
 

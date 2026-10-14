@@ -407,7 +407,7 @@ describe('解決の入口ごとの言葉', () => {
         enemySquare,
         enemy('敵'),
       ),
-      trapConditionsMet: [{ trap: 'トラップ', occasion: { kind: '侵入', invader } }],
+      trapConditionsMet: [{ trap: 'トラップ', occasion: { kind: '侵入', invader }, metAt: 0 }],
     }
 
     const resolved = stateOf(activateTrap(state, 'トラップ', chooseFirst))

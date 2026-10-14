@@ -263,6 +263,9 @@ function candidateLabel(
       return `${position}: ${areaLabel(viewer, candidate.row)}`
     case '見えていない':
       return `${position}（裏向き）`
+    // できごとの写しなので、いま盤面にいるかどうかは問わない。ユニットの名前とスクエアで指す。
+    case 'きっかけ':
+      return `${position}: 侵入 ${nameOf(names, candidate.occasion.invader.card)}（${squareLabel(viewer, candidate.occasion.invader.square)}）`
     // この画面が知らない形（#285）。サーバが先に新しくなると、開いたままの画面に届く。何を指す
     // 候補かは読めないが、答えは番号なので（ADR-0008）、番号だけは必ず出す。盤面から押せる候補にも
     // ならない（`choicePicking` は知っている形しか拾わない）ので、ボタンから消えることは無い。
@@ -303,6 +306,14 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
       return 'プランのめくりを置き換える能力を選んでください'
     case '効果の対象':
       return source === undefined ? '効果の対象を選んでください' : `${source} の効果の対象を選んでください`
+    case 'トラップのきっかけ':
+      return source === undefined
+        ? 'トラップを発動するきっかけを選んでください'
+        : `${source} を発動するきっかけを選んでください`
+    case '勇気のきっかけ':
+      return source === undefined
+        ? '「勇気」でダメージを与えるユニットを選んでください'
+        : `${source} でダメージを与えるユニットを選んでください`
     // この画面が知らない種類（#285）。サーバが先に新しくなると、開いたままの画面に届く。
     // 何のための選択かを言えないので、目的を言わない文にする。候補は読めていて、選ぶことはできる。
     default:

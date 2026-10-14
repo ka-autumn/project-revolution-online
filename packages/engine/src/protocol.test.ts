@@ -8,6 +8,7 @@ import {
   cardsIn,
   choose,
   chooseAtMostOne,
+  defineTrap,
   defineUnit,
   emptyDuelState,
   instantiate,
@@ -829,6 +830,70 @@ describe('エリアを選ぶ', () => {
 })
 
 // #14。候補だけでは何を聞かれているか分からないので、何のための選択かを載せる。
+// ADR-0039。権利が発生しているきっかけが複数ある時、発動の中で支配者が選ぶ。
+describe('発動するきっかけを選ぶ', () => {
+  const trapCard = defineTrap({
+    name: 'テスト・侵入トラップ',
+    level: 1,
+    colors: ['赤'],
+    triggerIcon: { kind: '侵入', squares: [{ row: 0, column: 1 }] },
+  })
+
+  const invaderAt = (id: string, square: Square) => ({ id, square, card: testCard, controller: '先攻' as const })
+
+  /** 後攻が優先権を持ち、満たされた発動条件を `invaders` の数だけ持っている盤面。 */
+  function withRights(invaders: readonly { id: string; square: Square }[]): DuelState {
+    const base = phaseReadyToAct('メインフェイズ')
+    const withTrap = putInZone(base, '後攻', 'トラップゾーン', [instantiate({ id: 'トラップ', card: trapCard, owner: '後攻' })])
+    const withEnergy = putInZone(withTrap, '後攻', 'エネルギーゾーン', [
+      instantiate({ id: '後攻のエネ', card: testCard, owner: '後攻' }),
+    ])
+    return {
+      ...withEnergy,
+      turn: { ...withEnergy.turn, priority: '後攻' },
+      trapConditionsMet: invaders.map((each, index) => ({
+        trap: 'トラップ',
+        occasion: { kind: '侵入', invader: invaderAt(each.id, each.square) },
+        metAt: index,
+      })),
+    }
+  }
+
+  const ACTIVATE: LegalAction = { kind: 'トラップを発動する', card: 'トラップ' }
+
+  it('権利が発生しているきっかけが複数あれば、きっかけを選ばせる', () => {
+    const state = withRights([
+      { id: '1 体目', square: { row: 2, column: 1 } },
+      { id: '2 体目', square: { row: 2, column: 0 } },
+    ])
+
+    const progress = applyWithAnswers(state, ACTIVATE, [])
+
+    expectChoice(progress)
+    expect(progress.choice.purpose).toBe('トラップのきっかけ')
+    expect(progress.choice.source).toBe('トラップ')
+    expect(progress.choice.candidates).toEqual([
+      { kind: 'きっかけ', occasion: { kind: '侵入', invader: { card: '1 体目', square: { row: 2, column: 1 } } } },
+      { kind: 'きっかけ', occasion: { kind: '侵入', invader: { card: '2 体目', square: { row: 2, column: 0 } } } },
+    ])
+  })
+
+  it('きっかけが 1 つなら、選ばせずに発動する', () => {
+    const state = withRights([{ id: '1 体目', square: { row: 2, column: 1 } }])
+
+    expect(applyWithAnswers(state, ACTIVATE, []).kind).toBe('進んだ')
+  })
+
+  it('選んだきっかけで発動する', () => {
+    const state = withRights([
+      { id: '1 体目', square: { row: 2, column: 1 } },
+      { id: '2 体目', square: { row: 2, column: 0 } },
+    ])
+
+    expect(applyWithAnswers(state, ACTIVATE, [1]).kind).toBe('進んだ')
+  })
+})
+
 describe('何のための選択か', () => {
   it('プランのコストを支払うところでは、プランのコストになる', () => {
     const progress = applyWithAnswers(beforePlanning(), PLANNING, [])

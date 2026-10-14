@@ -2,7 +2,7 @@ import type { Square, SquareIndex } from './board.js'
 import type { CardType, Color } from './card.js'
 import type { DeckViolation, DuelFormat } from './deck.js'
 import { cardsIn } from './duel.js'
-import type { CardId, DuelState } from './duel.js'
+import type { CardId, CourageConditionMet, DuelState, TrapConditionMet } from './duel.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
 import { areaRowOf, cardIdOf, squareOf } from './log.js'
@@ -461,6 +461,19 @@ export type WireCandidate =
    * 第21章 2-2）、1 枚ずつ並べる場所も画面に無いので、押す先が無い。
    */
   | { readonly kind: '見えていない'; readonly at: WireCardPosition | undefined }
+  /**
+   * 発動条件・起動条件を満たしたできごと 1 件（ADR-0039）。トラップの発動と「勇気」の起動が、
+   * 権利の発生しているきっかけが複数ある時に選ばせる。
+   *
+   * できごとが起きた時点の姿の写しなので、いまの盤面のカードではなく、置かれたユニットの識別子と
+   * スクエアで指す。発動までにそのユニットがスクエアを離れていても、同じユニットが 2 度置かれて
+   * いても、候補として並べられる。スクエアにいるユニットは公開情報（総合ルール 第2部 第23章
+   * 1-1）なので、隠すものは無い。`occasion` の種類は、単位 5 で攻撃・スマッシュが足される。
+   */
+  | {
+      readonly kind: 'きっかけ'
+      readonly occasion: { readonly kind: '侵入'; readonly invader: { readonly card: CardId; readonly square: Square } }
+    }
 
 /** 選んでほしいこと 1 つ。**選ぶプレイヤーにだけ送る**（ADR-0008）。 */
 export interface WireChoice {
@@ -979,6 +992,16 @@ function describeCandidate(
   if (purpose === '解決する能力' || purpose === 'プランの置き換え') {
     const source = sourceOf(candidate)
     return { kind: '能力', source: source !== undefined && visible.has(source) ? source : undefined }
+  }
+
+  // きっかけが並ぶ場面。満たされた発動条件・起動条件そのものが候補になる。
+  if (purpose === 'トラップのきっかけ') {
+    const { invader } = (candidate as TrapConditionMet).occasion
+    return { kind: 'きっかけ', occasion: { kind: '侵入', invader: { card: invader.id, square: invader.square } } }
+  }
+  if (purpose === '勇気のきっかけ') {
+    const { placed } = candidate as CourageConditionMet
+    return { kind: 'きっかけ', occasion: { kind: '侵入', invader: { card: placed.id, square: placed.square } } }
   }
 
   const id = cardIdOf(candidate)

@@ -64,6 +64,16 @@ export const CHOICE_PURPOSES = [
   'プランの置き換え',
   /** 効果が命令の中で選ばせている（`effect.ts` の `choose`・`chooseAtMostOne`）。 */
   '効果の対象',
+  /**
+   * 発動する権利が発生しているきっかけが複数ある時に、どれに対して発動するかを選ぶ（総合ルール
+   * 第2部 第20章 3-8、ADR-0039）。候補は満たされた発動条件（`duel.ts` の `TrapConditionMet`）。
+   */
+  'トラップのきっかけ',
+  /**
+   * 起動する権利が発生しているきっかけが複数ある時に、どのユニットにダメージを与えるかを選ぶ
+   * （同 第5部 第2章 2、ADR-0039）。候補は満たされた起動条件（`duel.ts` の `CourageConditionMet`）。
+   */
+  '勇気のきっかけ',
 ] as const
 
 export type ChoicePurpose = (typeof CHOICE_PURPOSES)[number]

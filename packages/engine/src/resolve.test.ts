@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { putInZone } from './duel.js'
 import {
   AREAS,
+  activateTrap,
   areaOf,
   cardsIn,
   cardsOn,
@@ -1832,6 +1833,7 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
             kind: '侵入',
             invader: { id: '置かれるユニット', square: invadedSquare, card: vanilla, controller: '先攻' },
           },
+          metAt: expect.any(Number),
         },
       ])
     })
@@ -1873,6 +1875,7 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
           player: '後攻',
           placed: { id: '置かれるユニット', square: invadedSquare, card: vanilla, controller: '先攻' },
           satisfied: ['勇気'],
+          metAt: expect.any(Number),
         },
       ])
     })
@@ -1889,13 +1892,12 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
   })
 
   /**
-   * 1 つの効果が続けて置くと、パスを挟まずに満たし直される。いまは最初のできごとを持ち続ける。
-   * ADR-0039 はできごとごとに 1 件ずつ持つと決めていて、権利の判定をきっかけごとにする時に
-   * この期待も改める。
+   * 1 つの効果が続けて置くと、パスを挟まずに満たし直される。できごとごとに 1 件ずつ持つ
+   * （ADR-0039）。
    */
   describe('1 つの効果が続けて 2 体置いた時', () => {
-    /** `invadedSquare` の隣の、後攻の味方エリアのスクエア。 */
-    const nextInvadedSquare: Square = { row: 2, column: 2 }
+    /** `invadedSquare` の隣の、後攻の味方エリアのスクエア。トラップの 2 つ目のスクエアを後攻から見た向きに折り返した位置。 */
+    const nextInvadedSquare: Square = { row: 2, column: 0 }
 
     /** 2 つのスクエアをトリガーアイコンに持つトラップ。後攻から見た向きで書く。 */
     const trapOnBoth = defineTrap({
@@ -1926,16 +1928,43 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
       ])
     }
 
-    it('トラップは、1 体目の侵入のきっかけを持ち続ける', () => {
+    it('トラップは、2 体の侵入のきっかけをそれぞれ持つ', () => {
       const resolved = resolve(withTrapOf(twoInDiscard(), '後攻', trapOnBoth), placeTwo)
 
-      expect(resolved.trapConditionsMet.map((met) => met.occasion.invader.id)).toEqual(['1 体目'])
+      expect(resolved.trapConditionsMet.map((met) => met.occasion.invader.id)).toEqual(['1 体目', '2 体目'])
     })
 
-    it('「勇気」は、1 体目が置かれたできごとを持ち続ける', () => {
+    it('「勇気」は、2 体が置かれたできごとをそれぞれ持つ', () => {
       const resolved = resolve(withCourage(twoInDiscard()), placeTwo)
 
-      expect(resolved.courageConditionsMet.map((met) => met.placed.id)).toEqual(['1 体目'])
+      expect(resolved.courageConditionsMet.map((met) => met.placed.id)).toEqual(['1 体目', '2 体目'])
+    })
+
+    // 発動する時、権利が発生しているきっかけが複数あれば、支配者が 1 つ選ぶ（ADR-0039）。
+    // 選んだきっかけが、発動した効果に渡される。
+    it('発動する時に選んだほうのきっかけが、効果に渡される', () => {
+      const seen: string[] = []
+      const spyTrap = defineTrap({
+        name: 'テスト・2 マスの侵入トラップ（きっかけを見る）',
+        level: 1,
+        colors: ['赤'],
+        triggerIcon: trapOnBoth.triggerIcon,
+        effect: function* (_duel, occasion) {
+          seen.push(occasion.invader.id)
+        },
+      })
+      const state: DuelState = {
+        ...resolve(withTrapOf(twoInDiscard(), '後攻', spyTrap), placeTwo),
+        turn: { ...emptyDuelState().turn, priority: '後攻' },
+      }
+      const chooseLast: Chooser = (candidates, _player, purpose) =>
+        purpose === 'トラップのきっかけ' ? candidates.at(-1) : candidates[0]
+
+      activateTrap(putInZone(state, '後攻', 'エネルギーゾーン', [
+        instantiate({ id: 'エネ', card: vanilla, owner: '後攻' }),
+      ]), 'トラップ', chooseLast)
+
+      expect(seen).toEqual(['2 体目'])
     })
   })
 })

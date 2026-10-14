@@ -96,33 +96,41 @@ export function grantPriorityToInactive(state: DuelState): DuelState {
  * 終わらせる（同 第4章 4）。フェイズの進行はその間止まっていて、優先権のやりとりはステップが
  * 受け持つ。
  *
- * この間はフェイズの行動を行えず（`activePlayerMayAct`）、トラップと「勇気」の権利も発生
- * しない（`deferringRights`）。条文の書き方は別々だが、止まる理由は同じ 1 つの状態なので、
- * 判定もここ 1 か所に置く。
+ * この間はフェイズの行動を行えない（`activePlayerMayAct`）。トラップと「勇気」の権利を
+ * 止める判定（`deferringRights`）とは共有しない。あちらは、条件が満たされた後に発生した
+ * 手順だけを見る（ADR-0039）。
  */
 function inSpecialProcedure(state: DuelState): boolean {
   return state.battles.length > 0 || state.smashJudgments.length > 0
 }
 
 /**
- * バトルまたはスマッシュ判定が進行中で、優先権を得ることで発生するはずの権利が遅れているか。
+ * 発動条件・起動条件が満たされた時点（`metAt`、`DuelState.log` の長さ）より後に発生した
+ * バトルまたはスマッシュ判定が進行中で、その条件の権利が遅れているか。
  *
  * 条件が満たされた後、優先権を得る時にバトルまたはスマッシュ判定が発生した場合、それが終了
  * するまでその権利は発生しない。トラップを発動する権利（総合ルール 第2部 第20章 3-8 ただし
  * 書き）と、「勇気」を起動する権利（同 第5部 第2章 2 ただし書き）に、同じ形でかかる
- * （同 第3部 第11章 5・第17章 4）。
+ * （同 第3部 第11章 5・第17章 4）。条件より前から進行中のバトル・スマッシュ判定は、権利を
+ * 止めない（ADR-0039）。
+ *
+ * 前後は、手順が始まった時の `startedAt`（その時のログの長さ）と `metAt` で比べる。手順が
+ * 始まる時は必ずその見出しがログに積まれるので、先に始まっていた手順の `startedAt` は
+ * `metAt` より小さい。条件が満たされた直後に同じ手順の中で始まった手順の `startedAt` は
+ * `metAt` 以上になる。
  *
  * 条文の「優先権を得る時」ではなく、その権利を使おうとする時に見ている。バトルもスマッシュ
  * 判定も、始まるのも終わるのも優先権を獲得する手前（`settleBeforePriority`）なので、優先権を
  * 得た後は次に得るまで結果が変わらない。
  *
- * 「優先権を得る時に発生した」ものだけでなく、進行中のバトル・スマッシュ判定すべてで権利を
- * 止めている。効果でユニットが置かれれば、進行中の最中にも条件は満たされうるが、その場合も
- * 終わるまで止まる。条件が満たされた後に発生したものだけを止める形に改めることは、ADR-0039
- * で決まっている（`trap.ts` の `trapRightOf`）。
+ * フェイズの行動を止める判定（`activePlayerMayAct`）とは共有しない。あちらは進行中のものを
+ * すべて見る（ADR-0012）。
  */
-export function deferringRights(state: DuelState): boolean {
-  return inSpecialProcedure(state)
+export function deferringRights(state: DuelState, metAt: number): boolean {
+  return (
+    state.battles.some((battle) => battle.startedAt >= metAt) ||
+    state.smashJudgments.some((judgment) => judgment.startedAt >= metAt)
+  )
 }
 
 /** 優先権を非アクティブプレイヤーに移すだけ。盤面の片づけは行わない。 */
@@ -148,7 +156,7 @@ function toInactive(state: DuelState): DuelState {
  * トラップの発動と「勇気」の起動はここを通らない。自分のメインフェイズであることもバンクが
  * 空であることも要らない（同 第2部 第20章 3-8）ためで、`play.ts` の `activateTrap` が
  * この判定を使っていない。進行中に発動できないのは、発動する権利がそもそも発生していない
- * （同 3-8 ただし書き、`trap.ts` の `trapRightOf`）ためであって、行動そのものが禁じられて
+ * （同 3-8 ただし書き、`trap.ts` の `trapRightsOf`）ためであって、行動そのものが禁じられて
  * いるからではない。
  *
  * 勝敗が決まったデュエルでは何も行えない。デュエルは即座に終了する（同 第3章 3）。

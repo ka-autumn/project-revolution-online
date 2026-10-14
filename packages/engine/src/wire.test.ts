@@ -17,7 +17,7 @@ import {
   putOnSquare,
   toWire,
 } from './index.js'
-import type { Card, DuelEvent, DuelState, Player, PlayerZone } from './index.js'
+import type { Card, DuelEvent, DuelState, Player, PlayerZone, UnitOnSquare } from './index.js'
 
 /** 盤面に並べるカード。engine のテストは架空のカードで書く（ADR-0002）。 */
 const CARDS = {
@@ -225,6 +225,39 @@ describe('通信に載せる形', () => {
     expect(JSON.stringify(sent)).not.toContain('QXWIREMARK')
     expect(face?.keywords).toEqual([])
     expect(face?.keywords).not.toContain('友情')
+  })
+
+  /**
+   * 満たされた発動条件・起動条件は、きっかけごとに 1 件ずつ並ぶ（ADR-0039）。形は 1 枚 1 件だった
+   * 頃のまま変えず、同じトラップの件が複数並んでよいだけである。権利の判定にだけ使う `metAt` は
+   * 載せない（ADR-0010。発動できるかどうかは行える手に現れる）。古い画面もこの欄を読んでいない。
+   */
+  it('満たされた条件は、判定にだけ使う値を載せずに、件ごとに並ぶ', () => {
+    const invader: UnitOnSquare = {
+      id: '侵入したユニット',
+      square: { row: 1, column: 1 },
+      card: CARDS.見えているカード,
+      controller: '後攻',
+    }
+    const state: DuelState = {
+      ...filledState(),
+      trapConditionsMet: [
+        { trap: '先攻-トラップ', occasion: { kind: '侵入', invader }, metAt: 3 },
+        { trap: '先攻-トラップ', occasion: { kind: '侵入', invader }, metAt: 7 },
+      ],
+      courageConditionsMet: [{ player: '先攻', satisfied: ['先攻-手札'], placed: invader, metAt: 3 }],
+    }
+
+    const sent = JSON.parse(JSON.stringify(toWire(perspectiveOf(state, '先攻')))) as {
+      trapConditionsMet: readonly Record<string, unknown>[]
+      courageConditionsMet: readonly Record<string, unknown>[]
+    }
+
+    expect(sent.trapConditionsMet.map((met) => Object.keys(met).sort())).toEqual([
+      ['occasion', 'trap'],
+      ['occasion', 'trap'],
+    ])
+    expect(sent.courageConditionsMet.map((met) => Object.keys(met).sort())).toEqual([['placed', 'player', 'satisfied']])
   })
 
   /**

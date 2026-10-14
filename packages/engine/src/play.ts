@@ -18,14 +18,14 @@ import {
   moveToSquare,
   moveToZone,
 } from './duel.js'
-import type { CardId, DuelState } from './duel.js'
+import type { CardId, DuelState, TrapConditionMet } from './duel.js'
 import type { Effect, UnitOnSquare } from './effect.js'
 import type { ResolutionVia } from './log.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
-import { checkIntrusion, trapRightOf } from './trap.js'
+import { checkIntrusion, trapRightsOf } from './trap.js'
 import type { PlayerZone } from './zone.js'
 
 /**
@@ -136,8 +136,10 @@ export function playAsTrap(state: DuelState, card: CardId): ActionOutcome {
  * であることもバンクが空であることも要らない（同 3-8）。
  *
  * トラップを発動できるのは、そのトラップの発動条件が満たされて発動する権利を得ている間だけ
- * である（同 3-8、`trap.ts` の `trapRightOf`）。バトルやスマッシュ判定が進行中なら、
- * 発動条件が満たされていても権利は発生していない（同 3-8 ただし書き）。発動条件を持たない
+ * である（同 3-8、`trap.ts` の `trapRightsOf`）。発動条件が満たされた後に発生したバトルや
+ * スマッシュ判定が進行中なら、発動条件が満たされていても権利は発生していない（同 3-8
+ * ただし書き）。権利が発生しているきっかけが複数あれば、どれに対して発動するかを選ぶ
+ * （ADR-0039）。発動条件を持たない
  * トラップ以外のカードは、トラップゾーンにあっても発動できない（同 3-6）。発動条件のうち
  * 実装しているのは「侵入」だけなので（`trap.ts`）、それ以外の条件で権利を得ることはまだ無い。
  *
@@ -157,8 +159,13 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   // 発動条件が満たされるのは侵入のトラップだけで、攻撃・スマッシュのトラップには、まだ
   // 権利が発生しない（単位 5 で足す。ADR-0039）。きっかけを渡せるのも侵入の効果だけである。
   if (!isIntrusionTrap(trap)) return cannot('発動する権利がない')
-  const occasion = trapRightOf(state, card)
-  if (occasion === undefined) return cannot('発動する権利がない')
+  const rights = trapRightsOf(state, card)
+  if (rights.length === 0) return cannot('発動する権利がない')
+  // 権利が発生しているきっかけが複数あれば、どれに対して発動するかを支配者が選ぶ
+  // （ADR-0039）。止まっているきっかけは候補に並ばない。1 つなら選択は出さない。
+  const met = rights.length === 1 ? rights[0] : (chooser(rights, player, 'トラップのきっかけ', state, false, card) as TrapConditionMet)
+  if (met === undefined || !rights.includes(met)) throw new Error('候補にないものが選ばれた')
+  const { occasion } = met
 
   const paid = payUseCost(state, player, trap, chooser)
   if (typeof paid === 'string') return cannot(paid)
