@@ -8,6 +8,7 @@ import {
   cardsIn,
   choose,
   chooseAtMostOne,
+  courage,
   defineTrap,
   defineUnit,
   emptyDuelState,
@@ -20,7 +21,7 @@ import {
   putOnSquare,
   triggeredAbility,
 } from './index.js'
-import type { ActionProgress, Area, CardInstance, Chooser, DuelState, LegalAction, Phase, Player, Square } from './index.js'
+import type { ActionProgress, Area, Battle, CardInstance, Chooser, DuelState, LegalAction, Phase, Player, Square } from './index.js'
 
 /** 選択を求められたら常に最初の候補を選ぶ。盤面を進めるためだけに使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -832,11 +833,16 @@ describe('エリアを選ぶ', () => {
 // #14。候補だけでは何を聞かれているか分からないので、何のための選択かを載せる。
 // ADR-0039。権利が発生しているきっかけが複数ある時、発動の中で支配者が選ぶ。
 describe('発動するきっかけを選ぶ', () => {
+  /** 効果が受け取ったきっかけの侵入したユニットの識別子。 */
+  const seen: string[] = []
   const trapCard = defineTrap({
     name: 'テスト・侵入トラップ',
     level: 1,
     colors: ['赤'],
     triggerIcon: { kind: '侵入', squares: [{ row: 0, column: 1 }] },
+    effect: function* (_duel, occasion) {
+      seen.push(occasion.invader.id)
+    },
   })
 
   const invaderAt = (id: string, square: Square) => ({ id, square, card: testCard, controller: '先攻' as const })
@@ -846,7 +852,8 @@ describe('発動するきっかけを選ぶ', () => {
     const base = phaseReadyToAct('メインフェイズ')
     const withTrap = putInZone(base, '後攻', 'トラップゾーン', [instantiate({ id: 'トラップ', card: trapCard, owner: '後攻' })])
     const withEnergy = putInZone(withTrap, '後攻', 'エネルギーゾーン', [
-      instantiate({ id: '後攻のエネ', card: testCard, owner: '後攻' }),
+      instantiate({ id: '後攻のエネ1', card: testCard, owner: '後攻' }),
+      instantiate({ id: '後攻のエネ2', card: testCard, owner: '後攻' }),
     ])
     return {
       ...withEnergy,
@@ -881,16 +888,112 @@ describe('発動するきっかけを選ぶ', () => {
   it('きっかけが 1 つなら、選ばせずに発動する', () => {
     const state = withRights([{ id: '1 体目', square: { row: 2, column: 1 } }])
 
-    expect(applyWithAnswers(state, ACTIVATE, []).kind).toBe('進んだ')
+    // エネルギーが 2 枚あるので、コストは選ばせる。ここで見るのは、きっかけを選ばせないこと。
+    const progress = applyWithAnswers(state, ACTIVATE, [])
+
+    expectChoice(progress)
+    expect(progress.choice.purpose).not.toBe('トラップのきっかけ')
   })
 
-  it('選んだきっかけで発動する', () => {
+  // 答えの並びは、きっかけの番号、コストの番号の順（きっかけを選んでからコストを払う）。
+  it('選んだきっかけの効果が解決され、コストも答えどおりに払われる', () => {
+    seen.length = 0
     const state = withRights([
       { id: '1 体目', square: { row: 2, column: 1 } },
       { id: '2 体目', square: { row: 2, column: 0 } },
     ])
 
-    expect(applyWithAnswers(state, ACTIVATE, [1]).kind).toBe('進んだ')
+    const progress = applyWithAnswers(state, ACTIVATE, [1, 0])
+
+    expectAdvanced(progress)
+    expect(seen).toEqual(['2 体目'])
+    const frozen = cardsIn(progress.state, '後攻', 'エネルギーゾーン').filter((each) => each.orientation === 'フリーズ')
+    expect(frozen.map((each) => each.id)).toEqual(['後攻のエネ1'])
+  })
+
+  it('コストの番号を変えても、きっかけの選択は同じ番号で答える', () => {
+    seen.length = 0
+    const state = withRights([
+      { id: '1 体目', square: { row: 2, column: 1 } },
+      { id: '2 体目', square: { row: 2, column: 0 } },
+    ])
+
+    const progress = applyWithAnswers(state, ACTIVATE, [0, 1])
+
+    expectAdvanced(progress)
+    expect(seen).toEqual(['1 体目'])
+    const frozen = cardsIn(progress.state, '後攻', 'エネルギーゾーン').filter((each) => each.orientation === 'フリーズ')
+    expect(frozen.map((each) => each.id)).toEqual(['後攻のエネ2'])
+  })
+
+  // 止まっている件は候補に並ばない。発生している件が 1 つなら、選択は出ず、その件で発動する。
+  it('1 件が止まり、1 件が発生していれば、選択は出ず、発生している件のきっかけで発動する', () => {
+    seen.length = 0
+    const stopped = withRights([
+      { id: '止まっている件', square: { row: 2, column: 1 } },
+      { id: '発生している件', square: { row: 2, column: 0 } },
+    ])
+    const battle: Battle = {
+      square: { row: 1, column: 1 },
+      attacker: '攻撃したユニット',
+      attacked: '攻撃されたユニット',
+      step: '第１バトルステップ',
+      dealtDamage: [],
+      endOfBattleTriggered: false,
+      heldBank: [],
+      heldTriggered: [],
+      // 1 件目（metAt 0）より後、2 件目（metAt 1）以前に始まったバトル。1 件目だけを止める。
+      startedAt: 0,
+    }
+    const state: DuelState = {
+      ...stopped,
+      battles: [battle],
+      trapConditionsMet: stopped.trapConditionsMet.map((met, index) => ({ ...met, metAt: index === 0 ? 0 : 1 })),
+    }
+
+    const progress = applyWithAnswers(state, ACTIVATE, [0])
+
+    expectAdvanced(progress)
+    expect(seen).toEqual(['発生している件'])
+  })
+})
+
+// ADR-0039。「勇気」を起動する時も、権利が発生しているきっかけが複数あれば選ばせる。
+describe('「勇気」を起動するきっかけを選ぶ', () => {
+  const courageCard = defineUnit({
+    name: 'テスト・勇気',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [courage(4000)],
+  })
+
+  it('候補はきっかけの形で届き、目的と発生源が載る', () => {
+    const base = phaseReadyToAct('メインフェイズ')
+    const withHand = putInZone(base, '後攻', '手札', [instantiate({ id: '勇気', card: courageCard, owner: '後攻' })])
+    const ready = putInZone(withHand, '後攻', 'エネルギーゾーン', [
+      instantiate({ id: '後攻のエネ', card: testCard, owner: '後攻' }),
+    ])
+    const placedAt = (id: string, square: Square) => ({ id, square, card: testCard, controller: '先攻' as const })
+    const state: DuelState = {
+      ...ready,
+      turn: { ...ready.turn, priority: '後攻' },
+      courageConditionsMet: [
+        { player: '後攻', satisfied: ['勇気'], placed: placedAt('1 体目', { row: 2, column: 1 }), metAt: 0 },
+        { player: '後攻', satisfied: ['勇気'], placed: placedAt('2 体目', { row: 2, column: 0 }), metAt: 1 },
+      ],
+    }
+
+    const progress = applyWithAnswers(state, { kind: '「勇気」を起動する', card: '勇気' }, [])
+
+    expectChoice(progress)
+    expect(progress.choice.purpose).toBe('勇気のきっかけ')
+    expect(progress.choice.source).toBe('勇気')
+    expect(progress.choice.candidates).toEqual([
+      { kind: 'きっかけ', occasion: { kind: '侵入', invader: { card: '1 体目', square: { row: 2, column: 1 } } } },
+      { kind: 'きっかけ', occasion: { kind: '侵入', invader: { card: '2 体目', square: { row: 2, column: 0 } } } },
+    ])
   })
 })
 

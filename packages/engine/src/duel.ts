@@ -182,7 +182,8 @@ export interface DuelState {
    * （総合ルール 第5部 第2章 2）。
    *
    * `trapConditionsMet` と同じく、満たされたことを持続する状態として持ち、優先権をパスした時
-   * （`courage.ts` の `loseCourageRightOnPass`）に取り除く。
+   * （`courage.ts` の `loseCourageRightOnPass`）に取り除く。置かれるたびに 1 件ずつ足し、
+   * 件はきっかけごとに並ぶ（ADR-0039）。権利が発生している件だけを失う。
    *
    * **入れ物を分けているのは、紐づく先が違うためである。** トラップの発動条件はトラップ
    * ゾーンにある 1 枚に紐づき、発動すればそのカードがゾーンを離れて消える。「勇気」の起動

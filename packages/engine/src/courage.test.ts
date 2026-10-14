@@ -481,6 +481,27 @@ describe('「勇気」の起動', () => {
       expect(courageRightsOf(state, '後攻')).toEqual([])
     })
 
+    // 1 件が止まり、1 件が発生している。選択は出ず、発生している件（2 体目）にダメージを与える。
+    it('止まっている件と発生している件が混ざる時は、選択が出ず、発生している件で起動する', () => {
+      const both = twoPlaced()
+      const mixed: DuelState = {
+        ...both,
+        battles: [{ ...battleInProgress, startedAt: 0 }],
+        courageConditionsMet: both.courageConditionsMet.map((met, index) => ({ ...met, metAt: index })),
+      }
+      let asked = false
+      const chooser: Chooser = (candidates, _player, purpose) => {
+        if (purpose === '勇気のきっかけ') asked = true
+        return candidates[0]
+      }
+
+      const after = stateOf(activateCourage(mixed, 'テスト・勇気', chooser))
+
+      expect(asked).toBe(false)
+      expect(cardsOn(after, centerSquare)[0]?.damage).toBe(4000)
+      expect(cardsOn(after, enemySquare)[0]?.damage).toBe(0)
+    })
+
     it('1 件だけなら選択は出ない', () => {
       let asked = false
       const chooser: Chooser = (candidates, _player, purpose) => {

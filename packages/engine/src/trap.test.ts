@@ -261,7 +261,7 @@ describe('条件が満たされた後に発生したバトル・スマッシュ�
     expect(trapRightsOf(state, 'トラップ')).toHaveLength(1)
   })
 
-  // バトル中のバトル（総合ルール 第3部 第11章 4-1）。先の件は先のバトルより後・後のバトルより前。
+  // バトル中のバトル（総合ルール 第3部 第11章 2-1・4-1）。先の件は先のバトルより後・後のバトルより前。
   it('権利は、止める手順がある件だけが止まる', () => {
     const early = { ...conditionMet(intruder('後攻', targetSquare)), metAt: 3 }
     const late = { ...conditionMet(intruder('後攻', mirroredSquare)), metAt: 8 }
