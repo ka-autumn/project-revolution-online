@@ -10,6 +10,7 @@ import type {
   Progress,
   ResolutionVia,
   Square,
+  TriggerFilter,
   Turn,
   WireCardInstance,
   WirePerspective,
@@ -2434,5 +2435,10 @@ describe('トリガーアイコンの絞り込みの文字', () => {
     expect(triggerFilterText({ axis: '属性', value: 'テスト属性' })).toBe('テスト属性')
     expect(triggerFilterText({ axis: '色', value: '赤' })).toBe('Red')
     expect(triggerFilterText({ axis: '色', value: '緑' })).toBe('Green')
+  })
+
+  it('知らない色は、例外にせず読めないと言う（ADR-0038）', () => {
+    const unknownColor = { axis: '色', value: '紫' } as unknown as TriggerFilter
+    expect(triggerFilterText(unknownColor)).toBe('？')
   })
 })

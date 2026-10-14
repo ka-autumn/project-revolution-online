@@ -641,7 +641,8 @@ export function triggerFilterText(filter: TriggerFilter): string {
     case '属性':
       return filter.value
     case '色':
-      return COLOR_ENGLISH[filter.value]
+      // 配り終えた後の、知らない色も読めないと言う（ADR-0038）。
+      return (COLOR_ENGLISH as Readonly<Record<string, string>>)[filter.value] ?? '？'
     default:
       // 配り終えた後の、知らない軸のための枝（ADR-0038）。読めないと言う。
       filter satisfies never
