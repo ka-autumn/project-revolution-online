@@ -272,6 +272,17 @@ export type Effect = (duel: DuelView) => EffectStep<void>
 export type TrapEffect = (duel: DuelView, occasion: IntrusionOccasion) => EffectStep<void>
 
 /**
+ * 攻撃・スマッシュのトラップの効果。きっかけをまだ受け取らない（ADR-0039）。
+ *
+ * きっかけの型は、トリガーアイコンの種類から決まる。侵入のきっかけ（`IntrusionOccasion`）を
+ * 受け取るのは侵入のトラップだけで、攻撃のトラップが侵入のきっかけを受け取る形にはしない。
+ * 攻撃・スマッシュのきっかけの型は、発動条件の判定と一緒に単位 5 で入れる。それまで、この
+ * 種類の効果からは、きっかけから取れる値（攻撃したユニット・スマッシュしたユニットなど）
+ * を取り出せない。
+ */
+export type TrapEffectWithoutOccasion = (duel: DuelView) => EffectStep<void>
+
+/**
  * 作成された誘発型能力の効果。第 2 引数で、影響を与える対象のユニットを受け取る
  * （総合ルール 第4部 第3章 4-1）。
  *

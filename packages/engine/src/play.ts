@@ -3,7 +3,7 @@ import type { ActionOutcome, ActionViolation } from './action.js'
 import { triggerAllyAppearance, triggerAppearance } from './bank.js'
 import { areaOf } from './board.js'
 import type { Square } from './board.js'
-import { hasDream, hasGuts } from './card.js'
+import { hasDream, hasGuts, isIntrusionTrap } from './card.js'
 import type { Card, UnitCard } from './card.js'
 import { appliedCard } from './continuous.js'
 import { payEnergyCost, satisfiesLevel } from './cost.js'
@@ -154,6 +154,9 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   if (instance === undefined) return cannot('そのゾーンにない')
   const trap = instance.card
   if (trap.type !== 'トラップ') return cannot('発動できるカードではない')
+  // 発動条件が満たされるのは侵入のトラップだけで、攻撃・スマッシュのトラップには、まだ
+  // 権利が発生しない（単位 5 で足す。ADR-0039）。きっかけを渡せるのも侵入の効果だけである。
+  if (!isIntrusionTrap(trap)) return cannot('発動する権利がない')
   const occasion = trapRightOf(state, card)
   if (occasion === undefined) return cannot('発動する権利がない')
 

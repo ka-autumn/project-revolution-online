@@ -712,6 +712,29 @@ describe('詳しく出す', () => {
     expect(printedDetailsOf(face as WireCardFace).map((row) => row.label)).not.toContain('キーワード')
   })
 
+  // ADR-0039。トラップのトリガーアイコンは、種類つきの値から呼び名を作る。
+  it.each([
+    [{ kind: '侵入', squares: [{ row: 0, column: 1 }] }, '味方エリアの中央ライン'],
+    [{ kind: '攻撃' }, '攻撃'],
+    [{ kind: '攻撃', filter: { axis: '色', value: '赤' } }, '攻撃（色 赤）'],
+    [{ kind: 'スマッシュ' }, 'スマッシュ'],
+  ] as const)('トラップのトリガーアイコンの行が、種類に応じて出る', (triggerIcon, value) => {
+    const face = {
+      type: 'トラップ',
+      name: 'テスト・罠',
+      level: 1,
+      colors: [],
+      stars: 0,
+      reverseStars: 0,
+      attributes: [],
+      keywords: [],
+      text: [],
+      triggerIcon,
+    } as const satisfies WireCardFace
+
+    expect(printedDetailsOf(face)).toContainEqual({ label: 'トリガーアイコン', value })
+  })
+
   /** 収録（ADR-0028）。エキスパンションは名前で出す（#230が済むまでコードは無い）。 */
   it('収録しているエキスパンションが名前で出る', () => {
     const face = unitFace('テスト・収録あり')

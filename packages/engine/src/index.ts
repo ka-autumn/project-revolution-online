@@ -95,7 +95,26 @@ export {
   planReplacingAbilitiesOf,
   spOf,
 } from './card.js'
-export type { Attribute, Card, CardType, Color, MakerSymbol, PlanKeyword, StrategyCard, TrapCard, UnitCard } from './card.js'
+export { isIntrusionTrap } from './card.js'
+export type {
+  Attribute,
+  AttackIcon,
+  AttackTrapCard,
+  Card,
+  CardType,
+  Color,
+  IntrusionIcon,
+  IntrusionTrapCard,
+  MakerSymbol,
+  PlanKeyword,
+  SmashIcon,
+  SmashTrapCard,
+  StrategyCard,
+  TrapCard,
+  TriggerFilter,
+  TriggerIcon,
+  UnitCard,
+} from './card.js'
 export { appliedCard, bpModification, spModification } from './continuous.js'
 export type { BpModification, SpModification } from './continuous.js'
 export { satisfiesLevel } from './cost.js'
@@ -181,6 +200,7 @@ export type {
   SmashCard,
   SpModifier,
   TrapEffect,
+  TrapEffectWithoutOccasion,
   UnitOnSquare,
 } from './effect.js'
 export { cardIdsOf, checkBoardInvariants } from './invariant.js'

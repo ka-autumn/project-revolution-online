@@ -29,6 +29,8 @@ import type {
   SmashJudgmentStep,
   Square,
   SquareIndex,
+  TriggerFilter,
+  TriggerIcon,
   WireCardFace,
   WireCardInstance,
   WireCardPosition,
@@ -129,8 +131,8 @@ export type CardView =
       readonly reverseStars: number
       /** ユニットだけが持つ（総合ルール 第2部 第11章）。持たなければ空。 */
       readonly moveIcon: readonly MoveDirection[]
-      /** トラップだけが持つ（同 第12章）。持たなければ空。 */
-      readonly triggerIcon: readonly Square[]
+      /** トラップだけが持つ（同 第12章）。持たなければ `undefined`。種類つきの値（ADR-0039）。 */
+      readonly triggerIcon: TriggerIcon | undefined
       /** プランゾーンに関わるキーワード能力（対戦画面のカードの面のアイコン、ADR-0027）。 */
       readonly keywords: readonly PlanKeyword[]
       /** カードに書かれている属性（総合ルール 第2部 第13章）。持たなければ空。 */
@@ -617,6 +619,63 @@ export function printedSquareLabel(printed: Square): string {
 }
 
 /**
+ * 色の英語の表記。トリガーアイコンの絞り込みに色を書く時に使う（ADR-0039）。
+ *
+ * 色が増えたら、ここも足さないと型検査が止まる。
+ */
+const COLOR_ENGLISH = {
+  赤: 'Red',
+  黒: 'Black',
+  青: 'Blue',
+  白: 'White',
+  緑: 'Green',
+} as const satisfies Record<Color, string>
+
+/**
+ * 攻撃のトリガーアイコンの絞り込みを、アイコンの中に書く文字にする。メーカーシンボルと属性は
+ * 値のまま、色は英語で書く（ADR-0039）。
+ */
+export function triggerFilterText(filter: TriggerFilter): string {
+  switch (filter.axis) {
+    case 'メーカーシンボル':
+    case '属性':
+      return filter.value
+    case '色':
+      return COLOR_ENGLISH[filter.value]
+    default:
+      // 配り終えた後の、知らない軸のための枝（ADR-0038）。読めないと言う。
+      filter satisfies never
+      return '？'
+  }
+}
+
+/** 絞り込みを、読み上げと詳細の行に出す文にする。こちらは日本語で書く（色も日本語のまま）。 */
+function triggerFilterLabel(filter: TriggerFilter): string {
+  return `${filter.axis} ${filter.value}`
+}
+
+/**
+ * トリガーアイコンの呼び方。読み上げと、デッキを組む画面の詳細の行に使う（ADR-0039）。
+ *
+ * 侵入のスクエアの呼び方は、呼ぶ側が渡す（図は印刷された向きのまま持つ、`printedSquareLabel`）。
+ * 知らない種類は、読めないと言う（ADR-0038）。古いサーバが送るスクエアの並びも、種類を持たない
+ * ので、ここに落ちる。
+ */
+export function triggerIconLabel(icon: TriggerIcon, squareName: (square: Square) => string): string {
+  switch (icon.kind) {
+    case '侵入':
+      return icon.squares.map(squareName).join('・')
+    case '攻撃':
+      return icon.filter === undefined ? '攻撃' : `攻撃（${triggerFilterLabel(icon.filter)}）`
+    case 'スマッシュ':
+      return 'スマッシュ'
+    default:
+      icon satisfies never
+      return '（表示できないトリガーアイコン）'
+  }
+}
+
+/**
  * カードの面の色。複数の色を持つカード・無色のカードは、いまのカードプールに無いので
  * 考えない（ADR-0027）。持っている色のうち 1 つ目で決める。
  */
@@ -642,7 +701,7 @@ export interface FaceFields {
   readonly stars: number
   readonly reverseStars: number
   readonly moveIcon: readonly MoveDirection[]
-  readonly triggerIcon: readonly Square[]
+  readonly triggerIcon: TriggerIcon | undefined
   readonly keywords: readonly PlanKeyword[]
   readonly attributes: readonly Attribute[]
   readonly text: readonly string[]
@@ -660,7 +719,7 @@ export function faceFieldsOf(face: WireCardFace): FaceFields {
     stars: face.stars,
     reverseStars: face.reverseStars,
     moveIcon: face.type === 'ユニット' ? face.moveIcon : [],
-    triggerIcon: face.type === 'トラップ' ? face.triggerIcon : [],
+    triggerIcon: face.type === 'トラップ' ? face.triggerIcon : undefined,
     // 古いサーバは `keywords` を送らない。届かなければ空として扱う（#207、
     // `room.occupants ?? []` と同じ備え）。
     keywords: face.keywords ?? [],

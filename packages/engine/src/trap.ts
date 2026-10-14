@@ -19,8 +19,11 @@ import { deferringRights } from './priority.js'
  * トリガーアイコンを持てるのはトラップだけである（`card.ts` の `TrapCard.triggerIcon`）。
  * トラップ以外のカードがトラップゾーンにあっても対象にならない。
  *
+ * 判定するのは、侵入のトリガーアイコンを持つトラップだけである。攻撃・スマッシュのトラップ
+ * の発動条件は、ここでは満たされない（足すのは単位 5。ADR-0039）。
+ *
  * トリガーアイコンに印刷されたスクエアは、そのトラップの支配者（＝相手のトラップゾーンの
- * 持ち主）から見た向きで持っている（`TrapCard.triggerIcon` 参照）ため、`squareFromView`
+ * 持ち主）から見た向きで持っている（`IntrusionIcon` 参照）ため、`squareFromView`
  * で盤面に固定した絶対のスクエアに変換してから比べる。
  *
  * ここで満たされるのは発動条件であって、発動する権利そのものではない。権利が発生するのは
@@ -40,7 +43,8 @@ export function checkIntrusion(state: DuelState, invader: UnitOnSquare): DuelSta
     .filter(
       (trap) =>
         trap.card.type === 'トラップ' &&
-        trap.card.triggerIcon.some(
+        trap.card.triggerIcon.kind === '侵入' &&
+        trap.card.triggerIcon.squares.some(
           (printed) =>
             indexOfSquare(squareFromView(opponent, printed)) === indexOfSquare(invader.square),
         ),

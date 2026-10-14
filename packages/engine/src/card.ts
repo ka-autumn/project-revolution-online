@@ -10,7 +10,7 @@ import type {
   PlanReplacingAbility,
 } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
-import type { Effect, TrapEffect } from './effect.js'
+import type { Effect, TrapEffect, TrapEffectWithoutOccasion } from './effect.js'
 
 /**
  * カードの色。レベルに含まれるエネルギー・シンボルの色と同じであり、カードの背景や枠の色
@@ -183,33 +183,100 @@ export interface StrategyCard extends WrittenCard {
   readonly effect: Effect
 }
 
-/** トラップゾーンに裏向きで置き、後から発動するカード（総合ルール 第2部 第20章 3）。 */
-export interface TrapCard extends WrittenCard {
+/**
+ * 攻撃のトリガーアイコンの絞り込み。アイコンの一部として、軸と値の組で持つ（ADR-0039）。
+ *
+ * 軸は数え上げられるので、述語にはしない。軸が増える時は、値を 1 つ足す。色と属性は、
+ * 判定する時に継続効果を適用した後の姿で確かめる（ADR-0036、判定は単位 5）。
+ */
+export type TriggerFilter =
+  | { readonly axis: 'メーカーシンボル'; readonly value: MakerSymbol }
+  | { readonly axis: '色'; readonly value: Color }
+  | { readonly axis: '属性'; readonly value: Attribute }
+
+/**
+ * 侵入のトリガーアイコン。赤く塗られたスクエアの並び（総合ルール 第2部 第12章、第20章 3-6）。
+ *
+ * トラップゾーンに裏向きで置かれている間、相手のユニットがここに置かれることを
+ * 「侵入される」と表現し、発動条件になる（同 3-6・3-8-a、`trap.ts`）。
+ *
+ * 印刷された図なので、ムーブアイコンの矢印の向き（`board.ts` の `squareInDirection`）と
+ * 同じ理由で、支配者の手前を基準にした向きで持つ。盤面に固定した絶対のスクエアに変換
+ * するには `squareFromView` を使う（`trap.ts` の `checkIntrusion` 参照）。
+ *
+ * 空なら、スクエアの指定が無いトリガーアイコン（同 3-8-b）。
+ */
+export interface IntrusionIcon {
+  readonly kind: '侵入'
+  readonly squares: readonly Square[]
+}
+
+/**
+ * 攻撃のトリガーアイコン。絞り込みを 1 つ持てる。持たなければ絞り込まない（ADR-0039）。
+ *
+ * 印刷されたトリガーアイコンが、攻撃のアイコンと絞り込みを合わせて表している。
+ */
+export interface AttackIcon {
+  readonly kind: '攻撃'
+  readonly filter?: TriggerFilter
+}
+
+/** スマッシュのトリガーアイコン。追加の値を持たない（ADR-0039）。 */
+export interface SmashIcon {
+  readonly kind: 'スマッシュ'
+}
+
+/**
+ * トラップの発動条件を表すトリガーアイコン。種類で分けた値で、1 枚のトラップが持つのは
+ * どれか 1 つである（ADR-0039）。
+ *
+ * 発動条件を判定するのは、まだ侵入だけである（`trap.ts` の `checkIntrusion`）。攻撃と
+ * スマッシュは値として表せるだけで、判定は単位 5 で足す。
+ */
+export type TriggerIcon = IntrusionIcon | AttackIcon | SmashIcon
+
+/** トラップゾーンに裏向きで置き、後から発動するカードの、種類によらない部分（総合ルール 第2部 第20章 3）。 */
+interface TrapCardOf<Icon extends TriggerIcon, Effect> extends WrittenCard {
   readonly type: 'トラップ'
   /**
-   * トリガーアイコンで赤く塗られたスクエア（総合ルール 第2部 第12章、第20章 3-6）。
+   * 発動条件になるトリガーアイコン（総合ルール 第2部 第12章）。種類は 1 つに決まる。
    *
-   * トラップゾーンに裏向きで置かれている間、相手のユニットがここに置かれることを
-   * 「侵入される」と表現し、発動条件になる（同 3-6・3-8-a、`trap.ts`）。
-   *
-   * 印刷された図なので、ムーブアイコンの矢印の向き（`board.ts` の `squareInDirection`）と
-   * 同じ理由で、支配者の手前を基準にした向きで持つ。盤面に固定した絶対のスクエアに変換
-   * するには `squareFromView` を使う（`trap.ts` の `checkIntrusion` 参照）。
-   *
-   * 空なら、トリガーアイコンを持たないか、トリガーアイコンにスクエアの指定が無い
-   * （同 3-8-b）カード。
+   * トラップは必ずトリガーアイコンを 1 つ持つ。総合ルール 第2部 第20章 3-8-b の「スクエアが
+   * 書かれていない」トリガーアイコンは、スクエアを持たない種類（攻撃・スマッシュ）のことで、
+   * アイコンを持たないトラップの規定ではない。
    */
-  readonly triggerIcon: readonly Square[]
+  readonly triggerIcon: Icon
   /**
    * 発動して解決された時に発揮する効果（総合ルール 第2部 第10章 3-2）。
    *
-   * 《 》でくくられた発動条件のテキストはまだ持っていない。発動条件のうち、トリガーアイコン
-   * （スクエア）で表される「侵入」だけは `triggerIcon` として持てる。
+   * 《 》でくくられた発動条件のテキストはまだ持っていない。発動条件はトリガーアイコンで表す。
    *
-   * 効果は第 2 引数で、発動条件を満たしたできごとの写しを受け取る（`effect.ts` の
-   * `TrapEffect`）。「侵入してきた敵」「侵入されたスクエア」はそこからしか取れない。
+   * 効果が受け取るきっかけの型は、アイコンの種類から決まる（ADR-0039）。いまきっかけを
+   * 受け取るのは侵入のトラップだけで、発動条件を満たしたできごとの写しを第 2 引数で受け取る
+   * （`effect.ts` の `TrapEffect`）。「侵入してきた敵」「侵入されたスクエア」はそこからしか
+   * 取れない。
    */
-  readonly effect: TrapEffect
+  readonly effect: Effect
+}
+
+/** 侵入のトラップ。発動条件を判定するのは、いまはこの種類だけである。 */
+export type IntrusionTrapCard = TrapCardOf<IntrusionIcon, TrapEffect>
+
+/** 攻撃のトラップ。発動条件の判定ときっかけの手渡しは、まだ無い（単位 5）。 */
+export type AttackTrapCard = TrapCardOf<AttackIcon, TrapEffectWithoutOccasion>
+
+/** スマッシュのトラップ。発動条件の判定ときっかけの手渡しは、まだ無い（単位 5）。 */
+export type SmashTrapCard = TrapCardOf<SmashIcon, TrapEffectWithoutOccasion>
+
+/** トラップゾーンに裏向きで置き、後から発動するカード（総合ルール 第2部 第20章 3）。 */
+export type TrapCard = IntrusionTrapCard | AttackTrapCard | SmashTrapCard
+
+/**
+ * 侵入のトラップか。入れ子の `triggerIcon.kind` を見ても、カードそのものの型は絞れない
+ * ので、効果にきっかけを渡す側は、これで絞ってから呼ぶ。
+ */
+export function isIntrusionTrap(card: TrapCard): card is IntrusionTrapCard {
+  return card.triggerIcon.kind === '侵入'
 }
 
 export type Card = UnitCard | StrategyCard | TrapCard
@@ -265,11 +332,11 @@ interface StrategySpec extends CardSpec {
   readonly effect?: Effect
 }
 
-interface TrapSpec extends CardSpec {
-  /** 省略した場合はトリガーアイコンを持たない。 */
-  readonly triggerIcon?: readonly Square[]
+/** トラップはトリガーアイコンを必ず持つので、省略できない（ADR-0039）。 */
+interface TrapSpecOf<Icon extends TriggerIcon, Effect> extends CardSpec {
+  readonly triggerIcon: Icon
   /** 省略した場合は、発動して解決しても何も起こらない。 */
-  readonly effect?: TrapEffect
+  readonly effect?: Effect
 }
 
 /** 解決しても何も起こらない効果。効果を書いていないカードに使う。 */
@@ -302,8 +369,15 @@ export function defineStrategy(spec: StrategySpec): StrategyCard {
   return { ...written(spec.type ?? 'ストラテジー', spec), effect: spec.effect ?? noEffect }
 }
 
-export function defineTrap(spec: TrapSpec): TrapCard {
-  return { ...written('トラップ', spec), triggerIcon: spec.triggerIcon ?? [], effect: spec.effect ?? noEffect }
+/**
+ * トラップを書く。効果の型は、トリガーアイコンの種類で決まる（ADR-0039）ので、種類ごとに
+ * 書き分けた形を重ねている。効果の引数の型は、アイコンの種類から決まる。
+ */
+export function defineTrap(spec: TrapSpecOf<IntrusionIcon, TrapEffect>): IntrusionTrapCard
+export function defineTrap(spec: TrapSpecOf<AttackIcon, TrapEffectWithoutOccasion>): AttackTrapCard
+export function defineTrap(spec: TrapSpecOf<SmashIcon, TrapEffectWithoutOccasion>): SmashTrapCard
+export function defineTrap(spec: TrapSpecOf<TriggerIcon, TrapEffect | TrapEffectWithoutOccasion>): TrapCard {
+  return { ...written('トラップ', spec), triggerIcon: spec.triggerIcon, effect: spec.effect ?? noEffect } as TrapCard
 }
 
 /**

@@ -274,7 +274,7 @@ describe('移動による侵入', () => {
   it('相手のユニットがトリガーアイコンのスクエアへ移動すると、発動する権利を得る', () => {
     const trap = instantiate({
       id: 'トラップ',
-      card: defineTrap({ name: 'テスト・侵入トラップ', level: 1, triggerIcon: [centerSquare] }),
+      card: defineTrap({ name: 'テスト・侵入トラップ', level: 1, triggerIcon: { kind: '侵入', squares: [centerSquare] } }),
       owner: '後攻',
     })
     const state = putInZone(putOnSquare(mainPhase(), homeSquare, unit('ユニット')), '後攻', 'トラップゾーン', [trap])

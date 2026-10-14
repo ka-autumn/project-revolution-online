@@ -944,7 +944,7 @@ describe('スマッシュ判定の途中に効果で置かれた時の権利', (
     name: 'テスト・侵入トラップ',
     level: 1,
     colors: ['赤'],
-    triggerIcon: [anotherCenterSquare],
+    triggerIcon: { kind: '侵入', squares: [anotherCenterSquare] },
   })
 
   const courageUnit = defineUnit({

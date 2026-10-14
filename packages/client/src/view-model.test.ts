@@ -32,6 +32,8 @@ import {
   roomListView,
   showsOverlay,
   transitionViews,
+  triggerFilterText,
+  triggerIconLabel,
   visibleCardViewsIn,
   zoneOf as sideZoneOf,
 } from './view-model.js'
@@ -230,19 +232,44 @@ describe('カードの構造化した値', () => {
         reverseStars: 0,
         attributes: [],
         keywords: [],
-        triggerIcon: [{ row: 0, column: 0 }],
+        triggerIcon: { kind: '侵入', squares: [{ row: 0, column: 0 }] },
       },
     }
 
-    expect(cardOf(inHand(trap)).triggerIcon).toEqual([{ row: 0, column: 0 }])
+    expect(cardOf(inHand(trap)).triggerIcon).toEqual({ kind: '侵入', squares: [{ row: 0, column: 0 }] })
   })
 
-  /** 持っていなければ、空・0 のまま出る。ユニットのトリガーアイコンは常に空。 */
+  // 攻撃・スマッシュ・絞り込みつきのアイコンも、値のまま画面まで渡る（ADR-0039）。
+  it.each([
+    [{ kind: '攻撃' }],
+    [{ kind: '攻撃', filter: { axis: 'メーカーシンボル', value: 'XY' } }],
+    [{ kind: 'スマッシュ' }],
+  ] as const)('トラップの種類つきのトリガーアイコンは、値のまま出る', (icon) => {
+    const trap: WireCardInstance = {
+      ...instance('とらっぷ', '先攻'),
+      card: {
+        type: 'トラップ',
+        name: 'テスト・罠',
+        level: 1,
+        colors: [],
+        text: [],
+        stars: 0,
+        reverseStars: 0,
+        attributes: [],
+        keywords: [],
+        triggerIcon: icon,
+      },
+    }
+
+    expect(cardOf(inHand(trap)).triggerIcon).toEqual(icon)
+  })
+
+  /** 持っていなければ、空・0 のまま出る。ユニットのトリガーアイコンは持たない（`undefined`）。 */
   it('持っていない項目は空・0 のまま出る', () => {
     const plain = instance('すたーなし', '先攻', { card: unitFace('テスト・素', { stars: 0, attributes: [] }) })
     const view = inHand(plain)
 
-    expect(cardOf(view)).toMatchObject({ stars: 0, attributes: [], triggerIcon: [] })
+    expect(cardOf(view)).toMatchObject({ stars: 0, attributes: [], triggerIcon: undefined })
   })
 
   /** 持ち主と支配者が同じなら、持ち主は出ない（`undefined`）。 */
@@ -2364,5 +2391,48 @@ describe('継続効果を適用した後のキーワード能力', () => {
     const { effectiveKeywords: _, ...old } = onPlanZone()
 
     expect(planKeywords(old as unknown as WirePerspective)).toEqual(['希望'])
+  })
+})
+
+// ADR-0039。印刷されたトリガーアイコンを、読み上げとデッキを組む画面の行に出す呼び方。
+describe('トリガーアイコンの呼び方', () => {
+  const squareName = (square: { row: number; column: number }) => `(${square.row},${square.column})`
+
+  it('侵入は、スクエアの呼び方を「・」でつなぐ', () => {
+    const icon = { kind: '侵入', squares: [{ row: 0, column: 1 }, { row: 2, column: 2 }] } as const
+
+    expect(triggerIconLabel(icon, squareName)).toBe('(0,1)・(2,2)')
+  })
+
+  it('攻撃は、絞り込みがあれば軸と値を添える。色は日本語のまま読む', () => {
+    expect(triggerIconLabel({ kind: '攻撃' }, squareName)).toBe('攻撃')
+    expect(triggerIconLabel({ kind: '攻撃', filter: { axis: 'メーカーシンボル', value: 'XY' } }, squareName)).toBe(
+      '攻撃（メーカーシンボル XY）',
+    )
+    expect(triggerIconLabel({ kind: '攻撃', filter: { axis: '色', value: '赤' } }, squareName)).toBe('攻撃（色 赤）')
+    expect(triggerIconLabel({ kind: '攻撃', filter: { axis: '属性', value: 'テスト属性' } }, squareName)).toBe(
+      '攻撃（属性 テスト属性）',
+    )
+  })
+
+  it('スマッシュは、追加の値を持たない', () => {
+    expect(triggerIconLabel({ kind: 'スマッシュ' }, squareName)).toBe('スマッシュ')
+  })
+
+  // ADR-0038。古いサーバが送るスクエアの並びは種類を持たない。落とさず、読めないと言う。
+  it('知らない形は、落ちずに読めないと言う', () => {
+    const unknown = [{ row: 0, column: 1 }] as unknown as Parameters<typeof triggerIconLabel>[0]
+
+    expect(triggerIconLabel(unknown, squareName)).toBe('（表示できないトリガーアイコン）')
+  })
+})
+
+// ADR-0039。アイコンの中に書く文字。メーカーシンボルと属性は値のまま、色は英語で書く。
+describe('トリガーアイコンの絞り込みの文字', () => {
+  it('メーカーシンボルと属性は値のまま、色は英語で書く', () => {
+    expect(triggerFilterText({ axis: 'メーカーシンボル', value: 'XY' })).toBe('XY')
+    expect(triggerFilterText({ axis: '属性', value: 'テスト属性' })).toBe('テスト属性')
+    expect(triggerFilterText({ axis: '色', value: '赤' })).toBe('Red')
+    expect(triggerFilterText({ axis: '色', value: '緑' })).toBe('Green')
   })
 })

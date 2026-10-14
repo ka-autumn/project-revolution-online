@@ -61,7 +61,7 @@ const TRAP = card('ほ', {
   attributes: [],
   keywords: [],
   text: [],
-  triggerIcon: [{ row: 1, column: 1 }],
+  triggerIcon: { kind: '侵入', squares: [{ row: 1, column: 1 }] },
 })
 
 const POOL = [RED_UNIT, BLUE_UNIT, TWO_COLORS, STRATEGY, TRAP]
@@ -168,14 +168,46 @@ describe('選べるもの', () => {
   })
 })
 
-/** ADR-0028。ほかの発動条件はカードの表記に載せてから足す（#232）。 */
+/** ADR-0028・ADR-0039。《 》のテキストが表す発動条件は、カードの表記に載せてから足す（#232）。 */
 describe('発動条件の当たり方（ADR-0028）', () => {
-  it('「侵入された時」には、トリガーアイコンを持つトラップだけが残る', () => {
-    const noTrigger = card('へ', { ...TRAP.face, name: 'テスト・アイコン無しの罠', triggerIcon: [] } as WireCardFace)
+  const attackTrap = card('へ', {
+    ...TRAP.face,
+    name: 'テスト・攻撃の罠',
+    triggerIcon: { kind: '攻撃' },
+  } as WireCardFace)
+  const filteredAttackTrap = card('と', {
+    ...TRAP.face,
+    name: 'テスト・絞り込み攻撃の罠',
+    triggerIcon: { kind: '攻撃', filter: { axis: '色', value: '赤' } },
+  } as WireCardFace)
+  const smashTrap = card('ち', {
+    ...TRAP.face,
+    name: 'テスト・スマッシュの罠',
+    triggerIcon: { kind: 'スマッシュ' },
+  } as WireCardFace)
+  const pool = [...POOL, attackTrap, filteredAttackTrap, smashTrap]
 
-    expect(filterPool([...POOL, noTrigger], { ...emptyFilter(), triggerConditions: ['侵入された時'] }).map((each) => each.key)).toEqual([
-      'ほ',
-    ])
+  function keysOf(triggerConditions: PoolFilter['triggerConditions']): readonly string[] {
+    return filterPool(pool, { ...emptyFilter(), triggerConditions }).map((each) => each.key)
+  }
+
+  it('「侵入された時」には、侵入のトリガーアイコンを持つトラップだけが残る', () => {
+    expect(keysOf(['侵入された時'])).toEqual(['ほ'])
+  })
+
+  it('「攻撃された時」には、攻撃のトリガーアイコンを持つトラップが、絞り込みの有無によらず残る', () => {
+    expect(keysOf(['攻撃された時'])).toEqual(['へ', 'と'])
+  })
+
+  it('「スマッシュされた時」には、スマッシュのトリガーアイコンを持つトラップだけが残る', () => {
+    expect(keysOf(['スマッシュされた時'])).toEqual(['ち'])
+  })
+
+  // ADR-0038。古いサーバが送るスクエアの並びは、種類を持たない。どの発動条件にも当たらない。
+  it('種類を持たないトリガーアイコンは、どの発動条件にも当たらない', () => {
+    const unreadable = card('り', { ...TRAP.face, name: 'テスト・読めない罠', triggerIcon: [{ row: 1, column: 1 }] } as unknown as WireCardFace)
+
+    expect(filterPool([unreadable], { ...emptyFilter(), triggerConditions: [...TRIGGER_CONDITIONS] })).toEqual([])
   })
 
   it('選ばなければ、トラップ以外も残る', () => {

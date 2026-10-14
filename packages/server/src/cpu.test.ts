@@ -34,7 +34,7 @@ const PASS = { kind: '優先権を放棄する' } as const
 function deckOf(kind: 'ユニット' | 'トラップ'): Deck {
   const cards: readonly Card[] = Array.from({ length: 15 }, (_, index) =>
     kind === 'トラップ'
-      ? defineTrap({ name: `テスト・CPUのトラップ${index}`, level: 0 })
+      ? defineTrap({ name: `テスト・CPUのトラップ${index}`, level: 0, triggerIcon: { kind: '侵入', squares: [] } })
       : defineUnit({ name: `テスト・CPUのユニット${index}`, level: 0, bp: 100, sp: 100, moveIcon: ['上'] }),
   )
 
