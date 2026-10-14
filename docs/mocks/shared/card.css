@@ -299,8 +299,13 @@
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.4));
 }
 
-.deckbuild .trigger-icon {
-  margin-left: auto;
+/* トリガーアイコンは、印刷と同じく、テキストの側の左に置く（ADR-0027）。ムーブアイコンは右のまま。 */
+.deckbuild .card__icons--trigger {
+  justify-content: flex-start;
+}
+
+.deckbuild .card__text .card__icons--trigger {
+  order: -1;
 }
 
 .deckbuild .card__traits {
