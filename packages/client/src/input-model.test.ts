@@ -581,44 +581,6 @@ describe('選ぶ候補', () => {
       ])
       expect(choicePicking(board(), asked).onBoard).toEqual([])
     })
-
-    /**
-     * 画面を読み込み直す前の古い画面は、この目的も候補の形も知らない（#285 の枝）。古い画面の
-     * 読み方を写している。落ちずに、番号だけで答えられる。何を選んでいるかが読めないことは、
-     * 移行の間のこととして受け入れる（ADR-0039）。
-     */
-    it('古い画面の読み方でも、落ちずに番号で答えられる', () => {
-      const oldAsking = (purpose: string): string => {
-        switch (purpose) {
-          case 'プレイのコスト':
-          case 'プランのコスト':
-          case '移動のコスト':
-          case '起動のコスト':
-          case '解決する能力':
-          case 'プランの置き換え':
-          case '効果の対象':
-            return '知っている目的'
-          default:
-            return '選んでください'
-        }
-      }
-      const oldLabel = (kind: string, position: string): string => {
-        switch (kind) {
-          case '見えている':
-          case '能力':
-          case 'スクエア':
-          case 'エリア':
-          case '見えていない':
-            return `${position}: 知っている形`
-          default:
-            return `${position}（表示できない候補）`
-        }
-      }
-
-      expect(oldAsking('トラップのきっかけ')).toBe('選んでください')
-      expect(oldAsking('勇気のきっかけ')).toBe('選んでください')
-      expect(oldLabel('きっかけ', '1 番目')).toBe('1 番目（表示できない候補）')
-    })
   })
 })
 
