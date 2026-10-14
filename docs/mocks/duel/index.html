@@ -9,6 +9,9 @@
  * 対戦画面のモック。見た目の仕様は ADR-0027（クリックモードの手の出し方は ADR-0031）。
  * 新しい見た目は .duel の内側にだけ効かせる（他画面の :root には触らない）。
  * カードは架空の見本。
+ * URL に ?trap-icons を付けて開くと、自分の手札が、攻撃・絞り込みつきの攻撃 3 種（記号・色・属性）・
+ * スマッシュのトリガーアイコンの見本 5 枚に替わる（ADR-0039）。対戦の大きさのカードに載せた時の、
+ * 絞り込みの小さな文字の読みやすさと、アイコンが左に寄る様子を見るためのもの。
  */
 body {
   margin: 0;
@@ -2791,19 +2794,24 @@ function fan(el, nodes, step) {
 }
 
 fan(document.getElementById('hand-opponent'), Array.from({ length: 6 }, () => back()), -3)
-fan(document.getElementById('hand-own'), [
-  card('見本・霧島透', '自分', { pickable: true }),
-  card('見本・もちぬい', '自分', { pickable: true }),
-  card('見本・苦労人の騎士', '自分'),
-  card('見本・落とし穴', '自分'),
-  card('見本・攻撃の罠', '自分'),
-  card('見本・記号を絞る罠', '自分'),
-  card('見本・色を絞る罠', '自分'),
-  card('見本・属性を絞る罠', '自分'),
-  card('見本・スマッシュの罠', '自分'),
-  card('見本・大狸', '自分'),
-  card('見本・パルフェ・若葉', '自分'),
-], 4)
+// ?trap-icons を付けて開くと、自分の手札がトリガーアイコンの見本（攻撃・絞り込みつきの攻撃 3 種・スマッシュ）に替わる。
+const trapIconSamples = new URLSearchParams(location.search).has('trap-icons')
+fan(document.getElementById('hand-own'), trapIconSamples
+  ? [
+      card('見本・攻撃の罠', '自分'),
+      card('見本・記号を絞る罠', '自分'),
+      card('見本・色を絞る罠', '自分'),
+      card('見本・属性を絞る罠', '自分'),
+      card('見本・スマッシュの罠', '自分'),
+    ]
+  : [
+      card('見本・霧島透', '自分', { pickable: true }),
+      card('見本・もちぬい', '自分', { pickable: true }),
+      card('見本・苦労人の騎士', '自分'),
+      card('見本・落とし穴', '自分'),
+      card('見本・大狸', '自分'),
+      card('見本・パルフェ・若葉', '自分'),
+    ], 4)
 
 // ---- カードの一覧（オーバーレイ） ----
 // 見る：捨札・リムーブの中身を見るだけ。閉じるで戻る。
