@@ -1743,11 +1743,12 @@ describe('エリアを選ぶ', () => {
 })
 
 /**
- * 総合ルール 第2部 第20章 3-6、第5部 第2章 2（ADR-0006）。
+ * 総合ルール 第2部 第20章 3-6、第5部 第2章 2、ADR-0039（ADR-0006）。
  *
  * どちらの条文も「相手のユニットが置かれた」とだけ書き、置き方を限っていない。効果によって
  * スクエアに置かれた場合も、登場や移動と同じく、侵入になり、「勇気」の起動条件も満たす。
- * ゾーンから置いた場合も、別のスクエアから置き直した場合も同じに扱う。
+ * ゾーンから置いた場合も、別のスクエアから置き直した場合も同じに扱う。置き直しを含めるのは
+ * 条文に明示の無い読みで、ADR-0039 による。
  */
 describe('効果によってスクエアに置かれた時の侵入と「勇気」', () => {
   /** 後攻の味方エリアのスクエア。先攻から見れば敵エリアにあたる。 */
@@ -1884,6 +1885,54 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
       const resolved = resolve(state, placeFromSquare)
 
       expect(resolved.courageConditionsMet.map((met) => met.placed.id)).toEqual(['置き直すユニット'])
+    })
+  })
+
+  /**
+   * 1 つの効果が続けて置くと、パスを挟まずに満たし直される。いまは最初のできごとを持ち続ける。
+   * ADR-0039 はできごとごとに 1 件ずつ持つと決めていて、権利の判定をきっかけごとにする時に
+   * この期待も改める。
+   */
+  describe('1 つの効果が続けて 2 体置いた時', () => {
+    /** `invadedSquare` の隣の、後攻の味方エリアのスクエア。 */
+    const nextInvadedSquare: Square = { row: 2, column: 2 }
+
+    /** 2 つのスクエアをトリガーアイコンに持つトラップ。後攻から見た向きで書く。 */
+    const trapOnBoth = defineTrap({
+      name: 'テスト・2 マスの侵入トラップ',
+      level: 1,
+      colors: ['赤'],
+      triggerIcon: [
+        { row: 0, column: 1 },
+        { row: 0, column: 2 },
+      ],
+    })
+
+    /** 先攻の捨札の 1 枚目を `invadedSquare` に、2 枚目を `nextInvadedSquare` に置く効果。 */
+    const placeTwo: Effect = function* (duel) {
+      const [first, second] = duel.discardPile()
+      if (first === undefined || second === undefined) throw new Error('捨札に 2 枚ある盤面で試すこと')
+      yield* placeOnSquare(first, invadedSquare, 'リリース')
+      yield* placeOnSquare(second, nextInvadedSquare, 'リリース')
+    }
+
+    function twoInDiscard(): DuelState {
+      return putInZone(emptyDuelState(), '先攻', '捨札', [
+        instantiate({ id: '1 体目', card: vanilla, owner: '先攻' }),
+        instantiate({ id: '2 体目', card: vanilla, owner: '先攻' }),
+      ])
+    }
+
+    it('トラップは、1 体目の侵入のきっかけを持ち続ける', () => {
+      const resolved = resolve(withTrapOf(twoInDiscard(), '後攻', trapOnBoth), placeTwo)
+
+      expect(resolved.trapConditionsMet.map((met) => met.occasion.invader.id)).toEqual(['1 体目'])
+    })
+
+    it('「勇気」は、1 体目が置かれたできごとを持ち続ける', () => {
+      const resolved = resolve(withCourage(twoInDiscard()), placeTwo)
+
+      expect(resolved.courageConditionsMet.map((met) => met.placed.id)).toEqual(['1 体目'])
     })
   })
 })
