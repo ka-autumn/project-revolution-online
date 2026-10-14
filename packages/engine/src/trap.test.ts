@@ -17,7 +17,10 @@ const trapWithIcon = defineTrap({
   triggerIcon: { kind: '侵入', squares: [targetSquare] },
 })
 
-/** 侵入のトリガーアイコンに、スクエアが書かれていないトラップ（総合ルール 第2部 第20章 3-8-b）。 */
+/**
+ * 侵入のトリガーアイコンに、スクエアが書かれていないトラップ。侵入は「置かれたスクエアが
+ * 赤く塗られていること」を求める（総合ルール 第2部 第20章 3-6）ので、どこでも満たされない（ADR-0039）。
+ */
 const trapWithoutSquares = defineTrap({
   name: 'テスト・スクエア指定無し',
   level: 1,

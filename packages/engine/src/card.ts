@@ -204,7 +204,8 @@ export type TriggerFilter =
  * 同じ理由で、支配者の手前を基準にした向きで持つ。盤面に固定した絶対のスクエアに変換
  * するには `squareFromView` を使う（`trap.ts` の `checkIntrusion` 参照）。
  *
- * 空なら、スクエアの指定が無いトリガーアイコン（同 3-8-b）。
+ * 空なら、どのスクエアに置かれても満たされない（ADR-0039）。スクエアの指定が無い発動条件は、
+ * 侵入ではなく攻撃・スマッシュの種類で表す。
  */
 export interface IntrusionIcon {
   readonly kind: '侵入'
