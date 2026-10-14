@@ -26,6 +26,7 @@ import {
   legalActions,
   passPriority,
   playAsTrap,
+  placeOnSquare,
   playCard,
   putOnSquare,
   spirit,
@@ -1182,6 +1183,70 @@ describe('侵入と同時にバトルが発生した場合の権利', () => {
     expect(ended.battles).toEqual([])
     expect(ended.turn.priority).toBe('後攻')
     expect(cardsIn(stateOf(activateTrap(ended, 'トラップ', chooseFirst)), '後攻', 'トラップゾーン')).toEqual([])
+  })
+})
+
+/**
+ * 総合ルール 第2部 第20章 3-6・3-8、第5部 第2章 2（ADR-0006）。
+ *
+ * 効果によってユニットがスクエアに置かれた場合も、登場と同じく、相手が発動する権利・起動する
+ * 権利を得る。どちらの条文も置き方を限っていない。
+ */
+describe('効果によってスクエアに置かれた時の権利', () => {
+  /** 中央エリアのスクエアにトリガーアイコンを持つ、効果を持たない赤いレベル 1 のトラップ。 */
+  const redIntrusionTrap = defineTrap({
+    name: 'テスト・侵入トラップ（赤）',
+    level: 1,
+    colors: ['赤'],
+    triggerIcon: [centerSquare],
+  })
+
+  /** レベル 1 の赤い「勇気」。 */
+  const courageUnit = defineUnit({
+    name: 'テスト・勇気',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [courage(4000)],
+  })
+
+  /** 自分の捨札にあるユニットを 1 枚選び、中央エリアのスクエアに置くレベル 2 の赤いストラテジー。 */
+  const reviveIntoCenter = defineStrategy({
+    name: 'テスト・中央へ戻すストラテジー',
+    level: 2,
+    colors: ['赤'],
+    effect: function* (duel) {
+      const card = yield* choose(duel.discardPile())
+      if (card !== undefined) yield* placeOnSquare(card, centerSquare, 'リリース')
+    },
+  })
+
+  /**
+   * 先攻がストラテジーをプレイできるメインフェイズの盤面。後攻のトラップゾーンには侵入トラップが、
+   * 手札には「勇気」があり、どちらのコストにもなる赤いエネルギーを後攻が持っている。
+   */
+  function readyToRevive(): DuelState {
+    const strategy = instantiate({ id: 'ストラテジー', card: reviveIntoCenter, owner: '先攻' })
+    const withDiscard = putInZone(readyToPlay([strategy], twoEnergies()), '先攻', '捨札', [
+      instantiate({ id: '戻るユニット', card: redUnit, owner: '先攻' }),
+    ])
+    const prepared = putInZone(withDiscard, '後攻', 'トラップゾーン', [
+      instantiate({ id: 'トラップ', card: redIntrusionTrap, owner: '後攻' }),
+    ])
+    const withHand = putInZone(prepared, '後攻', '手札', [instantiate({ id: '勇気', card: courageUnit, owner: '後攻' })])
+    return putInZone(withHand, '後攻', 'エネルギーゾーン', [
+      { ...energy('後攻エネ', '赤'), owner: '後攻', controller: '後攻' },
+    ])
+  }
+
+  it('相手が、トラップを発動することも「勇気」を起動することもできる', () => {
+    const played = stateOf(play(readyToRevive(), { card: 'ストラテジー' }))
+
+    expect(cardsOn(played, centerSquare).map((card) => card.id)).toEqual(['戻るユニット'])
+    expect(played.turn.priority).toBe('後攻')
+    expect(legalActions(played)).toContainEqual({ kind: 'トラップを発動する', card: 'トラップ' })
+    expect(legalActions(played)).toContainEqual({ kind: '「勇気」を起動する', card: '勇気' })
   })
 })
 

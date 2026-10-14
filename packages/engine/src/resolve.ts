@@ -1,5 +1,6 @@
 import type { UnitCard } from './card.js'
 import { continuousData } from './continuous.js'
+import { checkCourageCondition } from './courage.js'
 import { discardFromSquares } from './discard.js'
 import {
   damagePlayer,
@@ -18,6 +19,7 @@ import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import { loggedInstruction, record } from './log.js'
 import type { ResolutionVia } from './log.js'
 import type { Player } from './player.js'
+import { checkIntrusion } from './trap.js'
 import { duelView } from './view.js'
 
 /**
@@ -343,13 +345,11 @@ function apply(
       // ことで、「登場した時」「味方が登場した時」の誘発（`triggerAppearance`・
       // `triggerAllyAppearance`）も「根性」による向きの置換
       // （総合ルール 第5部 第6章 3）も起こらない。指定された向きがそのまま使われる。
-      return {
-        state: moveToSquare(state, instruction.card.id, instruction.square, {
-          controller: context.controller,
-          orientation: instruction.orientation,
-        }),
-        value: undefined,
-      }
+      const moved = moveToSquare(state, instruction.card.id, instruction.square, {
+        controller: context.controller,
+        orientation: instruction.orientation,
+      })
+      return { state: checkPlacedByEffect(moved, instruction.card.id), value: undefined }
     }
     case '誘発型能力を作る': {
       // 対象を持つ命令なので、他と同じく engine が見せたカードでなければならない。
@@ -400,6 +400,28 @@ function apply(
       return { state: current, value: undefined, subject: drawn.length === 0 ? undefined : drawn }
     }
   }
+}
+
+/**
+ * 効果によってスクエアに置かれたユニットについて、トラップの発動条件（総合ルール 第2部
+ * 第20章 3-6）と「勇気」の起動条件（同 第5部 第2章 2）を確かめる。どちらの条文も「相手の
+ * ユニットが置かれた」とだけ書き、置き方を限っていないので、登場（`play.ts`）や移動
+ * （`move.ts`）と同じく満たしうる。ゾーンから置いた場合も、別のスクエアから置き直した場合も
+ * 同じに扱う。
+ *
+ * 置かれた後にスクエアにいなければ（すでにそのゾーンを離れていて置かれなかった）、何も
+ * 起きていないので確かめない。ユニット以外のカードが置かれた場合も、「ユニットが」に
+ * あたらないので確かめない。
+ */
+function checkPlacedByEffect(state: DuelState, id: CardId): DuelState {
+  const located = locateOnSquares(state, id)
+  if (located === undefined) return state
+
+  const { instance, square } = located
+  if (instance.card.type !== 'ユニット') return state
+
+  const placed: UnitOnSquare = { id, square, card: instance.card, controller: instance.controller }
+  return checkCourageCondition(checkIntrusion(state, placed), placed)
 }
 
 /**

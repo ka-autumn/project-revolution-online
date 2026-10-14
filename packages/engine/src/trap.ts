@@ -30,8 +30,9 @@ import { deferringRights } from './priority.js'
  * 侵入してきたユニットは、置かれたその瞬間の姿を写して満たされた発動条件と一緒に持つ
  * （`IntrusionOccasion`）。発動した効果がそれを見る（`effect.ts` の `TrapEffect`）。
  *
- * 呼ぶのはユニットをスクエアに置いた側（`play.ts` の登場・`move.ts` の移動）だけである。
- * 効果によってスクエアに置かれる場合はまだそのような効果が無いため扱っていない。
+ * 呼ぶのはユニットをスクエアに置いた側である。条文は置き方を限っていないので、`play.ts` の
+ * 登場、`move.ts` の移動、効果によって置かれる場合（`resolve.ts` の `スクエアへ置く`）の
+ * いずれからも呼ぶ。
  */
 export function checkIntrusion(state: DuelState, invader: UnitOnSquare): DuelState {
   const opponent = opponentOf(invader.controller)
@@ -45,13 +46,14 @@ export function checkIntrusion(state: DuelState, invader: UnitOnSquare): DuelSta
         ),
     )
     .map((trap) => trap.id)
-    // すでに発動条件が満たされているトラップは、そのままにする。1 度満たされた後に別の侵入で
-    // 満たし直された場合に、古いきっかけと新しいきっかけのどちらを持つかは、まだ分かれようが
-    // ない。侵入を起こす登場と移動を行えるのはアクティブプレイヤーだけ（`priority.ts` の
-    // `activePlayerMayAct`）で、そのつど非アクティブプレイヤーが優先権を得る。トラップの
-    // 支配者が非アクティブプレイヤーなら、続けて行動するには 1 度パスする必要があり、
-    // そこで発動条件は取り除かれる（`loseTrapRightOnPass`）。支配者がアクティブプレイヤー
-    // なら、そもそも自分のユニットの侵入では発動条件が満たされない。
+    // すでに発動条件が満たされているトラップは、そのままにし、最初のきっかけを持ち続ける。
+    // 行動をまたいで満たし直されることは無い。満たされた後、次の行動までに支配者が 1 度
+    // パスしていて、そこで発動条件は取り除かれる（`loseTrapRightOnPass`）。
+    // 満たし直されうるのは、1 つの効果が続けてユニットを置く場合と、バトルやスマッシュ判定の
+    // 途中に効果で置かれる場合（その間のパスでは発動条件を失わない）である。ADR-0039 は
+    // 満たされた発動条件をきっかけごとに 1 件ずつ持つと決めている。その形は、権利の判定を
+    // きっかけごとにする時に一緒に入れる。持つ件数だけを先に増やしても、どのきっかけで
+    // 発動するかを選べないためである。
     .filter((id) => !state.trapConditionsMet.some((met) => met.trap === id))
 
   if (invaded.length === 0) return state
@@ -76,10 +78,11 @@ export function checkIntrusion(state: DuelState, invader: UnitOnSquare): DuelSta
  * 第11章 5・第17章 4）。その判定は「勇気」を起動する権利と共通なので、`priority.ts` の
  * `deferringRights` に置いてある。
  *
- * 発動条件のうち実装しているのは侵入だけで（`checkIntrusion`）、その侵入を起こす登場と移動は
- * バトルやスマッシュ判定の進行中には行えない（ADR-0012、`priority.ts` の
- * `activePlayerMayAct`）。効果でユニットをスクエアに置く場合は進行中でも起こりうるので、
- * その時にどちらの読み方を採るかを決める必要が出る。
+ * 進行中のバトルやスマッシュ判定は、発動条件が満たされたのがその前か途中かを問わず、権利の
+ * 発生を止める。登場と移動は進行中には行えない（ADR-0012、`priority.ts` の
+ * `activePlayerMayAct`）が、効果でユニットを置くことは進行中にも起こる。その場合も、終わる
+ * まで権利は発生しない。ADR-0039 は、止めるのを条件が満たされた後に発生したものだけに改める
+ * と決めている。
  */
 export function trapRightOf(state: DuelState, id: CardId): IntrusionOccasion | undefined {
   if (deferringRights(state)) return undefined
@@ -102,7 +105,8 @@ export function trapRightOf(state: DuelState, id: CardId): IntrusionOccasion | u
  * 必要があり、権利を持っているプレイヤーがパスしない限り相手はその行動を行えないためである。
  *
  * 「同じイベントで起動条件を満たした勇気を起動する」場合の権利喪失（同 第2部 第20章 3-8）は、
- * キーワード能力「勇気」がまだ無いため実装していない。
+ * できごとの同一性を盤面が持っていないため、まだ実装していない（`courage.ts` の
+ * `activateCourage`）。
  */
 export function loseTrapRightOnPass(state: DuelState, player: Player): DuelState {
   if (deferringRights(state)) return state
