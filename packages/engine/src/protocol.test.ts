@@ -543,11 +543,31 @@ describe('効果が選ぶトラップゾーンのカードの候補', () => {
     ],
   })
 
+  /** 選んだカードを持ち主の手札へ置く以外は `discarder` と同じユニット。 */
+  const returner = defineUnit({
+    name: 'テスト・トラップを手札へ戻す',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* (duel) {
+        const trap = yield* chooseAtMostOne(duel.trapZone())
+        if (trap !== undefined) yield* placeInZone(trap, '手札', 'リリース')
+      }),
+    ],
+  })
+
   /**
    * 先攻の「登場した時」が、バンクで解決を待っている盤面。書いたプレイヤーのトラップゾーンに
    * カードを 1 枚ずつ置く。
    */
   function waiting(...players: readonly Player[]): DuelState {
+    return waitingWith(discarder, ...players)
+  }
+
+  /** `waiting` の、登場したユニットを差し替えられる形。 */
+  function waitingWith(unit: typeof discarder, ...players: readonly Player[]): DuelState {
     const square: Square = { row: 0, column: 1 }
     const withTraps = players.reduce(
       (state, player) =>
@@ -559,9 +579,9 @@ describe('効果が選ぶトラップゾーンのカードの候補', () => {
     const placed = putOnSquare(
       withTraps,
       square,
-      instantiate({ id: '捨てさせるユニット', card: discarder, owner: '先攻' }),
+      instantiate({ id: '捨てさせるユニット', card: unit, owner: '先攻' }),
     )
-    const [triggered] = discarder.abilities
+    const [triggered] = unit.abilities
     if (triggered?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
     return {
       ...placed,
@@ -570,7 +590,7 @@ describe('効果が選ぶトラップゾーンのカードの候補', () => {
           ability: triggered,
           source: '捨てさせるユニット',
           controller: '先攻',
-          self: { id: '捨てさせるユニット', square, card: discarder, controller: '先攻' },
+          self: { id: '捨てさせるユニット', square, card: unit, controller: '先攻' },
         },
       ],
     }
@@ -675,6 +695,33 @@ describe('効果が選ぶトラップゾーンのカードの候補', () => {
     const rows = instructionRows(afterDiscarding(0), '後攻', '選ぶ')
 
     expect(rows.map((row) => row.card)).toEqual([undefined])
+  })
+
+  // 手札は非公開情報で（総合ルール 第2部 第23章 2-1）、トラップゾーンにあった時も選んだプレイヤーには
+  // 表側が見えなかった（同 第21章 9-3）。置く前も置いた後も見えないので、名指しは持ち主にだけ残る。
+  describe('相手のカードを持ち主の手札へ置いた時', () => {
+    const afterReturning = () => {
+      const progress = applyWithAnswers(waitingWith(returner, '先攻', '後攻'), { kind: '優先権を放棄する' }, [1])
+      expectAdvanced(progress)
+      return progress.state
+    }
+
+    it('持ち主である相手の手札に置かれる', () => {
+      expect(cardsIn(afterReturning(), '後攻', '手札').map((each) => each.id)).toContain('後攻の伏せ札')
+    })
+
+    it('選んだプレイヤーの視点のログの「ゾーンへ置く」の行に、識別子が残らない', () => {
+      const rows = instructionRows(afterReturning(), '先攻', 'ゾーンへ置く')
+
+      expect(rows.map((row) => row.card)).toEqual([undefined])
+      expect(JSON.stringify(perspectiveOf(afterReturning(), '先攻').log)).not.toContain('後攻の伏せ札')
+    })
+
+    it('持ち主の視点のログには、置いたカードが名指しされる', () => {
+      const rows = instructionRows(afterReturning(), '後攻', 'ゾーンへ置く')
+
+      expect(rows.map((row) => row.card)).toEqual(['後攻の伏せ札'])
+    })
   })
 })
 
