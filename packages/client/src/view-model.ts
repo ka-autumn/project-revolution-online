@@ -880,10 +880,24 @@ function squareViews(board: WirePerspective): readonly (readonly SquareView[])[]
         square,
         area: areaOf(board.viewer, square),
         // 継続効果を適用した後のデータを持つのは、スクエアにいるユニットだけである（#91）。
-        cards: board.squares[indexOfSquare(square)]?.map((card) => faceUpView(card, board.viewer, board.effective)) ?? [],
+        cards: opponentFirst(
+          board.squares[indexOfSquare(square)]?.map((card) => faceUpView(card, board.viewer, board.effective)) ?? [],
+        ),
       }
     }),
   )
+}
+
+/**
+ * スクエアのユニットを、相手のもの・自分のものの順に並べ直す。同じ側どうしは届いた順のまま。
+ *
+ * 2 体が並ぶのはバトル中である。届く順は置かれた順で、攻撃したユニットが後に来る
+ * （`putOnSquare`）。そのままだと、どちらが攻撃したかで上下が入れ替わる。盤面の相手の側が
+ * 上なのに合わせて、相手を先にする（ADR-0027）。
+ */
+function opponentFirst(cards: readonly CardView[]): readonly CardView[] {
+  const rank = (card: CardView): number => (card.kind === '表' && card.controlledBy === '自分' ? 1 : 0)
+  return [...cards].sort((a, b) => rank(a) - rank(b))
 }
 
 /** 「第 3 ターン」の 1 行。 */

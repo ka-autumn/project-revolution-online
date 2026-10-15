@@ -773,10 +773,15 @@ body {
 .square--敵エリア { border-color: rgb(211 54 74 / 0.6); background: rgb(255 232 232 / 0.8); }
 .square--味方エリア { border-color: rgb(42 111 214 / 0.6); background: rgb(228 238 255 / 0.8); }
 
-/* バトルが起きているスクエア。上端に「バトル中」の帯を出し、枠を赤く光らせる */
+/*
+ * バトルが起きているスクエア。上端に「バトル中」の帯を出し、枠を赤く光らせる。
+ * 並びは相手・自分の順（画面ではビューモデルが並べ直す）。2 体が横に収まらない幅では上下 2 段に
+ * 折り返してはみ出すので、下の行のスクエアに下の段が隠れないよう、隣のスクエアより前に描く
+ */
 .square { position: relative; }
 
 .square--バトル中 {
+  z-index: 1;
   padding-top: 1.3rem;
   border: 2px solid #e0303c;
   box-shadow: inset 0 0 14px rgb(224 48 60 / 0.35), 0 0 12px rgb(224 48 60 / 0.55);

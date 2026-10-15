@@ -560,9 +560,30 @@ describe('スクエア', () => {
     const attacked = instance('うけた1枚', '後攻')
     const view = boardView(withSquare(emptyBoard('先攻'), { row: 1, column: 1 }, [attacker, attacked]))
 
+    expect(view.squares[1]?.[1]?.cards.map((card) => (card.kind === '表' ? card.id : '裏'))).toEqual(
+      expect.arrayContaining(['せめた1枚', 'うけた1枚']),
+    )
+  })
+
+  /**
+   * バトル中のスクエアは、相手のユニット・自分のユニットの順に並ぶ。盤面の相手の側が上にあるのに
+   * 合わせる（ADR-0027）。攻撃したユニットは後から置かれる（`putOnSquare`）ので、置かれた順の
+   * ままだと、どちらが攻撃したかで上下が入れ替わる。
+   */
+  it.each([
+    ['先攻', '自分が攻撃した'],
+    ['先攻', '相手が攻撃した'],
+    ['後攻', '自分が攻撃した'],
+    ['後攻', '相手が攻撃した'],
+  ] as const)('%s から見て、%s時も、相手・自分の順に並ぶ', (viewer: Player, who) => {
+    const mine = instance('じぶんの1枚', viewer)
+    const theirs = instance('あいての1枚', viewer === '先攻' ? '後攻' : '先攻')
+    const placedInOrder = who === '自分が攻撃した' ? [theirs, mine] : [mine, theirs]
+    const view = boardView(withSquare(emptyBoard(viewer), { row: 1, column: 1 }, placedInOrder))
+
     expect(view.squares[1]?.[1]?.cards.map((card) => (card.kind === '表' ? card.controlledBy : '裏'))).toEqual([
-      '自分',
       '相手',
+      '自分',
     ])
   })
 
