@@ -33,8 +33,9 @@ export interface UnitOnSquare {
  * 効果から見た、ゾーンにあるカード 1 枚。
  *
  * `UnitOnSquare` と同じく、盤面が持っているカードそのものではなく、効果に見せてよい分だけを
- * 写したものである。支配者を持たないのは、効果に見せるゾーンが支配者自身のものだけであり
- * （`DuelView`）、ゾーンの持ち主で決まるためである。
+ * 写したものである。支配者を持たないのは、これで見せるゾーンが支配者自身のものだけであり
+ * （`DuelView`）、ゾーンの持ち主で決まるためである。相手のゾーンにもあるトラップゾーンの
+ * カードは、中身を持たない別の値（`CardInTrapZone`）で見せる。
  */
 export interface CardInZone {
   readonly id: CardId
@@ -78,6 +79,30 @@ export interface SmashCard {
 }
 
 /**
+ * 効果から見た、トラップゾーンにあるカード 1 枚（ADR-0040）。
+ *
+ * `SmashCard` と同じく、カードの中身を持たない。トラップゾーンのカードは裏向きで置かれ、
+ * 相手のものは非公開の情報である（総合ルール 第2部 第23章 2-1）。効果が選んで動かすことは
+ * できるが、何を選んだかは分からない。支配者自身のカードでも中身を渡さないのは、1 つの
+ * 問い合わせが中身つきと中身なしの 2 種類の値を返すと、カードの側に見分ける分岐が要るため
+ * である（ADR-0040 の「検討した選択肢」）。
+ *
+ * `SmashCard` と違って、どちらのプレイヤーのトラップゾーンにあるかを持つ。効果に両方の
+ * プレイヤーの分を見せるため（`DuelView.trapZone`）で、「相手のトラップゾーンの」のように
+ * 側を絞るテキストは、カードの側でこれを見て絞る。トラップゾーンはプレイヤーごとに分かれた
+ * ゾーンなので、これはそのカードの持ち主でもある。
+ *
+ * 通信では、このカードを選ぶ候補は、選ぶプレイヤーから見えていれば「見えている」候補、
+ * そうでなければ「見えていない」候補として届く（`protocol.ts` の `describeCandidate`）。
+ */
+export interface CardInTrapZone {
+  readonly id: CardId
+  readonly zone: 'トラップゾーン'
+  /** そのカードがあるトラップゾーンのプレイヤー。 */
+  readonly player: Player
+}
+
+/**
  * 効果が盤面について問い合わせられること。
  *
  * 効果に渡されるのはこのインターフェースだけで、盤面そのものは渡さない。カードの実装が
@@ -93,8 +118,9 @@ export interface DuelView {
    * 支配者から見た相手。テキストの「相手」にあたる。
    *
    * 誰が相手かは公開されている情報なので名指しできる。ただし**名指しできることと、その
-   * プレイヤーのゾーンを読めることは別である。** 相手のゾーンを読むアクセサは無いままで、
-   * 相手に対してできるのは、中身を見ずに済む働きかけだけである。
+   * プレイヤーのゾーンを読めることは別である。** 相手のゾーンの中身を読むアクセサは無い
+   * ままで、相手に対してできるのは、中身を見ずに済む働きかけだけである（枚数を数える
+   * `energyCount`・`smashCount`、中身なしで選ぶ `trapZone`）。
    */
   readonly opponent: Player
   /**
@@ -139,7 +165,7 @@ export interface DuelView {
    *
    * どちらのプレイヤーぶんも読める。エネルギーゾーンは公開情報であり（総合ルール 第2部
    * 第23章 1-1）、両方のエネルギーゾーンにあるカードは全てのプレイヤーが見られる
-   * （同 第21章 6-3）。相手のゾーンを読める唯一のアクセサがこれである。
+   * （同 第21章 6-3）。
    *
    * カードそのものではなく枚数を返す。エネルギーゾーンにあるカードをエネルギーと呼ぶ
    * （同 6-2）ので、「エネルギーが◯枚」はそのまま枚数のことになる。中身が要るテキストは
@@ -176,6 +202,17 @@ export interface DuelView {
    * スマッシュを返すアクセサは無い。選んで動かすテキストが無いためで、要る時に足す。
    */
   smashZone(): readonly SmashCard[]
+  /**
+   * 両方のプレイヤーのトラップゾーンにあるカードすべて（ADR-0040）。
+   *
+   * 中身は返さない（`CardInTrapZone`）。支配者自身のカードでも返さない。ゾーンへ置く命令
+   * （`placeInZone`）の対象にできる。並びは支配者の分が先で、相手の分が後である。
+   *
+   * 相手のトラップゾーンを読めるのは、中身を見ずに済むからである。どちらのプレイヤーの
+   * トラップゾーンかを書いていないテキストは、両方から選べる。側を絞るテキストは、値の
+   * `player` で絞る。
+   */
+  trapZone(): readonly CardInTrapZone[]
   /**
    * そのユニットが、そのキーワード能力を持つか。
    *
@@ -218,7 +255,7 @@ export type Instruction =
   | { readonly kind: '向きを変える'; readonly target: UnitOnSquare | EnergyInZone; readonly orientation: Orientation }
   | {
       readonly kind: 'ゾーンへ置く'
-      readonly card: CardInZone | UnitOnSquare | SmashCard
+      readonly card: CardInZone | UnitOnSquare | SmashCard | CardInTrapZone
       readonly to: PlayerZone
       readonly orientation: Orientation
       readonly position: LibraryPosition
@@ -590,8 +627,9 @@ export function* freeze(target: UnitOnSquare | EnergyInZone): EffectStep<void> {
  * ゾーンにあるカードを、持ち主の別のゾーンの 1 番上に置く。向きを指定する。
  *
  * 置けるのは持ち主のゾーンだけである。持ち主以外のゾーンに動かされる場合、代わりに持ち主の
- * 該当するゾーンに動かされる（総合ルール 第2部 第21章 1-2）。効果に見せているゾーンは
- * 支配者自身のものだけなので、いまはその区別が表に出る場面が無い。
+ * 該当するゾーンに動かされる（総合ルール 第2部 第21章 1-2）。効果に見せているゾーンは、
+ * トラップゾーンを除いて支配者自身のものだけなので、その区別が表に出るのは、相手の
+ * トラップゾーンのカードを動かす時だけである。
  *
  * 置く位置は、指定しなければそのゾーンの 1 番上になる。「山札の 1 番下に戻す」であれば
  * 1 番下を指定する。順番に意味があるのは山札・プランゾーン・捨札だけである
@@ -608,12 +646,16 @@ export function* freeze(target: UnitOnSquare | EnergyInZone): EffectStep<void> {
  * スマッシュ（`SmashCard`）も渡せる。「スマッシュを捨札に置く」は、スマッシュゾーンから
  * 持ち主の捨札へ動かす、ふつうのゾーン移動である。中身は効果に見えないまま動く。
  *
+ * トラップゾーンのカード（`CardInTrapZone`）も渡せる（ADR-0040）。相手のトラップゾーンの
+ * カードも、置かれる先は持ち主のゾーンである（同 第2部 第21章 1-2）。満たされた発動条件が
+ * 残っていれば、トラップゾーンを離れる時に取り除かれる（`duel.ts` の `detach`）。
+ *
  * スクエアへ置く効果はここでは扱わない。プレイされたユニットがスクエアに置かれることは
  * 「登場」と呼ばれて効果によって置かれる場合と区別され（同 第2部 第20章 1-4-a）、
  * 「登場した時」の誘発や「根性」（同 第5部 第6章 3）が働くかどうかがそこで分かれるためである。
  */
 export function* placeInZone(
-  card: CardInZone | UnitOnSquare | SmashCard,
+  card: CardInZone | UnitOnSquare | SmashCard | CardInTrapZone,
   to: PlayerZone,
   orientation: Orientation,
   position: LibraryPosition = '1番上',

@@ -521,6 +521,211 @@ describe('効果が選ぶスマッシュの候補', () => {
 })
 
 /**
+ * 効果がトラップゾーンのカードを選ぶ時の候補（ADR-0040）。自分のトラップゾーンのカードは表側を
+ * 見られ、相手のものは見られない（総合ルール 第2部 第21章 9-3）。候補はその見え方のとおりに、
+ * 「見えている」候補と、置き場所つきの「見えていない」候補として届く。通信の形は変えていない。
+ */
+describe('効果が選ぶトラップゾーンのカードの候補', () => {
+  const mine = defineUnit({ name: 'テスト・先攻の伏せ札', level: 1, colors: ['青'], bp: 1000, sp: 1000 })
+  const theirs = defineUnit({ name: 'テスト・後攻の伏せ札', level: 2, colors: ['黒'], bp: 2000, sp: 1000 })
+
+  const discarder = defineUnit({
+    name: 'テスト・トラップを捨てる',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* (duel) {
+        const trap = yield* chooseAtMostOne(duel.trapZone())
+        if (trap !== undefined) yield* placeInZone(trap, '捨札', 'リリース')
+      }),
+    ],
+  })
+
+  /** 選んだカードを持ち主の手札へ置く以外は `discarder` と同じユニット。 */
+  const returner = defineUnit({
+    name: 'テスト・トラップを手札へ戻す',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      triggeredAbility('登場した時', function* (duel) {
+        const trap = yield* chooseAtMostOne(duel.trapZone())
+        if (trap !== undefined) yield* placeInZone(trap, '手札', 'リリース')
+      }),
+    ],
+  })
+
+  /**
+   * 先攻の「登場した時」が、バンクで解決を待っている盤面。書いたプレイヤーのトラップゾーンに
+   * カードを 1 枚ずつ置く。
+   */
+  function waiting(...players: readonly Player[]): DuelState {
+    return waitingWith(discarder, ...players)
+  }
+
+  /** `waiting` の、登場したユニットを差し替えられる形。 */
+  function waitingWith(unit: typeof discarder, ...players: readonly Player[]): DuelState {
+    const square: Square = { row: 0, column: 1 }
+    const withTraps = players.reduce(
+      (state, player) =>
+        putInZone(state, player, 'トラップゾーン', [
+          instantiate({ id: `${player}の伏せ札`, card: player === '先攻' ? mine : theirs, owner: player }),
+        ]),
+      phaseReadyToAct('メインフェイズ'),
+    )
+    const placed = putOnSquare(
+      withTraps,
+      square,
+      instantiate({ id: '捨てさせるユニット', card: unit, owner: '先攻' }),
+    )
+    const [triggered] = unit.abilities
+    if (triggered?.kind !== '誘発型能力') throw new Error('誘発型能力のはずだった')
+    return {
+      ...placed,
+      bank: [
+        {
+          ability: triggered,
+          source: '捨てさせるユニット',
+          controller: '先攻',
+          self: { id: '捨てさせるユニット', square, card: unit, controller: '先攻' },
+        },
+      ],
+    }
+  }
+
+  it('自分のカードは見えている候補、相手のカードは置き場所つきの見えていない候補として届く', () => {
+    const progress = applyWithAnswers(waiting('先攻', '後攻'), { kind: '優先権を放棄する' }, [])
+
+    expectChoice(progress)
+    expect(progress.choice.mayDecline).toBe(true)
+    expect(progress.choice.candidates).toEqual([
+      { kind: '見えている', card: '先攻の伏せ札' },
+      { kind: '見えていない', at: { player: '後攻', zone: 'トラップゾーン', index: 0 } },
+    ])
+  })
+
+  it('選ぶ要求に、相手のカードの中身も識別子も現れない', () => {
+    const progress = applyWithAnswers(waiting('先攻', '後攻'), { kind: '優先権を放棄する' }, [])
+
+    expectChoice(progress)
+    const sent = JSON.stringify(progress.choice)
+    expect(sent).not.toContain('テスト・後攻の伏せ札')
+    expect(sent).not.toContain('後攻の伏せ札')
+  })
+
+  // どちらのトラップゾーンかを書いていないテキストは、両方から選べる（ADR-0040）。
+  it('相手のトラップゾーンが空なら、自分のカードだけが候補になる', () => {
+    const progress = applyWithAnswers(waiting('先攻'), { kind: '優先権を放棄する' }, [])
+
+    expectChoice(progress)
+    expect(progress.choice.candidates).toEqual([{ kind: '見えている', card: '先攻の伏せ札' }])
+  })
+
+  /** 答えた番号のカードを捨札に置いた後の盤面。 */
+  const afterDiscarding = (answer: number): DuelState => {
+    const progress = applyWithAnswers(waiting('先攻', '後攻'), { kind: '優先権を放棄する' }, [answer])
+    expectAdvanced(progress)
+    return progress.state
+  }
+
+  // 総合ルール 第2部 第21章 1-2・第2部 第23章 1-1。持ち主の捨札に置かれ、捨札は公開情報である。
+  it('相手のカードを選ぶと、持ち主である相手の捨札に置かれ、中身が両方のプレイヤーに見える', () => {
+    const state = afterDiscarding(1)
+
+    expect(cardsIn(state, '後攻', '捨札').map((each) => each.id)).toEqual(['後攻の伏せ札'])
+    expect(cardsIn(state, '後攻', 'トラップゾーン')).toEqual([])
+    for (const viewer of PLAYERS) {
+      const [top] = perspectiveOf(state, viewer).zones['後攻']['捨札']
+      expect(top).toMatchObject({
+        kind: '見えている',
+        instance: { id: '後攻の伏せ札', card: { name: 'テスト・後攻の伏せ札' } },
+      })
+    }
+  })
+
+  it('自分のカードを選ぶと、自分の捨札に置かれ、中身が両方のプレイヤーに見える', () => {
+    const state = afterDiscarding(0)
+
+    expect(cardsIn(state, '先攻', '捨札').map((each) => each.id)).toEqual(['先攻の伏せ札'])
+    for (const viewer of PLAYERS) {
+      const [top] = perspectiveOf(state, viewer).zones['先攻']['捨札']
+      expect(top).toMatchObject({
+        kind: '見えている',
+        instance: { id: '先攻の伏せ札', card: { name: 'テスト・先攻の伏せ札' } },
+      })
+    }
+  })
+
+  // 総合ルール 第2部 第20章 3-8。発動条件は、そのカードがトラップゾーンにあってこそ意味を持つ。
+  it('満たされた発動条件が残っていたカードを捨札に置くと、その発動条件が取り除かれる', () => {
+    const invader = {
+      id: '捨てさせるユニット',
+      square: { row: 0, column: 1 },
+      card: discarder,
+      controller: '先攻',
+    } as const
+    const state: DuelState = {
+      ...waiting('先攻', '後攻'),
+      trapConditionsMet: [{ trap: '後攻の伏せ札', occasion: { kind: '侵入', invader }, metAt: 0 }],
+    }
+
+    const progress = applyWithAnswers(state, { kind: '優先権を放棄する' }, [1])
+
+    expectAdvanced(progress)
+    expect(progress.state.trapConditionsMet).toEqual([])
+  })
+
+  /** その視点のログの、命令の行のうちその種類のもの。 */
+  const instructionRows = (state: DuelState, viewer: Player, kind: '選ぶ' | 'ゾーンへ置く') =>
+    perspectiveOf(state, viewer).log.flatMap(({ event }) =>
+      event.kind === '命令を実行した' && event.instruction.kind === kind ? [event.instruction] : [],
+    )
+
+  // 選んだ時点では裏向きで、選んだプレイヤーには表側が見えない（総合ルール 第2部 第21章 9-3）。
+  it('相手のカードを選んだログは、選んだプレイヤーに、選んだカードを名指ししない', () => {
+    const rows = instructionRows(afterDiscarding(1), '先攻', '選ぶ')
+
+    expect(rows.map((row) => row.card)).toEqual([undefined])
+  })
+
+  it('自分のカードを選んだログは、相手に、選んだカードを名指ししない', () => {
+    const rows = instructionRows(afterDiscarding(0), '後攻', '選ぶ')
+
+    expect(rows.map((row) => row.card)).toEqual([undefined])
+  })
+
+  // 手札は非公開情報で（総合ルール 第2部 第23章 2-1）、トラップゾーンにあった時も選んだプレイヤーには
+  // 表側が見えなかった（同 第21章 9-3）。置く前も置いた後も見えないので、名指しは持ち主にだけ残る。
+  describe('相手のカードを持ち主の手札へ置いた時', () => {
+    const afterReturning = () => {
+      const progress = applyWithAnswers(waitingWith(returner, '先攻', '後攻'), { kind: '優先権を放棄する' }, [1])
+      expectAdvanced(progress)
+      return progress.state
+    }
+
+    it('持ち主である相手の手札に置かれる', () => {
+      expect(cardsIn(afterReturning(), '後攻', '手札').map((each) => each.id)).toContain('後攻の伏せ札')
+    })
+
+    it('選んだプレイヤーの視点のログの「ゾーンへ置く」の行に、識別子が残らない', () => {
+      const rows = instructionRows(afterReturning(), '先攻', 'ゾーンへ置く')
+
+      expect(rows.map((row) => row.card)).toEqual([undefined])
+      expect(JSON.stringify(perspectiveOf(afterReturning(), '先攻').log)).not.toContain('後攻の伏せ札')
+    })
+
+    it('持ち主の視点のログには、置いたカードが名指しされる', () => {
+      const rows = instructionRows(afterReturning(), '後攻', 'ゾーンへ置く')
+
+      expect(rows.map((row) => row.card)).toEqual(['後攻の伏せ札'])
+    })
+  })
+})
+
+/**
  * #14。**選ぶ余地が無いなら聞かない。**
  *
  * 候補が 1 つで、選ばないことも選べないなら、答えは 1 通りしかない。押させても盤面は同じ

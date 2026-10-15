@@ -1584,6 +1584,166 @@ describe('効果から見えるスマッシュ', () => {
   })
 })
 
+// 総合ルール 第2部 第21章 9-3・第2部 第23章 2-1（ADR-0006・ADR-0040）
+describe('効果から見えるトラップゾーンのカード', () => {
+  /** 書いたプレイヤーのトラップゾーンに、カードを 1 枚ずつ置いた盤面。 */
+  function withTraps(...players: readonly ('先攻' | '後攻')[]): DuelState {
+    return players.reduce(
+      (state, player) =>
+        putInZone(state, player, 'トラップゾーン', [
+          instantiate({ id: `${player}のトラップ`, card: vanilla, owner: player }),
+        ]),
+      emptyDuelState(),
+    )
+  }
+
+  /**
+   * トラップゾーンのカードを 1 枚まで選び、捨札に置く効果。支配者は先攻。
+   *
+   * 候補として渡された値と、効果が受け取った値を返す。
+   */
+  function discardingATrap(
+    state: DuelState,
+    chooser: Chooser,
+  ): { readonly state: DuelState; readonly offered: readonly unknown[]; readonly seen: unknown } {
+    let offered: readonly unknown[] = []
+    let seen: unknown = 'まだ選んでいない'
+    const resolved = resolveEffect(
+      state,
+      function* (duel) {
+        const trap = yield* chooseAtMostOne(duel.trapZone())
+        seen = trap
+        if (trap !== undefined) yield* placeInZone(trap, '捨札', 'リリース')
+      },
+      {
+        controller: '先攻',
+        via: VIA,
+        chooser: (...asked) => {
+          offered = asked[0]
+          return chooser(...asked)
+        },
+      },
+    )
+    return { state: resolved, offered, seen }
+  }
+
+  it('両方のプレイヤーのトラップゾーンのカードが、支配者の分から順に候補に並ぶ', () => {
+    const { offered } = discardingATrap(withTraps('後攻', '先攻'), chooseFirst)
+
+    expect(offered).toEqual([
+      { id: '先攻のトラップ', zone: 'トラップゾーン', player: '先攻' },
+      { id: '後攻のトラップ', zone: 'トラップゾーン', player: '後攻' },
+    ])
+  })
+
+  // 相手のカードの表側は見られない（総合ルール 第2部 第21章 9-3）。支配者自身のカードでも中身を
+  // 渡さないのは ADR-0040 の決定である。
+  it('効果が受け取るのは識別子・ゾーン・側だけで、自分のカードでも相手のカードでも中身は含まれない', () => {
+    const state = withTraps('先攻', '後攻')
+
+    const own = discardingATrap(state, (candidates) => candidates[0])
+    const theirs = discardingATrap(state, (candidates) => candidates[1])
+
+    expect(own.seen).toStrictEqual({ id: '先攻のトラップ', zone: 'トラップゾーン', player: '先攻' })
+    expect(theirs.seen).toStrictEqual({ id: '後攻のトラップ', zone: 'トラップゾーン', player: '後攻' })
+    for (const candidate of own.offered) {
+      expect(Object.keys(candidate as object).sort()).toEqual(['id', 'player', 'zone'])
+    }
+  })
+
+  // どちらのトラップゾーンかを書いていないテキストは、両方から選べる（ADR-0040）。
+  it('相手のトラップゾーンが空なら、候補は自分のカードだけになる', () => {
+    const { offered } = discardingATrap(withTraps('先攻'), chooseFirst)
+
+    expect(offered).toEqual([{ id: '先攻のトラップ', zone: 'トラップゾーン', player: '先攻' }])
+  })
+
+  it('自分のトラップゾーンが空なら、候補は相手のカードだけになる', () => {
+    const { offered } = discardingATrap(withTraps('後攻'), chooseFirst)
+
+    expect(offered).toEqual([{ id: '後攻のトラップ', zone: 'トラップゾーン', player: '後攻' }])
+  })
+
+  // 総合ルール 第1部 第1章 3。候補が無いなら選ぶ行動は実行されず、効果はそのまま続く。
+  it('どちらのトラップゾーンも空なら、選べないまま効果が続く', () => {
+    const state = withTraps()
+
+    const { state: resolved, seen } = discardingATrap(state, chooseFirst)
+
+    expect(seen).toBeUndefined()
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  // 総合ルール 第2部 第21章 1-2。持ち主以外のゾーンに動かされる場合、代わりに持ち主のゾーンに動かされる。
+  it('相手のトラップゾーンのカードを捨札に置くと、持ち主である相手の捨札に置かれる', () => {
+    const { state: resolved } = discardingATrap(withTraps('先攻', '後攻'), (candidates) => candidates[1])
+
+    expect(idsOf(cardsIn(resolved, '後攻', 'トラップゾーン'))).toEqual([])
+    expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['後攻のトラップ'])
+    expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual([])
+    // 自分のトラップには触れない。
+    expect(idsOf(cardsIn(resolved, '先攻', 'トラップゾーン'))).toEqual(['先攻のトラップ'])
+  })
+
+  it('自分のトラップゾーンのカードを捨札に置くと、自分の捨札に置かれる', () => {
+    const { state: resolved } = discardingATrap(withTraps('先攻', '後攻'), chooseFirst)
+
+    expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['先攻のトラップ'])
+    expect(idsOf(cardsIn(resolved, '後攻', 'トラップゾーン'))).toEqual(['後攻のトラップ'])
+  })
+
+  it('「ゾーンへ置く」の命令が、選んだカードの識別子で積まれる', () => {
+    const { state: resolved } = discardingATrap(withTraps('先攻', '後攻'), (candidates) => candidates[1])
+
+    const placed = resolved.log.flatMap(({ event }) =>
+      event.kind === '命令を実行した' && event.instruction.kind === 'ゾーンへ置く' ? [event.instruction] : [],
+    )
+    expect(placed).toEqual([expect.objectContaining({ card: '後攻のトラップ', to: '捨札' })])
+  })
+
+  // 総合ルール 第2部 第20章 3-8。発動条件は、そのカードがトラップゾーンにあってこそ意味を持つ。
+  it('満たされた発動条件が残っていたカードを捨札に置くと、その発動条件が取り除かれる', () => {
+    const invader: UnitOnSquare = {
+      id: '侵入したユニット',
+      square: { row: 0, column: 0 },
+      card: vanilla,
+      controller: '先攻',
+    }
+    const state: DuelState = {
+      ...withTraps('先攻', '後攻'),
+      trapConditionsMet: [
+        { trap: '先攻のトラップ', occasion: { kind: '侵入', invader }, metAt: 0 },
+        { trap: '後攻のトラップ', occasion: { kind: '侵入', invader }, metAt: 0 },
+      ],
+    }
+
+    const { state: resolved } = discardingATrap(state, (candidates) => candidates[1])
+
+    expect(resolved.trapConditionsMet.map((met) => met.trap)).toEqual(['先攻のトラップ'])
+  })
+
+  it('選ばないことも選べる', () => {
+    const state = withTraps('先攻', '後攻')
+
+    const { state: resolved, seen } = discardingATrap(state, () => undefined)
+
+    expect(seen).toBeUndefined()
+    expect(withoutLog(resolved)).toEqual(withoutLog(state))
+  })
+
+  it('見せていないトラップゾーンのカードは対象にできない', () => {
+    expect(() =>
+      resolveEffect(
+        withTraps('後攻'),
+        function* () {
+          yield* placeInZone({ id: '後攻のトラップ', zone: 'トラップゾーン', player: '後攻' }, '捨札', 'リリース')
+        },
+        { controller: '先攻', via: VIA, chooser: chooseFirst },
+      ),
+    ).toThrowError('効果に見せていないカードが対象にされた')
+  })
+})
+
 // 総合ルール 第4部 第3章 4（ADR-0006）
 describe('効果が誘発型能力を作る', () => {
   /** 味方を 1 枚選び、その味方をあなたのターンの終わりにエネルギーゾーンへ置く能力を作る。 */

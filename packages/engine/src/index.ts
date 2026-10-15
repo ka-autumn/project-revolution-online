@@ -186,6 +186,7 @@ export {
 export type {
   AttributeAddition,
   BpModifier,
+  CardInTrapZone,
   CardInZone,
   ContinuousChange,
   ContinuousModifier,
