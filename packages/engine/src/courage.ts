@@ -28,8 +28,8 @@ import type { Chooser } from './resolve.js'
  * エリアである。呼ぶのはユニットをスクエアに置いた側（`play.ts` の登場・`move.ts` の移動・
  * `resolve.ts` の効果で置く命令）で、そこも同じである。
  *
- * すでに満たされている場合は、そのままにし、最初のできごとを持ち続ける。満たし直されうる
- * 場面と、できごとごとに持つ形をいつ入れるかは、`checkIntrusion` と同じである。
+ * すでに満たされている場合も、できごとごとに 1 件ずつ足す（`checkIntrusion` と同じ。
+ * ADR-0039）。
  *
  * **エネルギーの条件もここで判定する。** 起動条件は「置かれた時、……ならば」という 1 つの
  * まとまりなので、できごとが起きたその瞬間に判定される。エネルギーの条件は「このカード」の
@@ -40,32 +40,32 @@ export function checkCourageCondition(state: DuelState, placed: UnitOnSquare): D
   const player = opponentOf(placed.controller)
   const area = areaOf(player, placed.square)
   if (area !== '味方エリア' && area !== '中央エリア') return state
-  if (state.courageConditionsMet.some((met) => met.player === player)) return state
 
   const satisfied = cardsIn(state, player, '手札')
     .filter((instance) => courageOf(instance.card) !== undefined && satisfiesLevel(state, player, instance.card))
     .map((instance) => instance.id)
   if (satisfied.length === 0) return state
 
-  return { ...state, courageConditionsMet: [...state.courageConditionsMet, { player, placed, satisfied }] }
+  const metAt = state.log.length
+  return { ...state, courageConditionsMet: [...state.courageConditionsMet, { player, placed, satisfied, metAt }] }
 }
 
 /**
  * そのプレイヤーがいま「勇気」を起動する権利を得ている、満たされた起動条件すべて
  * （総合ルール 第5部 第2章 2）。得ていなければ空。
  *
- * 起動条件が満たされていることに加えて、バトルもスマッシュ判定も進行中でないことが要る
- * （同 2 ただし書き、`priority.ts` の `deferringRights`）。
+ * 起動条件が満たされていることに加えて、その条件が満たされた後に発生したバトルもスマッシュ
+ * 判定も進行中でないことが要る（同 2 ただし書き、`priority.ts` の `deferringRights`）。条件より
+ * 前から進行中のものは権利を止めない（ADR-0039）。
  *
  * 条文の「優先権を持った時に」は見ていない。優先権を持っているプレイヤーだけがこれを呼ぶ
- * ためで、トラップの発動する権利（`trap.ts` の `trapRightOf`）と同じ扱いである。
+ * ためで、トラップの発動する権利（`trap.ts` の `trapRightsOf`）と同じ扱いである。
  *
  * 満たされた条件を並びで返すのは、**起動しても条件が消えない**ためである。同一のイベントに
  * よって複数の勇気を起動できる（同 3）ので、1 つ起動しても残りの勇気は同じ条件で起動できる。
  */
 export function courageRightsOf(state: DuelState, player: Player): readonly CourageConditionMet[] {
-  if (deferringRights(state)) return []
-  return state.courageConditionsMet.filter((met) => met.player === player)
+  return state.courageConditionsMet.filter((met) => met.player === player && !deferringRights(state, met.metAt))
 }
 
 /**
@@ -73,15 +73,16 @@ export function courageRightsOf(state: DuelState, player: Player): readonly Cour
  * 「１度でも優先権をパスすると……起動する権利を失います」）。権利を失うと、再び起動条件を
  * 満たすまで起動できないので、満たされた起動条件を取り除く。
  *
- * バトルやスマッシュ判定が進行中の間は何も失わない。条文が権利を失わせるのは「権利を獲得
- * した後」であり、その間は権利がそもそも発生していない（`courageRightsOf`）ためである。
- * トラップの発動する権利（`trap.ts` の `loseTrapRightOnPass`）と同じ読み方をしている。
+ * 失うのは、権利が発生している件だけである。条文が権利を失わせるのは「権利を獲得した後」
+ * であり、その条件が満たされた後に発生したバトルやスマッシュ判定が進行中の間は、その件の
+ * 権利はそもそも発生していない（`courageRightsOf`）。止まっている件は残る。トラップの発動する
+ * 権利（`trap.ts` の `loseTrapRightOnPass`）と同じ読み方をしている。
  */
 export function loseCourageRightOnPass(state: DuelState, player: Player): DuelState {
-  if (deferringRights(state)) return state
-  if (!state.courageConditionsMet.some((met) => met.player === player)) return state
+  const lost = (met: CourageConditionMet): boolean => met.player === player && !deferringRights(state, met.metAt)
+  if (!state.courageConditionsMet.some(lost)) return state
 
-  return { ...state, courageConditionsMet: state.courageConditionsMet.filter((met) => met.player !== player) }
+  return { ...state, courageConditionsMet: state.courageConditionsMet.filter((met) => !lost(met)) }
 }
 
 /**
@@ -123,8 +124,12 @@ export function activateCourage(state: DuelState, card: CardId, chooser: Chooser
   // その時に起動できるかの判定を 1 か所に置いておくためである。
   if (!mayActivate(state, ability.timing, player)) return cannot('行える時ではない')
 
-  const met = courageRightsOf(state, player).find((each) => each.satisfied.includes(card))
-  if (met === undefined) return cannot('起動する権利がない')
+  const rights = courageRightsOf(state, player).filter((each) => each.satisfied.includes(card))
+  if (rights.length === 0) return cannot('起動する権利がない')
+  // 権利が発生している件が複数あれば、どのユニットにダメージを与えるかを支配者が選ぶ
+  // （ADR-0039）。1 件なら選択は出さない。
+  const met = rights.length === 1 ? rights[0] : (chooser(rights, player, '勇気のきっかけ', state, false, card) as CourageConditionMet)
+  if (met === undefined || !rights.includes(met)) throw new Error('候補にないものが選ばれた')
 
   const paid = payActivationCost(state, instance, ability.cost, chooser)
   if (paid === undefined) return cannot('コストを支払えない')

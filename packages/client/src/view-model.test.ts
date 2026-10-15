@@ -16,6 +16,7 @@ import type {
   WirePerspective,
   WireRoom,
   WireRoomRules,
+  WireUnitOnSquare,
 } from '@revolution/engine'
 import type { Opponent } from '@revolution/engine'
 import { emptyBoard, instance, logged, unitFace, withZone } from './test-support.js'
@@ -2440,5 +2441,27 @@ describe('トリガーアイコンの絞り込みの文字', () => {
   it('知らない色は、例外にせず読めないと言う（ADR-0038）', () => {
     const unknownColor = { axis: '色', value: '紫' } as unknown as TriggerFilter
     expect(triggerFilterText(unknownColor)).toBe('？')
+  })
+})
+
+/**
+ * 満たされた発動条件は、きっかけごとに 1 件ずつ並ぶ形になった（ADR-0039）。画面はこの欄を読んで
+ * いない。発動できるかどうかは、サーバが送る行える手に現れる（ADR-0010）。古いサーバは 1 枚 1 件の
+ * 形のまま送るので、その形を受けても表示が変わらないことを確かめる。
+ */
+describe('満たされた発動条件の欄', () => {
+  const invader: WireUnitOnSquare = {
+    id: 'しんにゅう',
+    square: { row: 1, column: 1 },
+    card: unitFace('テスト・侵入するユニット'),
+    controller: '後攻',
+  }
+  const met = { trap: 'わな', occasion: { kind: '侵入' as const, invader } }
+
+  it('1 枚 1 件でも、同じトラップの件が複数並んでも、盤面の表示は変わらない', () => {
+    const plain = emptyBoard('先攻')
+
+    expect(boardView({ ...plain, trapConditionsMet: [met] })).toEqual(boardView(plain))
+    expect(boardView({ ...plain, trapConditionsMet: [met, met] })).toEqual(boardView(plain))
   })
 })

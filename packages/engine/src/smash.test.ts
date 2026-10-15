@@ -927,16 +927,13 @@ describe('効果によるダメージからのスマッシュ判定', () => {
 })
 
 /**
- * 総合ルール 第2部 第20章 3-6、第5部 第2章 2、ADR-0039（ADR-0006）。
+ * 総合ルール 第2部 第20章 3-6・3-8、第5部 第2章 2、ADR-0039（ADR-0006）。
  *
- * スマッシュ判定の途中に、効果によってユニットがスクエアに置かれても、トラップの発動条件と
- * 「勇気」の起動条件は満たされる。
- *
- * 権利が判定の終わるまで発生しないことは、条文どおりの挙動ではなく、いまの暫定の挙動である
- * （`priority.ts` の `deferringRights`）。条文のただし書き（同 第2部 第20章 3-8、第5部
- * 第2章 2）が権利を止めるのは、条件が満たされた後に発生した判定であり、この盤面では判定の
- * ほうが先に始まっている。ADR-0039 は、この場面でも途中で発動・起動できると決めている。
- * 権利の判定をそのように改める時に、権利についての 2 つのテストの期待を逆にする。
+ * スマッシュ判定の途中に、効果によってユニットがスクエアに置かれると、トラップの発動条件と
+ * 「勇気」の起動条件は満たされる。権利を止めるのは、条件が満たされた後に発生した判定だけで
+ * （同 第2部 第20章 3-8 ただし書き、第5部 第2章 2）、この盤面では判定のほうが先に始まって
+ * いるので、途中でも次に優先権を得た時に発動・起動できる。条文に明示の無い読みで、ADR-0039
+ * による。
  */
 describe('スマッシュ判定の途中に効果で置かれた時の権利', () => {
   /** 中央エリアの `anotherCenterSquare` にトリガーアイコンを持つ、効果を持たない赤いトラップ。 */
@@ -1001,29 +998,24 @@ describe('スマッシュ判定の途中に効果で置かれた時の権利', (
     expect(state.courageConditionsMet.map((met) => met.player)).toEqual(['先攻'])
   })
 
-  it('判定が終わるまでは、発動も起動も行える手に出ない', () => {
+  it('判定の途中でも、次に優先権を得た時に、発動も起動も行える手に出る', () => {
     let current = placedInJudgment()
-    let checked = 0
-    while (current.smashJudgments.length > 0) {
-      if (current.turn.priority === '先攻') {
-        expect(kindsOf(current)).not.toContain('トラップを発動する')
-        expect(kindsOf(current)).not.toContain('「勇気」を起動する')
-        checked += 1
-      }
-      current = pass(current)
-    }
-
-    // 先攻が優先権を持つ場面を、少なくとも 1 度は確かめている。
-    expect(checked).toBeGreaterThan(0)
-  })
-
-  it('判定が終わると、発動も起動も行える手に出る', () => {
-    let current = placedInJudgment()
-    while (current.smashJudgments.length > 0) current = pass(current)
-    // 判定中の放棄では権利を失わない。判定が終わった後、先攻が優先権を得るまで進める。
     while (current.turn.priority !== '先攻') current = pass(current)
 
+    expect(current.smashJudgments).toHaveLength(1)
     expect(legalActions(current)).toContainEqual({ kind: 'トラップを発動する', card: 'トラップ' })
     expect(legalActions(current)).toContainEqual({ kind: '「勇気」を起動する', card: '勇気' })
+  })
+
+  // 権利が発生しているので、途中で優先権をパスすれば失う（同 3-8）。判定の後にも残らない。
+  it('判定の途中で優先権をパスして失った権利は、判定が終わっても戻らない', () => {
+    let current = placedInJudgment()
+    while (current.turn.priority !== '先攻') current = pass(current)
+    current = pass(current)
+    while (current.smashJudgments.length > 0) current = pass(current)
+    while (current.turn.priority !== '先攻') current = pass(current)
+
+    expect(kindsOf(current)).not.toContain('トラップを発動する')
+    expect(kindsOf(current)).not.toContain('「勇気」を起動する')
   })
 })

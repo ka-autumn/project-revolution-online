@@ -166,7 +166,7 @@ describe('合法手の列挙', () => {
     const invader: UnitOnSquare = { id: '侵入したユニット', square: centerSquare, card: plainUnit, controller: '後攻' }
     const state: DuelState = {
       ...putInZone(mainPhase(), '先攻', 'トラップゾーン', [instantiate({ id: 'トラップ', card: trapCard, owner: '先攻' })]),
-      trapConditionsMet: [{ trap: 'トラップ', occasion: { kind: '侵入', invader } }],
+      trapConditionsMet: [{ trap: 'トラップ', occasion: { kind: '侵入', invader }, metAt: 0 }],
     }
 
     expect(legalActions(state)).toContainEqual({ kind: 'トラップを発動する', card: 'トラップ' })

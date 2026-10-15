@@ -72,8 +72,8 @@ const plainCard = defineUnit({ name: 'テスト・能力なし', level: 1, color
 const blueCard = defineUnit({ name: 'テスト・青', level: 1, colors: ['青'], bp: 1000, sp: 1000 })
 
 /** そのプレイヤーがそのスクエアに置いたユニット。 */
-function placedUnit(controller: Player, square: Square): UnitOnSquare {
-  return { id: '置かれたユニット', square, card: plainCard, controller }
+function placedUnit(controller: Player, square: Square, id = '置かれたユニット'): UnitOnSquare {
+  return { id, square, card: plainCard, controller }
 }
 
 /** 起動条件が満たされているプレイヤー。並びの中身そのものを見ないところで使う。 */
@@ -170,12 +170,24 @@ describe('「勇気」の起動条件', () => {
     expect(playersMet(after)).toEqual(['後攻'])
   })
 
-  it('すでに起動条件が満たされているなら重複しない', () => {
-    const already = checkCourageCondition(ready(), placedUnit('後攻', homeSquare))
+  // きっかけごとに 1 件ずつ持つ（ADR-0039）。
+  it('すでに起動条件が満たされていても、満たされるたびに 1 件ずつ足す', () => {
+    const first = placedUnit('後攻', homeSquare)
+    const second = { ...placedUnit('後攻', centerSquare), id: '2 体目のユニット' }
+    const already = checkCourageCondition(ready(), first)
 
-    const after = checkCourageCondition(already, placedUnit('後攻', centerSquare))
+    const after = checkCourageCondition(already, second)
 
-    expect(playersMet(after)).toEqual(['先攻'])
+    expect(after.courageConditionsMet.map((met) => met.placed)).toEqual([first, second])
+  })
+
+  // バトルとスマッシュ判定が始まった時のログの長さと比べる（`priority.ts` の `deferringRights`）。
+  it('満たされた時のログの長さを、満たされた起動条件に持つ', () => {
+    const state: DuelState = { ...ready(), log: [{} as DuelState['log'][number]] }
+
+    const after = checkCourageCondition(state, placedUnit('後攻', homeSquare))
+
+    expect(after.courageConditionsMet.map((met) => met.metAt)).toEqual([1])
   })
 
   /**
@@ -321,6 +333,49 @@ describe('バトル・スマッシュ判定中は権利が発生しない', () =
 
     expect(playersMet(loseCourageRightOnPass(inBattle, '先攻'))).toEqual(['先攻'])
   })
+
+  // 条件が満たされた後に発生した手順だけが権利を止める（ADR-0039）。
+  describe('条件より前から進行中の手順', () => {
+    /** 起動条件が満たされたのはログ長 3 の時点で、バトルはログ長 1 から進行中の盤面。 */
+    function metDuringBattle(): DuelState {
+      const [met] = rightHeld().courageConditionsMet
+      if (met === undefined) throw new Error('起動条件が満たされているはずだった')
+      return {
+        ...rightHeld(),
+        courageConditionsMet: [{ ...met, metAt: 3 }],
+        battles: [{ ...battleInProgress, startedAt: 1 }],
+      }
+    }
+
+    it('権利を止めない', () => {
+      expect(courageRightsOf(metDuringBattle(), '先攻')).toHaveLength(1)
+    })
+
+    it('その間に優先権をパスすれば、権利を失う', () => {
+      expect(playersMet(loseCourageRightOnPass(metDuringBattle(), '先攻'))).toEqual([])
+    })
+
+    it('条件が満たされた後に発生したスマッシュ判定は、権利を止める', () => {
+      const judgment: SmashJudgment = { ...judgmentInProgress, startedAt: 5 }
+
+      expect(courageRightsOf({ ...metDuringBattle(), smashJudgments: [judgment] }, '先攻')).toEqual([])
+    })
+
+    it('止まっている件はパスで失わず、発生している件だけを失う', () => {
+      const [met] = metDuringBattle().courageConditionsMet
+      if (met === undefined) throw new Error('起動条件が満たされているはずだった')
+      const early = { ...met, metAt: 3 }
+      const late = { ...met, metAt: 8 }
+      const state: DuelState = {
+        ...rightHeld(),
+        courageConditionsMet: [early, late],
+        battles: [{ ...battleInProgress, startedAt: 6 }],
+      }
+
+      expect(courageRightsOf(state, '先攻')).toEqual([late])
+      expect(loseCourageRightOnPass(state, '先攻').courageConditionsMet).toEqual([early])
+    })
+  })
 })
 
 /** 行えたはずの行動の結果の盤面。 */
@@ -391,6 +446,73 @@ describe('「勇気」の起動', () => {
     const inBattle: DuelState = { ...readyToActivate(), battles: [battleInProgress] }
 
     expect(violationOf(activateCourage(inBattle, 'テスト・勇気', chooseFirst))).toBe('起動する権利がない')
+  })
+
+  // 権利が発生している件が複数あれば、どのユニットにダメージを与えるかを支配者が選ぶ（ADR-0039）。
+  describe('きっかけが複数ある時', () => {
+    /** 2 体目が、別のスクエアに置かれた盤面。後攻は両方を起動条件のきっかけとして持つ。 */
+    function twoPlaced(): DuelState {
+      const first = readyToActivate()
+      const board = putOnSquare(
+        first,
+        centerSquare,
+        instantiate({ id: '2 体目のユニット', card: plainCard, owner: '先攻' }),
+      )
+      return checkCourageCondition(board, placedUnit('先攻', centerSquare, '2 体目のユニット'))
+    }
+
+    it('候補にはきっかけが並び、選ばれたユニットにダメージを与える', () => {
+      const seen: unknown[][] = []
+      const chooseSecond: Chooser = (candidates, _player, purpose) => {
+        seen.push([purpose, candidates.length])
+        return purpose === '勇気のきっかけ' ? candidates[1] : candidates[0]
+      }
+
+      const after = stateOf(activateCourage(twoPlaced(), 'テスト・勇気', chooseSecond))
+
+      expect(seen).toContainEqual(['勇気のきっかけ', 2])
+      expect(cardsOn(after, centerSquare)[0]?.damage).toBe(4000)
+      expect(cardsOn(after, enemySquare)[0]?.damage).toBe(0)
+    })
+
+    it('止まっている件は候補に並ばない', () => {
+      const state: DuelState = { ...twoPlaced(), battles: [{ ...battleInProgress, startedAt: 0 }] }
+
+      expect(courageRightsOf(state, '後攻')).toEqual([])
+    })
+
+    // 1 件が止まり、1 件が発生している。選択は出ず、発生している件（2 体目）にダメージを与える。
+    it('止まっている件と発生している件が混ざる時は、選択が出ず、発生している件で起動する', () => {
+      const both = twoPlaced()
+      const mixed: DuelState = {
+        ...both,
+        battles: [{ ...battleInProgress, startedAt: 0 }],
+        courageConditionsMet: both.courageConditionsMet.map((met, index) => ({ ...met, metAt: index })),
+      }
+      let asked = false
+      const chooser: Chooser = (candidates, _player, purpose) => {
+        if (purpose === '勇気のきっかけ') asked = true
+        return candidates[0]
+      }
+
+      const after = stateOf(activateCourage(mixed, 'テスト・勇気', chooser))
+
+      expect(asked).toBe(false)
+      expect(cardsOn(after, centerSquare)[0]?.damage).toBe(4000)
+      expect(cardsOn(after, enemySquare)[0]?.damage).toBe(0)
+    })
+
+    it('1 件だけなら選択は出ない', () => {
+      let asked = false
+      const chooser: Chooser = (candidates, _player, purpose) => {
+        if (purpose === '勇気のきっかけ') asked = true
+        return candidates[0]
+      }
+
+      stateOf(activateCourage(readyToActivate(), 'テスト・勇気', chooser))
+
+      expect(asked).toBe(false)
+    })
   })
 
   it('エネルギーの条件を満たしていなかった「勇気」は起動できない', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { TrapConditionMet } from './duel.js'
 import { putInZone } from './duel.js'
-import { checkIntrusion, loseTrapRightOnPass, trapRightOf } from './trap.js'
+import { checkIntrusion, loseTrapRightOnPass, trapRightsOf } from './trap.js'
 import { defineTrap, defineUnit, emptyDuelState, instantiate } from './index.js'
 import type { Battle, DuelState, Player, SmashJudgment, Square, TrapCard, UnitOnSquare } from './index.js'
 
@@ -49,7 +49,7 @@ function intruder(controller: Player, square: Square): UnitOnSquare {
 
 /** 満たされた発動条件。きっかけの中身が関わらないところでは、これを置く。 */
 function conditionMet(invader = intruder('後攻', targetSquare)): TrapConditionMet {
-  return { trap: 'トラップ', occasion: { kind: '侵入', invader } }
+  return { trap: 'トラップ', occasion: { kind: '侵入', invader }, metAt: 0 }
 }
 
 /** 発動条件が満たされているトラップの id。並びの中身そのものを見ないところで使う。 */
@@ -102,12 +102,25 @@ describe('侵入', () => {
     expect(trapsMet(after)).toEqual([])
   })
 
-  it('すでに発動条件が満たされているなら重複しない', () => {
-    const already: DuelState = { ...withTrap(), trapConditionsMet: [conditionMet()] }
+  // きっかけごとに 1 件ずつ持つ（ADR-0039）。最初のきっかけを持ち続ける暫定の扱い（単位 2）は
+  // これに置き換わった。
+  it('すでに発動条件が満たされていても、満たされるたびに 1 件ずつ足す', () => {
+    const first = intruder('後攻', targetSquare)
+    const second = { ...intruder('後攻', targetSquare), id: '2 体目のユニット' }
+    const already: DuelState = { ...withTrap(), trapConditionsMet: [conditionMet(first)] }
 
-    const after = checkIntrusion(already, intruder('後攻', targetSquare))
+    const after = checkIntrusion(already, second)
 
-    expect(trapsMet(after)).toEqual(['トラップ'])
+    expect(after.trapConditionsMet.map((met) => met.occasion.invader)).toEqual([first, second])
+  })
+
+  // バトルとスマッシュ判定が始まった時のログの長さと比べる（`priority.ts` の `deferringRights`）。
+  it('満たされた時のログの長さを、満たされた発動条件に持つ', () => {
+    const state: DuelState = { ...withTrap(), log: [{} as DuelState['log'][number], {} as DuelState['log'][number]] }
+
+    const after = checkIntrusion(state, intruder('後攻', targetSquare))
+
+    expect(after.trapConditionsMet.map((met) => met.metAt)).toEqual([2])
   })
 
   // 侵入してきたユニットも、侵入されたスクエアも、発動する時の盤面からは引けない
@@ -117,7 +130,7 @@ describe('侵入', () => {
 
     const after = checkIntrusion(withTrap(), invader)
 
-    expect(after.trapConditionsMet).toEqual([{ trap: 'トラップ', occasion: { kind: '侵入', invader } }])
+    expect(after.trapConditionsMet).toEqual([{ trap: 'トラップ', occasion: { kind: '侵入', invader }, metAt: 0 }])
   })
 })
 
@@ -181,15 +194,20 @@ const judgmentInProgress: SmashJudgment = {
   startedAt: 0,
 }
 
-// 総合ルール 第2部 第20章 3-8 ただし書き、第3部 第11章 5・第17章 4（ADR-0006）
-describe('バトル・スマッシュ判定中は権利が発生しない', () => {
-  /** 発動条件が満たされたトラップが、先攻のトラップゾーンにある盤面。 */
+// 総合ルール 第2部 第20章 3-8 ただし書き、第3部 第11章 5・第17章 4、ADR-0039（ADR-0006）
+describe('条件が満たされた後に発生したバトル・スマッシュ判定の間は、権利が発生しない', () => {
+  /** 発動条件が満たされたトラップが、先攻のトラップゾーンにある盤面。満たされたのはログ長 0 の時点。 */
   function rightHeld(): DuelState {
     return { ...withTrap(), trapConditionsMet: [conditionMet()] }
   }
 
+  /** 条件が満たされた後（ログ長 5）に始まったバトル。 */
+  const battleAfter: Battle = { ...battleInProgress, startedAt: 5 }
+  /** 条件が満たされる前（ログ長 1）から進行中のバトル。満たされたのはログ長 3。 */
+  const battleBefore: Battle = { ...battleInProgress, startedAt: 1 }
+
   it('バトルもスマッシュ判定も無ければ、発動条件が満たされた時点で権利が発生している', () => {
-    expect(trapRightOf(rightHeld(), 'トラップ')).toBeDefined()
+    expect(trapRightsOf(rightHeld(), 'トラップ')).toHaveLength(1)
   })
 
   // 発動する効果はきっかけを必要とする（`effect.ts` の `TrapEffect`）ので、権利と一緒に返す。
@@ -197,40 +215,97 @@ describe('バトル・スマッシュ判定中は権利が発生しない', () =
     const invader = intruder('後攻', targetSquare)
     const state: DuelState = { ...withTrap(), trapConditionsMet: [conditionMet(invader)] }
 
-    expect(trapRightOf(state, 'トラップ')).toEqual({ kind: '侵入', invader })
+    expect(trapRightsOf(state, 'トラップ').map((met) => met.occasion)).toEqual([{ kind: '侵入', invader }])
   })
 
   it('発動条件が満たされていなければ権利は発生しない', () => {
-    expect(trapRightOf(withTrap(), 'トラップ')).toBeUndefined()
+    expect(trapRightsOf(withTrap(), 'トラップ')).toEqual([])
   })
 
-  it('バトルが進行中の間は、発動条件が満たされていても権利が発生しない', () => {
-    expect(trapRightOf({ ...rightHeld(), battles: [battleInProgress] }, 'トラップ')).toBeUndefined()
+  it('条件が満たされた後にバトルが始まったなら、その間は権利が発生しない', () => {
+    expect(trapRightsOf({ ...rightHeld(), battles: [battleAfter] }, 'トラップ')).toEqual([])
   })
 
-  it('スマッシュ判定が進行中の間は、発動条件が満たされていても権利が発生しない', () => {
-    expect(trapRightOf({ ...rightHeld(), smashJudgments: [judgmentInProgress] }, 'トラップ')).toBeUndefined()
+  it('条件が満たされるのと同じ時点で始まったバトルも、権利を止める', () => {
+    expect(trapRightsOf({ ...rightHeld(), battles: [battleInProgress] }, 'トラップ')).toEqual([])
+  })
+
+  it('条件が満たされた後にスマッシュ判定が始まったなら、その間は権利が発生しない', () => {
+    const judgment: SmashJudgment = { ...judgmentInProgress, startedAt: 5 }
+
+    expect(trapRightsOf({ ...rightHeld(), smashJudgments: [judgment] }, 'トラップ')).toEqual([])
   })
 
   it('バトルが終了すると権利が発生する', () => {
-    const during: DuelState = { ...rightHeld(), battles: [battleInProgress] }
+    const during: DuelState = { ...rightHeld(), battles: [battleAfter] }
 
-    expect(trapRightOf({ ...during, battles: [] }, 'トラップ')).toBeDefined()
+    expect(trapRightsOf({ ...during, battles: [] }, 'トラップ')).toHaveLength(1)
+  })
+
+  // 効果で置かれて侵入が起きた時。バトルは条件より前に発生しているので、権利を止めない
+  // （ADR-0039）。
+  it('条件より前から進行中のバトルは、権利を止めない', () => {
+    const state: DuelState = { ...withTrap(), trapConditionsMet: [{ ...conditionMet(), metAt: 3 }], battles: [battleBefore] }
+
+    expect(trapRightsOf(state, 'トラップ')).toHaveLength(1)
+  })
+
+  it('条件より前から進行中のスマッシュ判定は、権利を止めない', () => {
+    const judgment: SmashJudgment = { ...judgmentInProgress, startedAt: 1 }
+    const state: DuelState = {
+      ...withTrap(),
+      trapConditionsMet: [{ ...conditionMet(), metAt: 3 }],
+      smashJudgments: [judgment],
+    }
+
+    expect(trapRightsOf(state, 'トラップ')).toHaveLength(1)
+  })
+
+  // バトル中のバトル（総合ルール 第3部 第11章 2-1・4-1）。先の件は先のバトルより後・後のバトルより前。
+  it('権利は、止める手順がある件だけが止まる', () => {
+    const early = { ...conditionMet(intruder('後攻', targetSquare)), metAt: 3 }
+    const late = { ...conditionMet(intruder('後攻', mirroredSquare)), metAt: 8 }
+    const state: DuelState = {
+      ...withTrap(),
+      trapConditionsMet: [early, late],
+      battles: [battleBefore, { ...battleInProgress, startedAt: 6 }],
+    }
+
+    expect(trapRightsOf(state, 'トラップ')).toEqual([late])
   })
 
   // 権利を得ていないのだから、パスで失うこともない（同 3-8 は「権利を獲得した後...１度でも
   // 優先権をパスすると...権利を失います」であり、獲得が先にある）。バトルもスマッシュ判定も
   // ステップが連続した放棄で進む（同 第3部 第4章 4）ので、ここで失うなら終了まで遅らせる
   // 意味が無くなる。
-  it('バトル中に優先権をパスしても、発動条件が満たされた状態は残る', () => {
-    const after = loseTrapRightOnPass({ ...rightHeld(), battles: [battleInProgress] }, '先攻')
+  it('止まっている間に優先権をパスしても、発動条件が満たされた状態は残る', () => {
+    const after = loseTrapRightOnPass({ ...rightHeld(), battles: [battleAfter] }, '先攻')
 
     expect(trapsMet(after)).toEqual(['トラップ'])
   })
 
-  it('スマッシュ判定中に優先権をパスしても、発動条件が満たされた状態は残る', () => {
-    const after = loseTrapRightOnPass({ ...rightHeld(), smashJudgments: [judgmentInProgress] }, '先攻')
+  it('スマッシュ判定で止まっている間に優先権をパスしても、発動条件が満たされた状態は残る', () => {
+    const judgment: SmashJudgment = { ...judgmentInProgress, startedAt: 5 }
+    const after = loseTrapRightOnPass({ ...rightHeld(), smashJudgments: [judgment] }, '先攻')
 
     expect(trapsMet(after)).toEqual(['トラップ'])
+  })
+
+  it('条件より前から進行中のバトルの間に優先権をパスすれば、権利を失う', () => {
+    const state: DuelState = { ...withTrap(), trapConditionsMet: [{ ...conditionMet(), metAt: 3 }], battles: [battleBefore] }
+
+    expect(trapsMet(loseTrapRightOnPass(state, '先攻'))).toEqual([])
+  })
+
+  it('パスで失うのは権利が発生している件だけで、止まっている件は残る', () => {
+    const early = { ...conditionMet(intruder('後攻', targetSquare)), metAt: 3 }
+    const late = { ...conditionMet(intruder('後攻', mirroredSquare)), metAt: 8 }
+    const state: DuelState = {
+      ...withTrap(),
+      trapConditionsMet: [early, late],
+      battles: [battleBefore, { ...battleInProgress, startedAt: 6 }],
+    }
+
+    expect(loseTrapRightOnPass(state, '先攻').trapConditionsMet).toEqual([early])
   })
 })

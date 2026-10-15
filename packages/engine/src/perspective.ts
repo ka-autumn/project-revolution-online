@@ -175,9 +175,9 @@ export interface DuelPerspective {
   readonly triggered: readonly VisibleAbility[]
   readonly createdAbilities: readonly VisibleCreatedAbility[]
   readonly playedIntoCenter: readonly CardId[]
-  /** 視点のプレイヤーが持っている、発動条件が満たされているトラップ。 */
+  /** 視点のプレイヤーが持っている、発動条件が満たされているトラップ。きっかけごとに 1 件ずつ並び、同じトラップの件が複数あってよい（ADR-0039）。 */
   readonly trapConditionsMet: readonly TrapConditionMet[]
-  /** 視点のプレイヤーの、「勇気」の起動条件が満たされていること。 */
+  /** 視点のプレイヤーの、「勇気」の起動条件が満たされていること。きっかけごとに 1 件ずつ並ぶ（ADR-0039）。 */
   readonly courageConditionsMet: readonly CourageConditionMet[]
   readonly battles: readonly VisibleBattle[]
   readonly smashJudgments: readonly VisibleSmashJudgment[]

@@ -962,7 +962,7 @@ describe('優先権の放棄と「勇気」の起動条件', () => {
       card: placedCard,
       controller: player === '先攻' ? '後攻' : '先攻',
     }
-    const met: CourageConditionMet = { player, placed, satisfied: ['手札の勇気'] }
+    const met: CourageConditionMet = { player, placed, satisfied: ['手札の勇気'], metAt: 0 }
     return { ...startedDuel(), courageConditionsMet: [met] }
   }
 

@@ -237,7 +237,7 @@ describe('射影が渡さないもの', () => {
     if (trap === undefined) throw new Error('トラップを置いたはずだった')
     const met: DuelState = {
       ...state,
-      trapConditionsMet: [{ trap: trap.id, occasion: { kind: '侵入', invader: INVADER } }],
+      trapConditionsMet: [{ trap: trap.id, occasion: { kind: '侵入', invader: INVADER }, metAt: 0 }],
     }
 
     expect(perspectiveOf(met, '先攻').trapConditionsMet).toEqual([])
@@ -251,7 +251,7 @@ describe('射影が渡さないもの', () => {
     if (courage === undefined) throw new Error('手札にカードを置いたはずだった')
     const met: DuelState = {
       ...state,
-      courageConditionsMet: [{ player: '後攻', satisfied: [courage.id], placed: INVADER }],
+      courageConditionsMet: [{ player: '後攻', satisfied: [courage.id], placed: INVADER, metAt: 0 }],
     }
 
     expect(perspectiveOf(met, '先攻').courageConditionsMet).toEqual([])

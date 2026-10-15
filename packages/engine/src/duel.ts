@@ -172,7 +172,9 @@ export interface DuelState {
    * 発動する権利そのものではない。権利は「優先権を得る時」に発生するもので、その時に
    * バトルまたはスマッシュ判定が発生していれば、それが終了するまで発生しない（同 3-8 の
    * ただし書き）。権利があるかどうかは、この並びと進行中のバトル・スマッシュ判定から
-   * `trap.ts` の `trapRightOf` が決める。
+   * `trap.ts` の `trapRightsOf` が決める。
+   *
+   * 1 枚のトラップが何件でも持てる。満たされるたびに 1 件ずつ足す（ADR-0039）。
    */
   readonly trapConditionsMet: readonly TrapConditionMet[]
   /**
@@ -180,7 +182,8 @@ export interface DuelState {
    * （総合ルール 第5部 第2章 2）。
    *
    * `trapConditionsMet` と同じく、満たされたことを持続する状態として持ち、優先権をパスした時
-   * （`courage.ts` の `loseCourageRightOnPass`）に取り除く。
+   * （`courage.ts` の `loseCourageRightOnPass`）に取り除く。置かれるたびに 1 件ずつ足し、
+   * 件はきっかけごとに並ぶ（ADR-0039）。権利が発生している件だけを失う。
    *
    * **入れ物を分けているのは、紐づく先が違うためである。** トラップの発動条件はトラップ
    * ゾーンにある 1 枚に紐づき、発動すればそのカードがゾーンを離れて消える。「勇気」の起動
@@ -421,6 +424,16 @@ export interface TrapConditionMet {
   readonly trap: CardId
   /** 発動条件を満たしたできごと。発動した効果に渡される（`play.ts` の `activateTrap`）。 */
   readonly occasion: IntrusionOccasion
+  /**
+   * 満たされた時の `DuelState.log` の長さ。
+   *
+   * バトルとスマッシュ判定が始まった時の長さ（`Battle.startedAt`・`SmashJudgment.startedAt`）と
+   * 比べて、この条件が満たされた後に発生した手順かどうかを決める（`priority.ts` の
+   * `deferringRights`）ためだけに持つ。ログは単調に伸び、手順が始まる時には必ずその見出しが
+   * 積まれるので、先に始まっていた手順の `startedAt` はここより小さく、後から始まった手順の
+   * `startedAt` はここ以上になる。ルールの判断にしか使わないので通信には載せない。
+   */
+  readonly metAt: number
 }
 
 /**
@@ -457,6 +470,8 @@ export interface CourageConditionMet {
    * 見分ける手立てが無いためである。効果はこのユニットにダメージを与える（同 2）。
    */
   readonly placed: UnitOnSquare
+  /** 満たされた時の `DuelState.log` の長さ。`TrapConditionMet.metAt` と同じ。 */
+  readonly metAt: number
 }
 
 interface InstanceSpec {

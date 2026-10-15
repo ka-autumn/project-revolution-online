@@ -158,7 +158,7 @@ function someIntruder(square: Square = centerSquare): UnitOnSquare {
  * 前提を作るために使う。
  */
 function conditionMet(trap: string, invader: UnitOnSquare = someIntruder()): TrapConditionMet {
-  return { trap, occasion: { kind: '侵入', invader } }
+  return { trap, occasion: { kind: '侵入', invader }, metAt: 0 }
 }
 
 /** 発動条件が満たされているトラップの id。 */

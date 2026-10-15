@@ -1,7 +1,7 @@
 import type { IntrusionOccasion } from './ability.js'
 import { indexOfSquare, squareFromView } from './board.js'
 import { cardsIn } from './duel.js'
-import type { CardId, DuelState } from './duel.js'
+import type { CardId, DuelState, TrapConditionMet } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
@@ -28,7 +28,7 @@ import { deferringRights } from './priority.js'
  *
  * ここで満たされるのは発動条件であって、発動する権利そのものではない。権利が発生するのは
  * 優先権を得る時であり、その時にバトルやスマッシュ判定が発生していれば遅れる（同 3-8 の
- * ただし書き、`trapRightOf`）。
+ * ただし書き、`trapRightsOf`）。
  *
  * 侵入してきたユニットは、置かれたその瞬間の姿を写して満たされた発動条件と一緒に持つ
  * （`IntrusionOccasion`）。発動した効果がそれを見る（`effect.ts` の `TrapEffect`）。
@@ -50,47 +50,38 @@ export function checkIntrusion(state: DuelState, invader: UnitOnSquare): DuelSta
         ),
     )
     .map((trap) => trap.id)
-    // すでに発動条件が満たされているトラップは、そのままにし、最初のきっかけを持ち続ける。
-    // 支配者がパスすれば発動条件は取り除かれる（`loseTrapRightOnPass`）が、パスを挟まずに
-    // 満たし直されることがある。1 つの効果が続けてユニットを置く場合、相手が優先権を持った
-    // まま続けて行動し、それぞれの効果でユニットを置く場合、バトルやスマッシュ判定の途中に
-    // 効果で置かれる場合（その間のパスでは発動条件を失わない）である。ADR-0039 は
-    // 満たされた発動条件をきっかけごとに 1 件ずつ持つと決めている。その形は、権利の判定を
-    // きっかけごとにする時に一緒に入れる。持つ件数だけを先に増やしても、どのきっかけで
-    // 発動するかを選べないためである。
-    .filter((id) => !state.trapConditionsMet.some((met) => met.trap === id))
 
   if (invaded.length === 0) return state
 
+  // 満たされるたびに 1 件ずつ足す。すでに満たされているトラップが、パスを挟まずに満たし直される
+  // ことがある（1 つの効果が続けてユニットを置く場合、バトルやスマッシュ判定の途中に効果で
+  // 置かれる場合、権利が止まっている間に置かれる場合）。きっかけごとに持つので、どれかを
+  // 捨てることはしない（ADR-0039）。
   const occasion: IntrusionOccasion = { kind: '侵入', invader }
+  const metAt = state.log.length
   return {
     ...state,
-    trapConditionsMet: [...state.trapConditionsMet, ...invaded.map((trap) => ({ trap, occasion }))],
+    trapConditionsMet: [...state.trapConditionsMet, ...invaded.map((trap) => ({ trap, occasion, metAt }))],
   }
 }
 
 /**
- * そのトラップを発動する権利がいま発生しているなら、その権利のもとになった発動条件の
- * きっかけ（総合ルール 第2部 第20章 3-8）。発生していなければ `undefined`。
+ * そのトラップを発動する権利がいま発生している、満たされた発動条件すべて
+ * （総合ルール 第2部 第20章 3-8）。発生していなければ空。
  *
- * 権利の有無ときっかけを一緒に返すのは、発動した効果がきっかけを必要とする（`play.ts` の
+ * 権利ときっかけを一緒に返すのは、発動した効果がきっかけを必要とする（`play.ts` の
  * `activateTrap`）ためである。権利が無いことと、渡せるきっかけが無いことは同じである。
+ * 件が複数あれば、発動する時に支配者が 1 つ選ぶ。
  *
- * 発動条件が満たされていること（`checkIntrusion`）に加えて、バトルもスマッシュ判定も
- * 進行中でないことが要る。発動条件が満たされた後、優先権を得る時にバトルまたはスマッシュ
- * 判定が発生した場合、それが終了するまで権利は発生しない（同 3-8 ただし書き、第3部
- * 第11章 5・第17章 4）。その判定は「勇気」を起動する権利と共通なので、`priority.ts` の
- * `deferringRights` に置いてある。
- *
- * 進行中のバトルやスマッシュ判定は、発動条件が満たされたのがその前か途中かを問わず、権利の
- * 発生を止める。登場と移動は進行中には行えない（ADR-0012、`priority.ts` の
- * `activePlayerMayAct`）が、効果でユニットを置くことは進行中にも起こる。その場合も、終わる
- * まで権利は発生しない。ADR-0039 は、止めるのを条件が満たされた後に発生したものだけに改める
- * と決めている。
+ * 発動条件が満たされていること（`checkIntrusion`）に加えて、その条件が満たされた後に発生
+ * したバトルもスマッシュ判定も進行中でないことが要る。発動条件が満たされた後、優先権を得る
+ * 時にバトルまたはスマッシュ判定が発生した場合、それが終了するまで権利は発生しない（同 3-8
+ * ただし書き、第3部 第11章 5・第17章 4）。その判定は「勇気」を起動する権利と共通なので、
+ * `priority.ts` の `deferringRights` に置いてある。条件より前から進行中のものは権利を
+ * 止めない（ADR-0039）。
  */
-export function trapRightOf(state: DuelState, id: CardId): IntrusionOccasion | undefined {
-  if (deferringRights(state)) return undefined
-  return state.trapConditionsMet.find((met) => met.trap === id)?.occasion
+export function trapRightsOf(state: DuelState, id: CardId): readonly TrapConditionMet[] {
+  return state.trapConditionsMet.filter((met) => met.trap === id && !deferringRights(state, met.metAt))
 }
 
 /**
@@ -98,27 +89,24 @@ export function trapRightOf(state: DuelState, id: CardId): IntrusionOccasion | u
  * （総合ルール 第2部 第20章 3-8「１度でも優先権をパスすると...権利を失います」）。権利を
  * 失うと、再び発動条件を満たすまで発動できない（同）ので、満たされた発動条件を取り除く。
  *
- * バトルやスマッシュ判定が進行中の間は何も失わない。同 3-8 が権利を失わせるのは「権利を
- * 獲得した後」であり、その間は権利がそもそも発生していない（`trapRightOf`）ためである。
- * バトルもスマッシュ判定もステップが連続した優先権の放棄で進む（同 第3部 第4章 4）ので、
- * ここで失っていたら終了まで権利の発生を遅らせる意味が無くなる。
+ * 失うのは、権利が発生している件だけである。同 3-8 が権利を失わせるのは「権利を獲得した
+ * 後」であり、その条件が満たされた後に発生したバトルやスマッシュ判定が進行中の間は、その
+ * 件の権利はそもそも発生していない（`trapRightsOf`）。止まっている件は残る。バトルも
+ * スマッシュ判定もステップが連続した優先権の放棄で進む（同 第3部 第4章 4）ので、止まっている
+ * 件をここで失っていたら、終了まで権利の発生を遅らせる意味が無くなる。
  *
- * バトルが始まる前にすでに権利を得ていたトラップも、この扱いでは失わずに残る。権利の発生を
- * 進行中のバトルすべてで止める `trapRightOf` の読み方に合わせた形であり、そちらと同じく、
- * いまはどちらの読み方でも結果が変わらない。バトルが始まるにはユニットがスクエアに置かれる
- * 必要があり、権利を持っているプレイヤーがパスしない限り相手はその行動を行えないためである。
+ * バトルが始まる前にすでに権利を得ていたトラップも、そのバトルが条件の後に始まったのなら、
+ * そのバトルが終わるまで権利が止まり、パスしても失わない。権利を持つ側の効果がユニットを
+ * 置いてバトルを起こす場面で起こる。バトルが条件より前から進行中だったなら、権利は止まって
+ * いないので、パスで失う。
  *
  * 「同じイベントで起動条件を満たした勇気を起動する」場合の権利喪失（同 第2部 第20章 3-8）は、
  * できごとの同一性を盤面が持っていないため、まだ実装していない（`courage.ts` の
  * `activateCourage`）。
  */
 export function loseTrapRightOnPass(state: DuelState, player: Player): DuelState {
-  if (deferringRights(state)) return state
-
   const ownIds: readonly CardId[] = cardsIn(state, player, 'トラップゾーン').map((trap) => trap.id)
-  if (!state.trapConditionsMet.some((met) => ownIds.includes(met.trap))) return state
-  return {
-    ...state,
-    trapConditionsMet: state.trapConditionsMet.filter((met) => !ownIds.includes(met.trap)),
-  }
+  const lost = (met: TrapConditionMet): boolean => ownIds.includes(met.trap) && !deferringRights(state, met.metAt)
+  if (!state.trapConditionsMet.some(lost)) return state
+  return { ...state, trapConditionsMet: state.trapConditionsMet.filter((met) => !lost(met)) }
 }
