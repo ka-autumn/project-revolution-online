@@ -3,7 +3,7 @@ import { hasKeyword } from './card.js'
 import type { UnitCard } from './card.js'
 import { cardsIn, smashesOf } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
-import type { CardInZone, DuelView, EnergyInZone, SmashCard, UnitOnSquare } from './effect.js'
+import type { CardInTrapZone, CardInZone, DuelView, EnergyInZone, SmashCard, UnitOnSquare } from './effect.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import type { PlayerZone } from './zone.js'
@@ -155,6 +155,17 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
       )
       for (const smash of smashes) source.show(smash.id)
       return smashes
+    },
+    // 両方のプレイヤーの分を、中身を持たない形で見せる（ADR-0040）。支配者自身のカードでも
+    // `card` を写さない。相手の裏向きのカードの中身を効果が読む経路を、型の上で作らないため。
+    trapZone: () => {
+      const traps = [controller, opponentOf(controller)].flatMap((player) =>
+        cardsIn(currentState(), player, 'トラップゾーン').map(
+          (instance): CardInTrapZone => ({ id: instance.id, zone: 'トラップゾーン', player }),
+        ),
+      )
+      for (const trap of traps) source.show(trap.id)
+      return traps
     },
     // 継続効果を適用した後の姿を読む。与えられた能力は、上の `units()` が返す写しの
     // `card.abilities` に載っている（`continuous.ts` の `continuousData`）ので、ここは書かれた

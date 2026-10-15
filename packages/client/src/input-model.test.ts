@@ -1387,6 +1387,43 @@ describe('候補を盤面から押す', () => {
     ])
   })
 
+  /**
+   * 効果がトラップゾーンのカードを選ばせる時（ADR-0040）。自分のカードは表側が見えていて識別子で、
+   * 相手のカードは裏向きのまま置き場所で、盤面の札と結び付ける（総合ルール 第2部 第21章 9-3）。
+   */
+  describe('トラップゾーンのカードの候補', () => {
+    const withTraps = (): WirePerspective => {
+      const own = withZone(board(), '先攻', 'トラップゾーン', [
+        { kind: '見えている', instance: instance('自分の伏せ札', '先攻') },
+      ])
+      return withZone(own, '後攻', 'トラップゾーン', [{ kind: '見えていない', orientation: 'リリース' }])
+    }
+    const asked: WireChoice = {
+      ...choice([
+        { kind: '見えている', card: '自分の伏せ札' },
+        { kind: '見えていない', at: { player: '後攻', zone: 'トラップゾーン', index: 0 } },
+      ]),
+      purpose: '効果の対象',
+      mayDecline: true,
+    }
+
+    it('自分のカードは識別子で、相手のカードは置き場所で押せ、それぞれの番号で答える', () => {
+      const picking = choicePicking(withTraps(), asked)
+
+      expect(picking.pickable).toEqual(['自分の伏せ札'])
+      expect(picking.answerOf('自分の伏せ札')).toBe(0)
+      expect(picking.hidden).toEqual([{ player: '後攻', zone: 'トラップゾーン', index: 0 }])
+      expect(picking.answerOfHidden({ player: '後攻', zone: 'トラップゾーン', index: 0 })).toBe(1)
+    })
+
+    it('どちらも盤面から押せるので、番号のボタンもカードの一覧も出さない', () => {
+      const offBoard = offBoardCandidates(asked, choicePicking(withTraps(), asked))
+
+      expect(offBoard).toEqual([])
+      expect(showsChoicePicker(asked, offBoard)).toBe(false)
+    })
+  })
+
   /** スマートフォンで、エネルギー・スマッシュの一覧を「払うカードを選ぶ一覧」にするか、閉じるかの見分け（ADR-0034）。 */
   describe('エネルギー・スマッシュから選ばれているか', () => {
     it('候補にそのゾーンの札が入っていれば、真', () => {
