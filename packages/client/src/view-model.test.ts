@@ -2464,4 +2464,13 @@ describe('満たされた発動条件の欄', () => {
     expect(boardView({ ...plain, trapConditionsMet: [met] })).toEqual(boardView(plain))
     expect(boardView({ ...plain, trapConditionsMet: [met, met] })).toEqual(boardView(plain))
   })
+
+  // 攻撃・スマッシュのきっかけも同じ欄に載る（ADR-0039）。画面は読まないので、載っても表示は変わらない。
+  it('攻撃・スマッシュのきっかけが載っても、盤面の表示は変わらない', () => {
+    const plain = emptyBoard('先攻')
+    const attack = { trap: 'わな', occasion: { kind: '攻撃' as const, attacker: invader, attacked: invader } }
+    const smashed = { trap: 'わな', occasion: { kind: 'スマッシュ' as const, smasher: invader } }
+
+    expect(boardView({ ...plain, trapConditionsMet: [attack, smashed] })).toEqual(boardView(plain))
+  })
 })

@@ -34,7 +34,10 @@ export type {
   FriendshipAbility,
   GutsAbility,
   HopeAbility,
+  AttackOccasion,
   IntrusionOccasion,
+  SmashOccasion,
+  TrapOccasion,
   MoveCost,
   MoveCostingAbility,
   MovementOccasion,
@@ -200,7 +203,8 @@ export type {
   SmashCard,
   SpModifier,
   TrapEffect,
-  TrapEffectWithoutOccasion,
+  AttackTrapEffect,
+  SmashTrapEffect,
   UnitOnSquare,
 } from './effect.js'
 export { cardIdsOf, checkBoardInvariants } from './invariant.js'
@@ -305,6 +309,7 @@ export type {
   WirePerspective,
   WireStrategyFace,
   WireTrapConditionMet,
+  WireTrapOccasion,
   WireTrapFace,
   WireUnitFace,
   WireUnitOnSquare,

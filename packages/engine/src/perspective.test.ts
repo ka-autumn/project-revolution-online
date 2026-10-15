@@ -244,6 +244,24 @@ describe('射影が渡さないもの', () => {
     expect(perspectiveOf(met, '後攻').trapConditionsMet).toHaveLength(1)
   })
 
+  // 攻撃・スマッシュのきっかけも同じ隠し方である（ADR-0039）。相手のぶんは、きっかけの種類によらず
+  // 渡さない。
+  it('相手のトラップの攻撃・スマッシュの発動条件が満たされていることも渡さない', () => {
+    const state = filledState()
+    const trap = state.zones.後攻.トラップゾーン[0]
+    if (trap === undefined) throw new Error('トラップを置いたはずだった')
+    const met: DuelState = {
+      ...state,
+      trapConditionsMet: [
+        { trap: trap.id, occasion: { kind: '攻撃', attacker: INVADER, attacked: INVADER }, metAt: 0 },
+        { trap: trap.id, occasion: { kind: 'スマッシュ', smasher: INVADER }, metAt: 1 },
+      ],
+    }
+
+    expect(perspectiveOf(met, '先攻').trapConditionsMet).toEqual([])
+    expect(perspectiveOf(met, '後攻').trapConditionsMet).toHaveLength(2)
+  })
+
   // 「勇気」の起動条件は、満たした手札のカードを名指しする（`duel.ts` の `CourageConditionMet`）。
   it('相手の「勇気」の起動条件が満たされていることは渡さない', () => {
     const state = filledState()

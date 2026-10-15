@@ -8,6 +8,7 @@ import { discardFromSquares, discardedFromSquares } from './discard.js'
 import { cardsOn, dealDamage } from './duel.js'
 import type { BankedAbility, CardId, CardInstance, DuelState } from './duel.js'
 import { record } from './log.js'
+import { checkAttack } from './trap.js'
 import { trigger } from './trigger.js'
 
 /**
@@ -207,7 +208,7 @@ function beginStep(state: DuelState, battle: Battle): DuelState {
       // バトルが始まったことによる誘発（同 第12章 1）。「攻撃した時」「攻撃された時」は
       // そのユニット自身のできごとなので、盤面の全ユニットは見ない。
       const triggered = trigger(trigger(begun, 'バトルの始め'), '第１バトルステップの始め')
-      return triggerAttack(triggered, battle.attacker, battle.attacked)
+      return checkAttackTrap(triggerAttack(triggered, battle.attacker, battle.attacked), battle)
     }
     case '第１ダメージステップ':
     case '第２ダメージステップ':
@@ -217,6 +218,28 @@ function beginStep(state: DuelState, battle: Battle): DuelState {
     case 'バトル終了ステップ':
       return beginEndStep(begun, battle)
   }
+}
+
+/**
+ * 攻撃されたユニットの支配者の、攻撃のトラップの発動条件を確かめる（総合ルール 第3部
+ * 第12章 1、ADR-0039）。ユニットの「攻撃された時」を誘発させる所と同じ時点である。
+ *
+ * どちらかがもうスクエアにいなければ、バトルが発生しているとは言えないので何もしない。
+ * 第１バトルステップの始めには両方いるはずだが、直前の「バトルの始め」で誘発した能力が
+ * 解決される前なので、ここで外れることは無い。守りとして置いている。
+ */
+function checkAttackTrap(state: DuelState, battle: Battle): DuelState {
+  const attacker = unitInBattle(state, battle, battle.attacker)
+  const attacked = unitInBattle(state, battle, battle.attacked)
+  if (attacker === undefined || attacked === undefined) return state
+
+  const onSquare = (unit: UnitInstance) => ({
+    id: unit.id,
+    square: battle.square,
+    card: unit.card,
+    controller: unit.controller,
+  })
+  return checkAttack(state, onSquare(attacker), onSquare(attacked))
 }
 
 /**

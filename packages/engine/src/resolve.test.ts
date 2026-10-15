@@ -1845,8 +1845,11 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
 
       const resolved = resolve(state, placeFromSquare)
 
-      expect(resolved.trapConditionsMet.map((met) => met.occasion.invader)).toEqual([
-        { id: '置き直すユニット', square: invadedSquare, card: vanilla, controller: '先攻' },
+      expect(resolved.trapConditionsMet.map((met) => met.occasion)).toEqual([
+        {
+          kind: '侵入',
+          invader: { id: '置き直すユニット', square: invadedSquare, card: vanilla, controller: '先攻' },
+        },
       ])
     })
 
@@ -1931,7 +1934,9 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
     it('トラップは、2 体の侵入のきっかけをそれぞれ持つ', () => {
       const resolved = resolve(withTrapOf(twoInDiscard(), '後攻', trapOnBoth), placeTwo)
 
-      expect(resolved.trapConditionsMet.map((met) => met.occasion.invader.id)).toEqual(['1 体目', '2 体目'])
+      expect(
+        resolved.trapConditionsMet.map((met) => (met.occasion.kind === '侵入' ? met.occasion.invader.id : undefined)),
+      ).toEqual(['1 体目', '2 体目'])
     })
 
     it('「勇気」は、2 体が置かれたできごとをそれぞれ持つ', () => {

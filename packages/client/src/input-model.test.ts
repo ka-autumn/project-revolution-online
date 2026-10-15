@@ -551,6 +551,30 @@ describe('選ぶ候補', () => {
       ])
     })
 
+    // ADR-0039。攻撃は攻撃したユニットから攻撃されたユニットへ、スマッシュはスマッシュしたユニットで指す。
+    it('攻撃とスマッシュの候補は、ユニットの名前とスクエアで指す', () => {
+      const asked = {
+        ...choice([
+          {
+            kind: 'きっかけ',
+            occasion: {
+              kind: '攻撃',
+              attacker: { card: 'てふだの1枚', square: { row: 0, column: 1 } },
+              attacked: { card: 'スクエアの1枚', square: { row: 0, column: 1 } },
+            },
+          },
+          { kind: 'きっかけ', occasion: { kind: 'スマッシュ', smasher: { card: 'てふだの1枚', square: { row: 1, column: 1 } } } },
+        ]),
+        purpose: 'トラップのきっかけ' as const,
+      }
+
+      expect(choiceView(board(), asked).candidates.map((candidate) => candidate.label)).toEqual([
+        '1 番目: 攻撃 テスト・手札の戦士 → テスト・盤上の戦士（味方エリアの中央ライン）',
+        '2 番目: スマッシュ テスト・手札の戦士（中央エリアの中央ライン）',
+      ])
+      expect(choicePicking(board(), asked).onBoard).toEqual([])
+    })
+
     it('この画面が知らない種類のきっかけは、番号だけを出す', () => {
       const unknown = { kind: 'きっかけ', occasion: { kind: 'この画面が知らない種類' } } as unknown as WireCandidate
 

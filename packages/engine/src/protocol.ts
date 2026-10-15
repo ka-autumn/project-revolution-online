@@ -3,6 +3,7 @@ import type { CardType, Color } from './card.js'
 import type { DeckViolation, DuelFormat } from './deck.js'
 import { cardsIn } from './duel.js'
 import type { CardId, CourageConditionMet, DuelState, TrapConditionMet } from './duel.js'
+import type { UnitOnSquare } from './effect.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
 import { areaRowOf, cardIdOf, squareOf } from './log.js'
@@ -472,14 +473,23 @@ export type WireCandidate =
    *
    * `occasion` の種類は、トラップの `侵入`（トリガーアイコンに描かれたスクエアに置かれたこと）と、
    * 「勇気」の `置かれた`（味方エリアか中央エリアに置かれたこと）。後者はトリガーアイコンと関係が
-   * 無く、用語「侵入」とは呼べない（CONTEXT.md）。単位 5 で攻撃・スマッシュが足される。
+   * 無く、用語「侵入」とは呼べない（CONTEXT.md）。トラップには、ほかに `攻撃`（攻撃したユニットと
+   * 攻撃されたユニット）と `スマッシュ`（スマッシュしたユニット）がある（ADR-0039）。
    */
   | {
       readonly kind: 'きっかけ'
       readonly occasion:
-        | { readonly kind: '侵入'; readonly invader: { readonly card: CardId; readonly square: Square } }
-        | { readonly kind: '置かれた'; readonly unit: { readonly card: CardId; readonly square: Square } }
+        | { readonly kind: '侵入'; readonly invader: WireCandidateUnit }
+        | { readonly kind: '攻撃'; readonly attacker: WireCandidateUnit; readonly attacked: WireCandidateUnit }
+        | { readonly kind: 'スマッシュ'; readonly smasher: WireCandidateUnit }
+        | { readonly kind: '置かれた'; readonly unit: WireCandidateUnit }
     }
+
+/** きっかけの候補が指すユニット。できごとの写しなので、カードの識別子とスクエアで指す。 */
+interface WireCandidateUnit {
+  readonly card: CardId
+  readonly square: Square
+}
 
 /** 選んでほしいこと 1 つ。**選ぶプレイヤーにだけ送る**（ADR-0008）。 */
 export interface WireChoice {
@@ -1002,8 +1012,19 @@ function describeCandidate(
 
   // きっかけが並ぶ場面。満たされた発動条件・起動条件そのものが候補になる。
   if (purpose === 'トラップのきっかけ') {
-    const { invader } = (candidate as TrapConditionMet).occasion
-    return { kind: 'きっかけ', occasion: { kind: '侵入', invader: { card: invader.id, square: invader.square } } }
+    const { occasion } = candidate as TrapConditionMet
+    const unit = ({ id, square }: UnitOnSquare): WireCandidateUnit => ({ card: id, square })
+    switch (occasion.kind) {
+      case '侵入':
+        return { kind: 'きっかけ', occasion: { kind: '侵入', invader: unit(occasion.invader) } }
+      case '攻撃':
+        return {
+          kind: 'きっかけ',
+          occasion: { kind: '攻撃', attacker: unit(occasion.attacker), attacked: unit(occasion.attacked) },
+        }
+      case 'スマッシュ':
+        return { kind: 'きっかけ', occasion: { kind: 'スマッシュ', smasher: unit(occasion.smasher) } }
+    }
   }
   if (purpose === '勇気のきっかけ') {
     const { placed } = candidate as CourageConditionMet

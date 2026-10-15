@@ -3,7 +3,7 @@ import type { ActionOutcome, ActionViolation } from './action.js'
 import { triggerAllyAppearance, triggerAppearance } from './bank.js'
 import { areaOf } from './board.js'
 import type { Square } from './board.js'
-import { hasDream, hasGuts, isIntrusionTrap } from './card.js'
+import { hasDream, hasGuts } from './card.js'
 import type { Card, UnitCard } from './card.js'
 import { appliedCard } from './continuous.js'
 import { payEnergyCost, satisfiesLevel } from './cost.js'
@@ -19,13 +19,14 @@ import {
   moveToZone,
 } from './duel.js'
 import type { CardId, DuelState, TrapConditionMet } from './duel.js'
-import type { Effect, UnitOnSquare } from './effect.js'
+import type { TrapOccasion } from './ability.js'
+import type { DuelView, Effect, EffectStep, UnitOnSquare } from './effect.js'
 import type { ResolutionVia } from './log.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
-import { checkIntrusion, trapRightsOf } from './trap.js'
+import { checkIntrusion, trapRightsOf, unitsOfOccasion } from './trap.js'
 import type { PlayerZone } from './zone.js'
 
 /**
@@ -139,9 +140,9 @@ export function playAsTrap(state: DuelState, card: CardId): ActionOutcome {
  * である（同 3-8、`trap.ts` の `trapRightsOf`）。発動条件が満たされた後に発生したバトルや
  * スマッシュ判定が進行中なら、発動条件が満たされていても権利は発生していない（同 3-8
  * ただし書き）。権利が発生しているきっかけが複数あれば、どれに対して発動するかを選ぶ
- * （ADR-0039）。発動条件を持たない
- * トラップ以外のカードは、トラップゾーンにあっても発動できない（同 3-6）。発動条件のうち
- * 実装しているのは「侵入」だけなので（`trap.ts`）、それ以外の条件で権利を得ることはまだ無い。
+ * （ADR-0039）。発動条件を持たないトラップ以外のカードは、トラップゾーンにあっても発動できない
+ * （同 3-6）。発動条件は、トリガーアイコンの種類ごとに判定する（`trap.ts` の `checkIntrusion`・
+ * `checkAttack`・`checkSmash`）。
  *
  * レベルを満たし（同 3-9）、コストを支払って（同 3-10）、リゾルブゾーンで解決される
  * （同 3-11）。
@@ -156,9 +157,6 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   if (instance === undefined) return cannot('そのゾーンにない')
   const trap = instance.card
   if (trap.type !== 'トラップ') return cannot('発動できるカードではない')
-  // 発動条件が満たされるのは侵入のトラップだけで、攻撃・スマッシュのトラップには、まだ
-  // 権利が発生しない（単位 5 で足す。ADR-0039）。きっかけを渡せるのも侵入の効果だけである。
-  if (!isIntrusionTrap(trap)) return cannot('発動する権利がない')
   const rights = trapRightsOf(state, card)
   if (rights.length === 0) return cannot('発動する権利がない')
   // 権利が発生しているきっかけが複数あれば、どれに対して発動するかを支配者が選ぶ
@@ -166,15 +164,24 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   const met = rights.length === 1 ? rights[0] : (chooser(rights, player, 'トラップのきっかけ', state, false, card) as TrapConditionMet)
   if (met === undefined || !rights.includes(met)) throw new Error('候補にないものが選ばれた')
   const { occasion } = met
+  // きっかけの種類は、そのトラップのトリガーアイコンの種類と必ず同じである。満たされた発動条件を
+  // 足すのは、アイコンの種類ごとの判定だけで（`trap.ts`）、別の種類のトラップには足さないため。
+  // 崩れると、効果が別の種類のきっかけを受け取り、何も起こらずに解決されてしまう（型の上では
+  // 気づけない）ので、ここで止める。
+  if (occasion.kind !== trap.triggerIcon.kind) throw new Error('トラップの種類と、満たされたきっかけの種類が食い違っている')
 
   const paid = payUseCost(state, player, trap, chooser)
   if (typeof paid === 'string') return cannot(paid)
 
-  // 発動条件を満たしたできごとを効果に渡す（`effect.ts` の `TrapEffect`）。ここで束ねるのは、
-  // きっかけを知っているのが発動する経路だけだからである。解決する側（`resolveEffect`）は
-  // どの経路から来た効果かを知らないままでよい。
-  const resolved = resolveInResolveZone(paid, card, (duel) => trap.effect(duel, occasion), player, '発動', chooser, [
-    occasion.invader,
+  // 発動条件を満たしたできごとを効果に渡す（`effect.ts` の `TrapEffect`・`AttackTrapEffect`・
+  // `SmashTrapEffect`）。ここで束ねるのは、きっかけを知っているのが発動する経路だけだからで
+  // ある。解決する側（`resolveEffect`）はどの経路から来た効果かを知らないままでよい。
+  //
+  // 型の上では、効果の第 2 引数が種類ごとに違うので、ここで広げて呼ぶ。種類が同じであることは、
+  // 上で確かめている。
+  const effect = trap.effect as (duel: DuelView, occasion: TrapOccasion) => EffectStep<void>
+  const resolved = resolveInResolveZone(paid, card, (duel) => effect(duel, occasion), player, '発動', chooser, [
+    ...unitsOfOccasion(occasion),
   ])
   return done(grantPriorityToInactive(resolved))
 }
@@ -261,8 +268,8 @@ function placePlayedUnit(
  * 解決している途中でカードを引き直せないためである。
  *
  * `handed` は、`DuelView` を通さずに効果へ直接渡したユニット（`resolve.ts` の
- * `EffectContext.handed`）。発動したトラップが、きっかけに載っている侵入してきた敵を
- * 渡す場合に使う。
+ * `EffectContext.handed`）。発動したトラップが、きっかけに載っているユニット（侵入してきた
+ * 敵、攻撃したユニットと攻撃されたユニット、スマッシュしたユニット）を渡す場合に使う。
  *
  * `via` はプレイと発動のどちらでここへ来たか（#104）。呼ぶ側しか知らないので、ここでは
  * 受け取るだけで判断しない。

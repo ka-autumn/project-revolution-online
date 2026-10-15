@@ -299,6 +299,42 @@ export interface IntrusionOccasion {
 }
 
 /**
+ * トラップの発動条件「攻撃された」のきっかけ（総合ルール 第3部 第11章 4、ADR-0039）。
+ *
+ * 発動条件が満たされた時に写して盤面が持ち（`duel.ts` の `trapConditionsMet`）、発動した
+ * トラップの効果に渡される（`effect.ts` の `AttackTrapEffect`）。
+ *
+ * どちらのユニットも、満たされた**その瞬間**の、カードに印刷された姿を写して持つ（侵入の
+ * `invader` と同じ）。継続効果を適用した後の姿は、絞り込みの判定にだけ使い（`trap.ts` の
+ * `checkAttack`）、ここには持たせない。効果が発動の時点の色や属性を知りたければ、
+ * `DuelView` から引き直す。
+ *
+ * 名前は `Battle.attacker`・`Battle.attacked` と同じである。
+ */
+export interface AttackOccasion {
+  readonly kind: '攻撃'
+  /** 攻撃したユニット。バトルが発生したスクエアにいる。 */
+  readonly attacker: UnitOnSquare
+  /** 攻撃されたユニット。トラップの支配者のユニットで、`attacker` と同じスクエアにいる。 */
+  readonly attacked: UnitOnSquare
+}
+
+/**
+ * トラップの発動条件「スマッシュされた」のきっかけ（総合ルール 第3部 第9章 1、ADR-0039）。
+ *
+ * スマッシュの行動を行った時点の、スマッシュしたユニットの、印刷された姿の写しである。
+ * 効果によるダメージではきっかけにならない。
+ */
+export interface SmashOccasion {
+  readonly kind: 'スマッシュ'
+  /** スマッシュしたユニット。 */
+  readonly smasher: UnitOnSquare
+}
+
+/** トラップの発動条件を満たしたできごと。トリガーアイコンの種類と同じ 3 種類である（ADR-0039）。 */
+export type TrapOccasion = IntrusionOccasion | AttackOccasion | SmashOccasion
+
+/**
  * キーワード能力「夢」（総合ルール 第5部 第1章）。
  *
  * 「このカードは、プランゾーンからプレイできる。」という常在型能力であり、プランゾーンに
