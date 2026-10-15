@@ -2,6 +2,7 @@ import type { MoveDirection, Square } from './board.js'
 import type { Attribute, Card, CardType, Color, PlanKeyword, TriggerIcon, UnitCard } from './card.js'
 import { planKeywordsOf } from './card.js'
 import type { CardId, CardInstance, DuelResult } from './duel.js'
+import type { TrapOccasion } from './ability.js'
 import type { UnitOnSquare } from './effect.js'
 import type { LoggedEvent } from './log.js'
 import type { Orientation } from './orientation.js'
@@ -127,10 +128,19 @@ export interface WireUnitOnSquare {
   readonly controller: Player
 }
 
+/**
+ * 通信に載せる形にした `TrapOccasion`。種類は、トリガーアイコンの種類と同じ 3 つである
+ * （ADR-0039）。ユニットは、できごとが起きた時点の、印刷された姿の写しを持つ。
+ */
+export type WireTrapOccasion =
+  | { readonly kind: '侵入'; readonly invader: WireUnitOnSquare }
+  | { readonly kind: '攻撃'; readonly attacker: WireUnitOnSquare; readonly attacked: WireUnitOnSquare }
+  | { readonly kind: 'スマッシュ'; readonly smasher: WireUnitOnSquare }
+
 /** 通信に載せる形にした `TrapConditionMet`。 */
 export interface WireTrapConditionMet {
   readonly trap: CardId
-  readonly occasion: { readonly kind: '侵入'; readonly invader: WireUnitOnSquare }
+  readonly occasion: WireTrapOccasion
 }
 
 /** 通信に載せる形にした `CourageConditionMet`。 */
@@ -258,6 +268,17 @@ function unitToWire(unit: UnitOnSquare): WireUnitOnSquare {
   return { ...unit, card: unitFaceOf(unit.card) }
 }
 
+function occasionToWire(occasion: TrapOccasion): WireTrapOccasion {
+  switch (occasion.kind) {
+    case '侵入':
+      return { kind: '侵入', invader: unitToWire(occasion.invader) }
+    case '攻撃':
+      return { kind: '攻撃', attacker: unitToWire(occasion.attacker), attacked: unitToWire(occasion.attacked) }
+    case 'スマッシュ':
+      return { kind: 'スマッシュ', smasher: unitToWire(occasion.smasher) }
+  }
+}
+
 function visibleToWire(visible: VisibleCard): WireVisibleCard {
   return visible.kind === '見えている'
     ? { kind: '見えている', instance: instanceToWire(visible.instance) }
@@ -295,7 +316,7 @@ export function toWire(perspective: DuelPerspective): WirePerspective {
     // 発動できるかどうかは行える手に現れる（ADR-0010）。
     trapConditionsMet: perspective.trapConditionsMet.map(({ trap, occasion }) => ({
       trap,
-      occasion: { ...occasion, invader: unitToWire(occasion.invader) },
+      occasion: occasionToWire(occasion),
     })),
     courageConditionsMet: perspective.courageConditionsMet.map(({ player, satisfied, placed }) => ({
       player,

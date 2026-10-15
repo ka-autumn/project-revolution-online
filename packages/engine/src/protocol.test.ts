@@ -21,7 +21,20 @@ import {
   putOnSquare,
   triggeredAbility,
 } from './index.js'
-import type { ActionProgress, Area, Battle, CardInstance, Chooser, DuelState, LegalAction, Phase, Player, Square } from './index.js'
+import type {
+  ActionProgress,
+  Area,
+  Battle,
+  CardInstance,
+  Chooser,
+  DuelState,
+  LegalAction,
+  Phase,
+  Player,
+  Square,
+  TrapCard,
+  TrapOccasion,
+} from './index.js'
 
 /** 選択を求められたら常に最初の候補を選ぶ。盤面を進めるためだけに使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -955,6 +968,109 @@ describe('発動するきっかけを選ぶ', () => {
 
     expectAdvanced(progress)
     expect(seen).toEqual(['発生している件'])
+  })
+
+  // 攻撃・スマッシュのきっかけも、同じ入れ物と同じ選択で扱う。ユニットは識別子とスクエアで指す。
+  describe('攻撃・スマッシュのきっかけ', () => {
+    const attackedBy: string[] = []
+    const smashedBy: string[] = []
+    const attackTrapCard = defineTrap({
+      name: 'テスト・攻撃トラップ',
+      level: 1,
+      colors: ['赤'],
+      triggerIcon: { kind: '攻撃' },
+      effect: function* (_duel, occasion) {
+        attackedBy.push(`${occasion.attacker.id}→${occasion.attacked.id}`)
+      },
+    })
+    const smashTrapCard = defineTrap({
+      name: 'テスト・スマッシュトラップ',
+      level: 1,
+      colors: ['赤'],
+      triggerIcon: { kind: 'スマッシュ' },
+      effect: function* (_duel, occasion) {
+        smashedBy.push(occasion.smasher.id)
+      },
+    })
+
+    const unitAt = (id: string, square: Square, controller: Player) => ({ id, square, card: testCard, controller })
+    const here: Square = { row: 0, column: 1 }
+    const there: Square = { row: 0, column: 2 }
+
+    /** 後攻が優先権を持ち、そのトラップと満たされた発動条件を持っている盤面。 */
+    function armedWith(trap: TrapCard, occasions: readonly TrapOccasion[]): DuelState {
+      const base = phaseReadyToAct('メインフェイズ')
+      const withTrap = putInZone(base, '後攻', 'トラップゾーン', [instantiate({ id: 'トラップ', card: trap, owner: '後攻' })])
+      const withEnergy = putInZone(withTrap, '後攻', 'エネルギーゾーン', [
+        instantiate({ id: '後攻のエネ1', card: testCard, owner: '後攻' }),
+      ])
+      return {
+        ...withEnergy,
+        turn: { ...withEnergy.turn, priority: '後攻' },
+        trapConditionsMet: occasions.map((occasion, index) => ({ trap: 'トラップ', occasion, metAt: index })),
+      }
+    }
+
+    const attackOccasion = (attacker: string, attacked: string, square: Square): TrapOccasion => ({
+      kind: '攻撃',
+      attacker: unitAt(attacker, square, '先攻'),
+      attacked: unitAt(attacked, square, '後攻'),
+    })
+
+    it('攻撃のきっかけは、攻撃したユニットと攻撃されたユニットを、識別子とスクエアで指す', () => {
+      const state = armedWith(attackTrapCard, [attackOccasion('攻撃者1', '被攻撃者1', here), attackOccasion('攻撃者2', '被攻撃者2', there)])
+
+      const progress = applyWithAnswers(state, ACTIVATE, [])
+
+      expectChoice(progress)
+      expect(progress.choice.purpose).toBe('トラップのきっかけ')
+      expect(progress.choice.candidates).toEqual([
+        {
+          kind: 'きっかけ',
+          occasion: { kind: '攻撃', attacker: { card: '攻撃者1', square: here }, attacked: { card: '被攻撃者1', square: here } },
+        },
+        {
+          kind: 'きっかけ',
+          occasion: { kind: '攻撃', attacker: { card: '攻撃者2', square: there }, attacked: { card: '被攻撃者2', square: there } },
+        },
+      ])
+    })
+
+    it('選んだ攻撃のきっかけの効果が解決される', () => {
+      attackedBy.length = 0
+      const state = armedWith(attackTrapCard, [attackOccasion('攻撃者1', '被攻撃者1', here), attackOccasion('攻撃者2', '被攻撃者2', there)])
+
+      expectAdvanced(applyWithAnswers(state, ACTIVATE, [1]))
+
+      expect(attackedBy).toEqual(['攻撃者2→被攻撃者2'])
+    })
+
+    it('スマッシュのきっかけは、スマッシュしたユニットを、識別子とスクエアで指す', () => {
+      const state = armedWith(smashTrapCard, [
+        { kind: 'スマッシュ', smasher: unitAt('1 体目', here, '先攻') },
+        { kind: 'スマッシュ', smasher: unitAt('2 体目', there, '先攻') },
+      ])
+
+      const progress = applyWithAnswers(state, ACTIVATE, [])
+
+      expectChoice(progress)
+      expect(progress.choice.candidates).toEqual([
+        { kind: 'きっかけ', occasion: { kind: 'スマッシュ', smasher: { card: '1 体目', square: here } } },
+        { kind: 'きっかけ', occasion: { kind: 'スマッシュ', smasher: { card: '2 体目', square: there } } },
+      ])
+    })
+
+    it('選んだスマッシュのきっかけの効果が解決される', () => {
+      smashedBy.length = 0
+      const state = armedWith(smashTrapCard, [
+        { kind: 'スマッシュ', smasher: unitAt('1 体目', here, '先攻') },
+        { kind: 'スマッシュ', smasher: unitAt('2 体目', there, '先攻') },
+      ])
+
+      expectAdvanced(applyWithAnswers(state, ACTIVATE, [0]))
+
+      expect(smashedBy).toEqual(['1 体目'])
+    })
   })
 })
 

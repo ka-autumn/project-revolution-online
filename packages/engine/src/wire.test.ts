@@ -260,6 +260,41 @@ describe('通信に載せる形', () => {
     expect(sent.courageConditionsMet.map((met) => Object.keys(met).sort())).toEqual([['placed', 'player', 'satisfied']])
   })
 
+  // ADR-0039。攻撃・スマッシュのきっかけも、侵入と同じ入れ物に載る。ユニットは書かれた姿の表記に
+  // 書き出され、判定にだけ使う `metAt` は載らない。
+  it('攻撃・スマッシュのきっかけは、ユニットを書き出して載せる', () => {
+    const unit = (id: string, controller: '先攻' | '後攻'): UnitOnSquare => ({
+      id,
+      square: { row: 0, column: 1 },
+      card: CARDS.見えているカード,
+      controller,
+    })
+    const attacker = unit('攻撃したユニット', '先攻')
+    const attacked = unit('攻撃されたユニット', '後攻')
+    const state: DuelState = {
+      ...filledState(),
+      trapConditionsMet: [
+        { trap: '先攻-トラップ', occasion: { kind: '攻撃', attacker, attacked }, metAt: 3 },
+        { trap: '先攻-トラップ', occasion: { kind: 'スマッシュ', smasher: attacker }, metAt: 7 },
+      ],
+    }
+
+    const sent = JSON.parse(JSON.stringify(toWire(perspectiveOf(state, '先攻')))) as {
+      trapConditionsMet: readonly { occasion: Record<string, { id: string; card: { name: string } } | string> }[]
+    }
+
+    const [attack, smashed] = sent.trapConditionsMet
+    expect(attack?.occasion.kind).toBe('攻撃')
+    expect((attack?.occasion.attacker as { id: string }).id).toBe('攻撃したユニット')
+    expect((attack?.occasion.attacked as { id: string; card: { name: string } }).card.name).toBe(CARDS.見えているカード.name)
+    expect(smashed?.occasion.kind).toBe('スマッシュ')
+    expect((smashed?.occasion.smasher as { id: string }).id).toBe('攻撃したユニット')
+    expect(sent.trapConditionsMet.map((met) => Object.keys(met).sort())).toEqual([
+      ['occasion', 'trap'],
+      ['occasion', 'trap'],
+    ])
+  })
+
   /**
    * 運用の注記（ADR-0043）。印刷されたテキストと違う扱いをしている行があることを、カードの
    * 詳細で知らせるための欄で、テキストとは別の項目として載る。

@@ -1,9 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import type { TrapConditionMet } from './duel.js'
 import { putInZone } from './duel.js'
-import { checkIntrusion, loseTrapRightOnPass, trapRightsOf } from './trap.js'
-import { defineTrap, defineUnit, emptyDuelState, instantiate } from './index.js'
-import type { Battle, DuelState, Player, SmashJudgment, Square, TrapCard, UnitOnSquare } from './index.js'
+import { checkAttack, checkIntrusion, checkSmash, loseTrapRightOnPass, trapRightsOf } from './trap.js'
+import {
+  alsoTreatedAs,
+  attributeAdding,
+  defineTrap,
+  defineUnit,
+  emptyDuelState,
+  instantiate,
+  putOnSquare,
+} from './index.js'
+import type {
+  Battle,
+  DuelState,
+  Player,
+  SmashJudgment,
+  Square,
+  TrapCard,
+  TriggerFilter,
+  UnitOnSquare,
+} from './index.js'
 
 const targetSquare: Square = { row: 0, column: 1 }
 const otherSquare: Square = { row: 2, column: 2 }
@@ -90,8 +107,8 @@ describe('侵入', () => {
     expect(trapsMet(after)).toEqual([])
   })
 
-  // 攻撃・スマッシュの発動条件を判定する処理は、まだ無い（単位 5、ADR-0039）。値として持てる
-  // だけで、侵入が起きても満たされない。判定を足す時に、この期待を書き換える。
+  // 攻撃・スマッシュの発動条件は、侵入では満たされない。攻撃はバトルで（`checkAttack`）、
+  // スマッシュはスマッシュの行動で（`checkSmash`）、別に判定する（ADR-0039）。
   it.each([
     ['攻撃', attackTrap],
     ['絞り込みつきの攻撃', filteredAttackTrap],
@@ -111,7 +128,10 @@ describe('侵入', () => {
 
     const after = checkIntrusion(already, second)
 
-    expect(after.trapConditionsMet.map((met) => met.occasion.invader)).toEqual([first, second])
+    expect(after.trapConditionsMet.map((met) => met.occasion)).toEqual([
+      { kind: '侵入', invader: first },
+      { kind: '侵入', invader: second },
+    ])
   })
 
   // バトルとスマッシュ判定が始まった時のログの長さと比べる（`priority.ts` の `deferringRights`）。
@@ -147,6 +167,176 @@ describe('トリガーアイコンは支配者から見た向きで解釈され�
     const after = checkIntrusion(withTrap(trapWithIcon, '後攻'), intruder('先攻', targetSquare))
 
     expect(trapsMet(after)).toEqual([])
+  })
+})
+
+/** バトルが起きるスクエア（絶対位置）。 */
+const battleSquare: Square = { row: 0, column: 1 }
+
+/** 絞り込みの 3 つの軸のどれでも確かめられるよう、記号・色・属性を 1 つずつ持つユニット。 */
+const marked = defineUnit({
+  name: 'テスト・印つき',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  makerSymbols: ['テスト記号'],
+  attributes: ['テスト属性'],
+})
+
+/** 何も持たないユニット。 */
+const plainUnit = defineUnit({ name: 'テスト・何も無し', level: 1, bp: 1000, sp: 1000 })
+
+/** 「すべての味方は『テスト属性』としても扱う」。属性を継続効果で加える。 */
+const attributeGranter = defineUnit({
+  name: 'テスト・属性を加える',
+  level: 1,
+  bp: 1000,
+  sp: 1000,
+  abilities: [attributeAdding((duel) => duel.allies().map((ally) => alsoTreatedAs(ally, 'テスト属性')))],
+})
+
+function attackTrapWith(filter: TriggerFilter | undefined): TrapCard {
+  return defineTrap({
+    name: 'テスト・絞り込みを試す攻撃トラップ',
+    level: 1,
+    triggerIcon: filter === undefined ? { kind: '攻撃' } : { kind: '攻撃', filter },
+  })
+}
+
+/** 攻撃したユニット（先攻）と攻撃されたユニット（後攻）。同じスクエアで重なっている。 */
+function battlers(attackedCard = unitCard): { readonly attacker: UnitOnSquare; readonly attacked: UnitOnSquare } {
+  return {
+    attacker: { id: '攻撃したユニット', square: battleSquare, card: unitCard, controller: '先攻' },
+    attacked: { id: '攻撃されたユニット', square: battleSquare, card: attackedCard, controller: '後攻' },
+  }
+}
+
+// 総合ルール 第3部 第11章 1-1・4、第12章 1（ADR-0039、ADR-0006）。「攻撃された」がいつ満たされるかを
+// 定めた条は無く、第１バトルステップで確かめるのは ADR-0039 の読みである。
+describe('攻撃された', () => {
+  it('攻撃されたユニットの支配者の攻撃のトラップは、発動条件が満たされる', () => {
+    const { attacker, attacked } = battlers()
+
+    const after = checkAttack(withTrap(attackTrap, '後攻'), attacker, attacked)
+
+    expect(trapsMet(after)).toEqual(['トラップ'])
+    expect(after.trapConditionsMet.map((met) => met.occasion)).toEqual([{ kind: '攻撃', attacker, attacked }])
+  })
+
+  it('攻撃したユニットの支配者のトラップは、発動条件が満たされない', () => {
+    const { attacker, attacked } = battlers()
+
+    expect(trapsMet(checkAttack(withTrap(attackTrap, '先攻'), attacker, attacked))).toEqual([])
+  })
+
+  it.each([
+    ['侵入', defineTrap({ name: 'テスト・侵入', level: 1, triggerIcon: { kind: '侵入', squares: [battleSquare] } })],
+    ['スマッシュ', smashTrap],
+  ])('%sのトラップは、攻撃されても発動条件が満たされない', (_kind, card) => {
+    const { attacker, attacked } = battlers()
+
+    expect(trapsMet(checkAttack(withTrap(card, '後攻'), attacker, attacked))).toEqual([])
+  })
+
+  // トラップを持たない対戦では、盤面にも、ログにも、何も足さない。
+  it('攻撃のトラップが無ければ、盤面をそのまま返す', () => {
+    const { attacker, attacked } = battlers()
+    const state = emptyDuelState()
+
+    expect(checkAttack(state, attacker, attacked)).toBe(state)
+  })
+
+  it('満たされた時のログの長さを、満たされた発動条件に持つ', () => {
+    const { attacker, attacked } = battlers()
+    const state: DuelState = {
+      ...withTrap(attackTrap, '後攻'),
+      log: [{} as DuelState['log'][number], {} as DuelState['log'][number]],
+    }
+
+    expect(checkAttack(state, attacker, attacked).trapConditionsMet.map((met) => met.metAt)).toEqual([2])
+  })
+
+  // 絞り込みは、攻撃されたユニットがその軸でその値を持つ時だけ満たされる。
+  it.each([
+    ['メーカーシンボル', { axis: 'メーカーシンボル', value: 'テスト記号' }, { axis: 'メーカーシンボル', value: '別の記号' }],
+    ['色', { axis: '色', value: '赤' }, { axis: '色', value: '青' }],
+    ['属性', { axis: '属性', value: 'テスト属性' }, { axis: '属性', value: '別の属性' }],
+  ] as const)('%sで絞り込んだ攻撃のトラップは、その値を持つユニットが攻撃された時だけ満たされる', (_axis, held, notHeld) => {
+    const { attacker, attacked } = battlers(marked)
+
+    expect(trapsMet(checkAttack(withTrap(attackTrapWith(held), '後攻'), attacker, attacked))).toEqual(['トラップ'])
+    expect(trapsMet(checkAttack(withTrap(attackTrapWith(notHeld), '後攻'), attacker, attacked))).toEqual([])
+  })
+
+  it('絞り込みの無い攻撃のトラップは、どのユニットが攻撃されても満たされる', () => {
+    const { attacker, attacked } = battlers(plainUnit)
+
+    expect(trapsMet(checkAttack(withTrap(attackTrapWith(undefined), '後攻'), attacker, attacked))).toEqual(['トラップ'])
+  })
+
+  // 総合ルール 第4部 第12章 5-2 の(3)、ADR-0036。色を変える継続効果はまだ無いので、色は書かれている
+  // 色のまま確かめる。属性を加える継続効果は、適用した後の姿で確かめる。
+  describe('継続効果を適用した後の姿で確かめる', () => {
+    const attributed = attackTrapWith({ axis: '属性', value: 'テスト属性' })
+    /** 後攻のトラップと、後攻の「属性を加える」ユニットのいる盤面。攻撃されたユニットも同じ後攻。 */
+    function withGranter(): DuelState {
+      const granter = instantiate({ id: '属性を加えるユニット', card: attributeGranter, owner: '後攻' })
+      const defender = instantiate({ id: '攻撃されたユニット', card: plainUnit, owner: '後攻' })
+      return putOnSquare(putOnSquare(withTrap(attributed, '後攻'), { row: 0, column: 2 }, granter), battleSquare, defender)
+    }
+
+    it('継続効果で加わった属性を持つユニットが攻撃されると、その属性の絞り込みは満たされる', () => {
+      const { attacker, attacked } = battlers(plainUnit)
+
+      expect(trapsMet(checkAttack(withGranter(), attacker, attacked))).toEqual(['トラップ'])
+    })
+
+    it('継続効果が無ければ、書かれていない属性の絞り込みは満たされない', () => {
+      const { attacker, attacked } = battlers(plainUnit)
+
+      expect(trapsMet(checkAttack(withTrap(attributed, '後攻'), attacker, attacked))).toEqual([])
+    })
+
+    // 侵入の写し方（印刷された姿）と混ぜない。適用後の姿は判定にだけ使う。
+    it('きっかけに写すのは、適用後の姿ではなく印刷された姿である', () => {
+      const { attacker, attacked } = battlers(plainUnit)
+
+      const after = checkAttack(withGranter(), attacker, attacked)
+      const [met] = after.trapConditionsMet
+
+      expect(met?.occasion.kind === '攻撃' && met.occasion.attacked.card).toBe(plainUnit)
+    })
+  })
+})
+
+// 総合ルール 第3部 第9章 1（ADR-0039、ADR-0006）。効果によるダメージを含めないのは、同条が
+// この行動を「スマッシュする」と名づけていることによる読みで、条文に明示は無い。
+describe('スマッシュされた', () => {
+  const smasher: UnitOnSquare = { id: 'スマッシュしたユニット', square: mirroredSquare, card: unitCard, controller: '先攻' }
+
+  it('相手のスマッシュのトラップは、発動条件が満たされる', () => {
+    const after = checkSmash(withTrap(smashTrap, '後攻'), smasher)
+
+    expect(trapsMet(after)).toEqual(['トラップ'])
+    expect(after.trapConditionsMet.map((met) => met.occasion)).toEqual([{ kind: 'スマッシュ', smasher }])
+  })
+
+  it('スマッシュした本人のトラップは、発動条件が満たされない', () => {
+    expect(trapsMet(checkSmash(withTrap(smashTrap, '先攻'), smasher))).toEqual([])
+  })
+
+  it.each([
+    ['侵入', defineTrap({ name: 'テスト・侵入', level: 1, triggerIcon: { kind: '侵入', squares: [mirroredSquare] } })],
+    ['攻撃', attackTrap],
+  ])('%sのトラップは、スマッシュされても発動条件が満たされない', (_kind, card) => {
+    expect(trapsMet(checkSmash(withTrap(card, '後攻'), smasher))).toEqual([])
+  })
+
+  it('スマッシュのトラップが無ければ、盤面をそのまま返す', () => {
+    const state = emptyDuelState()
+
+    expect(checkSmash(state, smasher)).toBe(state)
   })
 })
 

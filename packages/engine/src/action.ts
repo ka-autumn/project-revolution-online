@@ -19,6 +19,8 @@ import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import type { Chooser } from './resolve.js'
+import type { UnitOnSquare } from './effect.js'
+import { checkSmash } from './trap.js'
 import { unitsOnSquares } from './view.js'
 
 /**
@@ -246,7 +248,10 @@ export function smash(state: DuelState, unit: CardId): ActionOutcome {
     player: opponentOf(player),
     amount: smashing.damage,
   })
-  return done(grantPriorityToInactive(damaged))
+  // スマッシュのトラップの発動条件は、この行動でだけ満たされる（ADR-0039）。優先権を得る手前の
+  // 片づけ（スマッシュ判定の発生）より前に確かめるので、判定が発生すれば判定は条件より
+  // 後に始まり、判定が終わるまで権利が止まる。
+  return done(grantPriorityToInactive(checkSmash(damaged, smashing.unit)))
 }
 
 /**
@@ -261,7 +266,7 @@ function smashingUnit(
   state: DuelState,
   player: Player,
   id: CardId,
-): { readonly damage: number } | undefined {
+): { readonly damage: number; readonly unit: UnitOnSquare } | undefined {
   const located = locateOnSquares(state, id)
   if (located === undefined) return undefined
 
@@ -275,7 +280,10 @@ function smashingUnit(
 
   // 継続効果による変更を受けた後のＳＰを読む（総合ルール 第4部 第12章 2）。
   const sp = spOf(instance.card, spModification(state)(instance.id))
-  return { damage: sp + (area === '敵エリア' ? ENEMY_AREA_BONUS : 0) }
+  return {
+    damage: sp + (area === '敵エリア' ? ENEMY_AREA_BONUS : 0),
+    unit: { id: instance.id, square, card: instance.card, controller: instance.controller },
+  }
 }
 
 /**

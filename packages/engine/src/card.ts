@@ -10,7 +10,7 @@ import type {
   PlanReplacingAbility,
 } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
-import type { Effect, TrapEffect, TrapEffectWithoutOccasion } from './effect.js'
+import type { AttackTrapEffect, Effect, SmashTrapEffect, TrapEffect } from './effect.js'
 
 /**
  * カードの色。レベルに含まれるエネルギー・シンボルの色と同じであり、カードの背景や枠の色
@@ -187,7 +187,7 @@ export interface StrategyCard extends WrittenCard {
  * 攻撃のトリガーアイコンの絞り込み。アイコンの一部として、軸と値の組で持つ（ADR-0039）。
  *
  * 軸は数え上げられるので、述語にはしない。軸が増える時は、値を 1 つ足す。色と属性は、
- * 判定する時に継続効果を適用した後の姿で確かめる（ADR-0036、判定は単位 5）。
+ * 判定する時に継続効果を適用した後の姿で確かめる（ADR-0036、`trap.ts` の `checkAttack`）。
  */
 export type TriggerFilter =
   | { readonly axis: 'メーカーシンボル'; readonly value: MakerSymbol }
@@ -231,8 +231,7 @@ export interface SmashIcon {
  * トラップの発動条件を表すトリガーアイコン。種類で分けた値で、1 枚のトラップが持つのは
  * どれか 1 つである（ADR-0039）。
  *
- * 発動条件を判定するのは、まだ侵入だけである（`trap.ts` の `checkIntrusion`）。攻撃と
- * スマッシュは値として表せるだけで、判定は単位 5 で足す。
+ * 発動条件は種類ごとに判定する（`trap.ts` の `checkIntrusion`・`checkAttack`・`checkSmash`）。
  */
 export type TriggerIcon = IntrusionIcon | AttackIcon | SmashIcon
 
@@ -252,29 +251,29 @@ interface TrapCardOf<Icon extends TriggerIcon, Effect> extends WrittenCard {
    *
    * 《 》でくくられた発動条件のテキストはまだ持っていない。発動条件はトリガーアイコンで表す。
    *
-   * 効果が受け取るきっかけの型は、アイコンの種類から決まる（ADR-0039）。いまきっかけを
-   * 受け取るのは侵入のトラップだけで、発動条件を満たしたできごとの写しを第 2 引数で受け取る
-   * （`effect.ts` の `TrapEffect`）。「侵入してきた敵」「侵入されたスクエア」はそこからしか
-   * 取れない。
+   * 効果が受け取るきっかけの型は、アイコンの種類から決まる（ADR-0039）。発動条件を満たした
+   * できごとの写しを、第 2 引数で受け取る（`effect.ts` の `TrapEffect`・`AttackTrapEffect`・
+   * `SmashTrapEffect`）。「侵入してきた敵」「攻撃したユニット」「スマッシュしたユニット」は
+   * そこからしか取れない。
    */
   readonly effect: Effect
 }
 
-/** 侵入のトラップ。発動条件を判定するのは、いまはこの種類だけである。 */
+/** 侵入のトラップ。効果は、侵入してきたユニットをきっかけから受け取る。 */
 export type IntrusionTrapCard = TrapCardOf<IntrusionIcon, TrapEffect>
 
-/** 攻撃のトラップ。発動条件の判定ときっかけの手渡しは、まだ無い（単位 5）。 */
-export type AttackTrapCard = TrapCardOf<AttackIcon, TrapEffectWithoutOccasion>
+/** 攻撃のトラップ。効果は、攻撃したユニットと攻撃されたユニットをきっかけから受け取る。 */
+export type AttackTrapCard = TrapCardOf<AttackIcon, AttackTrapEffect>
 
-/** スマッシュのトラップ。発動条件の判定ときっかけの手渡しは、まだ無い（単位 5）。 */
-export type SmashTrapCard = TrapCardOf<SmashIcon, TrapEffectWithoutOccasion>
+/** スマッシュのトラップ。効果は、スマッシュしたユニットをきっかけから受け取る。 */
+export type SmashTrapCard = TrapCardOf<SmashIcon, SmashTrapEffect>
 
 /** トラップゾーンに裏向きで置き、後から発動するカード（総合ルール 第2部 第20章 3）。 */
 export type TrapCard = IntrusionTrapCard | AttackTrapCard | SmashTrapCard
 
 /**
  * 侵入のトラップか。入れ子の `triggerIcon.kind` を見ても、カードそのものの型は絞れない
- * ので、効果にきっかけを渡す側は、これで絞ってから呼ぶ。
+ * ので、効果の型（`TrapEffect`）まで絞りたい側は、これで絞ってから読む。
  */
 export function isIntrusionTrap(card: TrapCard): card is IntrusionTrapCard {
   return card.triggerIcon.kind === '侵入'
@@ -375,9 +374,9 @@ export function defineStrategy(spec: StrategySpec): StrategyCard {
  * 書き分けた形を重ねている。効果の引数の型は、アイコンの種類から決まる。
  */
 export function defineTrap(spec: TrapSpecOf<IntrusionIcon, TrapEffect>): IntrusionTrapCard
-export function defineTrap(spec: TrapSpecOf<AttackIcon, TrapEffectWithoutOccasion>): AttackTrapCard
-export function defineTrap(spec: TrapSpecOf<SmashIcon, TrapEffectWithoutOccasion>): SmashTrapCard
-export function defineTrap(spec: TrapSpecOf<TriggerIcon, TrapEffect | TrapEffectWithoutOccasion>): TrapCard {
+export function defineTrap(spec: TrapSpecOf<AttackIcon, AttackTrapEffect>): AttackTrapCard
+export function defineTrap(spec: TrapSpecOf<SmashIcon, SmashTrapEffect>): SmashTrapCard
+export function defineTrap(spec: TrapSpecOf<TriggerIcon, TrapEffect | AttackTrapEffect | SmashTrapEffect>): TrapCard {
   return { ...written('トラップ', spec), triggerIcon: spec.triggerIcon, effect: spec.effect ?? noEffect } as TrapCard
 }
 

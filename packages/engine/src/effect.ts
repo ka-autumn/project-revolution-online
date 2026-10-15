@@ -1,4 +1,12 @@
-import type { CreatedTrigger, CreatedTriggeredAbility, DreamAbility, IntrusionOccasion, PassiveKeyword } from './ability.js'
+import type {
+  AttackOccasion,
+  CreatedTrigger,
+  CreatedTriggeredAbility,
+  DreamAbility,
+  IntrusionOccasion,
+  PassiveKeyword,
+  SmashOccasion,
+} from './ability.js'
 import type { Square } from './board.js'
 import type { Attribute, Card, UnitCard } from './card.js'
 import type { CardId, LibraryPosition } from './duel.js'
@@ -272,15 +280,19 @@ export type Effect = (duel: DuelView) => EffectStep<void>
 export type TrapEffect = (duel: DuelView, occasion: IntrusionOccasion) => EffectStep<void>
 
 /**
- * 攻撃・スマッシュのトラップの効果。きっかけをまだ受け取らない（ADR-0039）。
+ * 攻撃のトラップの効果。攻撃したユニットと攻撃されたユニットを、きっかけから受け取る
+ * （`ability.ts` の `AttackOccasion`、ADR-0039）。
  *
- * きっかけの型は、トリガーアイコンの種類から決まる。侵入のきっかけ（`IntrusionOccasion`）を
- * 受け取るのは侵入のトラップだけで、攻撃のトラップが侵入のきっかけを受け取る形にはしない。
- * 攻撃・スマッシュのきっかけの型は、発動条件の判定と一緒に単位 5 で入れる。それまで、この
- * 種類の効果からは、きっかけから取れる値（攻撃したユニット・スマッシュしたユニットなど）
- * を取り出せない。
+ * きっかけの型は、トリガーアイコンの種類から決まる。攻撃のトラップが侵入のきっかけを
+ * 受け取る形にはしない。
  */
-export type TrapEffectWithoutOccasion = (duel: DuelView) => EffectStep<void>
+export type AttackTrapEffect = (duel: DuelView, occasion: AttackOccasion) => EffectStep<void>
+
+/**
+ * スマッシュのトラップの効果。スマッシュしたユニットを、きっかけから受け取る
+ * （`ability.ts` の `SmashOccasion`、ADR-0039）。
+ */
+export type SmashTrapEffect = (duel: DuelView, occasion: SmashOccasion) => EffectStep<void>
 
 /**
  * 作成された誘発型能力の効果。第 2 引数で、影響を与える対象のユニットを受け取る

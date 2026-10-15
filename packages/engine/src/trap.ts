@@ -1,5 +1,8 @@
-import type { IntrusionOccasion } from './ability.js'
+import type { AttackOccasion, IntrusionOccasion, SmashOccasion, TrapOccasion } from './ability.js'
 import { indexOfSquare, squareFromView } from './board.js'
+import { hasMakerSymbol } from './card.js'
+import type { TriggerFilter, UnitCard } from './card.js'
+import { continuousData } from './continuous.js'
 import { cardsIn } from './duel.js'
 import type { CardId, DuelState, TrapConditionMet } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
@@ -20,7 +23,7 @@ import { deferringRights } from './priority.js'
  * トラップ以外のカードがトラップゾーンにあっても対象にならない。
  *
  * 判定するのは、侵入のトリガーアイコンを持つトラップだけである。攻撃・スマッシュのトラップ
- * の発動条件は、ここでは満たされない（足すのは単位 5。ADR-0039）。
+ * の発動条件は、ここでは満たされない（`checkAttack`・`checkSmash`。ADR-0039）。
  *
  * トリガーアイコンに印刷されたスクエアは、そのトラップの支配者（＝相手のトラップゾーンの
  * 持ち主）から見た向きで持っている（`IntrusionIcon` 参照）ため、`squareFromView`
@@ -51,17 +54,112 @@ export function checkIntrusion(state: DuelState, invader: UnitOnSquare): DuelSta
     )
     .map((trap) => trap.id)
 
-  if (invaded.length === 0) return state
-
-  // 満たされるたびに 1 件ずつ足す。すでに満たされているトラップが、パスを挟まずに満たし直される
-  // ことがある（1 つの効果が続けてユニットを置く場合、バトルやスマッシュ判定の途中に効果で
-  // 置かれる場合、権利が止まっている間に置かれる場合）。きっかけごとに持つので、どれかを
-  // 捨てることはしない（ADR-0039）。
   const occasion: IntrusionOccasion = { kind: '侵入', invader }
+  return withConditionsMet(state, invaded, occasion)
+}
+
+/**
+ * トラップの支配者のユニットがバトルの攻撃されたユニットになったことで、攻撃のトラップの
+ * 発動条件が満たされる（総合ルール 第3部 第11章 4、ADR-0039）。
+ *
+ * 呼ぶのは、バトルの第１バトルステップの始めの処理（`battle.ts` の `beginStep`）である。
+ * ユニットの「攻撃された時」を誘発させる所（同 第12章 1、`bank.ts` の `triggerAttack`）と
+ * 同じ時点で確かめる。バトルが発生しなければ呼ばれないので、相手のユニットが置かれただけでは
+ * 満たされない（同 第11章 1-1）。バトルは条件より前に発生しているので、そのバトルは権利を
+ * 止めない（`priority.ts` の `deferringRights`）。
+ *
+ * 見るのは、攻撃されたユニットの支配者のトラップゾーンだけである。絞り込みがあれば、
+ * 攻撃されたユニットがその軸でその値を持つ時だけ満たされる。色と属性は継続効果を適用した後の
+ * 姿で確かめる（ADR-0036）。メーカーシンボルは、継続効果で変わらないので、カードのデータを
+ * 見る（ADR-0035）。適用後の姿は判定にだけ使い、きっかけには持たせない（`AttackOccasion`）。
+ */
+export function checkAttack(state: DuelState, attacker: UnitOnSquare, attacked: UnitOnSquare): DuelState {
+  const traps = cardsIn(state, attacked.controller, 'トラップゾーン')
+  if (traps.length === 0) return state
+
+  const applied = continuousData(state)(attacked.id, attacked.card)
+  const attackedTraps = traps
+    .filter(
+      (trap) =>
+        trap.card.type === 'トラップ' &&
+        trap.card.triggerIcon.kind === '攻撃' &&
+        satisfiesFilter(trap.card.triggerIcon.filter, applied),
+    )
+    .map((trap) => trap.id)
+
+  const occasion: AttackOccasion = { kind: '攻撃', attacker, attacked }
+  return withConditionsMet(state, attackedTraps, occasion)
+}
+
+/**
+ * 絞り込みを満たすか。持たなければ絞り込まないので満たす（ADR-0039）。
+ *
+ * 渡すのは、継続効果を適用した後のデータである。軸ごとに見る場所が違うので、軸の網羅は
+ * `switch` に任せる。軸を足すと、ここが型検査で落ちる。
+ */
+function satisfiesFilter(filter: TriggerFilter | undefined, unit: UnitCard): boolean {
+  if (filter === undefined) return true
+  switch (filter.axis) {
+    case 'メーカーシンボル':
+      return hasMakerSymbol(unit, filter.value)
+    case '色':
+      return unit.colors.includes(filter.value)
+    case '属性':
+      return unit.attributes.includes(filter.value)
+  }
+}
+
+/**
+ * 相手がスマッシュの行動を行ったことで、スマッシュのトラップの発動条件が満たされる
+ * （総合ルール 第3部 第9章 1、ADR-0039）。
+ *
+ * 呼ぶのは、スマッシュの行動（`action.ts` の `smash`）だけである。効果によるダメージは
+ * スマッシュの行動ではないので、ここを通らず、満たされない。与えたダメージの量は問わない。
+ * 同 第9章 1 は、行動そのものを「スマッシュする」と名づけている。
+ *
+ * 見るのは、スマッシュしたユニットの支配者の相手のトラップゾーンだけである。行動の後に
+ * スマッシュ判定が発生すれば、判定は条件より後に始まるので、判定が終わるまで権利が止まる。
+ * 発生しなければ、行動の直後に権利が発生する（`priority.ts` の `deferringRights`）。
+ */
+export function checkSmash(state: DuelState, smasher: UnitOnSquare): DuelState {
+  const smashed = cardsIn(state, opponentOf(smasher.controller), 'トラップゾーン')
+    .filter((trap) => trap.card.type === 'トラップ' && trap.card.triggerIcon.kind === 'スマッシュ')
+    .map((trap) => trap.id)
+
+  const occasion: SmashOccasion = { kind: 'スマッシュ', smasher }
+  return withConditionsMet(state, smashed, occasion)
+}
+
+/**
+ * 発動条件が満たされたトラップに、満たされたできごとを 1 件ずつ足す。対象が無ければ盤面は
+ * そのまま（ログにも何も足さない）。
+ *
+ * 満たされるたびに 1 件ずつ足す。すでに満たされているトラップが、パスを挟まずに満たし直される
+ * ことがある（1 つの効果が続けてユニットを置く場合、バトルやスマッシュ判定の途中に効果で
+ * 置かれる場合、権利が止まっている間に置かれる場合、バトル中のバトル）。きっかけごとに持つので、
+ * どれかを捨てることはしない（ADR-0039）。
+ */
+function withConditionsMet(state: DuelState, traps: readonly CardId[], occasion: TrapOccasion): DuelState {
+  if (traps.length === 0) return state
   const metAt = state.log.length
   return {
     ...state,
-    trapConditionsMet: [...state.trapConditionsMet, ...invaded.map((trap) => ({ trap, occasion, metAt }))],
+    trapConditionsMet: [...state.trapConditionsMet, ...traps.map((trap) => ({ trap, occasion, metAt }))],
+  }
+}
+
+/**
+ * きっかけが写している、すべてのユニット。発動した効果に手渡す（`resolve.ts` の
+ * `EffectContext.handed`）ので、効果は engine が見せたものとして対象にできる。
+ */
+export function unitsOfOccasion(occasion: TrapOccasion): readonly UnitOnSquare[] {
+  switch (occasion.kind) {
+    case '侵入':
+      return [occasion.invader]
+    case '攻撃':
+      return [occasion.attacker, occasion.attacked]
+    case 'スマッシュ':
+      return [occasion.smasher]
   }
 }
 

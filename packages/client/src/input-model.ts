@@ -276,7 +276,8 @@ function candidateLabel(
 }
 
 /**
- * きっかけの候補の出し方。トラップは「侵入」、「勇気」は「置かれた」と呼び分ける（ADR-0039）。
+ * きっかけの候補の出し方。トラップは「侵入」「攻撃」「スマッシュ」、「勇気」は「置かれた」と
+ * 呼び分ける（ADR-0039）。
  *
  * この画面が知らない種類のきっかけ（サーバが先に新しくなった時）は、番号だけを出す。
  */
@@ -289,6 +290,11 @@ function occasionLabel(
   switch (occasion.kind) {
     case '侵入':
       return `${position}: 侵入 ${nameOf(names, occasion.invader.card)}（${squareLabel(viewer, occasion.invader.square)}）`
+    // バトルは 1 つのスクエアで起きるので、スクエアは攻撃されたユニットのものを 1 つだけ書く。
+    case '攻撃':
+      return `${position}: 攻撃 ${nameOf(names, occasion.attacker.card)} → ${nameOf(names, occasion.attacked.card)}（${squareLabel(viewer, occasion.attacked.square)}）`
+    case 'スマッシュ':
+      return `${position}: スマッシュ ${nameOf(names, occasion.smasher.card)}（${squareLabel(viewer, occasion.smasher.square)}）`
     case '置かれた':
       return `${position}: 置かれた ${nameOf(names, occasion.unit.card)}（${squareLabel(viewer, occasion.unit.square)}）`
     default:

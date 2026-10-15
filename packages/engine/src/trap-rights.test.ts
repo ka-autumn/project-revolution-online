@@ -22,8 +22,9 @@ import type { ActionOutcome, Chooser, DuelState, Player, Square, UnitCard } from
  * バトルの途中に効果でユニットが置かれて侵入が起きた時の、トラップの権利。
  *
  * 総合ルール 第2部 第20章 3-8 ただし書き、第3部 第11章 2-1・4-1・5、ADR-0039（ADR-0006）。
- * 攻撃のトラップの発動条件はまだ無い（単位 5）ので、きっかけは侵入で置き換えている。権利の
- * 発生・止まる・パスで失うの判定は、きっかけの種類によらず同じ判定を通る。
+ * この場面は、効果でユニットが置かれた時の侵入で組んでいる。権利の発生・止まる・パスで失うの
+ * 判定は、きっかけの種類によらず同じ判定を通る。攻撃のトラップの形は `trap-attack-smash.test.ts`
+ * で確かめている。
  */
 
 const chooseFirst: Chooser = (candidates) => candidates[0]

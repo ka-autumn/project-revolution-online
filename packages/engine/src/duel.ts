@@ -1,4 +1,4 @@
-import type { CreatedTriggeredAbility, IntrusionOccasion, TriggeredAbility } from './ability.js'
+import type { CreatedTriggeredAbility, IntrusionOccasion, TrapOccasion, TriggeredAbility } from './ability.js'
 import type { Battle } from './battle.js'
 import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
@@ -423,7 +423,7 @@ export interface TriggeredInstance {
 export interface TrapConditionMet {
   readonly trap: CardId
   /** 発動条件を満たしたできごと。発動した効果に渡される（`play.ts` の `activateTrap`）。 */
-  readonly occasion: IntrusionOccasion
+  readonly occasion: TrapOccasion
   /**
    * 満たされた時の `DuelState.log` の長さ。
    *
