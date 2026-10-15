@@ -165,7 +165,8 @@ export interface DuelState {
   /**
    * トラップゾーンにあり、発動条件が満たされているカード（総合ルール 第2部 第20章 3-8）。
    *
-   * 発動条件が満たされたこと（`trap.ts` の `checkIntrusion`）を持続する状態として持たせ、
+   * 発動条件が満たされたこと（`trap.ts` の `checkIntrusion`・`checkAttack`・`checkSmash`）を
+   * 持続する状態として持たせ、
    * 優先権をパスした時（`loseTrapRightOnPass`）や、そのカードがトラップゾーンを離れた時
    * （`detach`）に取り除く。
    *
@@ -415,7 +416,7 @@ export interface TriggeredInstance {
 
 /**
  * 発動条件が満たされているトラップ 1 枚と、そのきっかけ
- * （総合ルール 第2部 第20章 3-8・3-8-a）。
+ * （総合ルール 第2部 第20章 3-8・3-8-a・3-8-b）。
  *
  * `TriggeredInstance` が誘発した時点の事情を写して持つのと同じ形である。どちらも、
  * 解決される時には盤面から引き直せないことを持つ。

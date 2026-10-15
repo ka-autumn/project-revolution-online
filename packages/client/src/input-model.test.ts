@@ -563,14 +563,14 @@ describe('選ぶ候補', () => {
               attacked: { card: 'スクエアの1枚', square: { row: 0, column: 1 } },
             },
           },
-          { kind: 'きっかけ', occasion: { kind: 'スマッシュ', smasher: { card: 'てふだの1枚', square: { row: 2, column: 1 } } } },
+          { kind: 'きっかけ', occasion: { kind: 'スマッシュ', smasher: { card: 'てふだの1枚', square: { row: 1, column: 1 } } } },
         ]),
         purpose: 'トラップのきっかけ' as const,
       }
 
       expect(choiceView(board(), asked).candidates.map((candidate) => candidate.label)).toEqual([
         '1 番目: 攻撃 テスト・手札の戦士 → テスト・盤上の戦士（味方エリアの中央ライン）',
-        '2 番目: スマッシュ テスト・手札の戦士（敵エリアの中央ライン）',
+        '2 番目: スマッシュ テスト・手札の戦士（中央エリアの中央ライン）',
       ])
       expect(choicePicking(board(), asked).onBoard).toEqual([])
     })

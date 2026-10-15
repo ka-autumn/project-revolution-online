@@ -164,6 +164,11 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   const met = rights.length === 1 ? rights[0] : (chooser(rights, player, 'トラップのきっかけ', state, false, card) as TrapConditionMet)
   if (met === undefined || !rights.includes(met)) throw new Error('候補にないものが選ばれた')
   const { occasion } = met
+  // きっかけの種類は、そのトラップのトリガーアイコンの種類と必ず同じである。満たされた発動条件を
+  // 足すのは、アイコンの種類ごとの判定だけで（`trap.ts`）、別の種類のトラップには足さないため。
+  // 崩れると、効果が別の種類のきっかけを受け取り、何も起こらずに解決されてしまう（型の上では
+  // 気づけない）ので、ここで止める。
+  if (occasion.kind !== trap.triggerIcon.kind) throw new Error('トラップの種類と、満たされたきっかけの種類が食い違っている')
 
   const paid = payUseCost(state, player, trap, chooser)
   if (typeof paid === 'string') return cannot(paid)
@@ -172,9 +177,8 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   // `SmashTrapEffect`）。ここで束ねるのは、きっかけを知っているのが発動する経路だけだからで
   // ある。解決する側（`resolveEffect`）はどの経路から来た効果かを知らないままでよい。
   //
-  // きっかけの種類は、そのトラップのトリガーアイコンの種類と必ず同じである。満たされた発動
-  // 条件を足すのは、アイコンの種類ごとの判定だけで（`trap.ts`）、別の種類のトラップには
-  // 足さないため。型の上では、効果の第 2 引数が種類ごとに違うので、ここで広げて呼ぶ。
+  // 型の上では、効果の第 2 引数が種類ごとに違うので、ここで広げて呼ぶ。種類が同じであることは、
+  // 上で確かめている。
   const effect = trap.effect as (duel: DuelView, occasion: TrapOccasion) => EffectStep<void>
   const resolved = resolveInResolveZone(paid, card, (duel) => effect(duel, occasion), player, '発動', chooser, [
     ...unitsOfOccasion(occasion),
@@ -264,8 +268,8 @@ function placePlayedUnit(
  * 解決している途中でカードを引き直せないためである。
  *
  * `handed` は、`DuelView` を通さずに効果へ直接渡したユニット（`resolve.ts` の
- * `EffectContext.handed`）。発動したトラップが、きっかけに載っている侵入してきた敵を
- * 渡す場合に使う。
+ * `EffectContext.handed`）。発動したトラップが、きっかけに載っているユニット（侵入してきた
+ * 敵、攻撃したユニットと攻撃されたユニット、スマッシュしたユニット）を渡す場合に使う。
  *
  * `via` はプレイと発動のどちらでここへ来たか（#104）。呼ぶ側しか知らないので、ここでは
  * 受け取るだけで判断しない。

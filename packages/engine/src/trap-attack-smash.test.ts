@@ -208,10 +208,12 @@ describe('攻撃のトラップ', () => {
     expect(state.trapConditionsMet).toEqual([])
   })
 
-  // 総合ルール 第3部 第11章 2-1・4-1、ADR-0039。続けて 2 つのバトルが始まる（先のバトルが始まった
-  // 直後、優先権を得る前に後のバトルが始まる）ので、後攻はどちらにも、パスする前に権利を得る。
+  // 総合ルール 第3部 第11章 1-3・2-1・5、ADR-0039。2 つのスクエアで同時にバトルが発生する盤面である
+  // （1-3）。条文は同時にステップが進行すると定めるが、エンジンは 1 つずつ始めて先のバトルを待機中に
+  // する（2-1 のバトル中のバトルと同じ扱い）。ADR-0039 は、これを読みとして受け入れている。先のバトルが
+  // 始まった直後、優先権を得る前に後のバトルが始まるので、後攻はどちらの権利も、パスする前に得る。
   // 後のバトルは先のきっかけの後に始まるので、後のバトルの間は先のきっかけの権利が止まる。
-  describe('バトル中のバトル', () => {
+  describe('同時に発生した 2 つのバトル', () => {
     /** 2 つのスクエアで、先攻のユニットが後攻のユニットと重なっている盤面。 */
     function twoBattles(): DuelState {
       return attackedAt(destroyAttackerTrap, vanilla, (board) =>
@@ -243,8 +245,20 @@ describe('攻撃のトラップ', () => {
         if (guard > 40) throw new Error('後のバトルが終わらなかった')
       }
 
+      // 後のバトルが終わった。先のバトルは第１バトルステップのまま戻り、その権利が発生している。
       expect(current.battles).toHaveLength(1)
+      expect(current.battles[0]?.step).toBe('第１バトルステップ')
       expect(attackedIds(current)).toEqual([firstAttacked])
+    })
+
+    it('先のバトルの第１バトルステップで後攻が優先権を得た時に、発動できる', () => {
+      let current = twoBattles()
+      while (current.battles.length > 1) current = pass(current)
+      // 後攻のトラップの権利には、先攻のパスは影響しない。後攻に優先権が回るまで進める。
+      while (current.turn.priority !== '後攻') current = pass(current)
+
+      expect(current.battles[0]?.step).toBe('第１バトルステップ')
+      expect(mayActivate(current)).toBe(true)
     })
   })
 })
@@ -303,6 +317,14 @@ describe('きっかけのユニットを対象にする効果', () => {
     const state = withCondition(destroyBothTrap, attack, [])
 
     expect(stateOf(activateTrap(state, 'トラップ', chooseFirst)).trapConditionsMet).toEqual([])
+  })
+
+  // 満たされた発動条件は、アイコンの種類ごとの判定だけが足す。種類が食い違う状態は、起こらないはず
+  // だが、起これば効果が別の種類のきっかけを受け取るので、発動の入口で止める。
+  it('トラップの種類と、満たされたきっかけの種類が食い違っていれば、例外で止める', () => {
+    const state = withCondition(destroyBothTrap, { kind: 'スマッシュ', smasher: smasherOnSquare }, [])
+
+    expect(() => activateTrap(state, 'トラップ', chooseFirst)).toThrow('食い違っている')
   })
 
   it('スマッシュしたユニットがスクエアを離れていれば、効果は対象を失い、何も起こらずに解決される', () => {
