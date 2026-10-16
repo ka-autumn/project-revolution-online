@@ -263,6 +263,8 @@ function candidateLabel(
       return `${position}: ${areaLabel(viewer, candidate.row)}`
     case '見えていない':
       return `${position}（裏向き）`
+    case '確認':
+      return `${position}: 確認した`
     // できごとの写しなので、いま盤面にいるかどうかは問わない。ユニットの名前とスクエアで指す。
     case 'きっかけ':
       return occasionLabel(candidate.occasion, position, viewer, names)
@@ -338,6 +340,8 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
       return source === undefined
         ? 'トラップを発動するきっかけを選んでください'
         : `${source} を発動するきっかけを選んでください`
+    case '見たカードの確認':
+      return '相手の手札を見ています'
     case '勇気のきっかけ':
       return source === undefined
         ? '「勇気」でダメージを与えるユニットを選んでください'
@@ -1020,6 +1024,8 @@ export function offBoardCandidates(
  *
  * 候補が全部盤面の外にあるとしても、能力・スクエア・エリアが混じる場面は番号のボタンのままにする。
  * 一覧はカードの面を並べるためのものなので、カードではない候補を描く先が無い。
+ *
+ * 見せる一覧つきの選択（`WireChoice.shown`、ADR-0041）は、ここを通らず、いつも一覧で出す。
  */
 export function showsChoicePicker(
   choice: WireChoice,
@@ -1030,4 +1036,12 @@ export function showsChoicePicker(
     offBoard.length === choice.candidates.length &&
     offBoard.every(({ candidate }) => candidate.kind === '見えている' || candidate.kind === '見えていない')
   )
+}
+
+/**
+ * 見せる一覧つきの選択（ADR-0041）の見出し。相手の手札を見る確認は、見ている一覧の名前と枚数を
+ * 言う。それ以外は、候補から選ぶ一覧と同じ見出しにする。
+ */
+export function shownTitleOf(choice: WireChoice): string {
+  return choice.purpose === '見たカードの確認' ? `相手の手札（${choice.shown?.length ?? 0}）` : '候補から選ぶ'
 }

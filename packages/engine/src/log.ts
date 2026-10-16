@@ -439,6 +439,18 @@ export type LoggedInstruction =
       readonly count: number
       readonly cards: readonly CardId[]
     }
+  /**
+   * 支配者が相手の手札を見た（ADR-0041）。見たのは能力の支配者で、見られたのはその相手である。
+   *
+   * 見たカードの名指しは、2 人のプレイヤーに同じ内容で出す（`perspective.ts` の `seenByOf`）。
+   * 見られた側にとっては自分の手札なので、新しく知ることは無い。枚数は手札の枚数で、公開情報
+   * である。0 枚でも積む。
+   */
+  | {
+      readonly kind: '相手の手札を見る'
+      readonly count: number
+      readonly cards: readonly CardId[]
+    }
 
 /**
  * そのできごとが名指しするカードのうち、そのプレイヤーから表側が見えていたもの（#129）。
@@ -637,6 +649,12 @@ export function loggedInstruction(instruction: Instruction, subject: unknown, co
       // まだ何も落ちていないので、引けた枚数はここで数えられる。
       const cards = subjectCardIds(subject)
       return { kind: 'カードを引く', player: instruction.player, count: cards.length, cards }
+    }
+    case '相手の手札を見る': {
+      // 見たカードは効果に返らないので、命令には書かれていない。実行してみて分かるものを
+      // `subject` で受ける（空の並びも、0 枚見たこととして積む）。
+      const cards = subjectCardIds(subject)
+      return { kind: '相手の手札を見る', count: cards.length, cards }
     }
   }
 }

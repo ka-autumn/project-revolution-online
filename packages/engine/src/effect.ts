@@ -262,6 +262,12 @@ export type Instruction =
     }
   | { readonly kind: '山札の1番上をゾーンへ置く'; readonly to: PlayerZone; readonly orientation: Orientation }
   | { readonly kind: 'カードを引く'; readonly player: Player; readonly count: number }
+  /**
+   * 支配者が、相手の手札を見る（ADR-0041）。見たカードは効果に返さない。
+   *
+   * 項目を持たないのは、書ける形をテキストにある形に限るためである。
+   */
+  | { readonly kind: '相手の手札を見る' }
   | { readonly kind: 'プランを裏返す'; readonly player: Player }
   | {
       readonly kind: 'スクエアへ置く'
@@ -678,6 +684,18 @@ export function* placeInZone(
  */
 export function* drawCards(player: Player, count: number): EffectStep<void> {
   yield { kind: 'カードを引く', player, count }
+}
+
+/**
+ * 支配者が、相手の手札を見る。
+ *
+ * 見るのはプレイヤーであって、効果ではない。見たカードは効果に返らないので、相手の手札の
+ * 中身で分岐することはできない。見た内容は、確認だけの選択として見たプレイヤーに届き
+ * （`resolve.ts` の `見たカードの確認`）、確認が返ると効果は先へ進む。盤面の上では、相手の手札は
+ * 枚数だけのままである（ADR-0041）。
+ */
+export function* lookAtOpponentHand(): EffectStep<void> {
+  yield { kind: '相手の手札を見る' }
 }
 
 /**

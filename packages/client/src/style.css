@@ -3390,6 +3390,12 @@ body {
   box-shadow: 0 0 12px 3px rgb(255 170 0 / 0.75);
 }
 
+/* 見せる一覧の中で、選べるカードと見分けるための、見えるだけのカード（ADR-0041）。 */
+.card--見るだけ {
+  opacity: 0.45;
+  filter: grayscale(0.6);
+}
+
 .card--選択中 .card__face {
   outline: 3px solid #e05a00;
   outline-offset: 2px;
