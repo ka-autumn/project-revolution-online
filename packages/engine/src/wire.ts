@@ -260,7 +260,7 @@ export function faceOf(card: Card): WireCardFace {
   }
 }
 
-function instanceToWire(instance: CardInstance): WireCardInstance {
+export function instanceToWire(instance: CardInstance): WireCardInstance {
   return { ...instance, card: faceOf(instance.card) }
 }
 

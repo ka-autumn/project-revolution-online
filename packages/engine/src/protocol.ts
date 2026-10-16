@@ -2,17 +2,19 @@ import type { Square, SquareIndex } from './board.js'
 import type { CardType, Color } from './card.js'
 import type { DeckViolation, DuelFormat } from './deck.js'
 import { cardsIn } from './duel.js'
-import type { CardId, CourageConditionMet, DuelState, TrapConditionMet } from './duel.js'
+import type { CardId, CardInstance, CourageConditionMet, DuelState, TrapConditionMet } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
 import { areaRowOf, cardIdOf, squareOf } from './log.js'
-import { visibleIdsOf } from './perspective.js'
+import { isLookAtHand, visibleIdsOf } from './perspective.js'
 import type { PassOutcome } from './progress.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
+import { CONFIRMATION } from './resolve.js'
 import type { ChoicePurpose, Chooser } from './resolve.js'
-import type { WireCardFace, WirePerspective } from './wire.js'
+import { instanceToWire } from './wire.js'
+import type { WireCardFace, WireCardInstance, WirePerspective } from './wire.js'
 import { PLAYER_ZONES } from './zone.js'
 import type { PlayerZone } from './zone.js'
 
@@ -423,6 +425,11 @@ export interface WireCardPosition {
 export type WireCandidate =
   | { readonly kind: '見えている'; readonly card: CardId }
   /**
+   * 「確認した」という、ただ 1 つの候補（ADR-0041）。見せる一覧（`WireChoice.shown`）を見た
+   * うえで、答えるだけの選択である。何も指していないので、盤面は光らない。
+   */
+  | { readonly kind: '確認' }
+  /**
    * カードそのものではなく、解決を待っている能力。
    *
    * `source` は発生源のカード。見えていないか、発生源を持たない能力（作成された誘発型能力、
@@ -494,6 +501,18 @@ interface WireCandidateUnit {
   readonly square: Square
 }
 
+/**
+ * 見せる一覧の 1 枚（ADR-0041）。候補とは別に、選ぶプレイヤーへ見せるカードである。
+ *
+ * 一覧のうち選べるものだけが候補になっていて、その番号を `candidate` に持つ。見えるだけの
+ * カードは持たない。
+ */
+export interface WireShownCard {
+  readonly instance: WireCardInstance
+  /** このカードを指す候補の番号。選べないカードには無い。 */
+  readonly candidate?: number
+}
+
 /** 選んでほしいこと 1 つ。**選ぶプレイヤーにだけ送る**（ADR-0008）。 */
 export interface WireChoice {
   readonly player: Player
@@ -518,6 +537,11 @@ export interface WireChoice {
   /** 選ばないことを選べるか。 */
   readonly mayDecline: boolean
   readonly candidates: readonly WireCandidate[]
+  /**
+   * 候補とは別に、選ぶプレイヤーへ見せるカードの一覧（ADR-0041）。見せるものが無い選択には
+   * 載らない。古い画面は知らない項目として読まずに済ませ、候補だけで答えられる。
+   */
+  readonly shown?: readonly WireShownCard[]
   /**
    * この行動でここまでに答えた数。
    *
@@ -1007,6 +1031,9 @@ function describeCandidate(
   board: DuelState,
   chooser: Player,
 ): WireCandidate {
+  // 確認だけの選択。候補は何も指さない。
+  if (purpose === '見たカードの確認') return { kind: '確認' }
+
   // 能力が並ぶ場面。カードではないので、発生源のカードで指す。
   if (purpose === '解決する能力' || purpose === 'プランの置き換え') {
     const source = sourceOf(candidate)
@@ -1061,6 +1088,11 @@ function describeCandidate(
  * ものが 1 枚でもあれば戻せない。** 見てから取り消せると、山札の 1 番上を覗く手立てになる。
  * 見えるようになったかを決めるのは射影ひとつ（`perspective.ts` の `visibleIdsOf`）である。
  *
+ * 見たことのある選択も戻せない（ADR-0041）。盤面の見え方は変わらないので、見えるように
+ * なったかでは決められない。確認の選択そのものと、同じ行動の中でそれより後に出る選択は、
+ * 行動を始めてから積まれたログに相手の手札を見たことがあるかで決める。0 枚なら何も見えて
+ * いないので、戻せる。
+ *
  * 発生源（`source`）も同じ盤面から見る。**見えていなければ落とす**（#122）。見えていない
  * カードの識別子を渡さないのは候補と同じ扱いである。
  */
@@ -1073,18 +1105,45 @@ function describeChoice(
   mayDecline: boolean,
   answered: number,
   source: CardId | undefined,
+  shown: readonly CardInstance[] | undefined,
 ): WireChoice {
   const visible = visibleIdsOf(board, player)
   const before = visibleIdsOf(started, player)
+  const looked =
+    purpose === '見たカードの確認' ||
+    board.log.slice(started.log.length).some(({ event }) => isLookAtHand(event) && event.instruction.count > 0)
   return {
     player,
     purpose,
     ...(source !== undefined && visible.has(source) ? { source } : {}),
     mayDecline,
     answered,
-    mayGoBack: [...visible].every((card) => before.has(card)),
+    mayGoBack: !looked && [...visible].every((card) => before.has(card)),
     candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, visible, board, player)),
+    ...(shown === undefined ? {} : { shown: describeAllShown(shown, candidates) }),
   }
+}
+
+/**
+ * 見せる一覧を、送れる形にする。
+ *
+ * 画面は、見せる一覧つきの選択を一覧だけで出し、押せるのは一覧のカードのうち候補の番号を持つものと
+ * 「確認した」だけである。一覧に載っていない候補があると、答える口が無くなるので、ここで断る
+ * （ADR-0041）。候補は、「確認した」か、一覧のカードのどれかでなければならない。
+ */
+export function describeAllShown(shown: readonly CardInstance[], candidates: readonly unknown[]): readonly WireShownCard[] {
+  const listed = new Set(shown.map((instance) => instance.id))
+  if (candidates.some((candidate) => candidate !== CONFIRMATION && !listed.has(cardIdOf(candidate) ?? ''))) {
+    throw new Error('見せる一覧に載っていない候補がある')
+  }
+
+  return shown.map((instance) => describeShown(instance, candidates))
+}
+
+/** 見せる一覧の 1 枚を、送れる形にする。候補になっているカードには、その番号を付ける。 */
+function describeShown(instance: CardInstance, candidates: readonly unknown[]): WireShownCard {
+  const candidate = candidates.findIndex((one) => cardIdOf(one) === instance.id)
+  return { instance: instanceToWire(instance), ...(candidate < 0 ? {} : { candidate }) }
 }
 
 /**
@@ -1103,17 +1162,18 @@ export function applyWithAnswers(
   answers: readonly ChoiceAnswer[],
 ): ActionProgress {
   let remaining = answers
-  const chooser: Chooser = (candidates, player, purpose, board, mayDecline = false, source) => {
+  const chooser: Chooser = (candidates, player, purpose, board, mayDecline = false, source, shown) => {
     // 選ぶ余地が無いなら聞かない。候補が 1 つで、選ばないことも選べないなら、答えは 1 通りしか
     // 無く、押させても盤面は同じところへ進む。**答えとして数えない**ので、`ひとつ戻る`
-    // （ADR-0008）はこの手前の選択まで戻る。
+    // （ADR-0008）はこの手前の選択まで戻る。確認の選択だけは別で、答えることが見せる一覧を
+    // 届ける手段になっている（ADR-0041）ので、候補が 1 つでも聞く。
     const [only] = candidates
-    if (candidates.length === 1 && !mayDecline) return only
+    if (candidates.length === 1 && !mayDecline && purpose !== '見たカードの確認') return only
 
     const [answer, ...rest] = remaining
     if (answer === undefined) {
       // 答えが尽きたところで止まるので、ここまでに答えた数は渡された答えの数そのものである。
-      const choice = describeChoice(board, state, candidates, player, purpose, mayDecline, answers.length, source)
+      const choice = describeChoice(board, state, candidates, player, purpose, mayDecline, answers.length, source, shown)
       throw { kind: CHOICE_NEEDED, choice, board } satisfies ChoiceNeeded
     }
 

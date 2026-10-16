@@ -64,6 +64,7 @@ import {
   choiceView,
   abilityListSource,
   isAbilityChoice,
+  shownTitleOf,
   offBoardCandidates,
   pickView,
   showsChoicePicker,
@@ -90,6 +91,8 @@ import {
   choiceElement,
   chooseZoneListElement,
   choosePickerElement,
+  type ChoosePickerHandlers,
+  shownPickerElement,
   choosesFrom,
   confirmElement,
   deckEditorElement,
@@ -139,6 +142,7 @@ import {
   roomListView,
   showsOverlay,
   transitionViews,
+  shownCardViewsIn,
   visibleCardViewsIn,
   zoneOf,
 } from './view-model.js'
@@ -872,7 +876,9 @@ function draw(
       if (found !== undefined) connection.send({ kind: '選ぶ', answer: found })
     }
     const boardData = boardView(board)
-    const cardsById = visibleCardViewsIn(board)
+    // 選択の要求が見せる一覧（相手の手札など）は盤面のどこにも載っていないので、詳細の引き先に足す。
+    const shownCards = stage.choice?.shown === undefined ? [] : shownCardViewsIn(board, stage.choice)
+    const cardsById = new Map([...visibleCardViewsIn(board), ...shownCards.map(({ card }) => [card.id, card] as const)])
     // エリアを選ぶ場面でなくなったら、カーソルとフォーカスの覚えは捨てる。次のエリアの選択に持ち越さない。
     const choosingArea = answering?.squares.some((each) => each.wholeArea === true) === true
     if (!choosingArea) duel.areaPointer.clear()
@@ -972,7 +978,9 @@ function draw(
     const showsPicker =
       connected &&
       stage.choice !== undefined &&
-      (showsChoicePicker(stage.choice, offBoard) || (clickMode && isAbilityChoice(stage.choice)))
+      (stage.choice.shown !== undefined ||
+        showsChoicePicker(stage.choice, offBoard) ||
+        (clickMode && isAbilityChoice(stage.choice)))
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (!connected) {
@@ -1057,6 +1065,46 @@ function draw(
         ? (() => {
             const choice = stage.choice as NonNullable<typeof stage.choice>
             const meta = choiceView(board, choice, answering)
+            const handlers: ChoosePickerHandlers = {
+              onPick: duel.onPickerPick,
+              onConfirm: (index) => {
+                duel.onPickerAnswered()
+                connection.send({ kind: '選ぶ', answer: index })
+              },
+              onDecline: () => {
+                duel.onPickerAnswered()
+                connection.send({ kind: '選ぶ', answer: '選ばない' })
+              },
+              onRewind: () => {
+                duel.onPickerAnswered()
+                connection.send({ kind: 'ひとつ戻る' })
+              },
+              onCancel: () => {
+                duel.onPickerAnswered()
+                connection.send({ kind: '取り消す' })
+              },
+            }
+            // 候補とは別に見せる一覧が付いた選択（ADR-0041）。カードの面を並べ、選べるものと
+            // 見えるだけのものを見分けられるようにする。
+            if (choice.shown !== undefined) {
+              const confirmIndex = choice.candidates.findIndex((candidate) => candidate.kind === '確認')
+              const shownPicked = shownCards.some(({ candidate }) => candidate === duel.pickerPicked)
+                ? duel.pickerPicked
+                : undefined
+              return shownPickerElement(
+                shownTitleOf(choice),
+                meta.asking,
+                shownCards,
+                confirmIndex < 0 ? undefined : confirmIndex,
+                shownPicked,
+                choice.answered,
+                meta.mayDecline,
+                meta.mayRewind,
+                meta.mayCancel,
+                handlers,
+                phoneList,
+              )
+            }
             // 能力を選ぶ一覧は、開いた時点で発生源のカードの詳細を上の段に出す。札を押したら、押した札の発生源に替わる。
             const source = isAbilityChoice(choice) ? abilityListSource(choice) : undefined
             const pickerList: PhoneListOptions | undefined =
@@ -1072,25 +1120,7 @@ function draw(
               meta.mayDecline,
               meta.mayRewind,
               meta.mayCancel,
-              {
-                onPick: duel.onPickerPick,
-                onConfirm: (index) => {
-                  duel.onPickerAnswered()
-                  connection.send({ kind: '選ぶ', answer: index })
-                },
-                onDecline: () => {
-                  duel.onPickerAnswered()
-                  connection.send({ kind: '選ぶ', answer: '選ばない' })
-                },
-                onRewind: () => {
-                  duel.onPickerAnswered()
-                  connection.send({ kind: 'ひとつ戻る' })
-                },
-                onCancel: () => {
-                  duel.onPickerAnswered()
-                  connection.send({ kind: '取り消す' })
-                },
-              },
+              handlers,
               isAbilityChoice(choice) ? abilityLabels(board, choice) : [],
               pickerList,
             )

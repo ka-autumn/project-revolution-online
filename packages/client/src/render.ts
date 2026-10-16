@@ -96,6 +96,7 @@ import type {
   HandRefusal,
   RoomView,
   SideView,
+  ShownCardView,
   SmashJudgmentView,
   SquareView,
   TransitionView,
@@ -5392,6 +5393,114 @@ export function choosePickerElement(
   lock.bind(root)
   // 能力の札は文字だけなので、枠の幅は中身に合わせて狭める（ADR-0031）。
   if (abilityOnly) root.classList.add('picker--ability')
+
+  return root
+}
+
+/**
+ * 選択の要求が見せる一覧（ADR-0041）。カードの一覧（ADR-0027）と同じ枠に、見せるカードを並べる。
+ *
+ * 選べるカードが 1 枚でもあれば、選べるカードを橙の枠で押せるようにし、見えるだけのカードは薄くして
+ * 見分けられるようにする。選べるカードが 1 枚も無い一覧（相手の手札を見る確認）は、見せるための
+ * 一覧なので薄くしない。足もとは、確認の候補があれば「確認した」だけになる。
+ *
+ * 押すと選びかけになり（`onPick`）、もう一度「これに決める」を押して答える（ADR-0008）。
+ * 答えを送ったあとは、返事が届くまで押せなくする（ADR-0031）。
+ */
+export function shownPickerElement(
+  title: string,
+  asking: string,
+  shown: readonly ShownCardView[],
+  /** 「確認した」にあたる候補の番号。確認の選択でなければ `undefined`。 */
+  confirmIndex: number | undefined,
+  picked: number | undefined,
+  answered: number,
+  mayDecline: boolean,
+  mayRewind: boolean,
+  mayCancel: boolean,
+  rawHandlers: ChoosePickerHandlers,
+  phone?: PhoneListOptions,
+): HTMLElement {
+  const lock = senderLock()
+  const { sending, once } = lock
+  const handlers: ChoosePickerHandlers = {
+    onPick: (index) => {
+      if (!lock.isSent()) rawHandlers.onPick(index)
+    },
+    onConfirm: once(rawHandlers.onConfirm),
+    onDecline: once(rawHandlers.onDecline),
+    onRewind: once(rawHandlers.onRewind),
+    onCancel: once(rawHandlers.onCancel),
+  }
+
+  const anySelectable = shown.some(({ candidate }) => candidate !== undefined)
+  const cards = shown.map(({ card, candidate }) => {
+    const node = cardElement(card)
+
+    if (candidate === undefined) {
+      // 選べるかどうかを色や濃さだけで区別させない。読み上げにも出す（#94）。選べるカードが 1 枚も
+      // 無い一覧は、見せるための一覧なので、薄くも「選べません」ともしない。
+      if (anySelectable) {
+        node.classList.add('card--見るだけ')
+        node.setAttribute('aria-label', `${card.controlledBy}の${card.name}（選べません）`)
+      }
+      // スマートフォンは右の列が無いので、押すと上の段に詳細を出す。押しても答えは送らない。
+      if (phone !== undefined) tapToShow(node, (id) => phone.onShow(id, true))
+      return node
+    }
+
+    const isPicked = picked === candidate
+    node.classList.add('card--押せる')
+    node.classList.toggle('card--選択中', isPicked)
+    node.setAttribute('aria-label', `${card.controlledBy}の${card.name}${isPicked ? '（選択中）' : '（押せます）'}`)
+    node.setAttribute('role', 'button')
+    const pick = (): void => {
+      if (phone !== undefined) phone.onShow(card.id, false)
+      handlers.onPick(isPicked ? undefined : candidate)
+    }
+    node.addEventListener('click', pick)
+    node.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      pick()
+    })
+    return node
+  })
+
+  const foot = element('div', 'picker__foot')
+  if (anySelectable) foot.append(element('span', 'picker__count', `${answered + 1} 枚目を選んでいます`))
+  if (mayDecline) foot.append(button('選ばない', handlers.onDecline))
+  if (mayRewind) foot.append(button('ひとつ戻る', handlers.onRewind))
+  if (mayCancel) foot.append(button('この行動をやめる', handlers.onCancel))
+  if (confirmIndex !== undefined) {
+    const confirmation = confirmIndex
+    const confirm = button('確認した', () => handlers.onConfirm(confirmation))
+    confirm.classList.add('button--primary')
+    confirm.setAttribute(INITIAL_FOCUS_ATTRIBUTE, '')
+    foot.append(confirm)
+  } else {
+    const decide = button('これに決める', () => {
+      if (picked !== undefined) handlers.onConfirm(picked)
+    })
+    decide.classList.add('button--primary')
+    decide.toggleAttribute('disabled', picked === undefined)
+    foot.append(decide)
+  }
+
+  // 見るだけの確認では、Esc で閉じるものが無い。選びかけがある時だけ、それを外す。
+  const root = pickerElement(
+    '選ぶ',
+    title,
+    asking,
+    cards,
+    foot,
+    sending,
+    () => {
+      if (picked !== undefined) handlers.onPick(undefined)
+    },
+    phone === undefined ? undefined : listDetailElement(phone),
+  )
+  lock.bind(root)
 
   return root
 }

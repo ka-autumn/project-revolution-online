@@ -308,6 +308,18 @@ describe('CPU が選択に答える', () => {
     expect(answers).toContain(0)
   })
 
+  // ADR-0041。相手の手札を見る確認は候補が「確認した」の 1 つなので、特別扱いなしで答えられる。
+  it('相手の手札を見る確認には、確認した（0 番）と答える', () => {
+    const confirming = {
+      ...CHOICE,
+      purpose: '見たカードの確認',
+      mayGoBack: false,
+      candidates: [{ kind: '確認' }],
+    } as const
+
+    expect(pickCpuAnswer(confirming, randomFromSeed(7)).answer).toBe(0)
+  })
+
   it('答えるたびに乱数列が進む', () => {
     const first = pickCpuAnswer(CHOICE, randomFromSeed(3))
     const second = pickCpuAnswer(CHOICE, first.random)

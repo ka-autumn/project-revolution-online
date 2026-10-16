@@ -34,6 +34,7 @@ import type {
   WireCardFace,
   WireCardInstance,
   WireCardPosition,
+  WireChoice,
   WirePerspective,
   WireRoom,
   WireVisibleCard,
@@ -515,6 +516,29 @@ export function visibleCardViewsIn(board: WirePerspective): ReadonlyMap<CardId, 
       faceUpView(instance, board.viewer, board.effective, effectiveKeywordsOf(board)),
     ]),
   )
+}
+
+/**
+ * 選択の要求が見せる一覧の 1 枚（ADR-0041）。表側が見えているカードで、選べるなら候補の番号を持つ。
+ * 見えるだけのカードは `candidate` が無い。
+ */
+export interface ShownCardView {
+  readonly card: Extract<CardView, { readonly kind: '表' }>
+  readonly candidate: number | undefined
+}
+
+/**
+ * 選択の要求が見せる一覧を、描ける形にする。一覧は盤面のどこにも載っていないカード（相手の
+ * 手札など）を含むので、`visibleCardViewsIn` では引けない。
+ */
+export function shownCardViewsIn(board: WirePerspective, choice: WireChoice): readonly ShownCardView[] {
+  return (choice.shown ?? []).map(({ instance, candidate }) => ({
+    card: faceUpView(instance, board.viewer, board.effective, effectiveKeywordsOf(board)) as Extract<
+      CardView,
+      { readonly kind: '表' }
+    >,
+    candidate,
+  }))
 }
 
 /** 盤面が実際に描いているもの（#150）。 */
@@ -1120,7 +1144,7 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
       case '命令を実行した': {
         // 知らない種類の命令は、知らない種類のできごとと同じ行にする。支配者は届いているが、
         // 同じ文が 2 通りの見た目で出ないよう、誰のものかは言わない。
-        const text = instructionLine(event.instruction, board, named, whose)
+        const text = instructionLine(event.instruction, board, named, whose, event.controller)
         return text === undefined
           ? { whose: undefined, text: UNREADABLE_LOG }
           : { whose: whose(event.controller), text }
@@ -1389,6 +1413,7 @@ function instructionLine(
   board: WirePerspective,
   named: (card: CardId | undefined) => string | undefined,
   whose: (player: Player) => '自分' | '相手',
+  controller: Player,
 ): string | undefined {
   switch (instruction.kind) {
     case '選ぶ': {
@@ -1428,6 +1453,11 @@ function instructionLine(
       return `${whose(instruction.player)}のプランを裏返した`
     case 'カードを引く':
       return `${whose(instruction.player)}が引いた：${cardsLabel(instruction.count, instruction.cards, named)}`
+    // 見たのは支配者で、見られたのはその相手である。名前は 2 人に同じ内容で届く（ADR-0041）。
+    case '相手の手札を見る': {
+      const cards = cardsLabel(instruction.count, instruction.cards, named)
+      return whose(controller) === '自分' ? `相手の手札を見た：${cards}` : `相手が手札を見た：${cards}`
+    }
     // この画面が知らない種類の命令（#285、`UNREADABLE_LOG`）。文を作り出さず、読めなかったことを
     // 呼ぶ側に返す。ログとカットインで出し方が違うので、ここでは決めない。
     default:
@@ -1538,7 +1568,7 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
     if (event.kind === '命令を実行した' && open !== undefined) {
       // 知らない種類の命令（#285）は並べない。カットインは読める分を見せる演出で、読めなかった
       // ことはログの欄が言う（`UNREADABLE_LOG`）。全部が読めなければ、見出しだけになる。
-      const line = instructionLine(event.instruction, board, named, whose)
+      const line = instructionLine(event.instruction, board, named, whose, event.controller)
       if (line !== undefined) open.lines.push(line)
       continue
     }
