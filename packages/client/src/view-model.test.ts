@@ -1318,6 +1318,36 @@ describe('操作ログ', () => {
 
       expect(texts(board)).toEqual(['相手が引いた：2 枚'])
     })
+
+    // ADR-0041。見た側にも見られた側にも、見たカードの名前が同じ内容で出る。
+    describe('相手の手札を見た', () => {
+      const looked = (controller: Player, cards: readonly string[], count = cards.length) =>
+        withLog({
+          kind: '命令を実行した',
+          controller,
+          instruction: { kind: '相手の手札を見る', count, cards },
+        })
+
+      it('見た側には「相手の手札を見た」と名前が出る', () => {
+        expect(texts(looked('先攻', ['置いてある']))).toEqual(['相手の手札を見た：テスト・置いてある'])
+      })
+
+      it('見られた側には「相手が手札を見た」と、同じ名前が出る', () => {
+        expect(texts(looked('後攻', ['置いてある']))).toEqual(['相手が手札を見た：テスト・置いてある'])
+      })
+
+      it('見た枚数が名指しより多ければ、残りは枚数で出す', () => {
+        expect(texts(looked('先攻', ['置いてある'], 3))).toEqual(['相手の手札を見た：テスト・置いてある ほか 2 枚'])
+      })
+
+      it('0 枚を見たときは、0 枚と出す', () => {
+        expect(texts(looked('先攻', []))).toEqual(['相手の手札を見た：0 枚'])
+      })
+
+      it('行の持ち主は見た側である', () => {
+        expect(logLines(looked('先攻', [])).map((line) => ('whose' in line ? line.whose : undefined))).toEqual(['自分'])
+      })
+    })
   })
 
   // 総合ルール 第3部 第19章 1。表向きなのはそこだけなので、この時にしか名指しできない。

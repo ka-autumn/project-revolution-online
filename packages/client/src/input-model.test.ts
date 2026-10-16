@@ -22,9 +22,10 @@ import {
   offBoardCandidates,
   pickView,
   showsChoicePicker,
+  shownTitleOf,
 } from './input-model.js'
 import { applyMessage, connecting } from './session.js'
-import { squareLabel } from './view-model.js'
+import { shownCardViewsIn, squareLabel } from './view-model.js'
 import type { Session } from './session.js'
 import { emptyBoard, instance, strategyFace, unitFace, withZone } from './test-support.js'
 
@@ -2043,5 +2044,67 @@ describe('abilityListSource', () => {
     ).toBeUndefined()
     expect(abilityListSource(choice([{ kind: '能力', source: undefined }]))).toBeUndefined()
     expect(abilityListSource(choice([]))).toBeUndefined()
+  })
+})
+
+// ADR-0041。見せる一覧つきの選択。
+describe('見せる一覧つきの選択', () => {
+  /** 先攻が、相手の手札を見て確認する場面。相手の手札の 2 枚を、選べないまま見せる。 */
+  const confirming: WireChoice = {
+    player: '先攻',
+    purpose: '見たカードの確認',
+    mayDecline: false,
+    answered: 0,
+    mayGoBack: false,
+    candidates: [{ kind: '確認' }],
+    shown: [
+      { instance: instance('相手の1枚目', '後攻', { card: unitFace('テスト・あ') }) },
+      { instance: instance('相手の2枚目', '後攻', { card: unitFace('テスト・い') }) },
+    ],
+  }
+
+  it('確認の候補は「確認した」と出る', () => {
+    expect(choiceView(board(), confirming).candidates).toEqual([{ index: 0, label: '1 番目: 確認した' }])
+  })
+
+  it('何を聞かれているかを言う', () => {
+    expect(choiceView(board(), confirming).asking).toBe('相手の手札を見ています')
+  })
+
+  it('確認の一覧の見出しは、相手の手札と枚数を言う', () => {
+    expect(shownTitleOf(confirming)).toBe('相手の手札（2）')
+  })
+
+  it('確認以外の一覧は、候補から選ぶ一覧と同じ見出しにする', () => {
+    expect(shownTitleOf({ ...confirming, purpose: '効果の対象' })).toBe('候補から選ぶ')
+  })
+
+  it('一覧は、盤面のどこにも載っていないカードも描ける形になる', () => {
+    const views = shownCardViewsIn(board(), confirming)
+
+    expect(views.map(({ card }) => [card.id, card.name, card.controlledBy])).toEqual([
+      ['相手の1枚目', 'テスト・あ', '相手'],
+      ['相手の2枚目', 'テスト・い', '相手'],
+    ])
+  })
+
+  it('選べるカードは候補の番号を持ち、見えるだけのカードは持たない', () => {
+    const mixed: WireChoice = {
+      ...confirming,
+      purpose: '効果の対象',
+      candidates: [{ kind: '見えている', card: '相手の2枚目' }],
+      shown: [
+        { instance: instance('相手の1枚目', '後攻', { card: unitFace('テスト・あ') }) },
+        { instance: instance('相手の2枚目', '後攻', { card: unitFace('テスト・い') }), candidate: 0 },
+      ],
+    }
+
+    expect(shownCardViewsIn(board(), mixed).map(({ candidate }) => candidate)).toEqual([undefined, 0])
+  })
+
+  it('一覧が無い選択は、一覧を持たない', () => {
+    const plain: WireChoice = { ...confirming, shown: undefined }
+
+    expect(shownCardViewsIn(board(), plain)).toEqual([])
   })
 })

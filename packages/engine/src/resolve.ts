@@ -3,6 +3,7 @@ import { continuousData } from './continuous.js'
 import { checkCourageCondition } from './courage.js'
 import { discardFromSquares } from './discard.js'
 import {
+  cardsIn,
   damagePlayer,
   dealDamage,
   draw,
@@ -18,6 +19,7 @@ import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.
 import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import { loggedInstruction, record } from './log.js'
 import type { ResolutionVia } from './log.js'
+import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import { checkIntrusion } from './trap.js'
 import { duelView } from './view.js'
@@ -54,6 +56,11 @@ export const CHOICE_PURPOSES = [
   'プレイのコスト',
   /** プランするためのコストの支払い（同 第3部 第8章 2-3）。スマッシュでも支払える（同 第2部 第21章 7-5）。 */
   'プランのコスト',
+  /**
+   * 相手の手札を見た内容の確認（ADR-0041）。候補は「確認した」の 1 つだけで、見せるカードの
+   * 一覧が付く。候補が 1 つでも聞く——聞かなければ、見た側に一覧が届かない。
+   */
+  '見たカードの確認',
   /** ユニットを移動するための追加コストの支払い（同 第4部 第6章 2-2）。 */
   '移動のコスト',
   /** 起動型能力のコストの支払い（同 第4部 第2章 1）。 */
@@ -96,6 +103,9 @@ export type ChoicePurpose = (typeof CHOICE_PURPOSES)[number]
  *
  * 渡すのは効果が選ばせる場面だけである。作成された誘発型能力は発生源を持たない
  * （`EffectContext.source`）ので、その時は渡らない。
+ *
+ * `shown` は、候補とは別に選ぶ人へ見せるカードの一覧である（ADR-0041）。一覧のうち候補に
+ * なっているものが、選べるカードである。見せるだけで、返す答えを左右しない。
  */
 export type Chooser = (
   candidates: readonly unknown[],
@@ -104,7 +114,14 @@ export type Chooser = (
   board: DuelState,
   mayDecline?: boolean,
   source?: CardId,
+  shown?: readonly CardInstance[],
 ) => unknown
+
+/**
+ * 「確認した」という、ただ 1 つの候補（`見たカードの確認`）。カードでも場所でもないので、
+ * 識別子も位置も持たない。
+ */
+export const CONFIRMATION = Object.freeze({ kind: '確認' } as const)
 
 export interface EffectContext {
   /** 能力の支配者（総合ルール 第4部 第7章 1）。味方・敵はこのプレイヤーから見た呼び方になる。 */
@@ -266,6 +283,27 @@ function apply(
         throw new Error('候補にないものが選ばれた')
       }
       return { state, value: chosen, subject: chosen }
+    }
+    case '相手の手札を見る': {
+      // 見るのは能力の支配者で、見られるのはその相手の手札である（ADR-0041）。
+      // 手札の並びは公開されていない。引いた順などが一覧から読めないよう、中身だけで並べる。
+      const hand = [...cardsIn(state, opponentOf(context.controller), '手札')].sort((a, b) =>
+        a.card.name < b.card.name ? -1 : a.card.name > b.card.name ? 1 : 0,
+      )
+      // 0 枚なら新しく見えるものが無い。聞かずに、見たことだけを積む（`subject` が空の並び）。
+      if (hand.length === 0) return { state, value: undefined, subject: hand }
+
+      context.chooser(
+        [CONFIRMATION],
+        context.controller,
+        '見たカードの確認',
+        state,
+        false,
+        context.source,
+        hand,
+      )
+      // 見たカードは効果に返さない。効果が相手の手札の中身で分岐する口は作らない。
+      return { state, value: undefined, subject: hand }
     }
     case '破壊する': {
       if (!shown.has(instruction.target.id)) {

@@ -337,6 +337,10 @@ export function visibleIdsOf(state: DuelState, viewer: Player): ReadonlySet<Card
  */
 export function seenByOf(state: DuelState, before: DuelState, event: DuelEvent): SeenBy {
   const named = cardsNamedBy(event)
+  // 相手の手札を見たことだけは、盤面が何も変わらないのに、見た側にだけ新しく見えたものがある。
+  // 見たカードの名前は 2 人に同じ内容で出す（ADR-0041）。見られた側には自分の手札である。
+  if (isLookAtHand(event)) return { 先攻: named, 後攻: named }
+
   const seenBy = PLAYERS.map((viewer): readonly [Player, readonly CardId[]] => {
     if (named.length === 0) return [viewer, []]
 
@@ -345,6 +349,11 @@ export function seenByOf(state: DuelState, before: DuelState, event: DuelEvent):
     return [viewer, named.filter((card) => visible.has(card))]
   })
   return Object.fromEntries(seenBy) as SeenBy
+}
+
+/** 相手の手札を見たことを積んだできごとか。 */
+export function isLookAtHand(event: DuelEvent): boolean {
+  return event.kind === '命令を実行した' && event.instruction.kind === '相手の手札を見る'
 }
 
 /** そのできごとが名指ししているカード。落とせるところだけを数える（`mapEventCards`）。 */
