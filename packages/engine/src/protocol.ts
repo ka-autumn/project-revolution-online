@@ -7,10 +7,11 @@ import type { UnitOnSquare } from './effect.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
 import { areaRowOf, cardIdOf, squareOf } from './log.js'
-import { visibleIdsOf } from './perspective.js'
+import { isLookAtHand, visibleIdsOf } from './perspective.js'
 import type { PassOutcome } from './progress.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
+import { CONFIRMATION } from './resolve.js'
 import type { ChoicePurpose, Chooser } from './resolve.js'
 import { instanceToWire } from './wire.js'
 import type { WireCardFace, WireCardInstance, WirePerspective } from './wire.js'
@@ -1110,12 +1111,7 @@ function describeChoice(
   const before = visibleIdsOf(started, player)
   const looked =
     purpose === '見たカードの確認' ||
-    board.log
-      .slice(started.log.length)
-      .some(
-        ({ event }) =>
-          event.kind === '命令を実行した' && event.instruction.kind === '相手の手札を見る' && event.instruction.count > 0,
-      )
+    board.log.slice(started.log.length).some(({ event }) => isLookAtHand(event) && event.instruction.count > 0)
   return {
     player,
     purpose,
@@ -1124,12 +1120,28 @@ function describeChoice(
     answered,
     mayGoBack: !looked && [...visible].every((card) => before.has(card)),
     candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, visible, board, player)),
-    ...(shown === undefined ? {} : { shown: shown.map((instance) => describeShown(instance, candidates)) }),
+    ...(shown === undefined ? {} : { shown: describeAllShown(shown, candidates) }),
   }
 }
 
+/**
+ * 見せる一覧を、送れる形にする。
+ *
+ * 画面は、見せる一覧つきの選択を一覧だけで出し、押せるのは一覧のカードのうち候補の番号を持つものと
+ * 「確認した」だけである。**一覧に載っていない候補があると、答える口が無くなる**ので、ここで断る
+ * （ADR-0041）。候補は、「確認した」か、一覧のカードのどれかでなければならない。
+ */
+export function describeAllShown(shown: readonly CardInstance[], candidates: readonly unknown[]): readonly WireShownCard[] {
+  const listed = new Set(shown.map((instance) => instance.id))
+  if (candidates.some((candidate) => candidate !== CONFIRMATION && !listed.has(cardIdOf(candidate) ?? ''))) {
+    throw new Error('見せる一覧に載っていない候補がある')
+  }
+
+  return shown.map((instance) => describeShown(instance, candidates))
+}
+
 /** 見せる一覧の 1 枚を、送れる形にする。候補になっているカードには、その番号を付ける。 */
-export function describeShown(instance: CardInstance, candidates: readonly unknown[]): WireShownCard {
+function describeShown(instance: CardInstance, candidates: readonly unknown[]): WireShownCard {
   const candidate = candidates.findIndex((one) => cardIdOf(one) === instance.id)
   return { instance: instanceToWire(instance), ...(candidate < 0 ? {} : { candidate }) }
 }

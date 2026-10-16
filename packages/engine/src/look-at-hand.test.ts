@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-// ゾーンと盤面を組み立てるためだけに使う。engine の中から盤面を差し替えるための関数であり、
-// 公開する API ではない（`protocol.test.ts` と同じ）。
-import { putInZone } from './duel.js'
-import { describeShown } from './protocol.js'
+// 次の 3 つは、engine の内側の部品を直接使うための import で、公開する API ではない（`index.ts` から
+// 出していない）。`moveToZone`・`putInZone` はゾーンと盤面を組み立てるためだけに、`describeAllShown`・
+// `CONFIRMATION` は、見せる一覧と候補の組み立てだけを確かめるために使う（`protocol.test.ts` と同じ）。
+import { moveToZone, putInZone } from './duel.js'
+import { describeAllShown } from './protocol.js'
+import { CONFIRMATION } from './resolve.js'
 import {
   PLAYERS,
   applyLegalAction,
@@ -244,11 +246,28 @@ describe('相手の手札の中身が漏れない', () => {
     return progress.state
   }
 
-  it('見られた側には行動の途中で何も届かず、選択の要求は見た側だけに向く', () => {
+  it('選択の要求は、見た側だけに向く', () => {
     const progress = applyWithAnswers(mainPhaseWith(strategyOf(lookOnly), opponentHand()), PLAY, [])
 
     expectChoice(progress)
     expect(progress.choice.player).toBe('先攻')
+  })
+
+  // ADR-0041。ログは命令を実行した時に積まれるので、見た後に同じ行動の中で別の選択が続くと、止まった
+  // 時点の盤面のログに見たことが出る。確認の選択で止まっている間は、まだ積まれていない。
+  it('見たことが見られた側のログに出るのは、見た後の盤面からである', () => {
+    const start = mainPhaseWith(strategyOf(lookThenChoose), opponentHand())
+    const logOf = (progress: ActionProgress, viewer: Player) =>
+      perspectiveOf(progress.kind === '選んでほしい' ? progress.board : start, viewer).log.filter(
+        ({ event }) => event.kind === '命令を実行した' && event.instruction.kind === '相手の手札を見る',
+      )
+
+    const confirming = applyWithAnswers(start, PLAY, [])
+    const afterConfirm = applyWithAnswers(start, PLAY, [0])
+
+    expect(logOf(confirming, '後攻')).toHaveLength(0)
+    expect(logOf(afterConfirm, '後攻')).toHaveLength(1)
+    expect(logOf(afterConfirm, '先攻')).toHaveLength(1)
   })
 
   it('見た後も、見た側の盤面で相手の手札は枚数だけのままである', () => {
@@ -284,6 +303,22 @@ describe('相手の手札の中身が漏れない', () => {
 
     expect(naming).toHaveLength(1)
     expect(naming[0]?.event).toMatchObject({ kind: '命令を実行した', instruction: { kind: '相手の手札を見る' } })
+  })
+
+  // 総合ルール 第2部 第23章 2-1。裏向きのカードは盤面で向きだけが公開されている。名前を引く写しに
+  // いまの向きを載せると、見たカードが裏向きのゾーンへ移った後に、向きの変わり方で結びつけられる。
+  it('見たカードが向きを変えて裏向きのゾーンへ移っても、名前の写しと盤面の札は結びつかない', () => {
+    const state = finished()
+    const moved = moveToZone(state, '相手手札A', 'トラップゾーン', 'フリーズ')
+
+    const before = perspectiveOf(state, '先攻').namedInLog
+    const board = perspectiveOf(moved, '先攻')
+
+    // 盤面では、裏向きの札がフリーズの向きで現れる。
+    expect(board.zones['後攻']['トラップゾーン']).toEqual([{ kind: '見えていない', orientation: 'フリーズ' }])
+    // 名前の写しは、向きもダメージも、移る前と同じ固定の値のままである。
+    expect(board.namedInLog).toEqual(before)
+    expect(board.namedInLog.every((card) => card.orientation === 'リリース' && card.damage === 0)).toBe(true)
   })
 
   it('見る前の盤面には、相手の手札が名指しで載っていない', () => {
@@ -371,14 +406,32 @@ describe('見せる一覧と候補の対応', () => {
   it('候補になっているカードは候補の番号を持ち、見えるだけのカードは持たない', () => {
     const candidates = [third, first]
 
-    expect([first, second, third].map((card) => describeShown(card, candidates).candidate)).toEqual([1, undefined, 0])
+    expect(describeAllShown([first, second, third], candidates).map(({ candidate }) => candidate)).toEqual([
+      1,
+      undefined,
+      0,
+    ])
   })
 
-  it('候補が何も指していなければ、どのカードも番号を持たない', () => {
-    expect(describeShown(first, [{ kind: '確認' }]).candidate).toBeUndefined()
+  it('確認の候補だけなら、どのカードも番号を持たない', () => {
+    expect(describeAllShown([first, second], [CONFIRMATION]).map(({ candidate }) => candidate)).toEqual([
+      undefined,
+      undefined,
+    ])
   })
 
   it('カードの中身は、通信に載る表記に直して渡す', () => {
-    expect(describeShown(first, []).instance).toMatchObject({ id: '一覧1', card: { name: 'テスト・一' } })
+    expect(describeAllShown([first], [])[0]?.instance).toMatchObject({ id: '一覧1', card: { name: 'テスト・一' } })
+  })
+
+  // 画面は一覧だけで出し、答える口は一覧のカードと「確認した」だけになる。一覧に無い候補は答えられない。
+  it('一覧に載っていない候補があれば、組み立てを断る', () => {
+    expect(() => describeAllShown([first, second], [third])).toThrow('見せる一覧に載っていない候補がある')
+    expect(() => describeAllShown([first], [CONFIRMATION, third])).toThrow()
+  })
+
+  it('候補が、確認と一覧のカードだけなら通る', () => {
+    expect(() => describeAllShown([first, second], [second, first])).not.toThrow()
+    expect(() => describeAllShown([first], [CONFIRMATION])).not.toThrow()
   })
 })

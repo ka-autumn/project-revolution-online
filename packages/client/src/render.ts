@@ -5436,12 +5436,16 @@ export function shownPickerElement(
   const anySelectable = shown.some(({ candidate }) => candidate !== undefined)
   const cards = shown.map(({ card, candidate }) => {
     const node = cardElement(card)
-    if (!anySelectable) return node
 
-    // 選べるかどうかを色や濃さだけで区別させない。読み上げにも出す（#94）。
     if (candidate === undefined) {
-      node.classList.add('card--見るだけ')
-      node.setAttribute('aria-label', `${card.controlledBy}の${card.name}（選べません）`)
+      // 選べるかどうかを色や濃さだけで区別させない。読み上げにも出す（#94）。選べるカードが 1 枚も
+      // 無い一覧は、見せるための一覧なので、薄くも「選べません」ともしない。
+      if (anySelectable) {
+        node.classList.add('card--見るだけ')
+        node.setAttribute('aria-label', `${card.controlledBy}の${card.name}（選べません）`)
+      }
+      // スマートフォンは右の列が無いので、押すと上の段に詳細を出す。押しても答えは送らない。
+      if (phone !== undefined) tapToShow(node, (id) => phone.onShow(id, true))
       return node
     }
 

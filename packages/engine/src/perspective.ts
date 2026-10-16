@@ -351,8 +351,13 @@ export function seenByOf(state: DuelState, before: DuelState, event: DuelEvent):
   return Object.fromEntries(seenBy) as SeenBy
 }
 
+/** 相手の手札を見たことを積んだできごと。見たカードの数え方は、ここを通して決める。 */
+export type LookAtHandEvent = Extract<DuelEvent, { readonly kind: '命令を実行した' }> & {
+  readonly instruction: Extract<LoggedInstruction, { readonly kind: '相手の手札を見る' }>
+}
+
 /** 相手の手札を見たことを積んだできごとか。 */
-export function isLookAtHand(event: DuelEvent): boolean {
+export function isLookAtHand(event: DuelEvent): event is LookAtHandEvent {
   return event.kind === '命令を実行した' && event.instruction.kind === '相手の手札を見る'
 }
 
@@ -497,12 +502,19 @@ export function perspectiveOf(state: DuelState, viewer: Player): DuelPerspective
   return { ...board, log, namedInLog: namedInLogOf(state, board, log) }
 }
 
+/** 名前を引くための写しに載せる向き。実際の向きは載せない。 */
+const NAMED_IN_LOG_ORIENTATION = 'リリース'
+
 /**
  * 射影したログが名指ししているカードのうち、盤面に載っていないもの
  * （`DuelPerspective.namedInLog`）。
  *
  * 渡すログは**射影を通った後のもの**でなければならない。落とす判断はそこで済んでおり、ここは
  * 残った識別子を引き直すだけである。完全なログから作ると、そのまま漏れる。
+ *
+ * 載せるのは名前と支配者を引くのに要る分だけで、向きとダメージは固定の値にする。裏向きのゾーンの
+ * カードは盤面で向きを公開している（`WireVisibleCard`）ので、いまの向きをそのまま載せると、名指しされた
+ * カードがそこへ移った後に、盤面の札と向きの変わり方で結びつけられる（ADR-0041）。
  */
 function namedInLogOf(
   state: DuelState,
@@ -511,7 +523,11 @@ function namedInLogOf(
 ): readonly CardInstance[] {
   const onBoard = visibleIds(board)
   const named = new Set(log.flatMap(({ event }) => cardsNamedBy(event)))
-  return [...named].flatMap((id) => (onBoard.has(id) ? [] : mapped(findAnywhere(state, id))))
+  return [...named].flatMap((id) => {
+    if (onBoard.has(id)) return []
+    const found = findAnywhere(state, id)
+    return found === undefined ? [] : [{ ...found, orientation: NAMED_IN_LOG_ORIENTATION, damage: 0 }]
+  })
 }
 
 /**
