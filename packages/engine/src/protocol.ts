@@ -1128,7 +1128,7 @@ function describeChoice(
  * 見せる一覧を、送れる形にする。
  *
  * 画面は、見せる一覧つきの選択を一覧だけで出し、押せるのは一覧のカードのうち候補の番号を持つものと
- * 「確認した」だけである。**一覧に載っていない候補があると、答える口が無くなる**ので、ここで断る
+ * 「確認した」だけである。一覧に載っていない候補があると、答える口が無くなるので、ここで断る
  * （ADR-0041）。候補は、「確認した」か、一覧のカードのどれかでなければならない。
  */
 export function describeAllShown(shown: readonly CardInstance[], candidates: readonly unknown[]): readonly WireShownCard[] {
