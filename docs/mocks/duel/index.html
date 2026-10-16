@@ -1572,7 +1572,9 @@ body {
 
 .show-picker-view .picker--見る,
 .show-picker-choose .picker--選ぶ,
-.show-picker-sending .picker--送信中 { display: flex; }
+.show-picker-sending .picker--送信中,
+.show-picker-confirm .picker--確認,
+.show-picker-shown .picker--見せる一覧 { display: flex; }
 
 .picker__box {
   display: flex;
@@ -1630,6 +1632,10 @@ body {
 .picker__sending { margin: 0; color: var(--heading); font-size: 0.85rem; font-weight: 700; }
 .picker__sending:empty { display: none; }
 .picker[aria-busy='true'] .card--押せる { pointer-events: none; opacity: 0.6; }
+
+/* 見せる一覧の中で、選べるカードと見分けるための、見えるだけのカード（ADR-0027、ADR-0041）。
+   選べるカードが 1 枚も無い一覧（相手の手札の確認）では付けない。 */
+.card--見るだけ { opacity: 0.45; filter: grayscale(0.6); }
 
 .duel .picker button:disabled {
   opacity: 0.45;
@@ -2399,6 +2405,8 @@ body {
   <label><input type="checkbox" data-show="show-picker-view">一覧（捨札を見る）</label>
   <label><input type="checkbox" data-show="show-picker-choose">一覧（山札から選ぶ）</label>
   <label><input type="checkbox" data-show="show-picker-sending">一覧（山札から選ぶ・通信中）</label>
+  <label><input type="checkbox" data-show="show-picker-confirm">一覧（相手の手札を見る・確認）</label>
+  <label><input type="checkbox" data-show="show-picker-shown">一覧（見せる一覧つき・選べるカードと見えるだけのカード）</label>
   <label><input type="checkbox" data-show="show-many">枚数が多い（手札 12 枚。スマホではエネルギー 10 種類 24 枚・スマッシュ 6 枚も）</label>
 </div>
 
@@ -2823,7 +2831,7 @@ fan(document.getElementById('hand-own'), trapIconSamples
 
 // ---- カードの一覧（オーバーレイ） ----
 // 見る：捨札・リムーブの中身を見るだけ。閉じるで戻る。
-// 選ぶ：効果で山札などから選ぶ。条件に合わないカードは薄くして押せなくし、選んだ枚数を数える。
+// 選ぶ：効果で山札などから選ぶ。選んだ枚数を数える。見せる一覧つきの選択（ADR-0041）では、選べるカードが混じる時に、見えるだけのカードを薄くする。
 function picker(kind, title, lead, cardsInList, foot, sending) {
   const node = document.createElement('div')
   node.className = `picker picker--${kind}`
@@ -2851,7 +2859,8 @@ pickers.append(picker('見る', '自分の捨札（6）', '上にあるカード
   [card('見本・竜の飛翔', '自分'), card('見本・メカナイト', '自分'), card('見本・光の祈り手', '自分'), card('見本・アクアシールド', '自分'), card('見本・森の守護者', '自分'), card('見本・紅葉', '自分')],
   '<button type="button">閉じる</button>'))
 
-// 一覧に並べるのは、届いた候補だけ（候補外のカードを薄く並べて見せることはしない。ADR-0027）
+// 一覧に並べるのは、届いた候補だけ（候補外のカードを薄く並べて見せることはしない。ADR-0027）。
+// ただし、選択の要求が「見せる一覧」を持っている時は、それを並べる（この下の 2 つ。ADR-0041）
 const choosable = [
   card('見本・もちぬい', '自分'),
   card('見本・森の守護者', '自分'),
@@ -2877,6 +2886,29 @@ pickers.append(picker('送信中', '山札から選ぶ', 'レベル 3 以下の�
   sendingList,
   '<span class="picker__count">1 枚目を選んでいます</span><button type="button" disabled>選ばない</button><button type="button" class="button--primary" disabled>これに決める</button>',
   true))
+
+// 見せる一覧つきの選択（ADR-0041）。相手の手札を見る確認：選べるカードが無いので、薄くしない。足もとは「確認した」だけ
+// （戻れないので、戻る・取り消すも出ない）
+pickers.append(picker('確認', '相手の手札（3）', '相手の手札を見ています',
+  [card('見本・メカナイト', '相手'), card('見本・アクアシールド', '相手'), card('見本・紅葉', '相手')],
+  '<button type="button" class="button--primary">確認した</button>'))
+
+// 見せる一覧のうち一部だけが選べる場合（山札の全体を見せて、条件に合うカードだけを選ばせる、など）。
+// 選べるカードは橙の枠で押せ、見えるだけのカードは薄くする
+const shownList = [
+  card('見本・もちぬい', '自分'),
+  card('見本・竜の飛翔', '自分'),
+  card('見本・森の守護者', '自分'),
+  card('見本・アクアシールド', '自分'),
+  card('見本・光の祈り手', '自分'),
+  card('見本・紅葉', '自分'),
+]
+for (const at of [0, 2, 4]) shownList[at].classList.add('card--押せる')
+shownList[2].classList.add('card--選択中')
+for (const at of [1, 3, 5]) shownList[at].classList.add('card--見るだけ')
+pickers.append(picker('見せる一覧', '候補から選ぶ', 'レベル 3 以下のユニットを 1 枚まで選んで、手札に加える',
+  shownList,
+  '<span class="picker__count">1 枚目を選んでいます</span><button type="button">選ばない</button><button type="button" class="button--primary">これに決める</button>'))
 
 // ---- カードの詳細 ----
 // 何も無ければ案内だけ。カードを選んでいる間はそのカードが既定。乗せたカードに切り替わり、
