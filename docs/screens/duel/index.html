@@ -2190,7 +2190,8 @@ body {
   .duel .dialog__detail > .card,
   .detail.sheet--開いている > .card { --card-width: var(--detail-card-width, 6rem); }
   .detail__info { min-width: 0; max-height: calc(var(--detail-card-width, 6rem) * 1.5); overflow-y: auto; overscroll-behavior: contain; font-size: 0.74rem; }
-  .detail__name { margin-bottom: 0.3rem; color: var(--heading); font-size: 0.95rem; font-weight: 800; line-height: 1.25; }
+  .detail__name { display: flex; align-items: center; gap: 0.2rem; margin-bottom: 0.3rem; color: var(--heading); font-size: 0.95rem; font-weight: 800; line-height: 1.25; }
+  .detail__name .star { width: 1.3rem; height: 1.3rem; font-size: 0.7rem; }
   .detail__rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.1rem 0.5rem; margin: 0; }
   .detail__rows dt { color: var(--ink-dim); white-space: nowrap; }
   .detail__rows dd { margin: 0; font-weight: 600; }
@@ -2959,7 +2960,11 @@ function phoneDetailParts(node) {
   big.innerHTML = faceHtml(name, { bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage })
   const info = document.createElement('div')
   info.className = 'detail__info'
-  info.append(Object.assign(document.createElement('div'), { className: 'detail__name', textContent: name }))
+  // スターは名前の前に出す（デッキを組む画面の詳細と同じ。行を増やさない）
+  const nameLine = Object.assign(document.createElement('div'), { className: 'detail__name' })
+  nameLine.innerHTML = starIcon(c.stars) + starIcon(c.reverseStars, true)
+  nameLine.append(document.createTextNode(name))
+  info.append(nameLine)
   const rows = document.createElement('dl')
   rows.className = 'detail__rows'
   const add = (label, value) => rows.append(Object.assign(document.createElement('dt'), { textContent: label }), Object.assign(document.createElement('dd'), { textContent: value }))
@@ -2970,8 +2975,6 @@ function phoneDetailParts(node) {
     add('ＢＰ／ＳＰ', `${shown(c.bp, node.dataset.bp)}／${shown(c.sp, node.dataset.sp)}`)
   }
   if (c.move) add('移動方向', c.move.join('・'))
-  if (c.stars) add('スター', String(c.stars))
-  if (c.reverseStars) add('リバーススター', String(c.reverseStars))
   if (c.traits) add('属性', c.traits.split('・').join(' | '))
   info.append(rows)
   if (c.text.length > 0) {
