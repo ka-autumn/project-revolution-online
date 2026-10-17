@@ -4007,17 +4007,30 @@ body {
   font-size: 0.85rem;
 }
 
+/*
+ * マスの最小幅は、フリーズしたカード（寝た面と左右の空きで、カードの幅の 1.5 倍）から、マスの間の
+ * 隙間を引いた幅にする。寝た面は両側へ隙間の半分ずつまではみ出してよい。隣どうしがフリーズしていても
+ * 隙間の中で接するだけで、端の列でも内側の余白（隙間の半分より広い）に収まる。これより狭いと、
+ * 隣のカードに重なり、端の列では枠からはみ出して切れる。
+ * 払うとカードはフリーズするので、フリーズしたカードがあるかで列の数を変えることはしない。
+ */
 .duel .picker__cards {
+  --picker-card-width: 6rem;
+  --picker-column-gap: 0.6rem;
+
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(6.4rem, 1fr));
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(calc(var(--picker-card-width) * 1.5 - var(--picker-column-gap)), 1fr)
+  );
   justify-items: center;
-  gap: 1rem 0.6rem;
+  gap: 1rem var(--picker-column-gap);
   padding: 1.2rem 1rem;
   overflow-y: auto;
 }
 
 .duel .picker__cards .card {
-  --card-width: 6rem;
+  --card-width: var(--picker-card-width);
 }
 
 /* 能力の札だけが並ぶときは、枠を狭めて、幅の広い札を 1 列に並べる。カードの一覧は今の幅のまま。 */
@@ -7118,21 +7131,20 @@ body {
     font-size: 1rem;
   }
 
+  /* マスの最小幅は、PC と同じくカードの幅と隙間から割り出す（フリーズしたカードが収まる幅）。 */
   .duel .picker__cards {
+    --picker-card-width: 4.6rem;
+    --picker-column-gap: 0.4rem;
+
     flex: 1 1 auto;
     min-height: 0;
-    grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr));
     align-content: start;
-    gap: 0.8rem 0.4rem;
+    gap: 0.8rem var(--picker-column-gap);
     padding: 0.6rem 0.4rem;
   }
 
   .duel .picker__cards:has(.picker__ability) {
     grid-template-columns: 1fr;
-  }
-
-  .duel .picker__cards .card {
-    --card-width: 4.6rem;
   }
 
   .duel .picker__ability {
