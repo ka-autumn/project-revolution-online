@@ -1173,13 +1173,15 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
           whose: whose(event.player),
           text: `リリース（${orientedZoneLabel(from.zone)}）：${cardsLabel(from.count, from.cards, named)}`,
         }))
-      default:
-        return [logLineOf(event)]
+      default: {
+        const line = logLineOf(event)
+        return line === undefined ? [] : [line]
+      }
     }
   }
 
   /** 1 行にしかならないできごと 1 つを、字下げを別にした 1 行にする。 */
-  function logLineOf(event: Exclude<DuelEvent, { kind: '進行が変わった' | 'リリースした' }>): LinePart {
+  function logLineOf(event: Exclude<DuelEvent, { kind: '進行が変わった' | 'リリースした' }>): LinePart | undefined {
     switch (event.kind) {
       case '行動した': {
         const name = named(event.card)
@@ -1199,6 +1201,7 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         // 知らない種類の命令は、知らない種類のできごとと同じ行にする。支配者は届いているが、
         // 同じ文が 2 通りの見た目で出ないよう、誰のものかは言わない。
         const text = instructionLine(event.instruction, board, named, whose, event.controller)
+        if (text === OMITTED) return undefined
         return text === undefined
           ? { whose: undefined, text: UNREADABLE_LOG }
           : { whose: whose(event.controller), text }
@@ -1461,6 +1464,24 @@ function signed(amount: number): string {
   return `${amount < 0 ? '-' : '+'}${Math.abs(amount)}`
 }
 
+/**
+ * 行を出さないことを言う値。読めなかった（`undefined`、`UNREADABLE_LOG`）のとは違い、読めた上で、
+ * 見る人に出すものが無い。ログにもカットインにも並べない。
+ */
+const OMITTED = null
+
+/**
+ * 置き先のゾーンの呼び名。いつも「自分の／相手の」を付ける（「自分のプランを裏返した」と同じ書き方）。
+ * 置き先のプレイヤーを持たない古いサーバの記録には、付けない。
+ */
+function placedZoneLabel(
+  player: Player | undefined,
+  zone: string,
+  whose: (player: Player) => '自分' | '相手',
+): string {
+  return player === undefined ? zone : `${whose(player)}の${zone}`
+}
+
 /** 命令 1 つを 1 行にする。 */
 function instructionLine(
   instruction: LoggedInstruction,
@@ -1468,9 +1489,12 @@ function instructionLine(
   named: (card: CardId | undefined) => string | undefined,
   whose: (player: Player) => '自分' | '相手',
   controller: Player,
-): string | undefined {
+): string | undefined | typeof OMITTED {
   switch (instruction.kind) {
     case '選ぶ': {
+      // 選ばないことを選んだ（`log.ts` の `選ぶ`）。
+      if (instruction.declined === true) return '選ばなかった'
+
       // 選ばれたのはカード・スクエア・エリアのどれかである（`log.ts` の `選ぶ`）。スクエアと
       // エリアは見る人から見た呼び名で言う（総合ルール 第2部 第22章 6）。
       const where =
@@ -1479,7 +1503,10 @@ function instructionLine(
           : instruction.areaRow !== undefined
             ? areaLabel(board.viewer, instruction.areaRow)
             : undefined
-      return about(named(instruction.card) ?? where, 'を', '選んだ')
+      const chosen = named(instruction.card) ?? where
+      // 選ばれたのが見る人に見えないカード（カード・スクエア・エリアのどれも指していない）なら、行を出さない。
+      // 選んだカードの名前は、動かした先で見えるようになった時に、その行が言う（ADR-0042）。
+      return chosen === undefined ? OMITTED : `${chosen}を選んだ`
     }
     case '破壊する':
       return about(named(instruction.card), 'を', '破壊した')
@@ -1490,9 +1517,13 @@ function instructionLine(
     case '向きを変える':
       return about(named(instruction.card), 'を', instruction.orientation)
     case 'ゾーンへ置く':
-      return about(named(instruction.card), 'を', `${instruction.to}へ`)
+      return about(named(instruction.card), 'を', `${placedZoneLabel(instruction.player, instruction.to, whose)}へ`)
     case '山札の1番上をゾーンへ置く':
-      return about(named(instruction.card), 'を', `${instruction.to}へ（山札の 1 番上）`)
+      return about(
+        named(instruction.card),
+        'を',
+        `${placedZoneLabel(instruction.player, instruction.to, whose)}へ（山札の 1 番上）`,
+      )
     case 'スクエアへ置く':
       return about(named(instruction.card), 'を', `${squareLabel(board.viewer, instruction.square)}へ`)
     case '誘発型能力を作る':
@@ -1618,12 +1649,12 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
   const named = (card: CardId | undefined): string | undefined =>
     card === undefined ? undefined : nameOf(names, card)
 
-  const views: { whose: '自分' | '相手'; heading: string; lines: string[] }[] = []
+  const views: { whose: '自分' | '相手'; heading: string; lines: string[]; omitted: boolean }[] = []
   let open: (typeof views)[number] | undefined
 
   for (const { event } of fresh) {
     if (event.kind === '能力を解決した') {
-      open = { whose: whose(event.controller), heading: headingOf(event.via, named(event.source)), lines: [] }
+      open = { whose: whose(event.controller), heading: headingOf(event.via, named(event.source)), lines: [], omitted: false }
       views.push(open)
       continue
     }
@@ -1631,13 +1662,18 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
       // 知らない種類の命令（#285）は並べない。カットインは読める分を見せる演出で、読めなかった
       // ことはログの欄が言う（`UNREADABLE_LOG`）。全部が読めなければ、見出しだけになる。
       const line = instructionLine(event.instruction, board, named, whose, event.controller)
-      if (line !== undefined) open.lines.push(line)
+      if (line === OMITTED) open.omitted = true
+      else if (line !== undefined) open.lines.push(line)
       continue
     }
     open = undefined
   }
 
+  // 並べる行が、出さない行（`OMITTED`）だけで空になった解決は、見出しだけのカットインを出さない。
+  // 読めなかった行（#285）だけで空になった場合は、これまでどおり見出しを残す。
   return views
+    .filter((view) => view.lines.length > 0 || !view.omitted)
+    .map(({ whose: owner, heading, lines }) => ({ whose: owner, heading, lines }))
 }
 
 /**
