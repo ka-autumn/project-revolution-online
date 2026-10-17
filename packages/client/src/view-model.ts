@@ -727,15 +727,17 @@ export interface CardInfoRow {
 /**
  * スマートフォンのカードの詳細で、面の右に書く項目（デッキを組む画面の詳細と同じ並べ方、ADR-0028）。
  *
- * 持っていない項目は行ごと出さない。レベルと色、ＢＰとＳＰは、それぞれ 1 行にまとめる（能力テキストが
- * 初めから見える高さに収めるため）。ＢＰ・ＳＰは継続効果を適用した後の数字があれば「書かれた数字→
+ * 持っていない項目は行ごと出さない。種別・レベル・色と、ＢＰとＳＰは、それぞれ 1 行にまとめる（能力
+ * テキストが初めから見える高さに収めるため）。ＢＰ・ＳＰは継続効果を適用した後の数字があれば「書かれた数字→
  * 適用後の数字」にし、属性は加わった分も含める（対戦画面のカードの面と同じ、ADR-0027）。
  * ムーブアイコン・トリガーアイコンの呼び名は、印刷された向きのままにする。
  */
 export function cardInfoRowsOf(card: CardView & { readonly kind: '表' }): readonly CardInfoRow[] {
   const rows: CardInfoRow[] = [
-    { label: '種別', value: card.type },
-    { label: 'レベル／色', value: `${card.level}／${card.colors.length === 0 ? '無色' : card.colors.join('・')}` },
+    {
+      label: '種別／レベル／色',
+      value: `${card.type}／${card.level}／${card.colors.length === 0 ? '無色' : card.colors.join('・')}`,
+    },
   ]
   // ＢＰ・ＳＰは 1 行にまとめる。能力テキストが初めから見える高さに収まるようにするため。
   if (card.bp !== undefined || card.sp !== undefined) {
