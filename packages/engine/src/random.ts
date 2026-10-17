@@ -17,6 +17,24 @@ export function randomFromSeed(seed: number): Random {
   return { state: seed | 0 }
 }
 
+/**
+ * この列とは重ならない、別の列を切り出す（ADR-0042）。
+ *
+ * この乱数列の内部状態は、1 回引くたびに一定の値が足されるだけなので、「次の値を 1 つ取った後の列」
+ * は元の列を 1 つずらしただけの同じ列になる。別の用途に使う列を作るために、元の列の状態を混ぜて
+ * （murmur3 の最終混合）、遠い起点から始める。元の列と同じ状態を通る心配は、実用上の長さ
+ * （数千回）の中では無い。元の列は変えない。
+ */
+export function splitRandom(random: Random): Random {
+  let h = (random.state + 0x6d2b79f5) | 0
+  h ^= h >>> 16
+  h = Math.imul(h, 0x85ebca6b)
+  h ^= h >>> 13
+  h = Math.imul(h, 0xc2b2ae35)
+  h ^= h >>> 16
+  return { state: h | 0 }
+}
+
 interface Next<T> {
   readonly value: T
   /** 続きの乱数列。同じ乱数列を使い回すと同じ値が出るため、次はこちらを使う。 */

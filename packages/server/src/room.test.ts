@@ -1,14 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import {
   CONSTRUCTED_DECK_MINIMUM,
+  applyWithAnswers,
+  cardsIn,
   choose,
   defineStrategy,
   defineUnit,
   drawCards,
+  legalActions,
   placeTopOfLibrary,
+  prepareDuel,
+  shuffleLibrary,
 } from '@revolution/engine'
 import type {
   Card,
+  ChoiceAnswer,
+  DuelState,
   FromClient,
   LegalAction,
   OpponentKind,
@@ -121,6 +128,23 @@ const REVEALING: Card = defineStrategy({
 
 /** 2 度選ばせるストラテジーを、めくってから選ばせるものに差し替えたまとまり。ほかは同じ。 */
 const REVEALING_DECKS = deckSource({ ...CARDS, 'TEST-S': REVEALING })
+
+/**
+ * 山札をシャッフルするだけのストラテジー（ADR-0042）。途中のシャッフルの後の山札が、記録から
+ * 作り直しても同じ並びになることを見る。
+ */
+const SHUFFLING_NAME = 'テスト・部屋のシャッフル'
+
+const SHUFFLING: Card = defineStrategy({
+  name: SHUFFLING_NAME,
+  level: 0,
+  effect: function* () {
+    yield* shuffleLibrary()
+  },
+})
+
+/** 2 度選ばせるストラテジーを、シャッフルするものに差し替えたまとまり。ほかは同じ。 */
+const SHUFFLING_DECKS = deckSource({ ...CARDS, 'TEST-S': SHUFFLING })
 
 const CODE = 'あいことば'
 
@@ -1458,6 +1482,60 @@ describe('記録から立て直す', () => {
     const restored = restore(storedFrom(started()), DECKS)
 
     expect(restored.get(CODE)?.duel).toBeDefined()
+  })
+
+  /**
+   * ADR-0005・ADR-0018・ADR-0042。途中のシャッフルの結果は記録に残らない。盤面が持つ乱数列の続きから
+   * 取るので、行動を打ち直せば、同じ並びの山札になる。
+   */
+  it('途中でシャッフルした対戦も、記録を打ち直すと同じ山札の並びと乱数列の続きになる', () => {
+    const record = started(SHUFFLING_DECKS).records.find((each) => each.kind === '始まった')
+    if (record?.kind !== '始まった') throw new Error('始まった記録があるはずだった')
+    const first = SHUFFLING_DECKS.from(record.decks[0])
+    const second = SHUFFLING_DECKS.from(record.decks[1])
+    if (first === undefined || second === undefined) throw new Error('デッキが引けるはずだった')
+    const prepared = prepareDuel({ decks: [first.cards, second.cards], seed: record.seed })
+    if (prepared.kind !== '準備完了') throw new Error('準備できるはずだった')
+
+    // シャッフルのストラテジーをプレイするまで、放棄で進める。選択は最初の候補で答える。
+    let state: DuelState = prepared.state
+    const steps: { action: LegalAction; answers: ChoiceAnswer[] }[] = []
+    let played = false
+    for (let count = 0; count < 400 && !played; count += 1) {
+      const actions = legalActions(state)
+      const playing = actions.find((action) => {
+        if (action.kind !== 'カードをプレイする') return false
+        const hand = cardsIn(state, state.turn.priority, '手札')
+        return hand.find((card) => card.id === action.declaration.card)?.card.name === SHUFFLING_NAME
+      })
+      const action = playing ?? actions.find((one) => one.kind === '優先権を放棄する')
+      if (action === undefined) throw new Error('進められる手があるはずだった')
+
+      const answers: ChoiceAnswer[] = []
+      for (;;) {
+        const progress = applyWithAnswers(state, action, answers)
+        if (progress.kind === '進んだ') {
+          state = progress.state
+          break
+        }
+        answers.push(0)
+      }
+      steps.push({ action, answers })
+      played = playing !== undefined
+    }
+    expect(played).toBe(true)
+
+    const restored = restore([{ ...record, steps }], SHUFFLING_DECKS).get(record.code)?.duel?.state
+
+    expect(restored).toBeDefined()
+    for (const player of ['先攻', '後攻'] as const) {
+      expect(cardsIn(restored as DuelState, player, '山札').map((card) => card.id)).toEqual(
+        cardsIn(state, player, '山札').map((card) => card.id),
+      )
+    }
+    expect(restored?.random).toEqual(state.random)
+    // シャッフルが実際に起きている（開始時の乱数列の続きから進んでいる）。
+    expect(state.random).not.toEqual(prepared.state.random)
   })
 
   /** 取り下げられたカードを含むデッキは、使えないものとして扱う（ADR-0021）。 */

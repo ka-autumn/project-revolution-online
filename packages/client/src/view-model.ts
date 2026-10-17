@@ -541,6 +541,24 @@ export function shownCardViewsIn(board: WirePerspective, choice: WireChoice): re
   }))
 }
 
+/**
+ * 見せる一覧で、選べないカードを薄くするか（ADR-0041）。選べるカードが 1 枚でもある一覧だけで薄くし、
+ * 選べるカードと見分けられるようにする。選べるカードが 1 枚も無い一覧（相手の手札を見る確認、条件に
+ * 合うカードが無い山札）は、見せるための一覧なので薄くしない。
+ */
+export function dimsUnselectable(shown: readonly ShownCardView[]): boolean {
+  return shown.some(({ candidate }) => candidate !== undefined)
+}
+
+/**
+ * 見せる一覧の答えが「選ばない」だけか（ADR-0042）。選べるカードが 1 枚も無く、確認の候補も無い一覧で、
+ * 条件に合うカードが無い山札がこれにあたる。足もとは「選ばない」だけを主ボタンにし、「これに決める」は
+ * 置かない（仕様書の「カードの一覧」）。
+ */
+export function answersOnlyByDeclining(shown: readonly ShownCardView[], confirmIndex: number | undefined): boolean {
+  return confirmIndex === undefined && !dimsUnselectable(shown)
+}
+
 /** 盤面が実際に描いているもの（#150）。 */
 export interface DrawnOnBoard {
   /** 表側が見えていて、押すところが盤面にあるカード。 */
@@ -698,6 +716,42 @@ export function triggerIconLabel(icon: TriggerIcon, squareName: (square: Square)
       icon satisfies never
       return '（表示できないトリガーアイコン）'
   }
+}
+
+/** カードの詳細の右に書く、項目と値の 1 行。 */
+export interface CardInfoRow {
+  readonly label: string
+  readonly value: string
+}
+
+/**
+ * スマートフォンのカードの詳細で、面の右に書く項目（デッキを組む画面の詳細と同じ並べ方、ADR-0028）。
+ *
+ * 持っていない項目は行ごと出さない。種別・レベル・色と、ＢＰとＳＰは、それぞれ 1 行にまとめる（能力
+ * テキストが初めから見える高さに収めるため）。ＢＰ・ＳＰは継続効果を適用した後の数字があれば「書かれた数字→
+ * 適用後の数字」にし、属性は加わった分も含める（対戦画面のカードの面と同じ、ADR-0027）。
+ * スターは行にしない（名前の前に出す、`render.ts` の `phoneDetailParts`）。キーワードも行にしない
+ * （能力テキストと重複するため）。ムーブアイコンは「移動方向」と呼ぶ。トリガーアイコンの行は書かない（能力テキストの《…》と重複するため。
+ * 面にもアイコンが出ている）。
+ */
+export function cardInfoRowsOf(card: CardView & { readonly kind: '表' }): readonly CardInfoRow[] {
+  const rows: CardInfoRow[] = [
+    {
+      label: '種別／レベル／色',
+      value: `${card.type}／${card.level}／${card.colors.length === 0 ? '無色' : card.colors.join('・')}`,
+    },
+  ]
+  // ＢＰ・ＳＰは 1 行にまとめる。能力テキストが初めから見える高さに収まるようにするため。
+  if (card.bp !== undefined || card.sp !== undefined) {
+    const after = (written: number | undefined, modified: number | undefined): string =>
+      written === undefined ? '－' : modified === undefined ? String(written) : `${written}→${modified}`
+    rows.push({ label: 'ＢＰ／ＳＰ', value: `${after(card.bp, card.modified?.bp)}／${after(card.sp, card.modified?.sp)}` })
+  }
+  if (card.moveIcon.length > 0) rows.push({ label: '移動方向', value: card.moveIcon.join('・') })
+  const attributes = [...card.attributes, ...(card.modified?.addedAttributes ?? [])]
+  if (attributes.length > 0) rows.push({ label: '属性', value: attributes.join(' | ') })
+
+  return rows
 }
 
 /**
@@ -1458,6 +1512,14 @@ function instructionLine(
       const cards = cardsLabel(instruction.count, instruction.cards, named)
       return whose(controller) === '自分' ? `相手の手札を見た：${cards}` : `相手が手札を見た：${cards}`
     }
+    // 山札の中身は、読んだ本人にも相手にも、ログには出さない（ADR-0042）。枚数だけを言う。
+    case '自分の山札を読む':
+      return whose(controller) === '自分' ? `山札を見た：${instruction.count} 枚` : `相手が山札を見た：${instruction.count} 枚`
+    // プランゾーンのカードは公開されているので、混ぜたことは言うが、名前は出さない。
+    case '山札をシャッフルする':
+      return instruction.withPlan
+        ? `${whose(controller)}のプランを裏返し、山札をシャッフルした`
+        : `${whose(controller)}の山札をシャッフルした`
     // この画面が知らない種類の命令（#285、`UNREADABLE_LOG`）。文を作り出さず、読めなかったことを
     // 呼ぶ側に返す。ログとカットインで出し方が違うので、ここでは決めない。
     default:

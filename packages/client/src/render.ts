@@ -104,6 +104,9 @@ import type {
 } from './view-model.js'
 import {
   DECKS_PER_PAGE,
+  answersOnlyByDeclining,
+  cardInfoRowsOf,
+  dimsUnselectable,
   faceFieldsOf,
   keyOfPosition,
   pagedOf,
@@ -4885,6 +4888,43 @@ function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   ]
 }
 
+/**
+ * スマートフォンのカードの詳細。左にカードの面、右に文字でカードの情報を全部書く（デッキを組む画面の
+ * 詳細と同じ並べ方、ADR-0028）。右の列が無く、面だけでは能力テキストが読み切れないため。
+ *
+ * 面は、カードの一覧と同じ小さな面（拡大しない）にする。拡大した面は、小さい枠では内容が収まらず潰れる。
+ * 能力テキストと運用の注記を含む情報は、右の欄で読む。
+ * 面の高さを超える分は、右の欄だけを縦に送る（面と欄が枠をはみ出さない）。
+ */
+function phoneDetailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
+  const noted = card.operationalNote.length > 0
+  const face = element('div', `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)}`)
+  face.append(faceElement(card))
+
+  const info = element('div', 'detail__info')
+  // スターは名前の前に出す（デッキを組む画面の詳細と同じ。行を増やさない）。
+  const name = element('div', 'detail__name')
+  name.append(
+    ...[starElement(card.stars, false), starElement(card.reverseStars, true)].filter(
+      (each): each is HTMLElement => each !== undefined,
+    ),
+    document.createTextNode(card.name),
+  )
+  info.append(name)
+  const rows = element('dl', 'detail__rows')
+  for (const row of cardInfoRowsOf(card)) rows.append(element('dt', '', row.label), element('dd', '', row.value))
+  info.append(rows)
+  if (card.text.length > 0) {
+    const text = element('div', 'detail__text')
+    for (const line of card.text) text.append(element('p', '', line))
+    info.append(text)
+  }
+  if (noted) info.append(operationalNoteElement(card.operationalNote))
+  info.append(element('p', 'detail__note', detailNoteOf(card)))
+
+  return [face, info]
+}
+
 function fillDetailPanel(node: HTMLElement, card: (CardView & { readonly kind: '表' }) | undefined): void {
   if (card === undefined) {
     node.replaceChildren(detailGuideElement())
@@ -4906,7 +4946,7 @@ function phoneDetailElement(card: CardView | undefined, className: string, guide
   const node = element('div', `phone-only ${className}`)
   node.setAttribute('aria-live', 'polite')
   if (shown === undefined) node.append(element('p', 'detail__none', guide))
-  else node.append(...detailParts(shown))
+  else node.append(...phoneDetailParts(shown))
 
   return node
 }
@@ -5433,7 +5473,7 @@ export function shownPickerElement(
     onCancel: once(rawHandlers.onCancel),
   }
 
-  const anySelectable = shown.some(({ candidate }) => candidate !== undefined)
+  const anySelectable = dimsUnselectable(shown)
   const cards = shown.map(({ card, candidate }) => {
     const node = cardElement(card)
 
@@ -5469,10 +5509,21 @@ export function shownPickerElement(
 
   const foot = element('div', 'picker__foot')
   if (anySelectable) foot.append(element('span', 'picker__count', `${answered + 1} 枚目を選んでいます`))
-  if (mayDecline) foot.append(button('選ばない', handlers.onDecline))
+  // 選べるカードも確認も無い一覧（条件に合うカードが無い山札）は、「選ばない」だけが答えになる。
+  const declineOnly = answersOnlyByDeclining(shown, confirmIndex)
+  if (mayDecline) {
+    const decline = button('選ばない', handlers.onDecline)
+    if (declineOnly) {
+      decline.classList.add('button--primary')
+      decline.setAttribute(INITIAL_FOCUS_ATTRIBUTE, '')
+    }
+    foot.append(decline)
+  }
   if (mayRewind) foot.append(button('ひとつ戻る', handlers.onRewind))
   if (mayCancel) foot.append(button('この行動をやめる', handlers.onCancel))
-  if (confirmIndex !== undefined) {
+  if (declineOnly) {
+    // 「これに決める」は置かない。
+  } else if (confirmIndex !== undefined) {
     const confirmation = confirmIndex
     const confirm = button('確認した', () => handlers.onConfirm(confirmation))
     confirm.classList.add('button--primary')

@@ -1,4 +1,4 @@
-import type { UnitCard } from './card.js'
+import type { Card, UnitCard } from './card.js'
 import { continuousData } from './continuous.js'
 import { checkCourageCondition } from './courage.js'
 import { discardFromSquares } from './discard.js'
@@ -11,16 +11,18 @@ import {
   locateOnSquares,
   moveToSquare,
   moveToZone,
+  putInZone,
   setOrientationInEnergyZone,
   setOrientationOnSquare,
   topOfLibrary,
 } from './duel.js'
 import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
-import type { DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
+import type { CardInZone, DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import { loggedInstruction, record } from './log.js'
 import type { ResolutionVia } from './log.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
+import { shuffle } from './random.js'
 import { checkIntrusion } from './trap.js'
 import { duelView } from './view.js'
 
@@ -61,6 +63,11 @@ export const CHOICE_PURPOSES = [
    * 一覧が付く。候補が 1 つでも聞く——聞かなければ、見た側に一覧が届かない。
    */
   '見たカードの確認',
+  /**
+   * 自分の山札を読んで、条件に合うカードを選ぶ（ADR-0042）。候補は条件に合うカードで、山札の
+   * 全体が見せる一覧として付く。候補が無くても聞く（選ばないことを選ぶ）。
+   */
+  '山札から選ぶ',
   /** ユニットを移動するための追加コストの支払い（同 第4部 第6章 2-2）。 */
   '移動のコスト',
   /** 起動型能力のコストの支払い（同 第4部 第2章 1）。 */
@@ -258,24 +265,31 @@ function apply(
   state: DuelState,
   instruction: Instruction,
   context: EffectContext,
-  shown: ReadonlySet<CardId>,
+  shown: Set<CardId>,
 ): Outcome {
   switch (instruction.kind) {
     case '選ぶ': {
+      // 見せる一覧を渡された時は、候補が無くても聞く。山札を見た人に、選ばないことを選ばせる
+      // ためである（ADR-0042）。一覧が空（読める山札が無い、読んだカードが山札を離れた）なら、見せる
+      // ものが無いので、一覧なしの選択として扱う。
+      const listed = instruction.shown === undefined ? [] : instancesOf(state, context.controller, instruction.shown, shown)
+      const shownCards = listed.length === 0 ? undefined : listed
+
       // 候補が空なら、選ぶという行動は実行できない（総合ルール 第1部 第1章 3）。効果は
       // そこで終わらせず、選ばれなかったものとして次の指示へ進む。解決はテキストに
       // 書かれている順番の通りに指示に従うものであり（同 第4部 第8章 2-2）、実行されない
       // のはその行動だけだからである。選んだものを対象にする後ろの指示を飛ばすかどうかは、
       // 効果の側が `undefined` を見て決める（`effect.ts` の `choose`）。
-      if (instruction.candidates.length === 0) return { state, value: undefined }
+      if (instruction.candidates.length === 0 && shownCards === undefined) return { state, value: undefined }
       // 選ぶのは能力の支配者（総合ルール 第4部 第8章 2-3）。
       const chosen = context.chooser(
         instruction.candidates,
         context.controller,
-        '効果の対象',
+        shownCards === undefined ? '効果の対象' : '山札から選ぶ',
         state,
         instruction.mayDecline,
         context.source,
+        shownCards,
       )
       // 選ばないことが認められている場面でだけ、候補にないもの（`undefined`）を受け取れる。
       if (instruction.mayDecline && chosen === undefined) return { state, value: undefined }
@@ -287,9 +301,9 @@ function apply(
     case '相手の手札を見る': {
       // 見るのは能力の支配者で、見られるのはその相手の手札である（ADR-0041）。
       // 手札の並びは公開されていない。引いた順などが一覧から読めないよう、中身だけで並べる。
-      const hand = [...cardsIn(state, opponentOf(context.controller), '手札')].sort((a, b) =>
-        a.card.name < b.card.name ? -1 : a.card.name > b.card.name ? 1 : 0,
-      )
+      // 同じ名前の中は識別子の順にする。見せる一覧の並び（`protocol.ts` の `orderShown`）と、ログの名指しの
+      // 並びをそろえるためで、手札の持ち順（引いた順など）はどちらにも出ない。
+      const hand = [...cardsIn(state, opponentOf(context.controller), '手札')].sort(byNameThenId)
       // 0 枚なら新しく見えるものが無い。聞かずに、見たことだけを積む（`subject` が空の並び）。
       if (hand.length === 0) return { state, value: undefined, subject: hand }
 
@@ -304,6 +318,32 @@ function apply(
       )
       // 見たカードは効果に返さない。効果が相手の手札の中身で分岐する口は作らない。
       return { state, value: undefined, subject: hand }
+    }
+    case '自分の山札を読む': {
+      // 読むのは能力の支配者で、読まれるのはその山札である（ADR-0042）。山札の順序は効果に渡さない。
+      // 並びは中身だけで決める——持ち順で返すと、山札の順序が読めてしまう。
+      const read = [
+        ...cardsIn(state, context.controller, 'プランゾーン').map((one) => inZone(one, 'プランゾーン')),
+        ...cardsIn(state, context.controller, '山札').map((one) => inZone(one, '山札')),
+      ].sort(byNameThenId)
+      // 読んだカードは、効果が命令の対象にできる（選んだカードを動かす命令に渡せる）。
+      for (const one of read) shown.add(one.id)
+      // 0 枚でも読んだことは積む（`subject` が空の並び）。
+      return { state, value: read, subject: read }
+    }
+    case '山札をシャッフルする': {
+      // 混ぜるのは支配者の山札で、プランゾーンにカードがあれば、裏向きにしてから混ぜる
+      // （総合ルール 第2部 第21章 3-5）。裏向きにすると山札の 1 番上に移り、プランゾーンは無くなる。
+      const player = context.controller
+      const plan = cardsIn(state, player, 'プランゾーン')
+      const flipped = faceDownPlan(state, player)
+      // 乱数は盤面が持つ列から取り、進めた続きを盤面に戻す（ADR-0042）。
+      const mixed = shuffle(cardsIn(flipped, player, '山札'), state.random)
+      return {
+        state: { ...putInZone(flipped, player, '山札', mixed.value), random: mixed.random },
+        value: undefined,
+        subject: plan,
+      }
     }
     case '破壊する': {
       if (!shown.has(instruction.target.id)) {
@@ -449,6 +489,42 @@ function apply(
       return { state: current, value: undefined, subject: drawn.length === 0 ? undefined : drawn }
     }
   }
+}
+
+/** 山札かプランゾーンにあるカードを、効果に見せる形に写す。 */
+function inZone(instance: CardInstance, zone: '山札' | 'プランゾーン'): CardInZone {
+  return { id: instance.id, zone, card: instance.card }
+}
+
+/**
+ * カード名の順、同じ名前の中は識別子の順。持ち順を使わない並べ方である。
+ *
+ * 識別子はシャッフルする前のデッキの並びから決まる（`setup.ts` の `library`）ので、山札の
+ * 順序を表さない。
+ */
+function byNameThenId(a: { readonly id: CardId; readonly card: Card }, b: { readonly id: CardId; readonly card: Card }): number {
+  if (a.card.name !== b.card.name) return a.card.name < b.card.name ? -1 : 1
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
+/**
+ * 効果が見せる一覧に載せたカードを、盤面のカードに引き直す。
+ *
+ * 効果が読んだものだけを載せられる（`shown` に入っているもの）。山札とプランゾーンから探す。
+ * 見つからなければ、そのカードはもう山札を離れているので、一覧には載せない。
+ */
+function instancesOf(
+  state: DuelState,
+  player: Player,
+  listed: readonly CardInZone[],
+  shown: ReadonlySet<CardId>,
+): readonly CardInstance[] {
+  const held = [...cardsIn(state, player, 'プランゾーン'), ...cardsIn(state, player, '山札')]
+  return listed.flatMap(({ id }) => {
+    if (!shown.has(id)) throw new Error('効果に見せていないカードが見せる一覧に載せられた')
+    const found = held.find((one) => one.id === id)
+    return found === undefined ? [] : [found]
+  })
 }
 
 /**

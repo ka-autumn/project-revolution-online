@@ -168,6 +168,7 @@ export {
   bpPlus,
   choose,
   chooseAtMostOne,
+  chooseAtMostOneFromLibrary,
   createContinuousEffect,
   createTriggeredAbility,
   damagePlayer,
@@ -181,7 +182,9 @@ export {
   placeInZone,
   placeOnSquare,
   placeTopOfLibrary,
+  readLibrary,
   release,
+  shuffleLibrary,
   spPlus,
 } from './effect.js'
 export type {
@@ -282,7 +285,7 @@ export { PLAYERS } from './player.js'
 export { passOutcome, passPriority } from './progress.js'
 export type { PassOutcome } from './progress.js'
 export type { Player } from './player.js'
-export { nextInt, randomFromSeed, shuffle } from './random.js'
+export { nextInt, randomFromSeed, shuffle, splitRandom } from './random.js'
 export type { Random } from './random.js'
 export { RELATIONS_FROM_PLAYER, RELATIONS_FROM_UNIT } from './relation.js'
 export type { RelationFromPlayer, RelationFromUnit } from './relation.js'

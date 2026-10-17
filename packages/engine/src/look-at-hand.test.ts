@@ -177,6 +177,30 @@ describe('相手の手札を見る確認の選択', () => {
     expect(progress.choice.shown?.map(({ instance }) => instance.id)).toEqual(['相手手札A', '相手手札B', '相手手札C'])
   })
 
+  // 同じ名前のカードが複数ある時の並びも、持ち順ではなく識別子の順にする（ADR-0042）。一覧とログの
+  // 名指しの並びがそろう。
+  it('同じ名前のカードの並びは、一覧もログの名指しも、持ち順ではなく識別子の順になる', () => {
+    const hand = [
+      handCard('相手手札2', 'テスト・同', '後攻'),
+      handCard('相手手札1', 'テスト・同', '後攻'),
+      handCard('相手手札0', 'テスト・同', '後攻'),
+    ]
+    const start = mainPhaseWith(strategyOf(lookOnly), hand)
+
+    const progress = applyWithAnswers(start, PLAY, [])
+    expectChoice(progress)
+    const after = applyWithAnswers(start, PLAY, [0])
+    expectAdvanced(after)
+
+    expect(progress.choice.shown?.map(({ instance }) => instance.id)).toEqual(['相手手札0', '相手手札1', '相手手札2'])
+    const [event] = lookEventsOf(after.state)
+    expect(event?.kind === '命令を実行した' && 'cards' in event.instruction ? event.instruction.cards : []).toEqual([
+      '相手手札0',
+      '相手手札1',
+      '相手手札2',
+    ])
+  })
+
   it('確認を答えると、効果は先へ進む', () => {
     const start = mainPhaseWith(strategyOf(lookThenDraw), opponentHand())
     const handBefore = cardsIn(start, '先攻', '手札').length
@@ -403,13 +427,15 @@ describe('見せる一覧と候補の対応', () => {
     handCard('一覧3', 'テスト・三', '先攻'),
   ]
 
+  // 選べるカードを先に並べる（ADR-0042）ため、一覧の並びは渡した順ではなく、選べるカード、見えるだけの
+  // カードの順になる。
   it('候補になっているカードは候補の番号を持ち、見えるだけのカードは持たない', () => {
     const candidates = [third, first]
 
     expect(describeAllShown([first, second, third], candidates).map(({ candidate }) => candidate)).toEqual([
       1,
-      undefined,
       0,
+      undefined,
     ])
   })
 

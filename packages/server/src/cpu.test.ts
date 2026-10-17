@@ -320,6 +320,13 @@ describe('CPU が選択に答える', () => {
     expect(pickCpuAnswer(confirming, randomFromSeed(7)).answer).toBe(0)
   })
 
+  // ADR-0042。条件に合うカードが無い山札の選択は、候補が 0 枚で、選ばないことだけが答えになる。
+  it('山札から選ぶ場面で候補が無ければ、選ばないと答える', () => {
+    const noMatch = { ...CHOICE, purpose: '山札から選ぶ', mayDecline: true, mayGoBack: false, candidates: [] } as const
+
+    expect(pickCpuAnswer(noMatch, randomFromSeed(7)).answer).toBe('選ばない')
+  })
+
   it('答えるたびに乱数列が進む', () => {
     const first = pickCpuAnswer(CHOICE, randomFromSeed(3))
     const second = pickCpuAnswer(CHOICE, first.random)

@@ -320,7 +320,7 @@ function occasionLabel(
  * 見えていない、`protocol.ts` の `WireChoice.source`）と、識別子は届いたが盤面にもログの
  * 名指しにも無い場合（`view-model.ts` の `namesIn`）の両方がここに来る。
  */
-function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
+function askingFor(purpose: ChoicePurpose, source: string | undefined, hasCandidates: boolean): string {
   switch (purpose) {
     case 'プレイのコスト':
       return 'プレイのコストとしてフリーズするエネルギーを選んでください'
@@ -342,6 +342,9 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
         : `${source} を発動するきっかけを選んでください`
     case '見たカードの確認':
       return '相手の手札を見ています'
+    // 条件に合うカードが無い山札も聞かれる（選ばないことだけを選べる、ADR-0042）。
+    case '山札から選ぶ':
+      return hasCandidates ? 'カードを選択してください' : '条件に合うカードはありません'
     case '勇気のきっかけ':
       return source === undefined
         ? '「勇気」でダメージを与えるユニットを選んでください'
@@ -380,7 +383,11 @@ export function choiceView(board: WirePerspective, choice: WireChoice, picking?:
   )
 
   return {
-    asking: askingFor(choice.purpose, choice.source === undefined ? undefined : names.get(choice.source)),
+    asking: askingFor(
+      choice.purpose,
+      choice.source === undefined ? undefined : names.get(choice.source),
+      choice.candidates.length > 0,
+    ),
     mayDecline: choice.mayDecline,
     mayRewind: choice.mayGoBack && choice.answered > 0,
     mayCancel: choice.mayGoBack,
@@ -909,6 +916,17 @@ export interface ChoicePicking {
   readonly onBoard: readonly number[]
 }
 
+/** 盤面から押せるものが無い。見せる一覧つきの選択（ADR-0041・ADR-0042）の盤面の押し方。 */
+const NOTHING_ON_BOARD: ChoicePicking = {
+  pickable: [],
+  answerOf: () => undefined,
+  squares: [],
+  answerOfSquare: () => undefined,
+  hidden: [],
+  answerOfHidden: () => undefined,
+  onBoard: [],
+}
+
 /**
  * 選ぶ候補のうち、盤面の上で押せるものを結び付ける。
  *
@@ -929,6 +947,11 @@ export interface ChoicePicking {
  * まま、ボタンだけが消えることになる。
  */
 export function choicePicking(board: WirePerspective, choice: WireChoice): ChoicePicking {
+  // 見せる一覧つきの選択（ADR-0041・ADR-0042）は、一覧だけで答える。盤面に描かれているカード
+  // （プランゾーンのカードなど）が候補に入っていても、盤面からは押せない。盤面から押すと「これに
+  // 決める」を経ずに答えが送られ、一覧の中の流れと食い違う。
+  if (choice.shown !== undefined) return NOTHING_ON_BOARD
+
   const drawn = drawnOnBoard(board)
   const answers = new Map<CardId, number>()
   // スクエアは行と列の組なので、そのままでは鍵にできない。盤面の並びの番号に直して引く。
@@ -1043,5 +1066,14 @@ export function showsChoicePicker(
  * 言う。それ以外は、候補から選ぶ一覧と同じ見出しにする。
  */
 export function shownTitleOf(choice: WireChoice): string {
-  return choice.purpose === '見たカードの確認' ? `相手の手札（${choice.shown?.length ?? 0}）` : '候補から選ぶ'
+  const count = choice.shown?.length ?? 0
+  switch (choice.purpose) {
+    case '見たカードの確認':
+      return `相手の手札（${count}）`
+    // 山札の全体（プランゾーンのカードを含む）を見せている。枚数は山札の合計で、公開情報である。
+    case '山札から選ぶ':
+      return `山札（${count}）からカードを選択`
+    default:
+      return '候補から選ぶ'
+  }
 }

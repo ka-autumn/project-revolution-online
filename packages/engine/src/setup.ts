@@ -5,7 +5,7 @@ import { emptyDuelState, instantiate, putInZone } from './duel.js'
 import type { CardInstance, DuelState } from './duel.js'
 import { record } from './log.js'
 import type { Player } from './player.js'
-import { nextInt, randomFromSeed, shuffle } from './random.js'
+import { nextInt, randomFromSeed, shuffle, splitRandom } from './random.js'
 import type { Random } from './random.js'
 
 /**
@@ -80,7 +80,11 @@ export function prepareDuel(setup: DuelSetup): DuelPreparation {
   const decided = nextInt(shuffledOfSeat1.random, SEATS.length)
   const first: Seat = decided.value === 0 ? 0 : 1
 
-  let state = emptyDuelState()
+  // 盤面が持つ乱数列（途中のシャッフル用、ADR-0042）は、準備で使った列から切り出した別の列にする。
+  // 外へ返す `random`（CPU・自己対戦が手を選ぶ列）と同じ状態を通らないようにするためで、外へ返す列は
+  // 変えない（既存の対戦の進み方を動かさない）。1 つ取った後の列では、元の列を 1 つずらしただけに
+  // なる（`random.ts` の `splitRandom`）。
+  let state: DuelState = { ...emptyDuelState(), random: splitRandom(decided.random) }
   for (const seat of SEATS) {
     const player: Player = seat === first ? '先攻' : '後攻'
     state = deal(state, player, library(shuffled[seat], player))

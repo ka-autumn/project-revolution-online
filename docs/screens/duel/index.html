@@ -1574,7 +1574,8 @@ body {
 .show-picker-choose .picker--選ぶ,
 .show-picker-sending .picker--送信中,
 .show-picker-confirm .picker--確認,
-.show-picker-shown .picker--見せる一覧 { display: flex; }
+.show-picker-shown .picker--見せる一覧,
+.show-picker-shown-none .picker--見せる一覧・該当なし { display: flex; }
 
 .picker__box {
   display: flex;
@@ -2074,10 +2075,8 @@ body {
   .controls .mode { display: none; }
 
   /* カードの詳細：拡大した面と、そのカードで行える手のボタン */
-  .detail.sheet--開いている { align-items: center; padding: 0 0.6rem 0.8rem; }
-  .detail .card--拡大 { --card-width: min(13rem, 60vw); }
-  .detail .card--拡大 .card__text { max-height: 7rem; }
-  .detail__actions { display: flex; flex-direction: column; gap: 0.4rem; width: 100%; margin-top: 0.6rem; }
+  #detail.detail.sheet--開いている { display: grid !important; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 0.6rem; padding: 0 0.6rem 0.8rem; text-align: left; }
+  .detail__actions { display: flex; grid-column: 1 / -1; flex-direction: column; gap: 0.4rem; width: 100%; margin-top: 0.6rem; }
   .detail__actions:empty { display: none; }
   .detail__actions button { min-height: 2.75rem; }
 
@@ -2131,15 +2130,7 @@ body {
     overscroll-behavior: contain;
   }
 
-  .duel .dialog__detail {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin: 0 0 0.6rem;
-  }
-
-  .duel .dialog__detail .card--拡大 { --card-width: min(13rem, 60vw); }
-  .duel .dialog__detail .card--拡大 .card__text { max-height: 7rem; }
+  .duel .dialog__detail { margin: 0 0 0.6rem; }
 
   .duel .dialog__lead {
     margin: 0 0 0.75rem;
@@ -2181,18 +2172,34 @@ body {
   .picker__title { font-size: 1rem; }
   .picker__cards { flex-wrap: wrap; justify-content: center; }
   /* 一覧の上の段：最後に押したカードの詳細 */
-  .picker__detail {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-height: 3rem;
-    padding: 0.3rem;
-    border-bottom: 1px solid rgb(220 166 64 / 0.45);
-  }
-  .picker__detail .card--拡大 { --card-width: 8.5rem; font-size: 0.6rem; }
-  .picker__detail .card--拡大 .card__title { font-size: 0.8rem; }
-  .picker__detail .card--拡大 .card__text { font-size: 0.65rem; max-height: 4.5rem; min-height: 0; }
+  .picker__detail { min-height: 3rem; padding: 0.3rem; border-bottom: 1px solid rgb(220 166 64 / 0.45); }
   .picker__detail .detail__note { font-size: 0.7rem; }
+  /* シートの上の段・一覧の上の段・カードのシートの詳細：左にカードの面、右に文字で情報を全部書く。
+     右の欄は面の高さまでで、超える分は欄だけを縦に送る（枠をはみ出さない）。一覧の上の段は縮まない */
+  .picker__detail,
+  .duel .dialog__detail {
+    --detail-card-width: 6rem;
+    display: grid;
+    flex: none;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0.6rem;
+    text-align: left;
+  }
+  .picker__detail > .card,
+  .duel .dialog__detail > .card,
+  .detail.sheet--開いている > .card { --card-width: var(--detail-card-width, 6rem); }
+  .detail__info { min-width: 0; max-height: calc(var(--detail-card-width, 6rem) * 1.5); overflow-y: auto; overscroll-behavior: contain; font-size: 0.74rem; }
+  .detail__name { display: flex; align-items: center; gap: 0.2rem; margin-bottom: 0.3rem; color: var(--heading); font-size: 0.95rem; font-weight: 800; line-height: 1.25; }
+  .detail__name .star { width: 1.3rem; height: 1.3rem; font-size: 0.7rem; }
+  .detail__rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.1rem 0.5rem; margin: 0; }
+  .detail__rows dt { color: var(--ink-dim); white-space: nowrap; }
+  .detail__rows dd { margin: 0; font-weight: 600; }
+  .detail__text { margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid rgb(220 166 64 / 0.5); line-height: 1.5; }
+  .detail__text p { margin: 0 0 0.2rem; }
+  .detail__info .detail__operational { font-size: inherit; }
+  .picker__detail .detail__none,
+  .duel .dialog__detail .detail__none { grid-column: 1 / -1; align-self: center; text-align: center; }
   .picker__box { max-height: 100%; overflow-y: auto; }
   .picker__cards .card { --card-width: 4.6rem; }
   .picker__foot { flex-wrap: wrap; }
@@ -2403,10 +2410,11 @@ body {
   <label><input type="checkbox" data-show="show-result-lose">決着（敗北）</label>
   <label><input type="checkbox" data-show="show-result-draw">決着（引き分け）</label>
   <label><input type="checkbox" data-show="show-picker-view">一覧（捨札を見る）</label>
-  <label><input type="checkbox" data-show="show-picker-choose">一覧（山札から選ぶ）</label>
-  <label><input type="checkbox" data-show="show-picker-sending">一覧（山札から選ぶ・通信中）</label>
+  <label><input type="checkbox" data-show="show-picker-choose">一覧（候補から選ぶ）</label>
+  <label><input type="checkbox" data-show="show-picker-sending">一覧（候補から選ぶ・通信中）</label>
   <label><input type="checkbox" data-show="show-picker-confirm">一覧（相手の手札を見る・確認）</label>
-  <label><input type="checkbox" data-show="show-picker-shown">一覧（見せる一覧つき・選べるカードと見えるだけのカード）</label>
+  <label><input type="checkbox" data-show="show-picker-shown">一覧（山札の全体・選べるカードと見えるだけのカード・32 枚）</label>
+  <label><input type="checkbox" data-show="show-picker-shown-none">一覧（山札の全体・条件に合うカードが無い）</label>
   <label><input type="checkbox" data-show="show-many">枚数が多い（手札 12 枚。スマホではエネルギー 10 種類 24 枚・スマッシュ 6 枚も）</label>
 </div>
 
@@ -2869,7 +2877,7 @@ const choosable = [
 ]
 for (const n of choosable) n.classList.add('card--押せる')
 choosable[1].classList.add('card--選択中')
-pickers.append(picker('選ぶ', '山札から選ぶ', 'レベル 3 以下のユニットを 1 枚まで選んで、手札に加える',
+pickers.append(picker('選ぶ', '候補から選ぶ', '効果の対象を選んでください',
   choosable,
   '<span class="picker__count">1 枚目を選んでいます</span><button type="button">選ばない</button><button type="button" class="button--primary">これに決める</button>'))
 
@@ -2882,7 +2890,7 @@ const sendingList = [
 ]
 for (const n of sendingList) n.classList.add('card--押せる')
 sendingList[1].classList.add('card--選択中')
-pickers.append(picker('送信中', '山札から選ぶ', 'レベル 3 以下のユニットを 1 枚まで選んで、手札に加える',
+pickers.append(picker('送信中', '候補から選ぶ', '効果の対象を選んでください',
   sendingList,
   '<span class="picker__count">1 枚目を選んでいます</span><button type="button" disabled>選ばない</button><button type="button" class="button--primary" disabled>これに決める</button>',
   true))
@@ -2893,22 +2901,24 @@ pickers.append(picker('確認', '相手の手札（3）', '相手の手札を見
   [card('見本・メカナイト', '相手'), card('見本・アクアシールド', '相手'), card('見本・紅葉', '相手')],
   '<button type="button" class="button--primary">確認した</button>'))
 
-// 見せる一覧のうち一部だけが選べる場合（山札の全体を見せて、条件に合うカードだけを選ばせる、など）。
-// 選べるカードは橙の枠で押せ、見えるだけのカードは薄くする
-const shownList = [
-  card('見本・もちぬい', '自分'),
-  card('見本・竜の飛翔', '自分'),
-  card('見本・森の守護者', '自分'),
-  card('見本・アクアシールド', '自分'),
-  card('見本・光の祈り手', '自分'),
-  card('見本・紅葉', '自分'),
-]
-for (const at of [0, 2, 4]) shownList[at].classList.add('card--押せる')
-shownList[2].classList.add('card--選択中')
-for (const at of [1, 3, 5]) shownList[at].classList.add('card--見るだけ')
-pickers.append(picker('見せる一覧', '候補から選ぶ', 'レベル 3 以下のユニットを 1 枚まで選んで、手札に加える',
-  shownList,
+// 山札の全体を見せて、条件に合うカードだけを選ばせる場合（ADR-0042）。山札は 32 枚（プランゾーンのカードを含む）。
+// 選べるカードを先頭にまとめ、残りの見えるだけのカードは薄くする。並びはカード名の順で、山札の順序は出さない。
+// 数十枚でも、枠の中で縦に送って全部を見られる
+const deckNames = Object.keys(cards)
+const deckList = Array.from({ length: 32 }, (_, at) => card(deckNames[at % deckNames.length], '自分'))
+for (const at of [0, 1, 2]) deckList[at].classList.add('card--押せる')
+deckList[1].classList.add('card--選択中')
+for (let at = 3; at < deckList.length; at += 1) deckList[at].classList.add('card--見るだけ')
+pickers.append(picker('見せる一覧', '山札（32）からカードを選択', 'カードを選択してください',
+  deckList,
   '<span class="picker__count">1 枚目を選んでいます</span><button type="button">選ばない</button><button type="button" class="button--primary">これに決める</button>'))
+
+// 条件に合うカードが 1 枚も無い山札。聞かれるが、答えられるのは「選ばない」だけ。薄くはしない
+// （選べるカードが無い一覧は、見せるための一覧）。「これに決める」は置かない
+const noMatchList = Array.from({ length: 32 }, (_, at) => card(deckNames[at % deckNames.length], '自分'))
+pickers.append(picker('見せる一覧・該当なし', '山札（32）からカードを選択', '条件に合うカードはありません',
+  noMatchList,
+  '<button type="button" class="button--primary">選ばない</button>'))
 
 // ---- カードの詳細 ----
 // 何も無ければ案内だけ。カードを選んでいる間はそのカードが既定。乗せたカードに切り替わり、
@@ -2919,7 +2929,7 @@ function renderDetail(node) {
     detail.innerHTML = '<p class="detail__none">カードにマウスを乗せるか、フォーカスすると、ここに詳細が出ます。</p>'
     return
   }
-  detail.replaceChildren(...detailParts(node))
+  detail.replaceChildren(...(matchMedia('(max-width: 768px)').matches ? phoneDetailParts(node) : detailParts(node)))
   for (const n of document.querySelectorAll('.card--詳細中')) n.classList.remove('card--詳細中')
   node.classList.add('card--詳細中')
 }
@@ -2938,6 +2948,47 @@ function detailParts(node) {
   const parts = [big]
   if (c.note) parts.push(operationalNote(c.note))
   return [...parts, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
+}
+// スマートフォンのカードの詳細：左にカードの面、右に文字で情報を全部書く（デッキを組む画面の詳細と同じ並べ方）。
+// 面は、カードの一覧と同じ小さな面にする（拡大しない。拡大した面は小さい枠では内容が収まらず潰れる）。内容は右の欄で読む
+// 右の欄は面の高さまでで、超える分は欄だけを縦に送る
+function phoneDetailParts(node) {
+  const name = node.dataset.name
+  const c = cards[name]
+  const big = document.createElement('div')
+  big.className = `card card--${node.dataset.whose} card--色-${c.color}`
+  big.innerHTML = faceHtml(name, { bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage })
+  const info = document.createElement('div')
+  info.className = 'detail__info'
+  // スターは名前の前に出す（デッキを組む画面の詳細と同じ。行を増やさない）
+  const nameLine = Object.assign(document.createElement('div'), { className: 'detail__name' })
+  nameLine.innerHTML = starIcon(c.stars) + starIcon(c.reverseStars, true)
+  nameLine.append(document.createTextNode(name))
+  info.append(nameLine)
+  const rows = document.createElement('dl')
+  rows.className = 'detail__rows'
+  const add = (label, value) => rows.append(Object.assign(document.createElement('dt'), { textContent: label }), Object.assign(document.createElement('dd'), { textContent: value }))
+  add('種別／レベル／色', `${c.kind}／${c.lv}／${c.color}`)
+  // ＢＰとＳＰは 1 行にまとめる（能力テキストが初めから見える高さに収めるため）
+  if (c.bp !== undefined || c.sp !== undefined) {
+    const shown = (written, modified) => (written === undefined ? '－' : modified && Number(modified) !== written ? `${written}→${modified}` : String(written))
+    add('ＢＰ／ＳＰ', `${shown(c.bp, node.dataset.bp)}／${shown(c.sp, node.dataset.sp)}`)
+  }
+  if (c.move) add('移動方向', c.move.join('・'))
+  if (c.traits) add('属性', c.traits.split('・').join(' | '))
+  info.append(rows)
+  if (c.text.length > 0) {
+    const text = document.createElement('div')
+    text.className = 'detail__text'
+    for (const line of c.text) text.append(Object.assign(document.createElement('p'), { textContent: line }))
+    info.append(text)
+  }
+  if (c.note) info.append(operationalNote(c.note))
+  const notes = [`${node.dataset.whose}のカード`]
+  if (node.dataset.freeze) notes.push('フリーズ')
+  if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
+  info.append(Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') }))
+  return [big, info]
 }
 // 運用の注記の枠。見出しと、注記の行
 function operationalNote(lines) {
@@ -3160,7 +3211,7 @@ function openAreaSheet(square) {
     const frame = make('div', 'dialog__details')
     for (const unit of units) {
       const one = make('div', 'dialog__detail')
-      one.append(...detailParts(unit))
+      one.append(...phoneDetailParts(unit))
       frame.append(one)
     }
     box.append(frame)
@@ -3239,14 +3290,14 @@ function openCardSheet(node, detailOnly = false) {
 function pickInList(node) {
   const list = node.closest('.picker')
   if (node.classList.contains('card--押せる') && !list.hasAttribute('aria-busy')) node.classList.toggle('card--選択中')
-  list.querySelector('.picker__detail').replaceChildren(...detailParts(node))
+  list.querySelector('.picker__detail').replaceChildren(...phoneDetailParts(node))
 }
 // 払う一覧の中のカード：1 回押すと、その 1 枚を払う（本番は 1 枚ずつ答えを送る）。見本では一覧から外して払ったことにし、
 // 払えるカードが残っていなければ一覧を閉じる。裏向きのスマッシュも、払う候補なら押せる
 function payInList(node) {
   const list = node.closest('.picker')
   const detail = list.querySelector('.picker__detail')
-  if (node.dataset.name) detail.replaceChildren(...detailParts(node))
+  if (node.dataset.name) detail.replaceChildren(...phoneDetailParts(node))
   else detail.replaceChildren(Object.assign(document.createElement('p'), { className: 'detail__none', textContent: '裏向きのカード（中身は見られません）' }))
   if (!node.classList.contains('card--押せる') || list.hasAttribute('aria-busy')) return
   node.remove()

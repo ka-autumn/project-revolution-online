@@ -6991,20 +6991,103 @@ body {
     flex: 1;
   }
 
-  /* シートの上の段：カードの詳細（PC では右の列に出ているもの） */
+  /*
+   * シートの上の段・一覧の上の段：カードの詳細（PC では右の列に出ているもの）。左にカードの面、右に
+   * 文字で情報を全部書く（デッキを組む画面の詳細と同じ並べ方）。右の欄は面の高さまでで、超える分は
+   * 欄だけを縦に送るので、枠をはみ出さない。
+   */
+  .duel .dialog__detail,
+  .duel .picker__detail {
+    --detail-card-width: 6rem;
+    display: grid;
+    flex: none;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0.6rem;
+    text-align: left;
+  }
+
   .duel .dialog__detail {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
     margin: 0 0 0.6rem;
   }
 
-  .duel .dialog__detail .card--拡大 {
-    --card-width: min(13rem, 60vw);
+  /* 面は、カードの一覧と同じ小さな面にする（拡大しない）。内容は右の欄で読む。 */
+  .duel .dialog__detail > .card,
+  .duel .picker__detail > .card {
+    --card-width: var(--detail-card-width);
   }
 
-  .duel .dialog__detail .card--拡大 .card__text {
-    max-height: 7rem;
+  .duel .dialog__detail .detail__info,
+  .duel .picker__detail .detail__info {
+    min-width: 0;
+    max-height: calc(var(--detail-card-width) * 1.5);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    font-size: 0.74rem;
+  }
+
+  .duel .dialog__detail .detail__name,
+  .duel .picker__detail .detail__name {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    margin-bottom: 0.3rem;
+    color: var(--heading);
+    font-size: 0.95rem;
+    font-weight: 800;
+    line-height: 1.25;
+  }
+
+  .duel .dialog__detail .detail__name .star,
+  .duel .picker__detail .detail__name .star {
+    width: 1.3rem;
+    height: 1.3rem;
+    font-size: 0.7rem;
+  }
+
+  .duel .dialog__detail .detail__rows,
+  .duel .picker__detail .detail__rows {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.1rem 0.5rem;
+    margin: 0;
+  }
+
+  .duel .dialog__detail .detail__rows dt,
+  .duel .picker__detail .detail__rows dt {
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+
+  .duel .dialog__detail .detail__rows dd,
+  .duel .picker__detail .detail__rows dd {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .duel .dialog__detail .detail__text,
+  .duel .picker__detail .detail__text {
+    margin-top: 0.4rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid rgb(220 166 64 / 0.5);
+    line-height: 1.5;
+  }
+
+  .duel .dialog__detail .detail__text p,
+  .duel .picker__detail .detail__text p {
+    margin: 0 0 0.2rem;
+  }
+
+  .duel .dialog__detail .detail__operational,
+  .duel .picker__detail .detail__operational {
+    font-size: inherit;
+  }
+
+  .duel .picker__detail .detail__none,
+  .duel .dialog__detail .detail__none {
+    grid-column: 1 / -1;
+    align-self: center;
+    text-align: center;
   }
 
   /* ---------- 一覧（見る・選ぶ）：画面いっぱい。右の列は無いので空けない ---------- */
@@ -7056,30 +7139,11 @@ body {
     min-height: 2.75rem;
   }
 
-  /* 一覧の上の段：最後に押したカード（能力なら発生源）の詳細 */
+  /* 一覧の上の段：最後に押したカード（能力なら発生源）の詳細。並べ方は上の「シートの上の段」と同じ */
   .duel .picker__detail {
-    display: flex;
-    flex: none;
-    flex-direction: column;
-    align-items: center;
     min-height: 3rem;
     padding: 0.3rem;
     border-bottom: 1px solid rgb(220 166 64 / 0.45);
-  }
-
-  .duel .picker__detail .card--拡大 {
-    --card-width: 8.5rem;
-    font-size: 0.6rem;
-  }
-
-  .duel .picker__detail .card--拡大 .card__title {
-    font-size: 0.8rem;
-  }
-
-  .duel .picker__detail .card--拡大 .card__text {
-    min-height: 0;
-    max-height: 4.5rem;
-    font-size: 0.65rem;
   }
 
   .duel .picker__detail .detail__note {
