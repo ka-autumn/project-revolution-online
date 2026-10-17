@@ -7017,12 +7017,10 @@ body {
     font-size: 0.46rem;
   }
 
-  /* 面のテキスト欄は収まる分だけにする。全文は右の欄にある。 */
+  /* 面には能力テキストを書かない（アイコンだけが残る）。全文は右の欄にある。 */
   .duel .dialog__detail .card--拡大 .card__text,
   .duel .picker__detail .card--拡大 .card__text {
     min-height: 0;
-    max-height: 2.4rem;
-    overflow: hidden;
   }
 
   .duel .dialog__detail .detail__info,

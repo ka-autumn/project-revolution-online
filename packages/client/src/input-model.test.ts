@@ -2126,6 +2126,10 @@ describe('見せる一覧つきの選択', () => {
       expect(choiceView(board(), searching).asking).toBe('カードを選択してください')
     })
 
+    it('条件に合うカードが無い時は、無いことを言う', () => {
+      expect(choiceView(board(), { ...searching, candidates: [], shown: [] }).asking).toBe('条件に合うカードはありません')
+    })
+
     it('選べるカードが混じる一覧では、選べないカードを薄くする', () => {
       expect(dimsUnselectable(shownCardViewsIn(board(), searching))).toBe(true)
     })

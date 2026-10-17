@@ -320,7 +320,7 @@ function occasionLabel(
  * 見えていない、`protocol.ts` の `WireChoice.source`）と、識別子は届いたが盤面にもログの
  * 名指しにも無い場合（`view-model.ts` の `namesIn`）の両方がここに来る。
  */
-function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
+function askingFor(purpose: ChoicePurpose, source: string | undefined, hasCandidates: boolean): string {
   switch (purpose) {
     case 'プレイのコスト':
       return 'プレイのコストとしてフリーズするエネルギーを選んでください'
@@ -342,8 +342,9 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
         : `${source} を発動するきっかけを選んでください`
     case '見たカードの確認':
       return '相手の手札を見ています'
+    // 条件に合うカードが無い山札も聞かれる（選ばないことだけを選べる、ADR-0042）。
     case '山札から選ぶ':
-      return 'カードを選択してください'
+      return hasCandidates ? 'カードを選択してください' : '条件に合うカードはありません'
     case '勇気のきっかけ':
       return source === undefined
         ? '「勇気」でダメージを与えるユニットを選んでください'
@@ -382,7 +383,11 @@ export function choiceView(board: WirePerspective, choice: WireChoice, picking?:
   )
 
   return {
-    asking: askingFor(choice.purpose, choice.source === undefined ? undefined : names.get(choice.source)),
+    asking: askingFor(
+      choice.purpose,
+      choice.source === undefined ? undefined : names.get(choice.source),
+      choice.candidates.length > 0,
+    ),
     mayDecline: choice.mayDecline,
     mayRewind: choice.mayGoBack && choice.answered > 0,
     mayCancel: choice.mayGoBack,

@@ -552,6 +552,8 @@ function appendTraitsAndStats(
 interface FaceOptions {
   /** 詳細（拡大）として出すか。テキストの枠が付き、並びが変わる。 */
   readonly big?: boolean
+  /** 能力テキストを面に書かないか。右の欄に全文を書く詳細（スマートフォン）で使う。アイコンは残る。 */
+  readonly omitText?: boolean
 }
 
 /**
@@ -593,7 +595,7 @@ function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptio
 
     const text = element('div', 'card__text')
     const lines = element('div', 'card__lines')
-    for (const paragraph of card.text) lines.append(element('p', '', paragraph))
+    if (options.omitText !== true) for (const paragraph of card.text) lines.append(element('p', '', paragraph))
     text.append(lines)
     if (icons !== undefined) text.append(icons)
     bottom.append(text)
@@ -4892,15 +4894,13 @@ function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
  * スマートフォンのカードの詳細。左にカードの面、右に文字でカードの情報を全部書く（デッキを組む画面の
  * 詳細と同じ並べ方、ADR-0028）。右の列が無く、面だけでは能力テキストが読み切れないため。
  *
+ * 面には能力テキストを書かない（小さくて潰れるため）。能力テキストと運用の注記は右の欄で読む。
  * 面の高さを超える分は、右の欄だけを縦に送る（面と欄が枠をはみ出さない）。
  */
 function phoneDetailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   const noted = card.operationalNote.length > 0
-  const big = element(
-    'div',
-    `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大${noted ? ' card--注記つき' : ''}`,
-  )
-  big.append(faceElement(card, { big: true }))
+  const big = element('div', `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大`)
+  big.append(faceElement(card, { big: true, omitText: true }))
 
   const info = element('div', 'detail__info')
   info.append(element('div', 'detail__name', card.name))
