@@ -670,7 +670,9 @@ export function loggedInstruction(
     case '向きを変える':
       return { kind: '向きを変える', card: instruction.target.id, orientation: instruction.orientation }
     case 'ゾーンへ置く':
-      // 置いた先は持ち主のゾーンなので、動く前のカードの持ち主である。
+      // 置いた先は持ち主のゾーンなので、動く前のカードの持ち主である。持ち主が分からないのは、カードが
+      // すでにどこにも無い時で、その時は実行されず、ログにも積まれない（`resolve.ts` の `recorded`）ので、
+      // `controller` で埋める分岐へは届かない。
       return { kind: 'ゾーンへ置く', card: instruction.card.id, to: instruction.to, player: outcome.owner ?? controller }
     case '山札の1番上をゾーンへ置く':
       // どのカードが動いたかは命令に書かれていない（位置で指定されている）。

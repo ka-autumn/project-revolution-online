@@ -1138,6 +1138,9 @@ function didLine(
  * 名指しされていないカードは、そのまま出さない。**「見えていないカード」とも書かない。**
  * 名指しが落ちたのか、そもそもカードを指していないできごとなのかは、届いたものからは
  * 見分けられない（`log.ts` の `DuelEvent`）。分からないことを書き分けようとしない。
+ * ただし「選ぶ」だけは、選ばないことを選んだ時に印（`declined`）が付く（`log.ts`）ので、
+ * 「選ばなかった」と出す。印が無く、カード・スクエア・エリアのどれも指していない行は、選ばれたのが
+ * 見る人に見えないカードなので、行を出さない（`OMITTED`）。
  *
  * **新しいものを先頭にする（#111）。** `board.log` 自体は起きた順（古いものが先）のままで、
  * 並べ替えるのはここだけである。最新を確認するのに毎回下までスクロールしなくて済む。
@@ -1649,12 +1652,12 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
   const named = (card: CardId | undefined): string | undefined =>
     card === undefined ? undefined : nameOf(names, card)
 
-  const views: { whose: '自分' | '相手'; heading: string; lines: string[]; omitted: boolean }[] = []
+  const views: { whose: '自分' | '相手'; heading: string; lines: string[]; omitted: boolean; unreadable: boolean }[] = []
   let open: (typeof views)[number] | undefined
 
   for (const { event } of fresh) {
     if (event.kind === '能力を解決した') {
-      open = { whose: whose(event.controller), heading: headingOf(event.via, named(event.source)), lines: [], omitted: false }
+      open = { whose: whose(event.controller), heading: headingOf(event.via, named(event.source)), lines: [], omitted: false, unreadable: false }
       views.push(open)
       continue
     }
@@ -1663,16 +1666,18 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
       // ことはログの欄が言う（`UNREADABLE_LOG`）。全部が読めなければ、見出しだけになる。
       const line = instructionLine(event.instruction, board, named, whose, event.controller)
       if (line === OMITTED) open.omitted = true
-      else if (line !== undefined) open.lines.push(line)
+      else if (line === undefined) open.unreadable = true
+      else open.lines.push(line)
       continue
     }
     open = undefined
   }
 
   // 並べる行が、出さない行（`OMITTED`）だけで空になった解決は、見出しだけのカットインを出さない。
-  // 読めなかった行（#285）だけで空になった場合は、これまでどおり見出しを残す。
+  // 読めなかった行（#285）が 1 つでもあれば、出さない行が混ざって本文が空になっても、見出しを残す。
+  // 読めないものを黙って飛ばさず、読めないと言うことを優先する（ADR-0038）。
   return views
-    .filter((view) => view.lines.length > 0 || !view.omitted)
+    .filter((view) => view.lines.length > 0 || view.unreadable || !view.omitted)
     .map(({ whose: owner, heading, lines }) => ({ whose: owner, heading, lines }))
 }
 

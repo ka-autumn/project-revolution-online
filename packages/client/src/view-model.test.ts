@@ -1942,6 +1942,18 @@ describe('カットイン', () => {
     expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を破壊した`])
   })
 
+  // 読めない行（#285）が 1 つでもあれば、出さない行が混ざって本文が空になっても、見出しを残す（ADR-0038）。
+  it('見えないカードを選んだ行と読めない行だけの解決は、見出しだけのカットインを出す', () => {
+    const unknown = { kind: 'この画面が知らない命令', card: '置いてある' } as unknown as LoggedInstruction
+    const fresh: readonly DuelEvent[] = [
+      { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: undefined, square: undefined } },
+      { kind: '命令を実行した', controller: '先攻', instruction: unknown },
+    ]
+
+    expect(cutInViews(board, logged(fresh))).toEqual([{ whose: '自分', heading: `${NAME}の効果、誘発！`, lines: [] }])
+  })
+
   it('選ばなかった行は、カットインにも出る', () => {
     const fresh: readonly DuelEvent[] = [
       { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
