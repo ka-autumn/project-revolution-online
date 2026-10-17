@@ -86,6 +86,7 @@ import {
   noticeLabelOf,
   noticeParagraphsOf,
   noticeRowOf,
+  newsPanelKindOf,
   noticesInTab,
   noticesLoaded,
   panelNotices,
@@ -2403,6 +2404,8 @@ const NEWS_NEWER_KEY = 'お知らせ-次'
 const NEWS_TITLE_KEY = 'お知らせの題'
 /** 全件の窓の一覧の、スクロールの位置の印（`KEEP_SCROLL`）。 */
 const NEWS_LIST_SCROLL = 'お知らせの一覧'
+/** パネルの一覧の、スクロールの位置の印（`KEEP_SCROLL`）。 */
+const NEWS_PANEL_SCROLL = 'お知らせのパネル'
 const NEWS_TABS_NAME = 'お知らせの種別'
 const newsPanelKey = (id: string): string => `お知らせパネル-${id}`
 const newsTabKey = (tab: NoticeTab): string => `お知らせのタブ-${tab}`
@@ -2452,15 +2455,16 @@ function noticeItemElement(notice: Notice, key: string, onOpen: () => void): HTM
 /** 右の列：お知らせ。取りに行っている間は「読み込んでいます」、件が無ければ「まだありません」を出す。 */
 function lobbyNewsPanelElement(view: LobbyView): HTMLElement {
   const news = view.notices
+  const kind = newsPanelKindOf(news.state)
   const notices = noticesLoaded(news.state)
-  if (notices === undefined) {
+  if (kind === '読み込み中' || notices === undefined) {
     const loading = sectionPanel('lobby__news-panel', 'お知らせ')
     loading.setAttribute('aria-busy', 'true')
     loading.append(newsNoteElement('お知らせを読み込んでいます…'))
 
     return loading
   }
-  if (notices.length === 0) {
+  if (kind === '件なし') {
     const none = sectionPanel('lobby__news-panel', 'お知らせ')
     none.append(newsNoteElement('お知らせはまだありません'))
 
@@ -2484,6 +2488,8 @@ function lobbyNewsPanelElement(view: LobbyView): HTMLElement {
   if (!open) return panel
 
   const list = element('ul', 'lobby__news-list')
+  // パネルがあふれて自分でスクロールする時、サーバ由来の描き直しで先頭へ戻らないようにする。
+  list.dataset[KEEP_SCROLL] = NEWS_PANEL_SCROLL
   for (const notice of panelNotices(notices)) {
     const key = newsPanelKey(notice.id)
     list.append(noticeItemElement(notice, key, () => news.send({ kind: 'パネルから開く', id: notice.id, opener: key })))
@@ -2629,7 +2635,10 @@ function newsWindowElement(news: LobbyNotices): HTMLElement | undefined {
   const layer = element('div', 'confirm lobby__news-layer')
   layer.append(box)
   layer.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') onClose()
+    if (event.key !== 'Escape') return
+    // 全体の Esc（`index.ts` の `onKeyDown`）へ流さない。窓を閉じたあとに、選びかけの解除などへ続かせない。
+    event.stopPropagation()
+    onClose()
   })
   layer.addEventListener('click', (event) => {
     if (event.target === layer) onClose()

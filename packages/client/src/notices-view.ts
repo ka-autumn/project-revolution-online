@@ -76,6 +76,16 @@ export function noticesLoaded(state: NoticesState): readonly Notice[] | undefine
   return state.load.kind === '読めた' ? state.load.notices : undefined
 }
 
+/** パネルの形。読み込み中・件なしは畳まず、件がある時だけスマートフォンで畳む（ADR-0034）。 */
+export type NewsPanelKind = '読み込み中' | '件なし' | '件あり'
+
+export function newsPanelKindOf(state: NoticesState): NewsPanelKind {
+  const notices = noticesLoaded(state)
+  if (notices === undefined) return '読み込み中'
+
+  return notices.length === 0 ? '件なし' : '件あり'
+}
+
 /** タブに当てはまる件。「すべて」はすべて（種別の分からない件を含む）、種別のタブはその種別だけ。並べ替えない。 */
 export function noticesInTab(notices: readonly Notice[], tab: NoticeTab): readonly Notice[] {
   return tab === 'すべて' ? notices : notices.filter((each) => each.kind === tab)

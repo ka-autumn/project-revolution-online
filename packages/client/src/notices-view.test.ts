@@ -8,6 +8,7 @@ import {
   createNoticesFeed,
   fetchNotices,
   initialNotices,
+  newsPanelKindOf,
   listItemKey,
   noticesInTab,
   noticeLabelOf,
@@ -85,6 +86,18 @@ describe('取れた結果', () => {
   it('取れた後に別の結果が届いても、差し替えない（ロビーを開いたままのうちは変わらない、ADR-0045）', () => {
     const first = loaded()
     expect(reduceNotices(first, { kind: '読めた', notices: [] })).toBe(first)
+  })
+})
+
+describe('パネルの形', () => {
+  it('取りに行っている間は「読み込み中」で、畳まない側（件なしと同じ扱い）に入る', () => {
+    expect(newsPanelKindOf(initialNotices())).toBe('読み込み中')
+  })
+
+  it('読めても 0 件なら「件なし」。畳むのは「件あり」の時だけ', () => {
+    expect(newsPanelKindOf(loaded([]))).toBe('件なし')
+    expect(newsPanelKindOf(loaded())).toBe('件あり')
+    expect(newsPanelKindOf(loaded([notice('a', null)]))).toBe('件あり')
   })
 })
 

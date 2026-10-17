@@ -657,7 +657,7 @@ const NEWS = [
     body: ['対戦画面の見た目を新しくしました。'], changes: ['盤面を 3 列に組み直しました', 'カードの詳細を大きく出すようにしました', 'バトルや勝敗の演出を足しました'] },
   { kind: 'お知らせ', date: '2026-09-10', title: '禁止／制限リスト（2026年9月）を入れました', summary: '部屋を作るときに選べます。選ばなければ、このリストが当たります。',
     body: ['禁止／制限リスト（2026年9月）を入れました。', { quote: '引用の段落の見本です。能力テキストを引くときは、このように枠で囲みます。' }, '対戦部屋を作成するときに「対戦ルール」から選べます。選ばなければ、このリストが当たります。'], changes: [] },
-  { kind: null, date: '2026-09-05', title: '新しい種類のお知らせの見本（札を出しません）', summary: '種別を読み取れない件は、札と版を出さずに並べます。絞り込みでは「すべて」にだけ出ます。',
+  { kind: null, date: '2026-09-05', title: '新しい種類のお知らせの見本（札を出しません）', summary: '種別を読み取れない件は、札を出さずに並べます。絞り込みでは「すべて」にだけ出ます。',
     body: ['この画面が知らない種別のお知らせです。札を出さずに並べます。'], changes: [] },
   { kind: '修正', version: 'v0.12.1', date: '2026-09-02', title: 'CPU戦でCPUが考え込んで止まることがある不具合を直しました', summary: '',
     body: ['CPU戦で、CPUの手番のまま進まなくなることがありました。'], changes: [] },
@@ -1243,9 +1243,12 @@ function newsModal() {
     }
     box.append(body)
     const foot = el('div', 'modal__buttons')
-    const prev = NEWS[v.index + 1]; const next = NEWS[v.index - 1]
-    const older = btn('‹ 前のお知らせ', () => set({ newsView: { ...v, index: v.index + 1 } }), 'button--small'); older.disabled = !prev
-    const newer = btn('次のお知らせ ›', () => set({ newsView: { ...v, index: v.index - 1 } }), 'button--small'); newer.disabled = !next
+    // 前後へ移る範囲：全件の窓から開いたなら、選んでいる種別で絞った並び。パネルから開いたなら全件
+    const seq = v.from === '一覧' ? NEWS.filter((i) => v.filter === 'すべて' || i.kind === v.filter) : NEWS
+    const at = seq.indexOf(item)
+    const prev = seq[at + 1]; const next = seq[at - 1]
+    const older = btn('‹ 前のお知らせ', () => set({ newsView: { ...v, index: NEWS.indexOf(prev) } }), 'button--small'); older.disabled = !prev
+    const newer = btn('次のお知らせ ›', () => set({ newsView: { ...v, index: NEWS.indexOf(next) } }), 'button--small'); newer.disabled = !next
     foot.append(older, newer, el('span', 'modal__spacer'), btn('閉じる', close, 'button--primary'))
     box.append(foot)
   }
