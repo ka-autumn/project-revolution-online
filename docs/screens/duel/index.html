@@ -2075,10 +2075,8 @@ body {
   .controls .mode { display: none; }
 
   /* カードの詳細：拡大した面と、そのカードで行える手のボタン */
-  .detail.sheet--開いている { align-items: center; padding: 0 0.6rem 0.8rem; }
-  .detail .card--拡大 { --card-width: min(13rem, 60vw); }
-  .detail .card--拡大 .card__text { max-height: 7rem; }
-  .detail__actions { display: flex; flex-direction: column; gap: 0.4rem; width: 100%; margin-top: 0.6rem; }
+  #detail.detail.sheet--開いている { display: grid !important; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 0.6rem; padding: 0 0.6rem 0.8rem; text-align: left; }
+  .detail__actions { display: flex; grid-column: 1 / -1; flex-direction: column; gap: 0.4rem; width: 100%; margin-top: 0.6rem; }
   .detail__actions:empty { display: none; }
   .detail__actions button { min-height: 2.75rem; }
 
@@ -2132,15 +2130,7 @@ body {
     overscroll-behavior: contain;
   }
 
-  .duel .dialog__detail {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin: 0 0 0.6rem;
-  }
-
-  .duel .dialog__detail .card--拡大 { --card-width: min(13rem, 60vw); }
-  .duel .dialog__detail .card--拡大 .card__text { max-height: 7rem; }
+  .duel .dialog__detail { margin: 0 0 0.6rem; }
 
   .duel .dialog__lead {
     margin: 0 0 0.75rem;
@@ -2182,18 +2172,36 @@ body {
   .picker__title { font-size: 1rem; }
   .picker__cards { flex-wrap: wrap; justify-content: center; }
   /* 一覧の上の段：最後に押したカードの詳細 */
-  .picker__detail {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-height: 3rem;
-    padding: 0.3rem;
-    border-bottom: 1px solid rgb(220 166 64 / 0.45);
-  }
-  .picker__detail .card--拡大 { --card-width: 8.5rem; font-size: 0.6rem; }
-  .picker__detail .card--拡大 .card__title { font-size: 0.8rem; }
-  .picker__detail .card--拡大 .card__text { font-size: 0.65rem; max-height: 4.5rem; min-height: 0; }
+  .picker__detail { min-height: 3rem; padding: 0.3rem; border-bottom: 1px solid rgb(220 166 64 / 0.45); }
   .picker__detail .detail__note { font-size: 0.7rem; }
+  /* シートの上の段・一覧の上の段・カードのシートの詳細：左にカードの面、右に文字で情報を全部書く。
+     右の欄は面の高さまでで、超える分は欄だけを縦に送る（枠をはみ出さない）。一覧の上の段は縮まない */
+  .picker__detail,
+  .duel .dialog__detail {
+    --detail-card-width: 6.5rem;
+    display: grid;
+    flex: none;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0.6rem;
+    text-align: left;
+  }
+  .picker__detail .card--拡大,
+  .duel .dialog__detail .card--拡大,
+  .detail.sheet--開いている .card--拡大 { --card-width: var(--detail-card-width, 6.5rem); font-size: 0.46rem; }
+  .picker__detail .card--拡大 .card__text,
+  .duel .dialog__detail .card--拡大 .card__text,
+  .detail.sheet--開いている .card--拡大 .card__text { min-height: 0; max-height: 2.4rem; overflow: hidden; }
+  .detail__info { min-width: 0; max-height: calc(var(--detail-card-width, 6.5rem) * 1.5); overflow-y: auto; overscroll-behavior: contain; font-size: 0.74rem; }
+  .detail__name { margin-bottom: 0.3rem; color: var(--heading); font-size: 0.95rem; font-weight: 800; line-height: 1.25; }
+  .detail__rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.1rem 0.5rem; margin: 0; }
+  .detail__rows dt { color: var(--ink-dim); white-space: nowrap; }
+  .detail__rows dd { margin: 0; font-weight: 600; }
+  .detail__text { margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid rgb(220 166 64 / 0.5); line-height: 1.5; }
+  .detail__text p { margin: 0 0 0.2rem; }
+  .detail__info .detail__operational { font-size: inherit; }
+  .picker__detail .detail__none,
+  .duel .dialog__detail .detail__none { grid-column: 1 / -1; align-self: center; text-align: center; }
   .picker__box { max-height: 100%; overflow-y: auto; }
   .picker__cards .card { --card-width: 4.6rem; }
   .picker__foot { flex-wrap: wrap; }
@@ -2903,14 +2911,14 @@ const deckList = Array.from({ length: 32 }, (_, at) => card(deckNames[at % deckN
 for (const at of [0, 1, 2]) deckList[at].classList.add('card--押せる')
 deckList[1].classList.add('card--選択中')
 for (let at = 3; at < deckList.length; at += 1) deckList[at].classList.add('card--見るだけ')
-pickers.append(picker('見せる一覧', '山札（32）から選択する', '山札から選んでください',
+pickers.append(picker('見せる一覧', '山札（32）からカードを選択', 'カードを選択してください',
   deckList,
   '<span class="picker__count">1 枚目を選んでいます</span><button type="button">選ばない</button><button type="button" class="button--primary">これに決める</button>'))
 
 // 条件に合うカードが 1 枚も無い山札。聞かれるが、答えられるのは「選ばない」だけ。薄くはしない
 // （選べるカードが無い一覧は、見せるための一覧）。「これに決める」は置かない
 const noMatchList = Array.from({ length: 32 }, (_, at) => card(deckNames[at % deckNames.length], '自分'))
-pickers.append(picker('見せる一覧・該当なし', '山札（32）から選択する', '山札から選んでください',
+pickers.append(picker('見せる一覧・該当なし', '山札（32）からカードを選択', 'カードを選択してください',
   noMatchList,
   '<button type="button" class="button--primary">選ばない</button>'))
 
@@ -2923,7 +2931,7 @@ function renderDetail(node) {
     detail.innerHTML = '<p class="detail__none">カードにマウスを乗せるか、フォーカスすると、ここに詳細が出ます。</p>'
     return
   }
-  detail.replaceChildren(...detailParts(node))
+  detail.replaceChildren(...(matchMedia('(max-width: 768px)').matches ? phoneDetailParts(node) : detailParts(node)))
   for (const n of document.querySelectorAll('.card--詳細中')) n.classList.remove('card--詳細中')
   node.classList.add('card--詳細中')
 }
@@ -2942,6 +2950,42 @@ function detailParts(node) {
   const parts = [big]
   if (c.note) parts.push(operationalNote(c.note))
   return [...parts, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
+}
+// スマートフォンのカードの詳細：左にカードの面、右に文字で情報を全部書く（デッキを組む画面の詳細と同じ並べ方）。
+// 右の欄は面の高さまでで、超える分は欄だけを縦に送る
+function phoneDetailParts(node) {
+  const name = node.dataset.name
+  const c = cards[name]
+  const big = document.createElement('div')
+  big.className = `card card--拡大 card--${node.dataset.whose} card--色-${c.color}${c.note ? ' card--注記つき' : ''}`
+  big.innerHTML = faceHtml(name, { text: true, bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage })
+  const info = document.createElement('div')
+  info.className = 'detail__info'
+  info.append(Object.assign(document.createElement('div'), { className: 'detail__name', textContent: name }))
+  const rows = document.createElement('dl')
+  rows.className = 'detail__rows'
+  const add = (label, value) => rows.append(Object.assign(document.createElement('dt'), { textContent: label }), Object.assign(document.createElement('dd'), { textContent: value }))
+  add('種別', c.kind)
+  add('レベル', String(c.lv))
+  add('色', c.color)
+  if (c.bp !== undefined) add('ＢＰ', node.dataset.bp && Number(node.dataset.bp) !== c.bp ? `${c.bp}→${node.dataset.bp}` : String(c.bp))
+  if (c.sp !== undefined) add('ＳＰ', node.dataset.sp && Number(node.dataset.sp) !== c.sp ? `${c.sp}→${node.dataset.sp}` : String(c.sp))
+  if (c.move) add('ムーブアイコン', c.move.join('・'))
+  if (c.trigger) add('トリガーアイコン', Array.isArray(c.trigger) ? '侵入' : c.trigger.kind)
+  if (c.traits) add('属性', c.traits.split('・').join(' | '))
+  info.append(rows)
+  if (c.text.length > 0) {
+    const text = document.createElement('div')
+    text.className = 'detail__text'
+    for (const line of c.text) text.append(Object.assign(document.createElement('p'), { textContent: line }))
+    info.append(text)
+  }
+  if (c.note) info.append(operationalNote(c.note))
+  const notes = [`${node.dataset.whose}のカード`]
+  if (node.dataset.freeze) notes.push('フリーズ')
+  if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
+  info.append(Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') }))
+  return [big, info]
 }
 // 運用の注記の枠。見出しと、注記の行
 function operationalNote(lines) {
@@ -3164,7 +3208,7 @@ function openAreaSheet(square) {
     const frame = make('div', 'dialog__details')
     for (const unit of units) {
       const one = make('div', 'dialog__detail')
-      one.append(...detailParts(unit))
+      one.append(...phoneDetailParts(unit))
       frame.append(one)
     }
     box.append(frame)
@@ -3243,14 +3287,14 @@ function openCardSheet(node, detailOnly = false) {
 function pickInList(node) {
   const list = node.closest('.picker')
   if (node.classList.contains('card--押せる') && !list.hasAttribute('aria-busy')) node.classList.toggle('card--選択中')
-  list.querySelector('.picker__detail').replaceChildren(...detailParts(node))
+  list.querySelector('.picker__detail').replaceChildren(...phoneDetailParts(node))
 }
 // 払う一覧の中のカード：1 回押すと、その 1 枚を払う（本番は 1 枚ずつ答えを送る）。見本では一覧から外して払ったことにし、
 // 払えるカードが残っていなければ一覧を閉じる。裏向きのスマッシュも、払う候補なら押せる
 function payInList(node) {
   const list = node.closest('.picker')
   const detail = list.querySelector('.picker__detail')
-  if (node.dataset.name) detail.replaceChildren(...detailParts(node))
+  if (node.dataset.name) detail.replaceChildren(...phoneDetailParts(node))
   else detail.replaceChildren(Object.assign(document.createElement('p'), { className: 'detail__none', textContent: '裏向きのカード（中身は見られません）' }))
   if (!node.classList.contains('card--押せる') || list.hasAttribute('aria-busy')) return
   node.remove()
