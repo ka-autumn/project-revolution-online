@@ -402,13 +402,33 @@ export type LoggedInstruction =
       readonly card: CardId | undefined
       readonly square: Square | undefined
       readonly areaRow?: SquareIndex
+      /**
+       * 選ばないことを選んだ。この時、`card`・`square`・`areaRow` は埋まらない。
+       *
+       * カードなしの `選ぶ` だけでは、選ばなかったのか、選ばれたカードが見る人に見えなかった
+       * （名指しが落ちた）のかを見分けられないので、選ばなかったことは印で言う（ADR-0042）。
+       * 選べるものが無く、聞かずに進んだ時は残らない。省略できるのは、既存の記録の形を変えない
+       * ためである。
+       */
+      readonly declined?: true
     }
   | { readonly kind: '破壊する'; readonly card: CardId | undefined }
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
   | { readonly kind: 'ユニットにダメージを与える'; readonly card: CardId | undefined; readonly amount: number }
   | { readonly kind: '向きを変える'; readonly card: CardId | undefined; readonly orientation: Orientation }
-  | { readonly kind: 'ゾーンへ置く'; readonly card: CardId | undefined; readonly to: PlayerZone }
-  | { readonly kind: '山札の1番上をゾーンへ置く'; readonly card: CardId | undefined; readonly to: PlayerZone }
+  /**
+   * `player` は、置いた先のゾーンのプレイヤー。カードの持ち主と同じである（総合ルール 第2部
+   * 第21章 1-2。持ち主以外のゾーンには動かせない）。見る人が「自分の／相手の」を言えるように持つ
+   * （ADR-0040）。
+   */
+  | { readonly kind: 'ゾーンへ置く'; readonly card: CardId | undefined; readonly to: PlayerZone; readonly player: Player }
+  | {
+      readonly kind: '山札の1番上をゾーンへ置く'
+      readonly card: CardId | undefined
+      readonly to: PlayerZone
+      /** 置いた先のゾーンのプレイヤー。支配者の山札の 1 番上なので、支配者である。 */
+      readonly player: Player
+    }
   | { readonly kind: 'スクエアへ置く'; readonly card: CardId | undefined; readonly square: Square }
   | { readonly kind: '誘発型能力を作る'; readonly card: CardId | undefined }
   /**
@@ -622,9 +642,17 @@ export function areaRowOf(candidate: unknown, chooser: Player): SquareIndex | un
  * `controller` は効果の支配者で、選ぶのもこのプレイヤーである（総合ルール 第4部 第8章 2-3）。
  * 選ばれたエリアの呼び名は、このプレイヤーから見たものとして行に直す（`areaRowOf`）。
  */
-export function loggedInstruction(instruction: Instruction, subject: unknown, controller: Player): LoggedInstruction {
+export function loggedInstruction(
+  instruction: Instruction,
+  subject: unknown,
+  controller: Player,
+  /** 実行してみないと分からない、命令そのものには書かれていないもの（`subject` 以外）。 */
+  outcome: { readonly declined?: true; readonly owner?: Player } = {},
+): LoggedInstruction {
   switch (instruction.kind) {
     case '選ぶ': {
+      if (outcome.declined === true) return { kind: '選ぶ', card: undefined, square: undefined, declined: true }
+
       const areaRow = areaRowOf(subject, controller)
       return {
         kind: '選ぶ',
@@ -642,10 +670,13 @@ export function loggedInstruction(instruction: Instruction, subject: unknown, co
     case '向きを変える':
       return { kind: '向きを変える', card: instruction.target.id, orientation: instruction.orientation }
     case 'ゾーンへ置く':
-      return { kind: 'ゾーンへ置く', card: instruction.card.id, to: instruction.to }
+      // 置いた先は持ち主のゾーンなので、動く前のカードの持ち主である。持ち主が分からないのは、カードが
+      // すでにどこにも無い時で、その時は実行されず、ログにも積まれない（`resolve.ts` の `recorded`）ので、
+      // `controller` で埋める分岐へは届かない。
+      return { kind: 'ゾーンへ置く', card: instruction.card.id, to: instruction.to, player: outcome.owner ?? controller }
     case '山札の1番上をゾーンへ置く':
       // どのカードが動いたかは命令に書かれていない（位置で指定されている）。
-      return { kind: '山札の1番上をゾーンへ置く', card: cardIdOf(subject), to: instruction.to }
+      return { kind: '山札の1番上をゾーンへ置く', card: cardIdOf(subject), to: instruction.to, player: controller }
     case 'スクエアへ置く':
       return { kind: 'スクエアへ置く', card: instruction.card.id, square: instruction.square }
     case '誘発型能力を作る':

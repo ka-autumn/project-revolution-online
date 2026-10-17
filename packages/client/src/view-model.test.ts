@@ -988,15 +988,86 @@ describe('操作ログ', () => {
       expect(texts({ ...withLog(chosen), viewer: '後攻' })).toEqual(['敵エリアを選んだ'])
     })
 
-    /** どちらも指していなければ、名前もスクエアも作り出さない（#95）。 */
-    it('どちらも指していなければ、選んだことだけが出る', () => {
+    /**
+     * どちらも指していなければ、名前もスクエアも作り出さない（#95）。選ばれたのが見る人に見えないカードで、
+     * 名指しが落ちた時にあたる。行を出さない。選んだカードは、動かした先で見えるようになった時に、その行が
+     * 言う（ADR-0042）。
+     */
+    it('どちらも指していなければ、行を出さない', () => {
       const board = withLog({
         kind: '命令を実行した',
         controller: '先攻',
         instruction: { kind: '選ぶ', card: undefined, square: undefined },
       })
 
-      expect(texts(board)).toEqual(['選んだ'])
+      expect(texts(board)).toEqual([])
+    })
+
+    it('選ばないことを選んだなら、選ばなかったと出る。見えないカードを選んだ時とは違う', () => {
+      const board = withLog({
+        kind: '命令を実行した',
+        controller: '先攻',
+        instruction: { kind: '選ぶ', card: undefined, square: undefined, declined: true },
+      })
+
+      expect(texts(board)).toEqual(['選ばなかった'])
+      expect(texts({ ...board, viewer: '後攻' })).toEqual(['選ばなかった'])
+    })
+
+    it('見えないカードを選んだ行を飛ばしても、前後の行は並びのまま出る', () => {
+      const board = withLog(
+        { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: undefined, square: undefined } },
+        { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
+      )
+
+      expect(texts(board)).toEqual([`テスト・置いてあるを破壊した`])
+    })
+  })
+
+  /** 置き先のゾーンは、いつも「自分の／相手の」を付けて言う（ADR-0040）。見る人ごとに入れ替わる。 */
+  describe('ゾーンへ置いた行', () => {
+    const placed = (player: '先攻' | '後攻'): DuelEvent => ({
+      kind: '命令を実行した',
+      controller: '先攻',
+      instruction: { kind: 'ゾーンへ置く', card: '置いてある', to: '捨札', player },
+    })
+
+    it('自分のゾーンへ置いたなら「自分の」、相手のゾーンへ置いたなら「相手の」が付く', () => {
+      expect(texts(withLog(placed('先攻')))).toEqual([`テスト・置いてあるを自分の捨札へ`])
+      expect(texts(withLog(placed('後攻')))).toEqual([`テスト・置いてあるを相手の捨札へ`])
+    })
+
+    it('見る人が入れ替われば、「自分の／相手の」も入れ替わる', () => {
+      expect(texts({ ...withLog(placed('先攻')), viewer: '後攻' })).toEqual([`テスト・置いてあるを相手の捨札へ`])
+      expect(texts({ ...withLog(placed('後攻')), viewer: '後攻' })).toEqual([`テスト・置いてあるを自分の捨札へ`])
+    })
+
+    it('山札の 1 番上を置いた行にも付く', () => {
+      const board = withLog({
+        kind: '命令を実行した',
+        controller: '先攻',
+        instruction: { kind: '山札の1番上をゾーンへ置く', card: '置いてある', to: '手札', player: '先攻' },
+      })
+
+      expect(texts(board)).toEqual([`テスト・置いてあるを自分の手札へ（山札の 1 番上）`])
+      expect(texts({ ...board, viewer: '後攻' })).toEqual([`テスト・置いてあるを相手の手札へ（山札の 1 番上）`])
+    })
+
+    it('名前が落ちていても、置き先は言う', () => {
+      const board = withLog({
+        kind: '命令を実行した',
+        controller: '先攻',
+        instruction: { kind: 'ゾーンへ置く', card: undefined, to: '手札', player: '後攻' },
+      })
+
+      expect(texts(board)).toEqual(['相手の手札へ'])
+    })
+
+    // 置き先のプレイヤーを持たない記録（古いサーバ）は、付けずに今までどおり出す。互換は軽く扱う。
+    it('置き先のプレイヤーが届かなければ、付けずに出す', () => {
+      const old = { kind: 'ゾーンへ置く', card: '置いてある', to: '捨札' } as unknown as LoggedInstruction
+
+      expect(texts(withLog({ kind: '命令を実行した', controller: '先攻', instruction: old }))).toEqual([`テスト・置いてあるを捨札へ`])
     })
   })
 
@@ -1849,6 +1920,47 @@ describe('カットイン', () => {
     ]
 
     expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を選んだ`, `${NAME}を破壊した`])
+  })
+
+  // 見えないカードを選んだ行は、カットインにも並べない。その行だけで本文が空になる解決は、空のカットインを出さない。
+  it('見えないカードを選んだ行だけの解決は、カットインを出さない', () => {
+    const fresh: readonly DuelEvent[] = [
+      { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: undefined, square: undefined } },
+    ]
+
+    expect(cutInViews(board, logged(fresh))).toEqual([])
+  })
+
+  it('見えないカードを選んだ行は省かれ、ほかの行があればカットインは出る', () => {
+    const fresh: readonly DuelEvent[] = [
+      { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: undefined, square: undefined } },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
+    ]
+
+    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を破壊した`])
+  })
+
+  // 読めない行（#285）が 1 つでもあれば、出さない行が混ざって本文が空になっても、見出しを残す（ADR-0038）。
+  it('見えないカードを選んだ行と読めない行だけの解決は、見出しだけのカットインを出す', () => {
+    const unknown = { kind: 'この画面が知らない命令', card: '置いてある' } as unknown as LoggedInstruction
+    const fresh: readonly DuelEvent[] = [
+      { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: undefined, square: undefined } },
+      { kind: '命令を実行した', controller: '先攻', instruction: unknown },
+    ]
+
+    expect(cutInViews(board, logged(fresh))).toEqual([{ whose: '自分', heading: `${NAME}の効果、誘発！`, lines: [] }])
+  })
+
+  it('選ばなかった行は、カットインにも出る', () => {
+    const fresh: readonly DuelEvent[] = [
+      { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: undefined, square: undefined, declined: true } },
+    ]
+
+    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual(['選ばなかった'])
   })
 
   /**
