@@ -2178,7 +2178,7 @@ body {
      右の欄は面の高さまでで、超える分は欄だけを縦に送る（枠をはみ出さない）。一覧の上の段は縮まない */
   .picker__detail,
   .duel .dialog__detail {
-    --detail-card-width: 6.5rem;
+    --detail-card-width: 6rem;
     display: grid;
     flex: none;
     grid-template-columns: auto minmax(0, 1fr);
@@ -2186,13 +2186,10 @@ body {
     gap: 0.6rem;
     text-align: left;
   }
-  .picker__detail .card--拡大,
-  .duel .dialog__detail .card--拡大,
-  .detail.sheet--開いている .card--拡大 { --card-width: var(--detail-card-width, 6.5rem); font-size: 0.46rem; }
-  .picker__detail .card--拡大 .card__text,
-  .duel .dialog__detail .card--拡大 .card__text,
-  .detail.sheet--開いている .card--拡大 .card__text { min-height: 0; }
-  .detail__info { min-width: 0; max-height: calc(var(--detail-card-width, 6.5rem) * 1.5); overflow-y: auto; overscroll-behavior: contain; font-size: 0.74rem; }
+  .picker__detail > .card,
+  .duel .dialog__detail > .card,
+  .detail.sheet--開いている > .card { --card-width: var(--detail-card-width, 6rem); }
+  .detail__info { min-width: 0; max-height: calc(var(--detail-card-width, 6rem) * 1.5); overflow-y: auto; overscroll-behavior: contain; font-size: 0.74rem; }
   .detail__name { margin-bottom: 0.3rem; color: var(--heading); font-size: 0.95rem; font-weight: 800; line-height: 1.25; }
   .detail__rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.1rem 0.5rem; margin: 0; }
   .detail__rows dt { color: var(--ink-dim); white-space: nowrap; }
@@ -2550,7 +2547,7 @@ function faceHtml(name, opts = {}) {
     <div class="card__face">${top}
       <div class="card__bottom">
         <div class="card__title">${stars}<span class="card__name">${name}</span>${keywordIcons(c.keywords)}</div>
-        <div class="card__text"><div class="card__lines">${opts.omitText ? '' : c.text.map((l) => `<p>${l}</p>`).join('')}</div>${icons}</div>
+        <div class="card__text"><div class="card__lines">${c.text.map((l) => `<p>${l}</p>`).join('')}</div>${icons}</div>
         ${c.traits ? `<span class="card__traits">${c.traits}</span>` : ''}
         ${unit ? `<div class="card__stats">${stat('bp', c.bp, opts.bp)}${stat('sp', c.sp, opts.sp)}</div>` : ''}
       </div>
@@ -2952,14 +2949,14 @@ function detailParts(node) {
   return [...parts, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
 }
 // スマートフォンのカードの詳細：左にカードの面、右に文字で情報を全部書く（デッキを組む画面の詳細と同じ並べ方）。
-// 面には能力テキストを書かない（小さくて潰れるため）。能力テキストと注記は右の欄で読む
+// 面は、カードの一覧と同じ小さな面にする（拡大しない。拡大した面は小さい枠では内容が収まらず潰れる）。内容は右の欄で読む
 // 右の欄は面の高さまでで、超える分は欄だけを縦に送る
 function phoneDetailParts(node) {
   const name = node.dataset.name
   const c = cards[name]
   const big = document.createElement('div')
-  big.className = `card card--拡大 card--${node.dataset.whose} card--色-${c.color}`
-  big.innerHTML = faceHtml(name, { text: true, omitText: true, bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage })
+  big.className = `card card--${node.dataset.whose} card--色-${c.color}`
+  big.innerHTML = faceHtml(name, { bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage })
   const info = document.createElement('div')
   info.className = 'detail__info'
   info.append(Object.assign(document.createElement('div'), { className: 'detail__name', textContent: name }))
