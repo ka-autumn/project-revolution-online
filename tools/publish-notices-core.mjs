@@ -11,8 +11,24 @@ import * as esbuild from 'esbuild'
 
 const entry = fileURLToPath(new URL('../packages/notices/src/publish.ts', import.meta.url))
 
-/** `tokenVariable` に指定した環境変数だけを、トークンとして読む。 */
-export async function publishNoticesCommand({ tokenVariable }) {
+/** 見分ける例外のクラス。本体は、この名前から日本語の文言を作る。 */
+const BLOB_ERRORS = [
+  'BlobAccessError',
+  'BlobStoreNotFoundError',
+  'BlobStoreSuspendedError',
+  'BlobRequestAbortedError',
+  'BlobClientTokenExpiredError',
+  'BlobContentTypeNotAllowedError',
+  'BlobFileTooLargeError',
+  'BlobNotFoundError',
+  'BlobPathnameMismatchError',
+  'BlobPreconditionFailedError',
+  'BlobUnknownError',
+  'BlobError',
+]
+
+/** `target`（本番か検証）に対応する環境変数だけを、トークンとして読む。対応は本体の `TOKEN_VARIABLES`。 */
+export async function publishNoticesCommand({ target }) {
   const workDir = await mkdtemp(join(tmpdir(), 'revolution-notices-'))
   try {
     const bundle = join(workDir, 'publish.mjs')
@@ -24,17 +40,24 @@ export async function publishNoticesCommand({ tokenVariable }) {
       format: 'esm',
       logLevel: 'error',
     })
-    const { publishNotices } = await import(pathToFileURL(bundle).href)
+    const { publishNotices, PutFailure } = await import(pathToFileURL(bundle).href)
 
     process.exitCode = await publishNotices({
       argv: process.argv.slice(2),
-      tokenVariable,
+      target,
       env: (name) => process.env[name],
       readFile: (path) => readFile(path, 'utf8'),
       // `--check` では要らないので、必要になるまで読み込まない。
       put: async (pathname, body, options) => {
-        const { put } = await import('@vercel/blob')
-        return put(pathname, body, options)
+        const blob = await import('@vercel/blob')
+        try {
+          return await blob.put(pathname, body, options)
+        } catch (error) {
+          // 束ねるとクラスの名前が変わりうるので、constructor.name には頼らず instanceof で見分けて、
+          // 固定の名前に直して渡す。Blob 以外の例外はそのまま渡す（本体が名前だけを使う）。
+          const kind = BLOB_ERRORS.find((name) => typeof blob[name] === 'function' && error instanceof blob[name])
+          throw kind === undefined ? error : new PutFailure(kind)
+        }
       },
       out: (line) => console.log(line),
       err: (line) => console.error(line),

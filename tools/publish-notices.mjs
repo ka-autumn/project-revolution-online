@@ -8,4 +8,4 @@
 // REVOLUTION_NOTICES_TOKEN_VERIFY だけを読む。どちらも `BLOB_READ_WRITE_TOKEN` は読まない。
 import { publishNoticesCommand } from './publish-notices-core.mjs'
 
-await publishNoticesCommand({ tokenVariable: 'REVOLUTION_NOTICES_TOKEN' })
+await publishNoticesCommand({ target: '本番' })

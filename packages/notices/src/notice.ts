@@ -42,7 +42,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isFilled(value: unknown): value is string {
-  return typeof value === 'string' && value !== ''
+  return typeof value === 'string' && value.trim() !== ''
 }
 
 function isRealDate(text: string): boolean {
@@ -53,7 +53,7 @@ function isRealDate(text: string): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
 }
 
-/** 外す理由。`null` なら読める。項目名を添えて返す。 */
+/** 外す理由（項目名と、なぜか）。読める件は、これではなく値そのものを返す。 */
 type Problem = { readonly field: string; readonly why: string }
 
 function readBody(value: unknown): readonly NoticeBlock[] | Problem {
@@ -130,6 +130,9 @@ function isProblem(read: Notice | Problem): read is Problem {
  * `ok: false` を返す。知らない項目は無視する。並べ替えはしない。
  */
 export function readNotices(text: string): NoticesReading {
+  if (text.startsWith('﻿')) {
+    return { ok: false, reason: '先頭に BOM があります。BOM なしの UTF-8 で保存してください' }
+  }
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
@@ -159,15 +162,19 @@ export function readNotices(text: string): NoticesReading {
  *
  * `id` が重ならないこと、日付が上から順に同じか古くなっていること（新しい順）。
  * 知らない種別の件も、ここで断る。
+ *
+ * 何件目かは、渡された配列の位置。外した件が混ざると、ファイルの位置とずれる。
  */
 export function checkNoticeFile(notices: readonly Notice[]): string[] {
   const problems: string[] = []
-  const seen = new Set<string>()
+  const firstAt = new Map<string, number>()
   for (const [at, notice] of notices.entries()) {
-    if (seen.has(notice.id)) {
-      problems.push(`id "${notice.id}" が重なっています`)
+    const first = firstAt.get(notice.id)
+    if (first === undefined) {
+      firstAt.set(notice.id, at)
+    } else {
+      problems.push(`id "${notice.id}": ${first + 1} 件目と ${at + 1} 件目で重なっています`)
     }
-    seen.add(notice.id)
     if (notice.kind === null) {
       problems.push(`id "${notice.id}": kind — 更新・修正・お知らせのどれかが要ります`)
     }

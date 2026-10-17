@@ -9,4 +9,4 @@
 // トークンは環境変数 REVOLUTION_NOTICES_TOKEN_VERIFY だけから読む。
 import { publishNoticesCommand } from './publish-notices-core.mjs'
 
-await publishNoticesCommand({ tokenVariable: 'REVOLUTION_NOTICES_TOKEN_VERIFY' })
+await publishNoticesCommand({ target: '検証' })

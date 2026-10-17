@@ -88,6 +88,12 @@ describe('readNotices', () => {
     expect(readNotices('{}')).toMatchObject({ ok: false })
   })
 
+  it('先頭に BOM があるファイルは、BOM が原因と分かる理由で丸ごと読めない', () => {
+    const reading = readNotices('﻿' + file(sample()))
+    expect(reading).toMatchObject({ ok: false })
+    expect(reading.ok ? '' : reading.reason).toContain('BOM')
+  })
+
   it('件が 0 でも読める', () => {
     expect(readable(file()).notices).toEqual([])
   })
@@ -141,6 +147,19 @@ describe('readNotices', () => {
       const { rejected } = readable(file('x', null))
       expect(rejected).toHaveLength(2)
     })
+
+    it('空白だけの文字列は、空とみなして外す', () => {
+      rejects({ title: '  　\n' }, 'title')
+      rejects({ summary: ' ' }, 'summary')
+      rejects({ version: '\t' }, 'version')
+      rejects({ body: ['ok', ' '] }, 'body[1]')
+      rejects({ body: [{ quote: ' ' }] }, 'body[0]')
+      rejects({ changes: ['ok', ' '] }, 'changes')
+    })
+
+    it('前後に空白のある文字列は、書き換えずにそのまま読む', () => {
+      expect(readable(file(sample({ title: ' 題 ' }))).notices[0]?.title).toBe(' 題 ')
+    })
   })
 })
 
@@ -158,7 +177,7 @@ describe('checkNoticeFile', () => {
 
   it('id の重なりを断る', () => {
     const problems = checkNoticeFile(notices({ id: 'a' }, { id: 'a' }))
-    expect(problems).toEqual(['id "a" が重なっています'])
+    expect(problems).toEqual(['id "a": 1 件目と 2 件目で重なっています'])
   })
 
   it('日付が上より新しい件を断る', () => {
