@@ -207,12 +207,12 @@ export function noticeLabelOf(notice: Notice): string {
 }
 
 /**
- * 置き場からお知らせを取る。**どの失敗でも投げず、読めた件だけを返す**（読めなければ空）。
+ * 置き場からお知らせを取る。どの失敗でも投げず、読めた件だけを返す（読めなければ空）。
  *
  * 取りに行く失敗や遅れが、ロビーの描画や、部屋を作る・入る操作を止めないようにするためである（ADR-0045）。
  * `url` が無ければ（手元の開発・公開リポジトリだけを clone した人の環境）取りに行かない。
  *
- * **余分なヘッダーを付けない。** 置き場は事前の問い合わせ（OPTIONS）に応えない（405）ので、
+ * 余分なヘッダーを付けない。置き場は事前の問い合わせ（OPTIONS）に応えない（405）ので、
  * ヘッダーを付けて事前の問い合わせが飛ぶと、ブラウザは読めなくなる。素の GET だけにする。
  */
 export async function fetchNotices(url: string | undefined, fetchFn: typeof fetch = fetch): Promise<readonly Notice[]> {
