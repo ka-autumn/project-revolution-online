@@ -57,11 +57,11 @@ describe('一覧の絞り込み', () => {
 
   it('前後の件は、並びの中の隣で、端では持たない', () => {
     const near = siblingsOf(SAMPLE, 'c')
-    expect([near?.previous?.id, near?.next?.id]).toEqual(['b', 'd'])
+    expect([near?.newer?.id, near?.older?.id]).toEqual(['b', 'd'])
     const first = siblingsOf(SAMPLE, 'a')
-    expect([first?.previous, first?.next?.id]).toEqual([undefined, 'b'])
+    expect([first?.newer, first?.older?.id]).toEqual([undefined, 'b'])
     const last = siblingsOf(SAMPLE, 'g')
-    expect([last?.previous?.id, last?.next]).toEqual(['f', undefined])
+    expect([last?.newer?.id, last?.older]).toEqual(['f', undefined])
   })
 
   it('並びに無い件の前後は無い', () => {
@@ -141,23 +141,23 @@ describe('窓', () => {
 
   it('前後へ移る範囲は、パネルから開いたなら全件、全件の窓からなら絞り込んだ並び', () => {
     const fromPanel = reduceNotices(loaded(), { kind: 'パネルから開く', id: 'e', opener: 'パネル-e' })
-    const next = reduceNotices(fromPanel, { kind: '移る', to: 'next' })
+    const next = reduceNotices(fromPanel, { kind: '移る', to: 'older' })
     expect(next.window).toMatchObject({ kind: '中身', id: 'f' })
     // パネルの 5 件を越えて、6 件目・7 件目へも進める。
-    const end = reduceNotices(reduceNotices(next, { kind: '移る', to: 'next' }), { kind: '移る', to: 'next' })
+    const end = reduceNotices(reduceNotices(next, { kind: '移る', to: 'older' }), { kind: '移る', to: 'older' })
     expect(end.window).toMatchObject({ kind: '中身', id: 'g' })
 
     let filtered = reduceNotices(loaded(), { kind: '一覧を開く', opener: 'o' })
     filtered = reduceNotices(filtered, { kind: '絞り込む', tab: '修正' })
     filtered = reduceNotices(filtered, { kind: '一覧から開く', id: 'c', scroll: 0 })
-    expect(reduceNotices(filtered, { kind: '移る', to: 'next' }).window).toMatchObject({ id: 'f' })
-    expect(reduceNotices(filtered, { kind: '移る', to: 'previous' })).toBe(filtered)
+    expect(reduceNotices(filtered, { kind: '移る', to: 'older' }).window).toMatchObject({ id: 'f' })
+    expect(reduceNotices(filtered, { kind: '移る', to: 'newer' })).toBe(filtered)
   })
 
   it('移ると、一覧のスクロール位置は捨て、一覧へ戻る時はいま読んでいる件へ手を戻す', () => {
     let state = reduceNotices(loaded(), { kind: '一覧を開く', opener: 'お知らせ-すべて見る' })
     state = reduceNotices(state, { kind: '一覧から開く', id: 'a', scroll: 40 })
-    state = reduceNotices(state, { kind: '移る', to: 'next' })
+    state = reduceNotices(state, { kind: '移る', to: 'older' })
     expect(state.window).toMatchObject({ id: 'b', origin: { kind: '一覧', tab: 'すべて', scroll: undefined } })
     // 一覧へ戻る時は、いま読んでいる件へ手を戻す。
     const back = reduceNotices(state, { kind: '一覧へ' })
@@ -166,7 +166,7 @@ describe('窓', () => {
 
   it('端で移ろうとしても何も変わらない', () => {
     const first = reduceNotices(loaded(), { kind: 'パネルから開く', id: 'a', opener: 'パネル-a' })
-    expect(reduceNotices(first, { kind: '移る', to: 'previous' })).toBe(first)
+    expect(reduceNotices(first, { kind: '移る', to: 'newer' })).toBe(first)
   })
 
   it('開いていないのに閉じても何も変わらない', () => {

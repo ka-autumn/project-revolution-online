@@ -74,6 +74,25 @@ import { countName, DISPLAY_NAME_LIMIT } from './name-count.js'
 import { zoneTally } from './zone-tally.js'
 import type { TallySymbol, TallyZone } from './zone-tally.js'
 import { PHONE_BACKDROP, PHONE_OPENER, PHONE_SHEET, rulesSummaryOf, tabAfterKey } from './phone.js'
+import {
+  NOTICE_TABS,
+  type NoticeRow,
+  type NoticeTab,
+  type NoticeWindow,
+  type NoticesAction,
+  type NoticesPending,
+  type NoticesState,
+  listItemKey,
+  noticeLabelOf,
+  noticeParagraphsOf,
+  noticeRowOf,
+  noticesInTab,
+  noticesLoaded,
+  panelNotices,
+  sequenceOf,
+  siblingsOf,
+} from './notices-view.js'
+import type { Notice } from '@revolution/notices'
 import type { BuilderTab, DuelSheet, LobbyMode, PhoneControl } from './phone.js'
 import { peekGuide, peekStats } from './phone-peek.js'
 import type { PeekPlace } from './phone-peek.js'
@@ -1527,6 +1546,8 @@ export interface LobbyView {
   readonly waiting: boolean
   /** スマートフォンの並べ方の状態と窓口（ADR-0034）。PC の幅では `undefined`。 */
   readonly phone: PhoneControl | undefined
+  /** 右の列のお知らせ（ADR-0045）。 */
+  readonly notices: LobbyNotices
 }
 
 /*
@@ -2356,16 +2377,286 @@ function lobbyRoomsPanelElement(view: LobbyView, handlers: LobbyHandlers): HTMLE
   return panel
 }
 
-/** 右の列：お知らせ。中身を用意して届ける仕組みは別の Issue（#239）で作る。それまでは枠だけ置く。 */
-function lobbyNewsPanelElement(): HTMLElement {
-  const panel = sectionPanel('lobby__news-panel', 'お知らせ')
+/*
+ * 右の列：お知らせ（ADR-0029、ADR-0045）。
+ *
+ * 取れた結果・開いている窓・絞り込みは `notices-view.ts` が持ち、ここは描くだけ。画面は丸ごと描き直されるので、
+ * 手を戻す要素には `KEEP_FOCUS` の印を付ける。
+ */
+
+/** お知らせの状態と、押した動きを進める窓口。ロビーの描き直しのたびに、呼ぶ側が渡す。 */
+export interface LobbyNotices {
+  readonly state: NoticesState
+  /** 描き直したあとに 1 度だけ行う手の置き直し。呼ぶ側が `takePending` で取り出してから渡す。 */
+  readonly pending: NoticesPending | undefined
+  /** 状態を進めて描き直す。 */
+  readonly send: (action: NoticesAction) => void
+}
+
+const NEWS_ALL_KEY = 'お知らせ-すべて見る'
+const NEWS_TOGGLE_KEY = 'お知らせ-畳み'
+const NEWS_X_KEY = 'お知らせ-×'
+const NEWS_CLOSE_KEY = 'お知らせ-閉じる'
+const NEWS_BACK_KEY = 'お知らせ-一覧へ'
+const NEWS_OLDER_KEY = 'お知らせ-前'
+const NEWS_NEWER_KEY = 'お知らせ-次'
+const NEWS_TITLE_KEY = 'お知らせの題'
+/** 全件の窓の一覧の、スクロールの位置の印（`KEEP_SCROLL`）。 */
+const NEWS_LIST_SCROLL = 'お知らせの一覧'
+const NEWS_TABS_NAME = 'お知らせの種別'
+const newsPanelKey = (id: string): string => `お知らせパネル-${id}`
+const newsTabKey = (tab: NoticeTab): string => `お知らせのタブ-${tab}`
+const newsTabId = (tab: NoticeTab): string => `news-tab-${tab}`
+const NEWS_TABPANEL_ID = 'news-tabpanel'
+
+/** 取りに行っている間、または件が無い間の 1 行。 */
+function newsNoteElement(text: string): HTMLElement {
   const none = element('div', 'lobby__news-none')
   const icon = element('span', 'lobby__news-icon', '📣')
   icon.setAttribute('aria-hidden', 'true')
-  none.append(icon, element('span', '', 'お知らせはまだありません'))
-  panel.append(none)
+  none.append(icon, element('span', '', text))
+
+  return none
+}
+
+/** 種別の札・版・日付。札は種別の分からない件には出さず、版は無ければ出さない（ADR-0045）。 */
+function noticeMetaElement(row: NoticeRow): HTMLElement {
+  const meta = element('div', 'lobby__news-meta')
+  if (row.badge !== undefined) meta.append(element('span', `lobby__news-kind lobby__news-kind--${row.badge}`, row.badge))
+  if (row.version !== undefined) meta.append(element('span', 'lobby__news-version', row.version))
+  const date = element('time', '', row.date.replace(/-/g, '/'))
+  date.setAttribute('datetime', row.date)
+  meta.append(date)
+
+  return meta
+}
+
+/** パネルと全件の窓で使う、1 件の行。押すと中身の窓を開く。 */
+function noticeItemElement(notice: Notice, key: string, onOpen: () => void): HTMLElement {
+  const row = noticeRowOf(notice)
+  const item = element('li', 'lobby__news-item')
+  const link = element('button', 'lobby__news-link')
+  link.setAttribute('aria-haspopup', 'dialog')
+  link.dataset[KEEP_FOCUS] = key
+  link.addEventListener('click', onOpen)
+  const body = element('div', 'lobby__news-body')
+  body.append(noticeMetaElement(row), element('span', 'lobby__news-title', row.title), element('span', 'lobby__news-summary', row.summary))
+  const chevron = element('span', 'lobby__news-chevron', '›')
+  chevron.setAttribute('aria-hidden', 'true')
+  link.append(body, chevron)
+  item.append(link)
+
+  return item
+}
+
+/** 右の列：お知らせ。取りに行っている間は「読み込んでいます」、件が無ければ「まだありません」を出す。 */
+function lobbyNewsPanelElement(view: LobbyView): HTMLElement {
+  const news = view.notices
+  const notices = noticesLoaded(news.state)
+  if (notices === undefined) {
+    const loading = sectionPanel('lobby__news-panel', 'お知らせ')
+    loading.setAttribute('aria-busy', 'true')
+    loading.append(newsNoteElement('お知らせを読み込んでいます…'))
+
+    return loading
+  }
+  if (notices.length === 0) {
+    const none = sectionPanel('lobby__news-panel', 'お知らせ')
+    none.append(newsNoteElement('お知らせはまだありません'))
+
+    return none
+  }
+
+  // スマートフォンでは、見出しごと押せる開閉のボタンにして、畳んでいる間は一覧もすべて見るも作らない。
+  const phone = view.phone
+  const open = phone === undefined || phone.state.newsOpen
+  const all = button('すべて見る ›', () => news.send({ kind: '一覧を開く', opener: NEWS_ALL_KEY }))
+  all.classList.add('lobby__news-all')
+  all.setAttribute('aria-haspopup', 'dialog')
+  all.dataset[KEEP_FOCUS] = NEWS_ALL_KEY
+  const panel = sectionPanel('lobby__news-panel', 'お知らせ', open ? all : undefined)
+  if (phone !== undefined) {
+    const title = panel.querySelector('.panel__title')
+    const toggle = phoneToggleElement('お知らせ', open, NEWS_TOGGLE_KEY, 'lobby__news-toggle', () => phone.send({ kind: 'お知らせを開閉' }))
+    title?.replaceChildren(toggle)
+    panel.dataset.open = String(open)
+  }
+  if (!open) return panel
+
+  const list = element('ul', 'lobby__news-list')
+  for (const notice of panelNotices(notices)) {
+    const key = newsPanelKey(notice.id)
+    list.append(noticeItemElement(notice, key, () => news.send({ kind: 'パネルから開く', id: notice.id, opener: key })))
+  }
+  panel.append(list)
 
   return panel
+}
+
+/** 窓の右上の×。 */
+function newsCloseMark(onClose: () => void): HTMLElement {
+  const x = iconButton('×', '閉じる', onClose)
+  x.dataset[KEEP_FOCUS] = NEWS_X_KEY
+
+  return x
+}
+
+/** 全件の窓。上に種別で絞り込むタブ、その下に全件。 */
+function newsListWindow(news: LobbyNotices, notices: readonly Notice[], tab: NoticeTab, box: HTMLElement, onClose: () => void): void {
+  box.setAttribute('aria-label', 'お知らせの一覧')
+  const head = element('div', 'lobby__news-window-head')
+  head.append(element('h2', 'confirm__title', 'お知らせ'), newsCloseMark(onClose))
+
+  const tabs = element('div', 'lobby__tabs lobby__news-tabs')
+  tabs.setAttribute('role', 'tablist')
+  tabs.setAttribute('aria-label', '種別で絞り込む')
+  for (const each of NOTICE_TABS) {
+    const node = button(each, () => news.send({ kind: '絞り込む', tab: each }))
+    node.id = newsTabId(each)
+    node.setAttribute('role', 'tab')
+    node.setAttribute('aria-controls', NEWS_TABPANEL_ID)
+    node.setAttribute('aria-selected', String(each === tab))
+    node.tabIndex = each === tab ? 0 : -1
+    node.dataset[KEEP_FOCUS] = newsTabKey(each)
+    node.addEventListener('keydown', (event) => {
+      const to = tabAfterKey(NOTICE_TABS, each, event.key)
+      if (to === undefined) return
+
+      event.preventDefault()
+      node.dataset[KEEP_FOCUS] = newsTabKey(to)
+      news.send({ kind: '絞り込む', tab: to })
+    })
+    tabs.append(node)
+  }
+
+  const body = element('div', 'lobby__news-window-body')
+  body.id = NEWS_TABPANEL_ID
+  body.setAttribute('role', 'tabpanel')
+  body.setAttribute('aria-labelledby', newsTabId(tab))
+  body.dataset[KEEP_SCROLL] = NEWS_LIST_SCROLL
+  const shown = noticesInTab(notices, tab)
+  if (shown.length === 0) {
+    body.append(element('p', 'lobby__news-empty', '当てはまるお知らせがありません'))
+  } else {
+    const list = element('ul', 'lobby__news-list')
+    for (const notice of shown) {
+      list.append(noticeItemElement(notice, listItemKey(notice.id), () => news.send({ kind: '一覧から開く', id: notice.id, scroll: body.scrollTop })))
+    }
+    body.append(list)
+  }
+  box.append(head, tabs, body)
+}
+
+/** 中身の窓。本文・「変わったこと」だけをスクロールさせ、見出しと下のボタンは動かさない。 */
+function newsDetailWindow(
+  news: LobbyNotices,
+  notice: Notice,
+  shown: Extract<NoticeWindow, { kind: '中身' }>,
+  notices: readonly Notice[],
+  box: HTMLElement,
+  onClose: () => void,
+): void {
+  box.setAttribute('aria-label', noticeLabelOf(notice))
+  const head = element('div', 'lobby__news-window-head')
+  if (shown.origin.kind === '一覧') {
+    const back = button('‹ 一覧へ', () => news.send({ kind: '一覧へ' }))
+    back.classList.add('button--small')
+    back.dataset[KEEP_FOCUS] = NEWS_BACK_KEY
+    head.append(back)
+  } else {
+    head.append(element('h2', 'confirm__title', 'お知らせ'))
+  }
+  head.append(newsCloseMark(onClose))
+
+  const body = element('article', 'lobby__news-window-body lobby__news-detail')
+  body.dataset[KEEP_SCROLL] = `お知らせの中身-${notice.id}`
+  const title = element('h3', 'lobby__news-detail-title', notice.title)
+  title.tabIndex = -1
+  title.dataset[KEEP_FOCUS] = NEWS_TITLE_KEY
+  body.append(noticeMetaElement(noticeRowOf(notice)), title)
+  for (const paragraph of noticeParagraphsOf(notice)) {
+    // 引用の段落は枠で囲む。能力テキストを引く時に使う（ADR-0045）。
+    body.append(element(paragraph.quoted ? 'blockquote' : 'p', paragraph.quoted ? 'lobby__news-quote' : '', paragraph.text))
+  }
+  if (notice.changes !== undefined && notice.changes.length > 0) {
+    body.append(element('h4', 'lobby__news-detail-sub', '変わったこと'))
+    const changes = element('ul', 'lobby__news-changes')
+    for (const change of notice.changes) changes.append(element('li', '', change))
+    body.append(changes)
+  }
+
+  // 前のお知らせは 1 つ古い件、次のお知らせは 1 つ新しい件（ファイルは新しい順）。前後へ移る範囲は開いた元で決まる。
+  const near = siblingsOf(sequenceOf(notices, shown.origin), notice.id)
+  const older = button('‹ 前のお知らせ', () => news.send({ kind: '移る', to: 'older' }))
+  const newer = button('次のお知らせ ›', () => news.send({ kind: '移る', to: 'newer' }))
+  older.classList.add('button--small')
+  newer.classList.add('button--small')
+  older.dataset[KEEP_FOCUS] = NEWS_OLDER_KEY
+  newer.dataset[KEEP_FOCUS] = NEWS_NEWER_KEY
+  // 端に着いて押せなくなったら、手は反対側へ移す。押せない要素には手を置けない。
+  older.dataset[KEEP_FOCUS_INSTEAD] = near?.newer === undefined ? NEWS_CLOSE_KEY : NEWS_NEWER_KEY
+  newer.dataset[KEEP_FOCUS_INSTEAD] = near?.older === undefined ? NEWS_CLOSE_KEY : NEWS_OLDER_KEY
+  older.toggleAttribute('disabled', near?.older === undefined)
+  newer.toggleAttribute('disabled', near?.newer === undefined)
+  const close = button('閉じる', onClose, true)
+  close.dataset[KEEP_FOCUS] = NEWS_CLOSE_KEY
+  const foot = element('div', 'lobby__news-window-foot')
+  foot.append(older, newer, element('span', 'lobby__news-spacer'), close)
+  box.append(head, body, foot)
+}
+
+/**
+ * お知らせの窓（全件・中身）。画面の中に重ね、×・「閉じる」・窓の外・Esc で閉じる。ブラウザの確認ダイアログは使わない。
+ * 開いていなければ（または開いている件が無ければ）`undefined`。
+ */
+function newsWindowElement(news: LobbyNotices): HTMLElement | undefined {
+  const notices = noticesLoaded(news.state)
+  const shown = news.state.window
+  if (notices === undefined || shown === undefined) return undefined
+
+  const onClose = (): void => news.send({ kind: '閉じる' })
+  const box = element('section', 'confirm__box lobby__news-window')
+  box.setAttribute('role', 'dialog')
+  box.setAttribute('aria-modal', 'true')
+  if (shown.kind === '一覧') {
+    newsListWindow(news, notices, shown.tab, box, onClose)
+  } else {
+    const notice = notices.find((each) => each.id === shown.id)
+    if (notice === undefined) return undefined
+    newsDetailWindow(news, notice, shown, notices, box, onClose)
+  }
+
+  const layer = element('div', 'confirm lobby__news-layer')
+  layer.append(box)
+  layer.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') onClose()
+  })
+  layer.addEventListener('click', (event) => {
+    if (event.target === layer) onClose()
+  })
+
+  return layer
+}
+
+/** 描き直した直後に、お知らせの窓の手の置き場所とスクロールを整える。 */
+function settleNewsFocus(lobby: HTMLElement, news: LobbyNotices, pending: NoticesPending): void {
+  const find = (key: string): HTMLElement | undefined =>
+    [...lobby.querySelectorAll<HTMLElement>('[data-keep-focus]')].find((node) => node.dataset[KEEP_FOCUS] === key)
+  if (pending.kind === '窓の中へ') {
+    const shown = news.state.window
+    find(shown?.kind === '一覧' ? newsTabKey(shown.tab) : NEWS_TITLE_KEY)?.focus()
+    return
+  }
+
+  const target = find(pending.key)
+  if (pending.scroll === undefined) {
+    target?.focus()
+    return
+  }
+  // 一覧へ戻る時は、押した時のスクロールの位置へ戻す。手を置いて動かされないよう、置いてから位置を戻す。
+  target?.focus({ preventScroll: true })
+  const list = lobby.querySelector<HTMLElement>(`[data-keep-scroll="${NEWS_LIST_SCROLL}"]`)
+  if (list !== null) list.scrollTop = pending.scroll
 }
 
 /**
@@ -2381,7 +2672,8 @@ function lobbyNewsPanelElement(): HTMLElement {
  */
 export function lobbyElement(view: LobbyView, handlers: LobbyHandlers, focused = false): HTMLElement {
   const node = element('section', 'lobby')
-  node.append(lobbyTopbarElement(view.own))
+  const topbar = lobbyTopbarElement(view.own)
+  node.append(topbar)
 
   const phone = view.phone
 
@@ -2422,13 +2714,22 @@ export function lobbyElement(view: LobbyView, handlers: LobbyHandlers, focused =
   center.append(modes, rooms)
 
   const right = element('div', 'lobby__column')
-  right.append(lobbyNewsPanelElement())
+  right.append(lobbyNewsPanelElement(view))
 
   columns.append(left, center, right)
   node.append(columns)
   if (phone !== undefined && phone.state.deckSheet) {
     node.append(phoneBackdropElement(() => phone.send({ kind: 'デッキのシートを閉じる' })))
   }
+  // お知らせの窓を開いている間は、窓の外を押せず、Tab でも届かないようにする。
+  const newsWindow = newsWindowElement(view.notices)
+  if (newsWindow !== undefined) {
+    topbar.inert = true
+    columns.inert = true
+    node.append(newsWindow)
+  }
+  const newsPending = view.notices.pending
+  if (newsPending !== undefined) queueMicrotask(() => settleNewsFocus(node, view.notices, newsPending))
 
   // 描き直しで打ち込みかけの場所を見失わないように、打っていた人には返す。付け終わってから手を置く。
   // まだ文書に無い要素には置けない。

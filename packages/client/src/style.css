@@ -1236,7 +1236,7 @@ body {
   text-shadow: 0 1px 1px rgb(0 0 0 / 0.25);
 }
 
-/* ---------- 右：お知らせ（中身は別の Issue。入るまでは枠だけ） ---------- */
+/* ---------- 右：お知らせ（ADR-0029、ADR-0045） ---------- */
 
 .lobby .lobby__news-panel {
   flex: 1;
@@ -1256,6 +1256,250 @@ body {
 .lobby .lobby__news-icon {
   font-size: 2rem;
   opacity: 0.5;
+}
+
+.lobby .lobby__news-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0.3rem 0.6rem 0.6rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.lobby .lobby__news-item {
+  border-bottom: 1px solid rgb(220 166 64 / 0.3);
+}
+
+.lobby .lobby__news-item:last-child {
+  border-bottom: none;
+}
+
+.lobby .lobby__news-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.6rem 0.3rem;
+  border: none;
+  border-radius: var(--radius-small);
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.lobby .lobby__news-link:hover {
+  border: none;
+  background: rgb(247 201 86 / 0.16);
+  box-shadow: none;
+}
+
+.lobby .lobby__news-link:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 1px;
+}
+
+.lobby .lobby__news-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.lobby .lobby__news-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 種別の札。種別の分からない件には出さない（ADR-0045）。 */
+.lobby .lobby__news-kind {
+  padding: 0 0.5rem;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.lobby .lobby__news-kind--更新 {
+  background: var(--accent-own);
+}
+
+.lobby .lobby__news-kind--修正 {
+  background: #2f9a5a;
+}
+
+.lobby .lobby__news-kind--お知らせ {
+  background: #e07a10;
+}
+
+.lobby .lobby__news-version {
+  color: var(--heading);
+  font-weight: 700;
+}
+
+.lobby .lobby__news-title {
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+/* 要約は 2 行まで。 */
+.lobby .lobby__news-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.lobby .lobby__news-chevron {
+  color: var(--gold-deep);
+  font-size: 1.1rem;
+}
+
+.lobby .lobby__news-all {
+  padding: 0.1rem 0.3rem;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--heading);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.lobby .lobby__news-all:hover {
+  border: none;
+  box-shadow: none;
+  text-decoration: underline;
+}
+
+/*
+ * お知らせの窓。デッキ構築の確認の窓（.confirm）と同じ見た目の層に、見出し・中身・下のボタンを積む。
+ * 中身だけをスクロールさせ、見出しと下のボタンは動かさない。
+ */
+.lobby .lobby__news-window {
+  display: flex;
+  flex-direction: column;
+  width: min(38rem, 100%);
+  max-width: none;
+  max-height: 86vh;
+  padding: 0;
+  overflow: hidden;
+}
+
+.lobby .lobby__news-window-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.7rem 1.1rem;
+  border-bottom: 1px solid rgb(220 166 64 / 0.35);
+}
+
+.lobby .lobby__news-window-head .confirm__title {
+  margin: 0;
+}
+
+.lobby .lobby__news-tabs {
+  align-self: flex-start;
+  margin: 0.6rem 1.1rem 0.2rem;
+}
+
+.lobby .lobby__news-tabs button[aria-selected='true'] {
+  color: #fff;
+  background: linear-gradient(180deg, #f5a53a, #e07a10);
+  font-weight: 700;
+}
+
+.lobby .lobby__news-window-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+  padding: 0.5rem 1.1rem 0.9rem;
+  overflow-y: auto;
+}
+
+.lobby .lobby__news-window-body > p,
+.lobby .lobby__news-window-body > blockquote {
+  margin: 0;
+  line-height: 1.7;
+}
+
+.lobby .lobby__news-window-body .lobby__news-list {
+  flex: none;
+  padding: 0;
+  overflow: visible;
+}
+
+.lobby .lobby__news-empty {
+  color: var(--ink-dim);
+  text-align: center;
+}
+
+.lobby .lobby__news-detail-title {
+  margin: 0.1rem 0 0.2rem;
+  color: var(--heading);
+  font-family: var(--heading-font);
+  font-size: 1.25rem;
+  line-height: 1.4;
+}
+
+.lobby .lobby__news-detail-title:focus-visible {
+  outline: 2px solid var(--accent-own);
+  outline-offset: 2px;
+}
+
+/* 引用の段落（能力テキストを引く時など）は、枠で囲む。 */
+.lobby .lobby__news-quote {
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--panel-edge);
+  border-left: 4px solid var(--gold-deep);
+  border-radius: var(--radius-small);
+  background: #fffef9;
+}
+
+.lobby .lobby__news-detail-sub {
+  margin: 0.4rem 0 0;
+  color: var(--heading);
+  font-size: 0.9rem;
+}
+
+.lobby .lobby__news-changes {
+  margin: 0;
+  padding-left: 1.3rem;
+  line-height: 1.8;
+}
+
+.lobby .lobby__news-window-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.1rem 0.9rem;
+  border-top: 1px solid rgb(220 166 64 / 0.35);
+}
+
+.lobby .lobby__news-spacer {
+  flex: 1;
+}
+
+.lobby .lobby__news-window button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 /* どのデッキを組むかを選ぶところ（#193）。ロビーと同じく、読みやすい幅に抑える。 */
@@ -5414,6 +5658,76 @@ body {
   .lobby .lobby__rooms-panel,
   .lobby .lobby__news-panel {
     flex: none;
+  }
+
+  /* お知らせ：見出しだけにして畳み、押すと開く。見出しの行ごと押せる。 */
+  .lobby .lobby__news-panel .panel__head {
+    padding: 0;
+  }
+
+  .lobby .lobby__news-panel .panel__title {
+    flex: 1;
+  }
+
+  .lobby .lobby__news-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.45rem 0.9rem;
+    border: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+    background: none;
+    box-shadow: none;
+    color: var(--heading);
+    font-family: var(--heading-font);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+
+  .lobby .lobby__news-toggle .phone-toggle__mark {
+    font-size: 0.8rem;
+  }
+
+  .lobby .lobby__news-panel[data-open='true'] .panel__head {
+    padding-right: 0.9rem;
+  }
+
+  .lobby .lobby__news-panel[data-open='false'] .panel__head {
+    border-bottom: none;
+  }
+
+  .lobby .lobby__news-all {
+    min-height: 2.75rem;
+    padding-inline: 0.9rem;
+  }
+
+  .lobby .lobby__news-list {
+    flex: none;
+    overflow: visible;
+  }
+
+  .lobby .lobby__news-link {
+    min-height: 2.75rem;
+  }
+
+  /* 重ねる窓：シートにせず、画面の真ん中に幅いっぱいに出す。ボタンは折り返す。 */
+  .lobby .lobby__news-layer {
+    padding: 0.5rem;
+  }
+
+  .lobby .lobby__news-window {
+    width: 100%;
+    max-height: 90dvh;
+  }
+
+  .lobby .lobby__news-window-foot {
+    flex-wrap: wrap;
+  }
+
+  .lobby .lobby__news-tabs {
+    align-self: stretch;
   }
 
   /* 指で押すものは 2.75rem 以上 */

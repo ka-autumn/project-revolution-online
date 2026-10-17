@@ -62,7 +62,7 @@ export type NoticesAction =
   | { readonly kind: '絞り込む'; readonly tab: NoticeTab }
   | { readonly kind: 'パネルから開く'; readonly id: string; readonly opener: string }
   | { readonly kind: '一覧から開く'; readonly id: string; readonly scroll: number }
-  | { readonly kind: '移る'; readonly to: 'previous' | 'next' }
+  | { readonly kind: '移る'; readonly to: 'newer' | 'older' }
   | { readonly kind: '一覧へ' }
   | { readonly kind: '閉じる' }
 
@@ -85,15 +85,15 @@ export function panelNotices(notices: readonly Notice[]): readonly Notice[] {
   return notices.slice(0, NOTICE_PANEL_LIMIT)
 }
 
-/** 並びの中の隣の件。並びに無ければ `undefined`、端の向きは持たない。 */
+/** 並びの中の隣の件。ファイルは新しい順なので、手前が新しい方、後ろが古い方。端の向きは持たない。 */
 export function siblingsOf(
   notices: readonly Notice[],
   id: string,
-): { readonly previous: Notice | undefined; readonly next: Notice | undefined } | undefined {
+): { readonly newer: Notice | undefined; readonly older: Notice | undefined } | undefined {
   const at = notices.findIndex((each) => each.id === id)
   if (at < 0) return undefined
 
-  return { previous: notices[at - 1], next: notices[at + 1] }
+  return { newer: notices[at - 1], older: notices[at + 1] }
 }
 
 /** 中身の窓で前後へ移る範囲。全件の窓から開いたなら絞り込んだ並び、パネルから開いたなら全件。 */
@@ -136,7 +136,7 @@ export function reduceNotices(state: NoticesState, action: NoticesAction): Notic
     case '移る': {
       if (shown?.kind !== '中身') return state
       const near = siblingsOf(sequenceOf(notices, shown.origin), shown.id)
-      const target = action.to === 'previous' ? near?.previous : near?.next
+      const target = action.to === 'newer' ? near?.newer : near?.older
       if (target === undefined) return state
       const origin: NoticeOrigin = shown.origin.kind === '一覧' ? { ...shown.origin, scroll: undefined } : shown.origin
 
