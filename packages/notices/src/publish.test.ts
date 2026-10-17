@@ -69,7 +69,7 @@ describe('publishNotices', () => {
       ['id が重なっている', JSON.stringify({ notices: [entry('a', '2026-01-02'), entry('a', '2026-01-01')] }), '1 件目と 2 件目で重なって'],
       ['日付が新しい順になっていない', JSON.stringify({ notices: [entry('a', '2026-01-01'), entry('b', '2026-01-02')] }), '新しい日付'],
       ['日付が実在しない', JSON.stringify({ notices: [entry('a', '2026-02-30')] }), '実在する日付'],
-      ['BOM が付いている', '﻿' + good, 'BOM'],
+      ['BOM が付いている', '\uFEFF' + good, 'BOM'],
     ]
     for (const [name, file, word] of cases) {
       it(name, async () => {

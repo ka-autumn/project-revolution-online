@@ -89,7 +89,7 @@ describe('readNotices', () => {
   })
 
   it('先頭に BOM があるファイルは、BOM が原因と分かる理由で丸ごと読めない', () => {
-    const reading = readNotices('﻿' + file(sample()))
+    const reading = readNotices('\uFEFF' + file(sample()))
     expect(reading).toMatchObject({ ok: false })
     expect(reading.ok ? '' : reading.reason).toContain('BOM')
   })

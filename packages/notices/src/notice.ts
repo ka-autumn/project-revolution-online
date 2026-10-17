@@ -130,7 +130,7 @@ function isProblem(read: Notice | Problem): read is Problem {
  * `ok: false` を返す。知らない項目は無視する。並べ替えはしない。
  */
 export function readNotices(text: string): NoticesReading {
-  if (text.startsWith('﻿')) {
+  if (text.startsWith('\uFEFF')) {
     return { ok: false, reason: '先頭に BOM があります。BOM なしの UTF-8 で保存してください' }
   }
   let parsed: unknown
