@@ -1415,7 +1415,15 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let phoneState: PhoneState = initialPhone()
   // 右の列のお知らせ（ADR-0045）。ロビーを出した時に 1 度だけ置き場から取りに行き、取れたら描き直す。
   // 置き場の URL はビルド時に渡す（`VITE_NOTICES_URL`、`env.d.ts`）。無ければ取りに行かない。
-  const noticesFeed = createNoticesFeed({ url: import.meta.env.VITE_NOTICES_URL, onChange: () => redraw() })
+  // 取れた時の描き直しは、押している最中なら手を離すまで待つ。待たないと、押した要素が click の前に
+  // 作り直され、押したことが消える（`onEditNameLeave` と同じ扱い）。
+  const noticesFeed = createNoticesFeed({
+    url: import.meta.env.VITE_NOTICES_URL,
+    onChange: () => {
+      if (pointerHeld) redrawOnRelease = true
+      else redraw()
+    },
+  })
   // 打ち込みかけている表示名（ADR-0020）。尋ねられるたびに、いま付いている名前から始める。
   let nameDraft = ''
   // 名前を断る返事が届いて、まだ描き直していない間は真。描き直しが入力欄へフォーカスを戻す印になる。
