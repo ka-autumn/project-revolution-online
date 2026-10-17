@@ -25,7 +25,7 @@ import {
   shownTitleOf,
 } from './input-model.js'
 import { applyMessage, connecting } from './session.js'
-import { answersOnlyByDeclining, dimsUnselectable, shownCardViewsIn, squareLabel } from './view-model.js'
+import { answersOnlyByDeclining, cardInfoRowsOf, dimsUnselectable, shownCardViewsIn, squareLabel } from './view-model.js'
 import type { Session } from './session.js'
 import { emptyBoard, instance, strategyFace, unitFace, withZone } from './test-support.js'
 
@@ -2119,11 +2119,11 @@ describe('見せる一覧つきの選択', () => {
     }
 
     it('見出しは、山札と、全体の枚数と、選ぶことを言う', () => {
-      expect(shownTitleOf(searching)).toBe('山札（3）から選択する')
+      expect(shownTitleOf(searching)).toBe('山札（3）からカードを選択')
     })
 
     it('何を聞かれているかを言う', () => {
-      expect(choiceView(board(), searching).asking).toBe('山札から選んでください')
+      expect(choiceView(board(), searching).asking).toBe('カードを選択してください')
     })
 
     it('選べるカードが混じる一覧では、選べないカードを薄くする', () => {
@@ -2175,6 +2175,40 @@ describe('見せる一覧つきの選択', () => {
         '山札の2枚目',
         '山札の3枚目',
       ])
+    })
+  })
+
+  // スマートフォンのカードの詳細は、左に面、右に文字で情報を全部書く（ADR-0028 と同じ並べ方）。
+  describe('カードの詳細の右に書く項目', () => {
+    const viewOf = (face: ReturnType<typeof unitFace> | ReturnType<typeof strategyFace>) => {
+      const [only] = shownCardViewsIn(board(), {
+        ...confirming,
+        shown: [{ instance: instance('詳細の1枚', '先攻', { card: face }) }],
+      })
+      if (only === undefined) throw new Error('見せる一覧に 1 枚あるはずだった')
+      return only.card
+    }
+
+    it('ユニットは、種別・レベル・色・ＢＰ・ＳＰ・ムーブアイコン・属性を書く', () => {
+      const card = viewOf(
+        unitFace('テスト・詳細', { level: 3, colors: ['黒'], bp: 3000, sp: 1500, moveIcon: ['上', '下'], attributes: ['見本'] }),
+      )
+
+      expect(cardInfoRowsOf(card)).toEqual([
+        { label: '種別', value: 'ユニット' },
+        { label: 'レベル', value: '3' },
+        { label: '色', value: '黒' },
+        { label: 'ＢＰ', value: '3000' },
+        { label: 'ＳＰ', value: '1500' },
+        { label: 'ムーブアイコン', value: '上・下' },
+        { label: '属性', value: '見本' },
+      ])
+    })
+
+    it('持っていない項目は、行ごと出さない', () => {
+      const labels = cardInfoRowsOf(viewOf(strategyFace('テスト・ストラテジー'))).map(({ label }) => label)
+
+      expect(labels).toEqual(['種別', 'レベル', '色'])
     })
   })
 

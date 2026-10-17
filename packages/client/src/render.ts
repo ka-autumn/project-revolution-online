@@ -105,6 +105,7 @@ import type {
 import {
   DECKS_PER_PAGE,
   answersOnlyByDeclining,
+  cardInfoRowsOf,
   dimsUnselectable,
   faceFieldsOf,
   keyOfPosition,
@@ -4887,6 +4888,36 @@ function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   ]
 }
 
+/**
+ * スマートフォンのカードの詳細。左にカードの面、右に文字でカードの情報を全部書く（デッキを組む画面の
+ * 詳細と同じ並べ方、ADR-0028）。右の列が無く、面だけでは能力テキストが読み切れないため。
+ *
+ * 面の高さを超える分は、右の欄だけを縦に送る（面と欄が枠をはみ出さない）。
+ */
+function phoneDetailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
+  const noted = card.operationalNote.length > 0
+  const big = element(
+    'div',
+    `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大${noted ? ' card--注記つき' : ''}`,
+  )
+  big.append(faceElement(card, { big: true }))
+
+  const info = element('div', 'detail__info')
+  info.append(element('div', 'detail__name', card.name))
+  const rows = element('dl', 'detail__rows')
+  for (const row of cardInfoRowsOf(card)) rows.append(element('dt', '', row.label), element('dd', '', row.value))
+  info.append(rows)
+  if (card.text.length > 0) {
+    const text = element('div', 'detail__text')
+    for (const line of card.text) text.append(element('p', '', line))
+    info.append(text)
+  }
+  if (noted) info.append(operationalNoteElement(card.operationalNote))
+  info.append(element('p', 'detail__note', detailNoteOf(card)))
+
+  return [big, info]
+}
+
 function fillDetailPanel(node: HTMLElement, card: (CardView & { readonly kind: '表' }) | undefined): void {
   if (card === undefined) {
     node.replaceChildren(detailGuideElement())
@@ -4908,7 +4939,7 @@ function phoneDetailElement(card: CardView | undefined, className: string, guide
   const node = element('div', `phone-only ${className}`)
   node.setAttribute('aria-live', 'polite')
   if (shown === undefined) node.append(element('p', 'detail__none', guide))
-  else node.append(...detailParts(shown))
+  else node.append(...phoneDetailParts(shown))
 
   return node
 }

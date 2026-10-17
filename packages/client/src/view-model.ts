@@ -718,6 +718,46 @@ export function triggerIconLabel(icon: TriggerIcon, squareName: (square: Square)
   }
 }
 
+/** カードの詳細の右に書く、項目と値の 1 行。 */
+export interface CardInfoRow {
+  readonly label: string
+  readonly value: string
+}
+
+/**
+ * スマートフォンのカードの詳細で、面の右に書く項目（デッキを組む画面の詳細と同じ並べ方、ADR-0028）。
+ *
+ * 持っていない項目は行ごと出さない。ＢＰ・ＳＰは継続効果を適用した後の数字があれば「書かれた数字→
+ * 適用後の数字」にし、属性は加わった分も含める（対戦画面のカードの面と同じ、ADR-0027）。
+ * ムーブアイコン・トリガーアイコンの呼び名は、印刷された向きのままにする。
+ */
+export function cardInfoRowsOf(card: CardView & { readonly kind: '表' }): readonly CardInfoRow[] {
+  const rows: CardInfoRow[] = [
+    { label: '種別', value: card.type },
+    { label: 'レベル', value: String(card.level) },
+    { label: '色', value: card.colors.length === 0 ? '無色' : card.colors.join('・') },
+  ]
+  if (card.bp !== undefined) {
+    const after = card.modified?.bp
+    rows.push({ label: 'ＢＰ', value: after === undefined ? String(card.bp) : `${card.bp}→${after}` })
+  }
+  if (card.sp !== undefined) {
+    const after = card.modified?.sp
+    rows.push({ label: 'ＳＰ', value: after === undefined ? String(card.sp) : `${card.sp}→${after}` })
+  }
+  if (card.moveIcon.length > 0) rows.push({ label: 'ムーブアイコン', value: card.moveIcon.join('・') })
+  if (card.triggerIcon !== undefined) {
+    rows.push({ label: 'トリガーアイコン', value: triggerIconLabel(card.triggerIcon, printedSquareLabel) })
+  }
+  if (card.stars > 0) rows.push({ label: 'スター', value: String(card.stars) })
+  if (card.reverseStars > 0) rows.push({ label: 'リバーススター', value: String(card.reverseStars) })
+  if (card.keywords.length > 0) rows.push({ label: 'キーワード', value: card.keywords.join('・') })
+  const attributes = [...card.attributes, ...(card.modified?.addedAttributes ?? [])]
+  if (attributes.length > 0) rows.push({ label: '属性', value: attributes.join(' | ') })
+
+  return rows
+}
+
 /**
  * カードの面の色。複数の色を持つカード・無色のカードは、いまのカードプールに無いので
  * 考えない（ADR-0027）。持っている色のうち 1 つ目で決める。
