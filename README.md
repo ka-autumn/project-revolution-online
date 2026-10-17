@@ -18,6 +18,7 @@ pnpm ワークスペースのモノレポ。
 | `packages/engine` | ルールエンジン。「盤面 ＋ 行動 → 次の盤面」の純粋関数。実行時依存を持たず、ブラウザとサーバの両方で動く（ADR-0001） |
 | `packages/server` | 盤面の唯一の権威（ADR-0004） |
 | `packages/client` | 対戦画面。受け取った盤面を描いて選んだものを送るだけで、対戦のルールの判断は持たない（ADR-0010） |
+| `packages/notices` | ロビーのお知らせのファイルの形を確かめ、置き場へ上げる本体（ADR-0045）。実行時依存を持たず、画面からも読むためのもの |
 | `private/cards` | カード実装。この公開リポジトリには含まれない（ADR-0002） |
 | `private/decks` | 対戦に使うカードのまとまりを渡すだけ。カードを名指しするため、cards と同じく含まれない |
 
@@ -303,6 +304,45 @@ URI」に登録する。**要求するスコープは `openid` のみ**のため
 
 **ログインを有効にすると、サーバは同じポートで HTTP も受け付けるようになる**（ADR-0019）。
 リバースプロキシの設定にも、WebSocket に加えて通常の HTTP 経路を追加する必要がある。
+
+### ロビーのお知らせを上げる
+
+ロビーのお知らせは、非公開リポジトリに書いた JSON を、Vercel Blob の公開ファイル 1 つへ丸ごと
+上げて差し替える（ADR-0045）。対戦サーバも画面も配り直さない。ファイルの形（項目名・必須・
+並び）は ADR-0045 の「実装」の節にある。
+
+1. 非公開リポジトリのお知らせのファイル（例: `private/notices/notices.json`）に足すか直して、コミットする。
+2. 形を確かめる。通信もトークンの読み込みもしない。
+
+   ```sh
+   pnpm publish:notices --notices private/notices/notices.json --check
+   ```
+
+3. 本番へ上げる。形を確かめ直してから上げ、件数と公開 URL を出す。
+
+   ```sh
+   pnpm publish:notices --notices private/notices/notices.json
+   ```
+
+4. 検証へは、見たいときだけ上げる。コマンドと環境変数が別で、毎回は通さない。
+
+   ```sh
+   pnpm publish:notices:verify --notices private/notices/notices.json
+   ```
+
+トークンは環境変数だけから読む（引数では渡せない）。
+
+| 環境変数 | 意味 |
+| --- | --- |
+| `REVOLUTION_NOTICES_TOKEN` | 本番の置き場への書き込み用トークン |
+| `REVOLUTION_NOTICES_TOKEN_VERIFY` | 検証の置き場への書き込み用トークン |
+
+**本番用の環境変数（末尾に `_VERIFY` が付かないもの）とは名前が異なる**ため、片方だけを設定して
+いても、もう一方のコマンドには読み込まれない。`pnpm publish:notices` と
+`pnpm publish:notices:verify` は常に別々の置き場を向く。どちらも `BLOB_READ_WRITE_TOKEN` は
+読まない。
+
+新しいカードを足した時は、対戦サーバを配ってからお知らせを上げる。
 
 ## 開発の確認
 
