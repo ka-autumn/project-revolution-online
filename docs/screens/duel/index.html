@@ -1574,7 +1574,8 @@ body {
 .show-picker-choose .picker--選ぶ,
 .show-picker-sending .picker--送信中,
 .show-picker-confirm .picker--確認,
-.show-picker-shown .picker--見せる一覧 { display: flex; }
+.show-picker-shown .picker--見せる一覧,
+.show-picker-shown-none .picker--見せる一覧・該当なし { display: flex; }
 
 .picker__box {
   display: flex;
@@ -2406,7 +2407,8 @@ body {
   <label><input type="checkbox" data-show="show-picker-choose">一覧（山札から選ぶ）</label>
   <label><input type="checkbox" data-show="show-picker-sending">一覧（山札から選ぶ・通信中）</label>
   <label><input type="checkbox" data-show="show-picker-confirm">一覧（相手の手札を見る・確認）</label>
-  <label><input type="checkbox" data-show="show-picker-shown">一覧（見せる一覧つき・選べるカードと見えるだけのカード）</label>
+  <label><input type="checkbox" data-show="show-picker-shown">一覧（山札の全体・選べるカードと見えるだけのカード・32 枚）</label>
+  <label><input type="checkbox" data-show="show-picker-shown-none">一覧（山札の全体・条件に合うカードが無い）</label>
   <label><input type="checkbox" data-show="show-many">枚数が多い（手札 12 枚。スマホではエネルギー 10 種類 24 枚・スマッシュ 6 枚も）</label>
 </div>
 
@@ -2893,22 +2895,24 @@ pickers.append(picker('確認', '相手の手札（3）', '相手の手札を見
   [card('見本・メカナイト', '相手'), card('見本・アクアシールド', '相手'), card('見本・紅葉', '相手')],
   '<button type="button" class="button--primary">確認した</button>'))
 
-// 見せる一覧のうち一部だけが選べる場合（山札の全体を見せて、条件に合うカードだけを選ばせる、など）。
-// 選べるカードは橙の枠で押せ、見えるだけのカードは薄くする
-const shownList = [
-  card('見本・もちぬい', '自分'),
-  card('見本・竜の飛翔', '自分'),
-  card('見本・森の守護者', '自分'),
-  card('見本・アクアシールド', '自分'),
-  card('見本・光の祈り手', '自分'),
-  card('見本・紅葉', '自分'),
-]
-for (const at of [0, 2, 4]) shownList[at].classList.add('card--押せる')
-shownList[2].classList.add('card--選択中')
-for (const at of [1, 3, 5]) shownList[at].classList.add('card--見るだけ')
-pickers.append(picker('見せる一覧', '候補から選ぶ', 'レベル 3 以下のユニットを 1 枚まで選んで、手札に加える',
-  shownList,
+// 山札の全体を見せて、条件に合うカードだけを選ばせる場合（ADR-0042）。山札は 32 枚（プランゾーンのカードを含む）。
+// 選べるカードを先頭にまとめ、残りの見えるだけのカードは薄くする。並びはカード名の順で、山札の順序は出さない。
+// 数十枚でも、枠の中で縦に送って全部を見られる
+const deckNames = Object.keys(cards)
+const deckList = Array.from({ length: 32 }, (_, at) => card(deckNames[at % deckNames.length], '自分'))
+for (const at of [0, 1, 2]) deckList[at].classList.add('card--押せる')
+deckList[1].classList.add('card--選択中')
+for (let at = 3; at < deckList.length; at += 1) deckList[at].classList.add('card--見るだけ')
+pickers.append(picker('見せる一覧', '山札（32）から選択する', '山札から選んでください',
+  deckList,
   '<span class="picker__count">1 枚目を選んでいます</span><button type="button">選ばない</button><button type="button" class="button--primary">これに決める</button>'))
+
+// 条件に合うカードが 1 枚も無い山札。聞かれるが、答えられるのは「選ばない」だけ。薄くはしない
+// （選べるカードが無い一覧は、見せるための一覧）。「これに決める」は置かない
+const noMatchList = Array.from({ length: 32 }, (_, at) => card(deckNames[at % deckNames.length], '自分'))
+pickers.append(picker('見せる一覧・該当なし', '山札（32）から選択する', '山札から選んでください',
+  noMatchList,
+  '<button type="button" class="button--primary">選ばない</button>'))
 
 // ---- カードの詳細 ----
 // 何も無ければ案内だけ。カードを選んでいる間はそのカードが既定。乗せたカードに切り替わり、
