@@ -2969,8 +2969,9 @@ function phoneDetailParts(node) {
     const shown = (written, modified) => (written === undefined ? '－' : modified && Number(modified) !== written ? `${written}→${modified}` : String(written))
     add('ＢＰ／ＳＰ', `${shown(c.bp, node.dataset.bp)}／${shown(c.sp, node.dataset.sp)}`)
   }
-  if (c.move) add('ムーブアイコン', c.move.join('・'))
-  if (c.trigger) add('トリガーアイコン', Array.isArray(c.trigger) ? '侵入' : c.trigger.kind)
+  if (c.move) add('移動方向', c.move.join('・'))
+  if (c.stars) add('スター', String(c.stars))
+  if (c.reverseStars) add('リバーススター', String(c.reverseStars))
   if (c.traits) add('属性', c.traits.split('・').join(' | '))
   info.append(rows)
   if (c.text.length > 0) {
