@@ -5551,6 +5551,10 @@ export function shownPickerElement(
     },
     phone === undefined ? undefined : listDetailElement(phone),
   )
+  // カードを押すと選びかけの印が変わって描き直す。数十枚の山札を押すたびに先頭へ戻らないよう、
+  // スクロールした位置を戻す（`KEEP_SCROLL`）。相手の手札の確認も同じ部品である。
+  const cardList = root.querySelector<HTMLElement>('.picker__cards')
+  if (cardList !== null) cardList.dataset[KEEP_SCROLL] = '見せる一覧'
   lock.bind(root)
 
   return root
