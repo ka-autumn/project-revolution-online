@@ -6998,7 +6998,7 @@ body {
    */
   .duel .dialog__detail,
   .duel .picker__detail {
-    --detail-card-width: 6.5rem;
+    --detail-card-width: 6rem;
     display: grid;
     flex: none;
     grid-template-columns: auto minmax(0, 1fr);
@@ -7011,16 +7011,10 @@ body {
     margin: 0 0 0.6rem;
   }
 
-  .duel .dialog__detail .card--拡大,
-  .duel .picker__detail .card--拡大 {
+  /* 面は、カードの一覧と同じ小さな面にする（拡大しない）。内容は右の欄で読む。 */
+  .duel .dialog__detail > .card,
+  .duel .picker__detail > .card {
     --card-width: var(--detail-card-width);
-    font-size: 0.46rem;
-  }
-
-  /* 面には能力テキストを書かない（アイコンだけが残る）。全文は右の欄にある。 */
-  .duel .dialog__detail .card--拡大 .card__text,
-  .duel .picker__detail .card--拡大 .card__text {
-    min-height: 0;
   }
 
   .duel .dialog__detail .detail__info,
