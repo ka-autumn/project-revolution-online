@@ -8,6 +8,7 @@ import {
   dealDamage,
   draw,
   faceDownPlan,
+  findAnywhere,
   locateOnSquares,
   moveToSquare,
   moveToZone,
@@ -225,6 +226,10 @@ interface Outcome {
    * （`log.ts` の `loggedInstruction`）。
    */
   readonly subject?: unknown
+  /** 選ばないことを選んだ（`log.ts` の `選ぶ`）。盤面は変わらないが、聞いた事実は残す。 */
+  readonly declined?: true
+  /** 動かしたカードの持ち主。置き先のゾーンのプレイヤーにあたる（`log.ts` の `ゾーンへ置く`）。 */
+  readonly owner?: Player
 }
 
 /**
@@ -238,7 +243,7 @@ interface Outcome {
  * 選ぶことだけは盤面を変えないので、選ばれたものがあったかどうかで見る。
  */
 function recorded(before: DuelState, outcome: Outcome, instruction: Instruction, controller: Player): DuelState {
-  if (outcome.state === before && outcome.subject === undefined) return outcome.state
+  if (outcome.state === before && outcome.subject === undefined && outcome.declined !== true) return outcome.state
 
   // 命令が動かしたカードは、動いた先が非公開のゾーンだと後の盤面から見えない。名指しを
   // 残せるよう、動く前の盤面もあわせて渡す（`log.ts` の `record`、#129）。
@@ -247,7 +252,7 @@ function recorded(before: DuelState, outcome: Outcome, instruction: Instruction,
     {
       kind: '命令を実行した',
       controller,
-      instruction: loggedInstruction(instruction, outcome.subject, controller),
+      instruction: loggedInstruction(instruction, outcome.subject, controller, outcome),
     },
     before,
   )
@@ -292,7 +297,7 @@ function apply(
         shownCards,
       )
       // 選ばないことが認められている場面でだけ、候補にないもの（`undefined`）を受け取れる。
-      if (instruction.mayDecline && chosen === undefined) return { state, value: undefined }
+      if (instruction.mayDecline && chosen === undefined) return { state, value: undefined, declined: true }
       if (!instruction.candidates.includes(chosen)) {
         throw new Error('候補にないものが選ばれた')
       }
@@ -396,13 +401,15 @@ function apply(
       // それを見て誘発する能力がある（同 第4部 第7章 6）。`moveToZone` はその誘発を
       // 起こさないので、この場合だけ `destroy` と同じ経路を通す。向きの指定は使わない。
       // 捨札のカードは常にリリース状態で置かれる（同 第2部 第21章 5-3）ためである。
+      const owner = findAnywhere(state, instruction.card.id)?.owner
       if (instruction.to === '捨札' && locateOnSquares(state, instruction.card.id) !== undefined) {
-        return { state: discardFromSquares(state, [instruction.card.id]), value: undefined }
+        return { state: discardFromSquares(state, [instruction.card.id]), value: undefined, owner }
       }
 
       // すでにそのゾーンを離れていればこの行動は実行されない（総合ルール 第1部 第1章 3）。
       // `moveToZone` がどこにも無いカードを黙って見送るので、ここでは何も足さない。
       return {
+        owner,
         state: moveToZone(
           state,
           instruction.card.id,

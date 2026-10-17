@@ -16,6 +16,7 @@ import {
   applyWithAnswers,
   cardsIn,
   choose,
+  chooseAtMostOne,
   courage,
   defineStrategy,
   defineTrap,
@@ -29,6 +30,7 @@ import {
   passPriority,
   perspectiveOf,
   placeInZone,
+  placeTopOfLibrary,
   playCard,
   putOnSquare,
   resolveEffect,
@@ -70,6 +72,37 @@ const chooseAndDestroy = defineStrategy({
   effect: function* (duel) {
     const enemy = yield* choose(duel.enemies())
     if (enemy !== undefined) yield* destroy(enemy)
+  },
+})
+
+/** 敵を 1 枚まで選んで破壊する。選ばないことも選べる。 */
+const chooseAtMostOneAndDestroy = defineStrategy({
+  name: 'テスト・まで選んで破壊',
+  level: 0,
+  colors: ['赤'],
+  effect: function* (duel) {
+    const enemy = yield* chooseAtMostOne(duel.enemies())
+    if (enemy !== undefined) yield* destroy(enemy)
+  },
+})
+
+/** 味方と敵を 1 枚ずつ、それぞれの捨札に置く。置き先のゾーンの持ち主が、カードの持ち主になる。 */
+const discardBoth = defineStrategy({
+  name: 'テスト・両方を捨札へ',
+  level: 0,
+  colors: ['赤'],
+  effect: function* (duel) {
+    for (const unit of [...duel.allies(), ...duel.enemies()]) yield* placeInZone(unit, '捨札', 'リリース')
+  },
+})
+
+/** 山札の 1 番上を、エネルギーゾーンにフリーズして置く。 */
+const topToEnergy = defineStrategy({
+  name: 'テスト・山札の上をエネルギーへ',
+  level: 0,
+  colors: ['赤'],
+  effect: function* () {
+    yield* placeTopOfLibrary('エネルギーゾーン', 'フリーズ')
   },
 })
 
@@ -279,6 +312,48 @@ describe('効果の記録', () => {
       { kind: '選ぶ', card: '敵', square: undefined },
       { kind: '破壊する', card: '敵' },
     ])
+  })
+
+  // 選ばないことを選んだ時は、選ばなかったことが残る。カードなしで残る、選ばれたカードが見えなかった時
+  // （名指しが落ちた時）と見分けるため（ADR-0042）。
+  it('選ばないことを選んだなら、選ばなかったことが残る', () => {
+    const decline: Chooser = () => undefined
+    const resolved = resolveEffect(board, chooseAtMostOneAndDestroy.effect, { controller: '先攻', via: VIA, chooser: decline })
+
+    expect(instructions(resolved)).toEqual([{ kind: '選ぶ', card: undefined, square: undefined, declined: true }])
+  })
+
+  it('選べるものが無く、聞かずに進んだ時は、何も残らない', () => {
+    const resolved = resolveEffect(stocked(), chooseAtMostOneAndDestroy.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+    expect(instructions(resolved)).toEqual([])
+  })
+
+  it('選んだなら、選ばなかったことの印は付かない', () => {
+    const resolved = resolveEffect(board, chooseAtMostOneAndDestroy.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+    expect(instructions(resolved)[0]).toEqual({ kind: '選ぶ', card: '敵', square: undefined })
+  })
+
+  // 総合ルール 第2部 第21章 1-2。置き先は持ち主のゾーンなので、自分のカードは自分の、相手のカードは相手の
+  // ゾーンになる（ADR-0040）。
+  it('ゾーンへ置いた記録に、置き先のゾーンのプレイヤーが残る', () => {
+    const resolved = resolveEffect(board, discardBoth.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+    expect(instructions(resolved)).toEqual([
+      { kind: 'ゾーンへ置く', card: '味方', to: '捨札', player: '先攻' },
+      { kind: 'ゾーンへ置く', card: '敵', to: '捨札', player: '後攻' },
+    ])
+  })
+
+  it('山札の 1 番上を置いた記録に、置き先のゾーンのプレイヤーが残る', () => {
+    for (const controller of PLAYERS) {
+      const resolved = resolveEffect(stocked(), topToEnergy.effect, { controller, via: VIA, chooser: chooseFirst })
+
+      expect(instructions(resolved)).toEqual([
+        expect.objectContaining({ kind: '山札の1番上をゾーンへ置く', to: 'エネルギーゾーン', player: controller }),
+      ])
+    }
   })
 
   /**
@@ -854,13 +929,13 @@ describe('視点ごとの落とし方', () => {
     const event: DuelEvent = {
       kind: '命令を実行した',
       controller: '後攻',
-      instruction: { kind: 'ゾーンへ置く', card: hidden.id, to: '手札' },
+      instruction: { kind: 'ゾーンへ置く', card: hidden.id, to: '手札', player: '後攻' },
     }
 
     const state = logged(event)
 
     expect(seen(state, '先攻')).toEqual([
-      { ...event, instruction: { kind: 'ゾーンへ置く', card: undefined, to: '手札' } },
+      { ...event, instruction: { kind: 'ゾーンへ置く', card: undefined, to: '手札', player: '後攻' } },
     ])
   })
 
@@ -1017,7 +1092,7 @@ describe('その時の見え方で落とす', () => {
     expect(cardsIn(resolved, '後攻', '山札').map((card) => card.id)).toContain(target.id)
     expect(perspectiveOf(resolved, '先攻').log.flatMap(({ event }) => (event.kind === '命令を実行した' ? [event.instruction] : []))).toEqual([
       { kind: '選ぶ', card: target.id, square: undefined },
-      { kind: 'ゾーンへ置く', card: target.id, to: '山札' },
+      { kind: 'ゾーンへ置く', card: target.id, to: '山札', player: '後攻' },
     ])
   })
 
