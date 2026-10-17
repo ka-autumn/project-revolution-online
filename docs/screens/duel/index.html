@@ -2964,10 +2964,12 @@ function phoneDetailParts(node) {
   rows.className = 'detail__rows'
   const add = (label, value) => rows.append(Object.assign(document.createElement('dt'), { textContent: label }), Object.assign(document.createElement('dd'), { textContent: value }))
   add('種別', c.kind)
-  add('レベル', String(c.lv))
-  add('色', c.color)
-  if (c.bp !== undefined) add('ＢＰ', node.dataset.bp && Number(node.dataset.bp) !== c.bp ? `${c.bp}→${node.dataset.bp}` : String(c.bp))
-  if (c.sp !== undefined) add('ＳＰ', node.dataset.sp && Number(node.dataset.sp) !== c.sp ? `${c.sp}→${node.dataset.sp}` : String(c.sp))
+  add('レベル／色', `${c.lv}／${c.color}`)
+  // ＢＰとＳＰは 1 行にまとめる（能力テキストが初めから見える高さに収めるため）
+  if (c.bp !== undefined || c.sp !== undefined) {
+    const shown = (written, modified) => (written === undefined ? '－' : modified && Number(modified) !== written ? `${written}→${modified}` : String(written))
+    add('ＢＰ／ＳＰ', `${shown(c.bp, node.dataset.bp)}／${shown(c.sp, node.dataset.sp)}`)
+  }
   if (c.move) add('ムーブアイコン', c.move.join('・'))
   if (c.trigger) add('トリガーアイコン', Array.isArray(c.trigger) ? '侵入' : c.trigger.kind)
   if (c.traits) add('属性', c.traits.split('・').join(' | '))
