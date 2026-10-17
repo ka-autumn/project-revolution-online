@@ -25,7 +25,7 @@ import {
   shownTitleOf,
 } from './input-model.js'
 import { applyMessage, connecting } from './session.js'
-import { shownCardViewsIn, squareLabel } from './view-model.js'
+import { dimsUnselectable, shownCardViewsIn, squareLabel } from './view-model.js'
 import type { Session } from './session.js'
 import { emptyBoard, instance, strategyFace, unitFace, withZone } from './test-support.js'
 
@@ -2100,6 +2100,54 @@ describe('見せる一覧つきの選択', () => {
     }
 
     expect(shownCardViewsIn(board(), mixed).map(({ candidate }) => candidate)).toEqual([undefined, 0])
+  })
+
+  // ADR-0042。山札の全体を見せて、条件に合うカードを選ぶ。
+  describe('山札から選ぶ', () => {
+    const searching: WireChoice = {
+      player: '先攻',
+      purpose: '山札から選ぶ',
+      mayDecline: true,
+      answered: 0,
+      mayGoBack: false,
+      candidates: [{ kind: '見えている', card: '山札の1枚目' }],
+      shown: [
+        { instance: instance('山札の1枚目', '先攻', { card: unitFace('テスト・あ') }), candidate: 0 },
+        { instance: instance('山札の2枚目', '先攻', { card: unitFace('テスト・い') }) },
+        { instance: instance('山札の3枚目', '先攻', { card: unitFace('テスト・う') }) },
+      ],
+    }
+
+    it('見出しは、山札と、全体の枚数と、選ぶことを言う', () => {
+      expect(shownTitleOf(searching)).toBe('山札（3）から選択する')
+    })
+
+    it('何を聞かれているかを言う', () => {
+      expect(choiceView(board(), searching).asking).toBe('山札から選んでください')
+    })
+
+    it('選べるカードが混じる一覧では、選べないカードを薄くする', () => {
+      expect(dimsUnselectable(shownCardViewsIn(board(), searching))).toBe(true)
+    })
+
+    it('選べるカードが 1 枚も無い一覧は薄くしない', () => {
+      const noMatch: WireChoice = {
+        ...searching,
+        candidates: [],
+        shown: (searching.shown ?? []).map(({ instance: one }) => ({ instance: one })),
+      }
+
+      expect(dimsUnselectable(shownCardViewsIn(board(), noMatch))).toBe(false)
+      expect(choiceView(board(), noMatch).candidates).toEqual([])
+    })
+
+    it('一覧は届いた順のまま描く（並べるのは送る側）', () => {
+      expect(shownCardViewsIn(board(), searching).map(({ card }) => card.id)).toEqual([
+        '山札の1枚目',
+        '山札の2枚目',
+        '山札の3枚目',
+      ])
+    })
   })
 
   it('一覧が無い選択は、一覧を持たない', () => {

@@ -248,6 +248,13 @@ export type Instruction =
        * 場合に真になる（総合ルール 第4部 第8章 2-3。選択はテキストの指定に従う）。
        */
       readonly mayDecline: boolean
+      /**
+       * 候補とは別に、選ぶプレイヤーへ見せるカードの一覧（ADR-0041・ADR-0042）。
+       *
+       * 渡した時は、候補が 1 枚も無くても聞く（選ばないことだけを選べる）。候補は一覧のカードの
+       * 中から選ぶ。効果が `readLibrary` で受け取ったものを、そのまま渡す。
+       */
+      readonly shown?: readonly CardInZone[]
     }
   | { readonly kind: '破壊する'; readonly target: UnitOnSquare }
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
@@ -268,6 +275,18 @@ export type Instruction =
    * 項目を持たないのは、書ける形をテキストにある形に限るためである。
    */
   | { readonly kind: '相手の手札を見る' }
+  /**
+   * 支配者が、自分の山札を読む（ADR-0042）。山札とプランゾーンのカードが、中身つきで効果に
+   * 返る。並びは山札の順序と関係のない並びで、順序は返さない。
+   *
+   * 項目を持たないのは、書ける形をテキストにある形（自分の山札）に限るためである。
+   */
+  | { readonly kind: '自分の山札を読む' }
+  /**
+   * 支配者の山札をシャッフルする（ADR-0042）。プランゾーンにカードがあれば、裏向きにして
+   * から混ぜる。混ぜた後はプランゾーンは無い。
+   */
+  | { readonly kind: '山札をシャッフルする' }
   | { readonly kind: 'プランを裏返す'; readonly player: Player }
   | {
       readonly kind: 'スクエアへ置く'
@@ -536,11 +555,17 @@ export function* choose<T>(candidates: readonly T[]): EffectStep<T | undefined> 
  * かったことと選ばなかったことが同じ結果になる。選ばれなかった時に何もしないのは、
  * 呼ぶ側が `undefined` を見て決める。
  *
+ * `shown` は、候補とは別に選ぶプレイヤーへ見せるカードの一覧である（ADR-0041・ADR-0042）。
+ * 渡した時は、候補が無くても聞く。山札から選ぶ時は `chooseAtMostOneFromLibrary` を使う。
+ *
  * 「◯」が 2 以上のテキストはまだ書けない。複数を選ぶ仕組みを持っていないためで、
  * 必要になった時に足す（`card.ts` の属性・トリガーアイコンと同じ考え方）。
  */
-export function* chooseAtMostOne<T>(candidates: readonly T[]): EffectStep<T | undefined> {
-  const chosen = yield { kind: '選ぶ', candidates, mayDecline: true }
+export function* chooseAtMostOne<T>(
+  candidates: readonly T[],
+  shown?: readonly CardInZone[],
+): EffectStep<T | undefined> {
+  const chosen = yield { kind: '選ぶ', candidates, mayDecline: true, ...(shown === undefined ? {} : { shown }) }
   // 選ばなかったことを `undefined` で表せるのは、候補がスクエアにいるユニットのように
   // 必ず値を持つものだけだからである。候補そのものが `undefined` になり得る使い方は無い。
   return chosen as T | undefined
@@ -696,6 +721,46 @@ export function* drawCards(player: Player, count: number): EffectStep<void> {
  */
 export function* lookAtOpponentHand(): EffectStep<void> {
   yield { kind: '相手の手札を見る' }
+}
+
+/**
+ * 支配者の山札を読む。山札とプランゾーンのカードが、中身つきで返る（ADR-0042）。
+ *
+ * 返る並びは山札の順序と関係がない。順序を読む口は作らない。プランゾーンのカードも、山札の
+ * 1 番上にあるカードなので含む（総合ルール 第2部 第21章 3-1）。読んだことは、相手のログに
+ * 名前なしで残る。読んだカードは、効果が命令の対象にできる。
+ *
+ * 見るのはプレイヤーであって、効果ではない。カードの側は、返った中身で分岐するためではなく、
+ * 条件で絞って `chooseAtMostOne` の候補にするために使う。山札から選ぶテキストは、見せる一覧を
+ * 付け忘れないよう `chooseAtMostOneFromLibrary` を使う。
+ */
+export function* readLibrary(): EffectStep<readonly CardInZone[]> {
+  const cards = yield { kind: '自分の山札を読む' }
+  // 命令を解釈する側が、読んだカードを返すことを、この関数だけが知っている。
+  return cards as readonly CardInZone[]
+}
+
+/**
+ * 支配者の山札をシャッフルする。プランゾーンにカードがあれば、裏向きにしてから混ぜる。
+ *
+ * 読んだのにシャッフルしない効果は止めない。テキストどおりに書く責任はカードの側にある
+ * （ADR-0042）。
+ */
+export function* shuffleLibrary(): EffectStep<void> {
+  yield { kind: '山札をシャッフルする' }
+}
+
+/**
+ * 自分の山札を読み、条件に合うカードを 1 枚まで選ぶ。選ぶのは能力の支配者。
+ *
+ * 読む → 条件で絞る → 見せる一覧つきで `chooseAtMostOne` する、までをまとめた記述用の関数で、
+ * 山札から選ぶテキストはこれを使う。選ぶプレイヤーには山札の全体が見せる一覧として届き、条件に
+ * 合うカードだけが選べる。一覧を付け忘れて山札のカードを選ばせることを防ぐために、ひとまとめに
+ * している。条件に合うカードが無くても聞く（選ばないことを選ぶ）。選ばなかった時は `undefined`。
+ */
+export function* chooseAtMostOneFromLibrary(matches: (card: CardInZone) => boolean): EffectStep<CardInZone | undefined> {
+  const cards = yield* readLibrary()
+  return yield* chooseAtMostOne(cards.filter(matches), cards)
 }
 
 /**

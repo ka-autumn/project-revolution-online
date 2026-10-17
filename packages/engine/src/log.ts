@@ -451,6 +451,21 @@ export type LoggedInstruction =
       readonly count: number
       readonly cards: readonly CardId[]
     }
+  /**
+   * 支配者が自分の山札を読んだ（ADR-0042）。
+   *
+   * **カードの名指しを持たない。** 山札の中身は、相手にも、読んだ本人のログにも載せない（本人には
+   * 選択の要求の見せる一覧として届く）。持つのは枚数だけで、山札とプランゾーンの合計である。どちらも
+   * 枚数は公開情報である。0 枚でも積む。
+   */
+  | { readonly kind: '自分の山札を読む'; readonly count: number }
+  /**
+   * 支配者が自分の山札をシャッフルした（ADR-0042）。
+   *
+   * `withPlan` は、プランゾーンのカードを裏向きにして混ぜたか。プランゾーンは公開されているので、
+   * 誰のカードだったかは名指ししなくても盤面とログから分かる。名前は載せない。
+   */
+  | { readonly kind: '山札をシャッフルする'; readonly withPlan: boolean }
 
 /**
  * そのできごとが名指しするカードのうち、そのプレイヤーから表側が見えていたもの（#129）。
@@ -656,5 +671,11 @@ export function loggedInstruction(instruction: Instruction, subject: unknown, co
       const cards = subjectCardIds(subject)
       return { kind: '相手の手札を見る', count: cards.length, cards }
     }
+    case '自分の山札を読む':
+      // 読んだカードの数だけを積む。名前は積まない（`LoggedInstruction` の同種の項）。
+      return { kind: '自分の山札を読む', count: subjectCardIds(subject).length }
+    case '山札をシャッフルする':
+      // `subject` は、混ぜる前にプランゾーンにあったカード。有無だけを積む。
+      return { kind: '山札をシャッフルする', withPlan: subjectCardIds(subject).length > 0 }
   }
 }

@@ -104,6 +104,7 @@ import type {
 } from './view-model.js'
 import {
   DECKS_PER_PAGE,
+  dimsUnselectable,
   faceFieldsOf,
   keyOfPosition,
   pagedOf,
@@ -5433,7 +5434,7 @@ export function shownPickerElement(
     onCancel: once(rawHandlers.onCancel),
   }
 
-  const anySelectable = shown.some(({ candidate }) => candidate !== undefined)
+  const anySelectable = dimsUnselectable(shown)
   const cards = shown.map(({ card, candidate }) => {
     const node = cardElement(card)
 

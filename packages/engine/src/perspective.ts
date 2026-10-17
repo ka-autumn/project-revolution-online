@@ -361,6 +361,21 @@ export function isLookAtHand(event: DuelEvent): event is LookAtHandEvent {
   return event.kind === '命令を実行した' && event.instruction.kind === '相手の手札を見る'
 }
 
+/**
+ * 本来見えないものを見せたことを積んだできごとか（ADR-0041・ADR-0042）。相手の手札を見たことと、
+ * 山札を読んだことである。0 枚なら何も見えていないので含めない。
+ *
+ * 盤面の見え方は変わらないのに、選ぶ人にだけ新しく見えたものがあるので、戻れるかの判定
+ * （`protocol.ts` の `describeChoice`）は、見えるようになったかでは決められず、ここで決める。
+ * 本来見えないものを見せる操作を足す時は、ここに加える。
+ */
+export function isRevealingHidden(event: DuelEvent): boolean {
+  if (event.kind !== '命令を実行した') return false
+
+  const { instruction } = event
+  return (instruction.kind === '相手の手札を見る' || instruction.kind === '自分の山札を読む') && instruction.count > 0
+}
+
 /** そのできごとが名指ししているカード。落とせるところだけを数える（`mapEventCards`）。 */
 function cardsNamedBy(event: DuelEvent): readonly CardId[] {
   const named: CardId[] = []

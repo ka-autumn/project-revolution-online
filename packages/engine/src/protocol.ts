@@ -7,7 +7,7 @@ import type { UnitOnSquare } from './effect.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
 import { areaRowOf, cardIdOf, squareOf } from './log.js'
-import { isLookAtHand, visibleIdsOf } from './perspective.js'
+import { isRevealingHidden, visibleIdsOf } from './perspective.js'
 import type { PassOutcome } from './progress.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
@@ -465,8 +465,11 @@ export type WireCandidate =
    * 数えられる。効果はトラップゾーンのカードの中身を受け取らない（ADR-0040）ので、中身で絞り込む
    * ことはできない。
    *
-   * **候補の絞り込みが非公開の中身を見るようになったら、ここを見直すこと。** その時は、位置を
-   * 出すことで「どの札がその条件を満たしているか」が新しく読み取れるようになる。
+   * **見えていないカードを、中身で絞り込んで候補にすることはしない。** 位置を出すと「どの札が
+   * その条件を満たしているか」が読み取れるようになるためである。中身で絞り込む候補（山札から
+   * 条件に合うカードを選ぶ時）は、見せる一覧（`WireChoice.shown`）に載せ、その選択の中では
+   * 「見えている」候補として送る（ADR-0042）。選ぶ人は一覧で山札の全体を見ていて、選択の要求は
+   * その人にしか届かない。
    *
    * 山札にあるカードは位置を持たない。中身を見てはならないゾーンであり（総合ルール 第2部
    * 第21章 2-2）、1 枚ずつ並べる場所も画面に無いので、押す先が無い。
@@ -1090,7 +1093,7 @@ function describeCandidate(
  *
  * 見たことのある選択も戻せない（ADR-0041）。盤面の見え方は変わらないので、見えるように
  * なったかでは決められない。確認の選択そのものと、同じ行動の中でそれより後に出る選択は、
- * 行動を始めてから積まれたログに相手の手札を見たことがあるかで決める。0 枚なら何も見えて
+ * 行動を始めてから積まれたログに相手の手札を見たこと・山札を読んだこと（`isRevealingHidden`、ADR-0042）があるかで決める。0 枚なら何も見えて
  * いないので、戻せる。
  *
  * 発生源（`source`）も同じ盤面から見る。**見えていなければ落とす**（#122）。見えていない
@@ -1109,9 +1112,12 @@ function describeChoice(
 ): WireChoice {
   const visible = visibleIdsOf(board, player)
   const before = visibleIdsOf(started, player)
+  // 見せる一覧に載ったカードは、その選択の中では選ぶ人に見えているものとして送る（ADR-0042）。
+  // 山札のカードが候補になる時、候補を位置のない「見えていない」で送ると、見ているものと記述が
+  // 食い違う。戻れるかの判定には使わない（見せたことは、ログで見分ける）。
+  const seen = shown === undefined ? visible : new Set([...visible, ...shown.map(({ id }) => id)])
   const looked =
-    purpose === '見たカードの確認' ||
-    board.log.slice(started.log.length).some(({ event }) => isLookAtHand(event) && event.instruction.count > 0)
+    purpose === '見たカードの確認' || board.log.slice(started.log.length).some(({ event }) => isRevealingHidden(event))
   return {
     player,
     purpose,
@@ -1119,7 +1125,7 @@ function describeChoice(
     mayDecline,
     answered,
     mayGoBack: !looked && [...visible].every((card) => before.has(card)),
-    candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, visible, board, player)),
+    candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, seen, board, player)),
     ...(shown === undefined ? {} : { shown: describeAllShown(shown, candidates) }),
   }
 }
@@ -1137,7 +1143,26 @@ export function describeAllShown(shown: readonly CardInstance[], candidates: rea
     throw new Error('見せる一覧に載っていない候補がある')
   }
 
-  return shown.map((instance) => describeShown(instance, candidates))
+  return orderShown(shown.map((instance) => describeShown(instance, candidates)))
+}
+
+/**
+ * 見せる一覧の並べ方。選べるカードを先に、見えるだけのカードを後に並べ、それぞれの中は
+ * カード名の順、同じ名前の中は識別子の順にする（ADR-0042）。
+ *
+ * **持ち順を使わない。** 山札の順序は隠れた情報で、一覧に持ち順が残ると読み取れてしまう。
+ * 渡された並びに依らず、中身だけで並びが決まる。識別子はシャッフルする前のデッキの並びから
+ * 決まる（`setup.ts` の `library`）ので、山札の順序を表さない。選べるカードが無い一覧（相手の手札）は
+ * カード名の順になる。
+ */
+export function orderShown(shown: readonly WireShownCard[]): readonly WireShownCard[] {
+  const selectable = (one: WireShownCard): number => (one.candidate === undefined ? 1 : 0)
+  return [...shown].sort((a, b) => {
+    if (selectable(a) !== selectable(b)) return selectable(a) - selectable(b)
+    const [nameA, nameB] = [a.instance.card.name, b.instance.card.name]
+    if (nameA !== nameB) return nameA < nameB ? -1 : 1
+    return a.instance.id < b.instance.id ? -1 : a.instance.id > b.instance.id ? 1 : 0
+  })
 }
 
 /** 見せる一覧の 1 枚を、送れる形にする。候補になっているカードには、その番号を付ける。 */

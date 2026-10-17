@@ -168,6 +168,7 @@ export {
   bpPlus,
   choose,
   chooseAtMostOne,
+  chooseAtMostOneFromLibrary,
   createContinuousEffect,
   createTriggeredAbility,
   damagePlayer,
@@ -181,7 +182,9 @@ export {
   placeInZone,
   placeOnSquare,
   placeTopOfLibrary,
+  readLibrary,
   release,
+  shuffleLibrary,
   spPlus,
 } from './effect.js'
 export type {

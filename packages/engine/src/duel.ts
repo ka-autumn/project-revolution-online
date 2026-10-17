@@ -9,6 +9,8 @@ import { ORIENTED_ZONES } from './orientation.js'
 import type { Orientation, OrientedZone } from './orientation.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
+import { randomFromSeed } from './random.js'
+import type { Random } from './random.js'
 import type { SmashJudgment } from './smash.js'
 import { firstTurn } from './turn.js'
 import type { Turn } from './turn.js'
@@ -92,8 +94,8 @@ export interface DuelState {
    * 進行中のターンとフェイズ、そして優先権。
    *
    * カードの位置ではないがここに置いている。どちらのプレイヤーにも見せてよい公開情報
-   * であり、視点ごとに射影した盤面（ADR-0004）にもそのまま載るためである。シードや
-   * 乱数列を盤面に持たないのは、それを送ると先の山札が読めてしまうからであって、
+   * であり、視点ごとに射影した盤面（ADR-0004）にもそのまま載るためである。乱数列の続き
+   * （`random`）は盤面が持つが送らない。送ると先の山札が読めてしまうからであって、
    * 「カードの位置ではないから」ではない。
    */
   readonly turn: Turn
@@ -245,6 +247,18 @@ export interface DuelState {
    * （#129）。
    */
   readonly log: readonly RecordedEvent[]
+  /**
+   * 対戦の途中のシャッフルが使う、乱数列の続き（ADR-0042）。
+   *
+   * **盤面は持つが、送らない。** 乱数列の続きは、これから先の山札の並びを決めるので、山札の並びと
+   * 同じ種類の隠れた情報である。視点ごとに射影した盤面（ADR-0004）には載せない（`perspective.ts` の
+   * `projectBoard`）。盤面の一部であるから、行動と答えの並びから対戦を作り直しても、選択のたびに
+   * 行動を最初からやり直しても、同じ盤面から同じ並びが出る（ADR-0005・ADR-0008・ADR-0018）。
+   *
+   * 自己対戦や CPU が手を選ぶ乱数列（`setup.ts` の `DuelPreparation.random`）とは別の列で、
+   * 準備の後に値を 1 つ取ってから始める。
+   */
+  readonly random: Random
 }
 
 /**
@@ -524,6 +538,8 @@ export function emptyDuelState(): DuelState {
     smashJudgments: [],
     result: undefined,
     log: [],
+    // 準備を通さずに組む盤面（テスト用）でも、途中のシャッフルが毎回同じ並びになるように固定する。
+    random: randomFromSeed(0),
   }
 }
 

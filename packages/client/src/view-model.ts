@@ -541,6 +541,16 @@ export function shownCardViewsIn(board: WirePerspective, choice: WireChoice): re
   }))
 }
 
+
+/**
+ * 見せる一覧で、選べないカードを薄くするか（ADR-0041）。選べるカードが 1 枚でもある一覧だけで薄くし、
+ * 選べるカードと見分けられるようにする。選べるカードが 1 枚も無い一覧（相手の手札を見る確認、条件に
+ * 合うカードが無い山札）は、見せるための一覧なので薄くしない。
+ */
+export function dimsUnselectable(shown: readonly ShownCardView[]): boolean {
+  return shown.some(({ candidate }) => candidate !== undefined)
+}
+
 /** 盤面が実際に描いているもの（#150）。 */
 export interface DrawnOnBoard {
   /** 表側が見えていて、押すところが盤面にあるカード。 */
@@ -1458,6 +1468,14 @@ function instructionLine(
       const cards = cardsLabel(instruction.count, instruction.cards, named)
       return whose(controller) === '自分' ? `相手の手札を見た：${cards}` : `相手が手札を見た：${cards}`
     }
+    // 山札の中身は、読んだ本人にも相手にも、ログには出さない（ADR-0042）。枚数だけを言う。
+    case '自分の山札を読む':
+      return whose(controller) === '自分' ? `山札を見た：${instruction.count} 枚` : `相手が山札を見た：${instruction.count} 枚`
+    // プランゾーンのカードは公開されているので、混ぜたことは言うが、名前は出さない。
+    case '山札をシャッフルする':
+      return instruction.withPlan
+        ? `${whose(controller)}のプランを裏返し、山札をシャッフルした`
+        : `${whose(controller)}の山札をシャッフルした`
     // この画面が知らない種類の命令（#285、`UNREADABLE_LOG`）。文を作り出さず、読めなかったことを
     // 呼ぶ側に返す。ログとカットインで出し方が違うので、ここでは決めない。
     default:

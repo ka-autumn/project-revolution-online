@@ -1348,6 +1348,32 @@ describe('操作ログ', () => {
         expect(logLines(looked('先攻', [])).map((line) => ('whose' in line ? line.whose : undefined))).toEqual(['自分'])
       })
     })
+
+    // ADR-0042。山札の中身は、見た側にも相手にも、ログには名前を出さない。
+    describe('山札を見た・シャッフルした', () => {
+      const read = (controller: Player, count: number) =>
+        withLog({ kind: '命令を実行した', controller, instruction: { kind: '自分の山札を読む', count } })
+      const shuffled = (controller: Player, withPlan: boolean) =>
+        withLog({ kind: '命令を実行した', controller, instruction: { kind: '山札をシャッフルする', withPlan } })
+
+      it('見た側には「山札を見た」と枚数だけが出る', () => {
+        expect(texts(read('先攻', 32))).toEqual(['山札を見た：32 枚'])
+      })
+
+      it('相手には「相手が山札を見た」と枚数だけが出る', () => {
+        expect(texts(read('後攻', 32))).toEqual(['相手が山札を見た：32 枚'])
+      })
+
+      it('シャッフルしたことは、持ち主ごとに出る', () => {
+        expect(texts(shuffled('先攻', false))).toEqual(['自分の山札をシャッフルした'])
+        expect(texts(shuffled('後攻', false))).toEqual(['相手の山札をシャッフルした'])
+      })
+
+      it('プランゾーンのカードも混ぜた時は、名前を出さずにプランを裏返したことを言う', () => {
+        expect(texts(shuffled('先攻', true))).toEqual(['自分のプランを裏返し、山札をシャッフルした'])
+        expect(texts(shuffled('後攻', true))).toEqual(['相手のプランを裏返し、山札をシャッフルした'])
+      })
+    })
   })
 
   // 総合ルール 第3部 第19章 1。表向きなのはそこだけなので、この時にしか名指しできない。

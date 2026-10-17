@@ -403,13 +403,15 @@ describe('見せる一覧と候補の対応', () => {
     handCard('一覧3', 'テスト・三', '先攻'),
   ]
 
+  // 選べるカードを先に並べる（ADR-0042）ため、一覧の並びは渡した順ではなく、選べるカード、見えるだけの
+  // カードの順になる。
   it('候補になっているカードは候補の番号を持ち、見えるだけのカードは持たない', () => {
     const candidates = [third, first]
 
     expect(describeAllShown([first, second, third], candidates).map(({ candidate }) => candidate)).toEqual([
       1,
-      undefined,
       0,
+      undefined,
     ])
   })
 

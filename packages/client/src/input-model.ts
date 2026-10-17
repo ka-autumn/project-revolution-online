@@ -342,6 +342,8 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined): string {
         : `${source} を発動するきっかけを選んでください`
     case '見たカードの確認':
       return '相手の手札を見ています'
+    case '山札から選ぶ':
+      return '山札から選んでください'
     case '勇気のきっかけ':
       return source === undefined
         ? '「勇気」でダメージを与えるユニットを選んでください'
@@ -1043,5 +1045,14 @@ export function showsChoicePicker(
  * 言う。それ以外は、候補から選ぶ一覧と同じ見出しにする。
  */
 export function shownTitleOf(choice: WireChoice): string {
-  return choice.purpose === '見たカードの確認' ? `相手の手札（${choice.shown?.length ?? 0}）` : '候補から選ぶ'
+  const count = choice.shown?.length ?? 0
+  switch (choice.purpose) {
+    case '見たカードの確認':
+      return `相手の手札（${count}）`
+    // 山札の全体（プランゾーンのカードを含む）を見せている。枚数は山札の合計で、公開情報である。
+    case '山札から選ぶ':
+      return `山札（${count}）から選択する`
+    default:
+      return '候補から選ぶ'
+  }
 }

@@ -80,7 +80,10 @@ export function prepareDuel(setup: DuelSetup): DuelPreparation {
   const decided = nextInt(shuffledOfSeat1.random, SEATS.length)
   const first: Seat = decided.value === 0 ? 0 : 1
 
-  let state = emptyDuelState()
+  // 盤面が持つ乱数列（途中のシャッフル用、ADR-0042）は、準備で使った列の後に 1 つ値を取って
+  // 始める。外へ返す `random`（CPU・自己対戦が手を選ぶ列）と同じ値を引かないようにするためで、
+  // 外へ返す列は変えない（既存の対戦の進み方を動かさない）。
+  let state: DuelState = { ...emptyDuelState(), random: nextInt(decided.random, 1).random }
   for (const seat of SEATS) {
     const player: Player = seat === first ? '先攻' : '後攻'
     state = deal(state, player, library(shuffled[seat], player))
