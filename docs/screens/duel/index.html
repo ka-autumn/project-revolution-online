@@ -2191,7 +2191,7 @@ body {
   .detail.sheet--開いている .card--拡大 { --card-width: var(--detail-card-width, 6.5rem); font-size: 0.46rem; }
   .picker__detail .card--拡大 .card__text,
   .duel .dialog__detail .card--拡大 .card__text,
-  .detail.sheet--開いている .card--拡大 .card__text { min-height: 0; max-height: 2.4rem; overflow: hidden; }
+  .detail.sheet--開いている .card--拡大 .card__text { min-height: 0; }
   .detail__info { min-width: 0; max-height: calc(var(--detail-card-width, 6.5rem) * 1.5); overflow-y: auto; overscroll-behavior: contain; font-size: 0.74rem; }
   .detail__name { margin-bottom: 0.3rem; color: var(--heading); font-size: 0.95rem; font-weight: 800; line-height: 1.25; }
   .detail__rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.1rem 0.5rem; margin: 0; }
@@ -2412,8 +2412,8 @@ body {
   <label><input type="checkbox" data-show="show-result-lose">決着（敗北）</label>
   <label><input type="checkbox" data-show="show-result-draw">決着（引き分け）</label>
   <label><input type="checkbox" data-show="show-picker-view">一覧（捨札を見る）</label>
-  <label><input type="checkbox" data-show="show-picker-choose">一覧（山札から選ぶ）</label>
-  <label><input type="checkbox" data-show="show-picker-sending">一覧（山札から選ぶ・通信中）</label>
+  <label><input type="checkbox" data-show="show-picker-choose">一覧（候補から選ぶ）</label>
+  <label><input type="checkbox" data-show="show-picker-sending">一覧（候補から選ぶ・通信中）</label>
   <label><input type="checkbox" data-show="show-picker-confirm">一覧（相手の手札を見る・確認）</label>
   <label><input type="checkbox" data-show="show-picker-shown">一覧（山札の全体・選べるカードと見えるだけのカード・32 枚）</label>
   <label><input type="checkbox" data-show="show-picker-shown-none">一覧（山札の全体・条件に合うカードが無い）</label>
@@ -2550,7 +2550,7 @@ function faceHtml(name, opts = {}) {
     <div class="card__face">${top}
       <div class="card__bottom">
         <div class="card__title">${stars}<span class="card__name">${name}</span>${keywordIcons(c.keywords)}</div>
-        <div class="card__text"><div class="card__lines">${c.text.map((l) => `<p>${l}</p>`).join('')}</div>${icons}</div>
+        <div class="card__text"><div class="card__lines">${opts.omitText ? '' : c.text.map((l) => `<p>${l}</p>`).join('')}</div>${icons}</div>
         ${c.traits ? `<span class="card__traits">${c.traits}</span>` : ''}
         ${unit ? `<div class="card__stats">${stat('bp', c.bp, opts.bp)}${stat('sp', c.sp, opts.sp)}</div>` : ''}
       </div>
@@ -2879,7 +2879,7 @@ const choosable = [
 ]
 for (const n of choosable) n.classList.add('card--押せる')
 choosable[1].classList.add('card--選択中')
-pickers.append(picker('選ぶ', '山札から選ぶ', 'レベル 3 以下のユニットを 1 枚まで選んで、手札に加える',
+pickers.append(picker('選ぶ', '候補から選ぶ', '効果の対象を選んでください',
   choosable,
   '<span class="picker__count">1 枚目を選んでいます</span><button type="button">選ばない</button><button type="button" class="button--primary">これに決める</button>'))
 
@@ -2892,7 +2892,7 @@ const sendingList = [
 ]
 for (const n of sendingList) n.classList.add('card--押せる')
 sendingList[1].classList.add('card--選択中')
-pickers.append(picker('送信中', '山札から選ぶ', 'レベル 3 以下のユニットを 1 枚まで選んで、手札に加える',
+pickers.append(picker('送信中', '候補から選ぶ', '効果の対象を選んでください',
   sendingList,
   '<span class="picker__count">1 枚目を選んでいます</span><button type="button" disabled>選ばない</button><button type="button" class="button--primary" disabled>これに決める</button>',
   true))
@@ -2918,7 +2918,7 @@ pickers.append(picker('見せる一覧', '山札（32）からカードを選択
 // 条件に合うカードが 1 枚も無い山札。聞かれるが、答えられるのは「選ばない」だけ。薄くはしない
 // （選べるカードが無い一覧は、見せるための一覧）。「これに決める」は置かない
 const noMatchList = Array.from({ length: 32 }, (_, at) => card(deckNames[at % deckNames.length], '自分'))
-pickers.append(picker('見せる一覧・該当なし', '山札（32）からカードを選択', 'カードを選択してください',
+pickers.append(picker('見せる一覧・該当なし', '山札（32）からカードを選択', '条件に合うカードはありません',
   noMatchList,
   '<button type="button" class="button--primary">選ばない</button>'))
 
@@ -2952,13 +2952,14 @@ function detailParts(node) {
   return [...parts, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
 }
 // スマートフォンのカードの詳細：左にカードの面、右に文字で情報を全部書く（デッキを組む画面の詳細と同じ並べ方）。
+// 面には能力テキストを書かない（小さくて潰れるため）。能力テキストと注記は右の欄で読む
 // 右の欄は面の高さまでで、超える分は欄だけを縦に送る
 function phoneDetailParts(node) {
   const name = node.dataset.name
   const c = cards[name]
   const big = document.createElement('div')
-  big.className = `card card--拡大 card--${node.dataset.whose} card--色-${c.color}${c.note ? ' card--注記つき' : ''}`
-  big.innerHTML = faceHtml(name, { text: true, bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage })
+  big.className = `card card--拡大 card--${node.dataset.whose} card--色-${c.color}`
+  big.innerHTML = faceHtml(name, { text: true, omitText: true, bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage })
   const info = document.createElement('div')
   info.className = 'detail__info'
   info.append(Object.assign(document.createElement('div'), { className: 'detail__name', textContent: name }))
