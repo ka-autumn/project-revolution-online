@@ -51,11 +51,15 @@ describe('フロアルール第2部の索引', () => {
   })
 })
 
-/** 引用を探す場所。本文そのもの（`docs/floor-rules/`）と、生成物・依存は含めない。 */
+/**
+ * 引用を探す場所。本文そのもの（`docs/floor-rules/`）と、生成物・依存は含めない。
+ * `.claude/` は手元の作業用で、`worktrees/` の下に別の版のリポジトリが丸ごと置かれることがある。
+ * 追跡対象だけに絞らないのは、ignore された `private/` の引用も確かめたいから。
+ */
 function sourcesUnder(dir: string): string[] {
   const out: string[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (['node_modules', 'dist', 'temp', '.git'].includes(entry.name)) continue
+    if (['node_modules', 'dist', 'temp', '.git', '.claude'].includes(entry.name)) continue
     const path = join(dir, entry.name)
     if (entry.isDirectory()) {
       if (path === floorRules) continue
