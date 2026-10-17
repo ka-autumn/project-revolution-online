@@ -4902,7 +4902,15 @@ function phoneDetailParts(card: CardView & { readonly kind: '表' }): HTMLElemen
   face.append(faceElement(card))
 
   const info = element('div', 'detail__info')
-  info.append(element('div', 'detail__name', card.name))
+  // スターは名前の前に出す（デッキを組む画面の詳細と同じ。行を増やさない）。
+  const name = element('div', 'detail__name')
+  name.append(
+    ...[starElement(card.stars, false), starElement(card.reverseStars, true)].filter(
+      (each): each is HTMLElement => each !== undefined,
+    ),
+    document.createTextNode(card.name),
+  )
+  info.append(name)
   const rows = element('dl', 'detail__rows')
   for (const row of cardInfoRowsOf(card)) rows.append(element('dt', '', row.label), element('dd', '', row.value))
   info.append(rows)

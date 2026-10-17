@@ -730,7 +730,7 @@ export interface CardInfoRow {
  * 持っていない項目は行ごと出さない。種別・レベル・色と、ＢＰとＳＰは、それぞれ 1 行にまとめる（能力
  * テキストが初めから見える高さに収めるため）。ＢＰ・ＳＰは継続効果を適用した後の数字があれば「書かれた数字→
  * 適用後の数字」にし、属性は加わった分も含める（対戦画面のカードの面と同じ、ADR-0027）。
- * ムーブアイコンは「移動方向」と呼ぶ。トリガーアイコンの行は書かない（能力テキストの《…》と重複するため。
+ * スターは行にしない（名前の前に出す、`render.ts` の `phoneDetailParts`）。ムーブアイコンは「移動方向」と呼ぶ。トリガーアイコンの行は書かない（能力テキストの《…》と重複するため。
  * 面にもアイコンが出ている）。
  */
 export function cardInfoRowsOf(card: CardView & { readonly kind: '表' }): readonly CardInfoRow[] {
@@ -747,8 +747,6 @@ export function cardInfoRowsOf(card: CardView & { readonly kind: '表' }): reado
     rows.push({ label: 'ＢＰ／ＳＰ', value: `${after(card.bp, card.modified?.bp)}／${after(card.sp, card.modified?.sp)}` })
   }
   if (card.moveIcon.length > 0) rows.push({ label: '移動方向', value: card.moveIcon.join('・') })
-  if (card.stars > 0) rows.push({ label: 'スター', value: String(card.stars) })
-  if (card.reverseStars > 0) rows.push({ label: 'リバーススター', value: String(card.reverseStars) })
   if (card.keywords.length > 0) rows.push({ label: 'キーワード', value: card.keywords.join('・') })
   const attributes = [...card.attributes, ...(card.modified?.addedAttributes ?? [])]
   if (attributes.length > 0) rows.push({ label: '属性', value: attributes.join(' | ') })

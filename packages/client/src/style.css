@@ -7028,11 +7028,21 @@ body {
 
   .duel .dialog__detail .detail__name,
   .duel .picker__detail .detail__name {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
     margin-bottom: 0.3rem;
     color: var(--heading);
     font-size: 0.95rem;
     font-weight: 800;
     line-height: 1.25;
+  }
+
+  .duel .dialog__detail .detail__name .star,
+  .duel .picker__detail .detail__name .star {
+    width: 1.3rem;
+    height: 1.3rem;
+    font-size: 0.7rem;
   }
 
   .duel .dialog__detail .detail__rows,
