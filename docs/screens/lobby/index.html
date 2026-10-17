@@ -382,7 +382,7 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
 .lobby .join { border-color: #c96a08; color: #fff; background: linear-gradient(180deg, #f5a53a, #e07a10); font-weight: 800; text-shadow: 0 1px 1px rgb(0 0 0 / 0.25); }
 .lobby .rooms__none { margin: 1.5rem 0; white-space: pre-line; color: var(--ink-dim); text-align: center; line-height: 1.6; }
 
-/* ---------- 右：お知らせ（中身は別 Issue。入るまでは枠だけ） ---------- */
+/* ---------- 右：お知らせ（ADR-0045。置き場から取った件を出す） ---------- */
 .lobby .panel--news { flex: 1; }
 .lobby .news__none { display: grid; flex: 1; place-content: center; gap: 0.5rem; padding: 1rem; color: var(--ink-dim); text-align: center; line-height: 1.6; }
 .lobby .news__icon { font-size: 2rem; opacity: 0.5; }
@@ -419,6 +419,7 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
 .lobby .newsdetail__title { margin: 0.1rem 0 0.2rem; color: var(--heading); font-family: var(--heading-font); font-size: 1.25rem; line-height: 1.4; }
 .lobby .newsdetail__sub { margin: 0.4rem 0 0; color: var(--heading); font-size: 0.9rem; }
 .lobby .newsdetail__changes { margin: 0; padding-left: 1.3rem; line-height: 1.8; }
+.lobby .newsdetail__quote { margin: 0; padding: 0.5rem 0.8rem; border: 1px solid var(--panel-edge); border-left: 4px solid var(--gold-deep); border-radius: var(--radius-small); background: #fffef9; line-height: 1.7; }
 
 /* ---------- 選べないデッキ（使えないカード入り）：押せない形で出し、札と理由を添える ---------- */
 /*
@@ -646,7 +647,7 @@ const PRESETS = [
   { id: 'p1', name: '見本デッキ A', face: undefined, colors: [], tags: [] },
   { id: 'p2', name: '見本デッキ B', face: undefined, colors: [], tags: [] },
 ]
-// リリースノートのような中身（ダミー）。どこから持ってくるかは別 Issue
+// リリースノートのような中身（ダミー）。実際は置き場のファイルから取る（ADR-0045）。kind が null の件は、知らない種別の見本（札を出さず、「すべて」にだけ出す）。body の { quote } は引用の段落
 const NEWS = [
   { kind: '更新', version: 'v0.14.0', date: '2026-09-28', title: 'デッキ構築の画面を新しくしました', summary: 'カードの一覧を「カード」「1 行」で切り替えられるようにし、デッキの内訳・パートナーカード・ラベルを足しました。',
     body: ['デッキ構築の画面の見た目と並べ方を新しくしました。'], changes: ['カードの一覧を「カード」「1 行」で切り替えられるようにしました', 'デッキの内訳（レベルごとの枚数・種別・スターの合計）を出すようにしました', 'デッキにパートナーカードを決められるようにしました', 'デッキにラベルを付けて、一覧で絞り込めるようにしました', 'デッキを複製できるようにしました'] },
@@ -655,7 +656,9 @@ const NEWS = [
   { kind: '更新', version: 'v0.13.0', date: '2026-09-14', title: '対戦画面の見た目を新しくしました', summary: '盤面を 3 列に組み直し、カードの詳細と演出を見やすくしました。',
     body: ['対戦画面の見た目を新しくしました。'], changes: ['盤面を 3 列に組み直しました', 'カードの詳細を大きく出すようにしました', 'バトルや勝敗の演出を足しました'] },
   { kind: 'お知らせ', date: '2026-09-10', title: '禁止／制限リスト（2026年9月）を入れました', summary: '部屋を作るときに選べます。選ばなければ、このリストが当たります。',
-    body: ['禁止／制限リスト（2026年9月）を入れました。', '対戦部屋を作成するときに「対戦ルール」から選べます。選ばなければ、このリストが当たります。'], changes: [] },
+    body: ['禁止／制限リスト（2026年9月）を入れました。', { quote: '引用の段落の見本です。能力テキストを引くときは、このように枠で囲みます。' }, '対戦部屋を作成するときに「対戦ルール」から選べます。選ばなければ、このリストが当たります。'], changes: [] },
+  { kind: null, date: '2026-09-05', title: '新しい種類のお知らせの見本（札を出しません）', summary: '種別を読み取れない件は、札を出さずに並べます。絞り込みでは「すべて」にだけ出ます。',
+    body: ['この画面が知らない種別のお知らせです。札を出さずに並べます。'], changes: [] },
   { kind: '修正', version: 'v0.12.1', date: '2026-09-02', title: 'CPU戦でCPUが考え込んで止まることがある不具合を直しました', summary: '',
     body: ['CPU戦で、CPUの手番のまま進まなくなることがありました。'], changes: [] },
   { kind: '更新', version: 'v0.12.0', date: '2026-08-25', title: 'CPU戦で、CPUが使用するデッキを選べるようにしました', summary: '自分のデッキの中から選べます。',
@@ -683,7 +686,7 @@ const ROOMS_PER_PAGE = 6
 const state = {
   standing: 'ログインあり', // | 'ログインなし'
   roomsShown: 'あり', // | 'なし'
-  news: 'あり', // | 'なし'
+  news: 'あり', // | 'なし' | '読み込み中'
   newsView: undefined, // お知らせの窓。{ kind: '一覧', filter } | { kind: '詳細', index, from, filter }
   picked: 'd1', // 使用するデッキ。undefined = 選んでいない（#194）
   cpuPicked: 'd2',
@@ -1160,8 +1163,8 @@ function newsPanel() {
   const n = el('section', 'panel panel--news')
   if (state.newsOpen) n.dataset.open = 'true'
   const head = el('div', 'panel__head')
-  // スマホでは、見出しの行ごと押せる開閉のボタンにする（PC では出ない）
-  if (state.news !== 'なし') {
+  // スマホでは、見出しの行ごと押せる開閉のボタンにする（PC では出ない）。件がある時だけ畳む
+  if (state.news === 'あり') {
     const toggle = btn('', () => set({ newsOpen: !state.newsOpen }), 'phone-only news__toggle')
     toggle.setAttribute('aria-expanded', String(state.newsOpen))
     toggle.append(el('span', '', 'お知らせ'), el('span', 'news__toggle-mark', state.newsOpen ? '▲' : '▼'))
@@ -1169,9 +1172,11 @@ function newsPanel() {
   }
   head.append(el('h2', 'panel__title', 'お知らせ'))
   n.append(head)
-  if (state.news === 'なし') {
+  if (state.news !== 'あり') {
+    // 取りに行っている間は「読み込んでいます…」、取れなかった・件が無い時は「まだありません」。どちらも畳まない
+    if (state.news === '読み込み中') n.setAttribute('aria-busy', 'true')
     const none = el('div', 'news__none')
-    none.append(el('span', 'news__icon', '📣'), el('span', '', 'お知らせはまだありません'))
+    none.append(el('span', 'news__icon', '📣'), el('span', '', state.news === '読み込み中' ? 'お知らせを読み込んでいます…' : 'お知らせはまだありません'))
     n.append(none)
     return n
   }
@@ -1181,7 +1186,7 @@ function newsPanel() {
 }
 function newsMeta(item) {
   const meta = el('div', 'news__meta')
-  meta.append(el('span', `news__kind news__kind--${item.kind}`, item.kind))
+  if (item.kind) meta.append(el('span', `news__kind news__kind--${item.kind}`, item.kind))
   if (item.version) meta.append(el('span', 'news__version', item.version))
   meta.append(el('time', '', item.date.replaceAll('-', '/')))
   return meta
@@ -1231,16 +1236,19 @@ function newsModal() {
     box.append(head)
     const body = el('article', 'modal__body newsdetail')
     body.append(newsMeta(item), el('h3', 'newsdetail__title', item.title))
-    for (const p of item.body) body.append(el('p', '', p))
+    for (const p of item.body) body.append(typeof p === 'string' ? el('p', '', p) : el('blockquote', 'newsdetail__quote', p.quote))
     if (item.changes.length) {
       body.append(el('h4', 'newsdetail__sub', '変わったこと'))
       const ul = el('ul', 'newsdetail__changes'); for (const c of item.changes) ul.append(el('li', '', c)); body.append(ul)
     }
     box.append(body)
     const foot = el('div', 'modal__buttons')
-    const prev = NEWS[v.index + 1]; const next = NEWS[v.index - 1]
-    const older = btn('‹ 前のお知らせ', () => set({ newsView: { ...v, index: v.index + 1 } }), 'button--small'); older.disabled = !prev
-    const newer = btn('次のお知らせ ›', () => set({ newsView: { ...v, index: v.index - 1 } }), 'button--small'); newer.disabled = !next
+    // 前後へ移る範囲：全件の窓から開いたなら、選んでいる種別で絞った並び。パネルから開いたなら全件
+    const seq = v.from === '一覧' ? NEWS.filter((i) => v.filter === 'すべて' || i.kind === v.filter) : NEWS
+    const at = seq.indexOf(item)
+    const prev = seq[at + 1]; const next = seq[at - 1]
+    const older = btn('‹ 前のお知らせ', () => set({ newsView: { ...v, index: NEWS.indexOf(prev) } }), 'button--small'); older.disabled = !prev
+    const newer = btn('次のお知らせ ›', () => set({ newsView: { ...v, index: NEWS.indexOf(next) } }), 'button--small'); newer.disabled = !next
     foot.append(older, newer, el('span', 'modal__spacer'), btn('閉じる', close, 'button--primary'))
     box.append(foot)
   }
@@ -1317,7 +1325,7 @@ function renderSwitch() {
   }
   group('立て方', 'standing', ['ログインあり', 'ログインなし'], (v) => set({ standing: v, picked: v === 'ログインあり' ? 'd1' : 'p1', cpuPicked: v === 'ログインあり' ? 'd2' : 'p1', deckPage: 0, menu: undefined }))
   group('部屋', 'roomsShown', ['あり', 'なし'])
-  group('お知らせ', 'news', ['あり', 'なし'])
+  group('お知らせ', 'news', ['あり', 'なし', '読み込み中'])
   s.append(el('span', '', 'デッキ'))
   { const b = btn(state.unusable ? '使えないカード入り：あり' : '使えないカード入り：なし', () => set({ unusable: !state.unusable })); b.setAttribute('aria-pressed', String(state.unusable)); s.append(b) }
   group('狭い幅の詰め方', 'fit', ['A', 'B', 'なし'])

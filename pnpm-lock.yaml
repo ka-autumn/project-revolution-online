@@ -38,6 +38,9 @@ importers:
       '@revolution/engine':
         specifier: workspace:*
         version: link:../engine
+      '@revolution/notices':
+        specifier: workspace:*
+        version: link:../notices
     devDependencies:
       vite:
         specifier: ^7.3.1

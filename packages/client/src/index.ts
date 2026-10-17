@@ -150,6 +150,8 @@ import type { Overlay, HandRefusal, RoomTab } from './view-model.js'
 import { closedByCancel, escapeTopLayer, focusBefore, markDialog, settleFocus } from './dialog-focus.js'
 import { PHONE_WIDTH_QUERY, initialPhone, isPhoneWidth, reducePhone, returnedToPhone, settlePhone, takePending, takeScroll } from './phone.js'
 import type { PhoneControl, PhonePending, PhoneScroll, PhoneState } from './phone.js'
+import { createNoticesFeed } from './notices-view.js'
+import type { NoticesAction, NoticesPending, NoticesState } from './notices-view.js'
 import { settlePhoneScroll } from './phone-scroll.js'
 import { settlePhoneBoard, watchControls } from './phone-board.js'
 import { areaSheetOf, forgetPointerWhenSheetClosed, tapOfSquare } from './phone-area.js'
@@ -392,6 +394,10 @@ interface Lobby {
   readonly roomTab: RoomTab
   readonly roomQuery: string
   readonly roomPage: number
+  /** 右の列のお知らせ（ADR-0045）。取れた結果・開いている窓・手の置き直し。 */
+  readonly notices: NoticesState
+  readonly noticesPending: NoticesPending | undefined
+  readonly onNotices: (action: NoticesAction) => void
   readonly onDeckPage: (page: number) => void
   readonly onMenu: (deck: DeckId | undefined) => void
   readonly onRoomTab: (tab: RoomTab) => void
@@ -818,6 +824,7 @@ function draw(
           roomPage: lobby.roomPage,
           waiting: builder.waiting.kind !== '無し',
           phone,
+          notices: { state: lobby.notices, pending: lobby.noticesPending, send: lobby.onNotices },
         },
         {
           onCreate: lobby.onCreate,
@@ -1406,6 +1413,17 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let lobbyRoomPage = 0
   // スマートフォンの並べ方でだけ持つ状態（ADR-0034、`phone.ts`）。通信にも保存にも混ぜない。
   let phoneState: PhoneState = initialPhone()
+  // 右の列のお知らせ（ADR-0045）。ロビーを出した時に 1 度だけ置き場から取りに行き、取れたら描き直す。
+  // 置き場の URL はビルド時に渡す（`VITE_NOTICES_URL`、`env.d.ts`）。無ければ取りに行かない。
+  // 取れた時の描き直しは、押している最中なら手を離すまで待つ。待たないと、押した要素が click の前に
+  // 作り直され、押したことが消える（`onEditNameLeave` と同じ扱い）。
+  const noticesFeed = createNoticesFeed({
+    url: import.meta.env.VITE_NOTICES_URL,
+    onChange: () => {
+      if (pointerHeld) redrawOnRelease = true
+      else redraw()
+    },
+  })
   // 打ち込みかけている表示名（ADR-0020）。尋ねられるたびに、いま付いている名前から始める。
   let nameDraft = ''
   // 名前を断る返事が届いて、まだ描き直していない間は真。描き直しが入力欄へフォーカスを戻す印になる。
@@ -2101,7 +2119,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    */
   const settleLobbyView = (): void => {
     const stage = session.stage
-    if (stage.kind !== 'ロビー' || !lobbyIsShown(session, link, builder)) {
+    const shown = stage.kind === 'ロビー' && lobbyIsShown(session, link, builder)
+    // ロビーを出した時に取りに行き、離れたら捨てる。描き直しのたびに呼んでよい（変わった時だけ動く）。
+    noticesFeed.settle(shown)
+    if (stage.kind !== 'ロビー' || !shown) {
       lobbyMenu = undefined
       return
     }
@@ -2175,6 +2196,13 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     roomTab: lobbyRoomTab,
     roomQuery: lobbyRoomQuery,
     roomPage: lobbyRoomPage,
+    notices: noticesFeed.state(),
+    // 描き直しのたびに取り出す。取り出すのは描く時だけ（`draw` の引数）で、待たされた描き直しには残る。
+    noticesPending: noticesFeed.takePending(),
+    onNotices: (action) => {
+      noticesFeed.send(action)
+      redraw()
+    },
     onDeckPage: (page) => {
       lobbyDeckPage = page
       lobbyMenu = undefined
@@ -2536,6 +2564,12 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   // 開いていなければ、選びかけを外す（#249）。何も選んでいなければ何もしない。
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape') return
+    // お知らせの窓は、手が窓の外（`body` など）にあっても閉じる。
+    if (noticesFeed.state().window !== undefined) {
+      noticesFeed.send({ kind: '閉じる' })
+      redraw()
+      return
+    }
     if (escapeTopLayer(root)) return
     // スマートフォンで開いているシート（ログ・行える手）があれば、それを閉じる。選びかけは外さない。
     if (isPhoneWidth() && phoneState.duelSheet !== undefined) {
