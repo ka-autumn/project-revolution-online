@@ -2963,8 +2963,7 @@ function phoneDetailParts(node) {
   const rows = document.createElement('dl')
   rows.className = 'detail__rows'
   const add = (label, value) => rows.append(Object.assign(document.createElement('dt'), { textContent: label }), Object.assign(document.createElement('dd'), { textContent: value }))
-  add('種別', c.kind)
-  add('レベル／色', `${c.lv}／${c.color}`)
+  add('種別／レベル／色', `${c.kind}／${c.lv}／${c.color}`)
   // ＢＰとＳＰは 1 行にまとめる（能力テキストが初めから見える高さに収めるため）
   if (c.bp !== undefined || c.sp !== undefined) {
     const shown = (written, modified) => (written === undefined ? '－' : modified && Number(modified) !== written ? `${written}→${modified}` : String(written))
