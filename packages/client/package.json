@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@revolution/engine": "workspace:*"
+    "@revolution/engine": "workspace:*",
+    "@revolution/notices": "workspace:*"
   },
   "devDependencies": {
     "vite": "^7.3.1",
