@@ -1,4 +1,4 @@
-import type { UnitCard } from './card.js'
+import type { Card, UnitCard } from './card.js'
 import { continuousData } from './continuous.js'
 import { checkCourageCondition } from './courage.js'
 import { discardFromSquares } from './discard.js'
@@ -270,9 +270,10 @@ function apply(
   switch (instruction.kind) {
     case '選ぶ': {
       // 見せる一覧を渡された時は、候補が無くても聞く。山札を見た人に、選ばないことを選ばせる
-      // ためである（ADR-0042）。一覧が空（読める山札が無い）なら、見せるものが無いので聞かない。
-      const listed = instruction.shown === undefined || instruction.shown.length === 0 ? undefined : instruction.shown
-      const shownCards = listed === undefined ? undefined : instancesOf(state, context.controller, listed, shown)
+      // ためである（ADR-0042）。一覧が空（読める山札が無い、読んだカードが山札を離れた）なら、見せる
+      // ものが無いので、一覧なしの選択として扱う。
+      const listed = instruction.shown === undefined ? [] : instancesOf(state, context.controller, instruction.shown, shown)
+      const shownCards = listed.length === 0 ? undefined : listed
 
       // 候補が空なら、選ぶという行動は実行できない（総合ルール 第1部 第1章 3）。効果は
       // そこで終わらせず、選ばれなかったものとして次の指示へ進む。解決はテキストに
@@ -300,9 +301,9 @@ function apply(
     case '相手の手札を見る': {
       // 見るのは能力の支配者で、見られるのはその相手の手札である（ADR-0041）。
       // 手札の並びは公開されていない。引いた順などが一覧から読めないよう、中身だけで並べる。
-      const hand = [...cardsIn(state, opponentOf(context.controller), '手札')].sort((a, b) =>
-        a.card.name < b.card.name ? -1 : a.card.name > b.card.name ? 1 : 0,
-      )
+      // 同じ名前の中は識別子の順にする。見せる一覧の並び（`protocol.ts` の `orderShown`）と、ログの名指しの
+      // 並びをそろえるためで、手札の持ち順（引いた順など）はどちらにも出ない。
+      const hand = [...cardsIn(state, opponentOf(context.controller), '手札')].sort(byNameThenId)
       // 0 枚なら新しく見えるものが無い。聞かずに、見たことだけを積む（`subject` が空の並び）。
       if (hand.length === 0) return { state, value: undefined, subject: hand }
 
@@ -501,7 +502,7 @@ function inZone(instance: CardInstance, zone: '山札' | 'プランゾーン'): 
  * 識別子はシャッフルする前のデッキの並びから決まる（`setup.ts` の `library`）ので、山札の
  * 順序を表さない。
  */
-function byNameThenId(a: CardInZone, b: CardInZone): number {
+function byNameThenId(a: { readonly id: CardId; readonly card: Card }, b: { readonly id: CardId; readonly card: Card }): number {
   if (a.card.name !== b.card.name) return a.card.name < b.card.name ? -1 : 1
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }

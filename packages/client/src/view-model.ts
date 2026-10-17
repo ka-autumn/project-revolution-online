@@ -541,7 +541,6 @@ export function shownCardViewsIn(board: WirePerspective, choice: WireChoice): re
   }))
 }
 
-
 /**
  * 見せる一覧で、選べないカードを薄くするか（ADR-0041）。選べるカードが 1 枚でもある一覧だけで薄くし、
  * 選べるカードと見分けられるようにする。選べるカードが 1 枚も無い一覧（相手の手札を見る確認、条件に
@@ -549,6 +548,15 @@ export function shownCardViewsIn(board: WirePerspective, choice: WireChoice): re
  */
 export function dimsUnselectable(shown: readonly ShownCardView[]): boolean {
   return shown.some(({ candidate }) => candidate !== undefined)
+}
+
+/**
+ * 見せる一覧の答えが「選ばない」だけか（ADR-0042）。選べるカードが 1 枚も無く、確認の候補も無い一覧で、
+ * 条件に合うカードが無い山札がこれにあたる。足もとは「選ばない」だけを主ボタンにし、「これに決める」は
+ * 置かない（仕様書の「カードの一覧」）。
+ */
+export function answersOnlyByDeclining(shown: readonly ShownCardView[], confirmIndex: number | undefined): boolean {
+  return confirmIndex === undefined && !dimsUnselectable(shown)
 }
 
 /** 盤面が実際に描いているもの（#150）。 */

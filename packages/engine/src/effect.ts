@@ -252,7 +252,7 @@ export type Instruction =
        * 候補とは別に、選ぶプレイヤーへ見せるカードの一覧（ADR-0041・ADR-0042）。
        *
        * 渡した時は、候補が 1 枚も無くても聞く（選ばないことだけを選べる）。候補は一覧のカードの
-       * 中から選ぶ。効果が `readLibrary` で受け取ったものを、そのまま渡す。
+       * 中から選ぶ。出せるのは `chooseAtMostOneFromLibrary` だけで、カードの側からは渡せない。
        */
       readonly shown?: readonly CardInZone[]
     }
@@ -555,17 +555,13 @@ export function* choose<T>(candidates: readonly T[]): EffectStep<T | undefined> 
  * かったことと選ばなかったことが同じ結果になる。選ばれなかった時に何もしないのは、
  * 呼ぶ側が `undefined` を見て決める。
  *
- * `shown` は、候補とは別に選ぶプレイヤーへ見せるカードの一覧である（ADR-0041・ADR-0042）。
- * 渡した時は、候補が無くても聞く。山札から選ぶ時は `chooseAtMostOneFromLibrary` を使う。
+ * 山札から選ぶ時は、見せる一覧が要るので、これではなく `chooseAtMostOneFromLibrary` を使う。
  *
  * 「◯」が 2 以上のテキストはまだ書けない。複数を選ぶ仕組みを持っていないためで、
  * 必要になった時に足す（`card.ts` の属性・トリガーアイコンと同じ考え方）。
  */
-export function* chooseAtMostOne<T>(
-  candidates: readonly T[],
-  shown?: readonly CardInZone[],
-): EffectStep<T | undefined> {
-  const chosen = yield { kind: '選ぶ', candidates, mayDecline: true, ...(shown === undefined ? {} : { shown }) }
+export function* chooseAtMostOne<T>(candidates: readonly T[]): EffectStep<T | undefined> {
+  const chosen = yield { kind: '選ぶ', candidates, mayDecline: true }
   // 選ばなかったことを `undefined` で表せるのは、候補がスクエアにいるユニットのように
   // 必ず値を持つものだけだからである。候補そのものが `undefined` になり得る使い方は無い。
   return chosen as T | undefined
@@ -753,14 +749,17 @@ export function* shuffleLibrary(): EffectStep<void> {
 /**
  * 自分の山札を読み、条件に合うカードを 1 枚まで選ぶ。選ぶのは能力の支配者。
  *
- * 読む → 条件で絞る → 見せる一覧つきで `chooseAtMostOne` する、までをまとめた記述用の関数で、
- * 山札から選ぶテキストはこれを使う。選ぶプレイヤーには山札の全体が見せる一覧として届き、条件に
- * 合うカードだけが選べる。一覧を付け忘れて山札のカードを選ばせることを防ぐために、ひとまとめに
- * している。条件に合うカードが無くても聞く（選ばないことを選ぶ）。選ばなかった時は `undefined`。
+ * 読む → 条件で絞る → 見せる一覧つきで 1 枚まで選ぶ、までをまとめた記述用の関数で、山札から選ぶ
+ * テキストはこれを使う。選ぶプレイヤーには山札の全体が見せる一覧として届き、条件に合うカードだけが
+ * 選べる。見せる一覧つきの選択を出せるのは、この関数だけである（一覧の付け忘れと、山札以外のカードを
+ * 一覧に載せることを防ぐため）。条件に合うカードが無くても聞く（選ばないことを選ぶ）。選ばなかった
+ * 時は `undefined`。
  */
 export function* chooseAtMostOneFromLibrary(matches: (card: CardInZone) => boolean): EffectStep<CardInZone | undefined> {
   const cards = yield* readLibrary()
-  return yield* chooseAtMostOne(cards.filter(matches), cards)
+  const chosen = yield { kind: '選ぶ', candidates: cards.filter(matches), mayDecline: true, shown: cards }
+  // 命令を解釈する側が、候補の中から選んで返す（選ばなければ `undefined`）。
+  return chosen as CardInZone | undefined
 }
 
 /**

@@ -25,7 +25,7 @@ import {
   shownTitleOf,
 } from './input-model.js'
 import { applyMessage, connecting } from './session.js'
-import { dimsUnselectable, shownCardViewsIn, squareLabel } from './view-model.js'
+import { answersOnlyByDeclining, dimsUnselectable, shownCardViewsIn, squareLabel } from './view-model.js'
 import type { Session } from './session.js'
 import { emptyBoard, instance, strategyFace, unitFace, withZone } from './test-support.js'
 
@@ -2139,6 +2139,34 @@ describe('見せる一覧つきの選択', () => {
 
       expect(dimsUnselectable(shownCardViewsIn(board(), noMatch))).toBe(false)
       expect(choiceView(board(), noMatch).candidates).toEqual([])
+    })
+
+    it('選べるカードが 1 枚も無く、確認も無い一覧は、選ばないだけが答えになる', () => {
+      const noMatch: WireChoice = {
+        ...searching,
+        candidates: [],
+        shown: (searching.shown ?? []).map(({ instance: one }) => ({ instance: one })),
+      }
+
+      expect(answersOnlyByDeclining(shownCardViewsIn(board(), noMatch), undefined)).toBe(true)
+      expect(answersOnlyByDeclining(shownCardViewsIn(board(), searching), undefined)).toBe(false)
+      // 確認の選択は、選べるカードが無くても「確認した」で答える。
+      expect(answersOnlyByDeclining(shownCardViewsIn(board(), confirming), 0)).toBe(false)
+    })
+
+    // 山札の 1 番上がプランゾーンにあり、盤面にも描かれていて、それが候補になる場面。
+    it('プランが候補でも、盤面から押せる候補は空になる', () => {
+      const withPlan = withZone(board(), '先攻', 'プランゾーン', [
+        { kind: '見えている', instance: instance('山札の1枚目', '先攻', { card: unitFace('テスト・あ') }) },
+      ])
+
+      const picking = choicePicking(withPlan, searching)
+
+      expect(picking.pickable).toEqual([])
+      expect(picking.onBoard).toEqual([])
+      expect(picking.answerOf('山札の1枚目')).toBeUndefined()
+      // 見せる一覧を持たない選択なら、同じプランは盤面から押せる。
+      expect(choicePicking(withPlan, { ...searching, shown: undefined }).pickable).toEqual(['山札の1枚目'])
     })
 
     it('一覧は届いた順のまま描く（並べるのは送る側）', () => {

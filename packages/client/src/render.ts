@@ -104,6 +104,7 @@ import type {
 } from './view-model.js'
 import {
   DECKS_PER_PAGE,
+  answersOnlyByDeclining,
   dimsUnselectable,
   faceFieldsOf,
   keyOfPosition,
@@ -5470,10 +5471,21 @@ export function shownPickerElement(
 
   const foot = element('div', 'picker__foot')
   if (anySelectable) foot.append(element('span', 'picker__count', `${answered + 1} 枚目を選んでいます`))
-  if (mayDecline) foot.append(button('選ばない', handlers.onDecline))
+  // 選べるカードも確認も無い一覧（条件に合うカードが無い山札）は、「選ばない」だけが答えになる。
+  const declineOnly = answersOnlyByDeclining(shown, confirmIndex)
+  if (mayDecline) {
+    const decline = button('選ばない', handlers.onDecline)
+    if (declineOnly) {
+      decline.classList.add('button--primary')
+      decline.setAttribute(INITIAL_FOCUS_ATTRIBUTE, '')
+    }
+    foot.append(decline)
+  }
   if (mayRewind) foot.append(button('ひとつ戻る', handlers.onRewind))
   if (mayCancel) foot.append(button('この行動をやめる', handlers.onCancel))
-  if (confirmIndex !== undefined) {
+  if (declineOnly) {
+    // 「これに決める」は置かない。
+  } else if (confirmIndex !== undefined) {
     const confirmation = confirmIndex
     const confirm = button('確認した', () => handlers.onConfirm(confirmation))
     confirm.classList.add('button--primary')

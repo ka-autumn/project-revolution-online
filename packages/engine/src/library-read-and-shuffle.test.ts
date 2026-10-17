@@ -22,10 +22,12 @@ import {
   prepareDuel,
   putOnSquare,
   randomChooser,
+  nextInt,
   randomFromSeed,
   readLibrary,
   runSelfPlayBatch,
   shuffleLibrary,
+  splitRandom,
   toWire,
 } from './index.js'
 import type {
@@ -38,6 +40,7 @@ import type {
   DuelState,
   LegalAction,
   Player,
+  Random,
   Square,
 } from './index.js'
 
@@ -272,6 +275,24 @@ describe('山札を読んで選ぶ選択', () => {
     expectAdvanced(applyWithAnswers(start, PLAY, ['選ばない']))
   })
 
+  // 見せる一覧のカードが、聞く前に山札を離れていたら、見せるものが無いので、一覧なしの選択になる。
+  it('一覧のカードがすべて山札を離れていれば、聞かずに先へ進む', () => {
+    const leaving = defineStrategy({
+      name: 'テスト・読んで手放す',
+      level: 0,
+      effect: function* () {
+        const cards = yield* readLibrary()
+        for (const card of cards) yield* placeInZone(card, '手札', 'リリース')
+        // 山札を離れた後に、同じカードを一覧として聞こうとする（カードの側からは出せない形を直に出す）。
+        yield { kind: '選ぶ', candidates: [], mayDecline: true, shown: cards }
+      },
+    })
+
+    const progress = applyWithAnswers(mainPhaseWith(leaving, sampleLibrary()), PLAY, [])
+
+    expectAdvanced(progress)
+  })
+
   it('読める山札が 1 枚も無ければ、聞かずに先へ進む', () => {
     const progress = applyWithAnswers(mainPhaseWith(searchAndShuffle, []), PLAY, [])
 
@@ -359,7 +380,7 @@ describe('途中のシャッフルの再現', () => {
     expect(orders[0]).not.toEqual(orders[1])
   })
 
-  it('準備で作った盤面の乱数列は、CPU や自己対戦が使う列とは別の続きから始まる', () => {
+  it('準備で作った盤面の乱数列は、CPU や自己対戦が使う列と同じ状態を通らない', () => {
     const deck: Deck = Array.from({ length: 15 }, (_, index) =>
       Array.from({ length: 4 }, () => defineUnit({ name: `テスト・準備${index}`, level: 0, bp: 100, sp: 100 })),
     ).flat()
@@ -369,6 +390,22 @@ describe('途中のシャッフルの再現', () => {
     if (prepared.kind !== '準備完了' || again.kind !== '準備完了') throw new Error('準備できるはずだった')
 
     expect(prepared.state.random).not.toEqual(prepared.random)
+    // 内部状態は 1 回引くたびに一定の値が足されるだけなので、1 つ取った後の列は元の列を 1 つずらした
+    // だけになる。実用上の長さ（数千回）の間、2 つの列が同じ状態を通らないことを見る。
+    const walk = (start: Random): ReadonlySet<number> => {
+      const states = new Set<number>()
+      let current = start
+      for (let count = 0; count < 5000; count += 1) {
+        current = nextInt(current, 2).random
+        states.add(current.state)
+      }
+      return states
+    }
+    for (const seed of [0, 1, 7, 42, 20260809, 2 ** 31 - 1]) {
+      const outer = walk(randomFromSeed(seed))
+      const board = walk(splitRandom(randomFromSeed(seed)))
+      expect([...board].filter((state) => outer.has(state))).toEqual([])
+    }
     expect(again.state.random).toEqual(prepared.state.random)
     expect(again.random).toEqual(prepared.random)
   })
@@ -400,14 +437,29 @@ describe('山札の中身と乱数列の続きが漏れない', () => {
     expect(progress.choice.player).toBe('先攻')
   })
 
-  it('相手の視点には、山札のカードの名前も識別子も載らない', () => {
+  // 山札にあったカードは、選んで手札に加えたカードも含めて、相手の視点に名前も識別子も載らない。
+  const LIBRARY_NAMES = ['テスト・ろ', 'テスト・目当て', 'テスト・い', 'テスト・は']
+  const LIBRARY_IDS = ['先攻-5', '先攻-2', '先攻-9', '先攻-0', '先攻-7']
+
+  it('相手の視点には、山札にあったカードの名前も識別子も載らない', () => {
     const progress = applyWithAnswers(mainPhaseWith(searchAndShuffle, sampleLibrary()), PLAY, [0])
     expectAdvanced(progress)
 
     const seen = JSON.stringify(toWire(perspectiveOf(progress.state, '後攻')))
 
-    for (const name of ['テスト・ろ', 'テスト・い', 'テスト・は']) expect(seen).not.toContain(name)
-    for (const id of ['先攻-5', '先攻-9', '先攻-7']) expect(seen).not.toContain(id)
+    for (const name of LIBRARY_NAMES) expect(seen).not.toContain(name)
+    for (const id of LIBRARY_IDS) expect(seen).not.toContain(id)
+  })
+
+  // 選んでいる途中の盤面は、サーバが両方のプレイヤーに送る（`room.ts` の `advance`）。
+  it('選んでいる途中の盤面でも、相手の視点には山札の中身が載らない', () => {
+    const progress = applyWithAnswers(mainPhaseWith(searchAndShuffle, sampleLibrary()), PLAY, [])
+    expectChoice(progress)
+
+    const seen = JSON.stringify(toWire(perspectiveOf(progress.board, '後攻')))
+
+    for (const name of LIBRARY_NAMES) expect(seen).not.toContain(name)
+    for (const id of LIBRARY_IDS) expect(seen).not.toContain(id)
   })
 
   it('相手のログには、山札を見たことと混ぜたことが名前なしで 1 件ずつ出る', () => {

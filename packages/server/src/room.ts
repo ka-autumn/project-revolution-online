@@ -194,7 +194,7 @@ interface DuelInRoom {
   /**
    * CPU が次の手を選ぶのに使う乱数列（`cpu.ts`、#175）。準備で使った続きから始める。
    *
-   * 盤面の側は乱数を持たない（`DuelState` は値であって、進めるのは呼ぶ側である）。CPU が
+   * 盤面が持つ乱数列（途中のシャッフル用、`DuelState.random`、ADR-0042）とは別の列である。CPU が
    * いない部屋では最初から動かない。
    */
   readonly random: Random

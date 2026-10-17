@@ -911,6 +911,17 @@ export interface ChoicePicking {
   readonly onBoard: readonly number[]
 }
 
+/** 盤面から押せるものが無い。見せる一覧つきの選択（ADR-0041・ADR-0042）の盤面の押し方。 */
+const NOTHING_ON_BOARD: ChoicePicking = {
+  pickable: [],
+  answerOf: () => undefined,
+  squares: [],
+  answerOfSquare: () => undefined,
+  hidden: [],
+  answerOfHidden: () => undefined,
+  onBoard: [],
+}
+
 /**
  * 選ぶ候補のうち、盤面の上で押せるものを結び付ける。
  *
@@ -931,6 +942,11 @@ export interface ChoicePicking {
  * まま、ボタンだけが消えることになる。
  */
 export function choicePicking(board: WirePerspective, choice: WireChoice): ChoicePicking {
+  // 見せる一覧つきの選択（ADR-0041・ADR-0042）は、一覧だけで答える。盤面に描かれているカード
+  // （プランゾーンのカードなど）が候補に入っていても、盤面からは押せない。盤面から押すと「これに
+  // 決める」を経ずに答えが送られ、一覧の中の流れと食い違う。
+  if (choice.shown !== undefined) return NOTHING_ON_BOARD
+
   const drawn = drawnOnBoard(board)
   const answers = new Map<CardId, number>()
   // スクエアは行と列の組なので、そのままでは鍵にできない。盤面の並びの番号に直して引く。
