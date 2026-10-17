@@ -2193,17 +2193,15 @@ describe('見せる一覧つきの選択', () => {
       return only.card
     }
 
-    it('ユニットは、種別・レベル・色・ＢＰ・ＳＰ・ムーブアイコン・属性を書く', () => {
+    it('ユニットは、種別・レベルと色・ＢＰとＳＰ・ムーブアイコン・属性を書く', () => {
       const card = viewOf(
         unitFace('テスト・詳細', { level: 3, colors: ['黒'], bp: 3000, sp: 1500, moveIcon: ['上', '下'], attributes: ['見本'] }),
       )
 
       expect(cardInfoRowsOf(card)).toEqual([
         { label: '種別', value: 'ユニット' },
-        { label: 'レベル', value: '3' },
-        { label: '色', value: '黒' },
-        { label: 'ＢＰ', value: '3000' },
-        { label: 'ＳＰ', value: '1500' },
+        { label: 'レベル／色', value: '3／黒' },
+        { label: 'ＢＰ／ＳＰ', value: '3000／1500' },
         { label: 'ムーブアイコン', value: '上・下' },
         { label: '属性', value: '見本' },
       ])
@@ -2212,7 +2210,7 @@ describe('見せる一覧つきの選択', () => {
     it('持っていない項目は、行ごと出さない', () => {
       const labels = cardInfoRowsOf(viewOf(strategyFace('テスト・ストラテジー'))).map(({ label }) => label)
 
-      expect(labels).toEqual(['種別', 'レベル', '色'])
+      expect(labels).toEqual(['種別', 'レベル／色'])
     })
   })
 
