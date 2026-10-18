@@ -410,6 +410,8 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
 /* 画面の中に重ねる窓（デッキ構築の .modal と同じ見た目） */
 .lobby .modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 1rem; background: rgb(60 30 0 / 0.45); }
 .lobby .modal__box { display: flex; flex-direction: column; width: min(38rem, 100%); max-height: 86vh; background: #fffcf4; }
+/* お知らせの窓は縦幅を一定にする（内容が少なくても縮めない。あふれる分は中でスクロール） */
+.lobby .modal__box--news { height: min(36rem, 86vh); }
 .lobby .modal__body { display: flex; flex-direction: column; gap: 0.6rem; padding: 0.9rem 1.1rem; overflow-y: auto; }
 .lobby .modal__body p { margin: 0; line-height: 1.7; }
 .lobby .modal__buttons { display: flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.1rem 0.9rem; border-top: 1px solid rgb(220 166 64 / 0.35); }
@@ -611,6 +613,8 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
   /* 重ねる窓（お知らせ・パスワード）：幅いっぱいに出し、ボタンは折り返す */
   .lobby .modal { padding: 0.5rem; }
   .lobby .modal__box { width: 100%; max-height: 90dvh; }
+  .lobby .modal__box--news { height: min(36rem, 90dvh); }
+  .lobby .modal__box--news > .news { flex: 1; overflow-y: auto; }
   .lobby .modal__buttons { flex-wrap: wrap; }
 
   /* 画面の外に出る 1 行・モックの切り替えは、左下に畳む（対戦画面のモックと同じ） */
@@ -1211,7 +1215,7 @@ function newsModal() {
   const close = () => set({ newsView: undefined })
   const back = el('div', 'modal')
   back.addEventListener('click', (e) => { if (e.target === back) close() })
-  const box = el('section', 'panel modal__box'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true')
+  const box = el('section', 'panel modal__box modal__box--news'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true')
   const head = el('div', 'panel__head')
   const x = btn('×', close, 'icon-button'); x.setAttribute('aria-label', '閉じる')
 

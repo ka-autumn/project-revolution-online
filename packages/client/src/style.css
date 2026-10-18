@@ -1393,7 +1393,8 @@ body {
   flex-direction: column;
   width: min(38rem, 100%);
   max-width: none;
-  max-height: 86vh;
+  /* 縦幅は一定にする。お知らせごとに枠の高さが変わらないよう、内容が少なくても縮めず、あふれる分は中でスクロールさせる。 */
+  height: min(36rem, 86vh);
   padding: 0;
   overflow: hidden;
 }
@@ -5719,14 +5720,16 @@ body {
 
   .lobby .lobby__news-window {
     width: 100%;
-    max-height: 90dvh;
+    height: min(36rem, 90dvh);
   }
 
   .lobby .lobby__news-window-foot {
     flex-wrap: wrap;
   }
 
-  .lobby .lobby__news-tabs {
+  /* 部屋の絞り込みのタブ（.lobby__tabs）に当たる `flex: 1 1 100%` を打ち消す。窓の縦幅が一定なので、残すと帯が縦に伸びる。 */
+  .lobby .lobby__tabs.lobby__news-tabs {
+    flex: none;
     align-self: stretch;
   }
 
