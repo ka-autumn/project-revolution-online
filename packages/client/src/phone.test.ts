@@ -73,6 +73,14 @@ describe('画面を離れたときの状態の整理', () => {
     expect(settlePhone(state, { ...none, lobby: true, deckList: true })).toEqual(initialPhone())
   })
 
+  it('ロビーでお知らせを開閉する。ロビーを離れたら畳み直す', () => {
+    const opened = reducePhone(initialPhone(), { kind: 'お知らせを開閉' })
+    expect(opened.newsOpen).toBe(true)
+    expect(settlePhone(opened, { ...none, lobby: true })).toBe(opened)
+    expect(reducePhone(opened, { kind: 'お知らせを開閉' }).newsOpen).toBe(false)
+    expect(settlePhone(opened, none)).toEqual(initialPhone())
+  })
+
   it('デッキ一覧を離れたら、絞り込みを畳む', () => {
     const state = reducePhone(initialPhone(), { kind: '一覧の絞り込みを開閉' })
     expect(settlePhone(state, none).listFilter).toBe(false)

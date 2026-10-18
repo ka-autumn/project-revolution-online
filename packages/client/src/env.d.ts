@@ -10,4 +10,9 @@
 interface ImportMetaEnv {
   /** 対戦サーバの WebSocket の URL（`wss://example.com` のような、パスまでのもの）。 */
   readonly VITE_SERVER_URL?: string
+  /**
+   * ロビーのお知らせのファイルの URL（ADR-0045）。Vercel の Production に本番の置き場、Preview に検証の置き場を入れる。
+   * 無ければ取りに行かず、「お知らせはまだありません」を出す。ビルド時の値が焼き付くので、変えたら配り直す。
+   */
+  readonly VITE_NOTICES_URL?: string
 }

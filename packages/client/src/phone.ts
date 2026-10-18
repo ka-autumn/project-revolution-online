@@ -62,6 +62,8 @@ export interface PhoneState {
   readonly lobbyMode: LobbyMode
   /** ロビーで、使用するデッキの一覧と対戦ルールのシートを開いているか。 */
   readonly deckSheet: boolean
+  /** ロビーで、畳んだお知らせを開いているか。お知らせがあるときだけ畳む（件が無い間は畳まない）。 */
+  readonly newsOpen: boolean
   /** デッキ一覧で、絞り込みを開いているか。 */
   readonly listFilter: boolean
   /** デッキ構築で、どちらのタブを見ているか。 */
@@ -97,6 +99,7 @@ export function initialPhone(): PhoneState {
   return {
     lobbyMode: '対人戦',
     deckSheet: false,
+    newsOpen: false,
     listFilter: false,
     builderTab: '探す',
     builderScroll: {},
@@ -117,6 +120,7 @@ export type PhoneAction =
   | { readonly kind: 'ロビーのモード'; readonly mode: LobbyMode }
   | { readonly kind: 'デッキのシートを開く'; readonly opener: string }
   | { readonly kind: 'デッキのシートを閉じる' }
+  | { readonly kind: 'お知らせを開閉' }
   | { readonly kind: '一覧の絞り込みを開閉' }
   | { readonly kind: 'デッキ構築のタブ'; readonly tab: BuilderTab; readonly sight: ScrollSight }
   /** 下の帯の規定外の印から、「デッキ」のタブの確かめた結果を見に行く。 */
@@ -153,6 +157,8 @@ export function reducePhone(state: PhoneState, action: PhoneAction): PhoneState 
       return { ...state, deckSheet: true, opener: action.opener, pending: { kind: 'シートの中へ' } }
     case 'デッキのシートを閉じる':
       return state.deckSheet ? closedSheet({ ...state, deckSheet: false }) : state
+    case 'お知らせを開閉':
+      return { ...state, newsOpen: !state.newsOpen }
     case '一覧の絞り込みを開閉':
       return { ...state, listFilter: !state.listFilter }
     case 'デッキ構築のタブ':
@@ -247,8 +253,8 @@ export interface ShownScreens {
 export function settlePhone(state: PhoneState, shown: ShownScreens): PhoneState {
   const initial = initialPhone()
   let next = state
-  if (!shown.lobby && (next.deckSheet || next.lobbyMode !== initial.lobbyMode)) {
-    next = { ...next, deckSheet: false, lobbyMode: initial.lobbyMode }
+  if (!shown.lobby && (next.deckSheet || next.newsOpen || next.lobbyMode !== initial.lobbyMode)) {
+    next = { ...next, deckSheet: false, newsOpen: false, lobbyMode: initial.lobbyMode }
   }
   if (!shown.deckList && next.listFilter) next = { ...next, listFilter: false }
   if (
