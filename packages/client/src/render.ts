@@ -2553,7 +2553,7 @@ function newsListWindow(news: LobbyNotices, notices: readonly Notice[], tab: Not
   box.append(head, tabs, body)
 }
 
-/** 中身の窓。本文・「変わったこと」だけをスクロールさせ、見出しと下のボタンは動かさない。 */
+/** 中身の窓。本文・「主な変更点」だけをスクロールさせ、見出しと下のボタンは動かさない。 */
 function newsDetailWindow(
   news: LobbyNotices,
   notice: Notice,
@@ -2581,7 +2581,7 @@ function newsDetailWindow(
     body.append(element(paragraph.quoted ? 'blockquote' : 'p', paragraph.quoted ? 'lobby__news-quote' : '', paragraph.text))
   }
   if (notice.changes !== undefined && notice.changes.length > 0) {
-    body.append(element('h4', 'lobby__news-detail-sub', '変わったこと'))
+    body.append(element('h4', 'lobby__news-detail-sub', '主な変更点'))
     const changes = element('ul', 'lobby__news-changes')
     for (const change of notice.changes) changes.append(element('li', '', change))
     body.append(changes)
