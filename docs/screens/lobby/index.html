@@ -1243,7 +1243,7 @@ function newsModal() {
     body.append(newsMeta(item), el('h3', 'newsdetail__title', item.title))
     for (const p of item.body) body.append(typeof p === 'string' ? el('p', '', p) : el('blockquote', 'newsdetail__quote', p.quote))
     if (item.changes.length) {
-      body.append(el('h4', 'newsdetail__sub', '変わったこと'))
+      body.append(el('h4', 'newsdetail__sub', '主な変更点'))
       const ul = el('ul', 'newsdetail__changes'); for (const c of item.changes) ul.append(el('li', '', c)); body.append(ul)
     }
     box.append(body)
