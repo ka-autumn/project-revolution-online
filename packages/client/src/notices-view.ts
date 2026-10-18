@@ -63,7 +63,8 @@ export type NoticesAction =
   | { readonly kind: 'パネルから開く'; readonly id: string; readonly opener: string }
   | { readonly kind: '一覧から開く'; readonly id: string; readonly scroll: number }
   | { readonly kind: '移る'; readonly to: 'newer' | 'older' }
-  | { readonly kind: '一覧へ' }
+  /** `opener` は、パネルから開いた中身の窓で押した時に開く全件の窓の、手の戻し先（「すべて見る」の印）。 */
+  | { readonly kind: '一覧へ'; readonly opener: string }
   | { readonly kind: '閉じる' }
 
 /** 一覧の中の 1 件の印（`data-keep-focus`）。 */
@@ -153,7 +154,17 @@ export function reduceNotices(state: NoticesState, action: NoticesAction): Notic
       return { ...state, window: { kind: '中身', id: target.id, origin } }
     }
     case '一覧へ':
-      if (shown?.kind !== '中身' || shown.origin.kind !== '一覧') return state
+      if (shown?.kind !== '中身') return state
+      // 全件の窓から開いたなら、開いた時の絞り込みの全件の窓へ戻る。パネルから開いたなら、「すべて」の全件の窓を開く
+      // （閉じた時の手の戻し先は、その窓を開く「すべて見る」になる）。
+      if (shown.origin.kind === 'パネル') {
+        return {
+          ...state,
+          window: { kind: '一覧', tab: 'すべて' },
+          opener: action.opener,
+          pending: { kind: '元へ', key: listItemKey(shown.id), scroll: undefined },
+        }
+      }
 
       return {
         ...state,

@@ -2564,15 +2564,11 @@ function newsDetailWindow(
 ): void {
   box.setAttribute('aria-label', noticeLabelOf(notice))
   const head = element('div', 'lobby__news-window-head')
-  if (shown.origin.kind === '一覧') {
-    const back = button('‹ 一覧へ', () => news.send({ kind: '一覧へ' }))
-    back.classList.add('button--small')
-    back.dataset[KEEP_FOCUS] = NEWS_BACK_KEY
-    head.append(back)
-  } else {
-    head.append(element('h2', 'confirm__title', 'お知らせ'))
-  }
-  head.append(newsCloseMark(onClose))
+  // 「一覧へ」は、全件の窓から開いた時もパネルから開いた時も出す（パネルから開いたなら、「すべて」の全件の窓を開く）。
+  const back = button('‹ 一覧へ', () => news.send({ kind: '一覧へ', opener: NEWS_ALL_KEY }))
+  back.classList.add('button--small')
+  back.dataset[KEEP_FOCUS] = NEWS_BACK_KEY
+  head.append(back, newsCloseMark(onClose))
 
   const body = element('article', 'lobby__news-window-body lobby__news-detail')
   body.dataset[KEEP_SCROLL] = `お知らせの中身-${notice.id}`

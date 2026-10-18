@@ -1234,8 +1234,8 @@ function newsModal() {
     box.append(newsList(NEWS.filter((i) => v.filter === 'すべて' || i.kind === v.filter), '一覧'))
   } else {
     const item = NEWS[v.index]
-    if (v.from === '一覧') { const b = btn('‹ 一覧へ', () => set({ newsView: { kind: '一覧', filter: v.filter } }), 'button--small'); head.append(b) }
-    else head.append(el('h2', 'panel__title', 'お知らせ'))
+    // 「一覧へ」は、全件の窓から開いた時もパネルから開いた時も出す。パネルから開いたなら、「すべて」の全件の窓を開く
+    { const b = btn('‹ 一覧へ', () => set({ newsView: { kind: '一覧', filter: v.from === '一覧' ? v.filter : 'すべて' } }), 'button--small'); head.append(b) }
     head.append(x)
     box.setAttribute('aria-label', item.title)
     box.append(head)

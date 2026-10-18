@@ -135,7 +135,7 @@ describe('窓', () => {
     state = reduceNotices(state, { kind: '一覧から開く', id: 'e', scroll: 120 })
     expect(state.window).toEqual({ kind: '中身', id: 'e', origin: { kind: '一覧', tab: '更新', scroll: 120 } })
 
-    const back = reduceNotices(takeNoticesPending(state).state, { kind: '一覧へ' })
+    const back = reduceNotices(takeNoticesPending(state).state, { kind: '一覧へ', opener: 'お知らせ-すべて見る' })
     expect(back.window).toEqual({ kind: '一覧', tab: '更新' })
     expect(takeNoticesPending(back).pending).toEqual({ kind: '元へ', key: listItemKey('e'), scroll: 120 })
   })
@@ -147,9 +147,32 @@ describe('窓', () => {
     expect(takeNoticesPending(closed).pending).toEqual({ kind: '元へ', key: 'お知らせ-すべて見る', scroll: undefined })
   })
 
-  it('パネルから開いた中身の窓に「一覧へ」は無い。押しても何も変わらない', () => {
-    const state = reduceNotices(loaded(), { kind: 'パネルから開く', id: 'a', opener: 'パネル-a' })
-    expect(reduceNotices(state, { kind: '一覧へ' })).toBe(state)
+  it('パネルから開いた中身の窓でも「一覧へ」で、「すべて」の全件の窓を開き、いま読んでいる件へ手を置く', () => {
+    let state = reduceNotices(loaded(), { kind: 'パネルから開く', id: 'e', opener: 'パネル-e' })
+    state = reduceNotices(state, { kind: '一覧へ', opener: 'お知らせ-すべて見る' })
+    expect(state.window).toEqual({ kind: '一覧', tab: 'すべて' })
+    // 一覧のスクロールの位置は、パネルから開いた時には無い。手を置いた件が見える位置へ送られる。
+    expect(takeNoticesPending(state).pending).toEqual({ kind: '元へ', key: listItemKey('e'), scroll: undefined })
+  })
+
+  it('パネルから開き、「一覧へ」で全件の窓を開いた後に閉じたら、手は「すべて見る」へ戻る', () => {
+    let state = reduceNotices(loaded(), { kind: 'パネルから開く', id: 'b', opener: 'パネル-b' })
+    state = reduceNotices(state, { kind: '一覧へ', opener: 'お知らせ-すべて見る' })
+    const closed = reduceNotices(takeNoticesPending(state).state, { kind: '閉じる' })
+    expect(closed.window).toBeUndefined()
+    expect(takeNoticesPending(closed).pending).toEqual({ kind: '元へ', key: 'お知らせ-すべて見る', scroll: undefined })
+  })
+
+  it('パネルから開いた中身の窓から一覧へ戻った後は、全件の窓から開いた時と同じに動く', () => {
+    let state = reduceNotices(loaded(), { kind: 'パネルから開く', id: 'a', opener: 'パネル-a' })
+    state = reduceNotices(state, { kind: '一覧へ', opener: 'お知らせ-すべて見る' })
+    state = reduceNotices(state, { kind: '一覧から開く', id: 'c', scroll: 10 })
+    expect(state.window).toMatchObject({ kind: '中身', id: 'c', origin: { kind: '一覧', tab: 'すべて', scroll: 10 } })
+  })
+
+  it('中身の窓を開いていない時の「一覧へ」は、何も変えない', () => {
+    const state = loaded()
+    expect(reduceNotices(state, { kind: '一覧へ', opener: 'o' })).toBe(state)
   })
 
   it('前後へ移る範囲は、パネルから開いたなら全件、全件の窓からなら絞り込んだ並び', () => {
@@ -173,7 +196,7 @@ describe('窓', () => {
     state = reduceNotices(state, { kind: '移る', to: 'older' })
     expect(state.window).toMatchObject({ id: 'b', origin: { kind: '一覧', tab: 'すべて', scroll: undefined } })
     // 一覧へ戻る時は、いま読んでいる件へ手を戻す。
-    const back = reduceNotices(state, { kind: '一覧へ' })
+    const back = reduceNotices(state, { kind: '一覧へ', opener: 'お知らせ-すべて見る' })
     expect(takeNoticesPending(back).pending).toEqual({ kind: '元へ', key: listItemKey('b'), scroll: undefined })
   })
 
