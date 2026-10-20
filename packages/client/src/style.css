@@ -7163,6 +7163,11 @@ body {
   }
 
   /* テキストは中身の高さで出し、帯が上まで届いて収まらなければ、この枠の中で送る。 */
+  .duel .peek__text p {
+    margin: 0;
+    min-height: 1.5em;
+  }
+
   .duel .peek__text {
     flex: 0 1 auto;
     min-height: 1.8rem;

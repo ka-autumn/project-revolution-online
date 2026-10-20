@@ -1,6 +1,7 @@
 import { COLORS, DUEL_FORMATS } from '@revolution/engine'
 import { FOCUS_KEY_ATTRIBUTE, REGION_ATTRIBUTE, type Region, wireBoardKeyboard } from './board-keyboard.js'
 import { highlightedSquares } from './area-highlight.js'
+import { cardTextParagraphs } from './card-text.js'
 import type { AreaPointerStore } from './area-highlight.js'
 import { INITIAL_FOCUS_ATTRIBUTE, ignoreKeyRepeat, onLayerEscape } from './dialog-focus.js'
 import type {
@@ -613,7 +614,7 @@ function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptio
 
     const text = element('div', 'card__text')
     const lines = element('div', 'card__lines')
-    for (const paragraph of card.text) lines.append(element('p', '', paragraph))
+    lines.append(...cardTextParagraphs(card.text))
     text.append(lines)
     if (icons !== undefined) text.append(icons)
     bottom.append(text)
@@ -1727,7 +1728,9 @@ export function peekElement(props: PeekProps): HTMLElement {
     stats.append(each)
   }
 
-  const text = element('p', 'peek__text', card.text.length > 0 ? card.text.join('\n') : '（テキストなし）')
+  const text = element('div', 'peek__text')
+  if (card.text.length > 0) text.append(...cardTextParagraphs(card.text))
+  else text.textContent = '（テキストなし）'
 
   // 2 行になるときに割ってよい位置（「を」の後ろ）にだけ、切れ目を入れる。
   const [first, second] = peekGuide(props.aim)
@@ -3440,7 +3443,7 @@ function fillPoolDetail(node: HTMLElement, detail: CardDetail | undefined): void
 
   if (detail.text.length > 0) {
     const text = element('div', 'detail__text')
-    for (const line of detail.text) text.append(element('p', '', line))
+    text.append(...cardTextParagraphs(detail.text))
     info.append(text)
   }
 
@@ -4392,7 +4395,7 @@ function publicShareCardElement(card: PublicShareCard): HTMLElement {
     // 改行ごとに別の能力になる（総合ルール 第2部 第10章 1、第4部 第1章 3）ので、1 行ずつ出す。
     if (card.detail.text.length > 0) {
       const text = element('div', 'card__panel-text')
-      for (const line of card.detail.text) text.append(element('p', 'card__panel-line', line))
+      text.append(...cardTextParagraphs(card.detail.text, 'card__panel-line'))
       detail.append(text)
     }
     item.append(detail)
@@ -5222,7 +5225,7 @@ function phoneDetailParts(card: CardView & { readonly kind: '表' }): HTMLElemen
   info.append(rows)
   if (card.text.length > 0) {
     const text = element('div', 'detail__text')
-    for (const line of card.text) text.append(element('p', '', line))
+    text.append(...cardTextParagraphs(card.text))
     info.append(text)
   }
   if (noted) info.append(operationalNoteElement(card.operationalNote))
