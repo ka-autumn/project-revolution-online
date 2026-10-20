@@ -2010,6 +2010,7 @@ body {
   .peek__stat--受けている { border-color: #d0452b; background: #fff1ec; }
   .peek__stat--受けている dd { color: #d4101c; }
   /* テキストは中身の高さで出し、帯が上まで届いて収まらなければ、この中で送る */
+  .peek__text p { margin: 0; min-height: 1.5em; }
   .peek__text { flex: 0 1 auto; min-height: 1.8rem; margin: 0; padding: 0.3rem 0.45rem; overflow-y: auto; border-radius: 8px; background: rgb(255 238 194 / 0.55); font-size: 0.8rem; line-height: 1.5; }
   /* 一番下：何を待っているかの 1 行と、やめる口（親指が届く位置） */
   .peek__foot { display: flex; align-items: center; gap: 0.5rem; }
@@ -2426,6 +2427,16 @@ body {
 </div>
 
 <script>
+function cardTextParagraph(line) {
+  const paragraph = document.createElement('p')
+  if (line.trim() !== '') {
+    const bullet = document.createElement('span')
+    bullet.textContent = '●'
+    bullet.setAttribute('aria-hidden', 'true')
+    paragraph.append(bullet, document.createTextNode(line))
+  }
+  return paragraph
+}
 // ---- 見本のデータ（本番の view-model が出すものに相当。カードの中身は仮） ----
 // move: ムーブアイコンの向き（上・下・左・右）。trigger: トリガーアイコンの赤いスクエア（行・列、支配者の手前が下）
 const cards = {
@@ -2448,16 +2459,16 @@ const cards = {
   見本・アクアシールド: { lv: 1, color: '青', kind: 'ストラテジー', text: ['このターン、ユニット 1 体は破壊されない。'] },
   見本・ココア・M: { lv: 3, color: '緑', kind: 'パートナー', text: ['【起動】このターン、ユニット 1 体の BP を +1000 する。'] },
   見本・ノエル・カンパネラ: { lv: 3, color: '赤', kind: 'パートナー', text: ['【自】自分のユニットがバトルに勝った時、相手に 500 ダメージを与える。'] },
-  見本・ガルド・ベルンシュタイン: { lv: 6, color: '赤', kind: 'ユニット', bp: 1500, sp: 1000, stars: 1, keywords: ['夢', '希望'], traits: '焔の国・♂', move: ['上', '下'], text: ['●夢（キーワード能力）', '●希望（キーワード能力）相手のトラップを 1 枚まで選び、手札に戻す。', '●根性（キーワード能力）'] },
-  見本・紅葉: { lv: 5, color: '白', kind: 'ユニット', bp: 7500, sp: 1500, stars: 2, keywords: ['夢'], traits: 'あやかし・けもの・♀', move: ['上'], text: ['●このユニットが登場した時、自分の捨札にあるストラテジーを 1 枚まで選び、山札の一番下に置く。', '●夢（キーワード能力）', '●元気（キーワード能力）'] },
-  見本・大狸: { lv: 7, color: '赤', kind: 'ユニット', bp: 4000, sp: 2500, stars: 0, keywords: ['幸運'], traits: 'あやかし・けもの・呪符・♂', move: ['上'], text: ['●このユニットがバトルしている間、隣の味方の SP を +500。', '●幸運 6（キーワード能力）味方を 1 枚まで選び、手札に戻す。そうしたら、カードを 1 枚引く。'] },
+  見本・ガルド・ベルンシュタイン: { lv: 6, color: '赤', kind: 'ユニット', bp: 1500, sp: 1000, stars: 1, keywords: ['夢', '希望'], traits: '焔の国・♂', move: ['上', '下'], text: ['夢（キーワード能力）', '希望（キーワード能力）相手のトラップを 1 枚まで選び、手札に戻す。', '根性（キーワード能力）'] },
+  見本・紅葉: { lv: 5, color: '白', kind: 'ユニット', bp: 7500, sp: 1500, stars: 2, keywords: ['夢'], traits: 'あやかし・けもの・♀', move: ['上'], text: ['このユニットが登場した時、自分の捨札にあるストラテジーを 1 枚まで選び、山札の一番下に置く。', '夢（キーワード能力）', '元気（キーワード能力）'] },
+  見本・大狸: { lv: 7, color: '赤', kind: 'ユニット', bp: 4000, sp: 2500, stars: 0, keywords: ['幸運'], traits: 'あやかし・けもの・呪符・♂', move: ['上'], text: ['このユニットがバトルしている間、隣の味方の SP を +500。', '幸運 6（キーワード能力）味方を 1 枚まで選び、手札に戻す。そうしたら、カードを 1 枚引く。'] },
 }
-cards['見本・苦労人の騎士'] = { lv: 3, color: '緑', kind: 'ユニット', bp: 3000, sp: 1000, reverseStars: 1, keywords: ['苦労'], traits: '騎士・♂', move: ['上', '左'], text: ['●元気（キーワード能力）'] }
+cards['見本・苦労人の騎士'] = { lv: 3, color: '緑', kind: 'ユニット', bp: 3000, sp: 1000, reverseStars: 1, keywords: ['苦労'], traits: '騎士・♂', move: ['上', '左'], text: ['元気（キーワード能力）'] }
 cards['見本・霧島透'].stars = 2
 // 運用の注記を持つカード（ADR-0043）。自分のカードと相手のカードに 1 枚ずつ
-cards['見本・もちぬい'].text = ['●このユニットが登場した時、相手と握手をしたなら、カードを 1 枚引く。']
+cards['見本・もちぬい'].text = ['このユニットが登場した時、相手と握手をしたなら、カードを 1 枚引く。']
 cards['見本・もちぬい'].note = ['「相手と握手をしたなら」の行は、このサービスでは効果を持たない行として扱います。']
-cards['見本・森の守護者'].text = ['●相手が早起きをしているなら、このユニットの BP を +1000 する。']
+cards['見本・森の守護者'].text = ['相手が早起きをしているなら、このユニットの BP を +1000 する。']
 cards['見本・森の守護者'].note = ['「相手が早起きをしているなら」の条件は、このサービスでは常に満たすものとして扱います。対戦の外のことは確かめられないため、条件の無い行として動きます。']
 cards['見本・パルフェ・若葉'].stars = 1
 
@@ -2555,7 +2566,7 @@ function faceHtml(name, opts = {}) {
     <div class="card__face">${top}
       <div class="card__bottom">
         <div class="card__title">${stars}<span class="card__name">${name}</span>${keywordIcons(c.keywords)}</div>
-        <div class="card__text"><div class="card__lines">${c.text.map((l) => `<p>${l}</p>`).join('')}</div>${icons}</div>
+        <div class="card__text"><div class="card__lines">${c.text.map((l) => cardTextParagraph(l).outerHTML).join('')}</div>${icons}</div>
         ${c.traits ? `<span class="card__traits">${c.traits}</span>` : ''}
         ${unit ? `<div class="card__stats">${stat('bp', c.bp, opts.bp)}${stat('sp', c.sp, opts.sp)}</div>` : ''}
       </div>
@@ -2987,7 +2998,7 @@ function phoneDetailParts(node) {
   if (c.text.length > 0) {
     const text = document.createElement('div')
     text.className = 'detail__text'
-    for (const line of c.text) text.append(Object.assign(document.createElement('p'), { textContent: line }))
+    for (const line of c.text) text.append(cardTextParagraph(line))
     info.append(text)
   }
   if (c.note) info.append(operationalNote(c.note))
@@ -3155,7 +3166,7 @@ function startAiming(node) {
   body.append(
     head,
     stats,
-    Object.assign(document.createElement('p'), { className: 'peek__text', textContent: c.text.length > 0 ? c.text.join(' ') : '（テキストなし）' }),
+    (() => { const text = document.createElement('div'); text.className = 'peek__text'; if (c.text.length > 0) text.append(...c.text.map(cardTextParagraph)); else text.textContent = '（テキストなし）'; return text })(),
     foot,
   )
   peek.replaceChildren(mini, body)

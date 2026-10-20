@@ -9,6 +9,16 @@ const moveKey = (dirs) => [...dirs].sort().join('')
 const movePatternOf = (c) => MOVE_PATTERNS.find(([, dirs]) => moveKey(dirs) === moveKey(c.face.moveIcon ?? []))?.[0]
 const ATTR_SEP = ' | '
 
+function cardTextParagraph(line) {
+  const paragraph = el('p', '')
+  if (line.trim() !== '') {
+    const bullet = el('span', '', '●')
+    bullet.setAttribute('aria-hidden', 'true')
+    paragraph.append(bullet, document.createTextNode(line))
+  }
+  return paragraph
+}
+
 /* ---- ラベル ---- */
 // 持ち主が選ぶラベル：型は 1 つまで、用途はいくつでも
 const TAG_TYPES = ['アグロ', 'ミッドレンジ', 'コントロール', 'コンボ']
@@ -203,7 +213,7 @@ function face(f, big, block) {
     if (f.keywords?.length) { const k = el('span', 'keywords'); for (const w of f.keywords) { const g = el('span', `keyword keyword--${w}`); g.setAttribute('role', 'img'); g.setAttribute('aria-label', w); g.append(el('span', '', w)); k.append(g) } title.append(k) }
     bottom.append(title)
     const text = el('div', 'card__text'); const lines = el('div', 'card__lines')
-    for (const p of f.text) lines.append(el('p', '', p))
+    for (const p of f.text) lines.append(cardTextParagraph(p))
     text.append(lines); if (icons) text.append(icons); bottom.append(text)
   } else { node.append(title); if (icons) bottom.append(icons) }
   if (f.attributes.length) bottom.append(el('span', 'card__traits', f.attributes.join(ATTR_SEP)))
@@ -737,7 +747,7 @@ function detailNodes(c) {
   ]
   for (const [k, v] of rows) dl.append(el('dt', '', k), el('dd', '', v))
   info.append(dl)
-  if (c.face.text.length) { const t = el('div', 'detail__text'); for (const p of c.face.text) t.append(el('p', '', p)); info.append(t) }
+  if (c.face.text.length) { const t = el('div', 'detail__text'); for (const p of c.face.text) t.append(cardTextParagraph(p)); info.append(t) }
   // 運用の注記（ADR-0043）。印刷されたテキストの下に、別の色の枠で出す。持たないカードには枠ごと出さない
   if (c.face.operationalNote?.length) {
     const n = el('div', 'detail__operational'); n.append(el('p', 'detail__operational-title', '注記'))
