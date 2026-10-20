@@ -212,9 +212,7 @@ function face(f, big, block) {
   if (big) {
     if (f.keywords?.length) { const k = el('span', 'keywords'); for (const w of f.keywords) { const g = el('span', `keyword keyword--${w}`); g.setAttribute('role', 'img'); g.setAttribute('aria-label', w); g.append(el('span', '', w)); k.append(g) } title.append(k) }
     bottom.append(title)
-    const text = el('div', 'card__text'); const lines = el('div', 'card__lines')
-    for (const p of f.text) lines.append(cardTextParagraph(p))
-    text.append(lines); if (icons) text.append(icons); bottom.append(text)
+    if (icons) bottom.append(icons)
   } else { node.append(title); if (icons) bottom.append(icons) }
   if (f.attributes.length) bottom.append(el('span', 'card__traits', f.attributes.join(ATTR_SEP)))
   // BP・SP の間にブロックのロゴ。ユニット以外は BP・SP が無いので、ロゴだけを真ん中に置く。
@@ -721,7 +719,7 @@ function showDetail(key) {
 }
 /** カードの詳細の中身（PC の詳細の枠と、スマホの詳細のシートで共通） */
 function detailNodes(c) {
-  // 左にカードの面、右に文字で全部を書く。面のテキスト欄は省略されてよい（右に全文がある）。
+  // 本文は右欄にあるので、面には重ねて出さない。
   const info = el('div', 'detail__info')
   const title = el('div', 'detail__name')
   for (const s of [star(c.face.stars, false), star(c.face.reverseStars, true)]) if (s) title.append(s)
@@ -732,18 +730,14 @@ function detailNodes(c) {
   if (c.face.operationalNote?.length) info.append(el('p', 'detail__operational-mark', '注記あり'))
   const dl = el('dl', 'detail__rows')
   const rows = [
-    ['種別', c.face.type],
-    ['レベル', String(c.face.level)],
-    ['色', c.face.colors.join('・')],
-    ...(c.face.type === 'ユニット' ? [['ＢＰ', String(c.face.bp)], ['ＳＰ', String(c.face.sp)]] : []),
+    ['種別／レベル／色', `${c.face.type}／${c.face.level}／${c.face.colors.length ? c.face.colors.join('・') : '無色'}`],
+    ...(c.face.type === 'ユニット' ? [['ＢＰ／ＳＰ', `${c.face.bp}／${c.face.sp}`]] : []),
     ...(c.face.moveIcon?.length ? [['移動方向', c.face.moveIcon.join('・')]] : []),
-    ...(c.face.stars ? [['スター', String(c.face.stars)]] : []),
-    ...(c.face.reverseStars ? [['リバーススター', String(c.face.reverseStars)]] : []),
-    ...(keywordsOf(c).length ? [['キーワード', keywordsOf(c).join('・')]] : []),
     ...(c.face.attributes.length ? [['属性', c.face.attributes.join(ATTR_SEP)]] : []),
-    ['作品名', workOf(c)],
-    ['ブロック', blockOf(c)],
-    ['収録', codesOf(c).join('・')],
+    // 作品名・ブロックは将来の表示項目。本番は未対応だが、情報量の見本として残す。
+    ['作品名', `${workOf(c)}（未実装）`],
+    ['ブロック', `${blockOf(c)}（未実装）`],
+    ['収録', c.expansions.join('・')],
   ]
   for (const [k, v] of rows) dl.append(el('dt', '', k), el('dd', '', v))
   info.append(dl)

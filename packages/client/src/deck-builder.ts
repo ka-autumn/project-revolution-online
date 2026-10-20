@@ -676,11 +676,27 @@ export function cardDetailOf(pool: readonly WirePoolCard[], key: string): CardDe
   return {
     name: card.face.name,
     face: card.face,
-    rows: printedDetailsOf(card.face, card.expansions),
+    rows: composeDeckDetailRows(card.face, card.expansions),
     text: card.face.text,
     // 持たないカードには項目ごと載らない。古いサーバも送らない。どちらも注記なしとして扱う。
     operationalNote: card.face.operationalNote ?? [],
   }
+}
+
+function composeDeckDetailRows(face: WireCardFace, expansions: readonly string[]): readonly DetailRow[] {
+  const rows: DetailRow[] = [
+    {
+      label: '種別／レベル／色',
+      value: `${face.type}／${face.level}／${face.colors.length === 0 ? '無色' : face.colors.join('・')}`,
+    },
+  ]
+  if (face.type === 'ユニット') {
+    rows.push({ label: 'ＢＰ／ＳＰ', value: `${face.bp}／${face.sp}` })
+    if (face.moveIcon.length > 0) rows.push({ label: '移動方向', value: face.moveIcon.join('・') })
+  }
+  if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join(' | ') })
+  if (expansions.length > 0) rows.push({ label: '収録', value: expansions.join('・') })
+  return rows
 }
 
 /**
