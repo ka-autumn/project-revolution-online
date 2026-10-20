@@ -729,9 +729,10 @@ function detailNodes(c) {
   // 名前の行に入れないのは、欄が狭く、名前が途中で折り返すため
   if (c.face.operationalNote?.length) info.append(el('p', 'detail__operational-mark', '注記あり'))
   const dl = el('dl', 'detail__rows')
+  const colors = c.face.colors.length ? c.face.colors.join('・') : '無色'
   const rows = [
-    ['種別／レベル／色', `${c.face.type}／${c.face.level}／${c.face.colors.length ? c.face.colors.join('・') : '無色'}`],
-    ...(c.face.type === 'ユニット' ? [['ＢＰ／ＳＰ', `${c.face.bp}／${c.face.sp}`]] : []),
+    ...(phoneQuery.matches ? [['種別／レベル／色', `${c.face.type}／${c.face.level}／${colors}`]] : [['種別', c.face.type], ['レベル', String(c.face.level)], ['色', colors]]),
+    ...(c.face.type === 'ユニット' ? phoneQuery.matches ? [['ＢＰ／ＳＰ', `${c.face.bp}／${c.face.sp}`]] : [['ＢＰ', String(c.face.bp)], ['ＳＰ', String(c.face.sp)]] : []),
     ...(c.face.moveIcon?.length ? [['移動方向', c.face.moveIcon.join('・')]] : []),
     ...(c.face.attributes.length ? [['属性', c.face.attributes.join(ATTR_SEP)]] : []),
     // 作品名・ブロックは将来の表示項目。本番は未対応だが、情報量の見本として残す。

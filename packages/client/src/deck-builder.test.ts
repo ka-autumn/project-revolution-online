@@ -655,15 +655,18 @@ describe('自動ラベル（ADR-0028）', () => {
 })
 
 describe('詳しく出す', () => {
-  it('デッキ構築の詳細は、数値をまとめた行とテキストが出る', () => {
+  it('PCのデッキ構築の詳細は、種別・レベル・色・BP・SPを独立した行にし、重複する説明行を出さない', () => {
     const face = unitFace('テスト・詳しく', { level: 3, colors: ['緑'], stars: 1, attributes: ['テスト属性'], text: ['一行め'] })
 
     expect(cardDetailOf([{ key: 'く', face, expansions: [] }], 'く')).toEqual({
       name: 'テスト・詳しく',
       face,
       rows: [
-        { label: '種別／レベル／色', value: 'ユニット／3／緑' },
-        { label: 'ＢＰ／ＳＰ', value: '1000／1000' },
+        { label: '種別', value: 'ユニット' },
+        { label: 'レベル', value: '3' },
+        { label: '色', value: '緑' },
+        { label: 'ＢＰ', value: '1000' },
+        { label: 'ＳＰ', value: '1000' },
         { label: '移動方向', value: '上' },
         { label: '属性', value: 'テスト属性' },
       ],
@@ -672,11 +675,11 @@ describe('詳しく出す', () => {
     })
   })
 
-  it('デッキ構築の情報欄では重複する項目を省き、属性の後に収録を残す', () => {
+  it('スマートフォンの情報欄は行をまとめたまま、重複する項目を省き、属性の後に収録を残す', () => {
     const face = unitFace('テスト・情報欄', {
       stars: 2, reverseStars: 1, keywords: ['夢'], attributes: ['属性ア', '属性イ'],
     })
-    const detail = cardDetailOf([{ key: 'compact', face, expansions: ['見本の第1弾', '見本の第2弾'] }], 'compact')
+    const detail = cardDetailOf([{ key: 'compact', face, expansions: ['見本の第1弾', '見本の第2弾'] }], 'compact', true)
 
     expect(detail?.rows).toEqual([
       { label: '種別／レベル／色', value: 'ユニット／1／赤' },
@@ -694,7 +697,9 @@ describe('詳しく出す', () => {
     } as const satisfies WireCardFace
 
     expect(cardDetailOf([{ key: 'trap', face, expansions: [] }], 'trap')?.rows).toEqual([
-      { label: '種別／レベル／色', value: 'トラップ／2／無色' },
+      { label: '種別', value: 'トラップ' },
+      { label: 'レベル', value: '2' },
+      { label: '色', value: '無色' },
     ])
   })
 

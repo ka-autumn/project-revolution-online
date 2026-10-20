@@ -668,30 +668,33 @@ export interface CardDetail {
   readonly operationalNote: readonly string[]
 }
 
-/** プールから引いて、詳しく出す形にする。プールに無ければ `undefined`。 */
-export function cardDetailOf(pool: readonly WirePoolCard[], key: string): CardDetail | undefined {
+/** プールに無ければ `undefined`。`isCompact` はスマートフォン用に複数項目を同じ行へまとめる指定。 */
+export function cardDetailOf(pool: readonly WirePoolCard[], key: string, isCompact = false): CardDetail | undefined {
   const card = pool.find((each) => each.key === key)
   if (card === undefined) return undefined
 
   return {
     name: card.face.name,
     face: card.face,
-    rows: composeDeckDetailRows(card.face, card.expansions),
+    rows: composeDeckDetailRows(card.face, card.expansions, isCompact),
     text: card.face.text,
     // 持たないカードには項目ごと載らない。古いサーバも送らない。どちらも注記なしとして扱う。
     operationalNote: card.face.operationalNote ?? [],
   }
 }
 
-function composeDeckDetailRows(face: WireCardFace, expansions: readonly string[]): readonly DetailRow[] {
-  const rows: DetailRow[] = [
-    {
-      label: '種別／レベル／色',
-      value: `${face.type}／${face.level}／${face.colors.length === 0 ? '無色' : face.colors.join('・')}`,
-    },
-  ]
+function composeDeckDetailRows(face: WireCardFace, expansions: readonly string[], isCompact: boolean): readonly DetailRow[] {
+  const colors = face.colors.length === 0 ? '無色' : face.colors.join('・')
+  const rows: DetailRow[] = isCompact
+    ? [{ label: '種別／レベル／色', value: `${face.type}／${face.level}／${colors}` }]
+    : [
+        { label: '種別', value: face.type },
+        { label: 'レベル', value: String(face.level) },
+        { label: '色', value: colors },
+      ]
   if (face.type === 'ユニット') {
-    rows.push({ label: 'ＢＰ／ＳＰ', value: `${face.bp}／${face.sp}` })
+    if (isCompact) rows.push({ label: 'ＢＰ／ＳＰ', value: `${face.bp}／${face.sp}` })
+    else rows.push({ label: 'ＢＰ', value: String(face.bp) }, { label: 'ＳＰ', value: String(face.sp) })
     if (face.moveIcon.length > 0) rows.push({ label: '移動方向', value: face.moveIcon.join('・') })
   }
   if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join(' | ') })
