@@ -213,9 +213,6 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
 .deckbuild .detail .card--拡大 .card__face { padding: 0.28rem; gap: 0.2rem; border-width: 2px; border-radius: 8px; }
 .deckbuild .detail .card--拡大 .card__title { font-size: 0.8rem; }
 .deckbuild .detail .card--拡大 .card__stats { font-size: 0.8rem; }
-/* 面のテキスト欄はアイコン 1 つ分の高さに固定し、はみ出すぶんは省略する（右に全文がある） */
-.deckbuild .detail .card--拡大 .card__text { height: 2.6rem; min-height: 0; max-height: none; padding: 0.2rem 0.3rem; font-size: 0.55rem; line-height: 1.35; }
-.deckbuild .detail .card--拡大 .card__lines { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .deckbuild .detail .card--拡大 .move-icon, .deckbuild .detail .card--拡大 .trigger-icon { width: 2rem; height: 2rem; }
 .deckbuild .detail__none { grid-column: 1 / -1; align-self: center; margin: 0; padding: 0 1rem; color: var(--ink-dim); font-size: 0.85rem; text-align: center; }
 .deckbuild .detail__info { min-width: 0; overflow-y: auto; font-size: 0.78rem; }
@@ -224,7 +221,8 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
 .deckbuild .detail__rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.1rem 0.5rem; margin: 0; }
 .deckbuild .detail__rows dt { color: var(--ink-dim); white-space: nowrap; }
 .deckbuild .detail__rows dd { margin: 0; font-weight: 600; }
-.deckbuild .detail__text { margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid rgb(220 166 64 / 0.5); line-height: 1.5; }
+.deckbuild .detail__metadata { margin-top: 0.4rem; }
+.deckbuild .detail__text { margin-top: 0.4rem; padding-block: 0.35rem; border-block: 1px solid rgb(220 166 64 / 0.5); line-height: 1.5; }
 .deckbuild .detail__text p { margin: 0 0 0.2rem; }
 /* 運用の注記（ADR-0043）。印刷されたテキストではないので、テキストの下に、違う色の枠で出す */
 .deckbuild .detail__operational { margin-top: 0.4rem; padding: 0.3rem 0.5rem; border-left: 3px solid #4f6f8f; border-radius: 0 6px 6px 0; background: rgb(79 111 143 / 0.13); line-height: 1.45; }

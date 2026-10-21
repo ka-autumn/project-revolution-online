@@ -573,6 +573,8 @@ function appendTraitsAndStats(
 interface FaceOptions {
   /** 詳細（拡大）として出すか。テキストの枠が付き、並びが変わる。 */
   readonly big?: boolean
+  /** 別に全文がある詳細では false にして、面の本文欄を省く。 */
+  readonly showText?: boolean
 }
 
 /**
@@ -612,12 +614,16 @@ function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptio
     if (keywords !== undefined) title.append(keywords)
     bottom.append(title)
 
-    const text = element('div', 'card__text')
-    const lines = element('div', 'card__lines')
-    lines.append(...cardTextParagraphs(card.text))
-    text.append(lines)
-    if (icons !== undefined) text.append(icons)
-    bottom.append(text)
+    if (options.showText !== false) {
+      const text = element('div', 'card__text')
+      const lines = element('div', 'card__lines')
+      lines.append(...cardTextParagraphs(card.text))
+      text.append(lines)
+      if (icons !== undefined) text.append(icons)
+      bottom.append(text)
+    } else if (icons !== undefined) {
+      bottom.append(icons)
+    }
 
     appendTraitsAndStats(bottom, card)
     node.append(bottom)
@@ -3449,16 +3455,22 @@ function fillPoolDetail(node: HTMLElement, detail: CardDetail | undefined): void
 
   if (noted) info.append(operationalNoteElement(detail.operationalNote))
 
-  node.replaceChildren(poolCardElement(detail.face, { big: true }), info)
+  if (detail.metadataRows.length > 0) {
+    const metadata = element('dl', 'detail__rows detail__metadata')
+    for (const row of detail.metadataRows) metadata.append(element('dt', '', row.label), element('dd', '', row.value))
+    info.append(metadata)
+  }
+
+  node.replaceChildren(poolCardElement(detail.face, { big: true, showText: false }), info)
 }
 
 /** カードの面を、盤面に関わらない場所（プール・デッキ・デッキ一覧）で使う形にする（ADR-0028）。 */
-function poolCardElement(face: WireCardFace, options: { readonly big?: boolean; readonly pinned?: boolean } = {}): HTMLElement {
+function poolCardElement(face: WireCardFace, options: FaceOptions & { readonly pinned?: boolean } = {}): HTMLElement {
   const classes = ['card', `card--色-${primaryColorOf(face.colors)}`]
   if (options.big) classes.push('card--拡大')
   if (options.pinned) classes.push('card--詳細中')
   const node = element('div', classes.join(' '))
-  node.append(poolFaceElement(face, { big: options.big }))
+  node.append(poolFaceElement(face, options))
 
   return node
 }

@@ -712,7 +712,7 @@ function draw(
           openFolds: builder.openFilterFolds,
           detailOpen: builder.detailOpen,
           deck: deckRows(pool, draft),
-          detail: (key) => cardDetailOf(pool, key),
+          detail: (key) => cardDetailOf(pool, key, phone !== undefined),
           pinned: builder.pinned,
           restrictions: stage.restrictions,
           rules: builder.rules,

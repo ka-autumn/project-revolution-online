@@ -4849,23 +4849,6 @@ body {
   font-size: 0.8rem;
 }
 
-/* 面のテキスト欄はアイコン 1 つ分の高さに固定し、はみ出すぶんは省略する（右に全文がある）。 */
-.deckbuild .detail .card--拡大 .card__text {
-  height: 2.6rem;
-  min-height: 0;
-  max-height: none;
-  padding: 0.2rem 0.3rem;
-  font-size: 0.55rem;
-  line-height: 1.35;
-}
-
-.deckbuild .detail .card--拡大 .card__lines {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-}
-
 .deckbuild .detail .card--拡大 .move-icon,
 .deckbuild .detail .card--拡大 .trigger-icon {
   width: 2rem;
@@ -4922,10 +4905,14 @@ body {
   font-weight: 600;
 }
 
+.deckbuild .detail__metadata {
+  margin-top: 0.4rem;
+}
+
 .deckbuild .detail__text {
   margin-top: 0.4rem;
-  padding-top: 0.35rem;
-  border-top: 1px solid rgb(220 166 64 / 0.5);
+  padding-block: 0.35rem;
+  border-block: 1px solid rgb(220 166 64 / 0.5);
   line-height: 1.5;
 }
 

@@ -655,7 +655,7 @@ describe('自動ラベル（ADR-0028）', () => {
 })
 
 describe('詳しく出す', () => {
-  it('印刷されている項目と、テキストが出る', () => {
+  it('PCのデッキ構築の詳細は、種別・レベル・色・BP・SPを独立した行にし、重複する説明行を出さない', () => {
     const face = unitFace('テスト・詳しく', { level: 3, colors: ['緑'], stars: 1, attributes: ['テスト属性'], text: ['一行め'] })
 
     expect(cardDetailOf([{ key: 'く', face, expansions: [] }], 'く')).toEqual({
@@ -667,13 +667,54 @@ describe('詳しく出す', () => {
         { label: '色', value: '緑' },
         { label: 'ＢＰ', value: '1000' },
         { label: 'ＳＰ', value: '1000' },
-        { label: 'ムーブアイコン', value: '上' },
-        { label: 'スター', value: '1' },
-        { label: '属性', value: 'テスト属性' },
+        { label: '移動方向', value: '上' },
       ],
+      metadataRows: [{ label: '属性', value: 'テスト属性' }],
       text: ['一行め'],
       operationalNote: [],
     })
+  })
+
+  it('スマートフォンの情報欄は基本項目をまとめたまま、属性と収録を本文後の行に分ける', () => {
+    const face = unitFace('テスト・情報欄', {
+      stars: 2, reverseStars: 1, keywords: ['夢'], attributes: ['属性ア', '属性イ'],
+    })
+    const detail = cardDetailOf([{ key: 'compact', face, expansions: ['見本の第1弾', '見本の第2弾'] }], 'compact', true)
+
+    expect(detail?.rows).toEqual([
+      { label: '種別／レベル／色', value: 'ユニット／1／赤' },
+      { label: 'ＢＰ／ＳＰ', value: '1000／1000' },
+      { label: '移動方向', value: '上' },
+    ])
+    expect(detail?.metadataRows).toEqual([
+      { label: '属性', value: '属性ア | 属性イ' },
+      { label: '収録', value: '見本の第1弾・見本の第2弾' },
+    ])
+  })
+
+  it('デッキ構築の無色のトラップは、種別・レベル・色だけを出し、トリガーの説明行を重ねない', () => {
+    const face = {
+      type: 'トラップ', name: 'テスト・情報欄の罠', level: 2, colors: [], stars: 0, reverseStars: 0,
+      attributes: [], keywords: [], text: [], triggerIcon: { kind: '攻撃' },
+    } as const satisfies WireCardFace
+
+    expect(cardDetailOf([{ key: 'trap', face, expansions: [] }], 'trap')?.rows).toEqual([
+      { label: '種別', value: 'トラップ' },
+      { label: 'レベル', value: '2' },
+      { label: '色', value: '無色' },
+    ])
+    expect(cardDetailOf([{ key: 'trap', face, expansions: [] }], 'trap')?.metadataRows).toEqual([])
+  })
+
+  it.each([false, true])('本文なし・注記ありでも、属性と収録は基本項目とは分ける（まとめる=%s）', (isCompact) => {
+    const face = unitFace('テスト・本文後の項目', { attributes: ['属性ア'], text: [], operationalNote: ['見本の注記'] })
+    const detail = cardDetailOf([{ key: 'metadata', face, expansions: ['見本の収録'] }], 'metadata', isCompact)
+
+    expect(detail?.rows.map((row) => row.label)).not.toContain('属性')
+    expect(detail?.rows.map((row) => row.label)).not.toContain('収録')
+    expect(detail?.metadataRows).toEqual([{ label: '属性', value: '属性ア' }, { label: '収録', value: '見本の収録' }])
+    expect(detail?.text).toEqual([])
+    expect(detail?.operationalNote).toEqual(['見本の注記'])
   })
 
   // 総合ルール 第2部 第2章 2（ADR-0006）。テキストは印刷されている表記なので、注記を混ぜない。
