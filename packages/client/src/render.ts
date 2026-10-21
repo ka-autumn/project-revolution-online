@@ -3455,6 +3455,12 @@ function fillPoolDetail(node: HTMLElement, detail: CardDetail | undefined): void
 
   if (noted) info.append(operationalNoteElement(detail.operationalNote))
 
+  if (detail.metadataRows.length > 0) {
+    const metadata = element('dl', 'detail__rows detail__metadata')
+    for (const row of detail.metadataRows) metadata.append(element('dt', '', row.label), element('dd', '', row.value))
+    info.append(metadata)
+  }
+
   node.replaceChildren(poolCardElement(detail.face, { big: true, showText: false }), info)
 }
 

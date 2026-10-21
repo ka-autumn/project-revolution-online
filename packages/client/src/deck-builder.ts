@@ -662,6 +662,8 @@ export interface CardDetail {
   /** 面を描くのに要る項目（ADR-0028）。左に出す面はここから組む。 */
   readonly face: WireCardFace
   readonly rows: readonly DetailRow[]
+  /** 本文と注記の後に出す属性・収録の行。持たなければ空。 */
+  readonly metadataRows: readonly DetailRow[]
   /** 印刷されているテキスト。改行ごとに 1 行（`view-model.ts` の `CardView` と同じ）。 */
   readonly text: readonly string[]
   /** 運用の注記（ADR-0043）。持たなければ空。テキストの下に、別の枠で出す（ADR-0028）。 */
@@ -676,14 +678,15 @@ export function cardDetailOf(pool: readonly WirePoolCard[], key: string, isCompa
   return {
     name: card.face.name,
     face: card.face,
-    rows: composeDeckDetailRows(card.face, card.expansions, isCompact),
+    rows: composeDeckDetailRows(card.face, isCompact),
+    metadataRows: composeDeckMetadataRows(card.face, card.expansions),
     text: card.face.text,
     // 持たないカードには項目ごと載らない。古いサーバも送らない。どちらも注記なしとして扱う。
     operationalNote: card.face.operationalNote ?? [],
   }
 }
 
-function composeDeckDetailRows(face: WireCardFace, expansions: readonly string[], isCompact: boolean): readonly DetailRow[] {
+function composeDeckDetailRows(face: WireCardFace, isCompact: boolean): readonly DetailRow[] {
   const colors = face.colors.length === 0 ? '無色' : face.colors.join('・')
   const rows: DetailRow[] = isCompact
     ? [{ label: '種別／レベル／色', value: `${face.type}／${face.level}／${colors}` }]
@@ -697,6 +700,11 @@ function composeDeckDetailRows(face: WireCardFace, expansions: readonly string[]
     else rows.push({ label: 'ＢＰ', value: String(face.bp) }, { label: 'ＳＰ', value: String(face.sp) })
     if (face.moveIcon.length > 0) rows.push({ label: '移動方向', value: face.moveIcon.join('・') })
   }
+  return rows
+}
+
+function composeDeckMetadataRows(face: WireCardFace, expansions: readonly string[]): readonly DetailRow[] {
+  const rows: DetailRow[] = []
   if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join(' | ') })
   if (expansions.length > 0) rows.push({ label: '収録', value: expansions.join('・') })
   return rows

@@ -4905,6 +4905,10 @@ body {
   font-weight: 600;
 }
 
+.deckbuild .detail__metadata {
+  margin-top: 0.4rem;
+}
+
 .deckbuild .detail__text {
   margin-top: 0.4rem;
   padding-top: 0.35rem;

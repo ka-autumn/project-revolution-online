@@ -221,6 +221,7 @@ body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: va
 .deckbuild .detail__rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.1rem 0.5rem; margin: 0; }
 .deckbuild .detail__rows dt { color: var(--ink-dim); white-space: nowrap; }
 .deckbuild .detail__rows dd { margin: 0; font-weight: 600; }
+.deckbuild .detail__metadata { margin-top: 0.4rem; }
 .deckbuild .detail__text { margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid rgb(220 166 64 / 0.5); line-height: 1.5; }
 .deckbuild .detail__text p { margin: 0 0 0.2rem; }
 /* 運用の注記（ADR-0043）。印刷されたテキストではないので、テキストの下に、違う色の枠で出す */
