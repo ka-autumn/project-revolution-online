@@ -6,6 +6,7 @@ import { payActivationEnergies } from './cost.js'
 import { hasEnded, locateOnSquares, moveToZone } from './duel.js'
 import type { CardId, CardInstance, DuelState } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
+import { recordAction } from './log.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import { resolveEffect } from './resolve.js'
@@ -54,7 +55,7 @@ export function activateAbility(
   // 解決する時にはもうスクエアにいない（総合ルール 第4部 第8章 2-5、`resolve.ts` の
   // `duelView`）。
   const self: UnitOnSquare = { id: instance.id, square, card: unit, controller: instance.controller }
-  const resolved = resolveEffect(paid, activated.effect, {
+  const resolved = resolveEffect(recordAction(paid, state, '起動型能力を起動する', instance.id), activated.effect, {
     controller: instance.controller,
     via: '起動',
     source: instance.id,

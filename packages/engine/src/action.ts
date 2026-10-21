@@ -14,7 +14,7 @@ import {
   topOfLibrary,
 } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
-import { record } from './log.js'
+import { record, recordAction } from './log.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
@@ -102,7 +102,7 @@ export function placeEnergy(state: DuelState, card: CardId): ActionOutcome {
   const player = state.turn.active
   if (findInZone(state, player, '手札', card) === undefined) return cannot('そのゾーンにない')
 
-  const placed = moveToZone(state, card, 'エネルギーゾーン')
+  const placed = recordAction(moveToZone(state, card, 'エネルギーゾーン'), state, 'エネルギーを置く', card)
   return done(grantPriorityToInactive({ ...placed, turn: { ...placed.turn, energyPlaced: true } }))
 }
 
@@ -128,7 +128,7 @@ export function plan(state: DuelState, chooser: Chooser): ActionOutcome {
   const paid = payPlanCost(state, player, chooser)
   if (paid === undefined) return cannot('コストを支払えない')
 
-  return done(grantPriorityToInactive(turnUpForPlan(paid, player, chooser)))
+  return done(grantPriorityToInactive(turnUpForPlan(recordAction(paid, state, 'プランする'), player, chooser)))
 }
 
 /**
@@ -239,8 +239,8 @@ export function smash(state: DuelState, unit: CardId): ActionOutcome {
   const smashing = smashingUnit(state, player, unit)
   if (smashing === undefined) return cannot('スマッシュできるユニットではない')
 
-  const frozen = setOrientationOnSquare(state, unit, 'フリーズ')
-  // 与えた量をログに残す（#95）。行った手そのものは `applyLegalAction` が残しているが、
+  const frozen = recordAction(setOrientationOnSquare(state, unit, 'フリーズ'), state, 'スマッシュする', unit)
+  // 与えた量をログに残す（#95）。行った手そのものはすぐ上で残しているが、
   // どれだけのダメージになったかはユニットのＳＰと置かれているエリアで決まるので、盤面を
   // 見比べても分からない。
   const damaged = record(damagePlayer(frozen, opponentOf(player), smashing.damage), {
@@ -298,7 +298,7 @@ export function discardTrap(state: DuelState, card: CardId): ActionOutcome {
   const player = state.turn.active
   if (findInZone(state, player, 'トラップゾーン', card) === undefined) return cannot('そのゾーンにない')
 
-  return done(grantPriorityToInactive(moveToZone(state, card, '捨札')))
+  return done(grantPriorityToInactive(recordAction(moveToZone(state, card, '捨札'), state, 'トラップを廃棄する', card)))
 }
 
 /**

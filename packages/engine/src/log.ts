@@ -546,6 +546,27 @@ export function record(state: DuelState, event: DuelEvent, before: DuelState = s
 }
 
 /**
+ * 行った手を積む（#95）。
+ *
+ * 積むのは、行動の中でコストを支払い、カードを行き先へ動かした直後である（#158、ADR-0050）。
+ * コストを支払ってからプレイする（総合ルール 第3部 第8章 2-1）ので、支払った行はこれより前に
+ * 並び、手が起こしたこと（解決・誘発）はこれより後に並ぶ。名指しを残すかは、動かす前の
+ * `before` と動かした後の `state` のどちらかで見えていたかで決まる。手札から公開されるゾーンへ
+ * 動かしたカードは、動かした後にしか相手から見えていない。
+ *
+ * 行ったのは `before` で優先権を持っていたプレイヤーである。
+ */
+export function recordAction(
+  state: DuelState,
+  before: DuelState,
+  action: Exclude<LegalAction['kind'], '優先権を放棄する'>,
+  card?: CardId,
+  square?: Square,
+): DuelState {
+  return record(state, { kind: '行動した', player: before.turn.priority, action, card, square }, before)
+}
+
+/**
  * その盤面で進行している特別な手順を、外側から順に並べたもの（総合ルール 第3部 第4章 2）。
  *
  * バトルもスマッシュ判定も、それぞれの並び（`DuelState.battles`・`smashJudgments`）の

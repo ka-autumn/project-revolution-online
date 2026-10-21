@@ -925,10 +925,22 @@ describe('別の部屋に移る', () => {
  */
 describe('選んでいる間に見せる盤面', () => {
   it('その行動が始まったことが、届く盤面に出ている', () => {
+    const { outcome, acting } = revealingThenChoosing()
+
+    const started = boardOf(outcome.deliveries, acting).log
+    expect(started.some(({ event }) => event.kind === '行動した' && event.action === 'カードをプレイする')).toBe(true)
+  })
+
+  /**
+   * ADR-0050。行った手の行は、コストを支払ってカードを動かした時点で積まれる（総合ルール
+   * 第3部 第8章 2-1）。コストを選んでいる間は、まだ行っていない。
+   */
+  it('コストを選んでいる間は、行った手の行はまだ届かない', () => {
     const { outcome, acting } = planning()
 
     const started = boardOf(outcome.deliveries, acting).log
-    expect(started.some(({ event }) => event.kind === '行動した' && event.action === 'プランする')).toBe(true)
+    expect(choiceOf(outcome.deliveries, acting).purpose).toBe('プランのコスト')
+    expect(started.some(({ event }) => event.kind === '行動した' && event.action === 'プランする')).toBe(false)
   })
 
   it('選ばせる前にめくれたカードが、選んでいる間に見える', () => {
