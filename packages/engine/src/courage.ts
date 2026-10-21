@@ -139,7 +139,7 @@ export function activateCourage(state: DuelState, card: CardId, chooser: Chooser
   // （`resolve.ts` の `EffectContext.handed`）。すでにスクエアを離れていれば、ダメージを
   // 与える行動が実行されないだけである（同 第1部 第1章 3）。
   const { placed } = met
-  // コストとしてこのカードを捨札に置いている（同 第5部 第2章 1）ので、行った手の行は相手にも
+  // このカードを公開し、コストとして捨札に置いている（同 第5部 第2章 2）ので、行った手の行は相手にも
   // 名指しされる（`log.ts` の `recordAction`）。
   const resolved = resolveEffect(
     recordAction(paid, state, '「勇気」を起動する', card),

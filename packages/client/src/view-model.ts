@@ -1106,7 +1106,7 @@ function didLine(
 ): string | undefined {
   const it = name === undefined ? undefined : `${name}を`
   switch (action) {
-    // 放棄はログに積まれない（`legal-action.ts` の `applyLegalAction`）ので、ここには来ない。
+    // 放棄はログに積まれない（engine の `log.ts` の `recordAction` が受け取らない）ので、ここには来ない。
     case '優先権を放棄する':
       return undefined
     case 'プランする':

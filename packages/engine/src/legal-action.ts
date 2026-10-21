@@ -119,7 +119,8 @@ export function legalActions(state: DuelState): readonly LegalAction[] {
  * 盤面は捨てるので、数え上げただけの行動がログに残ることはない。
  *
  * **`優先権を放棄する` だけは残さない。** バトルやスマッシュ判定の各ステップは連続した放棄で
- * 進む（総合ルール 第3部 第4章 4）ため、ここを積むとログがそれで埋まってしまう（#111）。
+ * 進む（総合ルール 第3部 第4章 4）ため、積むとログがそれで埋まってしまう（#111）。放棄の経路
+ * （`progress.ts` の `passPriority`）は行った手を積まず、`recordAction` も放棄を受け取らない。
  */
 export function applyLegalAction(state: DuelState, action: LegalAction, chooser: Chooser): DuelState {
   return applyTo(state, action, chooser)

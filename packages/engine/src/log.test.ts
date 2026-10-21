@@ -1150,7 +1150,7 @@ describe('行った手の、動かした後の見え方', () => {
     return readyToAct(phase, inZone(stocked(), '先攻', '手札', card))
   }
 
-  // エネルギーゾーンは公開情報（総合ルール 第2部 第23章 1-1）、手札は相手から見えない（同 第21章 1-2）。
+  // エネルギーゾーンは公開情報（総合ルール 第2部 第23章 1-1）、相手の手札は見られない（同 第21章 4-3）。
   it('エネルギーゾーンに置いたカードは、相手からも名指しされる', () => {
     const energy = instantiate({ id: '置くカード', card: freeUnit, owner: '先攻' })
 
@@ -1215,7 +1215,7 @@ describe('行った手の、動かした後の見え方', () => {
     expect(rows.後攻).toEqual(rows.先攻)
   })
 
-  // 「勇気」のコストは、このカードを捨札にすることを含む（総合ルール 第5部 第2章 1）。
+  // 「勇気」はこのカードを公開し、コストとしてこのカードを捨札にして起動する（総合ルール 第5部 第2章 2）。
   it('起動した「勇気」は、相手からも名指しされる', () => {
     const courageCard = defineUnit({ name: 'テスト・勇気', level: 1, colors: ['赤'], bp: 1000, sp: 1000, abilities: [courage(1000)] })
     const holding = inZone(
@@ -1238,6 +1238,85 @@ describe('行った手の、動かした後の見え方', () => {
   // 総合ルール 第3部 第8章 2-1: 使用コストを支払って、カードをプレイする。同 第2部 第20章 2-3:
   // プレイされたストラテジーは即座に解決される。
   it('行った手の行は、支払ったコストの後、その手が起こしたことより前に並ぶ', () => {
+    const board = holdingStrategy()
+    const before = board.log.length
+
+    const played = applyLegalAction(board, { kind: 'カードをプレイする', declaration: { card: 'ストラテジー' } }, chooseFirst)
+
+    const kinds = events(played).slice(before).map((event) => event.kind)
+    expect(kinds.slice(0, 2)).toEqual(['コストを支払った', '行動した'])
+    expect(kinds.slice(2)).toContain('能力を解決した')
+    expect(kinds.slice(2)).toContain('命令を実行した')
+  })
+
+  // リゾルブゾーンにあるカードは表向きで置かれる（総合ルール 第2部 第21章 12-2）。
+  it('プレイしたストラテジーは、相手からも名指しされる', () => {
+    const played = applyLegalAction(holdingStrategy(), { kind: 'カードをプレイする', declaration: { card: 'ストラテジー' } }, chooseFirst)
+
+    const rows = actionRows(played)
+    expect(rows.後攻).toEqual([{ kind: '行動した', player: '先攻', action: 'カードをプレイする', card: 'ストラテジー', square: undefined }])
+    expect(rows.後攻).toEqual(rows.先攻)
+  })
+
+  /**
+   * もとから公開されているスクエアのユニットを指す手は、これまでどおり 1 行ずつ、同じ名指しで
+   * 残る。積む場所が行動ごとに分かれた（ADR-0050）ので、写し方がずれていないかを見る。
+   */
+  describe('スクエアのユニットを指す手', () => {
+    // 総合ルール 第3部 第9章 1
+    it('スマッシュしたユニットが残る', () => {
+      const board = putOnSquare(readyToAct('スマッシュフェイズ'), centerSquare, instantiate({ id: 'スマッシュ役', card: freeUnit, owner: '先攻' }))
+
+      const smashed = applyLegalAction(board, { kind: 'スマッシュする', unit: 'スマッシュ役' }, chooseFirst)
+
+      const row = { kind: '行動した', player: '先攻', action: 'スマッシュする', card: 'スマッシュ役', square: undefined } as const
+      expect(actionRows(smashed)).toEqual({ 先攻: [row], 後攻: [row] })
+    })
+
+    // 総合ルール 第4部 第6章 2-1
+    it('移動したユニットと移動先が残る', () => {
+      const mover = defineUnit({ name: 'テスト・移動ユニット', level: 0, bp: 100, sp: 100, moveIcon: ['上', '下', '左', '右'] })
+      const board = putOnSquare(readyToAct('メインフェイズ'), { row: 0, column: 1 }, instantiate({ id: '移動役', card: mover, owner: '先攻' }))
+      const action = legalActions(board).find((each) => each.kind === 'ユニットを移動する')
+      if (action === undefined) throw new Error('移動できるはずだった')
+
+      const moved = applyLegalAction(board, action, chooseFirst)
+
+      const row = { kind: '行動した', player: '先攻', action: 'ユニットを移動する', card: '移動役', square: action.destination } as const
+      expect(actionRows(moved)).toEqual({ 先攻: [row], 後攻: [row] })
+    })
+
+    // 総合ルール 第4部 第2章 1
+    it('起動型能力を起動したユニットが、支払ったコストの後に残る', () => {
+      const activating = defineUnit({
+        name: 'テスト・起動ユニット',
+        level: 1,
+        colors: ['赤'],
+        bp: 1000,
+        sp: 500,
+        abilities: [
+          activatedAbility({ energiesOfOwnColor: 1, discardsSelf: false }, function* (duel) {
+            yield* drawCards(duel.controller, 1)
+          }),
+        ],
+      })
+      const board = putOnSquare(
+        inZone(readyToAct('メインフェイズ'), '先攻', 'エネルギーゾーン', instantiate({ id: 'エネルギー', card: vanilla, owner: '先攻' })),
+        mySquare,
+        instantiate({ id: '起動役', card: activating, owner: '先攻' }),
+      )
+      const before = board.log.length
+
+      const activated = applyLegalAction(board, { kind: '起動型能力を起動する', unit: '起動役', ability: 0 }, chooseFirst)
+
+      const row = { kind: '行動した', player: '先攻', action: '起動型能力を起動する', card: '起動役', square: undefined } as const
+      expect(actionRows(activated)).toEqual({ 先攻: [row], 後攻: [row] })
+      expect(events(activated).slice(before, before + 2).map((event) => event.kind)).toEqual(['コストを支払った', '行動した'])
+    })
+  })
+
+  /** 先攻の手札に、敵を 1 体選んで破壊するストラテジーを持たせ、払えるエネルギーと敵を置いた盤面。 */
+  function holdingStrategy(): DuelState {
     const strategy = defineStrategy({
       name: 'テスト・順序ストラテジー',
       level: 1,
@@ -1248,16 +1327,8 @@ describe('行った手の、動かした後の見え方', () => {
       },
     })
     const inHand = instantiate({ id: 'ストラテジー', card: strategy, owner: '先攻' })
-    const board = inZone(putOnSquare(holding('メインフェイズ', inHand), enemySquare, enemy('敵')), '先攻', 'エネルギーゾーン', enemy('エネルギー'))
-    const before = board.log.length
-
-    const played = applyLegalAction(board, { kind: 'カードをプレイする', declaration: { card: inHand.id } }, chooseFirst)
-
-    const kinds = events(played).slice(before).map((event) => event.kind)
-    expect(kinds.slice(0, 2)).toEqual(['コストを支払った', '行動した'])
-    expect(kinds.slice(2)).toContain('能力を解決した')
-    expect(kinds.slice(2)).toContain('命令を実行した')
-  })
+    return inZone(putOnSquare(holding('メインフェイズ', inHand), enemySquare, enemy('敵')), '先攻', 'エネルギーゾーン', enemy('エネルギー'))
+  }
 })
 
 /**
