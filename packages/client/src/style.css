@@ -4911,8 +4911,8 @@ body {
 
 .deckbuild .detail__text {
   margin-top: 0.4rem;
-  padding-top: 0.35rem;
-  border-top: 1px solid rgb(220 166 64 / 0.5);
+  padding-block: 0.35rem;
+  border-block: 1px solid rgb(220 166 64 / 0.5);
   line-height: 1.5;
 }
 
