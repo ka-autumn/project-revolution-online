@@ -8,6 +8,7 @@ import { cardsIn, findInZone } from './duel.js'
 import type { CardId, CourageConditionMet, DuelState } from './duel.js'
 import { damageUnit } from './effect.js'
 import type { UnitOnSquare } from './effect.js'
+import { recordAction } from './log.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import { deferringRights, grantPriorityToInactive } from './priority.js'
@@ -138,8 +139,10 @@ export function activateCourage(state: DuelState, card: CardId, chooser: Chooser
   // （`resolve.ts` の `EffectContext.handed`）。すでにスクエアを離れていれば、ダメージを
   // 与える行動が実行されないだけである（同 第1部 第1章 3）。
   const { placed } = met
+  // このカードを公開し、コストとして捨札に置いている（同 第5部 第2章 2）ので、行った手の行は相手にも
+  // 名指しされる（`log.ts` の `recordAction`）。
   const resolved = resolveEffect(
-    paid,
+    recordAction(paid, state, '「勇気」を起動する', card),
     function* () {
       yield* damageUnit(placed, ability.amount)
     },

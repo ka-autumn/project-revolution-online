@@ -10,6 +10,7 @@ import { continuousData } from './continuous.js'
 import { freezeEnergies } from './cost.js'
 import { cardsOn, locateOnSquares, moveToSquare } from './duel.js'
 import type { CardId, DuelState } from './duel.js'
+import { recordAction } from './log.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import type { Chooser } from './resolve.js'
@@ -58,7 +59,13 @@ export function moveUnit(
   const paid = payMoveCosts(state, player, declared, destination, chooser)
   if (paid === undefined) return cannot('コストを支払えない')
 
-  const moved = moveToSquare(paid, unit, destination, { controller: player, orientation: 'リリース' })
+  const moved = recordAction(
+    moveToSquare(paid, unit, destination, { controller: player, orientation: 'リリース' }),
+    state,
+    'ユニットを移動する',
+    unit,
+    destination,
+  )
   const triggered = triggerMovement(moved, unit)
   const invader = { id: unit, square: destination, card: moving.card, controller: player }
   // 移動もユニットがスクエアに置かれることなので、トラップの発動条件（総合ルール 第2部

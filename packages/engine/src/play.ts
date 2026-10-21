@@ -21,6 +21,7 @@ import {
 import type { CardId, DuelState, TrapConditionMet } from './duel.js'
 import type { TrapOccasion } from './ability.js'
 import type { DuelView, Effect, EffectStep, UnitOnSquare } from './effect.js'
+import { recordAction } from './log.js'
 import type { ResolutionVia } from './log.js'
 import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
@@ -102,7 +103,9 @@ export function playCard(state: DuelState, declaration: PlayDeclaration, chooser
   if (typeof paid === 'string') return cannot(paid)
 
   return done(
-    grantPriorityToInactive(resolveInResolveZone(paid, instance.id, card.effect, player, 'プレイ', chooser)),
+    grantPriorityToInactive(
+      resolveInResolveZone(paid, instance.id, card.effect, player, 'プレイ', 'カードをプレイする', chooser),
+    ),
   )
 }
 
@@ -127,7 +130,7 @@ export function playAsTrap(state: DuelState, card: CardId): ActionOutcome {
   // 自分のトラップゾーンにカードがなければプレイできる（総合ルール 第2部 第20章 3-1）。
   if (cardsIn(state, player, 'トラップゾーン').length > 0) return cannot('トラップゾーンが空ではない')
 
-  return done(grantPriorityToInactive(moveToZone(state, card, 'トラップゾーン')))
+  return done(grantPriorityToInactive(recordAction(moveToZone(state, card, 'トラップゾーン'), state, 'トラップとしてプレイする', card)))
 }
 
 /**
@@ -180,9 +183,16 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   // 型の上では、効果の第 2 引数が種類ごとに違うので、ここで広げて呼ぶ。種類が同じであることは、
   // 上で確かめている。
   const effect = trap.effect as (duel: DuelView, occasion: TrapOccasion) => EffectStep<void>
-  const resolved = resolveInResolveZone(paid, card, (duel) => effect(duel, occasion), player, '発動', chooser, [
-    ...unitsOfOccasion(occasion),
-  ])
+  const resolved = resolveInResolveZone(
+    paid,
+    card,
+    (duel) => effect(duel, occasion),
+    player,
+    '発動',
+    'トラップを発動する',
+    chooser,
+    [...unitsOfOccasion(occasion)],
+  )
   return done(grantPriorityToInactive(resolved))
 }
 
@@ -241,7 +251,13 @@ function placePlayedUnit(
   from: PlayerZone,
 ): DuelState {
   const orientation = hasGuts(card) ? 'リリース' : 'フリーズ'
-  const moved = moveToSquare(state, id, square, { controller: player, orientation })
+  const moved = recordAction(
+    moveToSquare(state, id, square, { controller: player, orientation }),
+    state,
+    'カードをプレイする',
+    id,
+    square,
+  )
   const selfTriggered = triggerAppearance(moved, id, { kind: '登場', square, from })
   const placed = triggerAllyAppearance(selfTriggered, id, from)
   // 置かれたユニットが相手のトラップのトリガーアイコンのスクエアに置かれたなら「侵入」に
@@ -272,7 +288,8 @@ function placePlayedUnit(
  * 敵、攻撃したユニットと攻撃されたユニット、スマッシュしたユニット）を渡す場合に使う。
  *
  * `via` はプレイと発動のどちらでここへ来たか（#104）。呼ぶ側しか知らないので、ここでは
- * 受け取るだけで判断しない。
+ * 受け取るだけで判断しない。行った手の行（`action`）は、リゾルブゾーンへ移した直後、解決より
+ * 前に積む（`log.ts` の `recordAction`）。
  */
 function resolveInResolveZone(
   state: DuelState,
@@ -280,10 +297,11 @@ function resolveInResolveZone(
   effect: Effect,
   controller: Player,
   via: ResolutionVia,
+  action: 'カードをプレイする' | 'トラップを発動する',
   chooser: Chooser,
   handed?: readonly UnitOnSquare[],
 ): DuelState {
-  const placed = moveToResolveZone(state, id)
+  const placed = recordAction(moveToResolveZone(state, id), state, action, id)
   const resolved = resolveEffect(placed, effect, { controller, via, source: id, chooser, handed })
 
   const stillResolving = cardsInResolveZone(resolved).some((each) => each.id === id)
