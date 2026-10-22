@@ -874,8 +874,8 @@ describe('操作ログ', () => {
     )
 
     expect(logLines(board)).toEqual([
-      { kind: 'できごと', whose: '相手', text: 'プランする', depth: 0 },
-      { kind: 'できごと', whose: '自分', text: 'エネルギーを置く', depth: 0 },
+      { kind: 'できごと', whose: '相手', text: 'プランした', depth: 0 },
+      { kind: 'できごと', whose: '自分', text: 'カードをエネルギーゾーンに置いた', depth: 0 },
     ])
   })
 
@@ -888,7 +888,25 @@ describe('操作ログ', () => {
       square: ON_SQUARE,
     })
 
-    expect(texts(board)).toEqual(['カードをプレイする：テスト・置いてある（中央エリアの中央ライン）'])
+    expect(texts(board)).toEqual(['テスト・置いてあるを中央エリアの中央ラインにプレイした'])
+  })
+
+  // ADR-0051。行った手は、コストを伴わない手も「〜した」で言い切る文にする。
+  it.each([
+    ['エネルギーを置く', '置いてある', undefined, 'テスト・置いてあるをエネルギーゾーンに置いた'],
+    ['カードをプレイする', '置いてある', undefined, 'テスト・置いてあるをプレイした'],
+    ['ユニットを移動する', '置いてある', ON_SQUARE, 'テスト・置いてあるを中央エリアの中央ラインに移動させた'],
+    ['スマッシュする', '置いてある', undefined, 'テスト・置いてあるでスマッシュした'],
+    ['プランする', undefined, undefined, 'プランした'],
+    ['トラップとしてプレイする', '置いてある', undefined, 'テスト・置いてあるをトラップとしてプレイした'],
+    ['トラップを発動する', '置いてある', undefined, 'テスト・置いてあるを発動した'],
+    ['トラップを廃棄する', '置いてある', undefined, 'テスト・置いてあるを廃棄した'],
+    ['「勇気」を起動する', '置いてある', undefined, 'テスト・置いてあるを捨札にして「勇気」を起動した'],
+    ['起動型能力を起動する', '置いてある', undefined, 'テスト・置いてあるの能力を起動した'],
+  ] as const)('%s は文で出る', (action, card, square, expected) => {
+    const board = withLog({ kind: '行動した', player: '先攻', action, card, square })
+
+    expect(texts(board)).toEqual([expected])
   })
 
   /**
@@ -905,7 +923,7 @@ describe('操作ログ', () => {
       square: undefined,
     })
 
-    expect(texts(board)).toEqual(['トラップとしてプレイする'])
+    expect(texts(board)).toEqual(['カードをトラップとしてプレイした'])
   })
 
   /**
@@ -1125,6 +1143,146 @@ describe('操作ログ', () => {
     })
 
     expect(texts(board)).toEqual(['コストとしてスマッシュをフリーズした'])
+  })
+
+  /**
+   * ADR-0051。手の行は、その手のコストを支払った後に積まれる（ADR-0050）。同じプレイヤーのコストの行の
+   * 直後に手の行があれば、1 行の文にまとめる。
+   */
+  describe('コストを支払って行った手', () => {
+    /** 見る人ごとの盤面。先攻のユニットがスクエアにあり、先攻のエネルギーの名前が届いている。 */
+    function seenBy(viewer: Player, ...events: readonly DuelEvent[]): WirePerspective {
+      const board = withSquare(emptyBoard(viewer), ON_SQUARE, [instance('ユニット', '先攻')])
+      return {
+        ...board,
+        namedInLog: [instance('エネルギーA', '先攻'), instance('エネルギーC', '先攻'), instance('勇気', '先攻')],
+        log: logged(events),
+      }
+    }
+
+    function paid(card: string | undefined, zone: 'エネルギーゾーン' | 'スマッシュゾーン' = 'エネルギーゾーン'): DuelEvent {
+      return { kind: 'コストを支払った', player: '先攻', zone, card, purpose: 'プレイのコスト' }
+    }
+
+    const played: DuelEvent = {
+      kind: '行動した',
+      player: '先攻',
+      action: 'カードをプレイする',
+      card: 'ユニット',
+      square: ON_SQUARE,
+    }
+
+    it('コストの後に同じプレイヤーの手が続けば、1 行にまとまる', () => {
+      expect(logLines(seenBy('先攻', paid('エネルギーA'), played))).toEqual([
+        {
+          kind: 'できごと',
+          whose: '自分',
+          text: 'テスト・エネルギーAをフリーズし、テスト・ユニットを中央エリアの中央ラインにプレイした',
+          depth: 0,
+        },
+      ])
+    })
+
+    /** 支払った側から見ても、相手から見ても、同じ形になる。 */
+    it('相手から見ても、同じ形で出る', () => {
+      expect(logLines(seenBy('後攻', paid('エネルギーA'), played))).toEqual([
+        {
+          kind: 'できごと',
+          whose: '相手',
+          text: 'テスト・エネルギーAをフリーズし、テスト・ユニットを中央エリアの中央ラインにプレイした',
+          depth: 0,
+        },
+      ])
+    })
+
+    // 区切りは「、」にする。カード名に「・」が入るため（#171）。
+    it('コストが 2 枚以上なら、名前を「、」で並べる', () => {
+      expect(texts(seenBy('先攻', paid('エネルギーA'), paid('エネルギーC'), played))).toEqual([
+        'テスト・エネルギーA、テスト・エネルギーCをフリーズし、テスト・ユニットを中央エリアの中央ラインにプレイした',
+      ])
+    })
+
+    /**
+     * スマッシュは裏向きで、支払った本人からも見られない（総合ルール 第2部 第21章 7-3）ので、
+     * どちらの席にも名指しされずに届く。名前の代わりに枚数で言う。
+     */
+    it.each(['先攻', '後攻'] as const)('スマッシュで払った手は、%s から見ても枚数で出る', (viewer) => {
+      const planned: DuelEvent = { kind: '行動した', player: '先攻', action: 'プランする', card: undefined, square: undefined }
+
+      expect(texts(seenBy(viewer, paid(undefined, 'スマッシュゾーン'), paid(undefined, 'スマッシュゾーン'), planned))).toEqual([
+        'スマッシュ2枚をフリーズし、プランした',
+      ])
+    })
+
+    it('名前の見えるコストとスマッシュが混ざれば、スマッシュは名前の後ろに枚数で並ぶ', () => {
+      expect(texts(seenBy('先攻', paid(undefined, 'スマッシュゾーン'), paid('エネルギーA'), played))).toEqual([
+        'テスト・エネルギーA、スマッシュ1枚をフリーズし、テスト・ユニットを中央エリアの中央ラインにプレイした',
+      ])
+    })
+
+    /**
+     * 名指しは射影で落ちる（`perspective.ts`）。落ちたコストは枚数で言い、名前を作り出さない（#95）。
+     */
+    it('名指しされていないコストは、名前を出さずに枚数で出る', () => {
+      const lines = texts(seenBy('後攻', paid(undefined), played))
+
+      expect(lines).toEqual(['カード1枚をフリーズし、テスト・ユニットを中央エリアの中央ラインにプレイした'])
+      expect(lines.join()).not.toContain('見えていないカード')
+    })
+
+    /** コストを選んでいる間は、手の行がまだ積まれていない（ADR-0050）。 */
+    it('コストの後に手の行が続かなければ、コストの行が単独で出る', () => {
+      expect(texts(seenBy('先攻', paid('エネルギーA'), paid(undefined, 'スマッシュゾーン')))).toEqual([
+        'コストとしてスマッシュをフリーズした',
+        'テスト・エネルギーAをコストとしてフリーズした',
+      ])
+    })
+
+    it('コストと手の間に別のできごとがあれば、まとめない', () => {
+      const resolved: DuelEvent = { kind: '能力を解決した', controller: '先攻', via: '誘発', source: undefined }
+
+      expect(texts(seenBy('先攻', paid('エネルギーA'), resolved, played))).toEqual([
+        'テスト・ユニットを中央エリアの中央ラインにプレイした',
+        '誘発',
+        'テスト・エネルギーAをコストとしてフリーズした',
+      ])
+    })
+
+    it('コストの後に続くのが別のプレイヤーの手なら、まとめない', () => {
+      const opponents: DuelEvent = { kind: '行動した', player: '後攻', action: 'プランする', card: undefined, square: undefined }
+
+      expect(logLines(seenBy('先攻', paid('エネルギーA'), opponents))).toEqual([
+        { kind: 'できごと', whose: '相手', text: 'プランした', depth: 0 },
+        { kind: 'できごと', whose: '自分', text: 'テスト・エネルギーAをコストとしてフリーズした', depth: 0 },
+      ])
+    })
+
+    it('手の前に、別のプレイヤーのコストの行があれば、それはまとめない', () => {
+      const opponentsCost: DuelEvent = { kind: 'コストを支払った', player: '後攻', zone: 'エネルギーゾーン', card: undefined, purpose: 'プレイのコスト' }
+
+      expect(texts(seenBy('先攻', opponentsCost, paid('エネルギーA'), played))).toEqual([
+        'テスト・エネルギーAをフリーズし、テスト・ユニットを中央エリアの中央ラインにプレイした',
+        'コストとしてフリーズした',
+      ])
+    })
+
+    // 「勇気」は自身を捨札にして起動する（総合ルール 第5部 第2章 2）。捨札にした分はコストの行として届かない。
+    it('「勇気」は、エネルギーのコストの後に、自身を捨札にしたことを言う', () => {
+      const courage: DuelEvent = { kind: '行動した', player: '先攻', action: '「勇気」を起動する', card: '勇気', square: undefined }
+
+      expect(texts(seenBy('後攻', paid('エネルギーA'), courage))).toEqual([
+        'テスト・エネルギーAをフリーズし、テスト・勇気を捨札にして「勇気」を起動した',
+      ])
+    })
+
+    /** どの能力を起動したかは届かないので、コストに捨札が含まれるかは画面から分からない（ADR-0051）。 */
+    it('起動型能力は、捨札にしたことを言わない', () => {
+      const activated: DuelEvent = { kind: '行動した', player: '先攻', action: '起動型能力を起動する', card: 'ユニット', square: undefined }
+
+      expect(texts(seenBy('先攻', paid('エネルギーA'), activated))).toEqual([
+        'テスト・エネルギーAをフリーズし、テスト・ユニットの能力を起動した',
+      ])
+    })
   })
 
   /**
@@ -1473,7 +1631,7 @@ describe('操作ログ', () => {
         instance('戻された', '先攻'),
       )
 
-      expect(texts(board)).toEqual(['カードをプレイする：テスト・戻された'])
+      expect(texts(board)).toEqual(['テスト・戻されたをプレイした'])
     })
 
     /** 届いていないものは、今までどおり補わない（#95）。 */
@@ -1486,7 +1644,7 @@ describe('操作ログ', () => {
         square: undefined,
       })
 
-      expect(texts(board)).toEqual(['カードをプレイする：見えていないカード'])
+      expect(texts(board)).toEqual(['見えていないカードをプレイした'])
     })
 
     // #111。勝者は名前だけでなく支配者も引くので、そちらも同じところから引けている。
@@ -2276,6 +2434,22 @@ describe('優先権が回ってきた理由', () => {
     }
 
     expect(priorityReason(board(), logged([hidden]))).toBe('相手がカードをトラップとしてプレイしました')
+  })
+
+  /** ADR-0051。打つ手を決める前に読む文なので、直前の手だけを言う。コストは操作ログにある。 */
+  it('コストを支払って行った手でも、コストは出ない', () => {
+    const paid: DuelEvent = { kind: 'コストを支払った', player: '後攻', zone: 'エネルギーゾーン', card: 'あいてのカード', purpose: '移動のコスト' }
+
+    expect(priorityReason(board(), logged([paid, moved]))).toBe(
+      '相手がテスト・あいてのカードを中央エリアの中央ラインに移動させました',
+    )
+  })
+
+  /** 自身を捨札にしたことは、操作ログでだけ言う（ADR-0051）。 */
+  it('「勇気」は、捨札にしたことを言わない', () => {
+    const courage: DuelEvent = { kind: '行動した', player: '後攻', action: '「勇気」を起動する', card: 'あいてのカード', square: undefined }
+
+    expect(priorityReason(board(), logged([courage]))).toBe('相手がテスト・あいてのカードの「勇気」を起動しました')
   })
 })
 

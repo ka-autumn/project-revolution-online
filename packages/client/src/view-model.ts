@@ -1087,7 +1087,7 @@ export function priorityReason(board: WirePerspective, fresh: readonly LoggedEve
 
   const name = taken.card === undefined ? undefined : names.get(taken.card)
   const where = taken.square === undefined ? undefined : squareLabel(board.viewer, taken.square)
-  const did = didLine(taken.action, name, where)
+  const did = didLine(taken.action, name, where, '優先権が来た理由')
 
   return did === undefined ? undefined : `相手が${did}`
 }
@@ -1098,37 +1098,46 @@ export function priorityReason(board: WirePerspective, fresh: readonly LoggedEve
  * 名前が落ちていれば、名前のところを省いた言い方にする。**「見えていないカード」とは書かない**
  * （#95）——名指しが落ちたのか、そもそもカードを指していない手なのかは、届いたものからは
  * 見分けられない。
+ *
+ * 操作ログ（ADR-0051）と、優先権が来た理由の一文（#147）とで、同じ言葉を使う。ログは起きたことを
+ * 積む一覧なので「〜した」で言い切り、優先権が来た理由は 1 度だけ読ませる文なので「〜しました」にする。
  */
 function didLine(
   action: LegalAction['kind'],
   name: string | undefined,
   where: string | undefined,
+  into: 'ログ' | '優先権が来た理由',
 ): string | undefined {
   const it = name === undefined ? undefined : `${name}を`
+  const did = (polite: string, plain: string): string => (into === 'ログ' ? plain : polite)
   switch (action) {
     // 放棄はログに積まれない（engine の `log.ts` の `recordAction` が受け取らない）ので、ここには来ない。
     case '優先権を放棄する':
       return undefined
     case 'プランする':
-      return 'プランしました'
+      return did('プランしました', 'プランした')
     case 'エネルギーを置く':
-      return `${it ?? 'カードを'}エネルギーゾーンに置きました`
+      return `${it ?? 'カードを'}エネルギーゾーンに${did('置きました', '置いた')}`
     case 'カードをプレイする':
-      return `${it ?? 'カードを'}${where === undefined ? '' : `${where}に`}プレイしました`
+      return `${it ?? 'カードを'}${where === undefined ? '' : `${where}に`}${did('プレイしました', 'プレイした')}`
     case 'ユニットを移動する':
-      return `${it ?? 'ユニットを'}${where === undefined ? '' : `${where}に`}移動させました`
+      return `${it ?? 'ユニットを'}${where === undefined ? '' : `${where}に`}${did('移動させました', '移動させた')}`
     case 'スマッシュする':
-      return `${name === undefined ? '' : `${name}で`}スマッシュしました`
+      return `${name === undefined ? '' : `${name}で`}${did('スマッシュしました', 'スマッシュした')}`
     case 'トラップとしてプレイする':
-      return `${it ?? 'カードを'}トラップとしてプレイしました`
+      return `${it ?? 'カードを'}トラップとして${did('プレイしました', 'プレイした')}`
     case 'トラップを発動する':
-      return `${it ?? 'トラップを'}発動しました`
+      return `${it ?? 'トラップを'}${did('発動しました', '発動した')}`
     case 'トラップを廃棄する':
-      return `${it ?? 'トラップを'}廃棄しました`
+      return `${it ?? 'トラップを'}${did('廃棄しました', '廃棄した')}`
     case '「勇気」を起動する':
+      // 「勇気」は自身を捨札にして起動する（総合ルール 第5部 第2章 2）。捨札にした分はコストの行として
+      // 積まれない（`activate.ts` の `payActivationCost`）ので、ログではここで言い、まとめた行から
+      // 何を支払ったかが読めるようにする。優先権が来た理由は直前の手が分かれば足りるので言わない。
+      if (into === 'ログ') return `${name === undefined ? '' : `${name}を捨札にして`}「勇気」を起動した`
       return `${name === undefined ? '' : `${name}の`}「勇気」を起動しました`
     case '起動型能力を起動する':
-      return `${name === undefined ? '' : `${name}の`}能力を起動しました`
+      return `${name === undefined ? '' : `${name}の`}能力を${did('起動しました', '起動した')}`
   }
 }
 
@@ -1152,11 +1161,41 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
   const named = (card: CardId | undefined): string | undefined =>
     card === undefined ? undefined : nameOf(names, card)
 
-  return board.log
-    .flatMap(({ event, during }) =>
-      linesOf(event).map((line): LogLine => ({ ...line, kind: line.kind ?? 'できごと', depth: depthOf(event, during) })),
-    )
+  return withCostsJoined(board.log)
+    .flatMap((entry) => {
+      const { event, during } = entry.kind === '手' ? entry.action : entry.entry
+      const lines = entry.kind === '手' ? [paidActionLine(entry.costs, entry.action.event)] : linesOf(event)
+      return lines.map((line): LogLine => ({ ...line, kind: line.kind ?? 'できごと', depth: depthOf(event, during) }))
+    })
     .reverse()
+
+  /**
+   * コストを支払って行った手を、1 行の文にする（ADR-0051）。
+   *
+   * コストは記録の順のまま、手の文の前に「〜をフリーズし、」として付ける。スマッシュは持ち主からも
+   * 名前が見えない（総合ルール 第2部 第21章 7-3）ので、枚数で言う。名指しの落ちたコストも同じく枚数で
+   * 言い、名前を作り出さない（#95）。
+   */
+  function paidActionLine(costs: readonly CostPaid[], action: ActionTaken): LinePart {
+    const smashes = costs.filter((cost) => cost.zone === 'スマッシュゾーン').length
+    const shown = costs.flatMap((cost) => {
+      const name = cost.zone === 'スマッシュゾーン' ? undefined : named(cost.card)
+      return name === undefined ? [] : [name]
+    })
+    const hidden = costs.length - smashes - shown.length
+    const paid = [
+      ...shown,
+      ...(hidden > 0 ? [`カード${hidden}枚`] : []),
+      ...(smashes > 0 ? [`スマッシュ${smashes}枚`] : []),
+    ]
+    return { whose: whose(action.player), text: `${paid.join('、')}をフリーズし、${actionText(action)}` }
+  }
+
+  /** 行った手 1 つの文。 */
+  function actionText(event: ActionTaken): string {
+    const where = event.square === undefined ? undefined : squareLabel(board.viewer, event.square)
+    return didLine(event.action, named(event.card), where, 'ログ') ?? event.action
+  }
 
   /**
    * できごと 1 つを、字下げを別にした行にする。
@@ -1186,11 +1225,8 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
   /** 1 行にしかならないできごと 1 つを、字下げを別にした 1 行にする。 */
   function logLineOf(event: Exclude<DuelEvent, { kind: '進行が変わった' | 'リリースした' }>): LinePart | undefined {
     switch (event.kind) {
-      case '行動した': {
-        const name = named(event.card)
-        const where = event.square === undefined ? '' : `（${squareLabel(board.viewer, event.square)}）`
-        return { whose: whose(event.player), text: `${event.action}${name === undefined ? '' : `：${name}`}${where}` }
-      }
+      case '行動した':
+        return { whose: whose(event.player), text: actionText(event) }
       case '能力を解決した': {
         const source = named(event.source)
         return { whose: whose(event.controller), text: source === undefined ? event.via : `${event.via}：${source}` }
@@ -1331,6 +1367,60 @@ const UNREADABLE_LOG = '（表示できないログ）'
  * 区切りの側だけだからである。
  */
 type LinePart = Omit<LogLine, 'kind' | 'depth'> & { readonly kind?: LogLine['kind'] }
+
+type CostPaid = Extract<DuelEvent, { kind: 'コストを支払った' }>
+type ActionTaken = Extract<DuelEvent, { kind: '行動した' }>
+
+/**
+ * ログの 1 件か、コストを支払って行った手 1 つ（ADR-0051）。
+ *
+ * 手の行は、その手のコストを支払った後に積まれる（ADR-0050）。`手` は、手の行と、その直前に続く
+ * 同じプレイヤーのコストの行をまとめたものである。
+ */
+type JoinedEntry =
+  | { readonly kind: 'できごと'; readonly entry: LoggedEvent }
+  | {
+      readonly kind: '手'
+      readonly costs: readonly CostPaid[]
+      readonly action: LoggedEvent & { readonly event: ActionTaken }
+    }
+
+/**
+ * 同じプレイヤーのコストの行が続き、その直後に同じプレイヤーの手の行があれば、それらを 1 つにまとめる
+ * （ADR-0051）。
+ *
+ * 手の行が続かないコストの行は、そのまま残す。コストを選んでいる間は、手の行がまだ積まれていない
+ * （ADR-0050）ので、コストの行だけが出て、手が終わるとまとめた形に変わる。
+ */
+function withCostsJoined(log: readonly LoggedEvent[]): readonly JoinedEntry[] {
+  const joined: JoinedEntry[] = []
+  let index = 0
+  while (index < log.length) {
+    const costs: CostPaid[] = []
+    let next = index
+    for (let entry = log[next]; entry !== undefined; entry = log[++next]) {
+      const { event } = entry
+      if (event.kind !== 'コストを支払った' || (costs.length > 0 && event.player !== costs[0]?.player)) break
+      costs.push(event)
+    }
+
+    const following = log[next]
+    if (costs.length > 0 && following !== undefined && isActionBy(following, costs[0]?.player)) {
+      joined.push({ kind: '手', costs, action: following })
+      index = next + 1
+    } else {
+      const entry = log[index]
+      if (entry !== undefined) joined.push({ kind: 'できごと', entry })
+      index += 1
+    }
+  }
+  return joined
+}
+
+/** そのプレイヤーの手の行か。 */
+function isActionBy(entry: LoggedEvent, player: Player | undefined): entry is LoggedEvent & { readonly event: ActionTaken } {
+  return entry.event.kind === '行動した' && entry.event.player === player
+}
 
 /**
  * 手順そのものの始まりと終わりを告げるできごと（`log.ts` の `DuelEvent`）。
