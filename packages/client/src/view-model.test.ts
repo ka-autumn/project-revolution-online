@@ -1266,6 +1266,30 @@ describe('操作ログ', () => {
       ])
     })
 
+    it('自分のコストと手の間に別のプレイヤーのコストが挟まれば、どれもまとめない', () => {
+      const opponentsCost: DuelEvent = { kind: 'コストを支払った', player: '後攻', zone: 'エネルギーゾーン', card: undefined, purpose: 'プレイのコスト' }
+
+      expect(texts(seenBy('先攻', paid('エネルギーA'), opponentsCost, played))).toEqual([
+        'テスト・ユニットを中央エリアの中央ラインにプレイした',
+        'コストとしてフリーズした',
+        'テスト・エネルギーAをコストとしてフリーズした',
+      ])
+    })
+
+    // 手順の中で行った手（総合ルール 第3部 第11章 2-2 の、バトルの中で始まったスマッシュ判定）は、手の行の深さで出る。
+    it('まとめた行は、手の行と同じ深さに字下げされる', () => {
+      const during: readonly Procedure[] = [{ kind: 'バトル' }, { kind: 'スマッシュ判定', player: '後攻' }]
+      const board: WirePerspective = {
+        ...seenBy('先攻'),
+        log: [
+          { event: paid('エネルギーA'), during },
+          { event: played, during },
+        ],
+      }
+
+      expect(logLines(board).map((line) => line.depth)).toEqual([1])
+    })
+
     // 「勇気」は自身を捨札にして起動する（総合ルール 第5部 第2章 2）。捨札にした分はコストの行として届かない。
     it('「勇気」は、エネルギーのコストの後に、自身を捨札にしたことを言う', () => {
       const courage: DuelEvent = { kind: '行動した', player: '先攻', action: '「勇気」を起動する', card: '勇気', square: undefined }
