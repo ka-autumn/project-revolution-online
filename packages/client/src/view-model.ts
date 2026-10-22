@@ -342,7 +342,7 @@ export interface CutInView {
  * できごとでもない進行の合図なので、プレイヤーの色は持たない。
  */
 export interface TransitionView {
-  /** 「第 4 ターン：後攻のターン」「メインフェイズ」のような 1 行。 */
+  /** 「第4ターン：後攻のターン」「メインフェイズ」のような 1 行。 */
   readonly heading: string
 }
 
@@ -417,7 +417,7 @@ export interface ResultView {
 /** 画面に出す盤面ひととおり。 */
 export interface BoardView {
   readonly seat: Player
-  /** 「第 3 ターン」の 1 行。 */
+  /** 「第3ターン」の 1 行。 */
   readonly turnNumber: string
   /** 「自分のターン・相手の優先権」のような 1 行。 */
   readonly priority: string
@@ -980,9 +980,9 @@ function opponentFirst(cards: readonly CardView[]): readonly CardView[] {
   return [...cards].sort((a, b) => rank(a) - rank(b))
 }
 
-/** 「第 3 ターン」の 1 行。 */
+/** 「第3ターン」の 1 行。 */
 function turnNumberLine(board: WirePerspective): string {
-  return `第 ${board.turn.number} ターン`
+  return `第${board.turn.number}ターン`
 }
 
 /**
@@ -1251,7 +1251,7 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
           : { whose: whose(event.controller), text }
       }
       case 'ダメージを受けた':
-        return { whose: whose(event.player), text: `ダメージ ${event.amount} を受けた` }
+        return { whose: whose(event.player), text: `ダメージ${event.amount}を受けた` }
       // フェイズやステップの始めに自動で行われる処理（#157）。**行われた時しか届かない**
       // ので、「行われなかった」を言い分ける必要はここに無い（`log.ts` の `リリースした`）。
       // リリースだけはゾーンごとに分けて何行かになるので、`linesOf` の側にある。
@@ -1275,14 +1275,14 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         }
       }
       case 'ダメージを回復した':
-        return { whose: whose(event.player), text: `ダメージ ${event.amount} を回復した` }
+        return { whose: whose(event.player), text: `ダメージ${event.amount}を回復した` }
       case 'バトルが始まった': {
         const where = squareLabel(board.viewer, event.square)
         const units = [named(event.attacker), named(event.attacked)].filter((name) => name !== undefined)
         return separator('===', undefined, `バトル開始（${where}）${units.length === 0 ? '' : `：${units.join(' と ')}`}`)
       }
       case 'バトルダメージを与えた':
-        return { whose: undefined, text: about(named(event.to), 'に', `バトルダメージ ${event.amount}`) }
+        return { whose: undefined, text: about(named(event.to), 'に', `バトルダメージ${event.amount}`) }
       case 'バトルが終わった':
         // 勝敗はここでは言わない。決まったのはバトル終了ステップの始めである（#160）。
         return separator('===', undefined, 'バトル終了')
@@ -1609,9 +1609,9 @@ function instructionLine(
     case '破壊する':
       return about(named(instruction.card), 'を', '破壊した')
     case 'プレイヤーにダメージを与える':
-      return `${whose(instruction.player)}にダメージ ${instruction.amount}`
+      return `${whose(instruction.player)}にダメージ${instruction.amount}`
     case 'ユニットにダメージを与える':
-      return about(named(instruction.card), 'に', `ダメージ ${instruction.amount}`)
+      return about(named(instruction.card), 'に', `ダメージ${instruction.amount}`)
     case '向きを変える':
       return about(named(instruction.card), 'を', instruction.orientation)
     case 'ゾーンへ置く':
@@ -1620,7 +1620,7 @@ function instructionLine(
       return about(
         named(instruction.card),
         'を',
-        `${placedZoneLabel(instruction.player, instruction.to, whose)}へ（山札の 1 番上）`,
+        `${placedZoneLabel(instruction.player, instruction.to, whose)}へ（山札の1番上）`,
       )
     case 'スクエアへ置く':
       return about(named(instruction.card), 'を', `${squareLabel(board.viewer, instruction.square)}へ`)
@@ -1643,7 +1643,7 @@ function instructionLine(
     }
     // 山札の中身は、読んだ本人にも相手にも、ログには出さない（ADR-0042）。枚数だけを言う。
     case '自分の山札を読む':
-      return whose(controller) === '自分' ? `山札を見た：${instruction.count} 枚` : `相手が山札を見た：${instruction.count} 枚`
+      return whose(controller) === '自分' ? `山札を見た：${instruction.count}枚` : `相手が山札を見た：${instruction.count}枚`
     // プランゾーンのカードは公開されているので、混ぜたことは言うが、名前は出さない。
     case '山札をシャッフルする':
       return instruction.withPlan
@@ -1695,9 +1695,9 @@ function cardsLabel(
     return name === undefined ? [] : [name]
   })
   const hidden = count - names.length
-  if (names.length === 0) return `${hidden} 枚`
+  if (names.length === 0) return `${hidden}枚`
 
-  return hidden <= 0 ? names.join('、') : `${names.join('、')} ほか ${hidden} 枚`
+  return hidden <= 0 ? names.join('、') : `${names.join('、')}ほか${hidden}枚`
 }
 
 /**
@@ -1808,7 +1808,7 @@ export function transitionViews(fresh: readonly LoggedEvent[], board: WirePerspe
     if (from === undefined) continue
 
     if (from.turn !== to.turn || from.active !== to.active) {
-      views.push({ heading: `第 ${to.turn} ターン：${whoseOf(board, to.active)}のターン` })
+      views.push({ heading: `第${to.turn}ターン：${whoseOf(board, to.active)}のターン` })
     }
     if (from.phase !== to.phase) {
       views.push({ heading: to.phase })

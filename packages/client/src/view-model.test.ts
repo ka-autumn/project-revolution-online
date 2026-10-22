@@ -618,7 +618,7 @@ describe('プレイヤーの様子', () => {
     const board = { ...empty, turn: { ...empty.turn, number: 3, active: '先攻', priority: '後攻' } } as const
     const view = boardView(board)
 
-    expect(view.turnNumber).toBe('第 3 ターン')
+    expect(view.turnNumber).toBe('第3ターン')
     expect(view.priority).toBe('相手のターン・自分の優先権')
   })
 
@@ -962,7 +962,7 @@ describe('操作ログ', () => {
     })
 
     expect(logLines(board)).toEqual([
-      { kind: 'できごと', whose: '相手', text: 'テスト・置いてあるにダメージ 500', depth: 0 },
+      { kind: 'できごと', whose: '相手', text: 'テスト・置いてあるにダメージ500', depth: 0 },
     ])
   })
 
@@ -1067,8 +1067,8 @@ describe('操作ログ', () => {
         instruction: { kind: '山札の1番上をゾーンへ置く', card: '置いてある', to: '手札', player: '先攻' },
       })
 
-      expect(texts(board)).toEqual([`テスト・置いてあるを自分の手札へ（山札の 1 番上）`])
-      expect(texts({ ...board, viewer: '後攻' })).toEqual([`テスト・置いてあるを相手の手札へ（山札の 1 番上）`])
+      expect(texts(board)).toEqual([`テスト・置いてあるを自分の手札へ（山札の1番上）`])
+      expect(texts({ ...board, viewer: '後攻' })).toEqual([`テスト・置いてあるを相手の手札へ（山札の1番上）`])
     })
 
     it('名前が落ちていても、置き先は言う', () => {
@@ -1404,8 +1404,8 @@ describe('操作ログ', () => {
       })
 
       expect(texts(board)).toEqual([
-        'リリース（スマッシュゾーン）：2 枚',
-        'リリース（エネルギーゾーン）：テスト・置いてある ほか 2 枚',
+        'リリース（スマッシュゾーン）：2枚',
+        'リリース（エネルギーゾーン）：テスト・置いてあるほか2枚',
       ])
     })
 
@@ -1548,7 +1548,7 @@ describe('操作ログ', () => {
     it('回復ステップで回復した量が出る', () => {
       const board = withLog({ kind: 'ダメージを回復した', player: '後攻', amount: 2000 })
 
-      expect(logLines(board)).toEqual([{ kind: 'できごと', whose: '相手', text: 'ダメージ 2000 を回復した', depth: 0 }])
+      expect(logLines(board)).toEqual([{ kind: 'できごと', whose: '相手', text: 'ダメージ2000を回復した', depth: 0 }])
     })
 
     /** 効果によるドロー（総合ルール 第2部 第21章 1-5）も、枚数と名指しの出し方は同じ。 */
@@ -1559,7 +1559,7 @@ describe('操作ログ', () => {
         instruction: { kind: 'カードを引く', player: '後攻', count: 2, cards: ['置いてある'] },
       })
 
-      expect(texts(board)).toEqual(['相手が引いた：テスト・置いてある ほか 1 枚'])
+      expect(texts(board)).toEqual(['相手が引いた：テスト・置いてあるほか1枚'])
     })
 
     it('効果で引いたカードが 1 枚も名指しされていなければ、枚数だけが出る', () => {
@@ -1569,7 +1569,7 @@ describe('操作ログ', () => {
         instruction: { kind: 'カードを引く', player: '後攻', count: 2, cards: [] },
       })
 
-      expect(texts(board)).toEqual(['相手が引いた：2 枚'])
+      expect(texts(board)).toEqual(['相手が引いた：2枚'])
     })
 
     // ADR-0041。見た側にも見られた側にも、見たカードの名前が同じ内容で出る。
@@ -1590,11 +1590,11 @@ describe('操作ログ', () => {
       })
 
       it('見た枚数が名指しより多ければ、残りは枚数で出す', () => {
-        expect(texts(looked('先攻', ['置いてある'], 3))).toEqual(['相手の手札を見た：テスト・置いてある ほか 2 枚'])
+        expect(texts(looked('先攻', ['置いてある'], 3))).toEqual(['相手の手札を見た：テスト・置いてあるほか2枚'])
       })
 
       it('0 枚を見たときは、0 枚と出す', () => {
-        expect(texts(looked('先攻', []))).toEqual(['相手の手札を見た：0 枚'])
+        expect(texts(looked('先攻', []))).toEqual(['相手の手札を見た：0枚'])
       })
 
       it('行の持ち主は見た側である', () => {
@@ -1610,11 +1610,11 @@ describe('操作ログ', () => {
         withLog({ kind: '命令を実行した', controller, instruction: { kind: '山札をシャッフルする', withPlan } })
 
       it('見た側には「山札を見た」と枚数だけが出る', () => {
-        expect(texts(read('先攻', 32))).toEqual(['山札を見た：32 枚'])
+        expect(texts(read('先攻', 32))).toEqual(['山札を見た：32枚'])
       })
 
       it('相手には「相手が山札を見た」と枚数だけが出る', () => {
-        expect(texts(read('後攻', 32))).toEqual(['相手が山札を見た：32 枚'])
+        expect(texts(read('後攻', 32))).toEqual(['相手が山札を見た：32枚'])
       })
 
       it('シャッフルしたことは、持ち主ごとに出る', () => {
@@ -1772,7 +1772,7 @@ describe('操作ログ', () => {
         { kind: 'ダメージを受けた', player: '後攻', amount: 2 },
       )
 
-      expect(texts(board)).toEqual(['ダメージ 2 を受けた', '（表示できないログ）', 'ダメージ 1 を受けた'])
+      expect(texts(board)).toEqual(['ダメージ2を受けた', '（表示できないログ）', 'ダメージ1を受けた'])
     })
 
     /** できごとの種類は読めても、中の命令の種類を知らないことがある。同じ行にする。 */
@@ -2267,13 +2267,13 @@ describe('フェイズ・ターンの切り替わり', () => {
 
   it('ターン数だけ変わっていれば、ターンの見出しだけ出る', () => {
     expect(transitionViews(moved(start, { ...start, turn: 2 }), board)).toEqual([
-      { heading: '第 2 ターン：自分のターン' },
+      { heading: '第2ターン：自分のターン' },
     ])
   })
 
   it('手番が変わっていれば、ターン数が同じでもターンの見出しが出る', () => {
     expect(transitionViews(moved(start, { ...start, active: '後攻' }), board)).toEqual([
-      { heading: '第 1 ターン：相手のターン' },
+      { heading: '第1ターン：相手のターン' },
     ])
   })
 
@@ -2281,14 +2281,14 @@ describe('フェイズ・ターンの切り替わり', () => {
     const opponentView = emptyBoard('後攻')
     const views = transitionViews(moved(start, { ...start, turn: 2, active: '先攻' }), opponentView)
 
-    expect(views).toEqual([{ heading: '第 2 ターン：相手のターン' }])
+    expect(views).toEqual([{ heading: '第2ターン：相手のターン' }])
   })
 
   /** 新しいターンは必ず最初のフェイズから始まる（`turn.ts` の `beginPhase`）。 */
   it('ターンが変わる時は、1 件のできごとからフェイズの見出しも一緒に出る', () => {
     const views = transitionViews(moved(start, { turn: 2, active: '後攻', phase: 'リリースフェイズ' }), board)
 
-    expect(views).toEqual([{ heading: '第 2 ターン：相手のターン' }, { heading: 'リリースフェイズ' }])
+    expect(views).toEqual([{ heading: '第2ターン：相手のターン' }, { heading: 'リリースフェイズ' }])
   })
 
   /**
