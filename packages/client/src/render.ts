@@ -1753,7 +1753,7 @@ export function peekElement(props: PeekProps): HTMLElement {
   return node
 }
 
-/** 画面の隅に置く、ターンとフェイズの 1 行（「第 3 ターン・メイン」）。 */
+/** 画面の隅に置く、ターンとフェイズの 1 行（「第3ターン・メイン」）。 */
 function phoneTurnLine(view: Pick<BoardView, 'turnNumber' | 'phases'>): string {
   const phase = view.phases.find((each) => each.status === '今')?.phase
 
