@@ -1178,6 +1178,9 @@ function describeShown(instance: CardInstance, candidates: readonly unknown[]): 
  * 呼んだ側は答えを 1 つ受け取り、それを末尾に足して**同じ盤面に対してもう一度呼ぶ**。エンジンは
  * 純粋なので、同じ盤面と同じ答えの並びからは必ず同じところまで進む。
  *
+ * 答えが候補の範囲外のときと、行動が終わっても答えが余ったときは、例外を投げる。どちらも、
+ * 答えの並びがこの盤面と合っていないことを表す（ADR-0053）。
+ *
  * 途中で止めて待てるようにエンジンを作り替えるかわりに、やり直している。1 つの行動あたりの
  * 選択は多くて数回なので、やり直しの費用は問題にならない。
  */
@@ -1212,7 +1215,13 @@ export function applyWithAnswers(
   }
 
   try {
-    return { kind: '進んだ', state: applyLegalAction(state, action, chooser) }
+    const advanced = applyLegalAction(state, action, chooser)
+    // 対戦の最中は、選んでほしいと返したところで答えを 1 つ足すだけなので、余らない。余るのは、
+    // 記録した時より聞かれる選択が減った打ち直しである（#337）。黙って進めると、打った人が
+    // 知らない盤面になる。
+    if (remaining.length > 0) throw new Error(`行動が終わっても答えが余った: ${remaining.length} 個`)
+
+    return { kind: '進んだ', state: advanced }
   } catch (thrown) {
     if (isChoiceNeeded(thrown)) return { kind: '選んでほしい', choice: thrown.choice, board: thrown.board }
 

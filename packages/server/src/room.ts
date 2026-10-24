@@ -355,8 +355,8 @@ export function restore(
  * 作り直さずに捨てた対戦（`restore`）。
  *
  * 理由は、決まった言い回しか、投げられた例外のメッセージである。エンジンが自分で投げる
- * メッセージが含むのは、行えなかった理由の種類か、答えの番号だけで、手札・カード名などの
- * 対戦の中身は含まない。
+ * メッセージが含むのは、行えなかった理由の種類か、答えの番号か、余った答えの数だけで、
+ * 手札・カード名などの対戦の中身は含まない。
  *
  * 想定外の例外（エンジンの不具合で起きる `TypeError` など）も、メッセージをそのまま使う。
  * そのメッセージは実行環境が作るので、読もうとしたキー（カードの識別子など）が入りうる。
@@ -397,8 +397,8 @@ function replay(stored: StoredDuel, source: DeckSource): Replayed {
   for (const step of stored.steps) {
     const progress = applyWithAnswers(state, step.action, step.answers)
     // 答えが足りないなら、そこから先は作り直せない。**途中まで作った盤面は使わない**——打った
-    // 人が知らない盤面を席に出すことになる。行えない行動や範囲外の答えは、エンジンが例外を
-    // 投げる（`replayCaught`）。
+    // 人が知らない盤面を席に出すことになる。行えない行動、範囲外の答え、余った答えは、エンジンが
+    // 例外を投げる（`replayCaught`）。
     if (progress.kind !== '進んだ') return { kind: '捨てた', reason: '答えが足りない' }
 
     state = progress.state
