@@ -1587,6 +1587,23 @@ describe('記録から立て直す', () => {
     expect(skipped).toEqual([{ code: 'こわれた', reason: '合法手のはずが行えなかった: 行える時ではない' }])
   })
 
+  /**
+   * #337。答えの番号が新しい候補の範囲に収まると、例外にならずに違うところへ進む。そのうち、
+   * 聞かれる選択が減って答えが余るものは、作り直さない。
+   */
+  it('打ち直しで答えが余った対戦は、作り直さない', () => {
+    const [record] = storedFrom(started())
+    if (record === undefined) throw new Error('記録があるはずだった')
+    // 優先権の放棄は何も選ばせないので、記録に残った答えは使われずに余る。
+    const leftover = { action: { kind: '優先権を放棄する' }, answers: [0] } as const
+    const skipped: SkippedDuel[] = []
+
+    const restored = restore([{ ...record, steps: [leftover] }], DECKS, (skip) => skipped.push(skip))
+
+    expect(restored.size).toBe(0)
+    expect(skipped).toEqual([{ code: CODE, reason: '行動が終わっても答えが余った: 1 個' }])
+  })
+
   it('引けないカードで作り直せなかった対戦も、飛ばしたと知らせる', () => {
     const withoutCards = deckSourceFrom({
       pool: { 'TEST-0': CARDS['TEST-0'] as Card },

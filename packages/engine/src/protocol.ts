@@ -1212,7 +1212,13 @@ export function applyWithAnswers(
   }
 
   try {
-    return { kind: '進んだ', state: applyLegalAction(state, action, chooser) }
+    const advanced = applyLegalAction(state, action, chooser)
+    // 対戦の最中は、選んでほしいと返したところで答えを 1 つ足すだけなので、余らない。余るのは、
+    // 記録した時より聞かれる選択が減った打ち直しである（#337）。黙って進めると、打った人が
+    // 知らない盤面になる。
+    if (remaining.length > 0) throw new Error(`行動が終わっても答えが余った: ${remaining.length} 個`)
+
+    return { kind: '進んだ', state: advanced }
   } catch (thrown) {
     if (isChoiceNeeded(thrown)) return { kind: '選んでほしい', choice: thrown.choice, board: thrown.board }
 

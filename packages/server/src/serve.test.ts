@@ -679,6 +679,9 @@ describe('作り直せない対戦が置き場に残っているとき', () => {
       started('こわれた', 'あ', 'い'),
       // 始まってすぐは優先権の放棄しか行えないので、エネルギーを置くのは合法手のはずが行えない。
       { kind: '打たれた', code: 'こわれた', action: { kind: 'エネルギーを置く', card: '先攻-0' }, answers: [] },
+      // #337。優先権の放棄は何も選ばせないので、記録に残った答えが余る。
+      started('ずれた', 'お', 'か'),
+      { kind: '打たれた', code: 'ずれた', action: { kind: '優先権を放棄する' }, answers: [0] },
       started('ぶじな', 'う', 'え'),
     ])
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -688,9 +691,10 @@ describe('作り直せない対戦が置き場に残っているとき', () => {
 
       expect(logged.mock.calls).toEqual([
         ['記録した対戦を作り直せませんでした:', 'こわれた', '合法手のはずが行えなかった: 行える時ではない'],
+        ['記録した対戦を作り直せませんでした:', 'ずれた', '行動が終わっても答えが余った: 1 個'],
       ])
       // 記録は消さず、閉じもしない（ADR-0018）。後から調べられるように、開いたまま残す。
-      expect(store.openDuels().map((duel) => duel.code)).toEqual(['こわれた', 'ぶじな'])
+      expect(store.openDuels().map((duel) => duel.code)).toEqual(['こわれた', 'ずれた', 'ぶじな'])
       // 作り直した部屋には、席に着いていた人が戻れる。
       const client = new Client(server.port, 'う')
       await client.opened()

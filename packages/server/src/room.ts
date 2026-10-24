@@ -397,8 +397,8 @@ function replay(stored: StoredDuel, source: DeckSource): Replayed {
   for (const step of stored.steps) {
     const progress = applyWithAnswers(state, step.action, step.answers)
     // 答えが足りないなら、そこから先は作り直せない。**途中まで作った盤面は使わない**——打った
-    // 人が知らない盤面を席に出すことになる。行えない行動や範囲外の答えは、エンジンが例外を
-    // 投げる（`replayCaught`）。
+    // 人が知らない盤面を席に出すことになる。行えない行動、範囲外の答え、余った答えは、エンジンが
+    // 例外を投げる（`replayCaught`）。
     if (progress.kind !== '進んだ') return { kind: '捨てた', reason: '答えが足りない' }
 
     state = progress.state

@@ -167,6 +167,18 @@ describe('答えの並びで行動を適用する', () => {
     expect(() => applyWithAnswers(beforePlanning(), PLANNING, ['選ばない'])).toThrow()
   })
 
+  /**
+   * #337。答えが余るのは、記録した時と違うところへ進んだ時である。ルールを変えた後に変える前の
+   * 記録を打ち直すと、聞かれる選択が減って起こる。そのまま進めると、打った人が知らない盤面になる。
+   */
+  it('行動が終わっても答えが余ったら止まる', () => {
+    expect(() => applyWithAnswers(beforePlanning(), PLANNING, [1, 0])).toThrow('答えが余った')
+  })
+
+  it('選択の無い行動に答えが渡されたら止まる', () => {
+    expect(() => applyWithAnswers(beforePlanning(), { kind: '優先権を放棄する' }, [0])).toThrow('答えが余った')
+  })
+
   it('選んでほしいことは JSON にして戻しても変わらない', () => {
     const progress = applyWithAnswers(beforePlanning(), PLANNING, [])
 
