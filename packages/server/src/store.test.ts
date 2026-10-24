@@ -191,6 +191,20 @@ describe('置き場（ADR-0018）', () => {
     store.close()
   })
 
+  /** #308。作り直せなかった記録は開いたまま残す。その合言葉は空いているので、また使われうる。 */
+  it('作り直せずに残した記録は、同じ合言葉の新しい対戦が閉じても、開いたまま残る', () => {
+    const store = openStore(':memory:')
+    new Table(store).start().passes(4)
+    const [left] = store.openDuels()
+
+    // 立て直して、その対戦を作り直せなかったところ。部屋が無いので、同じ合言葉でまた始まる。
+    const table = new Table(store).start()
+    table.send('あ', { kind: 'ロビーに戻る' }, new Set(['あ']))
+
+    expect(store.openDuels()).toEqual([left])
+    store.close()
+  })
+
   /** ADR-0021。立て直した部屋も同じルールになる（`room.ts` の `restore`）。 */
   it('部屋のルールが記録に残る', () => {
     const store = openStore(':memory:')

@@ -416,7 +416,9 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const insertStep = db.prepare('insert into steps (duel, ordinal, action, answers) values (?, ?, ?, ?)')
-  const closeDuel = db.prepare('update duels set closed_at = ? where code = ? and closed_at is null')
+  // 合言葉ではなく行番号で閉じる。作り直せずに開いたまま残した、同じ合言葉の古い行（`room.ts`
+  // の `restore`）まで閉じないため（#308）。
+  const closeDuel = db.prepare('update duels set closed_at = ? where id = ? and closed_at is null')
   const openRows = db.prepare('select * from duels where closed_at is null order by id')
   const stepRows = db.prepare('select action, answers from steps where duel = ? order by ordinal')
   const stepCount = db.prepare('select count(*) as n from steps where duel = ?')
@@ -529,7 +531,8 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
         return
       }
       case '閉じた': {
-        closeDuel.run(now(), record.code)
+        const duel = openIds.get(record.code)
+        if (duel !== undefined) closeDuel.run(now(), duel)
         openIds.delete(record.code)
         written.delete(record.code)
         return

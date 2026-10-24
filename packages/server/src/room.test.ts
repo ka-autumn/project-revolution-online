@@ -28,7 +28,7 @@ import type {
 import { deckSourceFrom } from './deck.js'
 import type { RestrictionList } from './deck.js'
 import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room.js'
-import type { DeckSource, Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms } from './room.js'
+import type { DeckSource, Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms, SkippedDuel } from './room.js'
 
 /**
  * 部屋を、メッセージだけで動かして確かめる。
@@ -1560,6 +1560,44 @@ describe('記録から立て直す', () => {
     })
 
     expect(restore(storedFrom(started()), withoutCards).size).toBe(0)
+  })
+
+  /**
+   * #308。ルールを変えた後に、変える前の記録を打ち直すと、エンジンが例外を投げうる。1 つの対戦の
+   * 例外で、ほかの部屋まで作り直せなくなってはいけない。
+   */
+  it('打ち直しで例外を受けた対戦だけを飛ばし、ほかの部屋は作り直す', () => {
+    const [record] = storedFrom(started())
+    if (record === undefined) throw new Error('記録があるはずだった')
+    // 始まってすぐは優先権の放棄しか行えないので、エネルギーを置くのは合法手のはずが行えない。
+    const impossible = { action: { kind: 'エネルギーを置く', card: '先攻-0' }, answers: [] } as const
+    const skipped: SkippedDuel[] = []
+
+    const restored = restore(
+      [
+        { ...record, code: 'まえ' },
+        { ...record, code: 'こわれた', steps: [impossible] },
+        { ...record, code: 'あと' },
+      ],
+      DECKS,
+      (skip) => skipped.push(skip),
+    )
+
+    expect([...restored.keys()]).toEqual(['まえ', 'あと'])
+    expect(skipped).toEqual([{ code: 'こわれた', reason: '合法手のはずが行えなかった: 行える時ではない' }])
+  })
+
+  it('引けないカードで作り直せなかった対戦も、飛ばしたと知らせる', () => {
+    const withoutCards = deckSourceFrom({
+      pool: { 'TEST-0': CARDS['TEST-0'] as Card },
+      presets: [{ id: '既製1', name: 'ひとつめ', cards: ['TEST-0'] }],
+      restrictions: [],
+    })
+    const skipped: SkippedDuel[] = []
+
+    restore(storedFrom(started()), withoutCards, (skip) => skipped.push(skip))
+
+    expect(skipped).toEqual([{ code: CODE, reason: 'デッキが引けない' }])
   })
 })
 

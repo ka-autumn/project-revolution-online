@@ -331,43 +331,81 @@ export function emptyRooms(): Rooms {
  * **作り直せなかった対戦は捨てる。消すのではない。** 記録は置き場に残っており、戻す先の部屋が
  * できないだけである。使われていたカードがプールから取り下げられていれば、同じところへ進まない
  * ——**これは避けられない**（ADR-0018）。
+ *
+ * 捨てた対戦は `skipped` で知らせる（#308）。受けた側がログに出す。ルールの結果を変えた
+ * サーバで、変える前の記録を打ち直すと、エンジンが例外を投げうる。例外も捨てる理由の 1 つ
+ * として受け止める——受け止めなければ、1 つの対戦のために立ち上がれなくなる。
  */
-export function restore(stored: readonly StoredDuel[], decks: DeckSource): Rooms {
+export function restore(
+  stored: readonly StoredDuel[],
+  decks: DeckSource,
+  skipped: (skip: SkippedDuel) => void = () => {},
+): Rooms {
   const rooms = new Map<RoomCode, Room>()
   for (const duel of stored) {
-    const room = replay(duel, decks)
-    if (room !== undefined) rooms.set(room.code, room)
+    const replayed = replayCaught(duel, decks)
+    if (replayed.kind === '作り直した') rooms.set(replayed.room.code, replayed.room)
+    else skipped({ code: duel.code, reason: replayed.reason })
   }
 
   return rooms
 }
 
-/** 記録した入力を打ち直して部屋を作る。同じところへ進まなければ `undefined`。 */
-function replay(stored: StoredDuel, source: DeckSource): Room | undefined {
+/**
+ * 作り直さずに捨てた対戦（`restore`）。
+ *
+ * 理由は、決まった言い回しか、投げられた例外のメッセージである。エンジンが自分で投げる
+ * メッセージが含むのは、行えなかった理由の種類か、答えの番号だけで、手札・カード名などの
+ * 対戦の中身は含まない。
+ *
+ * 想定外の例外（エンジンの不具合で起きる `TypeError` など）も、メッセージをそのまま使う。
+ * そのメッセージは実行環境が作るので、読もうとしたキー（カードの識別子など）が入りうる。
+ * 種類の名前だけにしないのは、不具合を調べる手がかりを残すためである（#308）。
+ */
+export interface SkippedDuel {
+  readonly code: RoomCode
+  readonly reason: string
+}
+
+/** 打ち直した結果。作り直せなければ、その理由。 */
+type Replayed = { readonly kind: '作り直した'; readonly room: Room } | { readonly kind: '捨てた'; readonly reason: string }
+
+/** `replay` が投げたものも、捨てる理由にする。 */
+function replayCaught(stored: StoredDuel, source: DeckSource): Replayed {
+  try {
+    return replay(stored, source)
+  } catch (thrown) {
+    return { kind: '捨てた', reason: thrown instanceof Error ? thrown.message : '例外ではない値が投げられた' }
+  }
+}
+
+/** 記録した入力を打ち直して部屋を作る。同じところへ進まなければ、捨てる理由を返す。 */
+function replay(stored: StoredDuel, source: DeckSource): Replayed {
   // **記録が持っているデッキで打ち直す**（ADR-0021）。識別子の並びが残っているので、いま渡されて
   // いるものと突き合わせる必要は無い。並び順まで残すのは、それがシャッフルの入力そのもの
   // だからである（`prepareDuel`）。
   const first = source.from(stored.decks[0])
   const second = source.from(stored.decks[1])
   // 引けないカードを含むなら、その対戦は作り直せない。**記録は消さない**（ADR-0018）。
-  if (first === undefined || second === undefined) return undefined
+  if (first === undefined || second === undefined) return { kind: '捨てた', reason: 'デッキが引けない' }
 
   const decks: readonly [Deck, Deck] = [first.cards, second.cards]
   const prepared = prepareDuel({ decks, seed: stored.seed })
-  if (prepared.kind !== '準備完了') return undefined
+  if (prepared.kind !== '準備完了') return { kind: '捨てた', reason: '準備できない' }
 
   let state = prepared.state
   for (const step of stored.steps) {
     const progress = applyWithAnswers(state, step.action, step.answers)
-    // 答えが足りない、または行えない行動になったなら、そこから先は作り直せない。**途中まで
-    // 作った盤面は使わない**——打った人が知らない盤面を席に出すことになる。
-    if (progress.kind !== '進んだ') return undefined
+    // 答えが足りないなら、そこから先は作り直せない。**途中まで作った盤面は使わない**——打った
+    // 人が知らない盤面を席に出すことになる。行えない行動や範囲外の答えは、エンジンが例外を
+    // 投げる（`replayCaught`）。
+    if (progress.kind !== '進んだ') return { kind: '捨てた', reason: '答えが足りない' }
 
     state = progress.state
   }
 
   const seated = [stored.seats.先攻, stored.seats.後攻]
-  return {
+  const room: Room = {
     code: stored.code,
     name: stored.name,
     // 席に着いた後の部屋なので、選びかけのデッキは持たない。
@@ -385,6 +423,7 @@ function replay(stored: StoredDuel, source: DeckSource): Room | undefined {
     },
     cpu: stored.cpu,
   }
+  return { kind: '作り直した', room }
 }
 
 /**

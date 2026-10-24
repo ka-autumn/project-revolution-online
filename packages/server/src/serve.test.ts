@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WebSocket } from 'ws'
 import { NOT_SIGNED_IN, SHARE_PATH_PREFIX, SIGN_IN_PATH, defineStrategy, defineUnit } from '@revolution/engine'
 import type { Card, DeckId, FromClient, PublicShare, ToClient } from '@revolution/engine'
@@ -653,6 +653,54 @@ describe('生きているかを確かめる', () => {
     // 黙っている間は、落とされたことも降りてこない。読み取りを戻したところで閉じたと分かる。
     client.answersAgain()
     await client.closed()
+  })
+})
+
+/**
+ * #308。置き場に、打ち直すとエンジンが例外を投げる対戦が残っていても、立ち上がる。ルールの
+ * 結果を変えたサーバを、変える前の記録が残ったまま立て直すと起こる。
+ */
+describe('作り直せない対戦が置き場に残っているとき', () => {
+  it('立ち上がり、作り直さなかった対戦の合言葉と理由をログに出す', async () => {
+    const store = openStore(':memory:')
+    const cards = SUPPLY.presets[0]?.cards ?? []
+    const started = (code: string, first: string, second: string) =>
+      ({
+        kind: '始まった',
+        code,
+        name: code,
+        seats: { 先攻: first, 後攻: second },
+        cpu: undefined,
+        seed: 20260816,
+        decks: [cards, cards],
+        rules: { format: '構築戦', restriction: undefined },
+      }) as const
+    store.write([
+      started('こわれた', 'あ', 'い'),
+      // 始まってすぐは優先権の放棄しか行えないので、エネルギーを置くのは合法手のはずが行えない。
+      { kind: '打たれた', code: 'こわれた', action: { kind: 'エネルギーを置く', card: '先攻-0' }, answers: [] },
+      started('ぶじな', 'う', 'え'),
+    ])
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      const server = await serve({ port: 0, setup, decks, deckChoices, supply: SUPPLY, store })
+
+      expect(logged.mock.calls).toEqual([
+        ['記録した対戦を作り直せませんでした:', 'こわれた', '合法手のはずが行えなかった: 行える時ではない'],
+      ])
+      // 記録は消さず、閉じもしない（ADR-0018）。後から調べられるように、開いたまま残す。
+      expect(store.openDuels().map((duel) => duel.code)).toEqual(['こわれた', 'ぶじな'])
+      // 作り直した部屋には、席に着いていた人が戻れる。
+      const client = new Client(server.port, 'う')
+      await client.opened()
+      expect((await client.waitFor('盤面')).kind).toBe('盤面')
+      await client.close()
+      await server.close()
+    } finally {
+      logged.mockRestore()
+      store.close()
+    }
   })
 })
 
