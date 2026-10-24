@@ -689,6 +689,8 @@ describe('作り直せない対戦が置き場に残っているとき', () => {
       expect(logged.mock.calls).toEqual([
         ['記録した対戦を作り直せませんでした:', 'こわれた', '合法手のはずが行えなかった: 行える時ではない'],
       ])
+      // 記録は消さず、閉じもしない（ADR-0018）。後から調べられるように、開いたまま残す。
+      expect(store.openDuels().map((duel) => duel.code)).toEqual(['こわれた', 'ぶじな'])
       // 作り直した部屋には、席に着いていた人が戻れる。
       const client = new Client(server.port, 'う')
       await client.opened()
