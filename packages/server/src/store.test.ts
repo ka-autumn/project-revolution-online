@@ -7,7 +7,7 @@ import { choose, defineStrategy, defineUnit } from '@revolution/engine'
 import type { Card, FromClient } from '@revolution/engine'
 import { deckSourceFrom } from './deck.js'
 import { emptyRooms, receive, restore, roomOf } from './room.js'
-import type { DeckSource, ParticipantId, RoomSetup, Rooms } from './room.js'
+import type { DeckSource, OpenDuel, ParticipantId, RoomSetup, Rooms } from './room.js'
 import { openStore } from './store.js'
 import type { Store } from './store.js'
 
@@ -105,6 +105,14 @@ class Table {
   }
 }
 
+/** 置き場の開いている対戦。読めない記録を作っていない所で使い、混ざっていたら落とす（#342）。 */
+function readableDuels(store: Store): Extract<OpenDuel, { kind: '読めた' }>[] {
+  return store.openDuels().map((duel) => {
+    if (duel.kind === '読めない') throw new Error(`読めない記録は無いはずだった: ${duel.code}`)
+    return duel
+  })
+}
+
 /** その部屋のいまの盤面。作り直したものと見比べるのに使う。 */
 function boardOf(rooms: Rooms, code = CODE): unknown {
   const room = rooms.get(code)
@@ -142,12 +150,12 @@ describe('置き場（ADR-0018）', () => {
     const table = new Table(store).start()
 
     // まだ 1 手も打っていないので、記録も空である。
-    const [before] = store.openDuels()
+    const [before] = readableDuels(store)
     expect(before?.steps).toEqual([])
 
     // 1 手だけ打つ。答えを待たない行動なので、そこで 1 手として書かれる。
     table.passes(1)
-    const [after] = store.openDuels()
+    const [after] = readableDuels(store)
     expect(after?.steps).toHaveLength(1)
     store.close()
   })
@@ -173,7 +181,7 @@ describe('置き場（ADR-0018）', () => {
     // である（`room.ts` の `unusedCode`）ので、これは普通に起こる。
     table.start()
 
-    const open = store.openDuels()
+    const open = readableDuels(store)
     expect(open).toHaveLength(1)
     expect(open[0]?.steps).toEqual([])
     store.close()
@@ -195,7 +203,7 @@ describe('置き場（ADR-0018）', () => {
   it('作り直せずに残した記録は、同じ合言葉の新しい対戦が閉じても、開いたまま残る', () => {
     const store = openStore(':memory:')
     new Table(store).start().passes(4)
-    const [left] = store.openDuels()
+    const [left] = readableDuels(store)
 
     // 立て直して、その対戦を作り直せなかったところ。部屋が無いので、同じ合言葉でまた始まる。
     const table = new Table(store).start()
@@ -203,6 +211,50 @@ describe('置き場（ADR-0018）', () => {
 
     expect(store.openDuels()).toEqual([left])
     store.close()
+  })
+
+  /**
+   * #342。JSON として読めない列は、置き場を手で直した時か、記録の形を変えた後に古い行を読んだ
+   * 時にできる。ここでは書き終えた行を直接書き換えて作る。
+   */
+  it('JSON として読めない列がある対戦は、合言葉と読めなかった列だけで返り、ほかの対戦は読める', () => {
+    const path = `${tmpdir()}/revolution-unreadable-${randomUUID()}.sqlite`
+    const store = openStore(path)
+    const pass = { action: { kind: '優先権を放棄する' }, answers: [] } as const
+    const started = (code: string) =>
+      ({
+        kind: '始まった',
+        code,
+        name: code,
+        seats: { 先攻: 'あ', 後攻: 'い' },
+        cpu: undefined,
+        seed: SETUP.seed,
+        decks: [DECK_KEYS, DECK_KEYS],
+        rules: { format: '構築戦', restriction: undefined },
+      }) as const
+    store.write(
+      ['でっき', 'こうどう', 'こたえ', 'ぶじな'].flatMap((code) => [
+        started(code),
+        { kind: '打たれた', code, ...pass },
+        { kind: '打たれた', code, ...pass },
+      ]),
+    )
+    const outside = new DatabaseSync(path)
+    outside.prepare("update duels set decks = '[[\"TEST-0\"' where code = 'でっき'").run()
+    const stepOf = "duel = (select id from duels where code = ?) and ordinal = ?"
+    outside.prepare(`update steps set action = '{"kind":' where ${stepOf}`).run('こうどう', 1)
+    outside.prepare(`update steps set answers = '' where ${stepOf}`).run('こたえ', 0)
+    outside.close()
+
+    const [deck, action, answers, intact] = store.openDuels()
+
+    // 読めなかった文字列は持たない。理由はログに出るので、対戦の中身が混ざりうる。
+    expect(deck).toEqual({ kind: '読めない', code: 'でっき', reason: '記録が読めない: decks' })
+    expect(action).toEqual({ kind: '読めない', code: 'こうどう', reason: '記録が読めない: action（2 手目）' })
+    expect(answers).toEqual({ kind: '読めない', code: 'こたえ', reason: '記録が読めない: answers（1 手目）' })
+    expect(intact?.kind === '読めた' && intact.steps).toEqual([pass, pass])
+    store.close()
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
   })
 
   /** ADR-0021。立て直した部屋も同じルールになる（`room.ts` の `restore`）。 */
@@ -221,7 +273,7 @@ describe('置き場（ADR-0018）', () => {
       },
     ])
 
-    expect(store.openDuels()[0]?.rules).toEqual({ format: '構築戦', restriction: 'リスト1' })
+    expect(readableDuels(store)[0]?.rules).toEqual({ format: '構築戦', restriction: 'リスト1' })
     store.close()
   })
 
@@ -229,7 +281,7 @@ describe('置き場（ADR-0018）', () => {
     const store = openStore(':memory:')
     new Table(store).start()
 
-    expect(store.openDuels()[0]?.rules).toEqual({ format: '構築戦', restriction: undefined })
+    expect(readableDuels(store)[0]?.rules).toEqual({ format: '構築戦', restriction: undefined })
     store.close()
   })
 
@@ -237,7 +289,7 @@ describe('置き場（ADR-0018）', () => {
     const store = openStore(':memory:')
     new Table(store).send('あ', { kind: '部屋を作る', name: 'ひとり', against: 'CPU', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
 
-    const [duel] = store.openDuels()
+    const [duel] = readableDuels(store)
     expect(duel?.cpu).toBeDefined()
     // 部屋を作った時点で CPU が打てるところまで打っている（#175）。
     expect((duel?.steps.length ?? 0) > 0).toBe(true)
@@ -418,7 +470,7 @@ describe('表示名', () => {
 
     const store = openStore(path)
 
-    expect(store.openDuels()[0]?.rules).toEqual({ format: '構築戦', restriction: undefined })
+    expect(readableDuels(store)[0]?.rules).toEqual({ format: '構築戦', restriction: undefined })
     store.close()
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
   })
