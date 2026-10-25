@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import type { DeckId, RecipeKey, RecipeListOrder, RoomCode, ShareId, ShareKey, ShareVisibility } from '@revolution/engine'
 import type { DeckDraft, OwnedDeck } from './owned-deck.js'
 import type { StoredRecipeSummary, StoredShare } from './recipe.js'
-import type { DuelRecord, ParticipantId, StoredDuel } from './room.js'
+import type { DuelRecord, OpenDuel, ParticipantId, StoredDuel } from './room.js'
 
 /**
  * 書いたものが残る置き場（ADR-0018）。
@@ -149,6 +149,24 @@ function maybeInt(row: Row, key: string): number | undefined {
   return value === null || value === undefined ? undefined : int(row, key)
 }
 
+/** JSON の列が読めなかったこと（`json`）。メッセージがそのまま捨てる理由になる。 */
+class UnreadableColumn extends Error {}
+
+/**
+ * JSON の列を読む。読めなければ `UnreadableColumn` を投げる（#342）。
+ *
+ * 理由は列の名前までにして、読めなかった文字列を入れない。理由はログに出るので、文字列を
+ * 入れると、カードの識別子などの対戦の中身がログに混ざりうる。
+ */
+function json(row: Row, key: string, where = key): unknown {
+  const value = text(row, key)
+  try {
+    return JSON.parse(value)
+  } catch {
+    throw new UnreadableColumn(`記録が読めない: ${where}`)
+  }
+}
+
 function int(row: Row, key: string): number {
   const value = row[key]
   // `node:sqlite` は大きい整数を bigint で返すことがある。行番号もシードもここでは数として扱う。
@@ -260,8 +278,11 @@ export interface Store {
    * まだ閉じていない対戦。立て直したときにここから戻す（ADR-0018）。
    *
    * 閉じた対戦は返らない。**記録としては残っているが、戻す先の部屋が無い**（ADR-0017）。
+   *
+   * JSON として読めない列がある対戦も、落とさずに `読めない` として返す（#342）。1 つの対戦の
+   * ために、ほかの対戦まで戻せなくならないようにする。
    */
-  openDuels(): readonly StoredDuel[]
+  openDuels(): readonly OpenDuel[]
   /**
    * その身元に紐づく識別子。**初めてなら作る**（ADR-0019）。
    *
@@ -558,6 +579,42 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
   }
 
   /**
+   * 開いている対戦の 1 行を `OpenDuel` にする（ADR-0018）。
+   *
+   * JSON の列が読めなければ、合言葉と読めなかった列だけを返す（#342）。ここで落とすと、
+   * 1 つの対戦のために立ち上がれなくなる。
+   *
+   * JSON として読めた値の形（配列か、`kind` を持つか）までは確かめない。違う形の多くは打ち直しで
+   * 例外になって飛ばされる（`restore`）。黙って通る形も残るが、そういう行ができるのは置き場を
+   * 手で直した時か、記録の形を変えた時だけである（#342）。
+   */
+  function openDuelOf(row: Row): OpenDuel {
+    const code = text(row, 'code')
+    try {
+      return {
+        kind: '読めた',
+        code,
+        name: text(row, 'name'),
+        seed: int(row, 'seed'),
+        seats: { 先攻: text(row, 'first'), 後攻: text(row, 'second') },
+        cpu: maybeText(row, 'cpu'),
+        decks: json(row, 'decks') as StoredDuel['decks'],
+        rules: {
+          format: text(row, 'format') as StoredDuel['rules']['format'],
+          restriction: maybeText(row, 'restriction'),
+        },
+        steps: stepRows.all(int(row, 'id')).map((step, index) => ({
+          action: json(step, 'action', `action（${index + 1} 手目）`) as StoredDuel['steps'][number]['action'],
+          answers: json(step, 'answers', `answers（${index + 1} 手目）`) as StoredDuel['steps'][number]['answers'],
+        })),
+      }
+    } catch (thrown) {
+      if (thrown instanceof UnreadableColumn) return { kind: '読めない', code, reason: thrown.message }
+      throw thrown
+    }
+  }
+
+  /**
    * 「一覧に載せる」共有を、レシピごとに畳んで要約にし、指定した並びで返す（ADR-0022）。
    *
    * **一番新しいものの名前と解説を使う。** `publicShareRows` はレシピごとに新しい順で並んでいる
@@ -606,23 +663,7 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
         throw error
       }
     },
-    openDuels: () =>
-      openRows.all().map((row) => ({
-        code: text(row, 'code'),
-        name: text(row, 'name'),
-        seed: int(row, 'seed'),
-        seats: { 先攻: text(row, 'first'), 後攻: text(row, 'second') },
-        cpu: maybeText(row, 'cpu'),
-        decks: JSON.parse(text(row, 'decks')) as StoredDuel['decks'],
-        rules: {
-          format: text(row, 'format') as StoredDuel['rules']['format'],
-          restriction: maybeText(row, 'restriction'),
-        },
-        steps: stepRows.all(int(row, 'id')).map((step) => ({
-          action: JSON.parse(text(step, 'action')) as StoredDuel['steps'][number]['action'],
-          answers: JSON.parse(text(step, 'answers')) as StoredDuel['steps'][number]['answers'],
-        })),
-      })),
+    openDuels: () => openRows.all().map(openDuelOf),
     identify: (issuer, subject) => {
       // 入れてから引く。**入っていれば入れないので**、初めてでも 2 度目でも同じ行に行き着く。
       insertIdentity.run(issuer, subject)

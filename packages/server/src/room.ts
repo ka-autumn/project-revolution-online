@@ -303,6 +303,21 @@ export interface StoredDuel {
   readonly steps: readonly { readonly action: LegalAction; readonly answers: readonly ChoiceAnswer[] }[]
 }
 
+/**
+ * 置き場から読み出した、開いている対戦 1 つ（`Store.openDuels`）。
+ *
+ * JSON として読めない列があれば、合言葉と理由だけになる（#342）。読み出しで落とさずに
+ * 返すのは、作り直さない対戦を飛ばしてログに出すのを `restore` の 1 か所に集めるためである。
+ */
+export type OpenDuel = (StoredDuel & { readonly kind: '読めた' }) | UnreadableDuel
+
+/** JSON として読めない列があった対戦（`OpenDuel`）。理由は列の名前までで、読めなかった文字列は持たない。 */
+export interface UnreadableDuel {
+  readonly kind: '読めない'
+  readonly code: RoomCode
+  readonly reason: string
+}
+
 /** メッセージ 1 つを受け取った結果。 */
 export interface RoomOutcome {
   readonly rooms: Rooms
@@ -334,15 +349,21 @@ export function emptyRooms(): Rooms {
  *
  * 捨てた対戦は `skipped` で知らせる（#308）。受けた側がログに出す。ルールの結果を変えた
  * サーバで、変える前の記録を打ち直すと、エンジンが例外を投げうる。例外も捨てる理由の 1 つ
- * として受け止める——受け止めなければ、1 つの対戦のために立ち上がれなくなる。
+ * として受け止める——受け止めなければ、1 つの対戦のために立ち上がれなくなる。置き場で
+ * JSON として読めなかった対戦も、同じく捨てて知らせる（#342）。
  */
 export function restore(
-  stored: readonly StoredDuel[],
+  stored: readonly OpenDuel[],
   decks: DeckSource,
   skipped: (skip: SkippedDuel) => void = () => {},
 ): Rooms {
   const rooms = new Map<RoomCode, Room>()
   for (const duel of stored) {
+    if (duel.kind === '読めない') {
+      skipped({ code: duel.code, reason: duel.reason })
+      continue
+    }
+
     const replayed = replayCaught(duel, decks)
     if (replayed.kind === '作り直した') rooms.set(replayed.room.code, replayed.room)
     else skipped({ code: duel.code, reason: replayed.reason })
@@ -354,9 +375,9 @@ export function restore(
 /**
  * 作り直さずに捨てた対戦（`restore`）。
  *
- * 理由は、決まった言い回しか、投げられた例外のメッセージである。エンジンが自分で投げる
- * メッセージが含むのは、行えなかった理由の種類か、答えの番号か、余った答えの数だけで、
- * 手札・カード名などの対戦の中身は含まない。
+ * 理由は、決まった言い回しか、投げられた例外のメッセージか、置き場で読めなかった列の名前
+ * （`UnreadableDuel`）である。エンジンが自分で投げるメッセージが含むのは、行えなかった理由の
+ * 種類か、答えの番号か、余った答えの数だけで、手札・カード名などの対戦の中身は含まない。
  *
  * 想定外の例外（エンジンの不具合で起きる `TypeError` など）も、メッセージをそのまま使う。
  * そのメッセージは実行環境が作るので、読もうとしたキー（カードの識別子など）が入りうる。

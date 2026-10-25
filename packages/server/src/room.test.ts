@@ -28,7 +28,7 @@ import type {
 import { deckSourceFrom } from './deck.js'
 import type { RestrictionList } from './deck.js'
 import { emptyRooms, lobbyOf, partnerOf, receive, restore, roomOf } from './room.js'
-import type { DeckSource, Delivery, ParticipantId, RoomOutcome, RoomSetup, Rooms, SkippedDuel } from './room.js'
+import type { DeckSource, Delivery, OpenDuel, ParticipantId, RoomOutcome, RoomSetup, Rooms, SkippedDuel } from './room.js'
 
 /**
  * 部屋を、メッセージだけで動かして確かめる。
@@ -1483,12 +1483,12 @@ describe('持ち込むデッキを選ぶ', () => {
 
 /** ADR-0018・ADR-0021。記録に残した識別子から、同じ対戦を作り直す。 */
 describe('記録から立て直す', () => {
-  /** 置き場から読み出した形（`StoredDuel`）に直す。書くところは `store.ts` にある。 */
-  function storedFrom(outcome: RoomOutcome): Parameters<typeof restore>[0] {
+  /** 置き場から読み出した形（`OpenDuel`）に直す。書くところは `store.ts` にある。 */
+  function storedFrom(outcome: RoomOutcome): Extract<OpenDuel, { kind: '読めた' }>[] {
     const started = outcome.records.find((each) => each.kind === '始まった')
     if (started?.kind !== '始まった') throw new Error('始まった記録があるはずだった')
 
-    return [{ ...started, steps: [] }]
+    return [{ ...started, kind: '読めた', steps: [] }]
   }
 
   it('記録が持っている識別子でデッキを組み直す', () => {
@@ -1538,7 +1538,7 @@ describe('記録から立て直す', () => {
     }
     expect(played).toBe(true)
 
-    const restored = restore([{ ...record, steps }], SHUFFLING_DECKS).get(record.code)?.duel?.state
+    const restored = restore([{ ...record, kind: '読めた', steps }], SHUFFLING_DECKS).get(record.code)?.duel?.state
 
     expect(restored).toBeDefined()
     for (const player of ['先攻', '後攻'] as const) {
@@ -1615,6 +1615,26 @@ describe('記録から立て直す', () => {
     restore(storedFrom(started()), withoutCards, (skip) => skipped.push(skip))
 
     expect(skipped).toEqual([{ code: CODE, reason: 'デッキが引けない' }])
+  })
+
+  /** #342。置き場で JSON として読めなかった対戦も、ほかの対戦を止めずに飛ばす。 */
+  it('置き場で読めなかった対戦は作り直さず、理由を知らせ、ほかの対戦は作り直す', () => {
+    const [record] = storedFrom(started())
+    if (record === undefined) throw new Error('記録があるはずだった')
+    const skipped: SkippedDuel[] = []
+
+    const restored = restore(
+      [
+        { ...record, code: 'まえ' },
+        { kind: '読めない', code: 'よめない', reason: '記録が読めない: decks' },
+        { ...record, code: 'あと' },
+      ],
+      DECKS,
+      (skip) => skipped.push(skip),
+    )
+
+    expect([...restored.keys()]).toEqual(['まえ', 'あと'])
+    expect(skipped).toEqual([{ code: 'よめない', reason: '記録が読めない: decks' }])
   })
 })
 
@@ -1814,12 +1834,12 @@ describe('部屋のルール', () => {
       return sending(emptyRooms(), 'あ', making('ひとり', 'CPU', { deck: '既製3', restriction }))
     }
 
-    /** 置き場から読み出した形（`StoredDuel`）に直す。書くところは `store.ts` にある。 */
-    function storedFrom(outcome: RoomOutcome): Parameters<typeof restore>[0] {
+    /** 置き場から読み出した形（`OpenDuel`）に直す。書くところは `store.ts` にある。 */
+    function storedFrom(outcome: RoomOutcome): Extract<OpenDuel, { kind: '読めた' }>[] {
       const record = outcome.records.find((each) => each.kind === '始まった')
       if (record?.kind !== '始まった') throw new Error('始まった記録があるはずだった')
 
-      return [{ ...record, steps: [] }]
+      return [{ ...record, kind: '読めた', steps: [] }]
     }
 
     /** 立て直す時に渡すもの。既製デッキは記録の側に並びが残っているので、要るのはリストだけである。 */

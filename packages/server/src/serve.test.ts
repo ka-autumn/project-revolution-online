@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto'
+import { rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WebSocket } from 'ws'
 import { NOT_SIGNED_IN, SHARE_PATH_PREFIX, SIGN_IN_PATH, defineStrategy, defineUnit } from '@revolution/engine'
@@ -7,7 +11,7 @@ import { deckChoicesOf, deckSourceFrom, restrictionChoicesOf } from './deck.js'
 import type { CardSupply } from './deck.js'
 import { OWNED_DECK_LIMIT, sortCards } from './owned-deck.js'
 import { SHARE_LIMIT } from './recipe.js'
-import type { RoomSetup } from './room.js'
+import type { OpenDuel, RoomSetup } from './room.js'
 import { serve } from './serve.js'
 import type { RunningServer, ServeOptions } from './serve.js'
 import { CALLBACK_PATH, createSignIn, digest } from './sign-in.js'
@@ -53,6 +57,14 @@ let created = 0
 const setup = (): RoomSetup => {
   created += 1
   return { seed: 20260816, code: `あたらしいへや${created}` }
+}
+
+/** 置き場の開いている対戦。読めない記録は作っていないので、混ざっていたら落とす（#342）。 */
+function readableDuels(store: Store): Extract<OpenDuel, { kind: '読めた' }>[] {
+  return store.openDuels().map((duel) => {
+    if (duel.kind === '読めない') throw new Error(`読めない記録は無いはずだった: ${duel.code}`)
+    return duel
+  })
 }
 
 const CODE = 'あいことば'
@@ -661,20 +673,21 @@ describe('生きているかを確かめる', () => {
  * 結果を変えたサーバを、変える前の記録が残ったまま立て直すと起こる。
  */
 describe('作り直せない対戦が置き場に残っているとき', () => {
+  const cards = SUPPLY.presets[0]?.cards ?? []
+  const started = (code: string, first: string, second: string) =>
+    ({
+      kind: '始まった',
+      code,
+      name: code,
+      seats: { 先攻: first, 後攻: second },
+      cpu: undefined,
+      seed: 20260816,
+      decks: [cards, cards],
+      rules: { format: '構築戦', restriction: undefined },
+    }) as const
+
   it('立ち上がり、作り直さなかった対戦の合言葉と理由をログに出す', async () => {
     const store = openStore(':memory:')
-    const cards = SUPPLY.presets[0]?.cards ?? []
-    const started = (code: string, first: string, second: string) =>
-      ({
-        kind: '始まった',
-        code,
-        name: code,
-        seats: { 先攻: first, 後攻: second },
-        cpu: undefined,
-        seed: 20260816,
-        decks: [cards, cards],
-        rules: { format: '構築戦', restriction: undefined },
-      }) as const
     store.write([
       started('こわれた', 'あ', 'い'),
       // 始まってすぐは優先権の放棄しか行えないので、エネルギーを置くのは合法手のはずが行えない。
@@ -704,6 +717,51 @@ describe('作り直せない対戦が置き場に残っているとき', () => {
     } finally {
       logged.mockRestore()
       store.close()
+    }
+  })
+
+  /**
+   * #342。サーバが書いた行は途中で切れないので、読めない列ができるのは置き場を手で直した時か、
+   * 記録の形を変えた後に古い行を読んだ時である。ここでは書き終えた行を直接書き換えて作る。
+   */
+  it('JSON として読めない列があっても立ち上がり、合言葉と読めなかった列だけをログに出す', async () => {
+    const path = `${tmpdir()}/revolution-unreadable-${randomUUID()}.sqlite`
+    const store = openStore(path)
+    const pass = { action: { kind: '優先権を放棄する' }, answers: [] } as const
+    store.write([
+      started('でっき', 'あ', 'い'),
+      started('こたえ', 'お', 'か'),
+      { kind: '打たれた', code: 'こたえ', ...pass },
+      { kind: '打たれた', code: 'こたえ', ...pass },
+      started('ぶじな', 'う', 'え'),
+    ])
+    // 書き終えた後で、外から書き換える。生の文字列はログに出ないことも、ここで確かめる。
+    const outside = new DatabaseSync(path)
+    outside.prepare("update duels set decks = '[\"TEST-0\", ' where code = 'でっき'").run()
+    outside
+      .prepare("update steps set answers = '[0,' where ordinal = 1 and duel = (select id from duels where code = 'こたえ')")
+      .run()
+    outside.close()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      const server = await serve({ port: 0, setup, decks, deckChoices, supply: SUPPLY, store })
+
+      expect(logged.mock.calls).toEqual([
+        ['記録した対戦を作り直せませんでした:', 'でっき', '記録が読めない: decks'],
+        ['記録した対戦を作り直せませんでした:', 'こたえ', '記録が読めない: answers（2 手目）'],
+      ])
+      // 読めない記録も消さず、閉じもしない（ADR-0018）。
+      expect(store.openDuels().map((duel) => duel.code)).toEqual(['でっき', 'こたえ', 'ぶじな'])
+      const client = new Client(server.port, 'う')
+      await client.opened()
+      expect((await client.waitFor('盤面')).kind).toBe('盤面')
+      await client.close()
+      await server.close()
+    } finally {
+      logged.mockRestore()
+      store.close()
+      for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
     }
   })
 })
@@ -1272,7 +1330,7 @@ describe('ログインの設定があるとき', () => {
 
       await seatWith(client, chosen)
 
-      const [duel] = store.openDuels()
+      const [duel] = readableDuels(store)
       // 席の順に並ぶ（`room.ts` の `start`）。作った人が先で、CPU が後である。
       expect(duel?.decks[0]).toEqual(store.decksOf(me).find((deck) => deck.id === chosen)?.cards)
       await client.close()
@@ -1494,7 +1552,7 @@ describe('ログインの設定があるとき', () => {
       other.send({ kind: '部屋に入る', room: 'あいことば', deck: undefined })
       await client.waitFor('席についた')
 
-      const started = store.openDuels().find((duel) => duel.code === 'あいことば')
+      const started = readableDuels(store).find((duel) => duel.code === 'あいことば')
       expect(started?.decks[0]).toEqual(store.decksOf(me).find((deck) => deck.id === second)?.cards)
       await other.close()
       await client.close()
@@ -1550,7 +1608,7 @@ describe('ログインの設定があるとき', () => {
         createAgainstCpu(client, { deck: mine, cpuDeck: theirs })
         await client.waitFor('席についた')
 
-        const [duel] = store.openDuels()
+        const [duel] = readableDuels(store)
         expect(duel?.decks[0]).toEqual(cardsOf(mine))
         expect(duel?.decks[1]).toEqual(cardsOf(theirs))
         await client.close()
@@ -1563,7 +1621,7 @@ describe('ログインの設定があるとき', () => {
         createAgainstCpu(client, { deck: mine, cpuDeck: mine })
         await client.waitFor('席についた')
 
-        const [duel] = store.openDuels()
+        const [duel] = readableDuels(store)
         expect(duel?.decks[1]).toEqual(cardsOf(mine))
         await client.close()
       })
@@ -1577,7 +1635,7 @@ describe('ログインの設定があるとき', () => {
         createAgainstCpu(client, { deck: second })
         await client.waitFor('席についた')
 
-        const [duel] = store.openDuels()
+        const [duel] = readableDuels(store)
         expect(duel?.decks[1]).toEqual(cardsOf(first))
         await client.close()
       })

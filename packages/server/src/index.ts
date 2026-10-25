@@ -28,6 +28,7 @@ export type {
   DeckSource,
   Delivery,
   DuelRecord,
+  OpenDuel,
   ParticipantId,
   RecordedRules,
   Room,
@@ -37,6 +38,7 @@ export type {
   Rooms,
   SeatedDeck,
   StoredDuel,
+  UnreadableDuel,
 } from './room.js'
 export { openStore } from './store.js'
 export type { Store } from './store.js'
