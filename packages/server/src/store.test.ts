@@ -257,6 +257,35 @@ describe('置き場（ADR-0018）', () => {
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
   })
 
+  /**
+   * #342。読めないとして返すのは、JSON として読めなかった時だけである。ほかの失敗まで受け止めると、
+   * 置き場の不具合が、対戦を 1 つ飛ばしただけに見えてしまう。
+   */
+  it('JSON の読み込みより前の失敗は、読めないとして返さずに投げる', () => {
+    const path = `${tmpdir()}/revolution-not-text-${randomUUID()}.sqlite`
+    const store = openStore(path)
+    store.write([
+      {
+        kind: '始まった',
+        code: CODE,
+        name: CODE,
+        seats: { 先攻: 'あ', 後攻: 'い' },
+        cpu: undefined,
+        seed: SETUP.seed,
+        decks: [DECK_KEYS, DECK_KEYS],
+        rules: { format: '構築戦', restriction: undefined },
+      },
+    ])
+    // text の列でも、数は文字列に直されて入る。直されずに残るバイト列で、文字列でない値を作る。
+    const outside = new DatabaseSync(path)
+    outside.prepare("update duels set decks = x'5b5d' where code = ?").run(CODE)
+    outside.close()
+
+    expect(() => store.openDuels()).toThrow(/decks が文字列ではない/)
+    store.close()
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  })
+
   /** ADR-0021。立て直した部屋も同じルールになる（`room.ts` の `restore`）。 */
   it('部屋のルールが記録に残る', () => {
     const store = openStore(':memory:')
