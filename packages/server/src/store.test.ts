@@ -248,7 +248,7 @@ describe('置き場（ADR-0018）', () => {
 
     const [deck, action, answers, intact] = store.openDuels()
 
-    // 読めなかった文字列は持たない。理由はログに出るので、対戦の中身が混ざりうる。
+    // 読めなかった文字列は持たない。理由はログに出るので、持たせると対戦の中身がログに混ざりうる。
     expect(deck).toEqual({ kind: '読めない', code: 'でっき', reason: '記録が読めない: decks' })
     expect(action).toEqual({ kind: '読めない', code: 'こうどう', reason: '記録が読めない: action（2 手目）' })
     expect(answers).toEqual({ kind: '読めない', code: 'こたえ', reason: '記録が読めない: answers（1 手目）' })

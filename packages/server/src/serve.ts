@@ -305,8 +305,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    * 引き直し（ADR-0021）、引けないカードを含んでいればその対戦は作り直さない。
    *
    * 作り直さなかった対戦は、置き場で読めなかったものも含めて、合言葉と理由をログに出す
-   * （#308、#342）。記録は置き場に残っている
-   * ので、後から調べられる。
+   * （#308、#342）。記録は置き場に残っているので、後から調べられる。
    */
   let rooms: Rooms =
     options.store === undefined

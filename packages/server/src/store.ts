@@ -155,8 +155,8 @@ class UnreadableColumn extends Error {}
 /**
  * JSON の列を読む。読めなければ `UnreadableColumn` を投げる（#342）。
  *
- * 理由は列の名前までにして、読めなかった文字列を入れない。理由はログに出るので、カードの
- * 識別子などの対戦の中身が混ざりうる。
+ * 理由は列の名前までにして、読めなかった文字列を入れない。理由はログに出るので、文字列を
+ * 入れると、カードの識別子などの対戦の中身がログに混ざりうる。
  */
 function json(row: Row, key: string, where = key): unknown {
   const value = text(row, key)
