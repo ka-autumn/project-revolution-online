@@ -1131,18 +1131,6 @@ function pendingChoice(duel: DuelInRoom, seat: Player): readonly Delivery[] {
   return [{ to: duel.seats[seat], message: { kind: '選んでほしい', choice: progress.choice } }]
 }
 
-/**
- * 選びかけている行動を戻せるか（#142）。
- *
- * 決めるのはエンジンである（`protocol.ts` の `describeChoice`）。**サーバはそれを尋ねるだけで、
- * 同じ判断を書かない。** 画面に載せる値（`WireChoice.mayGoBack`）と、ここで断るかどうかが
- * 食い違わないための形である。
- *
- * 選択がもう要らないところまで進んでいれば、戻る話にならないので戻れることにする。
- */
-function mayGoBack(duel: DuelInRoom): boolean {
-  return pendingProgress(duel)?.choice.mayGoBack ?? true
-}
 
 /**
  * 2 人が揃ったのでデュエルを始める（総合ルール 第3部 第1章）。
@@ -1356,7 +1344,8 @@ type Rewind = 'ひとつ' | 'すべて'
  * （`mayGoBack`）が決める。行動を始めてから新しく見えたものがあるか、相手の手札を見たことと山札を読んだこと
  * （ADR-0041・ADR-0042）がログにあれば、戻せない。ここは、それをそのまま尋ねて従うだけである。
  *
- * まだ 1 つも答えていなければ、`ひとつ` でも行動そのものを取り消す。戻る先が無いためである。
+ * 続けて答えた数が 0 なら、`ひとつ` でも行動そのものを取り消す。戻る先が無いためである。ただし取り消せる
+ * のは、行動した側が、行動していない側の答えを受け取る前だけである（`mayCancel`、ADR-0052）。
  */
 function rewind(rooms: Rooms, participant: ParticipantId, how: Rewind): RoomOutcome {
   const room = roomOf(rooms, participant)
@@ -1366,14 +1355,33 @@ function rewind(rooms: Rooms, participant: ParticipantId, how: Rewind): RoomOutc
   const pending = duel.pending
   if (pending === undefined) return refuse(rooms, participant, '選ぶところではない')
   if (seatOf(duel, participant) !== pending.player) return refuse(rooms, participant, '選ぶ人ではない')
-  if (!mayGoBack(duel)) return refuse(rooms, participant, '見てしまったので戻れない')
 
-  if (how === 'すべて' || pending.answers.length === 0) {
-    const cleared: DuelInRoom = { ...duel, pending: undefined }
-    return { rooms: withRoom(rooms, { ...room, duel: cleared }), deliveries: boards(cleared), records: [] }
+  // 戻れるか・取り消せるかを決めるのはエンジンである（`protocol.ts` の `describeChoice`）。**ここは
+  // それを尋ねて従うだけで、自分では数えない。** 画面に載せる値（`WireChoice`）と、ここで断るかどうかが
+  // 食い違わないための形である（#142、ADR-0052）。選択がもう要らないところまで進んでいれば、戻る話に
+  // ならない。
+  const choice = pendingProgress(duel)?.choice
+  if (choice === undefined) return refuse(rooms, participant, '選ぶところではない')
+
+  const actor = duel.state.turn.priority
+  // 続けて答えた分があれば、`ひとつ` はその直前の答えを戻す。
+  if (how === 'ひとつ' && choice.answered > 0) {
+    // 行動を始めてから見てしまったものがあれば、戻せない。
+    if (!choice.mayGoBack) return refuse(rooms, participant, '見てしまったので戻れない')
+
+    return advance(rooms, room, duel, { ...pending, answers: pending.answers.slice(0, -1) })
   }
 
-  return advance(rooms, room, duel, { ...pending, answers: pending.answers.slice(0, -1) })
+  // 行動ごと取り消す（`ひとつ` で戻る答えが無い時と、`すべて`）。取り消せるのは、行動した側が、行動して
+  // いない側の答えを受け取る前だけである。行動していない側には、取り消すものも、戻す自分の答えも無い。
+  // 行動した側が取り消せないのは、相手が答えた後だからである。
+  if (!choice.mayCancel) {
+    return refuse(rooms, participant, pending.player === actor ? '相手が答えたので戻れない' : '戻せる答えが無い')
+  }
+  if (!choice.mayGoBack) return refuse(rooms, participant, '見てしまったので戻れない')
+
+  const cleared: DuelInRoom = { ...duel, pending: undefined }
+  return { rooms: withRoom(rooms, { ...room, duel: cleared }), deliveries: boards(cleared), records: [] }
 }
 
 /**

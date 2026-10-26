@@ -6,11 +6,13 @@ import {
   choose,
   defineStrategy,
   defineUnit,
+  discardOpponentHand,
   drawCards,
   legalActions,
   placeTopOfLibrary,
   prepareDuel,
   shuffleLibrary,
+  triggeredAbility,
 } from '@revolution/engine'
 import type {
   Card,
@@ -145,6 +147,47 @@ const SHUFFLING: Card = defineStrategy({
 
 /** 2 度選ばせるストラテジーを、シャッフルするものに差し替えたまとまり。ほかは同じ。 */
 const SHUFFLING_DECKS = deckSource({ ...CARDS, 'TEST-S': SHUFFLING })
+
+/**
+ * 味方を選び、相手に 2 枚捨てさせ、また選ぶストラテジー（ADR-0052）。1 つの行動の中で選ぶ人が
+ * 行動した側 → 相手 → 行動した側と入れ替わる場面を作る。
+ */
+const ALTERNATING_NAME = 'テスト・部屋の交互'
+
+const ALTERNATING: Card = defineStrategy({
+  name: ALTERNATING_NAME,
+  level: 0,
+  effect: function* () {
+    yield* choose(['ア', 'イ'])
+    yield* discardOpponentHand(2)
+    yield* choose(['ウ', 'エ'])
+  },
+})
+
+/** 2 度選ばせるストラテジーを、選ぶ人が入れ替わるものに差し替えたまとまり。ほかは同じ。 */
+const ALTERNATING_DECKS = deckSource({ ...CARDS, 'TEST-S': ALTERNATING })
+
+/**
+ * 登場した時、相手に 2 枚捨てさせるユニット。能力はバンクを経由して解決される（総合ルール 第4部
+ * 第8章 1-1）ので、解決するのは優先権を放棄した相手の行動になる。
+ */
+const WITTY_NAME = 'テスト・部屋の登場で捨てさせる'
+
+const WITTY: Card = defineUnit({
+  name: WITTY_NAME,
+  level: 0,
+  bp: 100,
+  sp: 100,
+  moveIcon: ['上'],
+  abilities: [
+    triggeredAbility('登場した時', function* () {
+      yield* discardOpponentHand(2)
+    }),
+  ],
+})
+
+/** 2 度選ばせるストラテジーを、登場した時に捨てさせるユニットに差し替えたまとまり。ほかは同じ。 */
+const WITTY_DECKS = deckSource({ ...CARDS, 'TEST-S': WITTY })
 
 const CODE = 'あいことば'
 
@@ -1000,6 +1043,104 @@ describe('見てしまったら戻れない', () => {
 })
 
 /**
+ * ADR-0052。1 つの行動の途中で選ぶ人が入れ替わる時、行動していない側は自分が続けて答えた分の中だけ
+ * 戻れる。行動した側は、行動していない側が答えた後は、それより前へ戻れない。サーバはエンジンの
+ * 判定（`answered`・`mayCancel`・`mayGoBack`）を尋ねて従う。
+ */
+describe('選ぶ人が入れ替わる行動の戻る・取り消す', () => {
+  /** 行動した側が 1 つ答え、相手が捨てる手札を聞かれているところ。 */
+  function opponentAsked(): {
+    readonly rooms: Rooms
+    readonly acting: ParticipantId
+    readonly other: ParticipantId
+    readonly outcome: RoomOutcome
+  } {
+    const { outcome, acting } = playingStrategy(ALTERNATING_DECKS, ALTERNATING_NAME)
+    const other = acting === 'あ' ? 'い' : 'あ'
+    const answered = send(outcome.rooms, acting, { kind: '選ぶ', answer: 0 })
+    return { rooms: answered.rooms, acting, other, outcome: answered }
+  }
+
+  it('行動した側が最初に選ぶ時は取り消せ、相手に替わると 0 から数え直して取り消せなくなる', () => {
+    const { outcome, acting } = playingStrategy(ALTERNATING_DECKS, ALTERNATING_NAME)
+    expect(choiceOf(outcome.deliveries, acting)).toMatchObject({ answered: 0, mayCancel: true })
+
+    const { outcome: asked, other } = opponentAsked()
+
+    expect(choiceOf(asked.deliveries, other)).toMatchObject({
+      purpose: '捨てる手札',
+      answered: 0,
+      mayCancel: false,
+      series: { nth: 1, of: 2 },
+    })
+  })
+
+  it('相手がまだ答えていない時は、相手からの「戻る」「取り消す」はどちらも断られる', () => {
+    const { rooms, other } = opponentAsked()
+
+    for (const kind of ['取り消す', 'ひとつ戻る'] as const) {
+      const refused = send(rooms, other, { kind })
+      expect(to(refused.deliveries, other)).toEqual([{ kind: '行えなかった', reason: '戻せる答えが無い' }])
+    }
+  })
+
+  it('相手が選んでいる間、行動した側は答えも戻る操作もできない', () => {
+    const { rooms, acting } = opponentAsked()
+
+    const refused = send(rooms, acting, { kind: '取り消す' })
+
+    expect(to(refused.deliveries, acting)).toEqual([{ kind: '行えなかった', reason: '選ぶ人ではない' }])
+  })
+
+  it('相手が答えた後、行動した側が選ぶ番になると、「戻る」「取り消す」は断られる', () => {
+    const { rooms, acting, other } = opponentAsked()
+    const first = send(rooms, other, { kind: '選ぶ', answer: 0 })
+    const second = send(first.rooms, other, { kind: '選ぶ', answer: 0 })
+    expect(choiceOf(second.deliveries, acting)).toMatchObject({ answered: 0, mayCancel: false })
+
+    for (const kind of ['取り消す', 'ひとつ戻る'] as const) {
+      const refused = send(second.rooms, acting, { kind })
+      expect(to(refused.deliveries, acting)).toEqual([{ kind: '行えなかった', reason: '相手が答えたので戻れない' }])
+    }
+  })
+
+  it('相手の答えの後でも、行動した側は自分の最後の答えまで進めて終えられる', () => {
+    const { rooms, acting, other } = opponentAsked()
+    const first = send(rooms, other, { kind: '選ぶ', answer: 0 })
+    const second = send(first.rooms, other, { kind: '選ぶ', answer: 0 })
+
+    const done = send(second.rooms, acting, { kind: '選ぶ', answer: 0 })
+
+    expect(to(done.deliveries, acting).map((message) => message.kind)).toEqual(['盤面'])
+  })
+
+  // プレイの後は相手が先に優先権を持つ。相手が放棄し、続けて行動した側が放棄すると、バンクの能力が
+  // 解決される。解決するのは行動した側の放棄なので、そこで選ぶ相手は行動していない側である。
+  it('相手が続けて答えている最中に「ひとつ戻る」を押すと、その直前の答えだけが戻る', () => {
+    const { outcome, acting } = playingStrategy(WITTY_DECKS, WITTY_NAME)
+    const other = acting === 'あ' ? 'い' : 'あ'
+    const passedByOther = send(outcome.rooms, other, PASS)
+    const resolving = send(passedByOther.rooms, acting, PASS)
+    expect(choiceOf(resolving.deliveries, other)).toMatchObject({
+      purpose: '捨てる手札',
+      answered: 0,
+      mayCancel: false,
+      series: { nth: 1, of: 2 },
+    })
+
+    const answered = send(resolving.rooms, other, { kind: '選ぶ', answer: 1 })
+    expect(choiceOf(answered.deliveries, other)).toMatchObject({ answered: 1, series: { nth: 2, of: 2 } })
+
+    const back = send(answered.rooms, other, { kind: 'ひとつ戻る' })
+    expect(choiceOf(back.deliveries, other)).toEqual(choiceOf(resolving.deliveries, other))
+
+    // 戻る答えが無くなれば、相手は行動ごとの取り消しもできない。
+    const refused = send(back.rooms, other, { kind: 'ひとつ戻る' })
+    expect(to(refused.deliveries, other)).toEqual([{ kind: '行えなかった', reason: '戻せる答えが無い' }])
+  })
+})
+
+/**
  * #175。打つ前に合言葉を決めておかなくても、部屋を作れば入れる。
  *
  * 合言葉を決めるのはサーバである。ロビーに並んだものから選んで入るので、**相手と申し合わせて
@@ -1122,6 +1263,45 @@ describe('CPU と対戦する', () => {
     }
 
     expect(cpuActed).toBe(true)
+  })
+
+  /**
+   * ADR-0052。相手が CPU の時は、CPU が自分で答えて対戦が進む。N 枚の時も、人が答えるのと同じ道筋を通る。
+   * 人がプレイしても、CPU が先にプレイして人に聞いても、どちらでも止まらずに優先権が人に戻る。
+   */
+  it('相手に捨てさせる選択を、CPU が自分で答えて進む', () => {
+    // CPU の手札が 3 枚以上ある間に、人がストラテジーをプレイできる配りになるシードを探す。レベル 0 の
+    // ユニットばかりの CPU は、手札をすぐ出し切る。
+    for (let seed = 1; seed <= 40; seed += 1) {
+      let current = receive(emptyRooms(), 'あ', AGAINST_CPU, { ...SETUP, seed }, ALTERNATING_DECKS, ALL_LINKED)
+      const seat = seatOf(current.deliveries, 'あ')
+      const cpuSeat = seat === '先攻' ? '後攻' : '先攻'
+
+      for (let steps = 0; steps < 40; steps += 1) {
+        const lastBoard = to(current.deliveries, 'あ').filter((message) => message.kind === '盤面').at(-1)
+        if (lastBoard === undefined || lastBoard.perspective.result !== undefined) break
+
+        const handId = cardInHand(current, 'あ', ALTERNATING_NAME)
+        const play = lastBoard.actions.find(
+          (action) => action.kind === 'カードをプレイする' && action.declaration.card === handId,
+        )
+        // CPU の手札が 3 枚以上あって初めて、2 枚を選んで捨てる選択になる（足りなければ聞かずに捨てる）。
+        if (play !== undefined && lastBoard.perspective.zones[cpuSeat].手札.length >= 3) {
+          const played = send(current.rooms, 'あ', { kind: '行動する', action: play })
+          // 人が最初の選択に答えると、CPU が 2 枚を選んで捨て、人の最後の選択まで進む。
+          const answered = send(played.rooms, 'あ', { kind: '選ぶ', answer: 0 })
+          expect(choiceOf(answered.deliveries, 'あ')).toMatchObject({ purpose: '効果の対象', answered: 0, mayCancel: false })
+          const done = send(answered.rooms, 'あ', { kind: '選ぶ', answer: 0 })
+          expect(latestBoard(done.deliveries, 'あ').zones[cpuSeat].捨札.length).toBeGreaterThanOrEqual(2)
+          expect(latestBoard(done.deliveries, 'あ').turn.priority).toBe(seat)
+          return
+        }
+        if (!lastBoard.actions.some((action) => action.kind === '優先権を放棄する')) break
+
+        current = answerAll(send(current.rooms, 'あ', PASS))
+      }
+    }
+    throw new Error('ストラテジーをプレイできるところに届かなかった')
   })
 
   /**
@@ -1549,6 +1729,59 @@ describe('記録から立て直す', () => {
     expect(restored?.random).toEqual(state.random)
     // シャッフルが実際に起きている（開始時の乱数列の続きから進んでいる）。
     expect(state.random).not.toEqual(prepared.state.random)
+  })
+
+  /**
+   * ADR-0018・ADR-0052。相手に選ばせた選択を含む対戦も、記録（行動と答えの番号の並び）を打ち直すと、
+   * 打った時と同じ盤面になる。誰に聞くかはエンジンが同じに決める。
+   */
+  it('相手に選ばせた選択を含む対戦も、記録を打ち直すと同じ盤面になる', () => {
+    const record = started(ALTERNATING_DECKS).records.find((each) => each.kind === '始まった')
+    if (record?.kind !== '始まった') throw new Error('始まった記録があるはずだった')
+    const first = ALTERNATING_DECKS.from(record.decks[0])
+    const second = ALTERNATING_DECKS.from(record.decks[1])
+    if (first === undefined || second === undefined) throw new Error('デッキが引けるはずだった')
+    const prepared = prepareDuel({ decks: [first.cards, second.cards], seed: record.seed })
+    if (prepared.kind !== '準備完了') throw new Error('準備できるはずだった')
+
+    let state: DuelState = prepared.state
+    const steps: { action: LegalAction; answers: ChoiceAnswer[] }[] = []
+    let played = false
+    for (let count = 0; count < 400 && !played; count += 1) {
+      const actions = legalActions(state)
+      const playing = actions.find((action) => {
+        if (action.kind !== 'カードをプレイする') return false
+        const hand = cardsIn(state, state.turn.priority, '手札')
+        return hand.find((card) => card.id === action.declaration.card)?.card.name === ALTERNATING_NAME
+      })
+      const action = playing ?? actions.find((one) => one.kind === '優先権を放棄する')
+      if (action === undefined) throw new Error('進められる手があるはずだった')
+
+      const answers: ChoiceAnswer[] = []
+      for (;;) {
+        const progress = applyWithAnswers(state, action, answers)
+        if (progress.kind === '進んだ') {
+          state = progress.state
+          break
+        }
+        answers.push(0)
+      }
+      steps.push({ action, answers })
+      played = playing !== undefined
+    }
+    expect(played).toBe(true)
+    // 答えは、行動した側 1 つ、相手 2 つ、行動した側 1 つの 4 つが並ぶ。
+    expect(steps.at(-1)?.answers).toHaveLength(4)
+
+    const restored = restore([{ ...record, kind: '読めた', steps }], ALTERNATING_DECKS).get(record.code)?.duel?.state as DuelState
+
+    expect(restored).toBeDefined()
+    for (const player of ['先攻', '後攻'] as const) {
+      for (const zone of ['手札', '捨札', '山札'] as const) {
+        expect(cardsIn(restored, player, zone).map((card) => card.id)).toEqual(cardsIn(state, player, zone).map((card) => card.id))
+      }
+    }
+    expect(restored.log).toEqual(state.log)
   })
 
   /** 取り下げられたカードを含むデッキは、使えないものとして扱う（ADR-0021）。 */
