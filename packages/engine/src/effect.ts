@@ -541,7 +541,8 @@ export function alsoTreatedAs(target: UnitOnSquare, attribute: Attribute): Attri
 }
 
 /**
- * 候補の中から 1 つ選ぶ。選ぶのは能力の支配者（総合ルール 第4部 第8章 2-3）。
+ * 候補の中から 1 つ選ぶ。選ぶのは能力の支配者（総合ルール 第4部 第8章 2-3）。テキストが相手を指定した選択は
+ * 相手が選ぶが、それを書けるのは `letOpponentChooseFromMyHand` と `discardOpponentHand` だけである（ADR-0052）。
  * 候補が 1 つもなければ `undefined` を返す。
  *
  * 候補が無い時、選ぶという行動は実行できない（同 第1部 第1章 3）。**しかし効果はそこで

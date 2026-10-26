@@ -683,7 +683,8 @@ export function areaRowOf(candidate: unknown, chooser: Player): SquareIndex | un
  * `subject` は、**命令そのものには書かれていない、実際に触れたもの**である。選ばれたものと、
  * 位置で指定されて動いたカードの 2 つがこれにあたり、どちらも実行してみないと分からない。
  *
- * `controller` は効果の支配者で、選ぶのもこのプレイヤーである（総合ルール 第4部 第8章 2-3）。
+ * `controller` は効果の支配者である。選ぶのは、テキストが指定した人で、指定が無ければこのプレイヤー
+ * である（総合ルール 第4部 第8章 2-3、ADR-0052）。
  * 選ばれたエリアの呼び名は、このプレイヤーから見たものとして行に直す（`areaRowOf`）。
  */
 export function loggedInstruction(
