@@ -66,6 +66,7 @@ import {
   isAbilityChoice,
   isSeriesChoice,
   remainingOf,
+  nextSeriesAnswer,
   shownTitleOf,
   offBoardCandidates,
   pickView,
@@ -2533,25 +2534,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       }
       // N 枚をまとめて選ばせた続きの選択（ADR-0052）。印を付けたカードを識別子で候補から引き直し、
       // 人の操作なしに送る。見つからなければ（繋ぎ直した先で候補が替わった）、送らずに人に任せる。
-      let queuedAnswer: number | undefined
-      if (message.kind === '選んでほしい' || message.kind === '盤面' || message.kind === '席についた') {
-        seriesMarks = []
-        seriesSending = false
-      }
-      if (message.kind === '選んでほしい') {
-        const [next, ...rest] = seriesQueue
-        const found =
-          next === undefined || message.choice.series === undefined
-            ? -1
-            : message.choice.candidates.findIndex((candidate) => candidate.kind === '見えている' && candidate.card === next)
-        seriesQueue = found < 0 ? [] : rest
-        if (found >= 0) {
-          queuedAnswer = found
-          seriesSending = true
-        }
-      } else if (message.kind === '席についた' || message.kind === '行えなかった') {
-        seriesQueue = []
-      }
+      const series = nextSeriesAnswer({ queue: seriesQueue, sending: seriesSending }, message)
+      if (message.kind === '選んでほしい' || message.kind === '盤面' || message.kind === '席についた') seriesMarks = []
+      seriesQueue = series.queue
+      seriesSending = series.sending
+      const queuedAnswer = series.answer
       // 決着したら、どちらの状態も残さない。決着後は答えることも束を開くこともできる意味が
       // 無くなる（ADR-0010）うえ、次の対局に持ち越させないための重ねの備えでもある。
       if (message.kind === '盤面' && message.perspective.result !== undefined) {

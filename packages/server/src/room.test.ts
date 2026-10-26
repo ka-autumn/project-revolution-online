@@ -168,6 +168,24 @@ const ALTERNATING: Card = defineStrategy({
 const ALTERNATING_DECKS = deckSource({ ...CARDS, 'TEST-S': ALTERNATING })
 
 /**
+ * 相手に 2 枚捨てさせてから、続けて 2 度選ぶストラテジー（ADR-0052）。相手の答えの後に、行動した側が
+ * 自分の続けた分の中で戻れる場面を作る。
+ */
+const DISCARD_THEN_CHOOSING_NAME = 'テスト・部屋の捨てさせて選ぶ'
+
+const DISCARD_THEN_CHOOSING: Card = defineStrategy({
+  name: DISCARD_THEN_CHOOSING_NAME,
+  level: 0,
+  effect: function* () {
+    yield* discardOpponentHand(2)
+    yield* choose(['ア', 'イ'])
+    yield* choose(['ウ', 'エ'])
+  },
+})
+
+const DISCARD_THEN_CHOOSING_DECKS = deckSource({ ...CARDS, 'TEST-S': DISCARD_THEN_CHOOSING })
+
+/**
  * 登場した時、相手に 2 枚捨てさせるユニット。能力はバンクを経由して解決される（総合ルール 第4部
  * 第8章 1-1）ので、解決するのは優先権を放棄した相手の行動になる。
  */
@@ -1126,6 +1144,43 @@ describe('選ぶ人が入れ替わる行動の戻る・取り消す', () => {
     const done = send(second.rooms, acting, { kind: '選ぶ', answer: 0 })
 
     expect(to(done.deliveries, acting).map((message) => message.kind)).toEqual(['盤面'])
+  })
+
+  // 相手の答えの後に、行動した側が自分の続けた分の中で戻れる。取り消しは断られる。
+  it('相手が答えた後でも、行動した側は自分の続けた分の中なら「ひとつ戻る」で戻れる', () => {
+    const { outcome, acting } = playingStrategy(DISCARD_THEN_CHOOSING_DECKS, DISCARD_THEN_CHOOSING_NAME)
+    const other = acting === 'あ' ? 'い' : 'あ'
+    const first = send(outcome.rooms, other, { kind: '選ぶ', answer: 0 })
+    const second = send(first.rooms, other, { kind: '選ぶ', answer: 0 })
+    const asked = choiceOf(second.deliveries, acting)
+    expect(asked).toMatchObject({ answered: 0, mayCancel: false })
+
+    const answered = send(second.rooms, acting, { kind: '選ぶ', answer: 0 })
+    expect(choiceOf(answered.deliveries, acting)).toMatchObject({ answered: 1, mayCancel: false, mayGoBack: true })
+
+    const refused = send(answered.rooms, acting, { kind: '取り消す' })
+    expect(to(refused.deliveries, acting)).toEqual([{ kind: '行えなかった', reason: '相手が答えたので戻れない' }])
+
+    const back = send(answered.rooms, acting, { kind: 'ひとつ戻る' })
+    expect(choiceOf(back.deliveries, acting)).toEqual(asked)
+
+    // 自分の続けた分より前（相手の答え）へは戻れない。
+    const refusedAgain = send(back.rooms, acting, { kind: 'ひとつ戻る' })
+    expect(to(refusedAgain.deliveries, acting)).toEqual([{ kind: '行えなかった', reason: '相手が答えたので戻れない' }])
+  })
+
+  // 記録は、打った手と、そこまでの答えの並びである（ADR-0018）。相手の答えも、選んだ順に並ぶ。
+  it('相手に 2 枚捨てさせた行動の記録には、相手の答えが 2 つ並ぶ', () => {
+    const { rooms, acting, other } = opponentAsked()
+    const first = send(rooms, other, { kind: '選ぶ', answer: 1 })
+    const second = send(first.rooms, other, { kind: '選ぶ', answer: 0 })
+
+    const done = send(second.rooms, acting, { kind: '選ぶ', answer: 0 })
+
+    const played = done.records.filter((record) => record.kind === '打たれた')
+    expect(played).toHaveLength(1)
+    // 行動した側の 1 つ目、相手の 2 つ、行動した側の最後の 1 つ。
+    expect(played[0]?.answers).toEqual([0, 1, 0, 0])
   })
 
   // プレイの後は相手が先に優先権を持つ。相手が放棄し、続けて行動した側が放棄すると、バンクの能力が

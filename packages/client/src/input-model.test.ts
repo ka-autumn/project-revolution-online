@@ -5,6 +5,7 @@ import type {
   PassOutcome,
   Player,
   Square,
+  ToClient,
   WireCandidate,
   WireCardFace,
   WireChoice,
@@ -15,6 +16,7 @@ import {
   abilityListSource,
   isAbilityChoice,
   isSeriesChoice,
+  nextSeriesAnswer,
   actionViews,
   automaticAction,
   choicePicking,
@@ -2315,5 +2317,112 @@ describe('見せる一覧つきの選択', () => {
     const plain: WireChoice = { ...confirming, shown: undefined }
 
     expect(shownCardViewsIn(board(), plain)).toEqual([])
+  })
+})
+
+// ADR-0052。N 枚をまとめて選ばせた後の、続きの選択に自動で送る分。
+describe('続きの選択に自動で送る分', () => {
+  const series = (nth: number, candidates: readonly WireCandidate[]): ToClient => ({
+    kind: '選んでほしい',
+    choice: {
+      player: '後攻',
+      purpose: '捨てる手札',
+      mayDecline: false,
+      answered: nth - 1,
+      mayGoBack: true,
+      mayCancel: false,
+      series: { nth, of: 2 },
+      candidates,
+    },
+  })
+  const withoutSeries: ToClient = {
+    kind: '選んでほしい',
+    choice: {
+      player: '後攻',
+      purpose: '効果の対象',
+      mayDecline: false,
+      answered: 0,
+      mayGoBack: true,
+      mayCancel: false,
+      candidates: [{ kind: '見えている', card: '手札の2枚目' }],
+    },
+  }
+  const hand: readonly WireCandidate[] = [
+    { kind: '見えている', card: '手札の1枚目' },
+    { kind: '見えている', card: '手札の2枚目' },
+    { kind: '見えている', card: '手札の3枚目' },
+  ]
+  const idle = { queue: [], sending: false }
+  const waiting = { queue: ['手札の2枚目', '手札の3枚目'], sending: false }
+
+  it('続きの選択が届いたら、先頭のカードを識別子で引き直した番号を送り、残りを持つ', () => {
+    // 1 枚目を送った後に候補の並びが替わっても、識別子で引くので同じカードを指す。
+    const reordered = [hand[2], hand[1], hand[0]] as readonly WireCandidate[]
+
+    expect(nextSeriesAnswer(waiting, series(2, reordered))).toEqual({
+      answer: 1,
+      queue: ['手札の3枚目'],
+      sending: true,
+    })
+  })
+
+  it('最後の 1 枚を送った後は、送る分が空になる', () => {
+    expect(nextSeriesAnswer({ queue: ['手札の3枚目'], sending: true }, series(2, hand))).toEqual({
+      answer: 2,
+      queue: [],
+      sending: true,
+    })
+  })
+
+  it('候補に無いカードなら、送らずに残りも捨てて、人に任せる', () => {
+    expect(nextSeriesAnswer({ queue: ['消えた札', '手札の3枚目'], sending: true }, series(2, hand))).toEqual({
+      answer: undefined,
+      queue: [],
+      sending: false,
+    })
+  })
+
+  it('series を持たない選択が届いたら、送らずに捨てる', () => {
+    expect(nextSeriesAnswer(waiting, withoutSeries)).toEqual({ answer: undefined, queue: [], sending: false })
+  })
+
+  it('送る分が無ければ、続きの選択が届いても何も送らない', () => {
+    expect(nextSeriesAnswer(idle, series(2, hand))).toEqual({ answer: undefined, queue: [], sending: false })
+  })
+
+  it('行えなかった時と席についた時は、送る分を捨てる', () => {
+    const refused: ToClient = { kind: '行えなかった', reason: 'テスト' }
+    const seated = { kind: '席についた', seat: '後攻', room: 'テスト', own: 'テスト' } as unknown as ToClient
+
+    expect(nextSeriesAnswer({ queue: ['手札の2枚目'], sending: true }, refused)).toEqual({
+      answer: undefined,
+      queue: [],
+      sending: true,
+    })
+    expect(nextSeriesAnswer({ queue: ['手札の2枚目'], sending: true }, seated)).toEqual({
+      answer: undefined,
+      queue: [],
+      sending: false,
+    })
+  })
+
+  it('盤面が届いたら、押せなくする間は終わるが、送る分は残る', () => {
+    const arrived: ToClient = { kind: '盤面', perspective: board(), actions: [], passOutcome: undefined }
+
+    expect(nextSeriesAnswer({ queue: ['手札の2枚目'], sending: true }, arrived)).toEqual({
+      answer: undefined,
+      queue: ['手札の2枚目'],
+      sending: false,
+    })
+  })
+
+  it('関係の無いものが届いても、状態は変わらない', () => {
+    const other = { kind: '相手の繋がり' } as unknown as ToClient
+
+    expect(nextSeriesAnswer({ queue: ['手札の2枚目'], sending: true }, other)).toEqual({
+      answer: undefined,
+      queue: ['手札の2枚目'],
+      sending: true,
+    })
   })
 })

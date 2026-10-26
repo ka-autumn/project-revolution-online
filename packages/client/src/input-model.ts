@@ -5,6 +5,7 @@ import type {
   PassOutcome,
   Player,
   Square,
+  ToClient,
   WireCandidate,
   WireCardInstance,
   WireCardPosition,
@@ -377,6 +378,41 @@ function askingFor(
  */
 export function remainingOf(choice: Pick<WireChoice, 'series'>): number {
   return choice.series === undefined ? 1 : choice.series.of - choice.series.nth + 1
+}
+
+/** N 枚をまとめて選ばせた後の、続きの選択に自動で送る分の状態（`nextSeriesAnswer`）。 */
+export interface SeriesQueue {
+  /** 「これに決める」の後に、続きの選択が届くたびに送る分（カードの識別子。選んだ順）。 */
+  readonly queue: readonly CardId[]
+  /** 続きを人の操作なしに送っている間。 */
+  readonly sending: boolean
+}
+
+/**
+ * 届いたものから、N 枚をまとめて選ばせた続き（ADR-0052）の送り方を決める。続きの選択が届いたら、
+ * 先頭のカードを識別子で候補から引き直し、その番号を返す（送るのは呼び出し側）。見つからなければ
+ * （繋ぎ直した先で候補が替わった）、送らずに残りも捨てて人に任せる。`series` を持たない選択が届いた
+ * 時も送らない。席についた時と、行えなかった時は、送る分を捨てる。
+ *
+ * 一覧を押せなくして描く間（`sending`）は、選択・盤面・席についたのどれかが届くと終わる。
+ */
+export function nextSeriesAnswer(
+  state: SeriesQueue,
+  message: ToClient,
+): SeriesQueue & { readonly answer: number | undefined } {
+  const ended = message.kind === '選んでほしい' || message.kind === '盤面' || message.kind === '席についた'
+  const sending = ended ? false : state.sending
+
+  if (message.kind === '選んでほしい') {
+    const [next, ...rest] = state.queue
+    const found =
+      next === undefined || message.choice.series === undefined
+        ? -1
+        : message.choice.candidates.findIndex((candidate) => candidate.kind === '見えている' && candidate.card === next)
+    return found < 0 ? { queue: [], sending, answer: undefined } : { queue: rest, sending: true, answer: found }
+  }
+  if (message.kind === '席についた' || message.kind === '行えなかった') return { queue: [], sending, answer: undefined }
+  return { queue: state.queue, sending, answer: undefined }
 }
 
 /**
