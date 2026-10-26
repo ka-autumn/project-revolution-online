@@ -1572,6 +1572,7 @@ body {
 
 .show-picker-view .picker--見る,
 .show-picker-choose .picker--選ぶ,
+.show-picker-series .picker--N枚選ぶ,
 .show-picker-sending .picker--送信中,
 .show-picker-confirm .picker--確認,
 .show-picker-shown .picker--見せる一覧,
@@ -2335,6 +2336,10 @@ body {
       <button type="button" class="phone-only sheet__close" data-close>閉じる</button>
       <h2 class="panel__title">操作ログ（11）</h2>
       <ol class="log__list" reversed>
+        <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>相手が手札を捨てた：見本・紅葉、見本・メカナイト</span></li>
+        <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>自分が手札を捨てた：見本・紅葉、見本・メカナイト</span></li>
+        <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>相手に手札を見せた：見本・光の祈り手、見本・竜の飛翔</span></li>
+        <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>相手の手札を見た：見本・光の祈り手、見本・竜の飛翔</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・森の守護者を相手の捨札へ</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>選ばなかった</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・霧島透はターンの終わりまでSP+1000</span></li>
@@ -2418,6 +2423,7 @@ body {
   <label><input type="checkbox" data-show="show-result-draw">決着（引き分け）</label>
   <label><input type="checkbox" data-show="show-picker-view">一覧（捨札を見る）</label>
   <label><input type="checkbox" data-show="show-picker-choose">一覧（候補から選ぶ）</label>
+  <label><input type="checkbox" data-show="show-picker-series">一覧（N 枚をまとめて選ぶ・手札から 2 枚）</label>
   <label><input type="checkbox" data-show="show-picker-sending">一覧（候補から選ぶ・通信中）</label>
   <label><input type="checkbox" data-show="show-picker-confirm">一覧（相手の手札を見る・確認）</label>
   <label><input type="checkbox" data-show="show-picker-shown">一覧（山札の全体・選べるカードと見えるだけのカード・32 枚）</label>
@@ -2897,6 +2903,21 @@ choosable[1].classList.add('card--選択中')
 pickers.append(picker('選ぶ', '候補から選ぶ', '効果の対象を選んでください',
   choosable,
   '<span class="picker__count">1 枚目を選んでいます</span><button type="button">選ばない</button><button type="button" class="button--primary">これに決める</button>'))
+
+// N 枚をまとめて選ぶ一覧（`series` がある選択、ADR-0052）。相手の効果で、自分の手札から 2 枚を選んで捨てる。
+// 足もとは「n 枚目を選んでいます」の代わりに「印を付けた数 / N 枚」。N 枚に印が付くまで「これに決める」は押せない。
+// 戻る・取り消すは出ない（自分がまだ続けて答えていない。行動した側ではないので取り消せない）
+const seriesList = [
+  card('見本・もちぬい', '自分'),
+  card('見本・森の守護者', '自分'),
+  card('見本・霧島透', '自分'),
+  card('見本・光の祈り手', '自分'),
+]
+for (const n of seriesList) n.classList.add('card--押せる')
+seriesList[1].classList.add('card--選択中')
+pickers.append(picker('N枚選ぶ', '候補から選ぶ', '見本・メカナイト の効果で、捨てる手札を 2 枚選んでください',
+  seriesList,
+  '<span class="picker__count">1 / 2 枚</span><button type="button" class="button--primary" disabled>これに決める</button>'))
 
 // 「これに決める」を押したあと、返事が届くまで。カードの面は薄くして押せなくし、ボタンも押せなくする
 const sendingList = [
