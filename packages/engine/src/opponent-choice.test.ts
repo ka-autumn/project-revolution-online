@@ -421,6 +421,30 @@ describe('相手に支配者の手札を見せて選ばせる', () => {
     expect(logs[0]?.[0]).toMatchObject({ instruction: { count: 3, cards: ['自A', '自B', '自C'] } })
   })
 
+  // 選んだ行は、実際に選んだ人（相手）の行になる。続く行（捨札へ置いた行）は支配者の行のまま。
+  it('選んだ行は相手の行になり、捨札へ置いた行は支配者の行のままになる', () => {
+    const done = applyWithAnswers(start(), PLAY, [1])
+
+    expectAdvanced(done)
+    expect(instructionEvents(done.state, '選ぶ')).toEqual([
+      { kind: '命令を実行した', controller: '後攻', instruction: { kind: '選ぶ', card: '自B', square: undefined } },
+    ])
+    expect(instructionEvents(done.state, 'ゾーンへ置く')[0]).toMatchObject({ controller: '先攻' })
+  })
+
+  it('選ばなかった行も、相手の行になる', () => {
+    const done = applyWithAnswers(start(), PLAY, ['選ばない'])
+
+    expectAdvanced(done)
+    expect(instructionEvents(done.state, '選ぶ')).toEqual([
+      {
+        kind: '命令を実行した',
+        controller: '後攻',
+        instruction: { kind: '選ぶ', card: undefined, square: undefined, declined: true },
+      },
+    ])
+  })
+
   it('相手は選ばないこともでき、その時は何も捨てられない', () => {
     const done = applyWithAnswers(start(), PLAY, ['選ばない'])
 

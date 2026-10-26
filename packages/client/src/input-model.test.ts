@@ -2168,8 +2168,12 @@ describe('見せる一覧つきの選択', () => {
     expect(shownTitleOf(confirming)).toBe('相手の手札（2）')
   })
 
-  it('確認以外の一覧は、候補から選ぶ一覧と同じ見出しにする', () => {
-    expect(shownTitleOf({ ...confirming, purpose: '効果の対象' })).toBe('候補から選ぶ')
+  it('相手の効果で自分が選ぶ一覧も、相手の手札と枚数を言う', () => {
+    expect(shownTitleOf({ ...confirming, purpose: '効果の対象' })).toBe('相手の手札（2）')
+  })
+
+  it('それ以外の一覧は、候補から選ぶ一覧と同じ見出しにする', () => {
+    expect(shownTitleOf({ ...confirming, purpose: '捨てる手札' })).toBe('候補から選ぶ')
   })
 
   it('一覧は、盤面のどこにも載っていないカードも描ける形になる', () => {

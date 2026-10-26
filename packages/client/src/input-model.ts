@@ -1116,13 +1116,17 @@ export function isSeriesChoice(choice: WireChoice): boolean {
 }
 
 /**
- * 見せる一覧つきの選択（ADR-0041）の見出し。相手の手札を見る確認は、見ている一覧の名前と枚数を
- * 言う。それ以外は、候補から選ぶ一覧と同じ見出しにする。
+ * 見せる一覧つきの選択（ADR-0041）の見出し。相手の手札を見る確認と、相手の効果で自分が選ぶ選択
+ * （一覧は相手が支配者の手札、ADR-0052）は、見ている一覧の名前と枚数を言う。それ以外は、候補から
+ * 選ぶ一覧と同じ見出しにする。
  */
 export function shownTitleOf(choice: WireChoice): string {
   const count = choice.shown?.length ?? 0
   switch (choice.purpose) {
     case '見たカードの確認':
+    // 見せる一覧つきで目的が `効果の対象` になるのは、相手に支配者の手札から選ばせる時だけである
+    // （自分の山札を読む形は `山札から選ぶ`）。
+    case '効果の対象':
       return `相手の手札（${count}）`
     // 山札の全体（プランゾーンのカードを含む）を見せている。枚数は山札の合計で、公開情報である。
     case '山札から選ぶ':

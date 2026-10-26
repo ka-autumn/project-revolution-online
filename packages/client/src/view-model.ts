@@ -1591,7 +1591,7 @@ function instructionLine(
   switch (instruction.kind) {
     case '選ぶ': {
       // 選ばないことを選んだ（`log.ts` の `選ぶ`）。
-      if (instruction.declined === true) return '選ばなかった'
+      if (instruction.declined === true) return '選択しなかった'
 
       // 選ばれたのはカード・スクエア・エリアのどれかである（`log.ts` の `選ぶ`）。スクエアと
       // エリアは見る人から見た呼び名で言う（総合ルール 第2部 第22章 6）。
@@ -1604,7 +1604,7 @@ function instructionLine(
       const chosen = named(instruction.card) ?? where
       // 選ばれたのが見る人に見えないカード（カード・スクエア・エリアのどれも指していない）なら、行を出さない。
       // 選んだカードの名前は、動かした先で見えるようになった時に、その行が言う（ADR-0042）。
-      return chosen === undefined ? OMITTED : `${chosen}を選んだ`
+      return chosen === undefined ? OMITTED : `${chosen}を選択した`
     }
     case '破壊する':
       return about(named(instruction.card), 'を', '破壊した')

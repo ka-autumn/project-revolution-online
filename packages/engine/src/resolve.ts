@@ -273,12 +273,14 @@ function recorded(before: DuelState, outcome: Outcome, instruction: Instruction,
 
   // 命令が動かしたカードは、動いた先が非公開のゾーンだと後の盤面から見えない。名指しを
   // 残せるよう、動く前の盤面もあわせて渡す（`log.ts` の `record`、#129）。
+  // 選んだ行は、実際に選んだ人の行にする（相手に選ばせた時は相手の行）。続く行は支配者の行のまま。
+  const owner = instruction.kind === '選ぶ' && instruction.picker === '相手' ? opponentOf(controller) : controller
   return record(
     outcome.state,
     {
       kind: '命令を実行した',
-      controller,
-      instruction: loggedInstruction(instruction, outcome.subject, controller, outcome),
+      controller: owner,
+      instruction: loggedInstruction(instruction, outcome.subject, owner, outcome),
     },
     before,
   )
