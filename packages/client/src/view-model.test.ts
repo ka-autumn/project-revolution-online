@@ -1021,7 +1021,7 @@ describe('操作ログ', () => {
       expect(texts(board)).toEqual([])
     })
 
-    it('選ばないことを選んだなら、選ばなかったと出る。見えないカードを選んだ時とは違う', () => {
+    it('選ばないことを選んだなら、選択しなかったと出る。見えないカードを選んだ時とは違う', () => {
       const board = withLog({
         kind: '命令を実行した',
         controller: '先攻',
@@ -2162,7 +2162,7 @@ describe('カットイン', () => {
     expect(cutInViews(board, logged(fresh))).toEqual([{ whose: '自分', heading: `${NAME}の効果、誘発！`, lines: [] }])
   })
 
-  it('選ばなかった行は、カットインにも出る', () => {
+  it('選択しなかった行は、カットインにも出る', () => {
     const fresh: readonly DuelEvent[] = [
       { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: undefined, square: undefined, declined: true } },
