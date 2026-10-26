@@ -5644,11 +5644,12 @@ export function choosePickerElement(
   cardOf: (id: CardId) => CardView | undefined,
   picked: number | undefined,
   /**
-   * この行動でここまでに答えた数（`WireChoice.answered`）。
+   * いま選んでいる人が、続けて答えた数（`WireChoice.answered`、ADR-0052）。選ぶ人が替わると 0 から
+   * 数え直す。
    *
-   * 上限は通信に載っていない（`WireChoice` は 1 回に 1 つ答える形なので、載せられるのは
-   * ここまでの数だけである）ので、「/ 3 枚」のような分母は出さない。何枚目を選んでいるかだけを
-   * 出す（#207）。
+   * この一覧が出すのは `series` を持たない選択で、分母（何枚選ぶか）は通信に載っていないので、
+   * 「/ 3 枚」のような分母は出さず、何枚目を選んでいるかだけを出す（#207）。分母が分かる N 枚続けて
+   * 選ぶ選択（`series`）は、`seriesPickerElement` が「印を付けた数 / N 枚」で出す。
    */
   answered: number,
   mayDecline: boolean,
@@ -5839,7 +5840,7 @@ export function seriesPickerElement(
   decide.toggleAttribute('disabled', marked.length !== count)
   foot.append(decide)
 
-  // Esc は、印を全部外すかわりに何もしない。行動を取り消すのは「この行動をやめる」だけである（ADR-0033）。
+  // Esc は、印を全部外す。行動は取り消さない。行動を取り消すのは「この行動をやめる」だけである（ADR-0033）。
   const root = pickerElement(
     '選ぶ',
     '候補から選ぶ',
