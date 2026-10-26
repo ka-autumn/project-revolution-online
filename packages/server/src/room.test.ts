@@ -1092,6 +1092,20 @@ describe('選ぶ人が入れ替わる行動の戻る・取り消す', () => {
     expect(to(refused.deliveries, acting)).toEqual([{ kind: '行えなかった', reason: '選ぶ人ではない' }])
   })
 
+  // ストラテジーを支配者がプレイした行動の中でも、相手は自分が続けて答えた分を戻せる（ADR-0052）。
+  it('相手が 1 枚目を答えた後、「ひとつ戻る」で 1 枚目を戻せる。取り消しは断られる', () => {
+    const { rooms, other } = opponentAsked()
+    const asked = choiceOf(opponentAsked().outcome.deliveries, other)
+    const first = send(rooms, other, { kind: '選ぶ', answer: 0 })
+    expect(choiceOf(first.deliveries, other)).toMatchObject({ answered: 1, mayGoBack: true, mayCancel: false })
+
+    const refused = send(first.rooms, other, { kind: '取り消す' })
+    expect(to(refused.deliveries, other)).toEqual([{ kind: '行えなかった', reason: '戻せる答えが無い' }])
+
+    const back = send(first.rooms, other, { kind: 'ひとつ戻る' })
+    expect(choiceOf(back.deliveries, other)).toEqual(asked)
+  })
+
   it('相手が答えた後、行動した側が選ぶ番になると、「戻る」「取り消す」は断られる', () => {
     const { rooms, acting, other } = opponentAsked()
     const first = send(rooms, other, { kind: '選ぶ', answer: 0 })

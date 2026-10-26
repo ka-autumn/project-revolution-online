@@ -274,6 +274,65 @@ describe('戻れる範囲と取り消せるか', () => {
   })
 })
 
+// 総合ルール 第4部 第8章 2-3（ADR-0052）。行動を取り消せない人は、答え始めた後に見えたものだけで戻れるかが決まる。
+describe('取り消せない人が戻れるか', () => {
+  it('ストラテジーの効果で相手が 2 枚捨てる時、1 枚目の後に相手は戻れる', () => {
+    const start = mainPhaseWith(discarding(2), hand(['A', 'B', 'C', 'D']))
+
+    const second = applyWithAnswers(start, PLAY, [0])
+
+    expectChoice(second)
+    expect(second.choice).toMatchObject({ player: '後攻', answered: 1, mayCancel: false, mayGoBack: true })
+  })
+
+  it('行動した側は、相手が答えた後は、自分の続けた分の中だけ戻れる', () => {
+    const start = mainPhaseWith(alternating, hand(['A', 'B', 'C', 'D']))
+
+    const last = applyWithAnswers(start, PLAY, [0, 0, 0])
+
+    expectChoice(last)
+    expect(last.choice).toMatchObject({ player: '先攻', answered: 0, mayCancel: false })
+  })
+
+  // 相手の答えで、行動した側に相手の捨てたカードが見える。それは答え始める前なので、自分の続けた分は戻れる。
+  it('行動した側は、相手が答えた後に続けた分の中を戻れるが、取り消せない', () => {
+    const twice = defineStrategy({
+      name: 'テスト・捨てさせて 2 度選ぶ',
+      level: 0,
+      effect: function* (duel) {
+        yield* discardOpponentHand(1)
+        yield* chooseAtMostOne(duel.allies())
+        yield* chooseAtMostOne(duel.allies())
+      },
+    })
+    const start = mainPhaseWith(twice, hand(['A', 'B', 'C']))
+
+    const progress = applyWithAnswers(start, PLAY, [0, 0])
+
+    expectChoice(progress)
+    expect(progress.choice).toMatchObject({ player: '先攻', answered: 1, mayCancel: false, mayGoBack: true })
+  })
+
+  it('答え始めた後に新しく見えたものがあれば、戻れない', () => {
+    // 相手が 1 枚捨てた後（続けて答えた後）に、支配者の手札が相手に見える。見たのは答え始めた後なので、戻れない。
+    const discardThenReveal = defineStrategy({
+      name: 'テスト・捨てさせて見せる',
+      level: 0,
+      effect: function* (duel) {
+        yield* discardOpponentHand(1)
+        yield* letOpponentChooseFromMyHand(duel)
+      },
+    })
+    const start = mainPhaseWith(discardThenReveal, hand(['A', 'B', 'C']), [handCard('自A', '先攻')])
+
+    const progress = applyWithAnswers(start, PLAY, [0])
+
+    expectChoice(progress)
+    expect(progress.choice).toMatchObject({ player: '後攻', purpose: '効果の対象', answered: 1 })
+    expect(progress.choice.mayGoBack).toBe(false)
+  })
+})
+
 // 総合ルール 第5部 第10章 2（ADR-0052）
 describe('「才気」', () => {
   const witty = defineUnit({ name: 'テスト・才気', level: 0, bp: 1000, sp: 1000, abilities: [wit] })
@@ -341,8 +400,9 @@ describe('相手に支配者の手札を見せて選ばせる', () => {
     expect(progress.choice.candidates).toHaveLength(3)
     expect(progress.choice.shown?.map(({ instance }) => instance.id)).toEqual(['自A', '自B', '自C'])
     expect(progress.choice.shown?.every(({ candidate }) => candidate !== undefined)).toBe(true)
-    // 見てしまったので、戻れない。
-    expect(progress.choice.mayGoBack).toBe(false)
+    // 相手は行動を取り消せない。見たのは答え始める前なので、戻る判定には数えない（戻る答えも無い）。
+    expect(progress.choice.mayCancel).toBe(false)
+    expect(progress.choice.answered).toBe(0)
   })
 
   it('選ばれたカードが支配者の捨札に置かれ、見たことが 2 人のログに同じ名前で出る', () => {

@@ -580,6 +580,11 @@ export interface WireChoice {
    * ことになり、山札の 1 番上を覗く手立てになってしまう。盤面そのものは答えを捨てて適用し
    * 直せば戻る（ADR-0008）ので、戻せないのは知ってしまったことだけである。
    *
+   * **何と比べて「新しく」見えたかは、取り消せるかで変わる**（ADR-0052）。取り消せる人（`mayCancel`）は
+   * 行動を始める前の盤面と、取り消せない人（行動していない側と、その答えの後の行動した側）は、いま続けて
+   * 答えている分の最初の選択が出た盤面と比べる。取り消せない人は、答え始める前に見えたものを、戻っても
+   * 見なかったことにはできないので、答え始めた後に見えたものだけで足りる。
+   *
    * 答えが 1 つ以上あっても閉じる。手前の選択が「めくるかどうか」を左右していた場合、そこまで
    * 戻れば見たうえでめくらずに済ませられるためである。
    *
@@ -1218,6 +1223,9 @@ export function applyWithAnswers(
   // 毎回、答えの並びから数える。記録に答えた人は残らない（ADR-0018）が、誰に聞くかはエンジンが同じに
   // 決めるので、打ち直しでも同じ並びになる。
   const answeredBy: Player[] = []
+  // いま選んでいる人が続けて答え始めた、最初の選択が出た盤面（ADR-0052）。行動を取り消せない人は、
+  // 戻っても、答え始める前に見えたものを見なかったことにはできない。戻れるかは、ここから見る。
+  const runStart: { player: Player | undefined; board: DuelState | undefined } = { player: undefined, board: undefined }
   // 行動したのは優先権を持つプレイヤーである（`room.ts` の `act`）。
   const actor = state.turn.priority
   const chooser: Chooser = (candidates, player, purpose, board, mayDecline = false, source, shown, series) => {
@@ -1228,6 +1236,10 @@ export function applyWithAnswers(
     const [only] = candidates
     if (candidates.length === 1 && !mayDecline && purpose !== '見たカードの確認') return only
 
+    if (runStart.player !== player) {
+      runStart.player = player
+      runStart.board = board
+    }
     const [answer, ...rest] = remaining
     if (answer === undefined) {
       // 答えが尽きたところで止まる。続けて答えた数は、末尾から同じ人が何個並ぶかである。
@@ -1235,7 +1247,9 @@ export function applyWithAnswers(
       while (run < answeredBy.length && answeredBy[answeredBy.length - 1 - run] === player) run += 1
       // 取り消せるのは、行動した側が、行動していない側の答えを受け取る前だけである。
       const mayCancel = player === actor && answeredBy.every((who) => who === actor)
-      const choice = describeChoice(board, state, candidates, player, purpose, mayDecline, run, mayCancel, source, shown, series)
+      // 取り消せる人は、行動を始める前の盤面と比べる。取り消せない人は、続けて答え始めた盤面と比べる。
+      const base = mayCancel ? state : (runStart.board ?? state)
+      const choice = describeChoice(board, base, candidates, player, purpose, mayDecline, run, mayCancel, source, shown, series)
       throw { kind: CHOICE_NEEDED, choice, board } satisfies ChoiceNeeded
     }
 
