@@ -1602,6 +1602,32 @@ describe('操作ログ', () => {
       })
     })
 
+    // ADR-0052。捨てたのは支配者の相手で、見る人ごとに主語を入れ替える。名前は 2 人に出る。
+    describe('相手に手札を捨てさせた・見せた', () => {
+      const discarded = (controller: Player, cards: readonly string[], count = cards.length) =>
+        withLog({ kind: '命令を実行した', controller, instruction: { kind: '相手に手札を捨てさせる', count, cards } })
+      const revealed = (controller: Player, cards: readonly string[]) =>
+        withLog({
+          kind: '命令を実行した',
+          controller,
+          instruction: { kind: '相手に手札を見せる', count: cards.length, cards },
+        })
+
+      it('支配者には「相手が手札を捨てた」、相手には「自分が手札を捨てた」と、同じ名前が出る', () => {
+        expect(texts(discarded('先攻', ['置いてある']))).toEqual(['相手が手札を捨てた：テスト・置いてある'])
+        expect(texts(discarded('後攻', ['置いてある']))).toEqual(['自分が手札を捨てた：テスト・置いてある'])
+      })
+
+      it('支配者には「相手に手札を見せた」、相手には「相手の手札を見た」と出る', () => {
+        expect(texts(revealed('先攻', ['置いてある']))).toEqual(['相手に手札を見せた：テスト・置いてある'])
+        expect(texts(revealed('後攻', ['置いてある']))).toEqual(['相手の手札を見た：テスト・置いてある'])
+      })
+
+      it('0 枚の時は、今の「手札を見た」の行と同じ扱いで 0 枚と出す', () => {
+        expect(texts(revealed('先攻', []))).toEqual(['相手に手札を見せた：0枚'])
+      })
+    })
+
     // ADR-0042。山札の中身は、見た側にも相手にも、ログには名前を出さない。
     describe('山札を見た・シャッフルした', () => {
       const read = (controller: Player, count: number) =>

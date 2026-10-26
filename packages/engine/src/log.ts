@@ -472,6 +472,29 @@ export type LoggedInstruction =
       readonly cards: readonly CardId[]
     }
   /**
+   * 相手が自分の手札から選んで捨てた（ADR-0052）。捨てたのは能力の支配者の相手で、行の持ち主は
+   * 能力の支配者である（見る人ごとに主語を入れ替えるのは画面）。
+   *
+   * 捨札に表向きで置かれ、2 人に見える。名指しを落とすかどうかは射影に任せるが、枚数は落とさない
+   * （`カードを引く` と同じ形）。聞かずに済んだ時（手札が足りない）も、実際に捨てた分を持つ。
+   */
+  | {
+      readonly kind: '相手に手札を捨てさせる'
+      readonly count: number
+      readonly cards: readonly CardId[]
+    }
+  /**
+   * 支配者が、自分の手札を相手に見せた（ADR-0052）。選ぶのは相手で、見たのもその相手である。
+   *
+   * `相手の手札を見る` の向きを逆にしたもので、見たカードの名指しは 2 人に同じ内容で出す
+   * （`perspective.ts` の `seenByOf`）。枚数は手札の枚数で、公開情報である。0 枚でも積む。
+   */
+  | {
+      readonly kind: '相手に手札を見せる'
+      readonly count: number
+      readonly cards: readonly CardId[]
+    }
+  /**
    * 支配者が自分の山札を読んだ（ADR-0042）。
    *
    * カードの名指しを持たない。 山札の中身は、相手にも、読んだ本人のログにも載せない（本人には
@@ -723,6 +746,12 @@ export function loggedInstruction(
       const cards = subjectCardIds(subject)
       return { kind: '相手の手札を見る', count: cards.length, cards }
     }
+    case '相手に手札を捨てさせる': {
+      // 捨てたカードは命令に書かれていない（相手が選ぶ）。実際に捨札へ置いたものを `subject` で受ける。
+      const cards = subjectCardIds(subject)
+      return { kind: '相手に手札を捨てさせる', count: cards.length, cards }
+    }
+    // 見せたカードは、聞く前に `resolve.ts` が積む（`相手に手札を見せる`）。この命令の行は、`選ぶ` が積む。
     case '自分の山札を読む':
       // 読んだカードの数だけを積む。名前は積まない（`LoggedInstruction` の同種の項）。
       return { kind: '自分の山札を読む', count: subjectCardIds(subject).length }

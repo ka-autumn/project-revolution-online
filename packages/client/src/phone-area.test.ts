@@ -19,6 +19,7 @@ const choice = (candidates: WireChoice['candidates']): WireChoice => ({
   mayDecline: false,
   answered: 0,
   mayGoBack: true,
+  mayCancel: true,
   candidates,
 })
 

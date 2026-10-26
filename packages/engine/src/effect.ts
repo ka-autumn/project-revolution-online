@@ -252,9 +252,18 @@ export type Instruction =
        * 候補とは別に、選ぶプレイヤーへ見せるカードの一覧（ADR-0041・ADR-0042）。
        *
        * 渡した時は、候補が 1 枚も無くても聞く（選ばないことだけを選べる）。候補は一覧のカードの
-       * 中から選ぶ。出せるのは `chooseAtMostOneFromLibrary` だけで、カードの側からは渡せない。
+       * 中から選ぶ。出せるのは `chooseAtMostOneFromLibrary` と `letOpponentChooseFromMyHand` だけで、
+       * カードの側からは渡せない。`picker` が `相手` の時は支配者の手札、そうでなければ山札の一覧である。
        */
       readonly shown?: readonly CardInZone[]
+      /**
+       * 選ぶのは誰か（ADR-0052）。省略すると `支配者`。テキストが相手を指定した選択は、相手が選ぶ
+       * （総合ルール 第4部 第8章 2-3）。
+       *
+       * `相手` を出せるのは `letOpponentChooseFromMyHand` だけである。候補が支配者の手札で、相手の
+       * 画面にその一覧を見せる形（ADR-0041 の向きを逆にしたもの）に限るためである。
+       */
+      readonly picker?: '支配者' | '相手'
     }
   | { readonly kind: '破壊する'; readonly target: UnitOnSquare }
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
@@ -275,6 +284,13 @@ export type Instruction =
    * 項目を持たないのは、書ける形をテキストにある形に限るためである。
    */
   | { readonly kind: '相手の手札を見る' }
+  /**
+   * 相手が自分の手札から、1 枚ずつ `count` 枚を選んで捨てる（ADR-0052）。効果には何も返さない。
+   *
+   * 候補は相手の手札で、エンジンが作る。効果は候補にも選ばれたカードにも触れない。項目を
+   * `count` だけに絞っているのは、書ける形をテキストにある形に限るためである。
+   */
+  | { readonly kind: '相手に手札を捨てさせる'; readonly count: number }
   /**
    * 支配者が、自分の山札を読む（ADR-0042）。山札とプランゾーンのカードが、中身つきで効果に
    * 返る。並びは山札の順序と関係のない並びで、順序は返さない。
@@ -720,6 +736,18 @@ export function* lookAtOpponentHand(): EffectStep<void> {
 }
 
 /**
+ * 相手に、自分の手札から `count` 枚を選んで捨てさせる（ADR-0052）。「才気」もこれを使う。
+ *
+ * 選ぶのは相手で、相手は自分の手札の中身を知っている。ランダムには捨てない。相手の手札が
+ * `count` 枚以下なら、聞かずにあるだけ捨てる（総合ルール 第4部 第10章の【例】）。
+ *
+ * 捨てたカードは効果に返らない。相手の手札の中身を効果が受け取る口は作らない（ADR-0004）。
+ */
+export function* discardOpponentHand(count: number): EffectStep<void> {
+  yield { kind: '相手に手札を捨てさせる', count }
+}
+
+/**
  * 支配者の山札を読む。山札とプランゾーンのカードが、中身つきで返る（ADR-0042）。
  *
  * 返る並びは山札の順序と関係がない。順序を読む口は作らない。プランゾーンのカードも、山札の
@@ -758,6 +786,24 @@ export function* shuffleLibrary(): EffectStep<void> {
 export function* chooseAtMostOneFromLibrary(matches: (card: CardInZone) => boolean): EffectStep<CardInZone | undefined> {
   const cards = yield* readLibrary()
   const chosen = yield { kind: '選ぶ', candidates: cards.filter(matches), mayDecline: true, shown: cards }
+  // 命令を解釈する側が、候補の中から選んで返す（選ばなければ `undefined`）。
+  return chosen as CardInZone | undefined
+}
+
+/**
+ * 支配者の手札を相手に見せ、相手に 1 枚まで選ばせる。選ぶのは相手（ADR-0052）。
+ *
+ * 手札の全体が、候補にも相手へ見せる一覧にもなる。相手は 1 枚選ぶことも、選ばないこともできる。
+ * 選ばれたカード（選ばなければ `undefined`）が効果に返る。支配者の手札は、支配者自身の手札なので、
+ * 効果が受け取ってよい（`DuelView.hand`）。見せる一覧に手札を載せられるのは、この関数だけである
+ * （山札を載せられるのが `chooseAtMostOneFromLibrary` だけなのと同じ）。
+ *
+ * 相手に見せたことは、エンジンがログに積む（`相手に手札を見せる`）。支配者の手札が 0 枚なら、聞かずに
+ * ログだけを積んで、`undefined` が返る。
+ */
+export function* letOpponentChooseFromMyHand(duel: DuelView): EffectStep<CardInZone | undefined> {
+  const hand = duel.hand()
+  const chosen = yield { kind: '選ぶ', candidates: hand, mayDecline: true, shown: hand, picker: '相手' }
   // 命令を解釈する側が、候補の中から選んで返す（選ばなければ `undefined`）。
   return chosen as CardInZone | undefined
 }

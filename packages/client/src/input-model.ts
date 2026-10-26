@@ -320,7 +320,15 @@ function occasionLabel(
  * 見えていない、`protocol.ts` の `WireChoice.source`）と、識別子は届いたが盤面にもログの
  * 名指しにも無い場合（`view-model.ts` の `namesIn`）の両方がここに来る。
  */
-function askingFor(purpose: ChoicePurpose, source: string | undefined, hasCandidates: boolean): string {
+function askingFor(
+  purpose: ChoicePurpose,
+  source: string | undefined,
+  hasCandidates: boolean,
+  /** 発生源のカードが相手の支配するカードか（ADR-0052）。 */
+  opponentsSource: boolean,
+  /** 捨てる手札として、いま選ぶ枚数。 */
+  discardCount: number,
+): string {
   switch (purpose) {
     case 'プレイのコスト':
       return 'プレイのコストとしてフリーズするエネルギーを選んでください'
@@ -335,7 +343,13 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined, hasCandid
     case 'プランの置き換え':
       return 'プランのめくりを置き換える能力を選んでください'
     case '効果の対象':
-      return source === undefined ? '効果の対象を選んでください' : `${source} の効果の対象を選んでください`
+      if (source === undefined) return '効果の対象を選んでください'
+      return `${opponentsSource ? '相手の ' : ''}${source} の効果の対象を選んでください`
+    // 相手が自分の手札から選んで捨てる（ADR-0052）。発生源が見えなければ、発生源を言わない。
+    case '捨てる手札':
+      return source === undefined
+        ? `捨てる手札を ${discardCount} 枚選んでください`
+        : `${source} の効果で、捨てる手札を ${discardCount} 枚選んでください`
     case 'トラップのきっかけ':
       return source === undefined
         ? 'トラップを発動するきっかけを選んでください'
@@ -355,6 +369,29 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined, hasCandid
       purpose satisfies never
       return '選んでください'
   }
+}
+
+/**
+ * N 枚を続けて選ぶ選択の、これから選ぶ残りの枚数（ADR-0052）。`series` が無い選択は 1 枚。
+ * 繋ぎ直した後は続きの選択だけが届くので、`of - nth + 1` が残りの枚数になる。
+ */
+export function remainingOf(choice: Pick<WireChoice, 'series'>): number {
+  return choice.series === undefined ? 1 : choice.series.of - choice.series.nth + 1
+}
+
+/**
+ * 発生源のカードが、相手の支配するカードか（ADR-0052）。相手のカードの効果で、自分が選ばされている
+ * 時に、聞く文に「相手の」を添えるために使う。
+ *
+ * 支配者は、解決を始めたことを積んだ行（`能力を解決した`）に残っている。一番新しい行を見る。
+ * 見つからなければ、相手のカードとは言わない。
+ */
+function isOpponentsSource(board: WirePerspective, source: CardId): boolean {
+  for (let at = board.log.length - 1; at >= 0; at -= 1) {
+    const event = board.log[at]?.event
+    if (event?.kind === '能力を解決した' && event.source === source) return event.controller !== board.viewer
+  }
+  return false
 }
 
 /**
@@ -387,10 +424,14 @@ export function choiceView(board: WirePerspective, choice: WireChoice, picking?:
       choice.purpose,
       choice.source === undefined ? undefined : names.get(choice.source),
       choice.candidates.length > 0,
+      choice.source !== undefined && isOpponentsSource(board, choice.source),
+      remainingOf(choice),
     ),
     mayDecline: choice.mayDecline,
+    // 戻せる答えは、いま選んでいる人が続けて答えた分だけ。取り消せるのは行動した側で、相手がまだ
+    // 答えていない時だけ（ADR-0052）。どちらも決めるのはエンジンで、ここは届いた値を重ねるだけ。
     mayRewind: choice.mayGoBack && choice.answered > 0,
-    mayCancel: choice.mayGoBack,
+    mayCancel: choice.mayGoBack && choice.mayCancel,
     candidates,
     guide:
       picking !== undefined && candidates.length === 0 && choice.candidates.length > 0

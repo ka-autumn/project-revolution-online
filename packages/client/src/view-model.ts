@@ -1641,6 +1641,17 @@ function instructionLine(
       const cards = cardsLabel(instruction.count, instruction.cards, named)
       return whose(controller) === '自分' ? `相手の手札を見た：${cards}` : `相手が手札を見た：${cards}`
     }
+    // 捨てたのは支配者の相手で、見る人ごとに主語を入れ替える。捨札に表向きで置かれるので、名前は 2 人に出る
+    // （ADR-0052）。
+    case '相手に手札を捨てさせる': {
+      const cards = cardsLabel(instruction.count, instruction.cards, named)
+      return whose(controller) === '自分' ? `相手が手札を捨てた：${cards}` : `自分が手札を捨てた：${cards}`
+    }
+    // 見せたのは支配者で、見たのはその相手である。名前は 2 人に同じ内容で届く（ADR-0052）。
+    case '相手に手札を見せる': {
+      const cards = cardsLabel(instruction.count, instruction.cards, named)
+      return whose(controller) === '自分' ? `相手に手札を見せた：${cards}` : `相手の手札を見た：${cards}`
+    }
     // 山札の中身は、読んだ本人にも相手にも、ログには出さない（ADR-0042）。枚数だけを言う。
     case '自分の山札を読む':
       return whose(controller) === '自分' ? `山札を見た：${instruction.count}枚` : `相手が山札を見た：${instruction.count}枚`

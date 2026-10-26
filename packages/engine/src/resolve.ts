@@ -20,12 +20,13 @@ import {
 import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
 import type { CardInZone, DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
 import { loggedInstruction, record } from './log.js'
-import type { ResolutionVia } from './log.js'
+import type { LoggedInstruction, ResolutionVia } from './log.js'
 import { opponentOf } from './player.js'
 import type { Player } from './player.js'
 import { shuffle } from './random.js'
 import { checkIntrusion } from './trap.js'
 import { duelView } from './view.js'
+import type { PlayerZone } from './zone.js'
 
 /**
  * 候補の中から 1 つ選ぶ役。
@@ -69,6 +70,11 @@ export const CHOICE_PURPOSES = [
    * 全体が見せる一覧として付く。候補が無くても聞く（選ばないことを選ぶ）。
    */
   '山札から選ぶ',
+  /**
+   * 相手が自分の手札から選んで捨てる（`effect.ts` の `discardOpponentHand`、ADR-0052）。候補は選ぶ人
+   * 自身の手札で、効果には見えない。N 枚を選ばせる時は、1 枚ずつ N 回聞く（`ChoiceSeries`）。
+   */
+  '捨てる手札',
   /** ユニットを移動するための追加コストの支払い（同 第4部 第6章 2-2）。 */
   '移動のコスト',
   /** 起動型能力のコストの支払い（同 第4部 第2章 1）。 */
@@ -94,6 +100,15 @@ export const CHOICE_PURPOSES = [
 export type ChoicePurpose = (typeof CHOICE_PURPOSES)[number]
 
 /**
+ * N 枚を続けて選ばせる時の、何枚目か（ADR-0052）。`nth` は 1 から数える。1 枚だけ選ばせる時は渡さない。
+ * 画面が N 枚をまとめて選ばせるために使う。**返す答えを左右しない。**
+ */
+export interface ChoiceSeries {
+  readonly nth: number
+  readonly of: number
+}
+
+/**
  * 選ばせる手立て。呼ぶ側が渡す。
  *
  * `purpose` は選ぶ人に見せるためのもので、返す答えを左右しない。答えを自動で決める実装
@@ -114,6 +129,10 @@ export type ChoicePurpose = (typeof CHOICE_PURPOSES)[number]
  *
  * `shown` は、候補とは別に選ぶ人へ見せるカードの一覧である（ADR-0041）。一覧のうち候補に
  * なっているものが、選べるカードである。見せるだけで、返す答えを左右しない。
+ *
+ * `player` は、テキストが指定した選ぶ人である。効果の中なら、能力の支配者か、その相手（ADR-0052）。
+ *
+ * `series` は、N 枚を続けて選ばせる選択の何枚目かである。`purpose` と同じく返す答えを左右しない。
  */
 export type Chooser = (
   candidates: readonly unknown[],
@@ -123,6 +142,7 @@ export type Chooser = (
   mayDecline?: boolean,
   source?: CardId,
   shown?: readonly CardInstance[],
+  series?: ChoiceSeries,
 ) => unknown
 
 /**
@@ -230,6 +250,11 @@ interface Outcome {
   readonly declined?: true
   /** 動かしたカードの持ち主。置き先のゾーンのプレイヤーにあたる（`log.ts` の `ゾーンへ置く`）。 */
   readonly owner?: Player
+  /**
+   * 命令が自分でログを積んだ。`recorded` はこの命令の行を足さない。聞かずに済んだ、見せただけの
+   * 選択（`選ぶ` の相手に手札を見せる形で手札が 0 枚）で、選んだ行を残さないために使う。
+   */
+  readonly logged?: true
 }
 
 /**
@@ -243,6 +268,7 @@ interface Outcome {
  * 選ぶことだけは盤面を変えないので、選ばれたものがあったかどうかで見る。
  */
 function recorded(before: DuelState, outcome: Outcome, instruction: Instruction, controller: Player): DuelState {
+  if (outcome.logged === true) return outcome.state
   if (outcome.state === before && outcome.subject === undefined && outcome.declined !== true) return outcome.state
 
   // 命令が動かしたカードは、動いた先が非公開のゾーンだと後の盤面から見えない。名指しを
@@ -274,34 +300,89 @@ function apply(
 ): Outcome {
   switch (instruction.kind) {
     case '選ぶ': {
+      // 選ぶのは、テキストが指定した人である（総合ルール 第4部 第8章 2-3、ADR-0052）。指定が無ければ
+      // 能力の支配者。相手が選ぶ時の一覧は、支配者の手札である。
+      const asksOpponent = instruction.picker === '相手'
+      const chooserPlayer = asksOpponent ? opponentOf(context.controller) : context.controller
+
       // 見せる一覧を渡された時は、候補が無くても聞く。山札を見た人に、選ばないことを選ばせる
       // ためである（ADR-0042）。一覧が空（読める山札が無い、読んだカードが山札を離れた）なら、見せる
       // ものが無いので、一覧なしの選択として扱う。
-      const listed = instruction.shown === undefined ? [] : instancesOf(state, context.controller, instruction.shown, shown)
+      const listed =
+        instruction.shown === undefined
+          ? []
+          : instancesOf(state, context.controller, instruction.shown, shown, asksOpponent ? ['手札'] : ['プランゾーン', '山札'])
       const shownCards = listed.length === 0 ? undefined : listed
+
+      // 支配者の手札を相手に見せる（ADR-0052）。見せたことは、聞く前にログへ積む——戻れるかを決める
+      // 判定が、積まれたログを見るためである（`protocol.ts` の `describeChoice`）。0 枚でも積む。
+      const revealsHand = asksOpponent && instruction.shown !== undefined
+      const board = revealsHand
+        ? record(state, {
+            kind: '命令を実行した',
+            controller: context.controller,
+            instruction: loggedRevealedHand([...listed].sort(byNameThenId)),
+          })
+        : state
 
       // 候補が空なら、選ぶという行動は実行できない（総合ルール 第1部 第1章 3）。効果は
       // そこで終わらせず、選ばれなかったものとして次の指示へ進む。解決はテキストに
       // 書かれている順番の通りに指示に従うものであり（同 第4部 第8章 2-2）、実行されない
       // のはその行動だけだからである。選んだものを対象にする後ろの指示を飛ばすかどうかは、
       // 効果の側が `undefined` を見て決める（`effect.ts` の `choose`）。
-      if (instruction.candidates.length === 0 && shownCards === undefined) return { state, value: undefined }
-      // 選ぶのは能力の支配者（総合ルール 第4部 第8章 2-3）。
+      if (instruction.candidates.length === 0 && shownCards === undefined) {
+        return revealsHand ? { state: board, value: undefined, logged: true } : { state, value: undefined }
+      }
       const chosen = context.chooser(
         instruction.candidates,
-        context.controller,
-        shownCards === undefined ? '効果の対象' : '山札から選ぶ',
-        state,
+        chooserPlayer,
+        shownCards === undefined || asksOpponent ? '効果の対象' : '山札から選ぶ',
+        board,
         instruction.mayDecline,
         context.source,
         shownCards,
       )
       // 選ばないことが認められている場面でだけ、候補にないもの（`undefined`）を受け取れる。
-      if (instruction.mayDecline && chosen === undefined) return { state, value: undefined, declined: true }
+      if (instruction.mayDecline && chosen === undefined) return { state: board, value: undefined, declined: true }
       if (!instruction.candidates.includes(chosen)) {
         throw new Error('候補にないものが選ばれた')
       }
-      return { state, value: chosen, subject: chosen }
+      return { state: board, value: chosen, subject: chosen }
+    }
+    case '相手に手札を捨てさせる': {
+      // 選ぶのは手札の持ち主である相手で、候補はその手札（ADR-0052）。効果は候補にも選ばれた
+      // カードにも触れない。
+      const opponent = opponentOf(context.controller)
+      const hand = cardsIn(state, opponent, '手札')
+      // 0 枚（または 0 枚を捨てさせる）なら何も起きない。ログも積まない（`recorded`）。
+      if (instruction.count <= 0 || hand.length === 0) return { state, value: undefined }
+
+      // 手札が足りなければ、聞かずにあるだけ捨てる（総合ルール 第4部 第10章 2）。
+      const discarded: CardInstance[] = []
+      if (hand.length <= instruction.count) {
+        discarded.push(...hand)
+      } else {
+        // 1 枚ずつ選ばせる。選んだカードは次の候補から外れる。途中で盤面は変わらない。
+        for (let nth = 1; nth <= instruction.count; nth += 1) {
+          const candidates = hand.filter((one) => !discarded.includes(one))
+          const chosen = context.chooser(
+            candidates,
+            opponent,
+            '捨てる手札',
+            state,
+            false,
+            context.source,
+            undefined,
+            instruction.count >= 2 ? { nth, of: instruction.count } : undefined,
+          )
+          if (!candidates.includes(chosen as CardInstance)) throw new Error('候補にないものが選ばれた')
+
+          discarded.push(chosen as CardInstance)
+        }
+      }
+      // 選び終えてから、まとめて捨札に置く。
+      const next = discarded.reduce((current, one) => moveToZone(current, one.id, '捨札'), state)
+      return { state: next, value: undefined, subject: discarded }
     }
     case '相手の手札を見る': {
       // 見るのは能力の支配者で、見られるのはその相手の手札である（ADR-0041）。
@@ -517,21 +598,28 @@ function byNameThenId(a: { readonly id: CardId; readonly card: Card }, b: { read
 /**
  * 効果が見せる一覧に載せたカードを、盤面のカードに引き直す。
  *
- * 効果が読んだものだけを載せられる（`shown` に入っているもの）。山札とプランゾーンから探す。
- * 見つからなければ、そのカードはもう山札を離れているので、一覧には載せない。
+ * 効果が読んだものだけを載せられる（`shown` に入っているもの）。`zones` のゾーンから探す。山札を
+ * 見せる一覧はプランゾーンと山札、相手に見せる一覧は支配者の手札である。見つからなければ、その
+ * カードはもうそこを離れているので、一覧には載せない。
  */
 function instancesOf(
   state: DuelState,
   player: Player,
   listed: readonly CardInZone[],
   shown: ReadonlySet<CardId>,
+  zones: readonly PlayerZone[],
 ): readonly CardInstance[] {
-  const held = [...cardsIn(state, player, 'プランゾーン'), ...cardsIn(state, player, '山札')]
+  const held = zones.flatMap((zone) => cardsIn(state, player, zone))
   return listed.flatMap(({ id }) => {
     if (!shown.has(id)) throw new Error('効果に見せていないカードが見せる一覧に載せられた')
     const found = held.find((one) => one.id === id)
     return found === undefined ? [] : [found]
   })
+}
+
+/** 支配者の手札を相手に見せたことを、ログに積む形にする。 */
+function loggedRevealedHand(cards: readonly CardInstance[]): LoggedInstruction {
+  return { kind: '相手に手札を見せる', count: cards.length, cards: cards.map(({ id }) => id) }
 }
 
 /**

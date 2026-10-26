@@ -281,6 +281,7 @@ describe('CPU が選択に答える', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: true,
+    mayCancel: true,
     candidates: [
       { kind: '見えている', card: 'あ' },
       { kind: '見えている', card: 'い' },
@@ -314,6 +315,7 @@ describe('CPU が選択に答える', () => {
       ...CHOICE,
       purpose: '見たカードの確認',
       mayGoBack: false,
+      mayCancel: true,
       candidates: [{ kind: '確認' }],
     } as const
 
@@ -322,7 +324,7 @@ describe('CPU が選択に答える', () => {
 
   // ADR-0042。条件に合うカードが無い山札の選択は、候補が 0 枚で、選ばないことだけが答えになる。
   it('山札から選ぶ場面で候補が無ければ、選ばないと答える', () => {
-    const noMatch = { ...CHOICE, purpose: '山札から選ぶ', mayDecline: true, mayGoBack: false, candidates: [] } as const
+    const noMatch = { ...CHOICE, purpose: '山札から選ぶ', mayDecline: true, mayGoBack: false, mayCancel: true, candidates: [] } as const
 
     expect(pickCpuAnswer(noMatch, randomFromSeed(7)).answer).toBe('選ばない')
   })

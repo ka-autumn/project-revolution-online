@@ -204,6 +204,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [
         { kind: '見えていない', at: undefined },
         { kind: '見えている', card: 'スクエアの1枚' },
@@ -226,6 +227,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [
         { kind: '見えていない', at: undefined },
         { kind: '見えていない', at: undefined },
@@ -251,6 +253,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '能力', source: 'スクエアの1枚' }],
     }
 
@@ -265,6 +268,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '能力', source: undefined }],
     }
 
@@ -282,6 +286,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [
         { kind: 'スクエア', square: { row: 0, column: 0 } },
         { kind: 'スクエア', square: { row: 1, column: 1 } },
@@ -305,6 +310,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: 'スクエア', square: { row: 0, column: 0 } }],
     }
 
@@ -318,6 +324,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
@@ -336,6 +343,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
@@ -354,10 +362,67 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
     expect(choiceView(board(), choice).asking).toBe('効果の対象を選んでください')
+  })
+
+  // ADR-0052。相手のカードの効果で自分が選ばされている時は、聞く文に「相手の」を添える。
+  describe('相手が選ぶ選択', () => {
+    const asked = (overrides: Partial<WireChoice>): WireChoice => ({
+      player: '先攻',
+      purpose: '効果の対象',
+      source: 'スクエアの1枚',
+      mayDecline: false,
+      answered: 0,
+      mayGoBack: true,
+      mayCancel: true,
+      candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
+      ...overrides,
+    })
+    const resolvedBy = (controller: Player): WirePerspective => ({
+      ...board(),
+      log: [{ event: { kind: '能力を解決した', controller, via: '誘発', source: 'スクエアの1枚' }, during: [] }],
+    })
+
+    it('相手のカードの効果で選ぶ時は、聞く文に「相手の」が付く', () => {
+      expect(choiceView(resolvedBy('後攻'), asked({})).asking).toBe('相手の テスト・盤上の戦士 の効果の対象を選んでください')
+    })
+
+    it('自分のカードの効果で選ぶ時は、付かない', () => {
+      expect(choiceView(resolvedBy('先攻'), asked({})).asking).toBe('テスト・盤上の戦士 の効果の対象を選んでください')
+    })
+
+    it('捨てる手札は、発生源と枚数を聞く文に出す', () => {
+      expect(choiceView(board(), asked({ purpose: '捨てる手札' })).asking).toBe(
+        'テスト・盤上の戦士 の効果で、捨てる手札を 1 枚選んでください',
+      )
+    })
+
+    it('捨てる手札の発生源が見えなければ、発生源を言わない', () => {
+      expect(choiceView(board(), asked({ purpose: '捨てる手札', source: undefined })).asking).toBe(
+        '捨てる手札を 1 枚選んでください',
+      )
+    })
+
+    // 繋ぎ直した後は続きの選択だけが届く。残りの枚数は series から分かる。
+    it('N 枚続けて選ぶ時は、残りの枚数を言う', () => {
+      const first = asked({ purpose: '捨てる手札', series: { nth: 1, of: 2 } })
+      const rejoined = asked({ purpose: '捨てる手札', series: { nth: 2, of: 2 } })
+
+      expect(choiceView(board(), first).asking).toBe('テスト・盤上の戦士 の効果で、捨てる手札を 2 枚選んでください')
+      expect(choiceView(board(), rejoined).asking).toBe('テスト・盤上の戦士 の効果で、捨てる手札を 1 枚選んでください')
+    })
+
+    it('「ひとつ戻る」は続けて答えた数が 1 以上の時、「この行動をやめる」は取り消せる時だけ出す', () => {
+      expect(choiceView(board(), asked({ answered: 0, mayCancel: false }))).toMatchObject({ mayRewind: false, mayCancel: false })
+      expect(choiceView(board(), asked({ answered: 1, mayCancel: false }))).toMatchObject({ mayRewind: true, mayCancel: false })
+      expect(choiceView(board(), asked({ answered: 1, mayCancel: true }))).toMatchObject({ mayRewind: true, mayCancel: true })
+      // 戻れない（見てしまった）なら、どちらも出ない。
+      expect(choiceView(board(), asked({ answered: 1, mayGoBack: false }))).toMatchObject({ mayRewind: false, mayCancel: false })
+    })
   })
 
   /**
@@ -373,6 +438,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
@@ -387,6 +453,7 @@ describe('選ぶ候補', () => {
       mayDecline: true,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えていない', at: undefined }],
     }
 
@@ -408,6 +475,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えていない', at: undefined }],
     }
 
@@ -428,6 +496,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack,
+      mayCancel: true,
       candidates: [{ kind: '見えていない', at: undefined }],
     }
 
@@ -441,6 +510,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 1,
       mayGoBack: false,
+      mayCancel: true,
       candidates: [{ kind: '見えていない', at: undefined }],
     }
 
@@ -468,6 +538,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えていない', at: undefined }],
     }
 
@@ -483,6 +554,7 @@ describe('選ぶ候補', () => {
         mayDecline: false,
         answered: 0,
         mayGoBack: true,
+        mayCancel: true,
         candidates: [],
       }
       return choiceView(board(), choice).asking
@@ -503,6 +575,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
@@ -526,6 +599,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates,
     })
 
@@ -703,6 +777,7 @@ describe('自動で送る手', () => {
         mayDecline: false,
         answered: 0,
         mayGoBack: true,
+        mayCancel: true,
         candidates: [{ kind: '見えていない', at: undefined }],
       },
     })
@@ -1326,6 +1401,7 @@ describe('候補を盤面から押す', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: true,
+    mayCancel: true,
     candidates,
   })
 
@@ -1599,6 +1675,7 @@ describe('エリアの候補', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: true,
+    mayCancel: true,
     candidates,
   })
 
@@ -1689,6 +1766,7 @@ describe('盤面から押せる候補は、ボタンに出さない', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: true,
+    mayCancel: true,
     candidates,
   })
 
@@ -1813,6 +1891,7 @@ describe('束（捨札・リムーブ）は盤面から押せない', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: true,
+    mayCancel: true,
     candidates,
   })
 
@@ -1853,6 +1932,7 @@ describe('offBoardCandidates・showsChoicePicker', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: true,
+    mayCancel: true,
     candidates,
   })
 
@@ -1928,6 +2008,7 @@ describe('isAbilityChoice・abilityLabels', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: false,
+    mayCancel: true,
     candidates,
   })
 
@@ -2024,6 +2105,7 @@ describe('abilityListSource', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: false,
+    mayCancel: true,
     candidates,
     ...(source === undefined ? {} : { source }),
   })
@@ -2056,6 +2138,7 @@ describe('見せる一覧つきの選択', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: false,
+    mayCancel: true,
     candidates: [{ kind: '確認' }],
     shown: [
       { instance: instance('相手の1枚目', '後攻', { card: unitFace('テスト・あ') }) },
@@ -2110,6 +2193,7 @@ describe('見せる一覧つきの選択', () => {
       mayDecline: true,
       answered: 0,
       mayGoBack: false,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: '山札の1枚目' }],
       shown: [
         { instance: instance('山札の1枚目', '先攻', { card: unitFace('テスト・あ') }), candidate: 0 },
