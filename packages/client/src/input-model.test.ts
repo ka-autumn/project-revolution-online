@@ -14,6 +14,7 @@ import {
   abilityLabels,
   abilityListSource,
   isAbilityChoice,
+  isSeriesChoice,
   actionViews,
   automaticAction,
   choicePicking,
@@ -414,6 +415,15 @@ describe('選ぶ候補', () => {
 
       expect(choiceView(board(), first).asking).toBe('テスト・盤上の戦士 の効果で、捨てる手札を 2 枚選んでください')
       expect(choiceView(board(), rejoined).asking).toBe('テスト・盤上の戦士 の効果で、捨てる手札を 1 枚選んでください')
+    })
+
+    // ADR-0052。series を持ち、候補が全部カードなら、盤面にも載っている手札でも一覧で N 枚に印を付けさせる。
+    it('series を持つ選択は、カードの一覧で N 枚をまとめて選ばせる', () => {
+      const withSeries = asked({ purpose: '捨てる手札', series: { nth: 1, of: 2 } })
+
+      expect(isSeriesChoice(withSeries)).toBe(true)
+      expect(isSeriesChoice(asked({ purpose: '捨てる手札' }))).toBe(false)
+      expect(isSeriesChoice({ ...withSeries, candidates: [{ kind: '見えていない', at: undefined }] })).toBe(false)
     })
 
     it('「ひとつ戻る」は続けて答えた数が 1 以上の時、「この行動をやめる」は取り消せる時だけ出す', () => {

@@ -1103,6 +1103,19 @@ export function showsChoicePicker(
 }
 
 /**
+ * N 枚をまとめて選ばせる選択か（ADR-0052）。`series` を持ち、候補が全部カードの時である。
+ * 画面は、候補が盤面にも載っていても（自分の手札）、カードの一覧で N 枚に印を付けさせる
+ * （`render.ts` の `seriesPickerElement`）。
+ */
+export function isSeriesChoice(choice: WireChoice): boolean {
+  return (
+    choice.series !== undefined &&
+    choice.candidates.length > 0 &&
+    choice.candidates.every((candidate) => candidate.kind === '見えている')
+  )
+}
+
+/**
  * 見せる一覧つきの選択（ADR-0041）の見出し。相手の手札を見る確認は、見ている一覧の名前と枚数を
  * 言う。それ以外は、候補から選ぶ一覧と同じ見出しにする。
  */
