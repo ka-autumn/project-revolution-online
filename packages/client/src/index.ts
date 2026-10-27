@@ -64,6 +64,9 @@ import {
   choiceView,
   abilityListSource,
   isAbilityChoice,
+  isSeriesChoice,
+  remainingOf,
+  nextSeriesAnswer,
   shownTitleOf,
   offBoardCandidates,
   pickView,
@@ -92,6 +95,7 @@ import {
   chooseZoneListElement,
   choosePickerElement,
   type ChoosePickerHandlers,
+  seriesPickerElement,
   shownPickerElement,
   choosesFrom,
   confirmElement,
@@ -332,6 +336,14 @@ interface DuelInteraction {
   readonly onPickerPick: (index: number | undefined) => void
   /** 答えて（選ばない・これに決める・戻る・取り消す）次の状況に移る。選びかけを捨てる。 */
   readonly onPickerAnswered: () => void
+  /** N 枚をまとめて選ぶ一覧（ADR-0052）で、印を付けているカード。 */
+  readonly seriesMarks: readonly CardId[]
+  /** 印を付けた残りを、続きの選択で人の操作なしに送っている間か。 */
+  readonly seriesSending: boolean
+  /** 印を付ける・外す。`limit` は N 枚で、それ以上は付けない。 */
+  readonly onSeriesToggle: (card: CardId, limit: number) => void
+  /** 1 枚目の答えを送る。印を付けた残りを、続きの選択が届くたびに送る分として覚える。 */
+  readonly onSeriesAnswered: (rest: readonly CardId[]) => void
   /**
    * エリアを選んでいる間の、カーソルとフォーカスのあるスクエアの覚え先（`area-highlight.ts`）。描き直しを
    * またいで持つ。エリアの候補が無い描き直しでは捨てる（`draw`）。
@@ -986,6 +998,7 @@ function draw(
       connected &&
       stage.choice !== undefined &&
       (stage.choice.shown !== undefined ||
+        isSeriesChoice(stage.choice) ||
         showsChoicePicker(stage.choice, offBoard) ||
         (clickMode && isAbilityChoice(stage.choice)))
 
@@ -1090,6 +1103,37 @@ function draw(
                 duel.onPickerAnswered()
                 connection.send({ kind: '取り消す' })
               },
+            }
+            // N 枚をまとめて選ぶ選択（ADR-0052）。候補が盤面にも載っていても（自分の手札）、一覧で N 枚に
+            // 印を付けさせる。1 枚目を送った後の続きは、届くたびに印を付けたカードから引き直して送る。
+            if (isSeriesChoice(choice)) {
+              const limit = remainingOf(choice)
+              const candidatesAll = choice.candidates.map((candidate, index) => ({ index, candidate }))
+              return seriesPickerElement(
+                meta.asking,
+                candidatesAll,
+                (id) => cardsById.get(id),
+                duel.seriesMarks,
+                limit,
+                meta.mayRewind,
+                meta.mayCancel,
+                {
+                  onToggle: (card) => duel.onSeriesToggle(card, limit),
+                  onConfirm: () => {
+                    const [first, ...rest] = duel.seriesMarks
+                    const answer = choice.candidates.findIndex(
+                      (candidate) => candidate.kind === '見えている' && candidate.card === first,
+                    )
+                    if (first === undefined || answer < 0) return
+                    duel.onSeriesAnswered(rest)
+                    connection.send({ kind: '選ぶ', answer })
+                  },
+                  onRewind: handlers.onRewind,
+                  onCancel: handlers.onCancel,
+                },
+                duel.seriesSending,
+                phoneList,
+              )
             }
             // 候補とは別に見せる一覧が付いた選択（ADR-0041）。カードの面を並べ、選べるものと
             // 見えるだけのものを見分けられるようにする。
@@ -1482,6 +1526,15 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    * `undefined`。答えて（選ばない・これに決める）次の状況に移るたびに捨てる。
    */
   let pickerPicked: number | undefined
+  /**
+   * N 枚をまとめて選ぶ一覧（`WireChoice.series`、ADR-0052）で、印を付けているカード。
+   * 選択が届くたびに捨てる。
+   */
+  let seriesMarks: readonly CardId[] = []
+  /** 「これに決める」の後に、続きの選択が届くたびに送る分（カードの識別子。選んだ順）。 */
+  let seriesQueue: readonly CardId[] = []
+  /** 続きを人の操作なしに送っている間。一覧を最初から押せなくして描く。 */
+  let seriesSending = false
   /** エリアを選ぶ間の、カーソルとフォーカスのあるスクエア（描き直しをまたいで強調を保つ、`area-highlight.ts`）。 */
   const areaPointer = areaPointerStore()
 
@@ -1607,6 +1660,22 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     // （`applyMessage` 経由）——ここで呼ぶと、答えが届く前の古い状態のまま一瞬描き直される。
     onPickerAnswered: () => {
       pickerPicked = undefined
+      seriesMarks = []
+      seriesQueue = []
+    },
+    seriesMarks,
+    seriesSending,
+    onSeriesToggle: (card, limit) => {
+      seriesMarks = seriesMarks.includes(card)
+        ? seriesMarks.filter((each) => each !== card)
+        : seriesMarks.length < limit
+          ? [...seriesMarks, card]
+          : seriesMarks
+      redraw()
+    },
+    onSeriesAnswered: (rest) => {
+      seriesQueue = rest
+      seriesMarks = []
     },
     areaPointer,
   })
@@ -2463,6 +2532,13 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         pickerPicked = undefined
         listShown = undefined
       }
+      // N 枚をまとめて選ばせた続きの選択（ADR-0052）。印を付けたカードを識別子で候補から引き直し、
+      // 人の操作なしに送る。見つからなければ（繋ぎ直した先で候補が替わった）、送らずに人に任せる。
+      const series = nextSeriesAnswer({ queue: seriesQueue, sending: seriesSending }, message)
+      if (message.kind === '選んでほしい' || message.kind === '盤面' || message.kind === '席についた') seriesMarks = []
+      seriesQueue = series.queue
+      seriesSending = series.sending
+      const queuedAnswer = series.answer
       // 決着したら、どちらの状態も残さない。決着後は答えることも束を開くこともできる意味が
       // 無くなる（ADR-0010）うえ、次の対局に持ち越させないための重ねの備えでもある。
       if (message.kind === '盤面' && message.perspective.result !== undefined) {
@@ -2514,6 +2590,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // 後にもう一度同じ手を送ることになり、断られ続ける。
       const automatic = message.kind === '盤面' ? automaticAction(session) : undefined
       if (automatic !== undefined) connection.send({ kind: '行動する', action: automatic })
+      if (queuedAnswer !== undefined) connection.send({ kind: '選ぶ', answer: queuedAnswer })
     },
     onLinkChanged: (value) => {
       link = value
@@ -2521,6 +2598,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // まだ行えるとは限らない（ADR-0016）。
       if (value.kind !== '繋がっている') {
         selection = {}
+        seriesQueue = []
+        seriesSending = false
         // 繋ぎ直した先で、払っていた選択が続いているとは限らない。開き直す予定も残さない。
         dropPayList()
       }

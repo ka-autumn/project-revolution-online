@@ -1150,7 +1150,7 @@ function didLine(
  * 名指しが落ちたのか、そもそもカードを指していないできごとなのかは、届いたものからは
  * 見分けられない（`log.ts` の `DuelEvent`）。分からないことを書き分けようとしない。
  * ただし「選ぶ」だけは、選ばないことを選んだ時に印（`declined`）が付く（`log.ts`）ので、
- * 「選ばなかった」と出す。印が無く、カード・スクエア・エリアのどれも指していない行は、選ばれたのが
+ * 「選択しなかった」と出す。印が無く、カード・スクエア・エリアのどれも指していない行は、選ばれたのが
  * 見る人に見えないカードなので、行を出さない（`OMITTED`）。
  *
  * **新しいものを先頭にする（#111）。** `board.log` 自体は起きた順（古いものが先）のままで、
@@ -1591,7 +1591,7 @@ function instructionLine(
   switch (instruction.kind) {
     case '選ぶ': {
       // 選ばないことを選んだ（`log.ts` の `選ぶ`）。
-      if (instruction.declined === true) return '選ばなかった'
+      if (instruction.declined === true) return '選択しなかった'
 
       // 選ばれたのはカード・スクエア・エリアのどれかである（`log.ts` の `選ぶ`）。スクエアと
       // エリアは見る人から見た呼び名で言う（総合ルール 第2部 第22章 6）。
@@ -1604,7 +1604,7 @@ function instructionLine(
       const chosen = named(instruction.card) ?? where
       // 選ばれたのが見る人に見えないカード（カード・スクエア・エリアのどれも指していない）なら、行を出さない。
       // 選んだカードの名前は、動かした先で見えるようになった時に、その行が言う（ADR-0042）。
-      return chosen === undefined ? OMITTED : `${chosen}を選んだ`
+      return chosen === undefined ? OMITTED : `${chosen}を選択した`
     }
     case '破壊する':
       return about(named(instruction.card), 'を', '破壊した')
@@ -1640,6 +1640,17 @@ function instructionLine(
     case '相手の手札を見る': {
       const cards = cardsLabel(instruction.count, instruction.cards, named)
       return whose(controller) === '自分' ? `相手の手札を見た：${cards}` : `相手が手札を見た：${cards}`
+    }
+    // 捨てたのは支配者の相手で、見る人ごとに主語を入れ替える。捨札に表向きで置かれるので、名前は 2 人に出る
+    // （ADR-0052）。
+    case '相手に手札を捨てさせる': {
+      const cards = cardsLabel(instruction.count, instruction.cards, named)
+      return whose(controller) === '自分' ? `相手が手札を捨てた：${cards}` : `自分が手札を捨てた：${cards}`
+    }
+    // 見せたのは支配者で、見たのはその相手である。名前は 2 人に同じ内容で届く（ADR-0052）。
+    case '相手に手札を見せる': {
+      const cards = cardsLabel(instruction.count, instruction.cards, named)
+      return whose(controller) === '自分' ? `相手に手札を見せた：${cards}` : `相手の手札を見た：${cards}`
     }
     // 山札の中身は、読んだ本人にも相手にも、ログには出さない（ADR-0042）。枚数だけを言う。
     case '自分の山札を読む':

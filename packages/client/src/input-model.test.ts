@@ -5,6 +5,7 @@ import type {
   PassOutcome,
   Player,
   Square,
+  ToClient,
   WireCandidate,
   WireCardFace,
   WireChoice,
@@ -14,6 +15,8 @@ import {
   abilityLabels,
   abilityListSource,
   isAbilityChoice,
+  isSeriesChoice,
+  nextSeriesAnswer,
   actionViews,
   automaticAction,
   choicePicking,
@@ -204,6 +207,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [
         { kind: '見えていない', at: undefined },
         { kind: '見えている', card: 'スクエアの1枚' },
@@ -226,6 +230,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [
         { kind: '見えていない', at: undefined },
         { kind: '見えていない', at: undefined },
@@ -251,6 +256,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '能力', source: 'スクエアの1枚' }],
     }
 
@@ -265,6 +271,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '能力', source: undefined }],
     }
 
@@ -282,6 +289,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [
         { kind: 'スクエア', square: { row: 0, column: 0 } },
         { kind: 'スクエア', square: { row: 1, column: 1 } },
@@ -305,6 +313,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: 'スクエア', square: { row: 0, column: 0 } }],
     }
 
@@ -318,6 +327,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
@@ -336,6 +346,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
@@ -354,10 +365,76 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
     expect(choiceView(board(), choice).asking).toBe('効果の対象を選んでください')
+  })
+
+  // ADR-0052。相手のカードの効果で自分が選ばされている時は、聞く文に「相手の」を添える。
+  describe('相手が選ぶ選択', () => {
+    const asked = (overrides: Partial<WireChoice>): WireChoice => ({
+      player: '先攻',
+      purpose: '効果の対象',
+      source: 'スクエアの1枚',
+      mayDecline: false,
+      answered: 0,
+      mayGoBack: true,
+      mayCancel: true,
+      candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
+      ...overrides,
+    })
+    const resolvedBy = (controller: Player): WirePerspective => ({
+      ...board(),
+      log: [{ event: { kind: '能力を解決した', controller, via: '誘発', source: 'スクエアの1枚' }, during: [] }],
+    })
+
+    it('相手のカードの効果で選ぶ時は、聞く文に「相手の」が付く', () => {
+      expect(choiceView(resolvedBy('後攻'), asked({})).asking).toBe('相手の テスト・盤上の戦士 の効果の対象を選んでください')
+    })
+
+    it('自分のカードの効果で選ぶ時は、付かない', () => {
+      expect(choiceView(resolvedBy('先攻'), asked({})).asking).toBe('テスト・盤上の戦士 の効果の対象を選んでください')
+    })
+
+    it('捨てる手札は、発生源と枚数を聞く文に出す', () => {
+      expect(choiceView(board(), asked({ purpose: '捨てる手札' })).asking).toBe(
+        'テスト・盤上の戦士 の効果で、捨てる手札を 1 枚選んでください',
+      )
+    })
+
+    it('捨てる手札の発生源が見えなければ、発生源を言わない', () => {
+      expect(choiceView(board(), asked({ purpose: '捨てる手札', source: undefined })).asking).toBe(
+        '捨てる手札を 1 枚選んでください',
+      )
+    })
+
+    // 繋ぎ直した後は続きの選択だけが届く。残りの枚数は series から分かる。
+    it('N 枚続けて選ぶ時は、残りの枚数を言う', () => {
+      const first = asked({ purpose: '捨てる手札', series: { nth: 1, of: 2 } })
+      const rejoined = asked({ purpose: '捨てる手札', series: { nth: 2, of: 2 } })
+
+      expect(choiceView(board(), first).asking).toBe('テスト・盤上の戦士 の効果で、捨てる手札を 2 枚選んでください')
+      expect(choiceView(board(), rejoined).asking).toBe('テスト・盤上の戦士 の効果で、捨てる手札を 1 枚選んでください')
+    })
+
+    // ADR-0052。series を持ち、候補が全部カードなら、盤面にも載っている手札でも一覧で N 枚に印を付けさせる。
+    it('series を持つ選択は、カードの一覧で N 枚をまとめて選ばせる', () => {
+      const withSeries = asked({ purpose: '捨てる手札', series: { nth: 1, of: 2 } })
+
+      expect(isSeriesChoice(withSeries)).toBe(true)
+      expect(isSeriesChoice(asked({ purpose: '捨てる手札' }))).toBe(false)
+      expect(isSeriesChoice({ ...withSeries, candidates: [{ kind: '見えていない', at: undefined }] })).toBe(false)
+    })
+
+    it('「ひとつ戻る」は続けて答えた数が 1 以上の時、「この行動をやめる」は取り消せる時だけ出す', () => {
+      expect(choiceView(board(), asked({ answered: 0, mayCancel: false }))).toMatchObject({ mayRewind: false, mayCancel: false })
+      expect(choiceView(board(), asked({ answered: 1, mayCancel: false }))).toMatchObject({ mayRewind: true, mayCancel: false })
+      expect(choiceView(board(), asked({ answered: 1, mayCancel: true }))).toMatchObject({ mayRewind: true, mayCancel: true })
+      // 戻れない（見てしまった）なら、どちらも出ない。
+      expect(choiceView(board(), asked({ answered: 1, mayGoBack: false }))).toMatchObject({ mayRewind: false, mayCancel: false })
+    })
   })
 
   /**
@@ -373,6 +450,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
@@ -387,6 +465,7 @@ describe('選ぶ候補', () => {
       mayDecline: true,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えていない', at: undefined }],
     }
 
@@ -408,6 +487,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えていない', at: undefined }],
     }
 
@@ -428,6 +508,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack,
+      mayCancel: true,
       candidates: [{ kind: '見えていない', at: undefined }],
     }
 
@@ -441,6 +522,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 1,
       mayGoBack: false,
+      mayCancel: true,
       candidates: [{ kind: '見えていない', at: undefined }],
     }
 
@@ -468,6 +550,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えていない', at: undefined }],
     }
 
@@ -483,6 +566,7 @@ describe('選ぶ候補', () => {
         mayDecline: false,
         answered: 0,
         mayGoBack: true,
+        mayCancel: true,
         candidates: [],
       }
       return choiceView(board(), choice).asking
@@ -503,6 +587,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: 'てふだの1枚' }],
     }
 
@@ -526,6 +611,7 @@ describe('選ぶ候補', () => {
       mayDecline: false,
       answered: 0,
       mayGoBack: true,
+      mayCancel: true,
       candidates,
     })
 
@@ -703,6 +789,7 @@ describe('自動で送る手', () => {
         mayDecline: false,
         answered: 0,
         mayGoBack: true,
+        mayCancel: true,
         candidates: [{ kind: '見えていない', at: undefined }],
       },
     })
@@ -1326,6 +1413,7 @@ describe('候補を盤面から押す', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: true,
+    mayCancel: true,
     candidates,
   })
 
@@ -1599,6 +1687,7 @@ describe('エリアの候補', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: true,
+    mayCancel: true,
     candidates,
   })
 
@@ -1689,6 +1778,7 @@ describe('盤面から押せる候補は、ボタンに出さない', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: true,
+    mayCancel: true,
     candidates,
   })
 
@@ -1813,6 +1903,7 @@ describe('束（捨札・リムーブ）は盤面から押せない', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: true,
+    mayCancel: true,
     candidates,
   })
 
@@ -1853,6 +1944,7 @@ describe('offBoardCandidates・showsChoicePicker', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: true,
+    mayCancel: true,
     candidates,
   })
 
@@ -1928,6 +2020,7 @@ describe('isAbilityChoice・abilityLabels', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: false,
+    mayCancel: true,
     candidates,
   })
 
@@ -2024,6 +2117,7 @@ describe('abilityListSource', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: false,
+    mayCancel: true,
     candidates,
     ...(source === undefined ? {} : { source }),
   })
@@ -2056,6 +2150,7 @@ describe('見せる一覧つきの選択', () => {
     mayDecline: false,
     answered: 0,
     mayGoBack: false,
+    mayCancel: true,
     candidates: [{ kind: '確認' }],
     shown: [
       { instance: instance('相手の1枚目', '後攻', { card: unitFace('テスト・あ') }) },
@@ -2075,8 +2170,12 @@ describe('見せる一覧つきの選択', () => {
     expect(shownTitleOf(confirming)).toBe('相手の手札（2）')
   })
 
-  it('確認以外の一覧は、候補から選ぶ一覧と同じ見出しにする', () => {
-    expect(shownTitleOf({ ...confirming, purpose: '効果の対象' })).toBe('候補から選ぶ')
+  it('相手の効果で自分が選ぶ一覧も、相手の手札と枚数を言う', () => {
+    expect(shownTitleOf({ ...confirming, purpose: '効果の対象' })).toBe('相手の手札（2）')
+  })
+
+  it('それ以外の一覧は、候補から選ぶ一覧と同じ見出しにする', () => {
+    expect(shownTitleOf({ ...confirming, purpose: '捨てる手札' })).toBe('候補から選ぶ')
   })
 
   it('一覧は、盤面のどこにも載っていないカードも描ける形になる', () => {
@@ -2110,6 +2209,7 @@ describe('見せる一覧つきの選択', () => {
       mayDecline: true,
       answered: 0,
       mayGoBack: false,
+      mayCancel: true,
       candidates: [{ kind: '見えている', card: '山札の1枚目' }],
       shown: [
         { instance: instance('山札の1枚目', '先攻', { card: unitFace('テスト・あ') }), candidate: 0 },
@@ -2217,5 +2317,112 @@ describe('見せる一覧つきの選択', () => {
     const plain: WireChoice = { ...confirming, shown: undefined }
 
     expect(shownCardViewsIn(board(), plain)).toEqual([])
+  })
+})
+
+// ADR-0052。N 枚をまとめて選ばせた後の、続きの選択に自動で送る分。
+describe('続きの選択に自動で送る分', () => {
+  const series = (nth: number, candidates: readonly WireCandidate[]): ToClient => ({
+    kind: '選んでほしい',
+    choice: {
+      player: '後攻',
+      purpose: '捨てる手札',
+      mayDecline: false,
+      answered: nth - 1,
+      mayGoBack: true,
+      mayCancel: false,
+      series: { nth, of: 2 },
+      candidates,
+    },
+  })
+  const withoutSeries: ToClient = {
+    kind: '選んでほしい',
+    choice: {
+      player: '後攻',
+      purpose: '効果の対象',
+      mayDecline: false,
+      answered: 0,
+      mayGoBack: true,
+      mayCancel: false,
+      candidates: [{ kind: '見えている', card: '手札の2枚目' }],
+    },
+  }
+  const hand: readonly WireCandidate[] = [
+    { kind: '見えている', card: '手札の1枚目' },
+    { kind: '見えている', card: '手札の2枚目' },
+    { kind: '見えている', card: '手札の3枚目' },
+  ]
+  const idle = { queue: [], sending: false }
+  const waiting = { queue: ['手札の2枚目', '手札の3枚目'], sending: false }
+
+  it('続きの選択が届いたら、先頭のカードを識別子で引き直した番号を送り、残りを持つ', () => {
+    // 1 枚目を送った後に候補の並びが替わっても、識別子で引くので同じカードを指す。
+    const reordered = [hand[2], hand[1], hand[0]] as readonly WireCandidate[]
+
+    expect(nextSeriesAnswer(waiting, series(2, reordered))).toEqual({
+      answer: 1,
+      queue: ['手札の3枚目'],
+      sending: true,
+    })
+  })
+
+  it('最後の 1 枚を送った後は、送る分が空になる', () => {
+    expect(nextSeriesAnswer({ queue: ['手札の3枚目'], sending: true }, series(2, hand))).toEqual({
+      answer: 2,
+      queue: [],
+      sending: true,
+    })
+  })
+
+  it('候補に無いカードなら、送らずに残りも捨てて、人に任せる', () => {
+    expect(nextSeriesAnswer({ queue: ['消えた札', '手札の3枚目'], sending: true }, series(2, hand))).toEqual({
+      answer: undefined,
+      queue: [],
+      sending: false,
+    })
+  })
+
+  it('series を持たない選択が届いたら、送らずに捨てる', () => {
+    expect(nextSeriesAnswer(waiting, withoutSeries)).toEqual({ answer: undefined, queue: [], sending: false })
+  })
+
+  it('送る分が無ければ、続きの選択が届いても何も送らない', () => {
+    expect(nextSeriesAnswer(idle, series(2, hand))).toEqual({ answer: undefined, queue: [], sending: false })
+  })
+
+  it('行えなかった時と席についた時は、送る分を捨てる', () => {
+    const refused: ToClient = { kind: '行えなかった', reason: 'テスト' }
+    const seated = { kind: '席についた', seat: '後攻', room: 'テスト', own: 'テスト' } as unknown as ToClient
+
+    expect(nextSeriesAnswer({ queue: ['手札の2枚目'], sending: true }, refused)).toEqual({
+      answer: undefined,
+      queue: [],
+      sending: true,
+    })
+    expect(nextSeriesAnswer({ queue: ['手札の2枚目'], sending: true }, seated)).toEqual({
+      answer: undefined,
+      queue: [],
+      sending: false,
+    })
+  })
+
+  it('盤面が届いたら、押せなくする間は終わるが、送る分は残る', () => {
+    const arrived: ToClient = { kind: '盤面', perspective: board(), actions: [], passOutcome: undefined }
+
+    expect(nextSeriesAnswer({ queue: ['手札の2枚目'], sending: true }, arrived)).toEqual({
+      answer: undefined,
+      queue: ['手札の2枚目'],
+      sending: false,
+    })
+  })
+
+  it('関係の無いものが届いても、状態は変わらない', () => {
+    const other = { kind: '相手の繋がり' } as unknown as ToClient
+
+    expect(nextSeriesAnswer({ queue: ['手札の2枚目'], sending: true }, other)).toEqual({
+      answer: undefined,
+      queue: ['手札の2枚目'],
+      sending: true,
+    })
   })
 })

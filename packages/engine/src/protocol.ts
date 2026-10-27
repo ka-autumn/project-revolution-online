@@ -12,7 +12,7 @@ import type { PassOutcome } from './progress.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
 import { CONFIRMATION } from './resolve.js'
-import type { ChoicePurpose, Chooser } from './resolve.js'
+import type { ChoicePurpose, ChoiceSeries, Chooser } from './resolve.js'
 import { instanceToWire } from './wire.js'
 import type { WireCardFace, WireCardInstance, WirePerspective } from './wire.js'
 import { PLAYER_ZONES } from './zone.js'
@@ -546,19 +546,44 @@ export interface WireChoice {
    */
   readonly shown?: readonly WireShownCard[]
   /**
-   * この行動でここまでに答えた数。
+   * いま選んでいる人が、この行動の中で続けて答えた数（ADR-0052）。
    *
-   * どこまで戻れるかがここで決まる。0 なら戻る先が無く、取り消せるのは行動そのものだけである。
-   * 数えるのはサーバであって、クライアントが覚えておくのではない。**切れて入り直しても
-   * 同じ数が届く**（`room.ts` の `pendingChoice`）ため。
+   * どこまで戻れるかがここで決まる。0 なら戻る先が無い。**行動の途中で選ぶ人が替わったら、0 から
+   * 数え直す**——相手が選んだ答えを、行動した側は戻せないし、行動した側の答えを相手は戻せない。
+   * 行動した側しか答えない行動では、その行動でここまでに答えた数と同じになる。
+   * 数えるのはエンジンであって、クライアントが覚えておくのではない。**切れて入り直しても
+   * 同じ数が届く**（`room.ts` の `pendingChoice`）ため。聞かずに済んだ選択（候補が 1 つ）は
+   * 答えに数えない。
    */
   readonly answered: number
+  /**
+   * 行動そのものを取り消せるか（ADR-0052）。`取り消す` にかかる。
+   *
+   * **真になるのは、選んでいる人が行動した側で、行動していない側がこの行動の中でまだ 1 つも答えて
+   * いない時だけ**である。相手の答えを見てから行動を取り消してやり直せると、相手の選び方を探る手立て
+   * になってしまう。`mayGoBack` は、これとは別に上から重ねてかかる。
+   */
+  readonly mayCancel: boolean
+  /**
+   * N 枚を続けて選ぶうちの何枚目か（ADR-0052）。`nth` は 1 から数え、`of` が N である。1 枚だけ選ぶ
+   * 選択には載らない。
+   *
+   * 画面は、これを見て N 枚をまとめて選ばせ、決定の後に 1 枚ずつ送る。繋ぎ直した後は、続きの選択だけが
+   * 届くので、残りの枚数は `of - nth + 1` で分かる。古い画面は知らない項目として読まずに済ませ、
+   * 1 枚ずつ選べる。
+   */
+  readonly series?: ChoiceSeries
   /**
    * この行動を戻せるか。`ひとつ戻る` と `取り消す` の両方にかかる（#142）。
    *
    * **行動を始めてから新しく見えたものがあれば戻せない。** 見てから取り消して別の手を打てる
    * ことになり、山札の 1 番上を覗く手立てになってしまう。盤面そのものは答えを捨てて適用し
    * 直せば戻る（ADR-0008）ので、戻せないのは知ってしまったことだけである。
+   *
+   * **何と比べて「新しく」見えたかは、取り消せるかで変わる**（ADR-0052）。取り消せる人（`mayCancel`）は
+   * 行動を始める前の盤面と、取り消せない人（行動していない側と、その答えの後の行動した側）は、いま続けて
+   * 答えている分の最初の選択が出た盤面と比べる。取り消せない人は、答え始める前に見えたものを、戻っても
+   * 見なかったことにはできないので、答え始めた後に見えたものだけで足りる。
    *
    * 答えが 1 つ以上あっても閉じる。手前の選択が「めくるかどうか」を左右していた場合、そこまで
    * 戻れば見たうえでめくらずに済ませられるためである。
@@ -1087,13 +1112,17 @@ function describeCandidate(
  * 見えているかどうかは**その選択が起きている盤面**（`board`）で判定する。選ぶ人が見るのも
  * その盤面である（#142）ので、候補の説明と食い違わない。
  *
- * 戻れるかどうかも、そこと行動を始める前の盤面（`started`）を見比べて決める。**新しく見えた
- * ものが 1 枚でもあれば戻せない。** 見てから取り消せると、山札の 1 番上を覗く手立てになる。
+ * 戻れるかどうかも、そこと比べる先の盤面（`started`）を見比べて決める。比べる先は、取り消せる人
+ * （`mayCancel`）なら行動を始める前の盤面、取り消せない人なら、その人が続けて答え始めた時の盤面である
+ * （ADR-0052）。取り消せない人は、答え始める前に見えたものを、戻っても見なかったことにできないためで、
+ * 戻せるかを分けるのは、答え始めた後に見えたものだけである。**新しく見えたものが 1 枚でもあれば
+ * 戻せない。** 見てから取り消せると、山札の 1 番上を覗く手立てになる。
  * 見えるようになったかを決めるのは射影ひとつ（`perspective.ts` の `visibleIdsOf`）である。
  *
  * 見たことのある選択も戻せない（ADR-0041）。盤面の見え方は変わらないので、見えるように
  * なったかでは決められない。確認の選択そのものと、同じ行動の中でそれより後に出る選択は、
- * 行動を始めてから積まれたログに相手の手札を見たこと・山札を読んだこと（`isRevealingHidden`、ADR-0042）があるかで決める。0 枚なら何も見えて
+ * 比べる先の盤面より後に積まれたログに、相手の手札を見たこと・見せたこと・山札を読んだこと
+ * （`isRevealingHidden`、ADR-0042・ADR-0052）があるかで決める。0 枚なら何も見えて
  * いないので、戻せる。
  *
  * 発生源（`source`）も同じ盤面から見る。**見えていなければ落とす**（#122）。見えていない
@@ -1107,8 +1136,10 @@ function describeChoice(
   purpose: ChoicePurpose,
   mayDecline: boolean,
   answered: number,
+  mayCancel: boolean,
   source: CardId | undefined,
   shown: readonly CardInstance[] | undefined,
+  series: ChoiceSeries | undefined,
 ): WireChoice {
   const visible = visibleIdsOf(board, player)
   const before = visibleIdsOf(started, player)
@@ -1124,9 +1155,11 @@ function describeChoice(
     ...(source !== undefined && visible.has(source) ? { source } : {}),
     mayDecline,
     answered,
+    mayCancel,
     mayGoBack: !looked && [...visible].every((card) => before.has(card)),
     candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, seen, board, player)),
     ...(shown === undefined ? {} : { shown: describeAllShown(shown, candidates) }),
+    ...(series === undefined ? {} : { series }),
   }
 }
 
@@ -1190,7 +1223,16 @@ export function applyWithAnswers(
   answers: readonly ChoiceAnswer[],
 ): ActionProgress {
   let remaining = answers
-  const chooser: Chooser = (candidates, player, purpose, board, mayDecline = false, source, shown) => {
+  // 答えた人の並び。行動の途中で選ぶ人が替わるので（ADR-0052）、答えた数だけでなく、誰が答えたかを
+  // 毎回、答えの並びから数える。記録に答えた人は残らない（ADR-0018）が、誰に聞くかはエンジンが同じに
+  // 決めるので、打ち直しでも同じ並びになる。
+  const answeredBy: Player[] = []
+  // いま選んでいる人が続けて答え始めた、最初の選択が出た盤面（ADR-0052）。行動を取り消せない人は、
+  // 戻っても、答え始める前に見えたものを見なかったことにはできない。戻れるかは、ここから見る。
+  const runStart: { player: Player | undefined; board: DuelState | undefined } = { player: undefined, board: undefined }
+  // 行動したのは優先権を持つプレイヤーである（`room.ts` の `act`）。
+  const actor = state.turn.priority
+  const chooser: Chooser = (candidates, player, purpose, board, mayDecline = false, source, shown, series) => {
     // 選ぶ余地が無いなら聞かない。候補が 1 つで、選ばないことも選べないなら、答えは 1 通りしか
     // 無く、押させても盤面は同じところへ進む。**答えとして数えない**ので、`ひとつ戻る`
     // （ADR-0008）はこの手前の選択まで戻る。確認の選択だけは別で、答えることが見せる一覧を
@@ -1198,14 +1240,25 @@ export function applyWithAnswers(
     const [only] = candidates
     if (candidates.length === 1 && !mayDecline && purpose !== '見たカードの確認') return only
 
+    if (runStart.player !== player) {
+      runStart.player = player
+      runStart.board = board
+    }
     const [answer, ...rest] = remaining
     if (answer === undefined) {
-      // 答えが尽きたところで止まるので、ここまでに答えた数は渡された答えの数そのものである。
-      const choice = describeChoice(board, state, candidates, player, purpose, mayDecline, answers.length, source, shown)
+      // 答えが尽きたところで止まる。続けて答えた数は、末尾から同じ人が何個並ぶかである。
+      let run = 0
+      while (run < answeredBy.length && answeredBy[answeredBy.length - 1 - run] === player) run += 1
+      // 取り消せるのは、行動した側が、行動していない側の答えを受け取る前だけである。
+      const mayCancel = player === actor && answeredBy.every((who) => who === actor)
+      // 取り消せる人は、行動を始める前の盤面と比べる。取り消せない人は、続けて答え始めた盤面と比べる。
+      const base = mayCancel ? state : (runStart.board ?? state)
+      const choice = describeChoice(board, base, candidates, player, purpose, mayDecline, run, mayCancel, source, shown, series)
       throw { kind: CHOICE_NEEDED, choice, board } satisfies ChoiceNeeded
     }
 
     remaining = rest
+    answeredBy.push(player)
     if (answer === '選ばない') return undefined
     if (!Number.isInteger(answer) || answer < 0 || answer >= candidates.length) {
       throw new Error(`候補にない番号が答えられた: ${answer}`)

@@ -5,6 +5,7 @@ import type {
   PassOutcome,
   Player,
   Square,
+  ToClient,
   WireCandidate,
   WireCardInstance,
   WireCardPosition,
@@ -320,7 +321,15 @@ function occasionLabel(
  * 見えていない、`protocol.ts` の `WireChoice.source`）と、識別子は届いたが盤面にもログの
  * 名指しにも無い場合（`view-model.ts` の `namesIn`）の両方がここに来る。
  */
-function askingFor(purpose: ChoicePurpose, source: string | undefined, hasCandidates: boolean): string {
+function askingFor(
+  purpose: ChoicePurpose,
+  source: string | undefined,
+  hasCandidates: boolean,
+  /** 発生源のカードが相手の支配するカードか（ADR-0052）。 */
+  opponentsSource: boolean,
+  /** 捨てる手札として、いま選ぶ枚数。 */
+  discardCount: number,
+): string {
   switch (purpose) {
     case 'プレイのコスト':
       return 'プレイのコストとしてフリーズするエネルギーを選んでください'
@@ -335,7 +344,13 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined, hasCandid
     case 'プランの置き換え':
       return 'プランのめくりを置き換える能力を選んでください'
     case '効果の対象':
-      return source === undefined ? '効果の対象を選んでください' : `${source} の効果の対象を選んでください`
+      if (source === undefined) return '効果の対象を選んでください'
+      return `${opponentsSource ? '相手の ' : ''}${source} の効果の対象を選んでください`
+    // 相手が自分の手札から選んで捨てる（ADR-0052）。発生源が見えなければ、発生源を言わない。
+    case '捨てる手札':
+      return source === undefined
+        ? `捨てる手札を ${discardCount} 枚選んでください`
+        : `${source} の効果で、捨てる手札を ${discardCount} 枚選んでください`
     case 'トラップのきっかけ':
       return source === undefined
         ? 'トラップを発動するきっかけを選んでください'
@@ -355,6 +370,64 @@ function askingFor(purpose: ChoicePurpose, source: string | undefined, hasCandid
       purpose satisfies never
       return '選んでください'
   }
+}
+
+/**
+ * N 枚を続けて選ぶ選択の、これから選ぶ残りの枚数（ADR-0052）。`series` が無い選択は 1 枚。
+ * 繋ぎ直した後は続きの選択だけが届くので、`of - nth + 1` が残りの枚数になる。
+ */
+export function remainingOf(choice: Pick<WireChoice, 'series'>): number {
+  return choice.series === undefined ? 1 : choice.series.of - choice.series.nth + 1
+}
+
+/** N 枚をまとめて選ばせた後の、続きの選択に自動で送る分の状態（`nextSeriesAnswer`）。 */
+export interface SeriesQueue {
+  /** 「これに決める」の後に、続きの選択が届くたびに送る分（カードの識別子。選んだ順）。 */
+  readonly queue: readonly CardId[]
+  /** 続きを人の操作なしに送っている間。 */
+  readonly sending: boolean
+}
+
+/**
+ * 届いたものから、N 枚をまとめて選ばせた続き（ADR-0052）の送り方を決める。続きの選択が届いたら、
+ * 先頭のカードを識別子で候補から引き直し、その番号を返す（送るのは呼び出し側）。見つからなければ
+ * （繋ぎ直した先で候補が替わった）、送らずに残りも捨てて人に任せる。`series` を持たない選択が届いた
+ * 時も送らない。席についた時と、行えなかった時は、送る分を捨てる。
+ *
+ * 一覧を押せなくして描く間（`sending`）は、選択・盤面・席についたのどれかが届くと終わる。
+ */
+export function nextSeriesAnswer(
+  state: SeriesQueue,
+  message: ToClient,
+): SeriesQueue & { readonly answer: number | undefined } {
+  const ended = message.kind === '選んでほしい' || message.kind === '盤面' || message.kind === '席についた'
+  const sending = ended ? false : state.sending
+
+  if (message.kind === '選んでほしい') {
+    const [next, ...rest] = state.queue
+    const found =
+      next === undefined || message.choice.series === undefined
+        ? -1
+        : message.choice.candidates.findIndex((candidate) => candidate.kind === '見えている' && candidate.card === next)
+    return found < 0 ? { queue: [], sending, answer: undefined } : { queue: rest, sending: true, answer: found }
+  }
+  if (message.kind === '席についた' || message.kind === '行えなかった') return { queue: [], sending, answer: undefined }
+  return { queue: state.queue, sending, answer: undefined }
+}
+
+/**
+ * 発生源のカードが、相手の支配するカードか（ADR-0052）。相手のカードの効果で、自分が選ばされている
+ * 時に、聞く文に「相手の」を添えるために使う。
+ *
+ * 支配者は、解決を始めたことを積んだ行（`能力を解決した`）に残っている。一番新しい行を見る。
+ * 見つからなければ、相手のカードとは言わない。
+ */
+function isOpponentsSource(board: WirePerspective, source: CardId): boolean {
+  for (let at = board.log.length - 1; at >= 0; at -= 1) {
+    const event = board.log[at]?.event
+    if (event?.kind === '能力を解決した' && event.source === source) return event.controller !== board.viewer
+  }
+  return false
 }
 
 /**
@@ -387,10 +460,14 @@ export function choiceView(board: WirePerspective, choice: WireChoice, picking?:
       choice.purpose,
       choice.source === undefined ? undefined : names.get(choice.source),
       choice.candidates.length > 0,
+      choice.source !== undefined && isOpponentsSource(board, choice.source),
+      remainingOf(choice),
     ),
     mayDecline: choice.mayDecline,
+    // 戻せる答えは、いま選んでいる人が続けて答えた分だけ。取り消せるのは行動した側で、相手がまだ
+    // 答えていない時だけ（ADR-0052）。どちらも決めるのはエンジンで、ここは届いた値を重ねるだけ。
     mayRewind: choice.mayGoBack && choice.answered > 0,
-    mayCancel: choice.mayGoBack,
+    mayCancel: choice.mayGoBack && choice.mayCancel,
     candidates,
     guide:
       picking !== undefined && candidates.length === 0 && choice.candidates.length > 0
@@ -1062,13 +1139,30 @@ export function showsChoicePicker(
 }
 
 /**
- * 見せる一覧つきの選択（ADR-0041）の見出し。相手の手札を見る確認は、見ている一覧の名前と枚数を
- * 言う。それ以外は、候補から選ぶ一覧と同じ見出しにする。
+ * N 枚をまとめて選ばせる選択か（ADR-0052）。`series` を持ち、候補が全部カードの時である。
+ * 画面は、候補が盤面にも載っていても（自分の手札）、カードの一覧で N 枚に印を付けさせる
+ * （`render.ts` の `seriesPickerElement`）。
+ */
+export function isSeriesChoice(choice: WireChoice): boolean {
+  return (
+    choice.series !== undefined &&
+    choice.candidates.length > 0 &&
+    choice.candidates.every((candidate) => candidate.kind === '見えている')
+  )
+}
+
+/**
+ * 見せる一覧つきの選択（ADR-0041）の見出し。相手の手札を見る確認と、相手の効果で自分が選ぶ選択
+ * （一覧は相手が支配者の手札、ADR-0052）は、見ている一覧の名前と枚数を言う。それ以外は、候補から
+ * 選ぶ一覧と同じ見出しにする。
  */
 export function shownTitleOf(choice: WireChoice): string {
   const count = choice.shown?.length ?? 0
   switch (choice.purpose) {
     case '見たカードの確認':
+    // 見せる一覧つきで目的が `効果の対象` になるのは、相手に支配者の手札から選ばせる時だけである
+    // （自分の山札を読む形は `山札から選ぶ`）。
+    case '効果の対象':
       return `相手の手札（${count}）`
     // 山札の全体（プランゾーンのカードを含む）を見せている。枚数は山札の合計で、公開情報である。
     case '山札から選ぶ':

@@ -1,7 +1,7 @@
 import { indexOfSquare, squaresAdjacent } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
-import { bpPlus, damagePlayer } from './effect.js'
+import { bpPlus, damagePlayer, discardOpponentHand } from './effect.js'
 import type {
   AttributeAddition,
   BpModifier,
@@ -820,6 +820,19 @@ export const guts: GutsAbility = { kind: '常在型能力', keyword: '根性' }
  */
 export const spirit: TriggeredAbility = triggeredAbility('登場した時', function* (duel) {
   yield* damagePlayer(duel.controller, 1000)
+})
+
+/**
+ * キーワード能力「才気」（総合ルール 第5部 第10章）。
+ *
+ * 「このカードが登場した時、相手は手札を１枚選んで捨てる」という誘発型能力である（同 2）。
+ * 「気合」と同じく専用の型を持たず、誘発型能力を 1 つ使い回す。
+ *
+ * 捨てるカードを選ぶのは相手で（同 2。ランダムには捨てない、ADR-0052）、相手の手札が 1 枚以下なら
+ * 聞かずにあるだけ捨てる。
+ */
+export const wit: TriggeredAbility = triggeredAbility('登場した時', function* () {
+  yield* discardOpponentHand(1)
 })
 
 /** 「希望―［効果］」を 1 つ書く。効果はカードごとに違うので受け取る。 */

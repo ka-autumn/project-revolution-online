@@ -978,7 +978,7 @@ describe('操作ログ', () => {
         instruction: { kind: '選ぶ', card: '置いてある', square: undefined },
       })
 
-      expect(texts(board)).toEqual(['テスト・置いてあるを選んだ'])
+      expect(texts(board)).toEqual(['テスト・置いてあるを選択した'])
     })
 
     it('スクエアを選んだなら、どこを選んだのかが出る', () => {
@@ -988,7 +988,7 @@ describe('操作ログ', () => {
         instruction: { kind: '選ぶ', card: undefined, square: ON_SQUARE },
       })
 
-      expect(texts(board)).toEqual(['中央エリアの中央ラインを選んだ'])
+      expect(texts(board)).toEqual(['中央エリアの中央ラインを選択した'])
     })
 
     /**
@@ -1002,8 +1002,8 @@ describe('操作ログ', () => {
         instruction: { kind: '選ぶ', card: undefined, square: undefined, areaRow: 0 },
       }
 
-      expect(texts(withLog(chosen))).toEqual(['味方エリアを選んだ'])
-      expect(texts({ ...withLog(chosen), viewer: '後攻' })).toEqual(['敵エリアを選んだ'])
+      expect(texts(withLog(chosen))).toEqual(['味方エリアを選択した'])
+      expect(texts({ ...withLog(chosen), viewer: '後攻' })).toEqual(['敵エリアを選択した'])
     })
 
     /**
@@ -1021,15 +1021,15 @@ describe('操作ログ', () => {
       expect(texts(board)).toEqual([])
     })
 
-    it('選ばないことを選んだなら、選ばなかったと出る。見えないカードを選んだ時とは違う', () => {
+    it('選ばないことを選んだなら、選択しなかったと出る。見えないカードを選んだ時とは違う', () => {
       const board = withLog({
         kind: '命令を実行した',
         controller: '先攻',
         instruction: { kind: '選ぶ', card: undefined, square: undefined, declined: true },
       })
 
-      expect(texts(board)).toEqual(['選ばなかった'])
-      expect(texts({ ...board, viewer: '後攻' })).toEqual(['選ばなかった'])
+      expect(texts(board)).toEqual(['選択しなかった'])
+      expect(texts({ ...board, viewer: '後攻' })).toEqual(['選択しなかった'])
     })
 
     it('見えないカードを選んだ行を飛ばしても、前後の行は並びのまま出る', () => {
@@ -1602,6 +1602,32 @@ describe('操作ログ', () => {
       })
     })
 
+    // ADR-0052。捨てたのは支配者の相手で、見る人ごとに主語を入れ替える。名前は 2 人に出る。
+    describe('相手に手札を捨てさせた・見せた', () => {
+      const discarded = (controller: Player, cards: readonly string[], count = cards.length) =>
+        withLog({ kind: '命令を実行した', controller, instruction: { kind: '相手に手札を捨てさせる', count, cards } })
+      const revealed = (controller: Player, cards: readonly string[]) =>
+        withLog({
+          kind: '命令を実行した',
+          controller,
+          instruction: { kind: '相手に手札を見せる', count: cards.length, cards },
+        })
+
+      it('支配者には「相手が手札を捨てた」、相手には「自分が手札を捨てた」と、同じ名前が出る', () => {
+        expect(texts(discarded('先攻', ['置いてある']))).toEqual(['相手が手札を捨てた：テスト・置いてある'])
+        expect(texts(discarded('後攻', ['置いてある']))).toEqual(['自分が手札を捨てた：テスト・置いてある'])
+      })
+
+      it('支配者には「相手に手札を見せた」、相手には「相手の手札を見た」と出る', () => {
+        expect(texts(revealed('先攻', ['置いてある']))).toEqual(['相手に手札を見せた：テスト・置いてある'])
+        expect(texts(revealed('後攻', ['置いてある']))).toEqual(['相手の手札を見た：テスト・置いてある'])
+      })
+
+      it('0 枚の時は、今の「手札を見た」の行と同じ扱いで 0 枚と出す', () => {
+        expect(texts(revealed('先攻', []))).toEqual(['相手に手札を見せた：0枚'])
+      })
+    })
+
     // ADR-0042。山札の中身は、見た側にも相手にも、ログには名前を出さない。
     describe('山札を見た・シャッフルした', () => {
       const read = (controller: Player, count: number) =>
@@ -2101,7 +2127,7 @@ describe('カットイン', () => {
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
     ]
 
-    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を選んだ`, `${NAME}を破壊した`])
+    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を選択した`, `${NAME}を破壊した`])
   })
 
   // 見えないカードを選んだ行は、カットインにも並べない。その行だけで本文が空になる解決は、空のカットインを出さない。
@@ -2136,13 +2162,13 @@ describe('カットイン', () => {
     expect(cutInViews(board, logged(fresh))).toEqual([{ whose: '自分', heading: `${NAME}の効果、誘発！`, lines: [] }])
   })
 
-  it('選ばなかった行は、カットインにも出る', () => {
+  it('選択しなかった行は、カットインにも出る', () => {
     const fresh: readonly DuelEvent[] = [
       { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: undefined, square: undefined, declined: true } },
     ]
 
-    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual(['選ばなかった'])
+    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual(['選択しなかった'])
   })
 
   /**
@@ -2183,7 +2209,7 @@ describe('カットイン', () => {
     const views = cutInViews(board, logged(fresh))
 
     expect(views).toHaveLength(2)
-    expect(views[0]?.lines).toEqual([`${NAME}を選んだ`])
+    expect(views[0]?.lines).toEqual([`${NAME}を選択した`])
     expect(views[1]?.lines).toEqual([`${NAME}を破壊した`])
   })
 

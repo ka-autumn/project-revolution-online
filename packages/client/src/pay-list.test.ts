@@ -25,7 +25,7 @@ function board(): WirePerspective {
 }
 
 function choice(candidates: WireChoice['candidates']): WireChoice {
-  return { player: '先攻', purpose: 'プレイのコスト', mayDecline: false, answered: 0, mayGoBack: true, candidates }
+  return { player: '先攻', purpose: 'プレイのコスト', mayDecline: false, answered: 0, mayGoBack: true, mayCancel: true, candidates }
 }
 
 const BOTH = choice([

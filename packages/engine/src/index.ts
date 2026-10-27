@@ -16,6 +16,7 @@ export {
   spirit,
   triggeredAbility,
   trust,
+  wit,
 } from './ability.js'
 export type {
   Ability,
@@ -174,10 +175,12 @@ export {
   damagePlayer,
   damageUnit,
   destroy,
+  discardOpponentHand,
   drawCards,
   flipPlan,
   freeze,
   granting,
+  letOpponentChooseFromMyHand,
   lookAtOpponentHand,
   placeInZone,
   placeOnSquare,
@@ -290,7 +293,7 @@ export type { Random } from './random.js'
 export { RELATIONS_FROM_PLAYER, RELATIONS_FROM_UNIT } from './relation.js'
 export type { RelationFromPlayer, RelationFromUnit } from './relation.js'
 export { CHOICE_PURPOSES, resolveEffect } from './resolve.js'
-export type { ChoicePurpose, Chooser, EffectContext } from './resolve.js'
+export type { ChoicePurpose, ChoiceSeries, Chooser, EffectContext } from './resolve.js'
 export { pickRandomAction, playSelfPlay, randomChooser, runSelfPlayBatch } from './self-play.js'
 export type {
   ActionPicker,

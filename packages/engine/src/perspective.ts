@@ -337,8 +337,9 @@ export function visibleIdsOf(state: DuelState, viewer: Player): ReadonlySet<Card
  */
 export function seenByOf(state: DuelState, before: DuelState, event: DuelEvent): SeenBy {
   const named = cardsNamedBy(event)
-  // 相手の手札を見たことだけは、盤面が何も変わらないのに、見た側にだけ新しく見えたものがある。
-  // 見たカードの名前は 2 人に同じ内容で出す（ADR-0041）。見られた側には自分の手札である。
+  // 相手の手札を見たことと、相手に手札を見せたことだけは、盤面が何も変わらないのに、見た側にだけ
+  // 新しく見えたものがある。見たカードの名前は 2 人に同じ内容で出す（ADR-0041・ADR-0052）。見られた
+  // 側には自分の手札である。
   if (isLookAtHand(event)) return { 先攻: named, 後攻: named }
 
   const seenBy = PLAYERS.map((viewer): readonly [Player, readonly CardId[]] => {
@@ -351,14 +352,21 @@ export function seenByOf(state: DuelState, before: DuelState, event: DuelEvent):
   return Object.fromEntries(seenBy) as SeenBy
 }
 
-/** 相手の手札を見たことを積んだできごと。見たカードの数え方は、ここを通して決める。 */
+/**
+ * 手札を見たことを積んだできごと。見たカードの数え方は、ここを通して決める。支配者が相手の手札を
+ * 見た（`相手の手札を見る`）のと、相手が支配者の手札を見た（`相手に手札を見せる`、ADR-0052）のが
+ * ある。
+ */
 export type LookAtHandEvent = Extract<DuelEvent, { readonly kind: '命令を実行した' }> & {
-  readonly instruction: Extract<LoggedInstruction, { readonly kind: '相手の手札を見る' }>
+  readonly instruction: Extract<LoggedInstruction, { readonly kind: '相手の手札を見る' | '相手に手札を見せる' }>
 }
 
-/** 相手の手札を見たことを積んだできごとか。 */
+/** 手札を見たことを積んだできごとか。 */
 export function isLookAtHand(event: DuelEvent): event is LookAtHandEvent {
-  return event.kind === '命令を実行した' && event.instruction.kind === '相手の手札を見る'
+  return (
+    event.kind === '命令を実行した' &&
+    (event.instruction.kind === '相手の手札を見る' || event.instruction.kind === '相手に手札を見せる')
+  )
 }
 
 /**
@@ -373,7 +381,12 @@ export function isRevealingHidden(event: DuelEvent): boolean {
   if (event.kind !== '命令を実行した') return false
 
   const { instruction } = event
-  return (instruction.kind === '相手の手札を見る' || instruction.kind === '自分の山札を読む') && instruction.count > 0
+  return (
+    (instruction.kind === '相手の手札を見る' ||
+      instruction.kind === '相手に手札を見せる' ||
+      instruction.kind === '自分の山札を読む') &&
+    instruction.count > 0
+  )
 }
 
 /** そのできごとが名指ししているカード。落とせるところだけを数える（`mapEventCards`）。 */

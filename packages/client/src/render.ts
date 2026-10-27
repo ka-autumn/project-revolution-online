@@ -5466,6 +5466,8 @@ function senderLock(): {
   readonly sending: HTMLElement
   readonly isSent: () => boolean
   readonly bind: (root: HTMLElement) => void
+  /** すぐに押せなくする（人が押したのではなく、続きを自動で送っている時）。 */
+  readonly lock: () => void
   readonly once: <Args extends unknown[]>(run: (...args: Args) => void) => (...args: Args) => void
 } {
   const sending = element('p', 'picker__sending')
@@ -5497,6 +5499,7 @@ function senderLock(): {
     bind: (node) => {
       root = node
     },
+    lock,
     once:
       <Args extends unknown[]>(run: (...args: Args) => void) =>
       (...args: Args): void => {
@@ -5641,11 +5644,12 @@ export function choosePickerElement(
   cardOf: (id: CardId) => CardView | undefined,
   picked: number | undefined,
   /**
-   * この行動でここまでに答えた数（`WireChoice.answered`）。
+   * いま選んでいる人が、続けて答えた数（`WireChoice.answered`、ADR-0052）。選ぶ人が替わると 0 から
+   * 数え直す。
    *
-   * 上限は通信に載っていない（`WireChoice` は 1 回に 1 つ答える形なので、載せられるのは
-   * ここまでの数だけである）ので、「/ 3 枚」のような分母は出さない。何枚目を選んでいるかだけを
-   * 出す（#207）。
+   * この一覧が出すのは `series` を持たない選択で、分母（何枚選ぶか）は通信に載っていないので、
+   * 「/ 3 枚」のような分母は出さず、何枚目を選んでいるかだけを出す（#207）。分母が分かる N 枚続けて
+   * 選ぶ選択（`series`）は、`seriesPickerElement` が「印を付けた数 / N 枚」で出す。
    */
   answered: number,
   mayDecline: boolean,
@@ -5754,6 +5758,103 @@ export function choosePickerElement(
   lock.bind(root)
   // 能力の札は文字だけなので、枠の幅は中身に合わせて狭める（ADR-0031）。
   if (abilityOnly) root.classList.add('picker--ability')
+
+  return root
+}
+
+/** N 枚をまとめて選ぶ一覧で押せるもの。 */
+export interface SeriesPickerHandlers {
+  /** カードの印を付ける・外す。 */
+  readonly onToggle: (card: CardId) => void
+  /** 「これに決める」。印を付けた N 枚が揃っている時だけ押せる。 */
+  readonly onConfirm: () => void
+  readonly onRewind: () => void
+  readonly onCancel: () => void
+}
+
+/**
+ * N 枚をまとめて選ぶ一覧（`WireChoice.series`、ADR-0052）。相手が自分の手札から N 枚を選んで捨てる時のように、
+ * サーバは答えを 1 枚ずつ N 回受け取るが、画面は N 枚に印を付けさせ、「これに決める」を 1 回押させる。
+ *
+ * 足もとは「n 枚目を選んでいます」の代わりに「{印を付けた数} / {N} 枚」を出す。「これに決める」は N 枚に
+ * 印が付いた時だけ押せる。押した後に続きの選択を送るのは呼ぶ側で、`sendingFromStart` は、続きを人の操作なしに
+ * 送っている間、最初から押せなくして「通信中…」を出すために使う。
+ */
+export function seriesPickerElement(
+  asking: string,
+  candidates: readonly { readonly index: number; readonly candidate: WireCandidate }[],
+  cardOf: (id: CardId) => CardView | undefined,
+  marked: readonly CardId[],
+  /** いま選ぶ枚数（N）。 */
+  count: number,
+  mayRewind: boolean,
+  mayCancel: boolean,
+  rawHandlers: SeriesPickerHandlers,
+  sendingFromStart: boolean,
+  phone?: PhoneListOptions,
+): HTMLElement {
+  const lock = senderLock()
+  const { sending, once } = lock
+  const handlers: SeriesPickerHandlers = {
+    onToggle: (card) => {
+      if (!lock.isSent()) rawHandlers.onToggle(card)
+    },
+    onConfirm: once(rawHandlers.onConfirm),
+    onRewind: once(rawHandlers.onRewind),
+    onCancel: once(rawHandlers.onCancel),
+  }
+
+  const cards = candidates.flatMap(({ candidate }) => {
+    if (candidate.kind !== '見えている') return []
+
+    const id = candidate.card
+    const isMarked = marked.includes(id)
+    const found = cardOf(id)
+    const face = found?.kind === '表' ? found : undefined
+    const node = face !== undefined ? cardElement(face) : backCardElement()
+    const how = isMarked ? '（印を付けています）' : '（押せます）'
+    if (face !== undefined) node.setAttribute('aria-label', `${face.controlledBy}の${face.name}${how}`)
+    node.classList.add('card--押せる')
+    node.classList.toggle('card--選択中', isMarked)
+    node.setAttribute('role', 'button')
+    node.tabIndex = 0
+    const toggle = (): void => {
+      if (phone !== undefined) phone.onShow(id, false)
+      handlers.onToggle(id)
+    }
+    node.addEventListener('click', toggle)
+    node.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      toggle()
+    })
+    return [node]
+  })
+
+  const foot = element('div', 'picker__foot')
+  foot.append(element('span', 'picker__count', `${marked.length} / ${count} 枚`))
+  if (mayRewind) foot.append(button('ひとつ戻る', handlers.onRewind))
+  if (mayCancel) foot.append(button('この行動をやめる', handlers.onCancel))
+  const decide = button('これに決める', handlers.onConfirm)
+  decide.classList.add('button--primary')
+  decide.toggleAttribute('disabled', marked.length !== count)
+  foot.append(decide)
+
+  // Esc は、印を全部外す。行動は取り消さない。行動を取り消すのは「この行動をやめる」だけである（ADR-0033）。
+  const root = pickerElement(
+    '選ぶ',
+    '候補から選ぶ',
+    asking,
+    cards,
+    foot,
+    sending,
+    () => {
+      for (const id of marked) handlers.onToggle(id)
+    },
+    phone === undefined ? undefined : listDetailElement(phone),
+  )
+  lock.bind(root)
+  if (sendingFromStart) lock.lock()
 
   return root
 }
