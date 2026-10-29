@@ -250,6 +250,95 @@ describe('実行できない行動', () => {
   })
 
   /**
+   * 総合ルール 第1部 第1章 3（#283）。
+   *
+   * 「ゾーンへ置く」は、写しが指していた場所にあるカードだけを動かす。読んだ後に別の場所へ
+   * 移ったカードを、移った先から探して動かしてはならない。
+   */
+  describe('すでに読んだ場所を離れたカードはゾーンへ置かれないが、効果はそのまま続く', () => {
+    it('スクエアのユニットとして読んだカードが、手札へ移った後', () => {
+      const ability = triggeredAbility('登場した時', function* (duel) {
+        const enemy = yield* choose(duel.enemies())
+        if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
+        yield* placeInZone(enemy, '手札', 'リリース')
+        // 手元の写しはスクエアのユニットのまま。そのカードはもうスクエアにいない。
+        yield* placeInZone(enemy, '捨札', 'リリース')
+        yield* damagePlayer(duel.controller, 500)
+      })
+      const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+      const resolved = resolveEffect(state, ability.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+      expect(idsOf(cardsIn(resolved, '後攻', '手札'))).toEqual(['敵'])
+      expect(cardsIn(resolved, '後攻', '捨札')).toEqual([])
+      expect(resolved.damage['先攻']).toBe(500)
+    })
+
+    it('手札のカードとして読んだカードが、エネルギーゾーンへ移った後', () => {
+      const ability = triggeredAbility('登場した時', function* (duel) {
+        const [card] = duel.hand()
+        if (card === undefined) throw new Error('手札があるうえで試すこと')
+        yield* placeInZone(card, 'エネルギーゾーン', 'フリーズ')
+        // 手元の写しは手札のカードのまま。そのカードはもう手札にない。
+        yield* placeInZone(card, '捨札', 'リリース')
+        yield* damagePlayer(duel.controller, 500)
+      })
+      const state = putInZone(boardOf([mySquare, mine()]), '先攻', '手札', [
+        instantiate({ id: '手札のカード', card: vanilla, owner: '先攻' }),
+      ])
+
+      const resolved = resolveEffect(state, ability.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+      const [energy] = cardsIn(resolved, '先攻', 'エネルギーゾーン')
+      expect(energy?.id).toBe('手札のカード')
+      expect(energy?.orientation).toBe('フリーズ')
+      expect(cardsIn(resolved, '先攻', '捨札')).toEqual([])
+      // 実行されなかった命令はログにも残らない。
+      const executed = resolved.log.flatMap((recorded) =>
+        recorded.event.kind === '命令を実行した' ? [recorded.event.instruction] : [],
+      )
+      expect(executed).toEqual([
+        { kind: 'ゾーンへ置く', card: '手札のカード', to: 'エネルギーゾーン', player: '先攻' },
+        { kind: 'プレイヤーにダメージを与える', player: '先攻', amount: 500 },
+      ])
+      expect(resolved.damage['先攻']).toBe(500)
+    })
+  })
+
+  // 総合ルール 第1部 第1章 3（#283）
+  describe('読んだ場所にいまもあるカードは、これまでどおりゾーンへ置かれる', () => {
+    it('スクエアのユニット', () => {
+      const ability = triggeredAbility('登場した時', function* (duel) {
+        const enemy = yield* choose(duel.enemies())
+        if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
+        yield* placeInZone(enemy, '山札', 'リリース')
+      })
+      const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
+
+      const resolved = resolveEffect(state, ability.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+      expect(cardsOn(resolved, enemySquare)).toEqual([])
+      expect(idsOf(cardsIn(resolved, '後攻', '山札'))).toEqual(['敵'])
+    })
+
+    it('ゾーンのカード', () => {
+      const ability = triggeredAbility('登場した時', function* (duel) {
+        const [card] = duel.hand()
+        if (card === undefined) throw new Error('手札があるうえで試すこと')
+        yield* placeInZone(card, '捨札', 'リリース')
+      })
+      const state = putInZone(boardOf([mySquare, mine()]), '先攻', '手札', [
+        instantiate({ id: '手札のカード', card: vanilla, owner: '先攻' }),
+      ])
+
+      const resolved = resolveEffect(state, ability.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+      expect(cardsIn(resolved, '先攻', '手札')).toEqual([])
+      expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['手札のカード'])
+    })
+  })
+
+  /**
    * 総合ルール 第4部 第8章 2-2、第1部 第1章 3（ADR-0006）。
    *
    * 解決はテキストに書かれている順番の通りに指示に従うもので、実行できないのはその行動

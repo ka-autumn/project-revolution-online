@@ -9,6 +9,7 @@ import {
   draw,
   faceDownPlan,
   findAnywhere,
+  findInZone,
   locateOnSquares,
   moveToSquare,
   moveToZone,
@@ -18,10 +19,10 @@ import {
   topOfLibrary,
 } from './duel.js'
 import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
-import type { CardInZone, DuelView, Effect, Instruction, UnitOnSquare } from './effect.js'
+import type { CardInTrapZone, CardInZone, DuelView, Effect, Instruction, SmashCard, UnitOnSquare } from './effect.js'
 import { loggedInstruction, record } from './log.js'
 import type { LoggedInstruction, ResolutionVia } from './log.js'
-import { opponentOf } from './player.js'
+import { opponentOf, PLAYERS } from './player.js'
 import type { Player } from './player.js'
 import { shuffle } from './random.js'
 import { checkIntrusion } from './trap.js'
@@ -484,13 +485,15 @@ function apply(
       // それを見て誘発する能力がある（同 第4部 第7章 6）。`moveToZone` はその誘発を
       // 起こさないので、この場合だけ `destroy` と同じ経路を通す。向きの指定は使わない。
       // 捨札のカードは常にリリース状態で置かれる（同 第2部 第21章 5-3）ためである。
+      // すでに写しが指していた場所を離れていればこの行動は実行されない（総合ルール 第1部 第1章 3）。
+      // `moveToZone` は識別子だけで全ゾーンから探すので、移った先から動かさないよう、ここで見送る（#283）。
+      if (!isWhereRead(state, instruction.card)) return { state, value: undefined }
+
       const owner = findAnywhere(state, instruction.card.id)?.owner
       if (instruction.to === '捨札' && locateOnSquares(state, instruction.card.id) !== undefined) {
         return { state: discardFromSquares(state, [instruction.card.id]), value: undefined, owner }
       }
 
-      // すでにそのゾーンを離れていればこの行動は実行されない（総合ルール 第1部 第1章 3）。
-      // `moveToZone` がどこにも無いカードを黙って見送るので、ここでは何も足さない。
       return {
         owner,
         state: moveToZone(
@@ -579,6 +582,21 @@ function apply(
       return { state: current, value: undefined, subject: drawn.length === 0 ? undefined : drawn }
     }
   }
+}
+
+/**
+ * 効果に見せた写しが指していた場所に、そのカードがいまもあるか。
+ *
+ * スクエアのユニットなら、どこかのスクエアにいるか。スクエアからスクエアへの移動は新しい
+ * カードにならない（総合ルール 第2部 第21章 1-4）ので、どのスクエアかは問わない。ゾーンの
+ * カードなら、写しが指していたゾーンにあるか。カードは持ち主のゾーンにしか置かれない
+ * （同 1-2）ので、トラップゾーン以外はゾーンの種類だけで見る。トラップゾーンのカードは、
+ * 写しが持つプレイヤーのトラップゾーンを見る。
+ */
+function isWhereRead(state: DuelState, card: CardInZone | UnitOnSquare | SmashCard | CardInTrapZone): boolean {
+  if ('square' in card) return locateOnSquares(state, card.id) !== undefined
+  if ('player' in card) return findInZone(state, card.player, card.zone, card.id) !== undefined
+  return PLAYERS.some((player) => findInZone(state, player, card.zone, card.id) !== undefined)
 }
 
 /** 山札かプランゾーンにあるカードを、効果に見せる形に写す。 */
