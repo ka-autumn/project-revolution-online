@@ -454,8 +454,8 @@ function apply(
       }
       // ＢＰと同じかそれ以上のダメージを受けたユニットが捨札に置かれること（総合ルール
       // 第4部 第14章 4-6）もルールエフェクトの仕事なので、ここでは始めない。すでに
-      // スクエアを離れていればこの行動は実行されない（同 第1部 第1章 3）。`dealDamage` が
-      // スクエアにないカードをそのまま見送るので、ここでは何も足さない。
+      // スクエアを離れていればこの行動は実行されない（同 第1部 第1章 3）。`dealDamage` は
+      // スクエアにないカードには何もしないので、ここでは何も足さない。
       return { state: dealDamage(state, instruction.target.id, instruction.amount), value: undefined }
     }
     case '向きを変える': {
@@ -481,15 +481,15 @@ function apply(
       if (!shown.has(instruction.card.id)) {
         throw new Error('効果に見せていないカードが対象にされた')
       }
+      // すでに写しが指していた場所を離れていればこの行動は実行されない（総合ルール 第1部 第1章 3）。
+      // `moveToZone` は識別子だけで全ゾーンから探すので、移った先から動かさないよう、ここで何もせずに返す（#283）。
+      if (!isWhereRead(state, instruction.card)) return { state, value: undefined }
+
+      const owner = findAnywhere(state, instruction.card.id)?.owner
       // スクエアから捨札へ置くことは「破壊する」にあたり（総合ルール 第2部 第21章 1-5）、
       // それを見て誘発する能力がある（同 第4部 第7章 6）。`moveToZone` はその誘発を
       // 起こさないので、この場合だけ `destroy` と同じ経路を通す。向きの指定は使わない。
       // 捨札のカードは常にリリース状態で置かれる（同 第2部 第21章 5-3）ためである。
-      // すでに写しが指していた場所を離れていればこの行動は実行されない（総合ルール 第1部 第1章 3）。
-      // `moveToZone` は識別子だけで全ゾーンから探すので、移った先から動かさないよう、ここで見送る（#283）。
-      if (!isWhereRead(state, instruction.card)) return { state, value: undefined }
-
-      const owner = findAnywhere(state, instruction.card.id)?.owner
       if (instruction.to === '捨札' && locateOnSquares(state, instruction.card.id) !== undefined) {
         return { state: discardFromSquares(state, [instruction.card.id]), value: undefined, owner }
       }
