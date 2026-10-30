@@ -321,7 +321,7 @@ describe('実行できない行動', () => {
       expect(idsOf(cardsIn(resolved, '後攻', '山札'))).toEqual(['敵'])
     })
 
-    it('ゾーンのカード', () => {
+    it('手札のカード', () => {
       const ability = triggeredAbility('登場した時', function* (duel) {
         const [card] = duel.hand()
         if (card === undefined) throw new Error('手札があるうえで試すこと')
