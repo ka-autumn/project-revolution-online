@@ -1111,3 +1111,104 @@ describe('レシピと共有', () => {
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
   })
 })
+
+/**
+ * ログイン済みの人が繋いだ記録（#350）。残すのは「どの身元が、いつ」だけである。サーバは書くだけで、
+ * 日ごとの人数と回数は README の SQL で数える。
+ */
+describe('接続の記録', () => {
+  /** 置き場をファイルに作り、書いた行を外から読む。 */
+  function connectionsIn(path: string): readonly { identity: number; connected_at: number }[] {
+    const db = new DatabaseSync(path, { readOnly: true })
+    const rows = db.prepare('select identity, connected_at from connections order by id').all()
+    db.close()
+    return rows.map((row) => ({ identity: Number(row.identity), connected_at: Number(row.connected_at) }))
+  }
+
+  function removeStore(path: string): void {
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  }
+
+  it('繋ぐたびに、身元と時刻の行が 1 件ずつ増える', () => {
+    const path = `${tmpdir()}/revolution-connection-rows-${randomUUID()}.sqlite`
+    const clock = { at: Date.UTC(2026, 10, 1, 1) }
+    const store = openStore(path, { now: () => clock.at })
+    const first = store.identify('google', '10001')
+    const second = store.identify('google', '10002')
+
+    store.recordConnection(first)
+    clock.at = Date.UTC(2026, 10, 1, 6)
+    store.recordConnection(first)
+    store.recordConnection(second)
+
+    expect(connectionsIn(path)).toEqual([
+      { identity: Number(first), connected_at: Date.UTC(2026, 10, 1, 1) },
+      { identity: Number(first), connected_at: Date.UTC(2026, 10, 1, 6) },
+      { identity: Number(second), connected_at: Date.UTC(2026, 10, 1, 6) },
+    ])
+    store.close()
+    removeStore(path)
+  })
+
+  it('身元の識別子でないものは記録できない', () => {
+    const path = `${tmpdir()}/revolution-connection-invalid-${randomUUID()}.sqlite`
+    const store = openStore(path)
+    expect(() => store.recordConnection('だれか')).toThrow()
+    expect(connectionsIn(path)).toEqual([])
+    store.close()
+    removeStore(path)
+  })
+
+  /** 持つ列は身元と時刻だけ。個人や端末に結びつく列を足さない。 */
+  it('記録の列は身元と時刻だけである', () => {
+    const path = `${tmpdir()}/revolution-connection-columns-${randomUUID()}.sqlite`
+    const store = openStore(path)
+    store.close()
+
+    const db = new DatabaseSync(path)
+    const columns = db.prepare('pragma table_info(connections)').all().map((row) => String(row.name))
+    db.close()
+    expect(columns).toEqual(['id', 'identity', 'connected_at'])
+    removeStore(path)
+  })
+
+  /** 記録だから、アカウントを消すことになっても残す。身元の表を参照しない。 */
+  it('記録は身元の表を参照しない', () => {
+    const path = `${tmpdir()}/revolution-connection-keys-${randomUUID()}.sqlite`
+    const store = openStore(path)
+    store.close()
+
+    const db = new DatabaseSync(path)
+    const keys = db.prepare('pragma foreign_key_list(connections)').all()
+    db.close()
+    expect(keys).toEqual([])
+    removeStore(path)
+  })
+
+  /**
+   * すでに動いている置き場（接続の表が無い）を開き直すだけで使えること。既存の表と中身は
+   * そのまま残る。
+   */
+  it('接続の表が無い既存の置き場でも、開き直すだけで使え、既存の中身は変わらない', () => {
+    const path = `${tmpdir()}/revolution-connection-existing-${randomUUID()}.sqlite`
+    const before = openStore(path)
+    const person = before.identify('google', '10001')
+    before.rename(person, 'かずお')
+    before.openSession('ようやく', person)
+    before.close()
+
+    // 接続の記録を足す前の置き場にする。
+    const raw = new DatabaseSync(path)
+    raw.exec('drop table connections')
+    raw.close()
+
+    const again = openStore(path)
+    expect(again.identify('google', '10001')).toBe(person)
+    expect(again.nameOf(person)).toBe('かずお')
+    expect(again.sessionHolder('ようやく', 0)).toBe(person)
+    again.recordConnection(person)
+    expect(connectionsIn(path)).toHaveLength(1)
+    again.close()
+    removeStore(path)
+  })
+})

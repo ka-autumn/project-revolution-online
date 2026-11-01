@@ -121,6 +121,20 @@ const SCHEMA = `
     copied_at integer not null
   );
   create index if not exists recipe_copies_by_recipe on recipe_copies (recipe);
+
+  -- ログイン済みの人が対戦サーバに繋いだ記録（#350）。1 行 1 接続で、持つのは「どの身元が、
+  -- いつ」だけ。IP アドレスも端末の情報も持たない。表ごと新しく足すので、すでにある表と
+  -- 中身には触れない（create table if not exists が、動いている置き場にもそのまま通る）。
+  -- sessions の opened_at はログインし直すと置き換わるので、接続の記録には使えない。
+  -- identity に identities への外部キーを付けないのは、記録だからである。アカウントを消す
+  -- ことになっても、繋いだ記録は残す。
+  -- サーバはここへ書くだけで、数えない。日ごとの人数と回数を数える SQL は README にある。
+  create table if not exists connections (
+    id integer primary key autoincrement,
+    identity integer not null,
+    connected_at integer not null
+  );
+  create index if not exists connections_by_time on connections (connected_at);
 `
 
 /**
@@ -406,6 +420,12 @@ export interface Store {
   publicRecipes(order: RecipeListOrder): readonly StoredRecipeSummary[]
   /** コピーされたことを記録する。 */
   recordCopy(recipe: RecipeKey): void
+  /**
+   * ログイン済みの人が繋いだことを 1 件残す（#350）。残すのは身元と時刻だけ。
+   *
+   * 書けなかったときに接続を止めるかは呼ぶ側が決める（`serve.ts`）。ここは投げるだけである。
+   */
+  recordConnection(participant: ParticipantId): void
   close(): void
 }
 
@@ -505,6 +525,7 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
   )
   const copyCount = db.prepare('select count(*) as n from recipe_copies where recipe = ?')
   const insertCopy = db.prepare('insert into recipe_copies (recipe, copied_at) values (?, ?)')
+  const insertConnection = db.prepare('insert into connections (identity, connected_at) values (?, ?)')
 
   /**
    * いま開いている対戦の、合言葉から行番号への引き当て。
@@ -798,6 +819,9 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
     publicRecipes: (order) => publicRecipesOf(order),
     recordCopy: (recipe) => {
       insertCopy.run(recipe, now())
+    },
+    recordConnection: (participant) => {
+      insertConnection.run(identityOf(participant), now())
     },
     close: () => {
       db.close()

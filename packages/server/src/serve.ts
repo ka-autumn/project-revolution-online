@@ -547,6 +547,22 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   }
 
   /**
+   * ログイン済みの人が繋いだことを残す（#350）。数えるのは繋いだ時点だけである。
+   *
+   * ログインの設定が無い手元の起動では残さない——名乗りは認証ではなく、誰のものでもない。
+   * 書けなくても接続は止めない（`keep` と同じ考え方）。
+   */
+  function recordConnection(participant: ParticipantId): void {
+    if (options.signIn === undefined || options.store === undefined) return
+
+    try {
+      options.store.recordConnection(participant)
+    } catch (error) {
+      console.error('接続を記録できませんでした:', error)
+    }
+  }
+
+  /**
    * その部屋にいる人それぞれに、相手が繋がっているかを伝える（#175）。
    *
    * **繋がりを知っているのはここだけである。** 部屋は決まりごとしか持たない（`room.ts`）ので、
@@ -656,6 +672,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       return
     }
     const { participant } = decided
+    recordConnection(participant)
 
     // 同じ合言葉で繋ぎ直された場合、古い接続は捨てる。部屋の側は入り直しとして扱う。
     sockets.set(participant, socket)

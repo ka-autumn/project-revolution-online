@@ -766,6 +766,30 @@ describe('作り直せない対戦が置き場に残っているとき', () => {
   })
 })
 
+/** 接続の記録（#350）。手元の起動の名乗りは誰のものでもないので、置き場があっても残さない。 */
+describe('ログインの設定が無く、置き場があるとき', () => {
+  it('繋いでも、接続の記録は増えない', async () => {
+    const store = openStore(':memory:')
+    const recorded = vi.spyOn(store, 'recordConnection')
+    const logged = vi.spyOn(console, 'error')
+    const server = await serve({ port: 0, setup, decks, deckChoices, supply: SUPPLY, store })
+
+    try {
+      const client = new Client(server.port, 'う')
+      await client.waitFor('ロビー')
+      await client.close()
+
+      expect(recorded).not.toHaveBeenCalled()
+      expect(logged).not.toHaveBeenCalledWith('接続を記録できませんでした:', expect.anything())
+    } finally {
+      await server.close()
+      recorded.mockRestore()
+      logged.mockRestore()
+      store.close()
+    }
+  })
+})
+
 /**
  * ログインの設定があるときの繋ぎ方（ADR-0019）。
  *
@@ -856,6 +880,88 @@ describe('ログインの設定があるとき', () => {
     const seated = await client.waitFor('席についた')
     expect(seated.kind === '席についた' && seated.opponent).toEqual({ kind: 'CPU' })
     await client.close()
+  })
+
+  /**
+   * 接続の記録（#350）。繋いだ時点だけを数える。ログインの設定が無い手元の起動や、断られた
+   * 接続では残さない。
+   */
+  describe('接続の記録', () => {
+    it('ログイン済みの人が繋ぐと、その身元で記録が 1 件増える', async () => {
+      const recorded = vi.spyOn(store, 'recordConnection')
+
+      try {
+        const client = new Client(server.port, 'なのっても無駄', signedIn)
+        await client.waitFor('名前を決めてほしい')
+
+        expect(recorded.mock.calls).toEqual([[me]])
+        await client.close()
+      } finally {
+        recorded.mockRestore()
+      }
+    })
+
+    it('繋ぎ直すたびに、1 件ずつ増える', async () => {
+      const recorded = vi.spyOn(store, 'recordConnection')
+
+      try {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const client = new Client(server.port, 'なのっても無駄', signedIn)
+          await client.waitFor('名前を決めてほしい')
+          await client.close()
+        }
+        const other = new Client(server.port, 'なのっても無駄', signedInOther)
+        await other.opened()
+        await other.close()
+
+        expect(recorded).toHaveBeenCalledTimes(4)
+        expect(recorded.mock.calls.filter(([who]) => who === me)).toHaveLength(3)
+      } finally {
+        recorded.mockRestore()
+      }
+    })
+
+    it('ログインしていない接続では、記録が増えない', async () => {
+      const recorded = vi.spyOn(store, 'recordConnection')
+
+      try {
+        const anonymous = new Client(server.port, '10001')
+        await anonymous.waitFor('行えなかった')
+        await anonymous.closed()
+        const unknown = new Client(server.port, 'あ', 'revolution_session=unknown-token')
+        await unknown.waitFor('行えなかった')
+        await unknown.closed()
+
+        expect(recorded).not.toHaveBeenCalled()
+      } finally {
+        recorded.mockRestore()
+      }
+    })
+
+    /** 記録が書けなくても、接続も対戦も止まらない。 */
+    it('記録を書けなくても、接続できて対戦の部屋を作れる', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const failing = vi.spyOn(store, 'recordConnection').mockImplementation(() => {
+        throw new Error('書けない')
+      })
+
+      try {
+        const client = new Client(server.port, 'なのっても無駄', signedIn)
+        await client.waitFor('名前を決めてほしい')
+        client.send({ kind: '名前を決める', name: 'かずお' })
+        await client.waitFor('ロビー')
+        client.send({ kind: '部屋を作る', name: 'きろくできない部屋', against: 'CPU', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
+
+        const seated = await client.waitFor('席についた')
+        expect(seated.kind === '席についた' && seated.opponent).toEqual({ kind: 'CPU' })
+        expect(failing).toHaveBeenCalledTimes(1)
+        expect(logged).toHaveBeenCalledWith('接続を記録できませんでした:', expect.any(Error))
+        await client.close()
+      } finally {
+        failing.mockRestore()
+        logged.mockRestore()
+      }
+    })
   })
 
   /**
