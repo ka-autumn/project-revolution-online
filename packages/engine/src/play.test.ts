@@ -8,7 +8,7 @@ import {
   alsoTreatedAs,
   areaOf,
   attributeAdding,
-  bpModifying,
+  modifying,
   bpPlus,
   cardsIn,
   cardsInResolveZone,
@@ -606,7 +606,7 @@ describe('味方の登場', () => {
       bp: 1000,
       sp: 1000,
       abilities: [
-        bpModifying((duel) => duel.allies().map((ally) => bpPlus(ally, 500))),
+        modifying((duel) => duel.allies().map((ally) => bpPlus(ally, 500))),
         attributeAdding((duel) => duel.allies().map((ally) => alsoTreatedAs(ally, 'テスト属性'))),
         triggeredAbility(
           '味方が登場した時',

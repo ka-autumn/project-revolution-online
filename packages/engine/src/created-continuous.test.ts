@@ -6,7 +6,7 @@ import { draw, faceDownPlan, moveToSquare, moveToZone, putInZone } from './duel.
 import {
   alsoTreatedAs,
   attributeAdding,
-  bpModifying,
+  modifying,
   bpOf,
   bpPlus,
   cardsIn,
@@ -47,7 +47,7 @@ const boosting = defineUnit({
   bp: 1000,
   sp: 1000,
   abilities: [
-    bpModifying((duel) =>
+    modifying((duel) =>
       duel
         .allies()
         .filter((ally) => ally.id !== duel.self()?.id)
@@ -662,7 +662,7 @@ describe('能力を与える作成された継続効果', () => {
       bp: 1000,
       sp: 1000,
       abilities: [
-        bpModifying((duel) =>
+        modifying((duel) =>
           duel
             .allies()
             .filter((ally) => duel.hasKeyword(ally, '夢'))

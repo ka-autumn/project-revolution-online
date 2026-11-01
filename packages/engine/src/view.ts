@@ -127,6 +127,8 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
     allies: () => show(units().filter((unit) => unit.controller === controller)),
     enemies: () => show(units().filter((unit) => unit.controller !== controller)),
     hand: showZone('手札'),
+    // 枚数だけを返すので、見せたカードとして覚えるものが無い。
+    handCount: (player) => cardsIn(currentState(), player, '手札').length,
     discardPile: showZone('捨札'),
     planZone: showZone('プランゾーン'),
     // 枚数だけを返すので、見せたカードとして覚えるものが無い。数えたことによって、その

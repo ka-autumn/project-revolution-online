@@ -1,4 +1,4 @@
-import { attributeAddingAbilitiesOf, bpModifyingAbilitiesOf, bpOf, spOf } from './card.js'
+import { attributeAddingAbilitiesOf, modifyingAbilitiesOf, bpOf, spOf } from './card.js'
 import type { Attribute, Card } from './card.js'
 import type { CardId, DuelState } from './duel.js'
 import type { ContinuousChange, DuelView, GrantableAbility, UnitOnSquare } from './effect.js'
@@ -39,8 +39,9 @@ export function continuousData(state: DuelState): UnitData {
   const granted = grantedAbilitiesOn(state)
   const text = textApplied(granted)
   const added = attributesAddedOn(state, text)
-  const bpModifier = bpModifiedBy(state, applying(added, text))
-  const spModifier = spModification(state)
+  const modified = modifiedBy(state, applying(added, text))
+  const bpModifier = modified.bp
+  const spModifier = modified.sp
 
   return (id, written) => {
     const abilities = granted(id)
@@ -100,13 +101,14 @@ function textApplied(granted: GrantedAbilities): UnitData {
 /**
  * いま発生している、ＳＰを変更する継続効果をすべて集める（総合ルール 第4部 第12章）。
  *
- * ＳＰを変える常在型能力はまだ無いので、集めるのは盤面が持つ、作成された継続効果
- * （`DuelState.createdContinuousEffects`、ADR-0036）だけである。同じ対象に重なれば、その分
- * だけ足される。
+ * ＢＰの変更（`bpModification`）と同じく、常在型能力のぶんは読むたびに集め直し、盤面が持つ、
+ * 作成された継続効果（`DuelState.createdContinuousEffects`、ADR-0036）のぶんを足す。同じ対象に
+ * 重なれば、その分だけ足される。常在型能力に見せるのは、属性が加わった後の盤面である
+ * （ADR-0056）。
  */
 export function spModification(state: DuelState): SpModification {
-  const total = createdChangeTotals(state, 'ＳＰの変更')
-  return (id) => total.get(id) ?? 0
+  const text = textApplied(grantedAbilitiesOn(state))
+  return modifiedBy(state, applying(attributesAddedOn(state, text), text)).sp
 }
 
 /**
@@ -159,34 +161,40 @@ function amountOf(change: ContinuousChange): number | undefined {
  */
 export function bpModification(state: DuelState): BpModification {
   const text = textApplied(grantedAbilitiesOn(state))
-  return bpModifiedBy(state, applying(attributesAddedOn(state, text), text))
+  return modifiedBy(state, applying(attributesAddedOn(state, text), text)).bp
 }
 
 /**
- * ＢＰの変更を、渡された写し方の上で集める。
+ * ＢＰの変更とＳＰの変更を、渡された写し方の上で集める。
  *
  * 変更を決める能力に見せるのは、属性が加わった後の盤面である（総合ルール 第4部 第12章 5-2）。
  * 「〈属性〉の味方のＢＰを＋Ｘ」は、継続効果によって属性が加わったユニットも数える。
- * **ＢＰのほうはまだ変更されていない。** 同じ種類どうしの順序と依存（同 5-3・5-4）を
- * 扱えるようになるまで、他の変更の結果を見る変更は書けない。
+ * ＢＰ・ＳＰのほうはまだ変更されていない。同じ種類どうしの順序と依存（同 5-3・5-4）を
+ * 扱えるようになるまで、他の変更の結果を参照する変更は実装できない。ＢＰの変更とＳＰの変更は
+ * 同じ種類（同 5-2 の(5)）だが互いの値を参照しないので、常在型能力は 1 回呼べば両方が集まる。
  */
-function bpModifiedBy(state: DuelState, data: UnitData): BpModification {
-  const total = new Map<CardId, number>()
+function modifiedBy(state: DuelState, data: UnitData): { readonly bp: BpModification; readonly sp: SpModification } {
+  const bp = new Map<CardId, number>()
+  const sp = new Map<CardId, number>()
 
   for (const modifier of gather(state, data, (source, duel) =>
-    bpModifyingAbilitiesOf(source.card).flatMap((ability) => ability.bpModifiers(duel)),
+    modifyingAbilitiesOf(source.card).flatMap((ability) => ability.modifiers(duel)),
   )) {
     if (!onSquare(state, modifier.target)) continue
+    const total = modifier.kind === 'ＢＰの変更' ? bp : sp
     total.set(modifier.target, (total.get(modifier.target) ?? 0) + modifier.amount)
   }
 
   // 作成された継続効果は、集め直す元が無いので盤面が持っている（ADR-0036）。常在型能力から
   // 集めた分に足す。同じ対象に重なれば、その分だけ足される。
   for (const [target, amount] of createdChangeTotals(state, 'ＢＰの変更')) {
-    total.set(target, (total.get(target) ?? 0) + amount)
+    bp.set(target, (bp.get(target) ?? 0) + amount)
+  }
+  for (const [target, amount] of createdChangeTotals(state, 'ＳＰの変更')) {
+    sp.set(target, (sp.get(target) ?? 0) + amount)
   }
 
-  return (id) => total.get(id) ?? 0
+  return { bp: (id) => bp.get(id) ?? 0, sp: (id) => sp.get(id) ?? 0 }
 }
 
 /** そのユニットに継続効果によって加わっている属性を引くもの。 */
