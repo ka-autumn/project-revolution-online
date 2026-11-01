@@ -40,8 +40,8 @@ export type {
   StoredDuel,
   UnreadableDuel,
 } from './room.js'
-export { openStore } from './store.js'
-export type { Store } from './store.js'
+export { openStore, readConnectionDays } from './store.js'
+export type { ConnectionDay, Store } from './store.js'
 export { CALLBACK_PATH, createSignIn, signInConfigFrom } from './sign-in.js'
 export type { SignIn, SignInConfig } from './sign-in.js'
 export { serve } from './serve.js'

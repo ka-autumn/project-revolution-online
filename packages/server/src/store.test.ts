@@ -8,7 +8,7 @@ import type { Card, FromClient } from '@revolution/engine'
 import { deckSourceFrom } from './deck.js'
 import { emptyRooms, receive, restore, roomOf } from './room.js'
 import type { DeckSource, OpenDuel, ParticipantId, RoomSetup, Rooms } from './room.js'
-import { openStore } from './store.js'
+import { openStore, readConnectionDays } from './store.js'
 import type { Store } from './store.js'
 
 /**
@@ -1109,5 +1109,141 @@ describe('レシピと共有', () => {
     expect(shares[0]?.key).not.toBe(shares[1]?.key)
     store.close()
     for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  })
+})
+
+/**
+ * ログイン済みの人が繋いだ記録（#350）。残すのは「どの身元が、いつ」だけで、日ごとの人数と回数は
+ * そこから数える。日付は日本時間（UTC+9）で切る。
+ */
+describe('接続の記録', () => {
+  /** 日本時間の 2026-11-01 `hour` 時（UTC のミリ秒）。 */
+  const jst = (day: number, hour: number): number => Date.UTC(2026, 10, day, hour - 9)
+
+  function storeAt(clock: { at: number }): Store {
+    return openStore(':memory:', { now: () => clock.at })
+  }
+
+  it('繋ぐたびに 1 件増え、同じ日の同じ人は人数が 1 のまま回数が増える', () => {
+    const clock = { at: jst(1, 10) }
+    const store = storeAt(clock)
+    const first = store.identify('google', '10001')
+    const second = store.identify('google', '10002')
+
+    store.recordConnection(first)
+    expect(store.connectionDays()).toEqual([{ day: '2026-11-01', people: 1, connections: 1 }])
+
+    clock.at = jst(1, 15)
+    store.recordConnection(first)
+    store.recordConnection(first)
+    expect(store.connectionDays()).toEqual([{ day: '2026-11-01', people: 1, connections: 3 }])
+
+    store.recordConnection(second)
+    expect(store.connectionDays()).toEqual([{ day: '2026-11-01', people: 2, connections: 4 }])
+    store.close()
+  })
+
+  it('日付は日本時間で切り、日ごとに古い順で返る', () => {
+    const clock = { at: jst(1, 23) }
+    const store = storeAt(clock)
+    const person = store.identify('google', '10001')
+
+    store.recordConnection(person) // 11/1 23時（UTC では 11/1 14時）
+    clock.at = jst(2, 0) // 日本時間では翌日（UTC では 11/1 15時）
+    store.recordConnection(person)
+    clock.at = jst(3, 8)
+    store.recordConnection(person)
+
+    expect(store.connectionDays()).toEqual([
+      { day: '2026-11-01', people: 1, connections: 1 },
+      { day: '2026-11-02', people: 1, connections: 1 },
+      { day: '2026-11-03', people: 1, connections: 1 },
+    ])
+    store.close()
+  })
+
+  it('since より前の接続は数えない', () => {
+    const clock = { at: jst(1, 10) }
+    const store = storeAt(clock)
+    const person = store.identify('google', '10001')
+    store.recordConnection(person)
+    clock.at = jst(2, 10)
+    store.recordConnection(person)
+
+    expect(store.connectionDays(jst(2, 0))).toEqual([{ day: '2026-11-02', people: 1, connections: 1 }])
+    store.close()
+  })
+
+  it('接続が無ければ空で返る', () => {
+    const store = openStore(':memory:')
+    expect(store.connectionDays()).toEqual([])
+    store.close()
+  })
+
+  it('身元の識別子でないものは記録できない', () => {
+    const store = openStore(':memory:')
+    expect(() => store.recordConnection('だれか')).toThrow()
+    expect(store.connectionDays()).toEqual([])
+    store.close()
+  })
+
+  /** 持つ列は身元と時刻だけ。個人や端末に結びつく列を足さない。 */
+  it('記録の列は身元と時刻だけである', () => {
+    const path = `${tmpdir()}/revolution-connection-columns-${randomUUID()}.sqlite`
+    const store = openStore(path)
+    store.close()
+
+    const db = new DatabaseSync(path)
+    const columns = db.prepare('pragma table_info(connections)').all().map((row) => String(row.name))
+    db.close()
+    expect(columns).toEqual(['id', 'identity', 'connected_at'])
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  })
+
+  /**
+   * すでに動いている置き場（接続の表が無い）を開き直すだけで使えること。既存の表と中身は
+   * そのまま残る。
+   */
+  it('接続の表が無い既存の置き場でも、開き直すだけで使え、既存の中身は変わらない', () => {
+    const path = `${tmpdir()}/revolution-connection-existing-${randomUUID()}.sqlite`
+    const before = openStore(path)
+    const person = before.identify('google', '10001')
+    before.rename(person, 'かずお')
+    before.openSession('ようやく', person)
+    before.close()
+
+    // 接続の記録を足す前の置き場にする。
+    const raw = new DatabaseSync(path)
+    raw.exec('drop table connections')
+    raw.close()
+    expect(readConnectionDays(path)).toEqual([])
+
+    const again = openStore(path)
+    expect(again.identify('google', '10001')).toBe(person)
+    expect(again.nameOf(person)).toBe('かずお')
+    expect(again.sessionHolder('ようやく', 0)).toBe(person)
+    again.recordConnection(person)
+    expect(again.connectionDays()).toHaveLength(1)
+    again.close()
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  })
+
+  /** サーバが開いている間も、別に開いて読める。読むだけで何も書かない。 */
+  it('開いている置き場を、別に開いて日ごとの人数と回数を読める', () => {
+    const path = `${tmpdir()}/revolution-connection-read-${randomUUID()}.sqlite`
+    const clock = { at: jst(1, 10) }
+    const running = openStore(path, { now: () => clock.at })
+    const person = running.identify('google', '10001')
+    running.recordConnection(person)
+    running.recordConnection(person)
+
+    expect(readConnectionDays(path)).toEqual([{ day: '2026-11-01', people: 1, connections: 2 }])
+    expect(readConnectionDays(path, jst(2, 0))).toEqual([])
+    running.close()
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  })
+
+  it('置き場が無ければ、作らずに投げる', () => {
+    expect(() => readConnectionDays(`${tmpdir()}/revolution-missing-${randomUUID()}.sqlite`)).toThrow()
   })
 })

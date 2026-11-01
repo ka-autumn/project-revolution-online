@@ -859,6 +859,77 @@ describe('ログインの設定があるとき', () => {
   })
 
   /**
+   * 接続の記録（#350）。繋いだ時点だけを数える。ログインの設定が無い手元の起動や、断られた
+   * 接続では残さない。
+   */
+  describe('接続の記録', () => {
+    it('ログイン済みの人が繋ぐと、記録が 1 件増える', async () => {
+      expect(store.connectionDays()).toEqual([])
+
+      const client = new Client(server.port, 'なのっても無駄', signedIn)
+      await client.waitFor('名前を決めてほしい')
+
+      const days = store.connectionDays()
+      expect(days).toHaveLength(1)
+      expect(days[0]).toMatchObject({ people: 1, connections: 1 })
+      await client.close()
+    })
+
+    it('同じ人が何度繋いでも、人の数は 1 のまま回数が増える', async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const client = new Client(server.port, 'なのっても無駄', signedIn)
+        await client.waitFor('名前を決めてほしい')
+        await client.close()
+      }
+      const other = new Client(server.port, 'なのっても無駄', signedInOther)
+      await other.opened()
+      await other.close()
+
+      // 時計は差し込めないので、日付をまたぐ場合に備えて合計で見る。2 人が 4 回繋いだ。
+      const days = store.connectionDays()
+      expect(days.reduce((sum, day) => sum + day.connections, 0)).toBe(4)
+      if (days.length === 1) expect(days[0]).toMatchObject({ people: 2, connections: 4 })
+    })
+
+    it('ログインしていない接続では、記録が増えない', async () => {
+      const anonymous = new Client(server.port, '10001')
+      await anonymous.waitFor('行えなかった')
+      await anonymous.closed()
+      const unknown = new Client(server.port, 'あ', 'revolution_session=unknown-token')
+      await unknown.waitFor('行えなかった')
+      await unknown.closed()
+
+      expect(store.connectionDays()).toEqual([])
+    })
+
+    /** 記録が書けなくても、接続も対戦も止まらない。 */
+    it('記録を書けなくても、接続できて対戦の部屋を作れる', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const failing = vi.spyOn(store, 'recordConnection').mockImplementation(() => {
+        throw new Error('書けない')
+      })
+
+      try {
+        const client = new Client(server.port, 'なのっても無駄', signedIn)
+        await client.waitFor('名前を決めてほしい')
+        client.send({ kind: '名前を決める', name: 'かずお' })
+        await client.waitFor('ロビー')
+        client.send({ kind: '部屋を作る', name: 'きろくできない部屋', against: 'CPU', deck: undefined, cpuDeck: undefined, format: undefined, restriction: undefined })
+
+        const seated = await client.waitFor('席についた')
+        expect(seated.kind === '席についた' && seated.opponent).toEqual({ kind: 'CPU' })
+        expect(failing).toHaveBeenCalledTimes(1)
+        expect(logged).toHaveBeenCalledWith('接続を記録できませんでした:', expect.any(Error))
+        expect(store.connectionDays()).toEqual([])
+        await client.close()
+      } finally {
+        failing.mockRestore()
+        logged.mockRestore()
+      }
+    })
+  })
+
+  /**
    * ADR-0020。**繋ぎはするが、決めるまでほかのことは受け付けない。**
    *
    * 断って閉じないのは、閉じると名前を送り返す口が無くなるからである。
