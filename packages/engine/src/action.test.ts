@@ -429,6 +429,52 @@ describe('スマッシュする', () => {
     expect(stateOf(smash(board, 'スマッシュ役')).damage['後攻']).toBe(800)
   })
 
+  // ADR-0056: 相手の手札の枚数の条件で働く常在型能力のＳＰも、ダメージに反映される。条件は
+  // スマッシュするたびに読み直され、敵エリアのぶんは変更後のＳＰに足される。
+  describe('相手の手札が 0 枚の間だけＳＰが上がる常在型能力', () => {
+    // 1000 以上のダメージはスマッシュ判定を起こして数字が読めなくなるので、小さい数字を使う。
+    const sharp = defineUnit({
+      name: 'テスト・相手の手札が 0 枚ならＳＰ強化',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 0,
+      abilities: [
+        modifying((duel) => {
+          const self = duel.self()
+          return self !== undefined && duel.handCount(duel.opponent) === 0 ? [spPlus(self, 300)] : []
+        }),
+      ],
+    })
+    const withOpponentHand = (state: DuelState, count: number): DuelState =>
+      putInZone(
+        state,
+        '後攻',
+        '手札',
+        Array.from({ length: count }, (_, index) => instantiate({ id: `相手の手札${index}`, card: testCard, owner: '後攻' })),
+      )
+
+    it('相手の手札が 0 枚なら、変更後のＳＰ（中央エリア）と同じダメージを与える', () => {
+      const board = withOpponentHand(smashPhaseWith([centerSquare, 'スマッシュ役', sharp]), 0)
+
+      expect(stateOf(smash(board, 'スマッシュ役')).damage['後攻']).toBe(300)
+    })
+
+    it('相手の手札が 0 枚で敵エリアなら、変更後のＳＰに敵エリアのぶんを足したダメージを与える', () => {
+      const board = withOpponentHand(smashPhaseWith([enemySquare, 'スマッシュ役', sharp]), 0)
+
+      expect(stateOf(smash(board, 'スマッシュ役')).damage['後攻']).toBe(800)
+    })
+
+    it('相手の手札が 1 枚以上なら、書かれているＳＰのままで与える', () => {
+      const center = withOpponentHand(smashPhaseWith([centerSquare, 'スマッシュ役', sharp]), 1)
+      const enemy = withOpponentHand(smashPhaseWith([enemySquare, 'スマッシュ役', sharp]), 1)
+
+      expect(stateOf(smash(center, 'スマッシュ役')).damage['後攻']).toBe(0)
+      expect(stateOf(smash(enemy, 'スマッシュ役')).damage['後攻']).toBe(500)
+    })
+  })
+
   it('ＳＰの変更は、ＢＰの変更には影響しない', () => {
     const board = withSpChange(smashPhaseWith([centerSquare, 'スマッシュ役', sp500]), 'スマッシュ役', 200)
 

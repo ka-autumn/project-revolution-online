@@ -442,7 +442,7 @@ export type PassiveModifiersFromBoard = (duel: DuelView) => readonly PassiveModi
  * 行くだけで、解決されるものが何も無かったが、こちらは「他の味方のＢＰを＋500」のように
  * 内容がカードごとに違う。
  *
- * **修整の在りかは盤面ではない。** engine は修整を盤面に書き込まず、ＢＰを読むたびにここを
+ * **修整の在りかは盤面ではない。** engine は修整を盤面に書き込まず、ＢＰ・ＳＰを読むたびにここを
  * 呼んで集め直す（`continuous.ts`）。常在型能力の生み出す継続効果は、能力を持つカードが
  * 必要なゾーンに置かれている間ずっと続き（同 第12章 4-1）、その継続効果が発生した時点で
  * 影響を受けなかったカードにも影響を与える（同 4-2）。集め直す形にすれば、発生元が
@@ -496,7 +496,7 @@ export type PassiveKeyword = PassiveKeywordAbility['keyword']
  *
  * `ModifyingAbility` と同じ形で、修整の在りかは盤面ではなく、読むたびに集め直す
  * （`continuous.ts`）。違うのは適用される順番だけで、属性を変更する継続効果 (3) は
- * ＢＰを修整する継続効果 (5) より先に適用される（同 5-2）。
+ * ＢＰ・ＳＰを修整する継続効果 (5) より先に適用される（同 5-2）。
  */
 export interface AttributeAddingAbility {
   readonly kind: '常在型能力'

@@ -119,8 +119,8 @@ export interface DuelView {
    *
    * 誰が相手かは公開されている情報なので名指しできる。ただし**名指しできることと、その
    * プレイヤーのゾーンを読めることは別である。** 相手のゾーンの中身を読むアクセサは無い
-   * ままで、相手に対してできるのは、中身を見ずに済む働きかけだけである（枚数を数える
-   * `energyCount`・`smashCount`、中身なしで選ぶ `trapZone`）。
+   * ままで、相手に対してできるのは、中身を参照せずに済む働きかけだけである（枚数を取得する
+   * `handCount`・`energyCount`・`smashCount`、中身なしで選ぶ `trapZone`）。
    */
   readonly opponent: Player
   /**
