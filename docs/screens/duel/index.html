@@ -2041,6 +2041,8 @@ body {
   .controls .phone-actions-open { min-height: 2.75rem; padding: 0 0.8rem; }
   .controls .actions__none { flex-basis: 100%; margin: 0; font-size: 0.8rem; }
   .controls .controls__sending { flex-basis: 100%; margin: 0; font-size: 0.8rem; }
+  /* 帯の文の並びは、優先権の 1 行 → 「通信中…」（手を送った直後だけ）→ 手のボタン */
+  .controls .phone-priority { order: -1; }
   .controls .choice__back { flex: 1; }
   .controls .choice__back button { width: 100%; min-height: 2.75rem; }
   .controls:has(.choice__back:not([hidden])) .button--primary,

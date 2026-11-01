@@ -4898,7 +4898,7 @@ export function waitingForOverlayElement(aside?: HTMLElement): HTMLElement {
  * 案内文（「山札を選択してください」など）は外す。待っている間は盤面の何も押せないので、残すと
  * 押せるもののように読める。
  *
- * **押せなくするのではなく、押しても空振りにする**（`aria-disabled`）。押す口は呼ぶ側（`index.ts` の
+ * 押せなくするのではなく、押しても空振りにする（`aria-disabled`）。押す口は呼ぶ側（`index.ts` の
  * `move`）で止めている。`disabled` にすると、キーボードで押した人の手がボタンから外れて `body` へ落ち、
  * 返事が届いて描き直したあとに置き直す先（同じ見出しのボタン、`board-keyboard.ts` の
  * `restoreBoardFocus`）を失う。操作のしかたの切り替え（`.mode`）は何も送らないので、そのままにする。

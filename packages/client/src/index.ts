@@ -73,7 +73,7 @@ import {
   showsChoicePicker,
 } from './input-model.js'
 import type { AimKind, PickSelection } from './input-model.js'
-import { NOT_WAITING, WAITING, afterMessage, trySend } from './reply-wait.js'
+import { NOT_WAITING, WAITING, afterLinkChange, afterMessage, trySend } from './reply-wait.js'
 import type { DuelMove, ReplyWait } from './reply-wait.js'
 import { filterChoicesOf, filterPool } from './pool-filter.js'
 import {
@@ -1006,7 +1006,19 @@ function draw(
       stage.choice === undefined && !showsOverlay(overlay) && automaticAction(session) === undefined
         ? priorityReason(board, stage.fresh)
         : undefined
-    if (reason !== undefined) controlsChildren.push(line('controls__reason', reason))
+    // 理由の 1 行は、行える手の見出しのすぐ下に置く。返事を待っている間は「通信中…」の下にする（仕様書・モック）。
+    // 行える手を出さない場面（繋がっていない間など）は、これまでどおりここに積む。
+    const reasonLine = reason === undefined ? undefined : line('controls__reason', reason)
+    const reasonAt = controlsChildren.length
+    let reasonPlaced = false
+    const withReason = (node: HTMLElement): HTMLElement => {
+      if (reasonLine === undefined) return node
+      const anchor = node.querySelector(':scope > .controls__sending') ?? node.querySelector(':scope > .panel__head')
+      if (anchor === null) node.prepend(reasonLine)
+      else anchor.after(reasonLine)
+      reasonPlaced = true
+      return node
+    }
 
     // 選ぶのを待たれている間、盤面に見えていない置き場から選ぶ候補だけなら、番号のボタンの
     // かわりにカードの一覧を出す（ADR-0027）。一覧は盤面の上に重ねるので、ここには積まない。
@@ -1066,15 +1078,16 @@ function draw(
         },
         mode,
       )
-      controlsChildren.push(awaiting ? lockForReply(node) : node)
+      controlsChildren.push(withReason(awaiting ? lockForReply(node) : node))
     } else if (stage.choice === undefined) {
       const node = actionsElement(
         actionViews(board, stage.actions, stage.passOutcome),
         (action) => duel.move({ kind: '行動する', action }, true),
         mode,
       )
-      controlsChildren.push(awaiting ? lockForReply(node) : node)
+      controlsChildren.push(withReason(awaiting ? lockForReply(node) : node))
     }
+    if (reasonLine !== undefined && !reasonPlaced) controlsChildren.splice(reasonAt, 0, reasonLine)
     // `showsPicker` の間、行える手のかわりに一覧が出るので、ここには何も積まない。一覧は
     // 盤面・操作パネルの上に重なり、その中に戻る・取り消す口も持つ（`choosePickerElement`）。
 
@@ -1262,7 +1275,8 @@ function draw(
               onChoose: () => {
                 // 送ったことを先に覚える。返事が届くまでに描き直されても、押せる状態に戻らない。
                 phone.settle({ kind: 'エリアの答えを送った' })
-                answer(areaSheet.answer)
+                // シートが自分で止めて「通信中…」を出すので、ほかの一覧と同じく描き直さずに送る。
+                answer(areaSheet.answer, false)
               },
               onClose: () => {
                 closedByCancel()
@@ -2484,6 +2498,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     if (overlayTimer === undefined) showNextOverlay()
   }
 
+  /** 繋がった時に入り直す部屋。ロビーにいるなら無い（ADR-0016、#175）。 */
+  const rejoiningRoom = (): RoomCode | undefined => roomOf(session) ?? pendingRoom
+
   /** 一度でも断られずに何かが届いたか。ログインへ送ったことを忘れるのは一度でよい。 */
   let signedIn = false
 
@@ -2491,7 +2508,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     url: options.url,
     participant: options.participant,
     // 繋ぎ直した時に入り直す先。ロビーにいるなら何も送らない（ADR-0016、#175）。
-    rejoining: () => roomOf(session) ?? pendingRoom,
+    rejoining: rejoiningRoom,
     onMessage: (message) => {
       // ログインが要るなら、ログインへ送る（ADR-0019）。
       //
@@ -2630,7 +2647,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         ...(automatic === undefined ? [] : [{ kind: '行動する', action: automatic } as const]),
         ...(queuedAnswer === undefined ? [] : [{ kind: '選ぶ', answer: queuedAnswer } as const]),
       ]
-      // 人の操作なしに送る手も、返事を待つ（#253）。**描く前に待ちに入る。** 描いた画面には放棄のボタンが
+      // 人の操作なしに送る手も、返事を待つ（#253）。描く前に待ちに入る。描いた画面には放棄のボタンが
       // 出ており、そのまま押せると、自動で送った放棄に 2 通目が続く。
       if (autoMoves.length > 0) replyWait = WAITING
       redraw()
@@ -2638,9 +2655,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
     onLinkChanged: (value) => {
       link = value
-      // 繋がりの様子が変わったら、返事を待つのをやめる（#253）。切れる前に送った手の返事はもう来ず、
-      // 繋ぎ直せばサーバがいまの盤面を送り直す（ADR-0009）。時間では解かない（`reply-wait.ts`）。
-      replyWait = NOT_WAITING
+      // 切れたら返事を待つのをやめ、繋ぎ直して入り直す部屋があれば、入り直しの返事が届くまで待つ
+      // （#253、`reply-wait.ts` の `afterLinkChange`）。入り直す先は `connection.ts` が送るものと同じに決める。
+      replyWait = afterLinkChange(value, rejoiningRoom() !== undefined)
       // 切れたら、聞いている途中のダイアログは何も送らずに閉じる（#249）。繋ぎ直した先で、その手が
       // まだ行えるとは限らない（ADR-0016）。
       if (value.kind !== '繋がっている') {
