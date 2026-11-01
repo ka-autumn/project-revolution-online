@@ -101,7 +101,7 @@ export const CHOICE_PURPOSES = [
 export type ChoicePurpose = (typeof CHOICE_PURPOSES)[number]
 
 /**
- * N 枚を続けて選ばせる時の、何枚目か（ADR-0052）。`nth` は 1 から数える。1 枚だけ選ばせる時は渡さない。
+ * N 枚を続けて選ばせる時の、何枚目か（ADR-0052、支配者が選ぶ形は ADR-0055）。`nth` は 1 から数える。1 枚だけ選ばせる時は渡さない。
  * 画面が N 枚をまとめて選ばせるために使う。**返す答えを左右しない。**
  */
 export interface ChoiceSeries {
@@ -253,7 +253,8 @@ interface Outcome {
   readonly owner?: Player
   /**
    * 命令が自分でログを積んだ。`recorded` はこの命令の行を足さない。聞かずに済んだ、見せただけの
-   * 選択（`選ぶ` の相手に手札を見せる形で手札が 0 枚）で、選んだ行を残さないために使う。
+   * 選択（`選ぶ` の相手に手札を見せる形で手札が 0 枚）で、選んだ行を残さないためと、`複数を選ぶ` が
+   * 選んだカードごとに `選ぶ` の行を 1 行ずつ積むために使う。
    */
   readonly logged?: true
 }
@@ -351,6 +352,49 @@ function apply(
         throw new Error('候補にないものが選ばれた')
       }
       return { state: board, value: chosen, subject: chosen }
+    }
+    case '複数を選ぶ': {
+      // 選ぶのは能力の支配者で、1 枚ずつ聞く。選んだものは次の候補から外れる。途中で盤面は変わらない
+      // （ADR-0055）。
+      const { candidates, count } = instruction
+      // 候補が無い、または 0 枚を選ばせるなら、選ぶという行動は実行できない（総合ルール 第1部 第1章 3）。
+      // 効果はそこで終わらず、空の並びを受け取って続く。
+      if (count <= 0 || candidates.length === 0) return { state, value: [] }
+
+      const chosen: unknown[] = []
+      if (candidates.length <= count) {
+        // 選ぶ余地が無いので、聞かずに全部を選ぶ（相手に手札を捨てさせる命令と同じ扱い）。
+        chosen.push(...candidates)
+      } else {
+        for (let nth = 1; nth <= count; nth += 1) {
+          const remaining = candidates.filter((one) => !chosen.includes(one))
+          const picked = context.chooser(
+            remaining,
+            context.controller,
+            '効果の対象',
+            state,
+            false,
+            context.source,
+            undefined,
+            count >= 2 ? { nth, of: count } : undefined,
+          )
+          if (!remaining.includes(picked)) throw new Error('候補にないものが選ばれた')
+
+          chosen.push(picked)
+        }
+      }
+      // 選んだカードごとに、`選ぶ` と同じ行を 1 行ずつ積む。ログの形は 1 枚を選ぶ命令と変わらない。
+      const asChoice: Instruction = { kind: '選ぶ', candidates, mayDecline: false }
+      const next = chosen.reduce<DuelState>(
+        (current, one) =>
+          record(current, {
+            kind: '命令を実行した',
+            controller: context.controller,
+            instruction: loggedInstruction(asChoice, one, context.controller),
+          }),
+        state,
+      )
+      return { state: next, value: chosen, logged: true }
     }
     case '相手に手札を捨てさせる': {
       // 選ぶのは手札の持ち主である相手で、候補はその手札（ADR-0052）。効果は候補にも選ばれた

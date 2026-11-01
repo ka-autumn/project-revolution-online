@@ -265,6 +265,13 @@ export type Instruction =
        */
       readonly picker?: '支配者' | '相手'
     }
+  /**
+   * 支配者が、候補の中から `count` 枚を選ぶ（ADR-0055）。選んだ並びが効果に返る。
+   *
+   * 1 枚ずつ `count` 回聞き、選んだものを次の候補から外す。選択の要求には、何枚目かを表す `series` が載る。
+   * 候補が `count` 枚以下なら、選ぶ余地が無いので聞かずに全部を選ぶ。選ぶ人は支配者だけで、選ばないことは選べない。
+   */
+  | { readonly kind: '複数を選ぶ'; readonly candidates: readonly unknown[]; readonly count: number }
   | { readonly kind: '破壊する'; readonly target: UnitOnSquare }
   | { readonly kind: 'プレイヤーにダメージを与える'; readonly player: Player; readonly amount: number }
   | { readonly kind: 'ユニットにダメージを与える'; readonly target: UnitOnSquare; readonly amount: number }
@@ -561,6 +568,26 @@ export function* choose<T>(candidates: readonly T[]): EffectStep<T | undefined> 
   const chosen = yield { kind: '選ぶ', candidates, mayDecline: false }
   // 命令を解釈する側が候補の中から選んで返すことを、この関数だけが知っている。
   return chosen as T | undefined
+}
+
+/**
+ * 候補の中から `count` 枚を選ぶ。テキストの「◯枚選び」（◯は 2 以上）にあたる。選ぶのは能力の支配者で、
+ * 選んだものが選んだ順の並びで返る（ADR-0055）。
+ *
+ * 1 枚ずつ聞くこと、選んだものを次の候補から外すこと、何枚目かを選択の要求に載せることは、エンジンが
+ * 受け持つ。効果が `choose` を繰り返して書くと、それらをカードの側で書くことになり、書き違えうる。
+ * 候補が `count` 枚以下なら聞かずに全部を選ぶ（総合ルール 第1部 第1章 3）。候補が無ければ空の並びが
+ * 返り、効果は続く。
+ *
+ * 「◯枚まで選び」（選ばないことも選べる形）と、相手が選ぶ形はまだ書けない。そのテキストを書く時に足す。
+ *
+ * 候補はカードに限る。画面が N 枚に印を付けて決めさせる一覧にできるのは、候補が全部カードの時だけで、
+ * スクエアやエリアを渡しても `series` は付くが、画面は 1 枚ずつ選ぶ形のままになる。
+ */
+export function* chooseSeveral<T>(candidates: readonly T[], count: number): EffectStep<readonly T[]> {
+  const chosen = yield { kind: '複数を選ぶ', candidates, count }
+  // 命令を解釈する側が候補の中から選んだ並びを返すことを、この関数だけが知っている。
+  return chosen as readonly T[]
 }
 
 /**

@@ -706,6 +706,9 @@ export function loggedInstruction(
         ...(areaRow === undefined ? {} : { areaRow }),
       }
     }
+    // 選んだ行は、命令が選んだカードごとに自分で積む（`resolve.ts`、ADR-0055）。この関数には来ない。
+    case '複数を選ぶ':
+      throw new Error('複数を選ぶ命令の行は、命令が自分で積む')
     case '破壊する':
       return { kind: '破壊する', card: instruction.target.id }
     case 'プレイヤーにダメージを与える':

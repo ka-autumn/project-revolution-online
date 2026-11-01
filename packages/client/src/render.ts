@@ -5676,15 +5676,6 @@ export function choosePickerElement(
   candidates: readonly { readonly index: number; readonly candidate: WireCandidate }[],
   cardOf: (id: CardId) => CardView | undefined,
   picked: number | undefined,
-  /**
-   * いま選んでいる人が、続けて答えた数（`WireChoice.answered`、ADR-0052）。選ぶ人が替わると 0 から
-   * 数え直す。
-   *
-   * この一覧が出すのは `series` を持たない選択で、分母（何枚選ぶか）は通信に載っていないので、
-   * 「/ 3 枚」のような分母は出さず、何枚目を選んでいるかだけを出す（#207）。分母が分かる N 枚続けて
-   * 選ぶ選択（`series`）は、`seriesPickerElement` が「印を付けた数 / N 枚」で出す。
-   */
-  answered: number,
   mayDecline: boolean,
   mayRewind: boolean,
   mayCancel: boolean,
@@ -5763,9 +5754,10 @@ export function choosePickerElement(
   })
 
   const foot = element('div', 'picker__foot')
-  // 何枚目を選んでいるかは、カードを何枚か選ばせる場面の情報である。能力を選ぶ場面では意味が
-  // 無いので出さない（ADR-0031）。
-  if (!abilityOnly) foot.append(element('span', 'picker__count', `${answered + 1} 枚目を選んでいます`))
+  // 何枚目を選んでいるかは出さない（ADR-0055）。この一覧が出すのは `series` を持たない選択で、エンジンが
+  // N 枚続けて選ぶと知らないので、数えられるのは続けて答えた数（`WireChoice.answered`）にすぎない。
+  // コストの答えも含むので、実際の枚数とずれる。N 枚続けて選ぶ選択（`series`）は、`seriesPickerElement`
+  // が「印を付けた数 / N 枚」で出す。
   if (mayDecline) foot.append(button('選ばない', handlers.onDecline))
   if (mayRewind) foot.append(button('ひとつ戻る', handlers.onRewind))
   if (mayCancel) foot.append(button('この行動をやめる', handlers.onCancel))
@@ -5912,7 +5904,6 @@ export function shownPickerElement(
   /** 「確認した」にあたる候補の番号。確認の選択でなければ `undefined`。 */
   confirmIndex: number | undefined,
   picked: number | undefined,
-  answered: number,
   mayDecline: boolean,
   mayRewind: boolean,
   mayCancel: boolean,
@@ -5968,7 +5959,6 @@ export function shownPickerElement(
   })
 
   const foot = element('div', 'picker__foot')
-  if (anySelectable) foot.append(element('span', 'picker__count', `${answered + 1} 枚目を選んでいます`))
   // 選べるカードも確認も無い一覧（条件に合うカードが無い山札）は、「選ばない」だけが答えになる。
   const declineOnly = answersOnlyByDeclining(shown, confirmIndex)
   if (mayDecline) {
