@@ -170,6 +170,7 @@ export {
   choose,
   chooseAtMostOne,
   chooseAtMostOneFromLibrary,
+  chooseSeveral,
   createContinuousEffect,
   createTriggeredAbility,
   damagePlayer,
