@@ -341,6 +341,20 @@ body {
   font-size: 0.8rem;
 }
 
+/* 手を送って返事を待っている間（ADR-0054）。パネルのボタンは薄くし、見出しのすぐ下に「通信中…」を出す。
+   ボタンは押しても何も送らない（aria-disabled）。キーボードの手はボタンに残る */
+.controls__sending {
+  margin: 0 0.9rem 0.4rem;
+  color: var(--heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+#controls button[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .controls__list {
   display: flex;
   flex: 1;
@@ -2026,6 +2040,7 @@ body {
   .controls__list .button--primary { flex: 1; min-height: 2.75rem; }
   .controls .phone-actions-open { min-height: 2.75rem; padding: 0 0.8rem; }
   .controls .actions__none { flex-basis: 100%; margin: 0; font-size: 0.8rem; }
+  .controls .controls__sending { flex-basis: 100%; margin: 0; font-size: 0.8rem; }
   .controls .choice__back { flex: 1; }
   .controls .choice__back button { width: 100%; min-height: 2.75rem; }
   .controls:has(.choice__back:not([hidden])) .button--primary,
@@ -2282,6 +2297,7 @@ body {
             <button type="button" class="mode--選択中" aria-pressed="true">ボタン</button>
           </div>
         </div>
+        <p class="controls__sending" id="controls-sending" role="status" hidden>通信中…</p>
         <p class="controls__reason">相手が優先権を放棄しました</p>
         <p class="phone-only phone-priority">自分の優先権・相手が優先権を放棄しました</p>
         <h3 class="choice__title" id="choice-asking" hidden>見本・メカナイト の効果の対象を選んでください</h3>
@@ -2412,6 +2428,7 @@ body {
   <label><input type="checkbox" data-show="show-partner" checked>パートナーバトル</label>
   <label><input type="checkbox" data-show="show-plan" checked>プランにカードあり</label>
   <label><input type="checkbox" data-show="show-picking">クリックで選ぶ状態</label>
+  <label><input type="checkbox" data-show="show-awaiting">手を送った直後（返事が届くまで。行き先は光らず、パネルのボタンは薄い）</label>
   <label><input type="checkbox" data-show="show-area">効果でエリアを選ぶ（敵エリアと中央エリアが候補）</label>
   <label><input type="checkbox" data-show="show-area-sheet">スマホ：エリアを選ぶシート（要「効果でエリアを選ぶ」。敵エリアのユニットのいるスクエアを押した。中央エリアのバトル中のスクエアを押すと、詳細が 2 体ぶん並び、詳細の枠だけが送れる）</label>
   <label><input type="checkbox" data-show="show-focus">山札にキーボードの手</label>
@@ -3517,13 +3534,21 @@ function apply() {
     sq.querySelector('.square__battle')?.remove()
     if (battle) sq.prepend(Object.assign(document.createElement('span'), { className: 'square__battle', textContent: 'バトル中' }))
   }
-  const picking = duel.classList.contains('show-picking')
+  // 手を送って返事を待っている間（ADR-0054）。盤面は何も光らせず、パネルのボタンを薄くして「通信中…」を出す。
+  // 案内文は外す。カードの選びかけは送った時点で捨てているので、「クリックで選ぶ状態」より優先する
+  const awaiting = duel.classList.contains('show-awaiting')
+  document.getElementById('controls-sending').hidden = !awaiting
+  for (const b of document.querySelectorAll('#controls .controls__list button, #controls #choice button')) {
+    if (awaiting) b.setAttribute('aria-disabled', 'true')
+    else b.removeAttribute('aria-disabled')
+  }
+  const picking = duel.classList.contains('show-picking') && !awaiting
   for (const c of document.querySelectorAll('.mock-pickable')) c.classList.toggle('card--押せる', picking)
   for (const s of document.querySelectorAll('.mock-target')) s.classList.toggle('square--置き先', picking)
   document.querySelector('.hand--自分 .card')?.classList.toggle('card--選択中', picking)
   // 効果でエリアを選ぶ状態（#278、ADR-0031）。候補は敵エリアと中央エリアで、ユニットのいないスクエアも
   // 含めて 3 つとも光る。味方エリアは候補に無いので光らない。押せるのはスクエアで、カードは押せない
-  const areaChoice = duel.classList.contains('show-area')
+  const areaChoice = duel.classList.contains('show-area') && !awaiting
   const areaCandidate = (sq) => !sq.classList.contains('square--味方エリア')
   for (const sq of document.querySelectorAll('.board .square')) {
     sq.classList.toggle('square--置き先', (picking && sq.classList.contains('mock-target')) || (areaChoice && areaCandidate(sq)))
@@ -3554,10 +3579,10 @@ function apply() {
   // 押せる山札（#249）と、そこにキーボードの手がある状態（ADR-0033）
   const focusing = duel.classList.contains('show-focus')
   const ownPile = ownDeck.querySelector('.pile')
-  ownPile.classList.toggle('pile--押せる', picking || focusing)
+  ownPile.classList.toggle('pile--押せる', (picking || focusing) && !awaiting)
   ownPile.classList.toggle('mock-focus', focusing)
   document.getElementById('choice').hidden = !picking
-  document.getElementById('choice-guide').hidden = !(picking || areaChoice)
+  document.getElementById('choice-guide').hidden = !(picking || areaChoice) || awaiting
   // コストの選択: 自分のエネルギーとスマッシュの群を囲み、札を付け、選べるカード（立っているもの）を上に出す
   const cost = duel.classList.contains('show-cost')
   const costGroup = document.querySelector('.group--自分.group--エネルギー')
