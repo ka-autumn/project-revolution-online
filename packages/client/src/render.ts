@@ -4706,15 +4706,16 @@ export interface AskHandlers {
  * そのまま進める。Esc・暗くしたところを押すのは、キャンセルと同じ。
  *
  * 手を送ったあとは、返事（盤面など）が届いて描き直されるまで、このダイアログは古い画面のまま残る。
- * その間に押されると 2 通目が送られ、サーバに断られて「行えませんでした」が出るので、送った時点で
- * すべてのボタンを押せなくし、通信中であることを出す。送った手は取り消せないので、キャンセルも
- * Esc も効かせない。アニメーションは使わない（描き直しで作り直されるため、ADR-0027）。
+ * その間に押されると 2 通目が送られるので、送った時点ですべてのボタンを押せなくし、通信中であることを
+ * 出す。送った手は取り消せないので、キャンセルも Esc も効かせない。アニメーションは使わない（描き直しで
+ * 作り直されるため、ADR-0027）。返事より先に描き直されたときは、送ったかどうかを呼ぶ側が `sentBefore` で渡し、
+ * 作った時点から止めておく（#253）。
  *
  * スマートフォン（ADR-0034）では、下からのシートになる（見た目は `style.css`）。右の列が無いので、`detail`
  * （カードの詳細）を一番上の段に一緒に出す。手が 1 つも無いときは、カードの詳細を見るだけのシートで、
  * 閉じる口は「閉じる」にする。
  */
-export function askElement(view: AskView, handlers: AskHandlers, detail?: HTMLElement): HTMLElement {
+export function askElement(view: AskView, handlers: AskHandlers, detail?: HTMLElement, sentBefore = false): HTMLElement {
   const layer = element('div', 'dialog')
   const box = element('div', 'dialog__box')
   box.setAttribute('role', 'dialog')
@@ -4774,6 +4775,8 @@ export function askElement(view: AskView, handlers: AskHandlers, detail?: HTMLEl
     box.append(foot)
   }
   layer.append(box)
+  // 描き直しの前に送っていたなら、作った時点で止める（#253）。
+  if (sentBefore) onSent()
 
   // Esc は、手がどこにあっても一番上の層が受ける（`index.ts` の窓全体の Esc が、ここへ回す）。
   onLayerEscape(layer, onCancel)
@@ -4885,6 +4888,33 @@ export function waitingForOverlayElement(aside?: HTMLElement): HTMLElement {
   const node = element('section', 'actions')
   node.append(titleRow('actions__title', '行える手', aside))
   node.append(element('p', 'actions__none', '演出が終わるまで待ってください'))
+
+  return node
+}
+
+/**
+ * 手を送ったあと、返事が届くまでの操作パネル（#253）。`node` は行える手・選ぶところ（`pickElement`・
+ * `actionsElement`・`choiceElement`）で、その中のボタンを薄くし、見出しのすぐ下に「通信中…」を出す。
+ * 案内文（「山札を選択してください」など）は外す。待っている間は盤面の何も押せないので、残すと
+ * 押せるもののように読める。
+ *
+ * **押せなくするのではなく、押しても空振りにする**（`aria-disabled`）。押す口は呼ぶ側（`index.ts` の
+ * `move`）で止めている。`disabled` にすると、キーボードで押した人の手がボタンから外れて `body` へ落ち、
+ * 返事が届いて描き直したあとに置き直す先（同じ見出しのボタン、`board-keyboard.ts` の
+ * `restoreBoardFocus`）を失う。操作のしかたの切り替え（`.mode`）は何も送らないので、そのままにする。
+ */
+export function lockForReply(node: HTMLElement): HTMLElement {
+  node.setAttribute('aria-busy', 'true')
+  for (const guide of node.querySelectorAll(':scope > .actions__none, :scope > .choice__none')) guide.remove()
+  for (const each of node.querySelectorAll('button')) {
+    if (each.closest('.mode') !== null) continue
+    each.setAttribute('aria-disabled', 'true')
+  }
+  const sending = element('p', 'controls__sending', '通信中…')
+  sending.setAttribute('role', 'status')
+  const head = node.querySelector(':scope > .panel__head')
+  if (head === null) node.prepend(sending)
+  else head.after(sending)
 
   return node
 }
@@ -5460,7 +5490,7 @@ export function viewPileElement(zone: ZoneView, onClose: () => void, phone?: Pho
 /**
  * 送ったあと、返事が届いて描き直されるまで、押す先をすべて押せなくする（ADR-0031）。「選ぶ」一覧と
  * エネルギー・スマッシュから払う一覧が同じ止め方をする。残ったままの一覧で押されると、2 通目が
- * サーバに断られる。
+ * 送られる。返事より先に描き直されたときは、呼ぶ側が送ったかどうかを渡し、作った時点で `lock` する（#253）。
  */
 function senderLock(): {
   readonly sending: HTMLElement
@@ -5538,6 +5568,8 @@ export function chooseZoneListElement(
   picking: BoardPicking | undefined,
   rawHandlers: ChooseZoneHandlers,
   phone: PhoneListOptions,
+  /** 描き直しの前に、もう答えを送っていたか（#253）。作った時点から止めておく。 */
+  sent = false,
 ): HTMLElement {
   const lock = senderLock()
   const handlers: ChooseZoneHandlers = {
@@ -5609,6 +5641,7 @@ export function chooseZoneListElement(
   // 見出しで分けた並びを、カードの並びの代わりに置く（カードの並びの箱は、各ゾーンの中にある）。
   root.querySelector('.picker__box > .picker__cards')?.replaceWith(area)
   lock.bind(root)
+  if (sent) lock.lock()
 
   return root
 }
@@ -5662,6 +5695,8 @@ export function choosePickerElement(
    * （能力なら発生源のカード）。
    */
   phone?: PhoneListOptions,
+  /** 描き直しの前に、もう答えを送っていたか（#253）。作った時点から止めておく。 */
+  sent = false,
 ): HTMLElement {
   const lock = senderLock()
   const { sending, once } = lock
@@ -5756,6 +5791,7 @@ export function choosePickerElement(
     phone === undefined ? undefined : listDetailElement(phone),
   )
   lock.bind(root)
+  if (sent) lock.lock()
   // 能力の札は文字だけなので、枠の幅は中身に合わせて狭める（ADR-0031）。
   if (abilityOnly) root.classList.add('picker--ability')
 
@@ -5882,6 +5918,8 @@ export function shownPickerElement(
   mayCancel: boolean,
   rawHandlers: ChoosePickerHandlers,
   phone?: PhoneListOptions,
+  /** 描き直しの前に、もう答えを送っていたか（#253）。作った時点から止めておく。 */
+  sent = false,
 ): HTMLElement {
   const lock = senderLock()
   const { sending, once } = lock
@@ -5978,6 +6016,7 @@ export function shownPickerElement(
   const cardList = root.querySelector<HTMLElement>('.picker__cards')
   if (cardList !== null) cardList.dataset[KEEP_SCROLL] = '見せる一覧'
   lock.bind(root)
+  if (sent) lock.lock()
 
   return root
 }
@@ -6068,7 +6107,9 @@ export function duelElement(props: DuelElementProps): HTMLElement {
       controls.append(phoneCloseElement('閉じる', 'シート-閉じる', closeSheet))
       // 手のボタンを押したら、シートを閉じる（送ったあとの様子は、操作の帯と盤面で見える）。手のボタン自身の
       // 動きのあとに閉じるよう、あとから足す。
+      // 返事を待っている間の空振りのボタン（`lockForReply`）では閉じない。
       for (const each of actions.querySelectorAll('button')) {
+        if (each.getAttribute('aria-disabled') === 'true') continue
         each.addEventListener('click', () => phone.send({ kind: '対戦の手を押した' }))
       }
     } else {

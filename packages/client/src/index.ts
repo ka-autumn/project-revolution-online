@@ -73,6 +73,8 @@ import {
   showsChoicePicker,
 } from './input-model.js'
 import type { AimKind, PickSelection } from './input-model.js'
+import { NOT_WAITING, WAITING, afterMessage, trySend } from './reply-wait.js'
+import type { DuelMove, ReplyWait } from './reply-wait.js'
 import { filterChoicesOf, filterPool } from './pool-filter.js'
 import {
   closedRecipeUrlOf,
@@ -104,6 +106,7 @@ import {
   duelElement,
   awaitingElement,
   leaveElement,
+  lockForReply,
   lobbyElement,
   myShareListElement,
   nameElement,
@@ -349,6 +352,20 @@ interface DuelInteraction {
    * またいで持つ。エリアの候補が無い描き直しでは捨てる（`draw`）。
    */
   readonly areaPointer: AreaPointerStore
+  /**
+   * 手を送って、返事を待っている間か（#253、`reply-wait.ts`）。描き直しをまたいで持つ。待っている間は、
+   * 操作パネルのボタンを薄くし（`lockForReply`）、盤面の行き先を光らせず、ダイアログ・一覧は送ったあとの
+   * 止めた形で作る。
+   */
+  readonly awaitingReply: boolean
+  /**
+   * 対戦の手を送る（#253）。返事を待っている間は送らずに `false` を返す（空振り）。送ったら `true`。
+   *
+   * `redrawNow` が真なら、送ったあとすぐ描き直して、パネルのボタンを薄くする。ダイアログ・一覧から送る時は
+   * 偽にする。そちらは押した時点で自分を止めて「通信中…」を出しており、描き直すと選びかけを捨てた状態で
+   * 作り直して閉じてしまう。
+   */
+  readonly move: (message: DuelMove, redrawNow: boolean) => boolean
 }
 
 /** 操作のしかたを切り替えるところ。 */
@@ -891,9 +908,11 @@ function draw(
     // クリックで選ぶのを待たれている間は、盤面に出ている候補を盤面から押せるようにする（#94）。
     // 答えるのは番号のままで、押したところがどの番号かは `choicePicking` が持っている。
     const answering = clicking ? structuralPicking : undefined
-    const answer = (found: number | undefined): void => {
-      if (found !== undefined) connection.send({ kind: '選ぶ', answer: found })
-    }
+    // 手を送って返事を待っている間（#253）。
+    const awaiting = duel.awaitingReply
+    // 盤面から答える。払う一覧からは描き直さずに送る（一覧が自分で止めて「通信中…」を出す）。
+    const answer = (found: number | undefined, redrawNow = true): boolean =>
+      found !== undefined && duel.move({ kind: '選ぶ', answer: found }, redrawNow)
     const boardData = boardView(board)
     // 選択の要求が見せる一覧（相手の手札など）は盤面のどこにも載っていないので、詳細の引き先に足す。
     const shownCards = stage.choice?.shown === undefined ? [] : shownCardViewsIn(board, stage.choice)
@@ -907,7 +926,7 @@ function draw(
       phone === undefined || !clicking
         ? undefined
         : areaSheetOf(phone.state.areaSheet, board, stage.choice, connected, phone.state.areaSheetSent)
-    const boardPicking: BoardPicking | undefined =
+    const pressable: BoardPicking | undefined =
       view !== undefined
         ? {
             pickable: view.pickable,
@@ -924,14 +943,14 @@ function draw(
                     const zone = view.trapZone
                     if (zone === undefined) return
                     picking.onCancel()
-                    connection.send({ kind: '行動する', action: zone.action })
+                    duel.move({ kind: '行動する', action: zone.action }, true)
                   },
                 }),
             onSquare: (square) => {
               const destination = view.destinations.find((each) => indexOfSquare(each.square) === indexOfSquare(square))
               if (destination === undefined) return
               picking.onCancel()
-              connection.send({ kind: '行動する', action: destination.action })
+              duel.move({ kind: '行動する', action: destination.action }, true)
             },
           }
         : answering !== undefined
@@ -946,7 +965,7 @@ function draw(
               onCard: (card) => answer(answering.answerOf(card)),
               // やめられるかは、パネルの「この行動をやめる」と同じ判断（`choiceView` の `mayCancel`）。
               ...(stage.choice !== undefined && choiceView(board, stage.choice).mayCancel
-                ? { onCancelChoice: () => connection.send({ kind: '取り消す' }) }
+                ? { onCancelChoice: () => duel.move({ kind: '取り消す' }, true) }
                 : {}),
               onSquare: (square) => {
                 const pickable = answering.squares.find((each) => indexOfSquare(each.square) === indexOfSquare(square))
@@ -961,6 +980,10 @@ function draw(
               onHidden: (at) => answer(answering.answerOfHidden(at)),
             }
           : undefined
+    // 返事を待っている間は、盤面の行き先を光らせず、押せるカードも出さない（#253）。押しても送らない
+    // （`duel.move`）が、押せるように見せない。スマートフォンのエリアのシートが開いている間だけは残す——
+    // シートが自分で止めて「通信中…」を出しており、選んだエリアの強調はシートの見出しの裏付けである。
+    const boardPicking = awaiting && areaSheet === undefined ? undefined : pressable
 
     // 操作のしかたの切り替えは、行える手の見出しに添える（`render.ts` の `titleRow`）。スマートフォンでは出さない。
     const mode = phone === undefined ? modeElement(picking) : undefined
@@ -1009,20 +1032,19 @@ function draw(
       // 一番上の 1 行に出ている（`statusOf`）。
       controlsChildren.push(line('controls__offline', '繋がるまで打てません'))
     } else if (stage.choice !== undefined && !showsPicker) {
-      controlsChildren.push(
-        choiceElement(
-          // 盤面から押せる候補は、ここに二重に出さない（#150）。押せるかどうかを決めているのは
-          // `answering` そのものなので、演出が出ている間（`clicking` が false）は渡らず、
-          // 候補は全部ボタンとして並ぶ。
-          choiceView(board, stage.choice, answering),
-          {
-            onAnswer: (answer) => connection.send({ kind: '選ぶ', answer }),
-            onRewind: () => connection.send({ kind: 'ひとつ戻る' }),
-            onCancel: () => connection.send({ kind: '取り消す' }),
-          },
-          mode,
-        ),
+      const node = choiceElement(
+        // 盤面から押せる候補は、ここに二重に出さない（#150）。押せるかどうかを決めているのは
+        // `answering` そのものなので、演出が出ている間（`clicking` が false）は渡らず、
+        // 候補は全部ボタンとして並ぶ。
+        choiceView(board, stage.choice, answering),
+        {
+          onAnswer: (answer) => duel.move({ kind: '選ぶ', answer }, true),
+          onRewind: () => duel.move({ kind: 'ひとつ戻る' }, true),
+          onCancel: () => duel.move({ kind: '取り消す' }, true),
+        },
+        mode,
       )
+      controlsChildren.push(awaiting ? lockForReply(node) : node)
     } else if (stage.choice === undefined && showsOverlay(overlay)) {
       // 演出が出ている間は行える手を出さない（#115）。**待ち行列は実際の盤面より遅れている**
       // ので、出ている演出のフェイズと、行える手が指すフェイズが食い違う。押せなくするだけ
@@ -1033,27 +1055,25 @@ function draw(
       controlsChildren.push(waitingForOverlayElement(mode))
     } else if (stage.choice === undefined && view !== undefined) {
       // クリックで操作する（#94）。パネルには、優先権の放棄と案内文だけを出す。
-      controlsChildren.push(
-        pickElement(
-          view,
-          {
-            onAction: (action) => {
-              picking.onCancel()
-              connection.send({ kind: '行動する', action })
-            },
-            onCancel: picking.onDeselect,
+      const node = pickElement(
+        view,
+        {
+          onAction: (action) => {
+            picking.onCancel()
+            duel.move({ kind: '行動する', action }, true)
           },
-          mode,
-        ),
+          onCancel: picking.onDeselect,
+        },
+        mode,
       )
+      controlsChildren.push(awaiting ? lockForReply(node) : node)
     } else if (stage.choice === undefined) {
-      controlsChildren.push(
-        actionsElement(
-          actionViews(board, stage.actions, stage.passOutcome),
-          (action) => connection.send({ kind: '行動する', action }),
-          mode,
-        ),
+      const node = actionsElement(
+        actionViews(board, stage.actions, stage.passOutcome),
+        (action) => duel.move({ kind: '行動する', action }, true),
+        mode,
       )
+      controlsChildren.push(awaiting ? lockForReply(node) : node)
     }
     // `showsPicker` の間、行える手のかわりに一覧が出るので、ここには何も積まない。一覧は
     // 盤面・操作パネルの上に重なり、その中に戻る・取り消す口も持つ（`choosePickerElement`）。
@@ -1087,21 +1107,18 @@ function draw(
             const meta = choiceView(board, choice, answering)
             const handlers: ChoosePickerHandlers = {
               onPick: duel.onPickerPick,
+              // 一覧が押した時点で自分を止める（`senderLock`）ので、描き直さずに送る。
               onConfirm: (index) => {
-                duel.onPickerAnswered()
-                connection.send({ kind: '選ぶ', answer: index })
+                if (duel.move({ kind: '選ぶ', answer: index }, false)) duel.onPickerAnswered()
               },
               onDecline: () => {
-                duel.onPickerAnswered()
-                connection.send({ kind: '選ぶ', answer: '選ばない' })
+                if (duel.move({ kind: '選ぶ', answer: '選ばない' }, false)) duel.onPickerAnswered()
               },
               onRewind: () => {
-                duel.onPickerAnswered()
-                connection.send({ kind: 'ひとつ戻る' })
+                if (duel.move({ kind: 'ひとつ戻る' }, false)) duel.onPickerAnswered()
               },
               onCancel: () => {
-                duel.onPickerAnswered()
-                connection.send({ kind: '取り消す' })
+                if (duel.move({ kind: '取り消す' }, false)) duel.onPickerAnswered()
               },
             }
             // N 枚をまとめて選ぶ選択（ADR-0052）。候補が盤面にも載っていても（自分の手札）、一覧で N 枚に
@@ -1125,13 +1142,13 @@ function draw(
                       (candidate) => candidate.kind === '見えている' && candidate.card === first,
                     )
                     if (first === undefined || answer < 0) return
-                    duel.onSeriesAnswered(rest)
-                    connection.send({ kind: '選ぶ', answer })
+                    if (duel.move({ kind: '選ぶ', answer }, false)) duel.onSeriesAnswered(rest)
                   },
                   onRewind: handlers.onRewind,
                   onCancel: handlers.onCancel,
                 },
-                duel.seriesSending,
+                // 続きを人の操作なしに送っている間と、返事を待っている間は、最初から止めておく。
+                duel.seriesSending || awaiting,
                 phoneList,
               )
             }
@@ -1154,6 +1171,7 @@ function draw(
                 meta.mayCancel,
                 handlers,
                 phoneList,
+                awaiting,
               )
             }
             // 能力を選ぶ一覧は、開いた時点で発生源のカードの詳細を上の段に出す。札を押したら、押した札の発生源に替わる。
@@ -1174,6 +1192,7 @@ function draw(
               handlers,
               isAbilityChoice(choice) ? abilityLabels(board, choice) : [],
               pickerList,
+              awaiting,
             )
           })()
         : undefined
@@ -1186,8 +1205,8 @@ function draw(
     const askHandlers: AskHandlers = {
       onChoose: (option) => {
         if ('send' in option) {
-          picking.onCancel()
-          connection.send({ kind: '行動する', action: option.send })
+          // ダイアログが押した時点で自分を止める。描き直すと、選びかけを捨てたダイアログが閉じてしまう。
+          if (duel.move({ kind: '行動する', action: option.send }, false)) picking.onCancel()
         } else {
           picking.onAim(option.aim)
         }
@@ -1238,7 +1257,7 @@ function draw(
             (boardData.squares.flat().find((each) => indexOfSquare(each.square) === indexOfSquare(areaSheet.square))?.cards ?? []).flatMap(
               (card) => sheetDetailElement(card) ?? [],
             ),
-            areaSheet.sent,
+            areaSheet.sent || awaiting,
             {
               onChoose: () => {
                 // 送ったことを先に覚える。返事が届くまでに描き直されても、押せる状態に戻らない。
@@ -1255,10 +1274,10 @@ function draw(
       phone !== undefined
         ? (areaSheetNode ??
           (view?.sheet !== undefined && peek === undefined
-            ? askElement(view.sheet, askHandlers, sheetDetailElement(sheetCard))
+            ? askElement(view.sheet, askHandlers, sheetDetailElement(sheetCard), awaiting)
             : viewedSheet))
         : view?.ask !== undefined
-          ? askElement(view.ask, askHandlers)
+          ? askElement(view.ask, askHandlers, undefined, awaiting)
           : undefined
     // 選びかけが替わる（別のカードを選ぶ・行き先を絞る）たびに、別のダイアログとして扱う。
     // エリアのシートは、開くたびに作る覚え（`PhoneState.areaSheet`）で、開いた単位を見分ける。
@@ -1289,19 +1308,21 @@ function draw(
             if (zones.length === 0) return undefined
 
             // 答えを送ったあと返事を待つ間と、演出が出ている間は、押せるカードの無い一覧になる。
-            const choosing = answering !== undefined && boardPicking !== undefined && stage.choice !== undefined ? boardPicking : undefined
+            // 返事を待っている間（#253）も、押せる形で作ってから一覧ごと止める（`sent`）。押せない一覧に替えると、
+            // 「通信中…」が消えて、送っていないように見える。
+            const choosing = answering !== undefined && pressable !== undefined && stage.choice !== undefined ? pressable : undefined
+            const answeringNow = answering
             const paid: BoardPicking | undefined =
-              choosing === undefined
+              choosing === undefined || answeringNow === undefined
                 ? undefined
                 : {
                     ...choosing,
+                    // 一覧が押した時点で自分を止める（`senderLock`）ので、描き直さずに送る。
                     onCard: (card) => {
-                      duel.onPayAnswered()
-                      choosing.onCard(card)
+                      if (answer(answeringNow.answerOf(card), false)) duel.onPayAnswered()
                     },
                     onHidden: (at) => {
-                      duel.onPayAnswered()
-                      choosing.onHidden?.(at)
+                      if (answer(answeringNow.answerOfHidden(at), false)) duel.onPayAnswered()
                     },
                   }
             return chooseZoneListElement(
@@ -1315,12 +1336,12 @@ function draw(
                   ? {}
                   : {
                       onCancel: () => {
-                        duel.onPayCancelled()
-                        choosing.onCancelChoice?.()
+                        if (duel.move({ kind: '取り消す' }, false)) duel.onPayCancelled()
                       },
                     }),
               },
               phoneList,
+              awaiting,
             )
           })()
         : undefined
@@ -1554,6 +1575,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let queue: Overlay[] = []
   let overlayTimer: ReturnType<typeof setTimeout> | undefined
   let lastFresh: readonly LoggedEvent[] | undefined
+  /**
+   * 手を送って、返事を待っている間か（#253、`reply-wait.ts`）。ダイアログや一覧の中ではなく、ここで
+   * 描き直しをまたいで持つ。返事（盤面・選んでほしい・行えなかった）か、繋がりの様子が変わるまで解かない。
+   */
+  let replyWait: ReplyWait = NOT_WAITING
 
   const deselect = (): void => {
     if (selection.card === undefined && selection.deck !== true) return
@@ -1678,6 +1704,16 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       seriesMarks = []
     },
     areaPointer,
+    awaitingReply: replyWait,
+    move: (message, redrawNow) => {
+      const next = trySend(replyWait)
+      if (!next.send) return false
+
+      replyWait = next.waiting
+      connection.send(message)
+      if (redrawNow) redraw()
+      return true
+    },
   })
 
   const naming = (): Naming => ({
@@ -2482,6 +2518,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       }
 
       session = applyMessage(session, message, nameDraft)
+      // 送った手の返事が届いたら、また押せる（#253）。描き直す前に解く。
+      replyWait = afterMessage(replyWait, message)
       // 送ったエリアの答えが断られたら、シートを閉じて捨てる。選択は残るので、届いた選択の比べ（`areaSheetOf`）では
       // 閉じない。断りの文は、閉じたあとの画面に出る（`session.refusal`）。
       if (message.kind === '行えなかった') {
@@ -2580,7 +2618,6 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         viewingPile = undefined
       }
       enqueueOverlays()
-      redraw()
 
       // 放棄しか行えない場面は押させずに送る。**描いてから送る**ので、進む前の盤面が一度は
       // 画面に出る。送った結果は次の盤面として届き、そこでまた同じ判断をする。
@@ -2589,11 +2626,21 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // （`session.ts`）で、ほかのものが届くたびに見ると、送った手が断られた（`行えなかった`）
       // 後にもう一度同じ手を送ることになり、断られ続ける。
       const automatic = message.kind === '盤面' ? automaticAction(session) : undefined
-      if (automatic !== undefined) connection.send({ kind: '行動する', action: automatic })
-      if (queuedAnswer !== undefined) connection.send({ kind: '選ぶ', answer: queuedAnswer })
+      const autoMoves: readonly DuelMove[] = [
+        ...(automatic === undefined ? [] : [{ kind: '行動する', action: automatic } as const]),
+        ...(queuedAnswer === undefined ? [] : [{ kind: '選ぶ', answer: queuedAnswer } as const]),
+      ]
+      // 人の操作なしに送る手も、返事を待つ（#253）。**描く前に待ちに入る。** 描いた画面には放棄のボタンが
+      // 出ており、そのまま押せると、自動で送った放棄に 2 通目が続く。
+      if (autoMoves.length > 0) replyWait = WAITING
+      redraw()
+      for (const move of autoMoves) connection.send(move)
     },
     onLinkChanged: (value) => {
       link = value
+      // 繋がりの様子が変わったら、返事を待つのをやめる（#253）。切れる前に送った手の返事はもう来ず、
+      // 繋ぎ直せばサーバがいまの盤面を送り直す（ADR-0009）。時間では解かない（`reply-wait.ts`）。
+      replyWait = NOT_WAITING
       // 切れたら、聞いている途中のダイアログは何も送らずに閉じる（#249）。繋ぎ直した先で、その手が
       // まだ行えるとは限らない（ADR-0016）。
       if (value.kind !== '繋がっている') {

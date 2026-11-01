@@ -2291,6 +2291,13 @@ body {
   box-shadow: none;
 }
 
+/* 手を送って返事を待っている間の操作パネルのボタン（#253、`lockForReply`）。押しても何も送らないが、手は置ける。 */
+.duel button[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .duel .button--primary {
   border-color: var(--gold-deep);
   color: #3a1f00;
@@ -2524,6 +2531,14 @@ body {
   margin: 0.5rem 0.9rem;
   color: var(--ink-dim);
   font-size: 0.85rem;
+}
+
+/* 手を送って返事を待っている間の「通信中…」（#253）。ダイアログ・一覧の「通信中…」と同じ字にする。 */
+.duel .controls__sending {
+  margin: 0.5rem 0.9rem;
+  color: var(--heading);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .duel .controls__reason {
@@ -6953,6 +6968,7 @@ body {
   .duel .controls:not(.phone-sheet--open) .controls__offline,
   .duel .controls:not(.phone-sheet--open) .actions__none,
   .duel .controls:not(.phone-sheet--open) .choice__none,
+  .duel .controls:not(.phone-sheet--open) .controls__sending,
   .duel .controls:not(.phone-sheet--open) .choice .panel__head {
     flex-basis: 100%;
     margin: 0;
