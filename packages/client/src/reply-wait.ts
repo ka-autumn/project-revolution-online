@@ -84,6 +84,11 @@ export function afterMessage(waiting: ReplyWait, message: ToClient): ReplyWait {
  * 切れる前の盤面と行える手が残っており、そこで押した手は入り直しのすぐ後にサーバに届いて、いまの
  * 盤面で合法なら通ってしまう。切れる前の手を繋ぎ直した先で押させない（ADR-0016）ためにも、
  * 入り直しの返事（`isReply`）が届くまで止める。入り直す部屋が無ければ、待つ返事も無いので解く。
+ *
+ * 解くのは、最初に届いた入り直しの返事である。部屋にいる人が繋ぎ直すと、入り直しの返事は 2 回届く。1 回目は、
+ * サーバが繋いだ時点で自分から入り直させたもの（`serve.ts` の `admit`）。2 回目は、画面が送った `部屋に入る`
+ * への返事である。1 回目のあとに押した手の待ちが 2 回目で解け、そこでもう一度押すと 2 通目が通る。この窓は
+ * 修正の前からあり、1 往復の間に 2 回続けて押したときだけで狭いので、受け入れている（ADR-0054 の「前提」）。
  */
 export function afterLinkChange(link: Link, rejoining: boolean): ReplyWait {
   return link.kind === '繋がっている' && rejoining ? WAITING : NOT_WAITING
