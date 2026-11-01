@@ -7,12 +7,16 @@ import { describe, expect, it } from 'vitest'
  *
  * `series` が無い選択で数えられるのは、この行動の中で続けて答えた数（`WireChoice.answered`）にすぎず、
  * コストのエネルギーを選んだ答えも含むので、実際の枚数とずれる（#347）。ここは DOM が無い環境で動くので、
- * 描いた結果は見られない。確かめるのは、一覧の組み立てが何枚目かの文を作っているかどうかである。
+ * 描いた結果は見られない。確かめるのは、次の 3 つの関数の本体が、何枚目かの文を作っているかどうかだけである。
+ * ほかの関数から足もとへ数を足し直しても、このテストでは捕まらない。
  */
 describe('カードを選ぶ一覧の足もとの枚数', () => {
   const source = readFileSync(new URL('./render.ts', import.meta.url), 'utf8')
   const bodyOf = (signature: string): string => {
     const start = source.indexOf(signature)
+    // 関数の名前を変えた時に、何も見ないまま通ってしまわないよう、見つからなければ失敗させる。
+    if (start < 0) throw new Error(`${signature} が render.ts に無い`)
+
     return source.slice(start, source.indexOf('\n}\n', start))
   }
 

@@ -580,6 +580,9 @@ export function* choose<T>(candidates: readonly T[]): EffectStep<T | undefined> 
  * 返り、効果は続く。
  *
  * 「◯枚まで選び」（選ばないことも選べる形）と、相手が選ぶ形はまだ書けない。そのテキストを書く時に足す。
+ *
+ * 候補はカードに限る。画面が N 枚に印を付けて決めさせる一覧にできるのは、候補が全部カードの時だけで、
+ * スクエアやエリアを渡しても `series` は付くが、画面は 1 枚ずつ選ぶ形のままになる。
  */
 export function* chooseSeveral<T>(candidates: readonly T[], count: number): EffectStep<readonly T[]> {
   const chosen = yield { kind: '複数を選ぶ', candidates, count }
