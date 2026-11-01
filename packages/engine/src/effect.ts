@@ -156,6 +156,14 @@ export interface DuelView {
    * 中身を見せずに動かせる。
    */
   hand(): readonly CardInZone[]
+  /**
+   * そのプレイヤーの手札の枚数（総合ルール 第2部 第23章 1-1）。
+   *
+   * どちらのプレイヤーぶんも読める。手札の枚数は公開情報である。枚数だけを返すので、数えた
+   * ことによって相手の手札の中身を読めたり、そのカードを対象にできたりはしない
+   * （`energyCount` と同じ。ADR-0002・ADR-0004・ADR-0056）。
+   */
+  handCount(player: Player): number
   /** 支配者自身の捨札にあるカードすべて。 */
   discardPile(): readonly CardInZone[]
   /** 支配者自身のプランゾーンにあるカードすべて。 */
@@ -418,8 +426,8 @@ export interface BpModifier {
 /**
  * 継続効果が 1 枚のユニットのＳＰに与える変更（総合ルール 第4部 第12章 5-2 の(5)）。
  *
- * `BpModifier` と対になる。解決が残す継続効果（`createContinuousEffect`）にだけ渡せる。
- * ＳＰを変える常在型能力は、書くテキストが出た時に口を足す。
+ * `BpModifier` と対になる。解決が残す継続効果（`createContinuousEffect`）と、常在型能力
+ * （`ModifyingAbility.modifiers`、ADR-0056）に渡せる。
  */
 export interface SpModifier {
   readonly kind: 'ＳＰの変更'

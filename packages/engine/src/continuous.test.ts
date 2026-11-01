@@ -10,7 +10,7 @@ import {
   alsoTreatedAs,
   attributeAdding,
   bpModification,
-  bpModifying,
+  modifying,
   bpOf,
   bpPlus,
   cardsIn,
@@ -28,6 +28,8 @@ import {
   playCard,
   putOnSquare,
   resolveEffect,
+  spModification,
+  spPlus,
 } from './index.js'
 import type { Attribute, Chooser, DuelState, Player, ResolutionVia, Square, UnitCard } from './index.js'
 
@@ -54,7 +56,7 @@ const boosting = defineUnit({
   colors: ['赤'],
   bp: 1000,
   sp: 1000,
-  abilities: [bpModifying((duel) => duel.allies().map((ally) => bpPlus(ally, 2000)))],
+  abilities: [modifying((duel) => duel.allies().map((ally) => bpPlus(ally, 2000)))],
 })
 
 /** 「テスト属性」を持つユニット。 */
@@ -95,7 +97,7 @@ const boostingAttributed = defineUnit({
   bp: 1000,
   sp: 1000,
   abilities: [
-    bpModifying((duel) =>
+    modifying((duel) =>
       duel
         .allies()
         .filter((ally) => ally.card.attributes.includes('テスト属性'))
@@ -111,7 +113,7 @@ const weakening = defineUnit({
   colors: ['赤'],
   bp: 1000,
   sp: 1000,
-  abilities: [bpModifying((duel) => duel.enemies().map((enemy) => bpPlus(enemy, -1000)))],
+  abilities: [modifying((duel) => duel.enemies().map((enemy) => bpPlus(enemy, -1000)))],
 })
 
 /** 先攻から見た味方エリアの 3 マスと、その 1 つ上（中央エリア）のマス。 */
@@ -304,7 +306,7 @@ const boostingMadeByQxa = defineUnit({
   bp: 1000,
   sp: 1000,
   abilities: [
-    bpModifying((duel) =>
+    modifying((duel) =>
       duel
         .allies()
         .filter((ally) => ally.id !== duel.self()?.id && ally.card.makerSymbols.includes('QXA'))
@@ -536,7 +538,7 @@ const boostingFriendly = defineUnit({
   bp: 1000,
   sp: 1000,
   abilities: [
-    bpModifying((duel) =>
+    modifying((duel) =>
       duel
         .allies()
         .filter((ally) => ally.id !== duel.self()?.id && duel.hasKeyword(ally, '友情'))
@@ -709,5 +711,193 @@ describe('バトルダメージ', () => {
 
     expect(idsOf(cardsIn(after, '先攻', '捨札'))).toEqual(['攻撃した'])
     expect(idsOf(cardsOn(after, homeCenter))).toEqual(['攻撃された'])
+  })
+})
+
+/** そのユニットのＳＰ。継続効果による修整を集めてから読む。 */
+function spOn(state: DuelState, id: string, card: UnitCard): number {
+  return continuousData(state)(id, card).sp
+}
+
+/** 「このカードのＳＰを＋1000」。 */
+const raisingOwnSp = defineUnit({
+  name: 'テスト・自身のＳＰ強化',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    modifying((duel) => {
+      const self = duel.self()
+      return self === undefined ? [] : [spPlus(self, 1000)]
+    }),
+  ],
+})
+
+/** 「このカードのＢＰを＋2000し、ＳＰを＋500」。1 つの能力がＢＰとＳＰの変更を一緒に返す。 */
+const raisingOwnBpAndSp = defineUnit({
+  name: 'テスト・自身のＢＰとＳＰを強化',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    modifying((duel) => {
+      const self = duel.self()
+      return self === undefined ? [] : [bpPlus(self, 2000), spPlus(self, 500)]
+    }),
+  ],
+})
+
+/** 「『テスト属性』の味方のＳＰを＋500」。属性で対象を絞る修整。 */
+const raisingAttributedSp = defineUnit({
+  name: 'テスト・属性でＳＰ強化',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    modifying((duel) =>
+      duel
+        .allies()
+        .filter((ally) => ally.card.attributes.includes('テスト属性'))
+        .map((ally) => spPlus(ally, 500)),
+    ),
+  ],
+})
+
+/** 「相手の手札が 0 枚なら、このカードのＢＰを＋2000」。 */
+const strongWhenOpponentHandEmpty = defineUnit({
+  name: 'テスト・相手の手札が 0 枚ならＢＰ強化',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    modifying((duel) => {
+      const self = duel.self()
+      return self !== undefined && duel.handCount(duel.opponent) === 0 ? [bpPlus(self, 2000)] : []
+    }),
+  ],
+})
+
+/** 「相手の手札が 0 枚なら、このカードのＳＰを＋1000」。 */
+const sharpWhenOpponentHandEmpty = defineUnit({
+  name: 'テスト・相手の手札が 0 枚ならＳＰ強化',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    modifying((duel) => {
+      const self = duel.self()
+      return self !== undefined && duel.handCount(duel.opponent) === 0 ? [spPlus(self, 1000)] : []
+    }),
+  ],
+})
+
+// ADR-0056。総合ルール 第4部 第12章 4-1、5-2 の(5)
+describe('ＳＰを変更する常在型能力', () => {
+  it('能力を持つカードがスクエアにある間、ＳＰを修整する', () => {
+    const board = boardOf([homeLeft, '強化するユニット', raisingOwnSp])
+
+    expect(spOn(board, '強化するユニット', raisingOwnSp)).toBe(2000)
+    expect(spModification(board)('強化するユニット')).toBe(1000)
+  })
+
+  it('修整を受けていないユニットのＳＰは、カードに書かれている数字のままである', () => {
+    const board = boardOf([homeLeft, '強化するユニット', raisingOwnSp], [homeRight, '味方', vanilla])
+
+    expect(spOn(board, '味方', vanilla)).toBe(1000)
+  })
+
+  it('能力を持つカードがスクエアに無ければ、修整しない', () => {
+    const board = boardOf([homeRight, '味方', vanilla])
+
+    expect(spModification(board)('強化するユニット')).toBe(0)
+  })
+
+  it('ＳＰを変更しても、ＢＰは変更しない', () => {
+    const board = boardOf([homeLeft, '強化するユニット', raisingOwnSp])
+
+    expect(bpOn(board, '強化するユニット', raisingOwnSp)).toBe(1000)
+  })
+
+  it('1 つの能力が返したＢＰとＳＰの変更が、どちらも適用される', () => {
+    const board = boardOf([homeLeft, '強化するユニット', raisingOwnBpAndSp])
+
+    expect(bpOn(board, '強化するユニット', raisingOwnBpAndSp)).toBe(3000)
+    expect(spOn(board, '強化するユニット', raisingOwnBpAndSp)).toBe(1500)
+  })
+
+  it('作成された継続効果のＳＰの変更とも足し合わされる', () => {
+    const board = {
+      ...boardOf([homeLeft, '強化するユニット', raisingOwnSp]),
+      createdContinuousEffects: [
+        {
+          target: '強化するユニット',
+          change: { kind: 'ＳＰの変更', amount: 300 } as const,
+          until: 'ターンの終わりまで' as const,
+          controller: '先攻' as const,
+        },
+      ],
+    }
+
+    expect(spOn(board, '強化するユニット', raisingOwnSp)).toBe(2300)
+  })
+
+  // 総合ルール 第4部 第12章 5-2: 属性を変更する継続効果 (3) は、ＢＰ・ＳＰを変更する継続効果 (5) より先に適用される。
+  it('継続効果によって属性が加わったユニットも、属性で絞った修整の対象にする', () => {
+    const board = boardOf(
+      [homeLeft, '属性を加えるユニット', granting],
+      [homeCenter, '強化するユニット', raisingAttributedSp],
+      [homeRight, '味方', vanilla],
+    )
+
+    // 書かれている属性は無いが、「テスト属性」としても扱われるので、＋500 を受ける。
+    expect(spOn(board, '味方', vanilla)).toBe(1500)
+  })
+
+  it('属性が加わっていなければ、属性で絞った修整の対象にしない', () => {
+    const board = boardOf([homeCenter, '強化するユニット', raisingAttributedSp], [homeRight, '味方', vanilla])
+
+    expect(spOn(board, '味方', vanilla)).toBe(1000)
+  })
+})
+
+// ADR-0056。総合ルール 第2部 第23章 1-1（手札の枚数は公開情報）
+describe('相手の手札の枚数を参照する常在型能力', () => {
+  const handCard = (id: string, owner: Player) => instantiate({ id, card: vanilla, owner })
+
+  it('相手の手札が 0 枚の間だけ、ＢＰを修整する', () => {
+    const empty = boardOf([homeLeft, '強化するユニット', strongWhenOpponentHandEmpty])
+    const one = putInZone(empty, '後攻', '手札', [handCard('相手の手札', '後攻')])
+
+    expect(bpOn(empty, '強化するユニット', strongWhenOpponentHandEmpty)).toBe(3000)
+    expect(bpOn(one, '強化するユニット', strongWhenOpponentHandEmpty)).toBe(1000)
+  })
+
+  it('相手の手札が 0 枚の間だけ、ＳＰを修整する', () => {
+    const empty = boardOf([homeLeft, '強化するユニット', sharpWhenOpponentHandEmpty])
+    const one = putInZone(empty, '後攻', '手札', [handCard('相手の手札', '後攻')])
+
+    expect(spOn(empty, '強化するユニット', sharpWhenOpponentHandEmpty)).toBe(2000)
+    expect(spOn(one, '強化するユニット', sharpWhenOpponentHandEmpty)).toBe(1000)
+  })
+
+  it('自分の手札の枚数は、条件に影響しない', () => {
+    const board = putInZone(boardOf([homeLeft, '強化するユニット', strongWhenOpponentHandEmpty]), '先攻', '手札', [
+      handCard('自分の手札', '先攻'),
+    ])
+
+    expect(bpOn(board, '強化するユニット', strongWhenOpponentHandEmpty)).toBe(3000)
+  })
+
+  it('相手の立場のユニットは、自分から見た相手（先攻）の手札の枚数を参照する', () => {
+    const board = putInZone(boardOf([homeLeft, '後攻のユニット', strongWhenOpponentHandEmpty, '後攻']), '先攻', '手札', [
+      handCard('先攻の手札', '先攻'),
+    ])
+
+    expect(bpOn(board, '後攻のユニット', strongWhenOpponentHandEmpty)).toBe(1000)
   })
 })

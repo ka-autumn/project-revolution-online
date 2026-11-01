@@ -19,7 +19,7 @@ import {
   PLAYERS,
   alsoTreatedAs,
   attributeAdding,
-  bpModifying,
+  modifying,
   bpPlus,
   damagePlayer,
   defineUnit,
@@ -183,7 +183,7 @@ const aura = defineUnit({
   bp: 1000,
   sp: 1000,
   abilities: [
-    bpModifying((duel) => duel.allies().map((ally) => bpPlus(ally, 500))),
+    modifying((duel) => duel.allies().map((ally) => bpPlus(ally, 500))),
     attributeAdding((duel) => duel.allies().map((ally) => alsoTreatedAs(ally, 'テスト属性'))),
   ],
 })
@@ -406,7 +406,7 @@ describe('捨札に置かれた時のきっかけ', () => {
       bp: 1000,
       sp: 1000,
       abilities: [
-        bpModifying((duel) => duel.allies().map((ally) => bpPlus(ally, 500))),
+        modifying((duel) => duel.allies().map((ally) => bpPlus(ally, 500))),
         attributeAdding((duel) => duel.allies().map((ally) => alsoTreatedAs(ally, 'テスト属性'))),
         triggeredAbility(discardEvent, nothing, (occasion) => {
           seen.push({ bp: occasion.card.bp, attributes: occasion.card.attributes })

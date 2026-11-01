@@ -5,7 +5,7 @@ import { putInZone } from './duel.js'
 import {
   alsoTreatedAs,
   attributeAdding,
-  bpModifying,
+  modifying,
   bpPlus,
   defineUnit,
   emptyDuelState,
@@ -291,7 +291,7 @@ describe('継続効果を適用した後のデータ', () => {
     colors: ['赤'],
     bp: 1000,
     sp: 1000,
-    abilities: [bpModifying((duel) => duel.allies().map((ally) => bpPlus(ally, 2000)))],
+    abilities: [modifying((duel) => duel.allies().map((ally) => bpPlus(ally, 2000)))],
   })
 
   /** 「すべての味方に「テスト属性」を加える」ユニット。 */

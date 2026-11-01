@@ -3,7 +3,7 @@ import type {
   ActivatedAbility,
   AttributeAddingAbility,
   CourageAbility,
-  BpModifyingAbility,
+  ModifyingAbility,
   HopeAbility,
   MoveCostingAbility,
   PassiveKeyword,
@@ -397,7 +397,7 @@ export function hasMakerSymbol(card: Card, symbol: MakerSymbol): boolean {
  *
  * 常在型のキーワード能力だけを見る。テキストに書かれた能力のうち、名前だけで参照できて
  * 内容を持たないのはこの形のものである（`ability.ts` の `DreamAbility`・`PepAbility`）。
- * 常在型能力には内容を持つもの（`BpModifyingAbility`）もあるので、名前で引く前に
+ * 常在型能力には内容を持つもの（`ModifyingAbility`）もあるので、名前で引く前に
  * 名前を持つ側であることを確かめる。「友情」はその例で、ＢＰを修整する常在型能力に名前を
  * 足した形（`FriendshipAbility`）で持つ。
  *
@@ -503,21 +503,21 @@ export function courageOf(card: Card): CourageAbility | undefined {
 }
 
 /**
- * そのカードが持つ、ＢＰを修整する常在型能力（総合ルール 第4部 第12章 5-2 の(5)）。
+ * そのカードが持つ、ＢＰ・ＳＰを修整する常在型能力（総合ルール 第4部 第12章 5-2 の(5)）。
  *
  * 「希望」と違って、同じカードが 2 つ以上持つことがあり得る（キーワード能力と、テキストに
  * 書かれた修整とを同時に持てる）ので、見つかったものをすべて返す。
  */
-export function bpModifyingAbilitiesOf(card: Card): readonly BpModifyingAbility[] {
+export function modifyingAbilitiesOf(card: Card): readonly ModifyingAbility[] {
   return card.abilities.filter(
-    (ability): ability is BpModifyingAbility => ability.kind === '常在型能力' && 'bpModifiers' in ability,
+    (ability): ability is ModifyingAbility => ability.kind === '常在型能力' && 'modifiers' in ability,
   )
 }
 
 /**
  * そのカードが持つ、属性を加える常在型能力（総合ルール 第4部 第12章 5-2 の(3)）。
  *
- * `bpModifyingAbilitiesOf` と同じ理由で、見つかったものをすべて返す。
+ * `modifyingAbilitiesOf` と同じ理由で、見つかったものをすべて返す。
  */
 export function attributeAddingAbilitiesOf(card: Card): readonly AttributeAddingAbility[] {
   return card.abilities.filter(

@@ -8,6 +8,7 @@ import type {
   CreatedAbilityEffect,
   DuelView,
   Effect,
+  SpModifier,
   UnitOnSquare,
 } from './effect.js'
 import type { Player } from './player.js'
@@ -423,7 +424,19 @@ export interface HopeAbility {
 }
 
 /**
- * ＢＰを修整する継続効果を生み出す常在型能力（総合ルール 第4部 第4章 1、第12章 5-2 の(5)）。
+ * 常在型能力が返せる変更（総合ルール 第4部 第12章 5-2 の(5)）。
+ *
+ * いまはＢＰとＳＰの変更だけである。能力の付与や移動方向の変更は、テキストを変更する継続効果
+ * (2) と適用の段階が異なるので、返せるようにする時に、段階ごとに能力を呼び出す仕組みと
+ * 一緒に追加する（ADR-0056）。
+ */
+export type PassiveModifier = BpModifier | SpModifier
+
+/** 盤面を参照して、常在型能力がいま与えている変更を返す関数（`ModifyingAbility.modifiers`）。 */
+export type PassiveModifiersFromBoard = (duel: DuelView) => readonly PassiveModifier[]
+
+/**
+ * ＢＰ・ＳＰを修整する継続効果を生み出す常在型能力（総合ルール 第4部 第4章 1、第12章 5-2 の(5)）。
  *
  * 「夢」「元気」「信頼」「根性」と違って効果を持つ。あちらはルールの側が能力の有無を見に
  * 行くだけで、解決されるものが何も無かったが、こちらは「他の味方のＢＰを＋500」のように
@@ -437,7 +450,7 @@ export interface HopeAbility {
  * 「指定されたゾーンに置かれるカードはデータを変更された状態でそのゾーンに置かれる」
  * （同 第12章 2）も同じ理由で自動的に満たされる。
  */
-export interface BpModifyingAbility {
+export interface ModifyingAbility {
   readonly kind: '常在型能力'
   /**
    * この能力がいま与えている修整すべて。影響を与えるユニットが 1 枚も無ければ空になる。
@@ -451,18 +464,18 @@ export interface BpModifyingAbility {
    * 渡される `DuelView` の `self` はこの能力を持つユニット自身で、味方・敵はその支配者から
    * 見た呼び方になる。
    */
-  readonly bpModifiers: (duel: DuelView) => readonly BpModifier[]
+  readonly modifiers: PassiveModifiersFromBoard
 }
 
 /**
  * キーワード能力「友情」（総合ルール 第5部 第5章）。
  *
- * ＢＰを修整する常在型能力そのものであり（`friendship`）、修整の動きは `BpModifyingAbility`
+ * ＢＰを修整する常在型能力そのものであり（`friendship`）、修整の動きは `ModifyingAbility`
  * と変わらない。違うのは `keyword` で名前を持つ点だけで、「そのユニットが友情を持つか」を
  * 他のキーワード能力と同じ流儀で答えられる（`card.ts` の `hasFriendship`、`DuelView.hasKeyword`）。
  * 「夢」などが専用の型を持つのとは違い、効果を持つ側に名前を足した形である。
  */
-export interface FriendshipAbility extends BpModifyingAbility {
+export interface FriendshipAbility extends ModifyingAbility {
   readonly keyword: '友情'
 }
 
@@ -481,7 +494,7 @@ export type PassiveKeyword = PassiveKeywordAbility['keyword']
  * 属性を加える継続効果を生み出す常在型能力（総合ルール 第2部 第13章 4、
  * 第4部 第12章 5-2 の(3)）。
  *
- * `BpModifyingAbility` と同じ形で、修整の在りかは盤面ではなく、読むたびに集め直す
+ * `ModifyingAbility` と同じ形で、修整の在りかは盤面ではなく、読むたびに集め直す
  * （`continuous.ts`）。違うのは適用される順番だけで、属性を変更する継続効果 (3) は
  * ＢＰを修整する継続効果 (5) より先に適用される（同 5-2）。
  */
@@ -719,7 +732,7 @@ export type Ability =
   | TrustAbility
   | GutsAbility
   | HopeAbility
-  | BpModifyingAbility
+  | ModifyingAbility
   | FriendshipAbility
   | AttributeAddingAbility
   | PlanReplacingAbility
@@ -840,9 +853,9 @@ export function hope(effect: Effect): HopeAbility {
   return { kind: '特別な能力', keyword: '希望', effect }
 }
 
-/** ＢＰを修整する常在型能力を 1 つ書く。修整の内容はカードごとに違うので受け取る。 */
-export function bpModifying(bpModifiers: (duel: DuelView) => readonly BpModifier[]): BpModifyingAbility {
-  return { kind: '常在型能力', bpModifiers }
+/** ＢＰ・ＳＰを修整する常在型能力を 1 つ書く。修整の内容はカードごとに違うので受け取る。 */
+export function modifying(modifiers: PassiveModifiersFromBoard): ModifyingAbility {
+  return { kind: '常在型能力', modifiers }
 }
 
 /**
@@ -884,12 +897,12 @@ export function attributeAdding(
  * 自分自身は影響を受けない。自分がいるのは隣のスクエアではないので、隣接で絞った時点で
  * 外れる。テキストが「他の」と書いていないのは、書く必要が無いからである。
  *
- * 返す能力は `keyword: '友情'` を持つ。ＢＰの修整としての動きは、`bpModifying` で書いた
+ * 返す能力は `keyword: '友情'` を持つ。ＢＰの修整としての動きは、`modifying` で書いた
  * ものと変わらない。
  */
 export function friendship(amount: number): FriendshipAbility {
   return {
-    ...bpModifying((duel) => {
+    ...modifying((duel) => {
       const self = duel.self()
       if (self === undefined) return []
 

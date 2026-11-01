@@ -11,12 +11,14 @@ import {
   discardTrap,
   emptyDuelState,
   instantiate,
+  modifying,
   passPriority,
   placeEnergy,
   plan,
   planReplacing,
   putOnSquare,
   smash,
+  spPlus,
 } from './index.js'
 import type { ActionOutcome, CardInstance, Chooser, DuelState, Phase, Square, UnitCard } from './index.js'
 
@@ -405,6 +407,26 @@ describe('スマッシュする', () => {
     const lowered = withSpChange(board, 'スマッシュ役', -800)
 
     expect(stateOf(smash(lowered, 'スマッシュ役')).damage['後攻']).toBe(500)
+  })
+
+  // ADR-0056: 常在型能力が返したＳＰの変更も、作成された継続効果と同じく、ダメージに反映される。
+  it('常在型能力によるＳＰの変更を受けていれば、変更後のＳＰと同じダメージを与える', () => {
+    const boostingSelf = defineUnit({
+      name: 'テスト・自身のＳＰ強化',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 500,
+      abilities: [
+        modifying((duel) => {
+          const self = duel.self()
+          return self === undefined ? [] : [spPlus(self, 300)]
+        }),
+      ],
+    })
+    const board = smashPhaseWith([centerSquare, 'スマッシュ役', boostingSelf])
+
+    expect(stateOf(smash(board, 'スマッシュ役')).damage['後攻']).toBe(800)
   })
 
   it('ＳＰの変更は、ＢＰの変更には影響しない', () => {
