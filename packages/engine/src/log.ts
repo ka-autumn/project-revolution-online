@@ -715,10 +715,12 @@ export function loggedInstruction(
     case '向きを変える':
       return { kind: '向きを変える', card: instruction.target.id, orientation: instruction.orientation }
     case 'ゾーンへ置く':
-      // 置いた先は持ち主のゾーンなので、動く前のカードの持ち主である。持ち主が分からないのは、カードが
-      // すでにどこにも無い時で、その時は実行されず、ログにも積まれない（`resolve.ts` の `recorded`）ので、
-      // `controller` で埋める分岐へは届かない。
-      return { kind: 'ゾーンへ置く', card: instruction.card.id, to: instruction.to, player: outcome.owner ?? controller }
+      // 置いた先は持ち主のゾーンなので、動く前のカードの持ち主である（総合ルール 第2部 第21章 1-2）。
+      // 持ち主が分からないのはカードが動かなかった時だけで、その時は盤面が変わらず、ログに積む前に
+      // 戻る（`resolve.ts` の `recorded`）。それでもここへ来たなら不具合である。支配者で埋めると、
+      // 相手のカードを相手のゾーンへ置いたのに「自分の」と出る気づきにくい誤りになるので、例外にする（#349）。
+      if (outcome.owner === undefined) throw new Error('持ち主の分からないカードをゾーンへ置いた行を作ろうとした')
+      return { kind: 'ゾーンへ置く', card: instruction.card.id, to: instruction.to, player: outcome.owner }
     case '山札の1番上をゾーンへ置く':
       // どのカードが動いたかは命令に書かれていない（位置で指定されている）。
       return { kind: '山札の1番上をゾーンへ置く', card: cardIdOf(subject), to: instruction.to, player: controller }

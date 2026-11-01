@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { putInZone } from './duel.js'
 // できごとを積む `record` も engine の内部にある。積む時に見え方が決まる（#129）ので、
 // 落とし方を見るテストはログを直接差し替えずにここを通す。
-import { record } from './log.js'
+import { loggedInstruction, record } from './log.js'
 import { activateCourage, checkCourageCondition } from './courage.js'
 import {
   AREAS,
@@ -345,6 +345,29 @@ describe('効果の記録', () => {
       { kind: 'ゾーンへ置く', card: '味方', to: '捨札', player: '先攻' },
       { kind: 'ゾーンへ置く', card: '敵', to: '捨札', player: '後攻' },
     ])
+  })
+
+  // 総合ルール 第2部 第21章 1-2。置き先のゾーンのプレイヤーは持ち主で決まるので、持ち主が分からないまま
+  // 能力の支配者で埋めると、相手のカードを相手のゾーンへ置いた行が「自分の」と出てしまう（#349）。
+  // 動かなかったカードは `recorded` がログに積む前に戻るので、ここへ来るのは不具合の時だけである。
+  it('持ち主が分からないままゾーンへ置いた行を作ろうとすると、支配者で埋めずに例外になる', () => {
+    const card = { id: '敵', zone: '手札', card: vanilla } as const
+
+    for (const controller of PLAYERS) {
+      expect(() =>
+        loggedInstruction({ kind: 'ゾーンへ置く', card, to: '捨札', orientation: 'リリース', position: '1番上' }, undefined, controller),
+      ).toThrow('持ち主の分からないカード')
+    }
+  })
+
+  it('持ち主が分かれば、支配者ではなく持ち主のゾーンの行になる', () => {
+    const card = { id: '敵', zone: '手札', card: vanilla } as const
+
+    expect(
+      loggedInstruction({ kind: 'ゾーンへ置く', card, to: '捨札', orientation: 'リリース', position: '1番上' }, undefined, '先攻', {
+        owner: '後攻',
+      }),
+    ).toEqual({ kind: 'ゾーンへ置く', card: '敵', to: '捨札', player: '後攻' })
   })
 
   it('山札の 1 番上を置いた記録に、置き先のゾーンのプレイヤーが残る', () => {
