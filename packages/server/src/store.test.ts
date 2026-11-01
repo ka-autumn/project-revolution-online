@@ -8,7 +8,7 @@ import type { Card, FromClient } from '@revolution/engine'
 import { deckSourceFrom } from './deck.js'
 import { emptyRooms, receive, restore, roomOf } from './room.js'
 import type { DeckSource, OpenDuel, ParticipantId, RoomSetup, Rooms } from './room.js'
-import { openStore, readConnectionDays } from './store.js'
+import { openStore } from './store.js'
 import type { Store } from './store.js'
 
 /**
@@ -1113,78 +1113,50 @@ describe('レシピと共有', () => {
 })
 
 /**
- * ログイン済みの人が繋いだ記録（#350）。残すのは「どの身元が、いつ」だけで、日ごとの人数と回数は
- * そこから数える。日付は日本時間（UTC+9）で切る。
+ * ログイン済みの人が繋いだ記録（#350）。残すのは「どの身元が、いつ」だけである。サーバは書くだけで、
+ * 日ごとの人数と回数は README の SQL で数える。
  */
 describe('接続の記録', () => {
-  /** 日本時間の 2026-11-01 `hour` 時（UTC のミリ秒）。 */
-  const jst = (day: number, hour: number): number => Date.UTC(2026, 10, day, hour - 9)
-
-  function storeAt(clock: { at: number }): Store {
-    return openStore(':memory:', { now: () => clock.at })
+  /** 置き場をファイルに作り、書いた行を外から読む。 */
+  function connectionsIn(path: string): readonly { identity: number; connected_at: number }[] {
+    const db = new DatabaseSync(path, { readOnly: true })
+    const rows = db.prepare('select identity, connected_at from connections order by id').all()
+    db.close()
+    return rows.map((row) => ({ identity: Number(row.identity), connected_at: Number(row.connected_at) }))
   }
 
-  it('繋ぐたびに 1 件増え、同じ日の同じ人は人数が 1 のまま回数が増える', () => {
-    const clock = { at: jst(1, 10) }
-    const store = storeAt(clock)
+  function removeStore(path: string): void {
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  }
+
+  it('繋ぐたびに、身元と時刻の行が 1 件ずつ増える', () => {
+    const path = `${tmpdir()}/revolution-connection-rows-${randomUUID()}.sqlite`
+    const clock = { at: Date.UTC(2026, 10, 1, 1) }
+    const store = openStore(path, { now: () => clock.at })
     const first = store.identify('google', '10001')
     const second = store.identify('google', '10002')
 
     store.recordConnection(first)
-    expect(store.connectionDays()).toEqual([{ day: '2026-11-01', people: 1, connections: 1 }])
-
-    clock.at = jst(1, 15)
+    clock.at = Date.UTC(2026, 10, 1, 6)
     store.recordConnection(first)
-    store.recordConnection(first)
-    expect(store.connectionDays()).toEqual([{ day: '2026-11-01', people: 1, connections: 3 }])
-
     store.recordConnection(second)
-    expect(store.connectionDays()).toEqual([{ day: '2026-11-01', people: 2, connections: 4 }])
-    store.close()
-  })
 
-  it('日付は日本時間で切り、日ごとに古い順で返る', () => {
-    const clock = { at: jst(1, 23) }
-    const store = storeAt(clock)
-    const person = store.identify('google', '10001')
-
-    store.recordConnection(person) // 11/1 23時（UTC では 11/1 14時）
-    clock.at = jst(2, 0) // 日本時間では翌日（UTC では 11/1 15時）
-    store.recordConnection(person)
-    clock.at = jst(3, 8)
-    store.recordConnection(person)
-
-    expect(store.connectionDays()).toEqual([
-      { day: '2026-11-01', people: 1, connections: 1 },
-      { day: '2026-11-02', people: 1, connections: 1 },
-      { day: '2026-11-03', people: 1, connections: 1 },
+    expect(connectionsIn(path)).toEqual([
+      { identity: Number(first), connected_at: Date.UTC(2026, 10, 1, 1) },
+      { identity: Number(first), connected_at: Date.UTC(2026, 10, 1, 6) },
+      { identity: Number(second), connected_at: Date.UTC(2026, 10, 1, 6) },
     ])
     store.close()
-  })
-
-  it('since より前の接続は数えない', () => {
-    const clock = { at: jst(1, 10) }
-    const store = storeAt(clock)
-    const person = store.identify('google', '10001')
-    store.recordConnection(person)
-    clock.at = jst(2, 10)
-    store.recordConnection(person)
-
-    expect(store.connectionDays(jst(2, 0))).toEqual([{ day: '2026-11-02', people: 1, connections: 1 }])
-    store.close()
-  })
-
-  it('接続が無ければ空で返る', () => {
-    const store = openStore(':memory:')
-    expect(store.connectionDays()).toEqual([])
-    store.close()
+    removeStore(path)
   })
 
   it('身元の識別子でないものは記録できない', () => {
-    const store = openStore(':memory:')
+    const path = `${tmpdir()}/revolution-connection-invalid-${randomUUID()}.sqlite`
+    const store = openStore(path)
     expect(() => store.recordConnection('だれか')).toThrow()
-    expect(store.connectionDays()).toEqual([])
+    expect(connectionsIn(path)).toEqual([])
     store.close()
+    removeStore(path)
   })
 
   /** 持つ列は身元と時刻だけ。個人や端末に結びつく列を足さない。 */
@@ -1197,7 +1169,20 @@ describe('接続の記録', () => {
     const columns = db.prepare('pragma table_info(connections)').all().map((row) => String(row.name))
     db.close()
     expect(columns).toEqual(['id', 'identity', 'connected_at'])
-    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+    removeStore(path)
+  })
+
+  /** 記録だから、アカウントを消すことになっても残す。身元の表を参照しない。 */
+  it('記録は身元の表を参照しない', () => {
+    const path = `${tmpdir()}/revolution-connection-keys-${randomUUID()}.sqlite`
+    const store = openStore(path)
+    store.close()
+
+    const db = new DatabaseSync(path)
+    const keys = db.prepare('pragma foreign_key_list(connections)').all()
+    db.close()
+    expect(keys).toEqual([])
+    removeStore(path)
   })
 
   /**
@@ -1216,34 +1201,14 @@ describe('接続の記録', () => {
     const raw = new DatabaseSync(path)
     raw.exec('drop table connections')
     raw.close()
-    expect(readConnectionDays(path)).toEqual([])
 
     const again = openStore(path)
     expect(again.identify('google', '10001')).toBe(person)
     expect(again.nameOf(person)).toBe('かずお')
     expect(again.sessionHolder('ようやく', 0)).toBe(person)
     again.recordConnection(person)
-    expect(again.connectionDays()).toHaveLength(1)
+    expect(connectionsIn(path)).toHaveLength(1)
     again.close()
-    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
-  })
-
-  /** サーバが開いている間も、別に開いて読める。読むだけで何も書かない。 */
-  it('開いている置き場を、別に開いて日ごとの人数と回数を読める', () => {
-    const path = `${tmpdir()}/revolution-connection-read-${randomUUID()}.sqlite`
-    const clock = { at: jst(1, 10) }
-    const running = openStore(path, { now: () => clock.at })
-    const person = running.identify('google', '10001')
-    running.recordConnection(person)
-    running.recordConnection(person)
-
-    expect(readConnectionDays(path)).toEqual([{ day: '2026-11-01', people: 1, connections: 2 }])
-    expect(readConnectionDays(path, jst(2, 0))).toEqual([])
-    running.close()
-    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
-  })
-
-  it('置き場が無ければ、作らずに投げる', () => {
-    expect(() => readConnectionDays(`${tmpdir()}/revolution-missing-${randomUUID()}.sqlite`)).toThrow()
+    removeStore(path)
   })
 })

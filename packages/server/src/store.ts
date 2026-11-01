@@ -123,12 +123,15 @@ const SCHEMA = `
   create index if not exists recipe_copies_by_recipe on recipe_copies (recipe);
 
   -- ログイン済みの人が対戦サーバに繋いだ記録（#350）。1 行 1 接続で、持つのは「どの身元が、
-  -- いつ」だけ。**IP アドレスも端末の情報も持たない。** 表ごと新しく足すので、すでにある表と
+  -- いつ」だけ。IP アドレスも端末の情報も持たない。表ごと新しく足すので、すでにある表と
   -- 中身には触れない（create table if not exists が、動いている置き場にもそのまま通る）。
   -- sessions の opened_at はログインし直すと置き換わるので、接続の記録には使えない。
+  -- identity に identities への外部キーを付けないのは、記録だからである。アカウントを消す
+  -- ことになっても、繋いだ記録は残す。
+  -- サーバはここへ書くだけで、数えない。日ごとの人数と回数を数える SQL は README にある。
   create table if not exists connections (
     id integer primary key autoincrement,
-    identity integer not null references identities (id),
+    identity integer not null,
     connected_at integer not null
   );
   create index if not exists connections_by_time on connections (connected_at);
@@ -278,54 +281,6 @@ function addMissingColumn(db: DatabaseSync, table: string, column: string, defin
   db.exec(`alter table ${table} add column ${column} ${definition}`)
 }
 
-/**
- * 日ごとの接続の数え方（#350）。日付は日本時間（UTC+9）で区切る。
- *
- * **`people` は、その日に 1 度でも繋いだ身元の数**で、同じ人が何度繋いでも 1 と数える。
- * `connections` は繋いだ回数である。
- */
-export interface ConnectionDay {
-  /** `YYYY-MM-DD`（日本時間）。 */
-  readonly day: string
-  readonly people: number
-  readonly connections: number
-}
-
-/** 日付を切る時差。接続の記録を日ごとに数えるときに、`connected_at`（UTC のミリ秒）へ足す。 */
-const DAY_OFFSET = '+9 hours'
-
-const COUNT_CONNECTION_DAYS = `
-  select date(connected_at / 1000, 'unixepoch', '${DAY_OFFSET}') as day,
-         count(distinct identity) as people,
-         count(*) as connections
-  from connections
-  where connected_at >= ?
-  group by day
-  order by day`
-
-function connectionDaysOf(rows: readonly Row[]): readonly ConnectionDay[] {
-  return rows.map((row) => ({ day: text(row, 'day'), people: int(row, 'people'), connections: int(row, 'connections') }))
-}
-
-/**
- * 動いているサーバの置き場から、日ごとの接続を読む（#350）。
- *
- * **読むだけで、開いても何も作らない・書かない。** WAL なので、サーバを止めずに読める。
- * 置き場が無ければ開けずに投げる（空の置き場を作ってしまわない）。接続の記録を足す前の置き場
- * （表が無い）は、記録なしとして空で返す。
- */
-export function readConnectionDays(path: string, since = 0): readonly ConnectionDay[] {
-  const db = new DatabaseSync(path, { readOnly: true })
-  try {
-    const exists = db.prepare("select 1 as found from sqlite_master where type = 'table' and name = 'connections'").get()
-    if (exists === undefined) return []
-
-    return connectionDaysOf(db.prepare(COUNT_CONNECTION_DAYS).all(since) as Row[])
-  } finally {
-    db.close()
-  }
-}
-
 export interface Store {
   /**
    * 書き足す。**渡された並びを 1 つのまとまりとして書く。**
@@ -471,8 +426,6 @@ export interface Store {
    * 書けなかったときに接続を止めるかは呼ぶ側が決める（`serve.ts`）。ここは投げるだけである。
    */
   recordConnection(participant: ParticipantId): void
-  /** `since`（ミリ秒）以降の、日ごとの接続した人の数と回数。日付の古い順（#350）。 */
-  connectionDays(since?: number): readonly ConnectionDay[]
   close(): void
 }
 
@@ -573,7 +526,6 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
   const copyCount = db.prepare('select count(*) as n from recipe_copies where recipe = ?')
   const insertCopy = db.prepare('insert into recipe_copies (recipe, copied_at) values (?, ?)')
   const insertConnection = db.prepare('insert into connections (identity, connected_at) values (?, ?)')
-  const connectionDayRows = db.prepare(COUNT_CONNECTION_DAYS)
 
   /**
    * いま開いている対戦の、合言葉から行番号への引き当て。
@@ -871,7 +823,6 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
     recordConnection: (participant) => {
       insertConnection.run(identityOf(participant), now())
     },
-    connectionDays: (since = 0) => connectionDaysOf(connectionDayRows.all(since) as Row[]),
     close: () => {
       db.close()
     },

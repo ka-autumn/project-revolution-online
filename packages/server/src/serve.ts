@@ -549,8 +549,8 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   /**
    * ログイン済みの人が繋いだことを残す（#350）。数えるのは繋いだ時点だけである。
    *
-   * **ログインの設定が無い手元の起動では残さない**——名乗りは認証ではなく、誰のものでもない。
-   * **書けなくても接続は止めない**（`keep` と同じ考え方）。
+   * ログインの設定が無い手元の起動では残さない——名乗りは認証ではなく、誰のものでもない。
+   * 書けなくても接続は止めない（`keep` と同じ考え方）。
    */
   function recordConnection(participant: ParticipantId): void {
     if (options.signIn === undefined || options.store === undefined) return
