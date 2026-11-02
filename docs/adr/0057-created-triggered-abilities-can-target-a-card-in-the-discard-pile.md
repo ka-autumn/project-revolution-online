@@ -52,4 +52,5 @@
 - 対象の型: `CardInDiscardPile`（`CardInZone` のうち、ゾーンが捨札のもの）。`DuelView.discardPile()` の戻り値の型を、この型の並びにした
 - 効果の型: `CreatedDiscardAbilityEffect`（`(duel, affected: CardInDiscardPile) => EffectStep<void>`）
 - 能力の型: `CreatedTriggeredAbility` を、`place` で見分ける 2 つの型の和にした。`CreatedOnSquareAbility`（`place: 'スクエア'`）と `CreatedInDiscardPileAbility`（`place: '捨札'`）である。誘発した能力（`CreatedAbilityInstance`）も同じ 2 つに分け、述語 `isInDiscardPile` で絞り込む
-- 作る時に対象が捨札に無ければ、能力は作らない。作った後に捨札へ置かれた別のカードに、能力が働かないようにするためである。スクエアのユニットを対象にする能力は、いままでどおり確認しない
+- 作成する時に対象が捨札に無ければ、能力は作成しない。捨札以外のカード（手札など）を指す能力を盤面に持つと、その識別子が相手にも送られてしまう（`VisibleCreatedAbility`、ADR-0004）うえ、誘発することもないためである。スクエアのユニットを対象にする能力は、いままでどおり確認しない
+- 既知の制限: 誘発してから解決するまでの間に、対象のカードが捨札を出て戻ってきた場合、識別子が同じなので、新しいカードにも能力が働く（ゾーンを移ったカードは新しいカードになる。総合ルール 第2部 第21章 1-4）。engine の中ではカードが識別子を持ち続ける（#284）ためで、スクエアのユニットを対象にする能力にも前からある制限と同じ種類である。今回は受け入れる

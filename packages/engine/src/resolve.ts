@@ -591,8 +591,9 @@ function apply(
       if (!shown.has(instruction.affecting.id)) {
         throw new Error('効果に見せていないカードが対象にされた')
       }
-      // 捨札のカードを対象にする能力は、作る時に対象が捨札にあるカードにだけ作る。ここで見送らないと、
-      // 作った後に捨札へ置かれた新しいカードに、能力が働いてしまう（ADR-0057）。
+      // 捨札のカードを対象にする能力は、作成する時に対象が捨札にある場合だけ作成する。捨札以外の
+      // カード（手札など）を指す能力を盤面に持つと、その識別子が相手にも送られてしまう
+      // （`perspective.ts` の `VisibleCreatedAbility`、ADR-0004）うえ、誘発することもない。
       // 実行できない行動は実行されない（総合ルール 第1部 第1章 3）。
       if (instruction.ability.place === '捨札' && !isInDiscardPileOfAnyone(state, instruction.affecting.id)) {
         return { state, value: undefined }

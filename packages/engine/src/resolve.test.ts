@@ -1891,7 +1891,7 @@ describe('効果が誘発型能力を作る', () => {
 })
 
 // 総合ルール 第4部 第3章 4（ADR-0006、ADR-0057・ADR-0058）
-describe('効果が、捨札のカードを対象にする誘発型能力を作る', () => {
+describe('効果が、捨札のカードを対象にする誘発型能力を作成する', () => {
   /** 自分の捨札にある自分のカードを 1 枚選び、そのカードを「ターンの終わり」に手札に加える能力を作る。 */
   const postponing = triggeredAbility('登場した時', function* (duel) {
     const [card] = duel.discardPile()
@@ -1907,7 +1907,7 @@ describe('効果が、捨札のカードを対象にする誘発型能力を作�
   const created = (state: DuelState): DuelState =>
     resolveEffect(state, postponing.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
-  it('作られた能力を、作ったターンの番号とともに盤面が持つ', () => {
+  it('作成された能力を、作成したターンの番号とともに盤面が持つ', () => {
     const resolved = created(withDiscarded())
 
     expect(resolved.createdAbilities.map((each) => each.affecting)).toEqual(['捨札の対象'])
@@ -1916,16 +1916,16 @@ describe('効果が、捨札のカードを対象にする誘発型能力を作�
     expect(resolved.createdAbilities.map((each) => each.createdIn)).toEqual([withDiscarded().turn.number])
   })
 
-  it('作っただけでは、対象のカードは捨札にあるまま動かない', () => {
+  it('作成しただけでは、対象のカードは捨札にあるまま動かない', () => {
     const resolved = created(withDiscarded())
 
     expect(cardsIn(resolved, '先攻', '捨札').map((card) => card.id)).toEqual(['捨札の対象'])
     expect(resolved.bank).toEqual([])
   })
 
-  // 実行できない行動は実行されない（総合ルール 第1部 第1章 3）。作った後に捨札へ置かれた別のカード
-  // に、能力が働いてしまわないようにする。
-  it('作る時に対象が捨札に無ければ、能力は作られない', () => {
+  // 実行できない行動は実行されない（総合ルール 第1部 第1章 3）。捨札以外のカードを指す能力を、
+  // 盤面に持たせない（識別子が相手にも送られるため。ADR-0004）。
+  it('作成する時に対象が捨札に無ければ、能力は作成されない', () => {
     const fromHand = triggeredAbility('登場した時', function* (duel) {
       const [card] = duel.hand()
       if (card === undefined) throw new Error('手札にカードがある盤面で試すこと')
