@@ -1,7 +1,8 @@
 import type { AllyAppearanceOccasion, AppearanceOccasion, TriggerEvent, TriggerOccasion } from './ability.js'
 import { continuousData } from './continuous.js'
-import { locateOnSquares } from './duel.js'
+import { isInDiscardPile, locateOnSquares } from './duel.js'
 import type { BankedAbility, CardId, CreatedAbilityInstance, DuelState } from './duel.js'
+import type { Effect } from './effect.js'
 import { record } from './log.js'
 import { conditionHolds, resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
@@ -153,12 +154,11 @@ export function resolveFromBank(state: DuelState, chooser: Chooser): DuelState {
  */
 function resolveBanked(state: DuelState, banked: BankedAbility, chooser: Chooser): DuelState {
   if (isCreated(banked)) {
-    const { ability, affected } = banked
-    return resolveEffect(state, (duel) => ability.effect(duel, affected), {
+    return resolveEffect(state, createdEffectOf(banked), {
       controller: banked.controller,
       via: '誘発',
       chooser,
-      handed: [affected],
+      handed: [banked.affected],
     })
   }
   // 解決する時に誘発条件を満たしていなければ無効化される（総合ルール 第4部 第7章 8）。
@@ -175,6 +175,17 @@ function resolveBanked(state: DuelState, banked: BankedAbility, chooser: Chooser
     chooser,
     self: banked.self,
   })
+}
+
+/** 作成された誘発型能力の効果に、手渡す対象を渡して、盤面の効果にしたもの。 */
+function createdEffectOf(banked: CreatedAbilityInstance): Effect {
+  if (isInDiscardPile(banked)) {
+    const { ability, affected } = banked
+    return (duel) => ability.effect(duel, affected)
+  }
+
+  const { ability, affected } = banked
+  return (duel) => ability.effect(duel, affected)
 }
 
 /**

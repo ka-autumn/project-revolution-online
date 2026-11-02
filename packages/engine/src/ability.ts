@@ -6,6 +6,7 @@ import type {
   AttributeAddition,
   BpModifier,
   CreatedAbilityEffect,
+  CreatedDiscardAbilityEffect,
   DuelView,
   Effect,
   SpModifier,
@@ -693,8 +694,13 @@ export interface CourageAbility {
  *
  * 「次の」はここに含まれない。特別に規定された期限が無ければ、次にこのできごとが起こった
  * 時に 1 度だけ誘発する（同 4）ので、engine の側で決まる。
+ *
+ * 「ターンの終わり」は、誰のターンとも書かれていないテキスト（「そのターンの終わりに」）を
+ * 表す。能力が作成されたターンの終わりにだけ誘発し、誘発しないままそのターンが終われば
+ * 取り除かれる（ADR-0058）。「あなたのターンの終わり」は、次に来る自分のターンの終わりに
+ * 誘発する。
  */
-export const CREATED_TRIGGERS = ['あなたのターンの終わり'] as const
+export const CREATED_TRIGGERS = ['あなたのターンの終わり', 'ターンの終わり'] as const
 
 export type CreatedTrigger = (typeof CREATED_TRIGGERS)[number]
 
@@ -708,11 +714,26 @@ export type CreatedTrigger = (typeof CREATED_TRIGGERS)[number]
  *
  * 影響を与える対象のカードは、能力ではなく作られたもの（同）の側が持つ。同じ能力でも作られる
  * たびに対象が違うためで、これはカードのテキストが定義する部分ではない。
+ *
+ * 影響を与える対象がどこにあるかは `place` で決まり、効果が受け取る対象の型もそれで決まる
+ * （ADR-0057）。作成に使った関数が `place` を決める。
  */
-export interface CreatedTriggeredAbility {
+export type CreatedTriggeredAbility = CreatedOnSquareAbility | CreatedInDiscardPileAbility
+
+/** 対象がスクエアにいるユニットである、作成された誘発型能力（`createTriggeredAbility`）。 */
+export interface CreatedOnSquareAbility {
   readonly kind: '作成された誘発型能力'
+  readonly place: 'スクエア'
   readonly trigger: CreatedTrigger
   readonly effect: CreatedAbilityEffect
+}
+
+/** 対象が捨札にあるカードである、作成された誘発型能力（`createTriggeredAbilityForDiscardedCard`）。 */
+export interface CreatedInDiscardPileAbility {
+  readonly kind: '作成された誘発型能力'
+  readonly place: '捨札'
+  readonly trigger: CreatedTrigger
+  readonly effect: CreatedDiscardAbilityEffect
 }
 
 /**

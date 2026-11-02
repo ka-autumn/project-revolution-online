@@ -96,8 +96,9 @@ export interface VisibleAbility {
 /**
  * ある視点から見た、まだ誘発していない、作成された誘発型能力（総合ルール 第4部 第3章 4）。
  *
- * `VisibleAbility` と同じ理由で効果を持たない。影響を与える特定のカード（同 4-1）は、スクエアに
- * あるカードなので公開情報である。
+ * `VisibleAbility` と同じ理由で効果を持たない。影響を与える特定のカード（同 4-1）は、スクエアか
+ * 捨札にあるカードなので公開情報である（ADR-0057）。非公開のゾーンのカードを対象にできるように
+ * する時は、ここで送る内容を見直す。
  */
 export interface VisibleCreatedAbility {
   readonly controller: Player

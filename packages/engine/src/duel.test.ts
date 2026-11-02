@@ -155,9 +155,10 @@ describe('カードインスタンス', () => {
 describe('作成された誘発型能力の消滅', () => {
   /** 対象を 1 枚だけ持つ、何もしない能力が作られている盤面を作る。 */
   const affecting = (id: CardId): CreatedAbility => ({
-    ability: { kind: '作成された誘発型能力', trigger: 'あなたのターンの終わり', effect: function* () {} },
+    ability: { kind: '作成された誘発型能力', place: 'スクエア', trigger: 'あなたのターンの終わり', effect: function* () {} },
     controller: '先攻',
     affecting: id,
+    createdIn: 1,
   })
 
   /** その対象がスクエアにいて、その対象に影響を与える能力が作られている盤面。 */

@@ -19,7 +19,16 @@ import {
   topOfLibrary,
 } from './duel.js'
 import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
-import type { CardInTrapZone, CardInZone, DuelView, Effect, Instruction, SmashCard, UnitOnSquare } from './effect.js'
+import type {
+  CardInDiscardPile,
+  CardInTrapZone,
+  CardInZone,
+  DuelView,
+  Effect,
+  Instruction,
+  SmashCard,
+  UnitOnSquare,
+} from './effect.js'
 import { loggedInstruction, record } from './log.js'
 import type { LoggedInstruction, ResolutionVia } from './log.js'
 import { opponentOf, PLAYERS } from './player.js'
@@ -181,7 +190,7 @@ export interface EffectContext {
    * スクエアを離れていれば、その対象への命令は実行されないだけである
    * （総合ルール 第1部 第1章 3）。
    */
-  readonly handed?: readonly UnitOnSquare[]
+  readonly handed?: readonly (UnitOnSquare | CardInDiscardPile)[]
 }
 
 /**
@@ -582,11 +591,20 @@ function apply(
       if (!shown.has(instruction.affecting.id)) {
         throw new Error('効果に見せていないカードが対象にされた')
       }
+      // 捨札のカードを対象にする能力は、作成する時に対象が捨札にある場合だけ作成する。捨札以外の
+      // カード（手札など）を指す能力を盤面に持つと、その識別子が相手にも送られてしまう
+      // （`perspective.ts` の `VisibleCreatedAbility`、ADR-0004）うえ、誘発することもない。
+      // 実行できない行動は実行されない（総合ルール 第1部 第1章 3）。
+      if (instruction.ability.place === '捨札' && !isInDiscardPileOfAnyone(state, instruction.affecting.id)) {
+        return { state, value: undefined }
+      }
+
       // 作られた能力の支配者は、作った効果の支配者である（総合ルール 第4部 第7章 1）。
       const created = {
         ability: instruction.ability,
         controller: context.controller,
         affecting: instruction.affecting.id,
+        createdIn: state.turn.number,
       }
       return { state: { ...state, createdAbilities: [...state.createdAbilities, created] }, value: undefined }
     }
@@ -626,6 +644,11 @@ function apply(
       return { state: current, value: undefined, subject: drawn.length === 0 ? undefined : drawn }
     }
   }
+}
+
+/** そのカードが、いずれかのプレイヤーの捨札にあるか。 */
+function isInDiscardPileOfAnyone(state: DuelState, id: CardId): boolean {
+  return PLAYERS.some((player) => findInZone(state, player, '捨札', id) !== undefined)
 }
 
 /**

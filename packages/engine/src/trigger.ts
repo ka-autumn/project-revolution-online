@@ -3,10 +3,19 @@ import type { TriggerEvent, TriggerOccasion, TriggeredAbility } from './ability.
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
 import { continuousData } from './continuous.js'
-import { locateOnSquares } from './duel.js'
-import type { BankedAbility, CardId, CardInstance, CreatedAbility, DuelState, TriggeredInstance } from './duel.js'
-import type { UnitOnSquare } from './effect.js'
-import type { Player } from './player.js'
+import { findInZone, locateOnSquares } from './duel.js'
+import type {
+  BankedAbility,
+  CardId,
+  CardInstance,
+  CreatedAbility,
+  CreatedAbilityInstance,
+  DuelState,
+  TriggeredInstance,
+} from './duel.js'
+import type { CardInDiscardPile, UnitOnSquare } from './effect.js'
+import { PLAYERS } from './player.js'
+import type { Turn } from './turn.js'
 import { duelView } from './view.js'
 
 /**
@@ -61,17 +70,25 @@ function hasTriggeredThisTurn(state: DuelState, source: CardId, ability: Trigger
  * を書けるようになった時に、取り除かずに残す道を足す。
  *
  * 誘発するできごとは、誰のターンかまで含んだ 1 つの値である（`CreatedTrigger`）。「あなたの
- * ターンの終わり」は、支配者がアクティブプレイヤーであるターンの終わりを指す。
+ * ターンの終わり」は、支配者がアクティブプレイヤーであるターンの終わりを指す。「ターンの
+ * 終わり」は、能力が作られたターンの終わりを指す（ADR-0058）。
  *
  * 対象がスクエアにいなければ誘発しない。作られた後にスクエアを離れていれば能力は消滅して
  * いる（同 4-1）ので通常は起こらないが、まだスクエアに置かれていないカードを対象に能力を
  * 作った場合には起こりうる。実行できない行動は実行されない（同 第1部 第1章 3）。
+ * 捨札のカードを対象にする能力は、対象がいまも捨札にある場合だけ誘発する（ADR-0057）。
  */
 function triggerCreated(state: DuelState, event: TriggerEvent): DuelState {
-  const firing = state.createdAbilities.filter((created) => matchesEvent(created, event, state.turn.active))
+  const firing = state.createdAbilities.filter((created) => matchesEvent(created, event, state.turn))
   if (firing.length === 0) return state
 
-  const instances = firing.flatMap((created) => {
+  const instances = firing.flatMap((created): CreatedAbilityInstance[] => {
+    const { ability } = created
+    if (ability.place === '捨札') {
+      const found = locateInDiscardPile(state, created.affecting)
+      return found === undefined ? [] : [{ ability, controller: created.controller, affected: found }]
+    }
+
     const located = locateOnSquares(state, created.affecting)
     if (located === undefined) return []
 
@@ -80,7 +97,7 @@ function triggerCreated(state: DuelState, event: TriggerEvent): DuelState {
     if (card.type !== 'ユニット') return []
 
     const affected: UnitOnSquare = { id: instance.id, square, card, controller: instance.controller }
-    return [{ ability: created.ability, controller: created.controller, affected }]
+    return [{ ability, controller: created.controller, affected }]
   })
 
   return addTriggered(
@@ -89,11 +106,22 @@ function triggerCreated(state: DuelState, event: TriggerEvent): DuelState {
   )
 }
 
+/** 捨札にあるそのカードの、効果に手渡す姿。どちらのプレイヤーの捨札にも無ければ `undefined`。 */
+function locateInDiscardPile(state: DuelState, id: CardId): CardInDiscardPile | undefined {
+  for (const player of PLAYERS) {
+    const found = findInZone(state, player, '捨札', id)
+    if (found !== undefined) return { id: found.id, zone: '捨札', card: found.card }
+  }
+  return undefined
+}
+
 /** その作成された誘発型能力が、いま起きた誘発イベントで誘発するか。 */
-function matchesEvent(created: CreatedAbility, event: TriggerEvent, active: Player): boolean {
+function matchesEvent(created: CreatedAbility, event: TriggerEvent, turn: Turn): boolean {
   switch (created.ability.trigger) {
     case 'あなたのターンの終わり':
-      return event === 'ターンの終わり' && created.controller === active
+      return event === 'ターンの終わり' && created.controller === turn.active
+    case 'ターンの終わり':
+      return event === 'ターンの終わり' && created.createdIn === turn.number
   }
 }
 

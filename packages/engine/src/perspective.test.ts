@@ -161,7 +161,12 @@ describe('解決を待っている能力', () => {
   // 作成された誘発型能力は、効果が実行中に作ったものでカードを指す名前を持たない
   // （`duel.ts` の `CreatedAbilityInstance`）。
   it('作成された誘発型能力は、発生源を持たないまま渡る', () => {
-    const created = { kind: '作成された誘発型能力', trigger: 'あなたのターンの終わり', effect: function* () {} } as const
+    const created = {
+      kind: '作成された誘発型能力',
+      place: 'スクエア',
+      trigger: 'あなたのターンの終わり',
+      effect: function* () {},
+    } as const
     const state: DuelState = {
       ...filledState(),
       triggered: [{ ability: created, controller: '後攻', affected: INVADER }],
