@@ -204,7 +204,22 @@ function repeatRecovery(state: DuelState): DuelState {
 function beginNextPhase(state: DuelState): DuelState {
   const after = turnAfter(state.turn)
   const changed = record(state, { kind: '進行が変わった', from: progressOf(state.turn), to: progressOf(after) })
-  return beginCurrentPhase({ ...changed, turn: after, recovery: INITIAL_RECOVERY })
+  const expired = after.number === state.turn.number ? changed : withoutEndOfTurnAbilities(changed)
+  return beginCurrentPhase({ ...expired, turn: after, recovery: INITIAL_RECOVERY })
+}
+
+/**
+ * 誘発しないまま、そのターンが終わった「ターンの終わり」の作成された誘発型能力を取り除く
+ * （ADR-0058）。
+ *
+ * この能力は、作られたターンの終わりにだけ誘発する。ターンの境目まで残っているのは、
+ * 「ターンの終わり」が済んだ後に、能力の誘発ではない行動（トラップの発動など）で作られた
+ * ものである。残しておけば、次のターンの終わりにも誘発しないが、通信にも出続ける。
+ * 取り除いたことは、ログに積まない（総合ルール 第4部 第3章 4-1 で消滅した時と同じ）。
+ */
+function withoutEndOfTurnAbilities(state: DuelState): DuelState {
+  const remaining = state.createdAbilities.filter((created) => created.ability.trigger !== 'ターンの終わり')
+  return remaining.length === state.createdAbilities.length ? state : { ...state, createdAbilities: remaining }
 }
 
 /** ターンのうち、進行がどこまで来ているかを表すところだけ（`log.ts` の `Progress`）。 */

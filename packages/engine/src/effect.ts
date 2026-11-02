@@ -45,6 +45,16 @@ export interface CardInZone {
 }
 
 /**
+ * 効果から見た、捨札にあるカード 1 枚。
+ *
+ * `CardInZone` の、ゾーンが捨札に決まっているもの。作成された誘発型能力が捨札のカードを
+ * 対象にする時に、対象の型で捨札に限る（`createTriggeredAbilityForDiscardedCard`、ADR-0057）。
+ */
+export interface CardInDiscardPile extends CardInZone {
+  readonly zone: '捨札'
+}
+
+/**
  * 効果から見た、エネルギーゾーンにあるカード 1 枚（エネルギー）。
  *
  * `CardInZone` に、いまの向きを足したもの。エネルギーゾーンのカードは向きを持つ（総合ルール
@@ -165,7 +175,7 @@ export interface DuelView {
    */
   handCount(player: Player): number
   /** 支配者自身の捨札にあるカードすべて。 */
-  discardPile(): readonly CardInZone[]
+  discardPile(): readonly CardInDiscardPile[]
   /** 支配者自身のプランゾーンにあるカードすべて。 */
   planZone(): readonly CardInZone[]
   /**
@@ -328,7 +338,12 @@ export type Instruction =
   | {
       readonly kind: '誘発型能力を作る'
       readonly ability: CreatedTriggeredAbility
-      /** その能力が影響を与える特定のカード（総合ルール 第4部 第3章 4-1）。 */
+      /**
+       * その能力が影響を与える特定のカード（総合ルール 第4部 第3章 4-1）。
+       *
+       * 能力が対象にする場所（`ability.place`）と同じ場所にあるカードである。作る関数の型が
+       * 揃えているので、ここでは確かめない。
+       */
       readonly affecting: CardInZone | UnitOnSquare
     }
   | {
@@ -403,6 +418,18 @@ export type SmashTrapEffect = (duel: DuelView, occasion: SmashOccasion) => Effec
  * 発生源のカードが無いので、`DuelView.self` は常に `undefined` になる。
  */
 export type CreatedAbilityEffect = (duel: DuelView, affected: UnitOnSquare) => EffectStep<void>
+
+/**
+ * 捨札のカードを対象にする、作成された誘発型能力の効果（ADR-0057）。第 2 引数で、影響を与える
+ * 対象のカードを受け取る。
+ *
+ * `CreatedAbilityEffect` と同じく、渡されるのは誘発した時点の姿である。対象は、誘発する時に
+ * 捨札にある場合だけ誘発する。作られた後に捨札を離れていれば能力は消滅している（総合ルール
+ * 第4部 第3章 4-1）ので、誘発する時点で対象は必ず捨札にある。
+ *
+ * 発生源のカードが無いので、`DuelView.self` は常に `undefined` になる。
+ */
+export type CreatedDiscardAbilityEffect = (duel: DuelView, affected: CardInDiscardPile) => EffectStep<void>
 
 /**
  * 継続効果が 1 枚のユニットのＢＰに与える変更（総合ルール 第4部 第12章 5-2 の(5)）。
@@ -928,7 +955,35 @@ export function* createTriggeredAbility(
   trigger: CreatedTrigger,
   effect: CreatedAbilityEffect,
 ): EffectStep<void> {
-  yield { kind: '誘発型能力を作る', ability: { kind: '作成された誘発型能力', trigger, effect }, affecting }
+  yield {
+    kind: '誘発型能力を作る',
+    ability: { kind: '作成された誘発型能力', place: 'スクエア', trigger, effect },
+    affecting,
+  }
+}
+
+/**
+ * 捨札にあるカードを対象にする誘発型能力を 1 つ作る（総合ルール 第4部 第3章 4。ADR-0057）。
+ *
+ * 「このカードが捨札に置かれた時、そのターンの終わりに、捨札にあるこのカードを手札に加える」の
+ * 後半にあたる。`createTriggeredAbility` と違い、誘発する時に対象が**捨札にある**場合だけ誘発し、
+ * 効果へは捨札でのカードの姿（`CardInDiscardPile`）が手渡される。対象が捨札以外のカードだと、
+ * 型検査が止める。
+ *
+ * 作った時点で対象が捨札に無ければ、能力は作られない（実行できない行動は実行されない。同 第1部
+ * 第1章 3）。作られた後・誘発する前に対象が捨札を離れれば、能力は消滅する（同 第4部 第3章 4-1）。
+ * 捨札へ戻ってきたカードは新しいカードなので、能力は戻らない。
+ */
+export function* createTriggeredAbilityForDiscardedCard(
+  affecting: CardInDiscardPile,
+  trigger: CreatedTrigger,
+  effect: CreatedDiscardAbilityEffect,
+): EffectStep<void> {
+  yield {
+    kind: '誘発型能力を作る',
+    ability: { kind: '作成された誘発型能力', place: '捨札', trigger, effect },
+    affecting,
+  }
 }
 
 /**

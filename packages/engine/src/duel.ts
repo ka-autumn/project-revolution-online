@@ -1,9 +1,16 @@
-import type { CreatedTriggeredAbility, IntrusionOccasion, TrapOccasion, TriggeredAbility } from './ability.js'
+import type {
+  CreatedInDiscardPileAbility,
+  CreatedOnSquareAbility,
+  CreatedTriggeredAbility,
+  IntrusionOccasion,
+  TrapOccasion,
+  TriggeredAbility,
+} from './ability.js'
 import type { Battle } from './battle.js'
 import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
-import type { ContinuousChange, Duration, UnitOnSquare } from './effect.js'
+import type { CardInDiscardPile, ContinuousChange, Duration, UnitOnSquare } from './effect.js'
 import type { RecordedEvent } from './log.js'
 import { ORIENTED_ZONES } from './orientation.js'
 import type { Orientation, OrientedZone } from './orientation.js'
@@ -315,6 +322,14 @@ export interface CreatedAbility {
    * `moveToZone` と `moveToSquare` である。
    */
   readonly affecting: CardId
+  /**
+   * この能力が作られたターンの番号。
+   *
+   * 「ターンの終わり」の能力（誰のターンとも書かれていないもの）は、作られたターンの終わりに
+   * だけ誘発する（ADR-0058）ので、どのターンかを覚えておく。ほかの能力は読まない。通信には
+   * 含めない（`perspective.ts` の `VisibleCreatedAbility`）。
+   */
+  readonly createdIn: number
 }
 
 /**
@@ -368,9 +383,13 @@ export interface TriggeredOnce {
  * `TriggeredInstance` と同じく、誘発してからバンクに入るまでの間も、バンクにある間も同じ形で
  * 持つ。違うのは、発生源のカードを持たないことと、影響を与える対象を誘発した時点の姿で
  * 写して持つことである。
+ *
+ * 対象がどこにあるかで 2 つに分かれる（ADR-0057）。見分けるのは `ability.place` で、
+ * 述語 `isInDiscardPile` を通して絞り込む。
  */
-export interface CreatedAbilityInstance {
-  readonly ability: CreatedTriggeredAbility
+export type CreatedAbilityInstance = CreatedOnSquareInstance | CreatedInDiscardPileInstance
+
+interface CreatedAbilityInstanceBase {
   readonly controller: Player
   /**
    * 発生源のカードを持たない、ということを型に書いたもの。値は常に無い。
@@ -379,6 +398,11 @@ export interface CreatedAbilityInstance {
    * になる。「発生源のカードがあるとは限らない」という事実がそのまま型に出る。
    */
   readonly source?: undefined
+}
+
+/** 対象がスクエアにいるユニットである、誘発した作成された誘発型能力。 */
+export interface CreatedOnSquareInstance extends CreatedAbilityInstanceBase {
+  readonly ability: CreatedOnSquareAbility
   /**
    * 誘発した時点の対象。解決する時に効果へ手渡される（`effect.ts` の `CreatedAbilityEffect`）。
    *
@@ -387,6 +411,22 @@ export interface CreatedAbilityInstance {
    * のは誘発するまでの間だけなので、誘発した後は残る。
    */
   readonly affected: UnitOnSquare
+}
+
+/** 対象が捨札にあるカードである、誘発した作成された誘発型能力。 */
+export interface CreatedInDiscardPileInstance extends CreatedAbilityInstanceBase {
+  readonly ability: CreatedInDiscardPileAbility
+  /**
+   * 誘発した時点の対象。解決する時に効果へ手渡される（`effect.ts` の
+   * `CreatedDiscardAbilityEffect`）。誘発した後に捨札を離れていても、対象への命令が実行
+   * されないだけである。
+   */
+  readonly affected: CardInDiscardPile
+}
+
+/** その作成された誘発型能力が、捨札のカードを対象にするものか。 */
+export function isInDiscardPile(instance: CreatedAbilityInstance): instance is CreatedInDiscardPileInstance {
+  return instance.ability.place === '捨札'
 }
 
 /**

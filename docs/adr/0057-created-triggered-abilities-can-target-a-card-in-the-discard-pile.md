@@ -45,3 +45,11 @@
 
 - engine に、作成された誘発型能力を作成する関数が 1 つ追加され、誘発の処理が捨札の対象を扱うようになる。通信のデータと画面は変更しない。
 - 015 は、この決定と ADR-0058 で実装できるようになる。069 も同じ 2 つを使うが、スクエアの外にあるカード自身の誘発型能力を、捨札に置かれた時に誘発させる仕組みが要る。これは別に決定する。
+
+## 実装
+
+- 作成する関数: `createTriggeredAbilityForDiscardedCard`（`createTriggeredAbility` は変更しない）
+- 対象の型: `CardInDiscardPile`（`CardInZone` のうち、ゾーンが捨札のもの）。`DuelView.discardPile()` の戻り値の型を、この型の並びにした
+- 効果の型: `CreatedDiscardAbilityEffect`（`(duel, affected: CardInDiscardPile) => EffectStep<void>`）
+- 能力の型: `CreatedTriggeredAbility` を、`place` で見分ける 2 つの型の和にした。`CreatedOnSquareAbility`（`place: 'スクエア'`）と `CreatedInDiscardPileAbility`（`place: '捨札'`）である。誘発した能力（`CreatedAbilityInstance`）も同じ 2 つに分け、述語 `isInDiscardPile` で絞り込む
+- 作る時に対象が捨札に無ければ、能力は作らない。作った後に捨札へ置かれた別のカードに、能力が働かないようにするためである。スクエアのユニットを対象にする能力は、いままでどおり確認しない

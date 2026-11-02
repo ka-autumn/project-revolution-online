@@ -97,7 +97,9 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
 
   // 支配者自身のゾーンだけを見せる。相手の手札は非公開の情報なので、渡す手段を持たせない
   // （`effect.ts` の `DuelView.hand`）。
-  const showZone = (zone: PlayerZone) => (): readonly CardInZone[] => {
+  const showZone =
+    <Zone extends PlayerZone>(zone: Zone) =>
+    (): readonly (CardInZone & { readonly zone: Zone })[] => {
     const cards = cardsIn(currentState(), controller, zone).map((instance) => ({
       id: instance.id,
       zone,

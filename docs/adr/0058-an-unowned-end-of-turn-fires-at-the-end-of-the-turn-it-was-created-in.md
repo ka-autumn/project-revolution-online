@@ -32,3 +32,9 @@
 
 - engine の作成された誘発型能力が、作成されたターンを持つようになる。通信のデータと画面は変更しない。
 - 015 は、この決定と ADR-0057 で実装できるようになる。069 は、ADR-0057 の「影響」に書いた別の決定が残る。
+
+## 実装
+
+- 値: `CREATED_TRIGGERS` の `'ターンの終わり'`
+- 作成されたターンの番号: `CreatedAbility.createdIn`（`DuelState.turn.number`）。「ターンの終わり」の能力だけが読む。通信の `VisibleCreatedAbility` には含めない
+- 取り除く所: ターンが変わる時（`progress.ts` の `beginNextPhase`）。そのターンのうちに誘発しなかった「ターンの終わり」の能力を、すべて取り除く

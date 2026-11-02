@@ -11,6 +11,7 @@ import {
   cardsOn,
   createContinuousEffect,
   createTriggeredAbility,
+  createTriggeredAbilityForDiscardedCard,
   defineStrategy,
   defineUnit,
   dream,
@@ -878,6 +879,7 @@ describe('作成された誘発型能力', () => {
   const returnToEnergy = (controller: Player): CreatedAbility => ({
     ability: {
       kind: '作成された誘発型能力',
+      place: 'スクエア',
       trigger: 'あなたのターンの終わり',
       effect: function* (_duel, affected) {
         yield* placeInZone(affected, 'エネルギーゾーン', 'フリーズ')
@@ -885,6 +887,7 @@ describe('作成された誘発型能力', () => {
     },
     controller,
     affecting: '対象',
+    createdIn: 1,
   })
 
   /**
@@ -942,6 +945,115 @@ describe('作成された誘発型能力', () => {
     const endOfSecondTurn = pass(pass(withoutTarget(recoveryPhaseOfTurn(created(), 2))))
 
     expect(endOfSecondTurn.bank).toEqual([])
+  })
+
+  /**
+   * 捨札のカードを対象にし、誰のターンとも書かれていない「ターンの終わり」に誘発する能力
+   * （ADR-0057・ADR-0058）。対象を手札に加える。
+   */
+  describe('捨札のカードを対象にする、「ターンの終わり」の能力', () => {
+    const inDiscard = defineUnit({ name: 'テスト・捨札の対象', level: 1, bp: 1000, sp: 1000 })
+
+    const returnToHand = (controller: Player, createdIn: number): CreatedAbility => ({
+      ability: {
+        kind: '作成された誘発型能力',
+        place: '捨札',
+        trigger: 'ターンの終わり',
+        effect: function* (_duel, affected) {
+          yield* placeInZone(affected, '手札', 'リリース')
+        },
+      },
+      controller,
+      affecting: '捨札の対象',
+      createdIn,
+    })
+
+    /** 後攻の捨札に対象がいて、第 1 ターン（先攻のターン）に作られた、後攻が支配する能力がある盤面。 */
+    const withCreatedInFirstTurn = (): DuelState => ({
+      ...putInZone(startedDuel(), '後攻', '捨札', [instantiate({ id: '捨札の対象', card: inDiscard, owner: '後攻' })]),
+      createdAbilities: [returnToHand('後攻', 1)],
+    })
+
+    // 総合ルール 第3部 第10章 3、第4部 第3章 4。ADR-0058: 誰のターンかを問わない。
+    it('作られたターンの終わりに、そのターンのアクティブプレイヤーでなくても誘発する', () => {
+      const endOfFirstTurn = pass(pass(recoveryPhaseOfTurn(withCreatedInFirstTurn(), 1)))
+
+      expect(endOfFirstTurn.bank).toHaveLength(1)
+      expect(endOfFirstTurn.createdAbilities).toEqual([])
+    })
+
+    it('解決されると、捨札にあった対象が手札に加わり、そのターンのうちに済む', () => {
+      const resolved = pass(pass(pass(pass(recoveryPhaseOfTurn(withCreatedInFirstTurn(), 1)))))
+
+      expect(resolved.turn.number).toBe(1)
+      expect(cardsIn(resolved, '後攻', '手札').map((card) => card.id)).toContain('捨札の対象')
+      expect(cardsIn(resolved, '後攻', '捨札')).toEqual([])
+    })
+
+    // ADR-0058: 作られたターンの終わりを過ぎた能力は、次のターンの終わりに持ち越さない。
+    it('「ターンの終わり」が済んだ後に作られた能力は、誘発せずに、ターンが変わる時に取り除かれる', () => {
+      const withoutCreated: DuelState = { ...withCreatedInFirstTurn(), createdAbilities: [] }
+      const afterEndOfTurn = pass(pass(recoveryPhaseOfTurn(withoutCreated, 1)))
+      // 作られたのが、「ターンの終わり」の誘発が済んだ後だった盤面にする。
+      const late: DuelState = { ...afterEndOfTurn, createdAbilities: withCreatedInFirstTurn().createdAbilities }
+
+      const nextTurn = endPhase(late)
+
+      expect(nextTurn.turn.number).toBe(2)
+      expect(nextTurn.createdAbilities).toEqual([])
+      const endOfSecondTurn = turnNumbered(nextTurn, 3)
+      expect(cardsIn(endOfSecondTurn, '後攻', '手札').map((card) => card.id)).not.toContain('捨札の対象')
+    })
+
+    // 総合ルール 第4部 第3章 4-1
+    it('対象が捨札を離れると、能力は消滅し、捨札へ戻ってきても働かない', () => {
+      const state = withCreatedInFirstTurn()
+      const inHand = moveToZone(state, '捨札の対象', '手札')
+      const backAgain = moveToZone(inHand, '捨札の対象', '捨札')
+
+      expect(inHand.createdAbilities).toEqual([])
+      expect(backAgain.createdAbilities).toEqual([])
+      expect(pass(pass(recoveryPhaseOfTurn(backAgain, 1))).bank).toEqual([])
+    })
+
+    it('対象が捨札に無ければ、消滅が働かなかった盤面でも誘発しない', () => {
+      // 消滅させずに対象だけを取り除いた盤面。通常の経路ではこの形にならないが、誘発する時に
+      // 捨札にあるかを見ていることを確かめる。
+      const withoutTarget: DuelState = putInZone(withCreatedInFirstTurn(), '後攻', '捨札', [])
+
+      expect(pass(pass(recoveryPhaseOfTurn(withoutTarget, 1))).bank).toEqual([])
+    })
+
+    // 総合ルール 第3部 第10章 4。ターンの終わりの能力の解決の中で作られた能力は、やり直しの中の
+    // 「ターンの終わり」で、同じターンのうちに誘発する。
+    it('「ターンの終わり」の能力の解決で作られると、リカバリーフェイズのやり直しの中で誘発する', () => {
+      const maker = defineUnit({
+        name: 'テスト・予約を入れる役',
+        level: 1,
+        bp: 1000,
+        sp: 1000,
+        abilities: [
+          triggeredAbility('ターンの終わり', function* (duel) {
+            const [card] = duel.discardPile()
+            if (card === undefined) return
+            yield* createTriggeredAbilityForDiscardedCard(card, 'ターンの終わり', function* (_duel, affected) {
+              yield* placeInZone(affected, '手札', 'リリース')
+            })
+          }),
+        ],
+      })
+      const board = putOnSquare(
+        putInZone(startedDuel(), '先攻', '捨札', [instantiate({ id: '捨札の対象', card: inDiscard, owner: '先攻' })]),
+        someSquare,
+        instantiate({ id: '予約を入れる役', card: maker, owner: '先攻' }),
+      )
+
+      const ended = endPhase(recoveryPhaseOfTurn(board, 1))
+
+      expect(ended.turn.number).toBe(2)
+      expect(cardsIn(ended, '先攻', '手札').map((card) => card.id)).toContain('捨札の対象')
+      expect(cardsIn(ended, '先攻', '捨札')).toEqual([])
+    })
   })
 })
 
