@@ -9,6 +9,7 @@ import {
   emptyDuelState,
   hope,
   instantiate,
+  placeInZone,
   legalActions,
   putOnSquare,
   randomFromSeed,
@@ -116,6 +117,80 @@ describe('スマッシュフェイズ', () => {
 
     expect(picked(state)).toEqual({ kind: 'スマッシュする', unit: 'small' })
   })
+
+  /**
+   * 相手のスマッシュを `smashes` 枚にし、相手のプランに、発動できる希望を持つカードを置いた盤面。
+   * 希望の効果を渡さなければ、プランを置かない。
+   */
+  function withOpponentHope(state: DuelState, smashes: number, effect?: Parameters<typeof hope>[0]): DuelState {
+    const energy = defineUnit({ name: 'テスト・赤のエネルギー', level: 0, colors: ['赤'], bp: 0, sp: 0 })
+    const cards = Array.from({ length: smashes }, (_, index) =>
+      instantiate({ id: `s${index}`, card: unit('スマッシュ', 0, 0), owner: '後攻' }),
+    )
+    let next = withZone(state, '後攻', 'スマッシュゾーン', cards)
+    next = withZone(next, '後攻', 'エネルギーゾーン', [instantiate({ id: 'e', card: energy, owner: '後攻' })])
+    if (effect === undefined) return next
+
+    const hoping = defineUnit({
+      name: 'テスト・希望',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 0,
+      abilities: [hope(effect)],
+    })
+    return withZone(next, '後攻', 'プランゾーン', [instantiate({ id: 'plan', card: hoping, owner: '後攻' })])
+  }
+
+  /**
+   * 総合ルール 第3部 第19章 1、第20章 1、第5部 第3章 2。
+   *
+   * 相手の希望が「自分のスマッシュを 1 枚捨札に置く」なら、スマッシュしても相手のスマッシュの枚数は
+   * 変化しない。スマッシュを取り除く損は 1 回だけ差し引く。損得が釣り合うなら、相手に希望のカードを
+   * 使わせるためにスマッシュする。
+   */
+  it('相手の希望がスマッシュを 1 枚取り除くだけなら、スマッシュする', () => {
+    let state = onSquare(sceneAt('スマッシュフェイズ'), at(CENTER, 0), 'a', unit('中央', 1000, 1000), '先攻')
+    state = withOpponentHope(state, 3, function* (duel) {
+      const [smash] = duel.smashZone()
+      if (smash !== undefined) yield* placeInZone(smash, '捨札', 'リリース')
+    })
+
+    expect(picked(state)).toEqual({ kind: 'スマッシュする', unit: 'a' })
+  })
+
+  /**
+   * 総合ルール 第3部 第17章 1、第19章 1、第5部 第3章 2。
+   *
+   * 相手のプランに、発動できて味方エリアのユニットを破壊する希望がある。スマッシュしてスマッシュ判定に
+   * なると、スマッシュ 1 枚より大きい損になるので、スマッシュできるユニットがいても放棄する。#366 の
+   * 完了条件「スマッシュフェイズに、スマッシュできるユニットがいれば、優先権を放棄しない」の例外として、
+   * 開発者と決定した。
+   */
+  describe('相手の希望で大きな損をする時は、スマッシュを見送る', () => {
+    function scene(withHope: boolean): DuelState {
+      let state = onSquare(sceneAt('スマッシュフェイズ'), at(CENTER, 0), 'a', unit('中央', 1000, 1000), '先攻')
+      state = onSquare(state, at(OWN_AREA, 1), 'big', unit('守り', 9000, 2000), '先攻')
+      return withOpponentHope(
+        state,
+        3,
+        withHope
+          ? function* (duel) {
+              const target = yield* choose(duel.enemies())
+              if (target !== undefined) yield* destroy(target)
+            }
+          : undefined,
+      )
+    }
+
+    it('希望があれば、放棄する', () => {
+      expect(picked(scene(true))).toEqual(PASS)
+    })
+
+    it('希望が無ければ、スマッシュする', () => {
+      expect(picked(scene(false))).toEqual({ kind: 'スマッシュする', unit: 'a' })
+    })
+  })
 })
 
 describe('メインフェイズ', () => {
@@ -152,6 +227,26 @@ describe('メインフェイズ', () => {
     state = onSquare(state, at(OWN_AREA, 0), 'e', unit('弱い敵', 1000, 1000), '後攻')
 
     expect(picked(state)).toEqual({ kind: 'カードをプレイする', declaration: { card: 'h', square: at(OWN_AREA, 0) } })
+  })
+
+  /**
+   * 総合ルール 第3部 第15章 1、第4部 第14章 4-6、第1部 第2章 3-4。
+   *
+   * 負けるバトルでも、同じターンのうちに続けて倒しきれるなら攻め込む。#366 の完了条件「BP で負ける
+   * ユニットのいるスクエアには、ユニットを出さない」の例外として、開発者と決定した。レベル 0 の
+   * カードは、エネルギーが無くても続けてプレイできる。
+   */
+  it('負けるバトルでも、続けて倒しきれるなら攻め込む', () => {
+    let state = withZone(sceneAt('メインフェイズ'), '先攻', '手札', [
+      instantiate({ id: 'first', card: unit('先に攻める', 2000, 0), owner: '先攻' }),
+      instantiate({ id: 'second', card: unit('続けて攻める', 2500, 0), owner: '先攻' }),
+    ])
+    state = onSquare(state, at(OWN_AREA, 0), 'e', unit('強い敵', 4000, 1000), '後攻')
+
+    const action = picked(state)
+    expect(action?.kind).toBe('カードをプレイする')
+    if (action?.kind !== 'カードをプレイする') return
+    expect(action.declaration.square).toEqual(at(OWN_AREA, 0))
   })
 
   /** 総合ルール 第2部 第20章 1-5。中央エリアにプレイしたユニットは、バトルが発生しなければ捨札に置かれる。 */
@@ -196,7 +291,7 @@ describe('ユニットの移動', () => {
 
   /** 前へ進んだ後に、目的の無い横の移動はしない。 */
   it('前へ進んだ後に、空いたスクエアへ横に移動しない', () => {
-    // 敵エリアへ進んだ後も、中央のラインから端のラインへ動けば、少しだけ点数が上がる（`positionWorth`）。
+    // 敵エリアへ進んだ後も、中央のラインから端のラインへ動けば、少しだけ点数が上がる（`positionBasePoints`）。
     const wandering = defineUnit({ name: 'テスト・上と右に動ける', level: 0, bp: 3000, sp: 1000, moveIcon: ['上', '右'] })
     const state = onSquare(sceneAt('メインフェイズ'), at(CENTER, 1), 'a', wandering, '先攻')
 
@@ -243,7 +338,7 @@ describe('プラン', () => {
   const smash = instantiate({ id: 'smash', card: unit('スマッシュ', 0, 0), owner: '先攻' })
 
   /**
-   * 総合ルール 第3部 第8章 2-3。いまのプランが、レベルを満たせず値打ちも低いカードなら、スマッシュで
+   * 総合ルール 第3部 第8章 2-3。いまのプランが、レベルを満たせず基礎点も低いカードなら、スマッシュで
    * 支払って次のカードを表にする。
    */
   it('残す理由の無いプランは、捨札に置いて次のカードを表にする', () => {
@@ -295,10 +390,10 @@ describe('エネルギーフェイズ', () => {
   })
 
   /**
-   * 目標の枚数を超えた後は、手札に持っておく値打ちが低いカードなら置き、高いカードなら置かない。
+   * 目標の枚数を超えた後は、手札に持っておく基礎点が低いカードなら置き、高いカードなら置かない。
    * 盤面のデッキは、置いてあるカードと手札だけである（`ownDeckOf`）。
    */
-  it('目標の枚数を超えた後は、手札に持っておく値打ちで置くかを決定する', () => {
+  it('目標の枚数を超えた後は、手札に持っておく基礎点で置くかを決定する', () => {
     const placed = withZone(sceneAt('エネルギーフェイズ'), '先攻', 'エネルギーゾーン', [energy('e0')])
 
     const weak = withZone(placed, '先攻', '手札', [instantiate({ id: 'w', card: unit('弱い', 500, 0), owner: '先攻' })])
@@ -312,6 +407,29 @@ describe('エネルギーフェイズ', () => {
 })
 
 describe('選択への答え', () => {
+  /**
+   * 効果を空回しできず（ここでは発生源が分からない）、候補が味方だけで、選ばないことも選べる時は、
+   * 選ばない。効果の向きが分からない時に、味方を破壊するような外れ方を避ける。
+   */
+  it('効果の向きが分からず、候補が味方だけなら、選ばない', () => {
+    let state = onSquare(sceneAt('メインフェイズ'), at(OWN_AREA, 0), 'own1', unit('味方', 2000, 1000), '先攻')
+    state = onSquare(state, at(OWN_AREA, 1), 'own2', unit('味方', 3000, 1000), '先攻')
+    const choice = {
+      player: '先攻',
+      purpose: '効果の対象',
+      mayDecline: true,
+      answered: 0,
+      mayGoBack: false,
+      mayCancel: false,
+      candidates: [
+        { kind: '見えている', card: 'own1' },
+        { kind: '見えている', card: 'own2' },
+      ],
+    } as const
+
+    expect(scoredCpu.answer(choiceViewOf(state, choice), randomFromSeed(1)).answer).toBe('選ばない')
+  })
+
   /** 効果の損得は、効果を空回しして判定する（ADR-0062）。 */
   it('相手のユニットへのダメージの対象に、自分のユニットを選ばない', () => {
     const burn = defineStrategy({

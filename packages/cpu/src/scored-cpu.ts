@@ -1,7 +1,16 @@
-import { activatedAbilitiesOf, courageOf, hasDream, hopeOf, nextInt, squareInDirection } from '@revolution/engine'
+import {
+  activatedAbilitiesOf,
+  courageOf,
+  hasDream,
+  hopeOf,
+  moveCostingAbilitiesOf,
+  nextInt,
+  squareInDirection,
+} from '@revolution/engine'
 import type {
   Card,
   CardId,
+  CardInstance,
   ChoiceAnswer,
   DuelPerspective,
   DuelView,
@@ -17,18 +26,18 @@ import type {
 } from '@revolution/engine'
 import {
   SQUARES,
-  cardWorth,
+  cardBasePoints,
   fighterOf,
   fighterOfCard,
   forecastBattle,
-  positionWorth,
-  seenWorth,
+  positionBasePoints,
+  seenBasePoints,
   smashDamageFrom,
-  unitWorth,
+  unitBasePoints,
 } from './forecast.js'
 import type { Fighter } from './forecast.js'
 import type { ActionView, ChoiceView, CpuPlayer } from './player.js'
-import { keyOfWire, probeChoice, probeEffect } from './probe.js'
+import { keyOfWire, probeChoice, probeEffect, viewFrom } from './probe.js'
 import type { ProbeSetting } from './probe.js'
 import {
   areaFor,
@@ -117,9 +126,9 @@ export function energyTargetOf(deck: readonly Card[]): number {
 /**
  * エネルギーを置く手の点数。置けるのはエネルギーフェイズに 1 枚だけである（総合ルール 第3部 第7章 1）。
  *
- * 目標の枚数に届くまでは必ず置き、手札に持っておく値打ちが低いカードから置く。手札のほかのカードが
+ * 目標の枚数に届くまでは必ず置き、手札に持っておく基礎点が低いカードから置く。手札のほかのカードが
  * 要る色を追加するカードは、先に置く。目標を超えた後は、エネルギーを 1 枚増やす得が、そのカードを手札に
- * 持っておく値打ちを上回る時だけ置く。手札がエネルギーより多いほど、増やす得は大きい。
+ * 持っておく基礎点を上回る時だけ置く。手札がエネルギーより多いほど、増やす得は大きい。
  */
 function energyScore(context: Context, id: CardId): number {
   const { perspective, me } = context
@@ -130,7 +139,7 @@ function energyScore(context: Context, id: CardId): number {
   const colors = energyColorsOf(perspective, me)
   const missing = new Set(hand.flatMap((each) => each.card.colors).filter((color) => !colors.has(color)))
   const addsColor = card.colors.filter((color) => missing.has(color)).length * MISSING_COLOR
-  const keep = keepWorth(card)
+  const keep = keepBasePoints(card)
 
   const placed = countIn(perspective, me, 'エネルギーゾーン')
   if (placed < energyTargetOf(context.view.deck)) return ENERGY_BELOW_TARGET - keep + addsColor
@@ -139,9 +148,9 @@ function energyScore(context: Context, id: CardId): number {
   return ENERGY_ABOVE_TARGET + surplus * ENERGY_PER_SURPLUS_CARD - keep + addsColor
 }
 
-/** カードを手札に持っておく値打ち。エネルギーに置くカードを選ぶのに使う。 */
-function keepWorth(card: Card): number {
-  return cardWorth(card) * 0.5
+/** カードを手札に持っておく基礎点。エネルギーに置くカードを選ぶのに使う。 */
+function keepBasePoints(card: Card): number {
+  return cardBasePoints(card) * 0.5
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -155,10 +164,41 @@ function threatOf(me: Player, enemy: SeenUnit): number {
 }
 
 /**
+ * そのユニットをその移動先へ移動する時に、追加コストとしてフリーズするエネルギーの枚数
+ * （総合ルール 第4部 第6章 2-2・2-3）。見積もれなければ `Infinity`（移動できないものとして扱う）。
+ *
+ * 追加コストを課す能力は、スクエアにいるユニットが持つ（`move.ts` の `payMoveCosts` と同じ取得方法）。
+ */
+function moveCostOf(perspective: DuelPerspective, unit: SeenUnit, destination: Square): number {
+  const occasion = { kind: '移動' as const, unit: onSquare(unit), destination }
+  let total = 0
+  for (const source of unitsOf(perspective)) {
+    for (const ability of moveCostingAbilitiesOf(source.card)) {
+      try {
+        const view = viewFrom({ perspective, controller: source.controller, self: onSquare(source) })
+        total += ability.moveCost(view, occasion)?.energiesFrozen ?? 0
+      } catch {
+        return Infinity
+      }
+    }
+  }
+  return total
+}
+
+/** プレイするためのコストを、残りのリリース状態のエネルギーで支払えるか（総合ルール 第1部 第2章 3-2・3-4）。 */
+function payableBy(card: Card, released: readonly CardInstance[], energyLeft: number): boolean {
+  if (card.level === 0) return true
+  if (energyLeft <= 0) return false
+  return card.colors.length === 0 || released.some((energy) => energy.card.colors.some((color) => card.colors.includes(color)))
+}
+
+/**
  * 負けるバトルの後に、同じターンのうちに倒しきれるか。
  *
  * 手札のユニットを、残りのリリース状態のエネルギーでプレイするか（相手の敵エリアにはプレイ
- * できない、総合ルール 第2部 第20章 1-3）、すでにいる味方ユニットを移動して攻め込む。プランで
+ * できない、総合ルール 第2部 第20章 1-3）、すでにいる味方ユニットを移動して攻め込む。移動に追加
+ * コストがあれば、それも残りのエネルギーで支払えなければならない（同 第4部 第6章 2-2・2-3）。
+ * レベル 0 のカードは、エネルギーをフリーズせずにプレイできる（同 第1部 第2章 3-4）。プランで
  * めくれるカードは見込まない。
  */
 function canFinish(
@@ -170,13 +210,15 @@ function canFinish(
   const { perspective, me } = context
   const target: Fighter = { ...fighterOf(enemy), damage }
 
-  const energyLeft = releasedEnergyOf(perspective, me).length - exclude.energyUsed
-  if (energyLeft > 0 && areaFor(me, enemy.square) !== '敵エリア') {
+  const released = releasedEnergyOf(perspective, me)
+  const energyLeft = released.length - exclude.energyUsed
+  if (areaFor(me, enemy.square) !== '敵エリア') {
     const byPlay = visibleIn(perspective, me, '手札').some(
       (each) =>
         each.id !== exclude.card &&
         each.card.type === 'ユニット' &&
         levelSatisfied(perspective, me, each.card) &&
+        payableBy(each.card, released, energyLeft) &&
         !forecastBattle(fighterOfCard(each.card), target).defenderSurvives,
     )
     if (byPlay) return true
@@ -191,6 +233,7 @@ function canFinish(
         const reached = squareInDirection(me, unit.square, direction)
         return reached !== undefined && sameSquare(reached, enemy.square)
       }) &&
+      moveCostOf(perspective, unit, enemy.square) <= energyLeft &&
       !forecastBattle(fighterOf(unit), target).defenderSurvives,
   )
 }
@@ -210,9 +253,12 @@ interface Arrival {
 /**
  * ユニットがそのスクエアに入る手の点数。プレイも移動も同じ。
  *
- * 敵がいればバトルになる（総合ルール 第3部 第11章 1）。倒せる敵の値打ちから、失う味方の値打ちを
- * 引く。相打ちも、得になれば選ぶ。負けるバトルでも、この後に続けて倒しきれるなら選ぶ。勝って残る
- * なら、そのスクエアにいることの値打ちを足す。敵がいなければ、そのスクエアにいることの値打ちだけである。
+ * 敵がいればバトルになる（総合ルール 第3部 第11章 1）。倒せる敵の基礎点から、失う味方の基礎点を
+ * 引く。相打ちも、得になれば選ぶ。勝って残るなら、そのスクエアにいることの基礎点を足す。敵がいなければ、そのスクエアにいることの基礎点だけである。
+ *
+ * 負けるバトルでも、同じターンのうちに続けて倒しきれる見込みがあれば選ぶ（`canFinish`）。BP で負ける
+ * ユニットのいるスクエアにも、この時だけはユニットを出す。#366 の完了条件「BP で負けるユニットのいる
+ * スクエアには、ユニットを出さない」の例外として、開発者と決定した。
  *
  * 中央エリアにプレイしたユニットは、バトルが発生しなければすぐに、発生すればバトルの終了時に、
  * 捨札に置かれる（総合ルール 第2部 第20章 1-5）。中央エリアへのプレイは、敵を倒すためにユニットを
@@ -229,19 +275,19 @@ function arrivalScore(context: Context, arrival: Arrival, square: Square): numbe
     ...(arrival.from.unit === undefined ? {} : { moving: arrival.from.unit }),
   }
   const discarded = arrival.played && areaFor(me, square) === '中央エリア'
-  if (enemy === undefined) return discarded ? NEVER : positionWorth(perspective, me, square, staying)
+  if (enemy === undefined) return discarded ? NEVER : positionBasePoints(perspective, me, square, staying)
 
   const forecast = forecastBattle(arrival.fighter, fighterOf(enemy))
-  const own = unitWorth(arrival.bp, arrival.sp)
+  const own = unitBasePoints(arrival.bp, arrival.sp)
   const loss = forecast.attackerSurvives && !discarded ? 0 : own
 
   if (!forecast.defenderSurvives) {
-    const stay = forecast.attackerSurvives && !discarded ? positionWorth(perspective, me, square, staying) : 0
-    return seenWorth(enemy) + threatOf(me, enemy) - loss + stay
+    const stay = forecast.attackerSurvives && !discarded ? positionBasePoints(perspective, me, square, staying) : 0
+    return seenBasePoints(enemy) + threatOf(me, enemy) - loss + stay
   }
 
   const finish = canFinish(context, enemy, forecast.defenderDamage, arrival.from)
-    ? (seenWorth(enemy) + threatOf(me, enemy)) * FOLLOW_UP_RATIO
+    ? (seenBasePoints(enemy) + threatOf(me, enemy)) * FOLLOW_UP_RATIO
     : 0
   return finish - loss
 }
@@ -291,7 +337,7 @@ function playScore(context: Context, id: CardId, square: Square | undefined): nu
   if (card.type === 'トラップ') return NEVER
 
   const effect = probeEffect({ perspective: context.perspective, controller: context.me }, card.effect)
-  return effect === undefined ? NEVER : effect - ENERGY_USE - keepWorth(card) * 0.2
+  return effect === undefined ? NEVER : effect - ENERGY_USE - keepBasePoints(card) * 0.2
 }
 
 /**
@@ -356,7 +402,7 @@ function bestUnitPlay(context: Context): number {
   return best
 }
 
-/** 「下がる」移動で、場所の値打ちがこれだけ上がらなければ移動しない。 */
+/** 「下がる」移動で、場所の基礎点がこれだけ上がらなければ移動しない。 */
 const RETREAT_MARGIN = 100
 
 /**
@@ -366,7 +412,7 @@ const RETREAT_MARGIN = 100
  * - 前へ進む: 敵エリアに近づく。スマッシュのダメージが増える（同 第3部 第9章 1）。
  * - 場所を空ける: 横へ動く。空けたスクエアに手札のユニットをプレイすると、プレイの点数が上がる時だけ
  *   選ぶ。点数には、その後のプレイの点数を含める。信頼を持つユニットを中央のラインへ動かす時も選ぶ。
- * - 下がる: 味方エリアの側へ戻る。場所の値打ちが一定以上上がる時だけ選ぶ。BP が高く SP が低い
+ * - 下がる: 味方エリアの側へ戻る。場所の基礎点が一定以上上がる時だけ選ぶ。BP が高く SP が低い
  *   ユニットが、敵を倒した後に味方エリアへ戻って守る、などである。
  *
  * 前へ進む移動と攻め込む移動は、同じメインフェイズに何回でも行う。場所を空ける移動と下がる移動は、
@@ -378,8 +424,9 @@ function moveScore(context: Context, id: CardId, destination: Square): number {
   if (unit === undefined) return NEVER
 
   const fighter = fighterOf(unit)
-  const arrival: Arrival = { card: unit.card, bp: unit.bp, sp: unit.sp, fighter, from: { unit: id, energyUsed: 0 }, played: false }
-  const leaving = positionWorth(perspective, me, unit.square, { card: unit.card, bp: unit.bp, sp: unit.sp, fighter })
+  const energyUsed = moveCostOf(perspective, unit, destination)
+  const arrival: Arrival = { card: unit.card, bp: unit.bp, sp: unit.sp, fighter, from: { unit: id, energyUsed }, played: false }
+  const leaving = positionBasePoints(perspective, me, unit.square, { card: unit.card, bp: unit.bp, sp: unit.sp, fighter })
   const gain = arrivalScore(context, arrival, destination) - leaving - MOVE_COST
 
   const attacking = context.units.some((each) => each.controller !== me && sameSquare(each.square, destination))
@@ -442,17 +489,17 @@ function courageScore(context: Context, id: CardId): number {
     .filter((met) => met.satisfied.includes(id))
     .flatMap((met) => context.units.filter((unit) => unit.id === met.placed.id))
   const scores = targets.map((unit) =>
-    unit.damage + courage.amount >= unit.bp ? seenWorth(unit) + threatOf(context.me, unit) : courage.amount * 0.2,
+    unit.damage + courage.amount >= unit.bp ? seenBasePoints(unit) + threatOf(context.me, unit) : courage.amount * 0.2,
   )
   if (scores.length === 0) return NEVER
-  return Math.max(...scores) - keepWorth(card) - ABILITY_COST
+  return Math.max(...scores) - keepBasePoints(card) - ABILITY_COST
 }
 
 /** 山札がこの枚数以下なら、プランしない。山札が 0 枚になれば敗北する（総合ルール 第3部 第3章 2）。 */
 const PLAN_LIBRARY_FLOOR = 10
-/** 手札に加われば有利だとみなす、カードの値打ち。 */
+/** 手札に加われば有利だとみなす、カードの基礎点。 */
 const GOOD_CARD = 2000
-/** 盤面のユニットの値打ちが、相手をこれだけ上回っていれば、勝てそうだとみなす。 */
+/** 盤面のユニットの基礎点が、相手をこれだけ上回っていれば、勝てそうだとみなす。 */
 const WINNING_MARGIN = 4000
 
 /** 次の相手のターンに、相手にスマッシュされうるか。相手のユニットが、スマッシュできる場所にいるか、前へ進める。 */
@@ -471,13 +518,13 @@ function hopeFires(context: Context, card: Card): boolean {
   return levelSatisfied(context.perspective, context.me, card)
 }
 
-/** 手札に加われば有利になりそうなカードか。次のターンにレベルを満たせて、値打ちが高い。 */
+/** 手札に加われば有利になりそうなカードか。次のターンにレベルを満たせて、基礎点が高い。 */
 function goodInHand(context: Context, card: Card): boolean {
   const { perspective, me } = context
   const energy = countIn(perspective, me, 'エネルギーゾーン')
   if (card.level > energy + 1) return false
 
-  if (card.type === 'ユニット') return unitWorth(card.bp, card.sp) >= GOOD_CARD
+  if (card.type === 'ユニット') return unitBasePoints(card.bp, card.sp) >= GOOD_CARD
   if (card.type === 'トラップ') return false
   const effect = probeEffect({ perspective, controller: me }, card.effect)
   return (effect ?? 0) >= GOOD_CARD / 2
@@ -487,7 +534,7 @@ function goodInHand(context: Context, card: Card): boolean {
  * 盤面と手札で勝てそうか。
  *
  * 次のターンのスマッシュで相手のスマッシュが 7 枚に届く見込みがあるか（総合ルール 第3部 第3章 1、
- * 第3部 第9章 1）、盤面のユニットの値打ちが相手を大きく上回っている。
+ * 第3部 第9章 1）、盤面のユニットの基礎点が相手を大きく上回っている。
  */
 function winning(context: Context): boolean {
   const { perspective, me } = context
@@ -498,7 +545,7 @@ function winning(context: Context): boolean {
   if (smashCountOf(perspective, opponent) + Math.floor(damage / 1000) >= 7) return true
 
   const worth = (player: Player): number =>
-    context.units.filter((unit) => unit.controller === player).reduce((sum, unit) => sum + seenWorth(unit), 0)
+    context.units.filter((unit) => unit.controller === player).reduce((sum, unit) => sum + seenBasePoints(unit), 0)
   return worth(me) - worth(opponent) >= WINNING_MARGIN
 }
 
@@ -643,6 +690,11 @@ function costScore(perspective: DuelPerspective, me: Player, candidate: WireCand
  *
  * 発生源のカードの効果を空回しして、候補を 1 つずつ選んだ時の損得を比べる。支配者が相手の効果なら、
  * 損得の向きを反対にする（`letOpponentChooseFromMyHand` など）。回せなければ `undefined`。
+ *
+ * 限界: `ChoiceView` には、選択がどの能力から来たかが含まれない。そのため、発生源のカードの効果・
+ * 能力を順に回し、候補の並びが同じ選択が最初に見つかった能力で点数を付ける。1 枚のカードに、同じ
+ * 候補の並びから選ぶ能力が 2 つあり、効果の向きが逆（強化と破壊など）だと、別の能力の損得で答える
+ * ことがある。この PR（#366）では直さず、限界として残すことを開発者と決定した。
  */
 function probedTargets(
   perspective: DuelPerspective,
@@ -681,8 +733,10 @@ function probedTargets(
     if (probed === undefined) continue
     if (probed.scores.every((score) => score === undefined)) continue
 
+    // 見積もれなかった候補は、`sign` によらず最低点にする。`sign * NEVER` は、支配者が相手の時に
+    // 最高点になってしまう。
     return {
-      scores: probed.scores.map((score) => sign * (score ?? NEVER)),
+      scores: probed.scores.map((score) => (score === undefined ? NEVER : sign * score)),
       declined: probed.declined === undefined ? NEVER : sign * probed.declined,
     }
   }
@@ -693,7 +747,9 @@ function probedTargets(
  * 効果の空回しができない時の、候補の点数。
  *
  * 候補に味方と敵が混ざっていれば、敵を選ぶ。効果の対象になるのは、倒す・ダメージを与えるなど、
- * 敵に向けたものが多い。混ざっていなければ、候補どうしに差を付けない。
+ * 敵に向けたものが多い。候補が味方だけなら、味方の点数を負のまま残し、選ばないことを選べる時は
+ * 選ばない（`scoreChoice`）。効果の向きが分からない時に、味方を破壊するような外れ方を避けるため
+ * である。それ以外（敵だけ、ユニット以外が混ざる）は、候補どうしに差を付けない。
  */
 function fallbackTargets(perspective: DuelPerspective, choice: WireChoice): readonly number[] {
   const units = unitsOf(perspective)
@@ -701,13 +757,14 @@ function fallbackTargets(perspective: DuelPerspective, choice: WireChoice): read
     if (candidate.kind !== '見えている') return 0
     const unit = units.find((each) => each.id === candidate.card)
     if (unit === undefined) return 0
-    return unit.controller === choice.player ? -seenWorth(unit) : seenWorth(unit)
+    return unit.controller === choice.player ? -seenBasePoints(unit) : seenBasePoints(unit)
   })
   const mixed = sides.some((side) => side > 0) && sides.some((side) => side < 0)
-  return mixed ? sides : sides.map(() => 0)
+  const alliesOnly = sides.every((side) => side < 0)
+  return mixed || alliesOnly ? sides : sides.map(() => 0)
 }
 
-/** きっかけの候補の点数。きっかけになった相手のユニットの値打ちが高いほうを選ぶ。 */
+/** きっかけの候補の点数。きっかけになった相手のユニットの基礎点が高いほうを選ぶ。 */
 function occasionScore(perspective: DuelPerspective, candidate: WireCandidate): number {
   if (candidate.kind !== 'きっかけ') return 0
 
@@ -721,7 +778,7 @@ function occasionScore(perspective: DuelPerspective, candidate: WireCandidate): 
           ? occasion.smasher.card
           : occasion.unit.card
   const unit = unitsOf(perspective).find((each) => each.id === id)
-  return unit === undefined ? 0 : seenWorth(unit)
+  return unit === undefined ? 0 : seenBasePoints(unit)
 }
 
 /** 選択の候補それぞれの点数と、選ばないことの点数。 */
@@ -746,9 +803,9 @@ function scoreChoice(view: ChoiceView): { readonly scores: readonly number[]; re
           : costScore(perspective, me, candidate),
       )
     case '捨てる手札':
-      return byCandidate((candidate) => -cardWorth(candidateCard(perspective, candidate) ?? DUMMY))
+      return byCandidate((candidate) => -cardBasePoints(candidateCard(perspective, candidate) ?? DUMMY))
     case '山札から選ぶ':
-      return byCandidate((candidate) => cardWorth(candidateCard(perspective, candidate) ?? DUMMY))
+      return byCandidate((candidate) => cardBasePoints(candidateCard(perspective, candidate) ?? DUMMY))
     case 'トラップのきっかけ':
     case '勇気のきっかけ':
       return byCandidate((candidate) => occasionScore(perspective, candidate))
@@ -764,7 +821,7 @@ function scoreChoice(view: ChoiceView): { readonly scores: readonly number[]; re
   }
 }
 
-/** 値打ちを見積もれないカードの代わり。値打ちは 0 として扱う。 */
+/** 基礎点を見積もれないカードの代わり。基礎点は 0 として扱う。 */
 const DUMMY: Card = {
   type: 'ストラテジー',
   name: '',

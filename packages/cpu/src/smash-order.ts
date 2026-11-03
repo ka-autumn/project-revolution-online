@@ -1,7 +1,7 @@
 import { hopeOf } from '@revolution/engine'
 import type { CardId, DuelPerspective, Instruction, Player } from '@revolution/engine'
 import { smashDamageFrom } from './forecast.js'
-import { probeEffectRun, scoreInstructions } from './probe.js'
+import { SMASH_REMOVAL_POINTS, probeEffectRun, scoreInstructions } from './probe.js'
 import { energyColorsOf, countIn, opponentOf, planOf, smashCountOf, unitsOf } from './sight.js'
 
 /**
@@ -70,7 +70,10 @@ function knownHopeOf(perspective: DuelPerspective, opponent: Player): KnownHope 
 
   const gone = new Set<CardId>()
   scoreInstructions(setting, run.instructions, gone)
-  return { gone, smashesRemoved: smashesRemovedBy(run.instructions), gain: run.score }
+  // スマッシュが減る分は、`simulate` がスマッシュの枚数として数に入れる。損得の点数からは除き、
+  // 二重に差し引かないようにする。
+  const smashesRemoved = smashesRemovedBy(run.instructions)
+  return { gone, smashesRemoved, gain: run.score - smashesRemoved * SMASH_REMOVAL_POINTS }
 }
 
 function smashesRemovedBy(instructions: readonly Instruction[]): number {
@@ -135,6 +138,10 @@ function permutations<T>(items: readonly T[]): readonly (readonly T[])[] {
  * 次にスマッシュするユニット。スマッシュしないほうがよければ `undefined`。
  *
  * `candidates` はいまスマッシュできるユニット（行える行動のうち `スマッシュする` のもの）。
+ *
+ * どの順でスマッシュしても点数が 0 を下回るなら、スマッシュしない。相手のプランに、発動できて
+ * こちらに損な希望がある時は、スマッシュできるユニットがいても、それを避けて優先権を放棄しうる。
+ * 点数がちょうど 0 なら、スマッシュする。相手の希望のカードを使わせることになる。
  */
 export function nextSmasher(perspective: DuelPerspective, me: Player, candidates: readonly CardId[]): CardId | undefined {
   const opponent = opponentOf(me)
@@ -153,7 +160,8 @@ export function nextSmasher(perspective: DuelPerspective, me: Player, candidates
   for (const order of permutations(smashers)) {
     for (let length = 1; length <= order.length; length += 1) {
       const points = simulate(order, length, start, hope)
-      if (points > best.points) best = { points, first: order[0]?.id }
+      const better = points > best.points || (best.first === undefined && points >= best.points)
+      if (better) best = { points, first: order[0]?.id }
     }
   }
   return best.first

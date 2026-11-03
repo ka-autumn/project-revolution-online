@@ -15,7 +15,7 @@ import type {
   UnitOnSquare,
   WireCandidate,
 } from '@revolution/engine'
-import { seenWorth, unitWorth } from './forecast.js'
+import { seenBasePoints, unitBasePoints } from './forecast.js'
 import { countIn, opponentOf, smashCountOf, unitsOf, visibleIn } from './sight.js'
 import type { SeenUnit } from './sight.js'
 
@@ -310,13 +310,15 @@ const BP_CHANGE_WEIGHT = 0.3
 const PARTIAL_DAMAGE_WEIGHT = 0.2
 /** プレイヤーへのダメージ 1 につき付ける点数。1000 で 1 枚スマッシュになる。 */
 const PLAYER_DAMAGE_WEIGHT = 0.6
+/** 支配者自身のスマッシュを 1 枚、スマッシュゾーンから離す点数。 */
+export const SMASH_REMOVAL_POINTS = 600
 /** カード 1 枚を手札に加える点数。 */
 const CARD_GAIN = 300
 
 /**
  * 命令の並びに、支配者から見た損得の点数を付ける。
  *
- * ユニットを倒す命令はそのユニットの値打ちを、味方なら減点・敵なら加点する。ダメージは同じ
+ * ユニットを倒す命令はそのユニットの基礎点を、味方なら減点・敵なら加点する。ダメージは同じ
  * ユニットへの分を足し合わせ、BP に届けば倒したものとする。
  */
 export function scoreInstructions(
@@ -336,7 +338,7 @@ export function scoreInstructions(
     const unit = units.get(id)
     if (unit === undefined || gone.has(id)) return
     gone.add(id)
-    total += sideOf(setting, unit.controller) * seenWorth(unit) * ratio
+    total += sideOf(setting, unit.controller) * seenBasePoints(unit) * ratio
   }
   const hurt = (id: CardId, amount: number): void => {
     const unit = units.get(id)
@@ -385,7 +387,7 @@ export function scoreInstructions(
         break
       case 'スクエアへ置く': {
         const card = instruction.card.card
-        if (!units.has(instruction.card.id) && card.type === 'ユニット') total += unitWorth(card.bp, card.sp) * 0.8
+        if (!units.has(instruction.card.id) && card.type === 'ユニット') total += unitBasePoints(card.bp, card.sp) * 0.8
         break
       }
       case '継続効果を作成する': {
@@ -424,7 +426,7 @@ function scoreZoneMove(
   remove: (id: CardId, ratio: number) => void,
 ): number {
   if (units.has(card.id)) {
-    // スクエアから離す。手札へ戻すのは、相手がまたプレイできるぶん、倒すより少し劣る。
+    // スクエアから離す。手札へ戻すのは、相手がまたプレイできる分、倒すより少し劣る。
     remove(card.id, to === '手札' ? 0.8 : 1)
     return 0
   }
@@ -433,7 +435,7 @@ function scoreZoneMove(
   switch (card.zone) {
     case 'スマッシュゾーン':
       // 自分のスマッシュが減れば、敗北から遠ざかる（総合ルール 第3部 第3章 1）。
-      return to === 'スマッシュゾーン' ? 0 : 600
+      return to === 'スマッシュゾーン' ? 0 : SMASH_REMOVAL_POINTS
     case 'トラップゾーン':
       return 'player' in card && card.player !== setting.controller ? 300 : -200
     case '捨札':

@@ -4,7 +4,7 @@ import { areaFor, countIn, opponentOf, pepOf, sameSquare, trustOf, unitsOf } fro
 import type { SeenUnit } from './sight.js'
 
 /**
- * バトルの勝ち負けと、ユニットの値打ちの見積もり（ADR-0060 の段階 2、#366）。
+ * バトルの勝ち負けと、ユニットの基礎点の見積もり（ADR-0060 の段階 2、#366）。
  */
 
 /** バトルをするユニット 1 枚の、予測に使う値。 */
@@ -68,23 +68,24 @@ export function fighterOfCard(card: UnitCard): Fighter {
 }
 
 /**
- * ユニットの値打ち。倒した時に得るもの・倒された時に失うものの大きさに使う。
+ * ユニットの基礎点。手の点数を組み立てるもとになる、ユニットそのものの大きさの見積もり。
+ * 倒した時に得るもの・倒された時に失うものの大きさに使う。
  *
- * BP は場に残る力、SP はスマッシュで与えるダメージである。カード 1 枚ぶんの値打ちを足す。
+ * BP はバトルスペースに残る力、SP はスマッシュで与えるダメージである。カード 1 枚分の基礎点を足す。
  */
-export function unitWorth(bp: number, sp: number): number {
+export function unitBasePoints(bp: number, sp: number): number {
   return 300 + bp * 0.5 + sp
 }
 
-export function seenWorth(unit: SeenUnit): number {
-  return unitWorth(unit.bp, unit.sp)
+export function seenBasePoints(unit: SeenUnit): number {
+  return unitBasePoints(unit.bp, unit.sp)
 }
 
-/** 手札に持っておく値打ち。エネルギーに置くカードと、捨てるカードを選ぶのに使う。 */
-export function cardWorth(card: Card): number {
+/** 手札に持っておく基礎点。エネルギーに置くカードと、捨てるカードを選ぶのに使う。 */
+export function cardBasePoints(card: Card): number {
   switch (card.type) {
     case 'ユニット':
-      return unitWorth(card.bp, card.sp)
+      return unitBasePoints(card.bp, card.sp)
     case 'トラップ':
       return 700
     default:
@@ -162,9 +163,9 @@ export function survivalAt(
   return SURVIVAL_SAFE
 }
 
-/** スマッシュ 1 回ぶんの値打ちを、ユニットの値打ちと同じ尺度にするための重み。 */
+/** スマッシュ 1 回分の基礎点を、ユニットの基礎点と同じ尺度にするための重み。 */
 const SMASH_WEIGHT = 1
-/** 場にいることそのものの値打ち。相手のユニットの行き先をふさぎ、バトルの相手になる。 */
+/** バトルスペースにいることそのものの基礎点。相手のユニットの行き先をふさぎ、バトルの相手になる。 */
 const PRESENCE_WEIGHT = 0.25
 /** 信頼を持つユニットを中央のラインに置いた時の上乗せ。左右の 2 スクエアをふさげる。 */
 const TRUST_IN_MIDDLE = 300
@@ -175,13 +176,13 @@ const PLAIN_IN_MIDDLE = 50
 const GUARD_RATIO = 0.5
 
 /**
- * 味方エリアのそのスクエアを守ることの値打ち。
+ * 味方エリアのそのスクエアを守ることの基礎点。
  *
  * 次の相手のターンに、相手のユニットがそのスクエアへ移動で入って来られて（総合ルール 第4部 第6章 2-1）、
- * 入って来たらこちらが勝つなら、その敵の値打ちの一部を見込む。味方エリアへ入った敵は、次に＋500 で
+ * 入って来たらこちらが勝つなら、その敵の基礎点の一部を見込む。味方エリアへ入った敵は、次に＋500 で
  * スマッシュしてくる（同 第3部 第9章 1）ので、守る意味がある。
  */
-function guardWorth(perspective: DuelPerspective, me: Player, square: Square, fighter: Fighter): number {
+function guardBasePoints(perspective: DuelPerspective, me: Player, square: Square, fighter: Fighter): number {
   if (areaFor(me, square) !== '味方エリア') return 0
 
   const opponent = opponentOf(me)
@@ -197,19 +198,19 @@ function guardWorth(perspective: DuelPerspective, me: Player, square: Square, fi
     )
     .reduce((sum, unit) => {
       const battle = forecastBattle({ bp: unit.bp, damage: 0, pep: pepOf(unit.card) }, defender)
-      return battle.defenderSurvives && !battle.attackerSurvives ? sum + seenWorth(unit) * GUARD_RATIO : sum
+      return battle.defenderSurvives && !battle.attackerSurvives ? sum + seenBasePoints(unit) * GUARD_RATIO : sum
     }, 0)
 }
 
 /**
- * ユニットがそのスクエアにいることの値打ち。
+ * ユニットがそのスクエアにいることの基礎点。
  *
- * スマッシュで与えるダメージと、場にいることの値打ちを、残れる見込みで割り引く。味方エリアの
+ * スマッシュで与えるダメージと、バトルスペースにいることの基礎点を、残れる見込みで割り引く。味方エリアの
  * ユニットはスマッシュできない（総合ルール 第3部 第9章 1）が、入って来る敵を倒せるなら守りの
- * 値打ちがある（`guardWorth`）。BP が高く SP が低いユニットは、敵エリアより味方エリアにいるほうが
- * 値打ちが高くなりうる。
+ * 基礎点がある（`guardBasePoints`）。BP が高く SP が低いユニットは、敵エリアより味方エリアにいるほうが
+ * 基礎点が高くなりうる。
  */
-export function positionWorth(
+export function positionBasePoints(
   perspective: DuelPerspective,
   me: Player,
   square: Square,
@@ -223,10 +224,10 @@ export function positionWorth(
 ): number {
   const survival = survivalAt(perspective, me, square, unit.fighter, unit.moving)
   const smash = smashDamageFrom(me, square, unit.sp) * SMASH_WEIGHT
-  const presence = unitWorth(unit.bp, unit.sp) * PRESENCE_WEIGHT
+  const presence = unitBasePoints(unit.bp, unit.sp) * PRESENCE_WEIGHT
   const middle = square.column === 1 ? (trustOf(unit.card) ? TRUST_IN_MIDDLE : -PLAIN_IN_MIDDLE) : 0
 
-  const guard = guardWorth(perspective, me, square, unit.fighter)
+  const guard = guardBasePoints(perspective, me, square, unit.fighter)
 
   return survival * (smash + presence + guard) + middle
 }
