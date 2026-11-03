@@ -1,3 +1,4 @@
+import type { CreatedTrigger } from './ability.js'
 import type { Battle } from './battle.js'
 import { planKeywordsOf } from './card.js'
 import type { Attribute, PlanKeyword } from './card.js'
@@ -103,6 +104,17 @@ export interface VisibleAbility {
 export interface VisibleCreatedAbility {
   readonly controller: Player
   readonly affecting: CardId
+  /** いつ誘発するか。誰のターンかは、`controller` を基に、見る人ごとに画面が言い換える（ADR-0063）。 */
+  readonly trigger: CreatedTrigger
+  /** 何をするかの文。`affecting` のカードを主語にした形で、主語は含まない（`CreatedTriggeredAbility.description`）。 */
+  readonly description: string
+  /**
+   * この能力を作成したカード（ADR-0063）。見る人から見えていなければ無い。
+   *
+   * 名前を表示するためだけに送る。見えているかどうかは、いまの盤面で決定する（ログと違い、
+   * これは過去の記録ではなく、いま盤面にある能力だからである）。
+   */
+  readonly createdBy: CardId | undefined
 }
 
 /**
@@ -272,25 +284,38 @@ function projectZones(state: DuelState, viewer: Player): DuelPerspective['zones'
   return Object.fromEntries(PLAYERS.map((owner) => [owner, zonesOf(owner)])) as DuelPerspective['zones']
 }
 
-/** 解決を待っている能力から、効果を落とす。 */
-function visibleAbility(banked: BankedAbility): VisibleAbility {
-  return { controller: banked.controller, source: banked.source }
+/**
+ * 解決を待っている能力から、効果を落とす。
+ *
+ * 作成された誘発型能力は発生源を持たないので、作成したカード（ADR-0063）を発生源として送る。
+ * 見る人に見えていなければ送らない。
+ */
+function visibleAbility(banked: BankedAbility, visible: VisibleCards): VisibleAbility {
+  const named = 'createdBy' in banked && banked.createdBy !== undefined && visible().has(banked.createdBy) ? banked.createdBy : undefined
+  return { controller: banked.controller, source: banked.source ?? named }
 }
 
-function visibleBattle(battle: Battle): VisibleBattle {
+/**
+ * 見る人から見えているカードの識別子。必要になった時に 1 度だけ求める。
+ *
+ * 射影は対戦のあいだ何度も呼ばれ、作成された誘発型能力が無い盤面がほとんどなので、毎回求めない。
+ */
+type VisibleCards = () => ReadonlySet<CardId>
+
+function visibleBattle(battle: Battle, visible: VisibleCards): VisibleBattle {
   return {
     ...battle,
-    heldBank: battle.heldBank.map(visibleAbility),
-    heldTriggered: battle.heldTriggered.map(visibleAbility),
+    heldBank: battle.heldBank.map((banked) => visibleAbility(banked, visible)),
+    heldTriggered: battle.heldTriggered.map((banked) => visibleAbility(banked, visible)),
   }
 }
 
 /** バトルと同じく、待機中のバンクから効果を落とす（#103）。 */
-function visibleSmashJudgment(judgment: SmashJudgment): VisibleSmashJudgment {
+function visibleSmashJudgment(judgment: SmashJudgment, visible: VisibleCards): VisibleSmashJudgment {
   return {
     ...judgment,
-    heldBank: judgment.heldBank.map(visibleAbility),
-    heldTriggered: judgment.heldTriggered.map(visibleAbility),
+    heldBank: judgment.heldBank.map((banked) => visibleAbility(banked, visible)),
+    heldTriggered: judgment.heldTriggered.map((banked) => visibleAbility(banked, visible)),
   }
 }
 
@@ -593,23 +618,32 @@ function effectiveKeywordsOf(state: DuelState): readonly EffectiveKeywords[] {
 
 /** ログ以外の射影。 */
 function projectBoard(state: DuelState, viewer: Player): DuelPerspective {
+  const zones = projectZones(state, viewer)
+  let seen: ReadonlySet<CardId> | undefined
+  const visible: VisibleCards = () => (seen ??= visibleIds({ zones, squares: state.squares, resolveZone: state.resolveZone }))
   return {
     viewer,
     squares: state.squares,
     effective: effectiveUnitData(state),
     effectiveKeywords: effectiveKeywordsOf(state),
-    zones: projectZones(state, viewer),
+    zones,
     damage: state.damage,
     turn: state.turn,
-    bank: state.bank.map(visibleAbility),
+    bank: state.bank.map((banked) => visibleAbility(banked, visible)),
     resolveZone: state.resolveZone,
-    triggered: state.triggered.map(visibleAbility),
-    createdAbilities: state.createdAbilities.map(({ controller, affecting }) => ({ controller, affecting })),
+    triggered: state.triggered.map((banked) => visibleAbility(banked, visible)),
+    createdAbilities: state.createdAbilities.map(({ controller, affecting, ability, createdBy }) => ({
+      controller,
+      affecting,
+      trigger: ability.trigger,
+      description: ability.description,
+      createdBy: createdBy !== undefined && visible().has(createdBy) ? createdBy : undefined,
+    })),
     playedIntoCenter: state.playedIntoCenter,
     trapConditionsMet: state.trapConditionsMet.filter((met) => ownsTrap(state, viewer, met)),
     courageConditionsMet: state.courageConditionsMet.filter((met) => met.player === viewer),
-    battles: state.battles.map(visibleBattle),
-    smashJudgments: state.smashJudgments.map(visibleSmashJudgment),
+    battles: state.battles.map((battle) => visibleBattle(battle, visible)),
+    smashJudgments: state.smashJudgments.map((judgment) => visibleSmashJudgment(judgment, visible)),
     result: state.result,
     // ログと、それが名指しするカードは `perspectiveOf` が足す。ログを落とすのに、落とし
     // 終えた盤面が要る（`namedInLogOf`）ので、盤面を先に組み立てる。

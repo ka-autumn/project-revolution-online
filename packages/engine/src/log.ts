@@ -1,3 +1,4 @@
+import type { CreatedTrigger } from './ability.js'
 import type { BattleStep } from './battle.js'
 import { BATTLE_SPACE, isArea, rowOfArea } from './board.js'
 import type { Square, SquareIndex } from './board.js'
@@ -430,7 +431,15 @@ export type LoggedInstruction =
       readonly player: Player
     }
   | { readonly kind: 'スクエアへ置く'; readonly card: CardId | undefined; readonly square: Square }
-  | { readonly kind: '誘発型能力を作る'; readonly card: CardId | undefined }
+  | {
+      readonly kind: '誘発型能力を作る'
+      /** 影響を与える対象のカード。見えていなければ `undefined`。 */
+      readonly card: CardId | undefined
+      /** いつ誘発するか。誰のターンかは、できごとの支配者を基に、見る人ごとに画面が言い換える（ADR-0063）。 */
+      readonly trigger: CreatedTrigger
+      /** 何をするかの文。対象のカードを主語にした形で、主語は含まない。 */
+      readonly description: string
+    }
   /**
    * 解決が、作成された継続効果を 1 件作った（総合ルール 第4部 第12章 3）。
    *
@@ -730,7 +739,12 @@ export function loggedInstruction(
     case 'スクエアへ置く':
       return { kind: 'スクエアへ置く', card: instruction.card.id, square: instruction.square }
     case '誘発型能力を作る':
-      return { kind: '誘発型能力を作る', card: instruction.affecting.id }
+      return {
+        kind: '誘発型能力を作る',
+        card: instruction.affecting.id,
+        trigger: instruction.ability.trigger,
+        description: instruction.ability.description,
+      }
     case '継続効果を作成する':
       return {
         kind: '継続効果を作成する',

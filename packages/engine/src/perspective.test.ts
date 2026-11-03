@@ -165,14 +165,61 @@ describe('解決を待っている能力', () => {
       kind: '作成された誘発型能力',
       place: 'スクエア',
       trigger: 'あなたのターンの終わり',
+      description: 'テストの説明',
       effect: function* () {},
     } as const
     const state: DuelState = {
       ...filledState(),
-      triggered: [{ ability: created, controller: '後攻', affected: INVADER }],
+      triggered: [{ ability: created, controller: '後攻', createdBy: undefined, affected: INVADER }],
     }
 
     expect(perspectiveOf(state, '先攻').triggered).toEqual([{ controller: '後攻', source: undefined }])
+  })
+
+  // ADR-0063。作成したカードは、見る人に見えている時だけ発生源として渡す。
+  describe('作成したカード', () => {
+    const created = {
+      kind: '作成された誘発型能力',
+      place: 'スクエア',
+      trigger: 'あなたのターンの終わり',
+      description: 'テストの説明',
+      effect: function* () {},
+    } as const
+    const triggeredBy = (createdBy: string | undefined): DuelState => ({
+      ...filledState(),
+      triggered: [{ ability: created, controller: '後攻', createdBy, affected: INVADER }],
+      createdAbilities: [{ ability: created, controller: '後攻', affecting: INVADER.id, createdBy, createdIn: 1 }],
+    })
+
+    it('見えていれば、誘発した能力の発生源として渡る', () => {
+      expect(perspectiveOf(triggeredBy(INVADER.id), '先攻').triggered).toEqual([
+        { controller: '後攻', source: INVADER.id },
+      ])
+    })
+
+    it('見えていなければ、誘発した能力の発生源を渡さない', () => {
+      expect(perspectiveOf(triggeredBy('見えないカード'), '先攻').triggered).toEqual([
+        { controller: '後攻', source: undefined },
+      ])
+    })
+
+    it('まだ誘発していない能力には、いつ・何をするか・作成したカードを添えて渡る', () => {
+      expect(perspectiveOf(triggeredBy(INVADER.id), '先攻').createdAbilities).toEqual([
+        {
+          controller: '後攻',
+          affecting: INVADER.id,
+          trigger: 'あなたのターンの終わり',
+          description: 'テストの説明',
+          createdBy: INVADER.id,
+        },
+      ])
+    })
+
+    it('まだ誘発していない能力でも、見えていない作成したカードは渡さない', () => {
+      expect(perspectiveOf(triggeredBy('見えないカード'), '先攻').createdAbilities.map((each) => each.createdBy)).toEqual([
+        undefined,
+      ])
+    })
   })
 
   // 総合ルール 第3部 第11章 2。バトル中は、それまでのバンクが待機中になる。

@@ -1840,7 +1840,7 @@ describe('効果が誘発型能力を作る', () => {
   const postponing = triggeredAbility('登場した時', function* (duel) {
     const ally = yield* choose(duel.allies())
     if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
-    yield* createTriggeredAbility(ally, 'あなたのターンの終わり', function* (_duel, affected) {
+    yield* createTriggeredAbility(ally, 'あなたのターンの終わり', 'テストの説明', function* (_duel, affected) {
       yield* placeInZone(affected, 'エネルギーゾーン', 'フリーズ')
     })
   })
@@ -1866,6 +1866,35 @@ describe('効果が誘発型能力を作る', () => {
     expect(resolved.createdAbilities.map((each) => each.controller)).toEqual(['後攻'])
   })
 
+  // ADR-0063。ログと一覧に名前を表示するためだけに持つ。
+  it('作成した効果の発生源を、作成したカードとして覚える', () => {
+    const resolved = resolveEffect(boardOf([mySquare, mine()]), postponing.effect, {
+      controller: '先攻',
+      via: VIA,
+      source: '作成元',
+      chooser: chooseFirst,
+    })
+
+    expect(resolved.createdAbilities.map((each) => each.createdBy)).toEqual(['作成元'])
+  })
+
+  it('発生源の無い効果が作成すると、作成したカードは無い', () => {
+    expect(created(boardOf([mySquare, mine()])).createdAbilities.map((each) => each.createdBy)).toEqual([undefined])
+  })
+
+  // ADR-0063。何をするかの文は、カードの定義が渡したものをそのまま積む。
+  it('作成した時のログに、対象のカードと、いつ誘発し何をするかを積む', () => {
+    const events = created(boardOf([mySquare, mine()])).log.map(({ event }) => event)
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        kind: '命令を実行した',
+        controller: '先攻',
+        instruction: { kind: '誘発型能力を作る', card: '味方', trigger: 'あなたのターンの終わり', description: 'テストの説明' },
+      }),
+    )
+  })
+
   // 誘発イベントが起こるまで何も起こらない（総合ルール 第4部 第3章 4）。作った時点では
   // 盤面はそのままで、対象のユニットも動かない。
   it('作っただけでは何も起こらない', () => {
@@ -1880,7 +1909,7 @@ describe('効果が誘発型能力を作る', () => {
     const forge = triggeredAbility('登場した時', function* (duel) {
       const [ally] = duel.allies()
       if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
-      yield* createTriggeredAbility({ ...ally, id: '敵' }, 'あなたのターンの終わり', function* () {})
+      yield* createTriggeredAbility({ ...ally, id: '敵' }, 'あなたのターンの終わり', 'テストの説明', function* () {})
     })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
@@ -1896,7 +1925,7 @@ describe('効果が、捨札のカードを対象にする誘発型能力を作�
   const postponing = triggeredAbility('登場した時', function* (duel) {
     const [card] = duel.discardPile()
     if (card === undefined) throw new Error('捨札にカードがある盤面で試すこと')
-    yield* createTriggeredAbilityForDiscardedCard(card, 'ターンの終わり', function* (_duel, affected) {
+    yield* createTriggeredAbilityForDiscardedCard(card, 'ターンの終わり', 'テストの説明', function* (_duel, affected) {
       yield* placeInZone(affected, '手札', 'リリース')
     })
   })
@@ -1929,7 +1958,7 @@ describe('効果が、捨札のカードを対象にする誘発型能力を作�
     const fromHand = triggeredAbility('登場した時', function* (duel) {
       const [card] = duel.hand()
       if (card === undefined) throw new Error('手札にカードがある盤面で試すこと')
-      yield* createTriggeredAbilityForDiscardedCard({ ...card, zone: '捨札' }, 'ターンの終わり', function* () {})
+      yield* createTriggeredAbilityForDiscardedCard({ ...card, zone: '捨札' }, 'ターンの終わり', 'テストの説明', function* () {})
     })
     const state = putInZone(boardOf([mySquare, mine()]), '先攻', '手札', [
       instantiate({ id: '手札の対象', card: vanilla, owner: '先攻' }),
@@ -1945,14 +1974,14 @@ describe('効果が、捨札のカードを対象にする誘発型能力を作�
     const inHand = { id: '手札の対象', zone: '手札', card: vanilla } as const
 
     // @ts-expect-error 手札のカードは、捨札のカードではない。
-    createTriggeredAbilityForDiscardedCard(inHand, 'ターンの終わり', function* () {})
+    createTriggeredAbilityForDiscardedCard(inHand, 'ターンの終わり', 'テストの説明', function* () {})
   })
 
   it('見せていないカードを対象にはできない', () => {
     const forge = triggeredAbility('登場した時', function* (duel) {
       const [card] = duel.discardPile()
       if (card === undefined) throw new Error('捨札にカードがある盤面で試すこと')
-      yield* createTriggeredAbilityForDiscardedCard({ ...card, id: '別のカード' }, 'ターンの終わり', function* () {})
+      yield* createTriggeredAbilityForDiscardedCard({ ...card, id: '別のカード' }, 'ターンの終わり', 'テストの説明', function* () {})
     })
 
     expect(() =>

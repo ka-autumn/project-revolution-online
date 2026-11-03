@@ -157,6 +157,7 @@ function resolveBanked(state: DuelState, banked: BankedAbility, chooser: Chooser
     return resolveEffect(state, createdEffectOf(banked), {
       controller: banked.controller,
       via: '誘発',
+      loggedSource: banked.createdBy,
       chooser,
       handed: [banked.affected],
     })

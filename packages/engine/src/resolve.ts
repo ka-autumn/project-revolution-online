@@ -167,6 +167,12 @@ export interface EffectContext {
   readonly via: ResolutionVia
   /** 発生源のカード。作成された誘発型能力（`duel.ts` の `CreatedAbilityInstance`）は持たない。 */
   readonly source?: CardId
+  /**
+   * 「能力を解決した」のログにだけ記録する発生源（ADR-0063）。作成された誘発型能力が、作成した
+   * カードを名指しするために使う。効果へ渡す発生源（`source`）は変更しないので、これを渡しても
+   * `DuelView.self` や選択の問いの発生源は変化しない。無ければ `source` を記録する。
+   */
+  readonly loggedSource?: CardId
   readonly chooser: Chooser
   /**
    * 誘発した時点の発生源（`duel.ts` の `TriggeredInstance.self`）。
@@ -210,7 +216,7 @@ export function resolveEffect(state: DuelState, effect: Effect, context: EffectC
     kind: '能力を解決した',
     controller: context.controller,
     via: context.via,
-    source: context.source,
+    source: context.loggedSource ?? context.source,
   })
   // 効果に見せたユニット。効果は自分で盤面を探せないので、対象にできるのはここを
   // 通って渡したものだけである（ADR-0002）。
@@ -597,6 +603,7 @@ function apply(
         ability: instruction.ability,
         controller: context.controller,
         affecting: instruction.affecting.id,
+        createdBy: context.source,
         createdIn: state.turn.number,
       }
       return { state: { ...state, createdAbilities: [...state.createdAbilities, created] }, value: undefined }

@@ -794,6 +794,11 @@ export interface CreatedOnSquareAbility {
   readonly kind: '作成された誘発型能力'
   readonly place: 'スクエア'
   readonly trigger: CreatedTrigger
+  /**
+   * 何をするかの文（ADR-0063）。影響を与える対象のカードを主語にした形で書く（「手札に戻る」）。主語は含めない。
+   * 画面がログの行とカードの詳細に、誘発する時を表す言葉と組み合わせて表示する。
+   */
+  readonly description: string
   readonly effect: CreatedAbilityEffect
 }
 
@@ -802,6 +807,11 @@ export interface CreatedInDiscardPileAbility {
   readonly kind: '作成された誘発型能力'
   readonly place: '捨札'
   readonly trigger: CreatedTrigger
+  /**
+   * 何をするかの文（ADR-0063）。影響を与える対象のカードを主語にした形で書く（「手札に戻る」）。主語は含めない。
+   * 画面がログの行とカードの詳細に、誘発する時を表す言葉と組み合わせて表示する。
+   */
+  readonly description: string
   readonly effect: CreatedDiscardAbilityEffect
 }
 
