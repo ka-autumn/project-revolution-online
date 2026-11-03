@@ -191,7 +191,7 @@ describe('誘発待ちの作成された誘発型能力', () => {
     expect(view.map((each) => each.text)).toEqual(['ターンの終わりに、このカードを先に作成した', 'ターンの終わりに、このカードを後に作成した'])
   })
 
-  // 015・069 の実際の場面は、捨札のカードの詳細である。詳細は盤面の一覧から識別子で引く（`visibleCardViewsIn`）。
+  // 015・069 の実際の場面は、捨札のカードの詳細である。詳細は盤面の一覧から識別子で取得する（`visibleCardViewsIn`）。
   it('捨札のカードの詳細にも、誘発待ちが渡る', () => {
     const inDiscard = instance('対象', '先攻', { card: unitFace('テスト・対象') })
     const board = {
