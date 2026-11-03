@@ -1,5 +1,7 @@
 import { legalActions, passOutcome, perspectiveOf } from '@revolution/engine'
+import { PLAYER_ZONES } from '@revolution/engine'
 import type {
+  Card,
   ChoiceAnswer,
   DuelPerspective,
   DuelState,
@@ -14,7 +16,8 @@ import type {
  * CPU が手を選ぶ時に受け取るもの（ADR-0060）。
  *
  * 人の画面に届く「盤面」と同じものである（`protocol.ts` の `ToClient` の `盤面`）。射影した
- * 盤面と、いま行える行動と、優先権を放棄したら何が起きるか。完全な盤面（`DuelState`）は
+ * 盤面と、いま行える行動と、優先権を放棄したら何が起きるか。これに、自分のデッキの中身を追加する。
+ * 人も自分のデッキの中身は知っている（ADR-0060・ADR-0062）。完全な盤面（`DuelState`）は
  * 持たない。相手の手札も、山札の並びも、この先のシャッフルを決定する乱数列も、人と同じく見えない
  * （総合ルール 第2部 第23章 2-1）。
  *
@@ -26,17 +29,22 @@ export interface ActionView {
   /** いま行える行動。CPU は必ずこの中から選ぶ。 */
   readonly actions: readonly LegalAction[]
   readonly passOutcome: PassOutcome | undefined
+  /** 自分のデッキに入っているカード（`ownDeckOf`）。 */
+  readonly deck: readonly Card[]
 }
 
 /**
  * CPU が選択に答える時に受け取るもの（ADR-0060）。
  *
  * 人の画面に届く「選んでほしい」と、その時に届く盤面と同じもの。盤面はその選択が起きている
- * 盤面の射影で、行動を始める前の盤面ではない（#142）。
+ * 盤面の射影で、行動を始める前の盤面ではない（#142）。`ActionView` と同じく、自分のデッキの
+ * 中身を追加する。
  */
 export interface ChoiceView {
   readonly perspective: DuelPerspective
   readonly choice: WireChoice
+  /** 自分のデッキに入っているカード（`ownDeckOf`）。 */
+  readonly deck: readonly Card[]
 }
 
 /**
@@ -72,6 +80,7 @@ export function actionViewOf(state: DuelState, player: Player): ActionView {
     perspective: perspectiveOf(state, player),
     actions: player === state.turn.priority ? legalActions(state) : [],
     passOutcome: passOutcome(state),
+    deck: ownDeckOf(state, player),
   }
 }
 
@@ -82,5 +91,25 @@ export function actionViewOf(state: DuelState, player: Player): ActionView {
  * 渡す。射影するのは、答えるプレイヤー（`choice.player`）の視点である。
  */
 export function choiceViewOf(board: DuelState, choice: WireChoice): ChoiceView {
-  return { perspective: perspectiveOf(board, choice.player), choice }
+  return { perspective: perspectiveOf(board, choice.player), choice, deck: ownDeckOf(board, choice.player) }
+}
+
+/**
+ * そのプレイヤーのデッキに入っているカード（ADR-0060・ADR-0062）。
+ *
+ * 人も自分のデッキの中身は知っているので、CPU にも渡す。渡すのは中身だけで、山札の並びは渡さない。
+ * 盤面のどこにあるかを問わず、持ち主がそのプレイヤーのカードを集め、名前の順に並べ直す。山札の
+ * 並びも、カードの識別子も残らない。
+ */
+export function ownDeckOf(state: DuelState, player: Player): readonly Card[] {
+  const instances = [
+    ...state.squares.flat(),
+    ...state.resolveZone,
+    ...PLAYER_ZONES.flatMap((zone) => [...state.zones['先攻'][zone], ...state.zones['後攻'][zone]]),
+  ]
+
+  return instances
+    .filter((instance) => instance.owner === player)
+    .map((instance) => instance.card)
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.level - b.level))
 }

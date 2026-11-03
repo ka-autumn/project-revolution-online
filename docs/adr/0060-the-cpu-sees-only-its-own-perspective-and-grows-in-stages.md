@@ -1,5 +1,7 @@
 # CPU は自分の視点だけを見て打ち、段階を踏んで強くする
 
+**ADR-0062 で、CPU が受け取るものに自分のデッキの中身を追加した。** 効果の損得は、射影の盤面で効果を空回しして判定する。
+
 決定日: 2026-11-03。開発者と決定した（#364）。
 
 ## 背景
@@ -80,3 +82,4 @@ CPU（`server` の `cpu.ts`）は、合法手からランダムに手を選ぶ�
 - いまの CPU: `randomCpu`。部屋で打たせる CPU は `server` の `cpu.ts` の `ROOM_CPU`
 - CPU 同士の勝率を測る関数: 1 回のデュエルが `playCpuDuel`、比べるのが `compareCpus`。手元で動かすコマンドは `pnpm cpu-compare`（`tools/cpu-compare.mjs`）。名前で選べる CPU は `CPU_PLAYERS`
 - 勝ち越したかの判定: `verdictOf`（基準は ADR-0061）
+- 段階 2 の CPU: `scoredCpu`（`CPU_PLAYERS` の `scored`）。部屋で打たせる CPU（`ROOM_CPU`）もこれにした。効果の損得の判定と、自分のデッキの中身を渡すことは ADR-0062
