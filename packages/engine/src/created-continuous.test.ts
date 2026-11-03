@@ -600,7 +600,7 @@ describe('能力を与える作成された継続効果', () => {
   })
 
   // 同 第12章 2・5-2 の(2)
-  it('スクエアのユニットの適用した後の姿に、与えた能力が載る。ＢＰ・ＳＰは変わらない', () => {
+  it('スクエアのユニットの適用した後のデータに、与えた能力が載る。ＢＰ・ＳＰは変わらない', () => {
     const board = boardOf([middle, '味方'])
     const state = resolved(board, grantDreamToAlly, '味方')
 
@@ -612,7 +612,7 @@ describe('能力を与える作成された継続効果', () => {
     expect(vanilla.abilities).not.toContain(dream)
   })
 
-  it('スクエアの外のカードの適用した後の姿にも、与えた能力が載る', () => {
+  it('スクエアの外のカードの適用した後のデータにも、与えた能力が載る', () => {
     const board = planned()
     const state = resolved(board, grantDreamToPlan, 'プラン')
 
@@ -635,7 +635,7 @@ describe('能力を与える作成された継続効果', () => {
     expect(hasDream(appliedCard(state, 'プラン', dreaming))).toBe(true)
   })
 
-  // 効果が尋ねる「キーワード能力を持つか」は、適用した後の姿を読む。
+  // 効果が尋ねる「キーワード能力を持つか」は、適用した後のデータを読む。
   it('効果が「キーワード能力を持つか」を尋ねると、与えられた能力を見る', () => {
     const answers: boolean[] = []
     const ask: Effect = function* (duel) {
@@ -788,7 +788,7 @@ describe('能力を与える作成された継続効果', () => {
   })
 })
 
-// ADR-0036。スクエアの外のカードの適用した後の姿は、通信に載る（アイコンのため）。プランゾーンの
+// ADR-0036。スクエアの外のカードの適用した後のデータは、通信に載る（アイコンのため）。プランゾーンの
 // カードは公開情報なので、どちらの視点にも同じものを送る（総合ルール 第2部 第23章 1-1）。
 describe('プランゾーンのカードに与えられた能力の射影', () => {
   const grantToPlan: Effect = function* (duel) {

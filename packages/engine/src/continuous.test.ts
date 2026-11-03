@@ -401,7 +401,7 @@ describe('メーカーシンボル', () => {
     expect(bpOn(board, '強化するユニット', selfMade)).toBe(1000)
   })
 
-  it('継続効果を適用した後の姿も、書かれたメーカーシンボルのまま変わらない', () => {
+  it('継続効果を適用した後のデータも、書かれたメーカーシンボルのまま変わらない', () => {
     const board = boardOf(
       [homeLeft, '強化するユニット', boostingMadeByQxa],
       [homeCenter, '対象の味方', madeByQxa],

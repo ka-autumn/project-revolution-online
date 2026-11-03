@@ -2181,7 +2181,7 @@ describe('ログインの設定があるとき', () => {
       await otherClient.close()
     })
 
-    // 完了条件 3: レシピには「何が何枚か」だけが写され、カードの姿は焼き付けられていない。
+    // 完了条件 3: レシピには「何が何枚か」だけが写され、カードのデータは焼き付けられていない。
     it('レシピは識別子の並びだけを持つ', async () => {
       const client = await enteredAsMe()
       const deck = store.saveDeck(me, undefined, { name: 'デッキ', description: '', cards: FULL })
@@ -2199,7 +2199,7 @@ describe('ログインの設定があるとき', () => {
       const recipeKey = result.kind === '共有した' ? result.share.recipe : ''
 
       // **レシピの中身そのもの（`recipe.cards`）を見る。** 共有（`WireShare`）のキーだけを見ても、
-      // レシピ側にカードの姿が混ざっていないかは分からない。
+      // レシピ側にカードのデータが混ざっていないかは分からない。
       client.received.length = 0
       client.send({ kind: 'レシピを見る', recipe: recipeKey })
       const recipe = await client.waitFor('レシピ')

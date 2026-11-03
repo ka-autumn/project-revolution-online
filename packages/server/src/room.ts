@@ -1269,8 +1269,8 @@ function seats(duel: DuelInRoom): readonly (readonly [Player, ParticipantId])[] 
  *
  * `showing` は、送る盤面を差し替えるためにある。選ぶのを待っている間は**その選択が起きている
  * 盤面**を送る（#142）。行動が終わるまで `duel.state` は動かない（ADR-0008）ので、そのまま
- * 送ると、選ぶ人が見るのは行動を始める前の姿になってしまう。**差し替えるのは送るものだけで、
- * `duel.state` は動かさない。** やり直しの起点がそこにある。
+ * 送ると、選ぶ人が見るのは行動を始める前の盤面になってしまう。差し替えるのは送るものだけで、
+ * `duel.state` は動かさない。やり直しの起点がそこにある。
  */
 function boards(duel: DuelInRoom, showing: DuelState = duel.state): readonly Delivery[] {
   const actions = duel.pending === undefined ? legalActions(duel.state) : []
@@ -1405,7 +1405,7 @@ function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAct
       deliveries: [
         // 送るのは**その選択が起きている盤面**である（#142）。答えを受け取っている間
         // `duel.state` は動かない（ADR-0008）ので、そのままだと選ぶ人が見るのは行動を
-        // 始める前の姿になる。答えが増えれば進む先も変わるので、毎回送り直す
+        // 始める前の盤面になる。答えが増えれば進む先も変わるので、毎回送り直す
         ...boards(waiting, progress.board),
         // **盤面より後に送る。** 受け取った側は盤面が届くと選択を畳む（`session.ts`）ので、
         // 先に送ると選んでほしいことが消える。`rejoin` も同じ順で送っている。

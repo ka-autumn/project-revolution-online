@@ -248,7 +248,7 @@ export function shareRowsOf(recipe: WireRecipe): readonly ShareRow[] {
   }))
 }
 
-/** レシピの中身 1 種。カードの姿はプールを引いて出す——レシピ自身は識別子しか持たない。 */
+/** レシピの中身 1 種。カードのデータはプールを引いて出す——レシピ自身は識別子しか持たない。 */
 export interface RecipeCardRow {
   readonly name: string
   readonly count: number

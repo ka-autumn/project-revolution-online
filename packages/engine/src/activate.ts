@@ -51,7 +51,7 @@ export function activateAbility(
   const paid = payActivationCost(state, instance, activated.cost, chooser)
   if (paid === undefined) return cannot('コストを支払えない')
 
-  // 発生源はコストを支払う前の姿を写して渡す。自身を捨札に置くコストを支払っていれば、
+  // 発生源はコストを支払う前のデータを写して渡す。自身を捨札に置くコストを支払っていれば、
   // 解決する時にはもうスクエアにいない（総合ルール 第4部 第8章 2-5、`resolve.ts` の
   // `duelView`）。
   const self: UnitOnSquare = { id: instance.id, square, card: unit, controller: instance.controller }

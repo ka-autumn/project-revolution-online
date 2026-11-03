@@ -74,7 +74,7 @@ export function playCard(state: DuelState, declaration: PlayDeclaration, chooser
   const instance = inHand ?? asPlan
   if (instance === undefined) return cannot('そのゾーンにない')
   // プランゾーンからプレイできるのは「夢」を持つカードだけである（総合ルール 第5部 第1章 2）。
-  // 与えられた能力も含めるので、書かれた能力ではなく、継続効果を適用した後の姿から読む
+  // 与えられた能力も含めるので、書かれた能力ではなく、継続効果を適用した後のデータから読む
   // （同 第4部 第12章 2。ADR-0036）。
   if (inHand === undefined && !hasDream(appliedCard(state, instance.id, instance.card))) {
     return cannot('プランゾーンからプレイできない')
