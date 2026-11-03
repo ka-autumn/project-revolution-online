@@ -1,24 +1,24 @@
 // CPU 同士の勝率を測る（ADR-0060 の段階 1、#365）。
 //
-//     pnpm cpu-match --decks private/decks/src/index.ts
+//     pnpm cpu-compare --decks private/decks/src/index.ts
 //
-// **CPU を変える変更は、これで前の CPU に勝ち越すことを確かめてから入れる**（ADR-0060）。
-// 勝ち越したかは、決着した局の勝率の 95% 信頼区間（Wilson）の下限が 50% を上回るかで決める
-// （`packages/cpu/src/match.ts` の `verdictOf`）。
+// CPU を変更するときは、これで前の CPU に勝ち越すことを確認してから入れる（ADR-0060）。
+// 勝ち越したかは、決着したデュエルの勝率の 95% 信頼区間（Wilson）の下限が 50% を上回るかで判定する
+// （ADR-0061、`packages/cpu/src/compare.ts` の `verdictOf`）。
 //
-// `pnpm serve` と同じく、**どのカードを使うかはこのリポジトリが知らない**（ADR-0002）。カードと
+// `pnpm serve` と同じく、どのカードを使うかはこのリポジトリが知らない（ADR-0002）。カードと
 // 既製デッキを渡すモジュールは実行時に受け取り、静的な依存にしない。既製デッキの組み合わせ
 // すべて（同じデッキ同士も含む）を順に回す。
 //
 // 読むもの:
 //
 //     --decks <パス>          カードと既製デッキを渡すモジュール（必須）
-//     --challenger <名前>     強くなったかを確かめたい CPU（既定 random）
+//     --challenger <名前>     強くなったかを確認したい CPU（既定 random）
 //     --baseline <名前>       比べる相手の CPU（既定 random）
-//     --games <数>            打つ局数。2 局を 1 組にするので偶数（既定 200）
+//     --duels <数>            打つデュエルの数。2 回のデュエルを 1 組にするので偶数（既定 200）
 //     --seed <数>             最初の組のシード（既定 1）
 //     --presets <id,id,...>   使う既製デッキを絞る（既定はすべて）
-//     --max-actions <数>      1 局で打てる手の数の上限（既定 5000）
+//     --max-actions <数>      1 回のデュエルで打てる手の数の上限（既定 5000）
 //
 // CPU の名前は `packages/cpu/src/players.ts` の `CPU_PLAYERS` にある。
 import { spawn } from 'node:child_process'
@@ -52,15 +52,15 @@ function options(argv) {
     throw new Error('--decks <モジュールのパス> が要ります。カードのプールと既製デッキを export するモジュールを指してください')
   }
 
-  const games = positiveInteger(argv, 'games', 200)
-  if (games % 2 !== 0) throw new Error(`--games は偶数にしてください（2 局を 1 組にします）: ${games}`)
+  const duels = positiveInteger(argv, 'duels', 200)
+  if (duels % 2 !== 0) throw new Error(`--duels は偶数にしてください（2 回のデュエルを 1 組にします）: ${duels}`)
 
   const presets = readFlag(argv, 'presets')
   return {
     decks,
     challenger: readFlag(argv, 'challenger') ?? 'random',
     baseline: readFlag(argv, 'baseline') ?? 'random',
-    games,
+    duels,
     seed: positiveInteger(argv, 'seed', 1),
     presets: presets === undefined ? undefined : presets.split(',').filter((id) => id !== ''),
     maxActions: positiveInteger(argv, 'max-actions', 5000),
@@ -68,7 +68,7 @@ function options(argv) {
 }
 
 /**
- * 束ねる対象になる入口。**繋ぐところと見せ方だけ**を置き、測り方は `packages/cpu` にある。
+ * 束ねる対象になる入口。繋ぐところと見せ方だけを置き、測り方は `packages/cpu` にある。
  */
 function entryPoint(settings) {
   // 受け取ったものの読み方は対戦サーバと同じものを使う。サーバの入口ごと読むと、接続や置き場まで
@@ -109,7 +109,7 @@ if (presets.length === 0) fail('既製デッキが 1 つも選ばれていませ
 const deckOf = (preset) =>
   preset.cards.map((key) => supply.pool[key] ?? fail(\`既製デッキ \${preset.id} の \${key} がプールにありません\`))
 
-// 組み合わせすべて。席 0 と席 1 のデッキが違う組は、向きを変えたものも別の組として回す。
+// デッキの組み合わせすべて。席 0 と席 1 のデッキが違う組み合わせは、向きを入れ替えたものも別の組み合わせとして回す。
 const pairings = presets.flatMap((first) =>
   presets.map((second) => ({ name: \`\${first.id} 対 \${second.id}\`, decks: [deckOf(first), deckOf(second)] })),
 )
@@ -119,7 +119,7 @@ const result = compareCpus({
   challenger,
   baseline,
   pairings,
-  games: settings.games,
+  duels: settings.duels,
   seed: settings.seed,
   maxActions: settings.maxActions,
 })
@@ -133,7 +133,7 @@ function line(label, tally) {
 }
 
 console.log(\`挑む側: \${settings.challenger}  比べる相手: \${settings.baseline}\`)
-console.log(\`\${settings.games} 局（\${settings.games / 2} 組）、シード \${settings.seed} から、手数上限 \${settings.maxActions}、\${seconds.toFixed(1)} 秒\`)
+console.log(\`\${settings.duels} 回のデュエル（\${settings.duels / 2} 組）、シード \${settings.seed} から、手数上限 \${settings.maxActions}、\${seconds.toFixed(1)} 秒\`)
 console.log('')
 console.log(line('全体', result.total))
 console.log(line('先攻', result.byPosition['先攻']))
@@ -142,7 +142,7 @@ for (const { name, tally } of result.byPairing) console.log(line(name, tally))
 console.log('')
 const { verdict } = result
 const interval = verdict.interval === undefined ? '-' : \`\${percent(verdict.interval.lower)}〜\${percent(verdict.interval.upper)}\`
-console.log(\`判定: \${verdict.kind}（決着した局の勝率 \${percent(verdict.winRate)}、95% 信頼区間 \${interval}）\`)
+console.log(\`判定: \${verdict.kind}（決着したデュエルの勝率 \${percent(verdict.winRate)}、95% 信頼区間 \${interval}）\`)
 `
 }
 
@@ -153,8 +153,8 @@ try {
   console.error(error instanceof Error ? error.message : error)
   process.exit(1)
 }
-const workDir = await mkdtemp(join(tmpdir(), 'revolution-cpu-match-'))
-const bundle = join(workDir, 'cpu-match.cjs')
+const workDir = await mkdtemp(join(tmpdir(), 'revolution-cpu-compare-'))
+const bundle = join(workDir, 'cpu-compare.cjs')
 
 try {
   await esbuild.build({

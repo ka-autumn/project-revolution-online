@@ -7,15 +7,8 @@
 export { actionViewOf, choiceViewOf } from './player.js'
 export type { ActionView, ChoiceView, CpuPlayer } from './player.js'
 export { ENERGY_TARGET, randomCandidates, randomCpu } from './random-cpu.js'
-export { compareCpus, playCpuMatch, verdictOf, wilsonInterval } from './match.js'
-export type {
-  ComparisonOptions,
-  ComparisonResult,
-  DeckPairing,
-  MatchOptions,
-  MatchResult,
-  MatchSeat,
-  Tally,
-  Verdict,
-} from './match.js'
+export { playCpuDuel } from './duel.js'
+export type { CpuDuelOptions, CpuDuelResult, CpuDuelSeat } from './duel.js'
+export { compareCpus, verdictOf, wilsonInterval } from './compare.js'
+export type { ComparisonOptions, ComparisonResult, DeckPairing, Tally, Verdict } from './compare.js'
 export { CPU_PLAYERS } from './players.js'

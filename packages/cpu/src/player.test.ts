@@ -7,7 +7,7 @@ import { randomCpu } from './random-cpu.js'
 /**
  * CPU が受け取るもの（ADR-0060）。
  *
- * **CPU は自分の席から見た射影の盤面だけを受け取る。** 相手の手札・山札の並び・盤面の乱数列は
+ * CPU は自分の席から見た射影の盤面だけを受け取る。相手の手札・山札の並び・盤面の乱数列は
  * 非公開情報で（総合ルール 第2部 第23章 2-1）、人の画面にも届かない。
  */
 
@@ -43,7 +43,7 @@ describe('CPU が受け取るもの', () => {
     expect(perspective.zones[opponent]['手札'].length).toBeGreaterThan(0)
     expect(perspective.zones[opponent]['手札'].every((card) => card.kind === '見えていない')).toBe(true)
     expect(perspective.zones[viewer]['山札'].every((card) => card.kind === '見えていない')).toBe(true)
-    // 盤面の乱数列（この先のシャッフルを決める）も載らない。
+    // 盤面の乱数列（この先のシャッフルを決定する）も含まれない。
     expect('random' in perspective).toBe(false)
   })
 
