@@ -9,7 +9,6 @@ import {
   damagePlayer,
   findInZone,
   locateOnSquares,
-  moveToZone,
   setOrientationOnSquare,
   topOfLibrary,
 } from './duel.js'
@@ -22,6 +21,7 @@ import type { Chooser } from './resolve.js'
 import type { UnitOnSquare } from './effect.js'
 import { checkSmash } from './trap.js'
 import { unitsOnSquares } from './view.js'
+import { moveToZone } from './zone-move.js'
 
 /**
  * 行動が行えなかった理由。
@@ -102,7 +102,7 @@ export function placeEnergy(state: DuelState, card: CardId): ActionOutcome {
   const player = state.turn.active
   if (findInZone(state, player, '手札', card) === undefined) return cannot('そのゾーンにない')
 
-  const placed = recordAction(moveToZone(state, card, 'エネルギーゾーン'), state, 'エネルギーを置く', card)
+  const placed = recordAction(moveToZone(state, [card], 'エネルギーゾーン'), state, 'エネルギーを置く', card)
   return done(grantPriorityToInactive({ ...placed, turn: { ...placed.turn, energyPlaced: true } }))
 }
 
@@ -298,7 +298,7 @@ export function discardTrap(state: DuelState, card: CardId): ActionOutcome {
   const player = state.turn.active
   if (findInZone(state, player, 'トラップゾーン', card) === undefined) return cannot('そのゾーンにない')
 
-  return done(grantPriorityToInactive(recordAction(moveToZone(state, card, '捨札'), state, 'トラップを廃棄する', card)))
+  return done(grantPriorityToInactive(recordAction(moveToZone(state, [card], '捨札'), state, 'トラップを廃棄する', card)))
 }
 
 /**
@@ -310,12 +310,12 @@ export function discardTrap(state: DuelState, card: CardId): ActionOutcome {
  */
 function turnUpTopOfLibrary(state: DuelState, player: Player): DuelState {
   const [current] = cardsIn(state, player, 'プランゾーン')
-  const cleared = current === undefined ? state : moveToZone(state, current.id, '捨札')
+  const cleared = current === undefined ? state : moveToZone(state, [current.id], '捨札')
 
   const top = topOfLibrary(cleared, player)
   // 何もめくれず、置き換えられたプランもなければ、この呼び出しは何もしていない（#111）。
   if (top === undefined && current === undefined) return cleared
 
-  const placed = top === undefined ? cleared : moveToZone(cleared, top.id, 'プランゾーン')
+  const placed = top === undefined ? cleared : moveToZone(cleared, [top.id], 'プランゾーン')
   return record(placed, { kind: 'プランをめくった', player, card: top?.id, discarded: current?.id })
 }

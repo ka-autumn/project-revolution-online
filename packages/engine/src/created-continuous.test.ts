@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { appliedCard, bpModification, continuousData, spModification } from './continuous.js'
 // ゾーンを移したり盤面を組んだりするためだけに使う。engine の中から盤面を組み替える関数であり、
 // 公開する API ではない。
-import { draw, faceDownPlan, moveToSquare, moveToZone, putInZone } from './duel.js'
+import { draw, faceDownPlan, moveToSquare, moveToZoneWithoutTriggers, putInZone } from './duel.js'
 import {
   alsoTreatedAs,
   attributeAdding,
@@ -220,7 +220,7 @@ describe('作成された継続効果と、カードの移動', () => {
 
   // 同 第12章 3-1: テキストが指定する期間継続する。
   it('作ったカードが場を離れても、続く', () => {
-    const moved = moveToZone(made(), 'A', '捨札')
+    const moved = moveToZoneWithoutTriggers(made(), 'A', '捨札')
 
     expect(moved.createdContinuousEffects).toHaveLength(1)
     expect(bpOn(moved, 'B')).toBe(4000)
@@ -234,13 +234,13 @@ describe('作成された継続効果と、カードの移動', () => {
   })
 
   it('対象がスクエアから捨札に置かれると、取り除かれる', () => {
-    expect(moveToZone(made(), 'B', '捨札').createdContinuousEffects).toEqual([])
+    expect(moveToZoneWithoutTriggers(made(), 'B', '捨札').createdContinuousEffects).toEqual([])
   })
 
   // 総合ルール 第2部 第21章 1-4。ゾーンを移ったカードは新しいカードとして扱われるので、手札に
   // 戻して同じターンに出し直したユニットは、効果を受けていないカードとして出る。
   it('対象が手札へ戻り、出し直されても、効果は付き直さない', () => {
-    const returned = moveToZone(made(), 'B', '手札')
+    const returned = moveToZoneWithoutTriggers(made(), 'B', '手札')
     const replayed = moveToSquare(returned, 'B', middle, { controller: '先攻', orientation: 'リリース' })
 
     expect(replayed.createdContinuousEffects).toEqual([])
@@ -262,7 +262,7 @@ describe('作成された継続効果と、カードの移動', () => {
   })
 
   it('対象ではないカードが動いても、取り除かれない', () => {
-    expect(moveToZone(made(), 'A', '手札').createdContinuousEffects).toHaveLength(1)
+    expect(moveToZoneWithoutTriggers(made(), 'A', '手札').createdContinuousEffects).toHaveLength(1)
   })
 
   // 総合ルール 第2部 第21章 1-4。スクエアを通らないゾーン移動でも、新しいカードとして扱う。
@@ -311,7 +311,7 @@ describe('作成された継続効果と、カードの移動', () => {
     })
 
     it('山札の 1 番上に別のカードを置いてプランが裏返る時も、取り除かれる', () => {
-      const returned = moveToZone(putInZone(planned(), '先攻', '手札', [unit('戻すカード')]), '戻すカード', '山札')
+      const returned = moveToZoneWithoutTriggers(putInZone(planned(), '先攻', '手札', [unit('戻すカード')]), '戻すカード', '山札')
 
       expect(cardsIn(returned, '先攻', 'プランゾーン')).toEqual([])
       expect(returned.createdContinuousEffects.map((each) => each.target)).toEqual(['次'])
@@ -331,7 +331,7 @@ describe('作成された継続効果と、カードの移動', () => {
   it('対象が別の効果の対象でもあれば、動いた対象あての分だけが取り除かれる', () => {
     const both = resolved(made(), boostAlly(500), 'A')
 
-    const moved = moveToZone(both, 'B', '捨札')
+    const moved = moveToZoneWithoutTriggers(both, 'B', '捨札')
 
     expect(moved.createdContinuousEffects.map((each) => each.target)).toEqual(['A'])
   })
@@ -505,8 +505,8 @@ describe('ＳＰを変える作成された継続効果', () => {
     const moved = moveToSquare(made, '味方', right, { controller: '先攻', orientation: 'リリース' })
 
     expect(spOn(moved, '味方')).toBe(1500)
-    expect(moveToZone(made, '味方', '捨札').createdContinuousEffects).toEqual([])
-    const replayed = moveToSquare(moveToZone(made, '味方', '手札'), '味方', middle, {
+    expect(moveToZoneWithoutTriggers(made, '味方', '捨札').createdContinuousEffects).toEqual([])
+    const replayed = moveToSquare(moveToZoneWithoutTriggers(made, '味方', '手札'), '味方', middle, {
       controller: '先攻',
       orientation: 'リリース',
     })
@@ -774,7 +774,7 @@ describe('能力を与える作成された継続効果', () => {
     })
 
     it('捨札に置かれると、取り除かれる', () => {
-      expect(moveToZone(made(), 'プラン', '捨札').createdContinuousEffects).toEqual([])
+      expect(moveToZoneWithoutTriggers(made(), 'プラン', '捨札').createdContinuousEffects).toEqual([])
     })
 
     it('スクエアのユニットがスクエアからスクエアへ移っても、続く', () => {

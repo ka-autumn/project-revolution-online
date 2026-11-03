@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 // 山札を組み立てるためだけに `putInZone` を使う。engine の中からゾーンを差し替える
 // ための関数であり、公開する API ではないので `index.js` からは取らない。カードを動かす
-// `moveToZone` と `moveToSquare` も同じく engine の内部にある。
-import { moveToSquare, moveToZone, putInZone } from './duel.js'
+// `moveToZoneWithoutTriggers` と `moveToSquare` も同じく engine の内部にある。
+import { moveToSquare, moveToZoneWithoutTriggers, putInZone } from './duel.js'
 import {
   BATTLE_SPACE,
   PLAYER_ZONES,
@@ -168,7 +168,7 @@ describe('作成された誘発型能力の消滅', () => {
   }
 
   it('対象がスクエアから捨札に置かれると消滅する', () => {
-    const moved = moveToZone(onSquareWithCreated(), '対象', '捨札')
+    const moved = moveToZoneWithoutTriggers(onSquareWithCreated(), '対象', '捨札')
 
     expect(moved.createdAbilities).toEqual([])
   })
@@ -197,7 +197,7 @@ describe('作成された誘発型能力の消滅', () => {
     const other = instantiate({ id: 'よそのカード', card: testUnit, owner: '先攻' })
     const state = putOnSquare(onSquareWithCreated(), anotherSquare, other)
 
-    const moved = moveToZone(state, 'よそのカード', '捨札')
+    const moved = moveToZoneWithoutTriggers(state, 'よそのカード', '捨札')
 
     expect(moved.createdAbilities).toHaveLength(1)
   })
@@ -218,7 +218,7 @@ describe('中央エリアを指定してプレイされたユニットの記憶'
   }
 
   it('スクエアからゾーンへ動くと忘れる', () => {
-    expect(moveToZone(playedIntoCenter(), '中央のユニット', '手札').playedIntoCenter).toEqual([])
+    expect(moveToZoneWithoutTriggers(playedIntoCenter(), '中央のユニット', '手札').playedIntoCenter).toEqual([])
   })
 
   it('スクエアからスクエアへ動いても覚えている', () => {
@@ -234,6 +234,6 @@ describe('中央エリアを指定してプレイされたユニットの記憶'
     const other = instantiate({ id: 'よそのカード', card: testUnit, owner: '先攻' })
     const state = putOnSquare(playedIntoCenter(), anotherSquare, other)
 
-    expect(moveToZone(state, 'よそのカード', '捨札').playedIntoCenter).toEqual(['中央のユニット'])
+    expect(moveToZoneWithoutTriggers(state, 'よそのカード', '捨札').playedIntoCenter).toEqual(['中央のユニット'])
   })
 })

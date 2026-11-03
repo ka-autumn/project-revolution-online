@@ -1,7 +1,8 @@
 import { phaseBeginning } from './ability.js'
-import type { TriggerEvent, TriggerOccasion, TriggeredAbility } from './ability.js'
+import type { OwnDiscardCondition, OwnDiscardOccasion, TriggerCondition, TriggerEvent, TriggerOccasion, TriggeredAbility } from './ability.js'
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
+import type { Card } from './card.js'
 import { continuousData } from './continuous.js'
 import { findInZone, locateOnSquares } from './duel.js'
 import type {
@@ -15,6 +16,7 @@ import type {
 } from './duel.js'
 import type { CardInDiscardPile, UnitOnSquare } from './effect.js'
 import { PLAYERS } from './player.js'
+import type { Player } from './player.js'
 import type { Turn } from './turn.js'
 import { duelView } from './view.js'
 
@@ -180,8 +182,21 @@ function triggers(
     if (occasion === undefined) {
       throw new Error('きっかけを持たない誘発イベントに絞り込みが付いている')
     }
-    if (!ability.when(occasion, self.controller, self)) return false
+    if (!(ability.when as TriggerCondition)(occasion, self.controller, self)) return false
   }
+  return requirementHolds(state, ability, self.controller, self)
+}
+
+/**
+ * 誘発条件（`TriggeredAbility.condition`）を、能力を探している盤面で満たすか。持たない能力は
+ * 常に満たす。`self` は、スクエアにいるユニットが持つ能力ならそのユニット。
+ */
+function requirementHolds(
+  state: DuelState,
+  ability: TriggeredAbility,
+  controller: Player,
+  self: UnitOnSquare | undefined,
+): boolean {
   if (ability.condition === undefined) return true
 
   // 誘発する時の条件は、能力を探しているこの盤面で確かめる。誘発してから解決するまでに
@@ -189,12 +204,44 @@ function triggers(
   // ので、見せたカードは覚えない。ここで読んだカードが、効果の対象に取れるようになる
   // ことは無い。
   const duel = duelView(() => state, {
-    controller: self.controller,
+    controller,
     self: () => self,
     show: () => {},
     data: continuousData,
   })
   return ability.condition(duel)
+}
+
+/** そのカードが「このカードが捨札に置かれた時」の能力を持つか。持たないカードは、きっかけを作成せずに済ませる。 */
+export function hasOwnDiscardAbility(card: Card): boolean {
+  return card.abilities.some((ability) => ability.kind === '誘発型能力' && ability.event === 'このカードが捨札に置かれた時')
+}
+
+/**
+ * 捨札に置かれるそのカード自身が持つ、「このカードが捨札に置かれた時」の能力（ADR-0059）。
+ *
+ * スクエアにいるユニットからではなく、置かれるカード自身の能力から探す。どのゾーンにある
+ * カードでも探す。盤面は、そのカードを動かす前のものを渡す（総合ルール 第4部 第7章 10）。
+ *
+ * 能力の支配者は、きっかけが持つ置かれる直前の支配者である。誘発した能力は、置かれたカードを
+ * 持つ（`TriggeredInstance.placed`）。スクエアにいたなら位置も保持する。
+ */
+export function triggeredByOwnDiscard(
+  state: DuelState,
+  instance: CardInstance,
+  occasion: OwnDiscardOccasion,
+): readonly TriggeredInstance[] {
+  const placed: CardInDiscardPile = { id: instance.id, zone: '捨札', card: instance.card }
+  const self: UnitOnSquare | undefined = occasion.from === 'スクエア' ? occasion : undefined
+
+  return instance.card.abilities.flatMap((ability) =>
+    ability.kind === '誘発型能力' &&
+    ability.event === 'このカードが捨札に置かれた時' &&
+    (ability.when === undefined || (ability.when as OwnDiscardCondition)(occasion, occasion.controller)) &&
+    requirementHolds(state, ability, occasion.controller, self)
+      ? [{ ability, source: instance.id, controller: occasion.controller, ...(self === undefined ? {} : { self }), placed }]
+      : [],
+  )
 }
 
 /**

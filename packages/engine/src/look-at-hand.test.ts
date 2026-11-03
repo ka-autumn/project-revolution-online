@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 // 次の 3 つは、engine の内側の部品を直接使うための import で、公開する API ではない（`index.ts` から
-// 出していない）。`moveToZone`・`putInZone` はゾーンと盤面を組み立てるためだけに、`describeAllShown`・
+// 出していない）。`moveToZoneWithoutTriggers`・`putInZone` はゾーンと盤面を組み立てるためだけに、`describeAllShown`・
 // `CONFIRMATION` は、見せる一覧と候補の組み立てだけを確かめるために使う（`protocol.test.ts` と同じ）。
-import { moveToZone, putInZone } from './duel.js'
+import { moveToZoneWithoutTriggers, putInZone } from './duel.js'
 import { describeAllShown } from './protocol.js'
 import { CONFIRMATION } from './resolve.js'
 import {
@@ -333,7 +333,7 @@ describe('相手の手札の中身が漏れない', () => {
   // いまの向きを載せると、見たカードが裏向きのゾーンへ移った後に、向きの変わり方で結びつけられる。
   it('見たカードが向きを変えて裏向きのゾーンへ移っても、名前の写しと盤面の札は結びつかない', () => {
     const state = finished()
-    const moved = moveToZone(state, '相手手札A', 'トラップゾーン', 'フリーズ')
+    const moved = moveToZoneWithoutTriggers(state, '相手手札A', 'トラップゾーン', 'フリーズ')
 
     const before = perspectiveOf(state, '先攻').namedInLog
     const board = perspectiveOf(moved, '先攻')

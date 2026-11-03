@@ -1,12 +1,13 @@
 import { hopeOf } from './card.js'
 import { satisfiesLevel } from './cost.js'
-import { cardsIn, moveToZone, recoverDamage, topOfLibrary } from './duel.js'
+import { cardsIn, recoverDamage, topOfLibrary } from './duel.js'
 import type { BankedAbility, CardId, CardInstance, DuelState } from './duel.js'
 import { record } from './log.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
+import { moveToZone } from './zone-move.js'
 
 /**
  * スマッシュ判定を構成するステップ（総合ルール 第3部 第17章 3）。
@@ -289,7 +290,7 @@ function beginHopeStep(state: DuelState, judgment: SmashJudgment, chooser: Choos
   const top = topOfLibrary(state, judgment.player)
   if (top === undefined) return withJudgment(state, { ...judgment, faceUp: undefined })
 
-  const moved = withJudgment(moveToZone(state, top.id, 'スマッシュゾーン'), { ...judgment, faceUp: top.id })
+  const moved = withJudgment(moveToZone(state, [top.id], 'スマッシュゾーン'), { ...judgment, faceUp: top.id })
   const placed = record(moved, {
     kind: '希望ステップでめくった',
     player: judgment.player,

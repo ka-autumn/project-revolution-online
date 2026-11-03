@@ -16,7 +16,6 @@ import {
   hasEnded,
   moveToResolveZone,
   moveToSquare,
-  moveToZone,
 } from './duel.js'
 import type { CardId, DuelState, TrapConditionMet } from './duel.js'
 import type { TrapOccasion } from './ability.js'
@@ -29,6 +28,7 @@ import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
 import { checkIntrusion, trapRightsOf, unitsOfOccasion } from './trap.js'
 import type { PlayerZone } from './zone.js'
+import { moveToZone } from './zone-move.js'
 
 /**
  * プレイするカードの宣言（総合ルール 第4部 第6章 1-1）。
@@ -130,7 +130,7 @@ export function playAsTrap(state: DuelState, card: CardId): ActionOutcome {
   // 自分のトラップゾーンにカードがなければプレイできる（総合ルール 第2部 第20章 3-1）。
   if (cardsIn(state, player, 'トラップゾーン').length > 0) return cannot('トラップゾーンが空ではない')
 
-  return done(grantPriorityToInactive(recordAction(moveToZone(state, card, 'トラップゾーン'), state, 'トラップとしてプレイする', card)))
+  return done(grantPriorityToInactive(recordAction(moveToZone(state, [card], 'トラップゾーン'), state, 'トラップとしてプレイする', card)))
 }
 
 /**
@@ -305,5 +305,5 @@ function resolveInResolveZone(
   const resolved = resolveEffect(placed, effect, { controller, via, source: id, chooser, handed })
 
   const stillResolving = cardsInResolveZone(resolved).some((each) => each.id === id)
-  return stillResolving ? moveToZone(resolved, id, '捨札') : resolved
+  return stillResolving ? moveToZone(resolved, [id], '捨札') : resolved
 }

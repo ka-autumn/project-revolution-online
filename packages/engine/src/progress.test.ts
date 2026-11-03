@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 // ダメージを与えるためだけに `dealDamage` と `damagePlayer` を使う。engine の中から盤面を
 // 組み替えるための関数であり、公開する API ではない。
-import { damagePlayer, dealDamage, moveToSquare, moveToZone, putInZone } from './duel.js'
+import { damagePlayer, dealDamage, moveToSquare, moveToZoneWithoutTriggers, putInZone } from './duel.js'
 import {
   appliedCard,
   bpModification,
@@ -685,7 +685,7 @@ describe('リカバリーフェイズと作成された継続効果', () => {
     it('そのターンに誘発済みの能力を持つカードが場を離れて戻れば、新しいカードとして誘発し直す', () => {
       const repeated = pass(pass(afterEndOfTurnResolved()))
       const returned = moveToSquare(
-        moveToZone(repeated, '強化するユニット', '手札'),
+        moveToZoneWithoutTriggers(repeated, '強化するユニット', '手札'),
         '強化するユニット',
         someSquare,
         { controller: '先攻', orientation: 'リリース' },
@@ -1008,8 +1008,8 @@ describe('作成された誘発型能力', () => {
     // 総合ルール 第4部 第3章 4-1
     it('対象が捨札を離れると、能力は消滅し、捨札へ戻ってきても働かない', () => {
       const state = withCreatedInFirstTurn()
-      const inHand = moveToZone(state, '捨札の対象', '手札')
-      const backAgain = moveToZone(inHand, '捨札の対象', '捨札')
+      const inHand = moveToZoneWithoutTriggers(state, '捨札の対象', '手札')
+      const backAgain = moveToZoneWithoutTriggers(inHand, '捨札の対象', '捨札')
 
       expect(inHand.createdAbilities).toEqual([])
       expect(backAgain.createdAbilities).toEqual([])

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-// スクエアから捨札へのゾーン移動を 1 つにまとめる関数であり、公開する API ではない。
-// 誘発が移動前の盤面から起こることを直接確かめるために、ここでだけ使う。
-import { discardFromSquares } from './discard.js'
+// カードのゾーン移動を 1 つにまとめる関数であり、公開する API ではない。誘発が移動前の盤面から
+// 起こることを直接確認するために、ここでだけ使う。
+import { moveToZone } from './zone-move.js'
 import { defineStrategy, defineUnit, emptyDuelState, instantiate, putOnSquare, triggeredAbility } from './index.js'
 import type { CardInstance, DuelState, Square } from './index.js'
 
@@ -34,7 +34,7 @@ describe('スクエアから捨札への移動による誘発', () => {
       [secondSquare, instantiate({ id: '別のユニット', card: vanilla, owner: '先攻' })],
     )
 
-    const discarded = discardFromSquares(state, ['能力持ち', '別のユニット'])
+    const discarded = moveToZone(state, ['能力持ち', '別のユニット'], '捨札')
 
     expect(discarded.triggered.map((each) => each.source)).toEqual(['能力持ち', '能力持ち'])
   })
@@ -50,7 +50,7 @@ describe('スクエアから捨札への移動による誘発', () => {
     const controlledUnit = instantiate({ id: '先攻のユニット', card: vanilla, owner: '先攻' })
     const state = boardOf([firstSquare, stolenWatcher], [secondSquare, controlledUnit])
 
-    const discarded = discardFromSquares(state, ['先攻のユニット'])
+    const discarded = moveToZone(state, ['先攻のユニット'], '捨札')
 
     expect(discarded.triggered.map((each) => each.source)).toEqual(['奪われた能力持ち'])
   })
@@ -62,7 +62,7 @@ describe('スクエアから捨札への移動による誘発', () => {
       [secondSquare, instantiate({ id: 'ストラテジー', card: strategy, owner: '先攻' })],
     )
 
-    const discarded = discardFromSquares(state, ['ストラテジー'])
+    const discarded = moveToZone(state, ['ストラテジー'], '捨札')
 
     expect(discarded.triggered).toEqual([])
   })
