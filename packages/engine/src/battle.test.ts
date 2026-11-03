@@ -52,6 +52,16 @@ const pepWeak = defineUnit({
   abilities: [pep],
 })
 
+/** 「このカードが捨札に置かれた時」に誘発する能力を持つユニット。 */
+const ownDiscardAttacker = defineUnit({
+  name: 'テスト・自分が捨札に置かれた時',
+  level: 1,
+  colors: ['赤'],
+  bp: 3000,
+  sp: 1000,
+  abilities: [triggeredAbility('このカードが捨札に置かれた時', function* () {})],
+})
+
 /** ＢＰが 0 のユニット。置かれた時点でルールエフェクトによって捨札に置かれる。 */
 const zeroBp = defineUnit({ name: 'テスト・ＢＰ0', level: 1, colors: ['赤'], bp: 0, sp: 1000 })
 
@@ -571,6 +581,14 @@ describe('バトル終了ステップの終わり', () => {
 
     expect(idsOf(cardsOn(resolved, homeSquare))).toEqual(['攻撃された'])
     expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['攻撃した'])
+  })
+
+  // 総合ルール 第3部 第16章 2-1、第4部 第7章 6（ADR-0059）
+  it('攻撃側のユニット自身の「このカードが捨札に置かれた時」の能力が誘発する', () => {
+    const resolved = endStep(atEndStepDirectly(battling(vanilla, ownDiscardAttacker)))
+
+    const sources = [...resolved.triggered, ...resolved.bank].flatMap((each) => (each.source === undefined ? [] : [each.source]))
+    expect(sources).toEqual(['攻撃した'])
   })
 
   // 総合ルール 第3部 第16章 2-3

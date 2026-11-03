@@ -2,7 +2,7 @@ import type { AllyAppearanceOccasion, AppearanceOccasion, TriggerEvent, TriggerO
 import { continuousData } from './continuous.js'
 import { isInDiscardPile, locateOnSquares } from './duel.js'
 import type { BankedAbility, CardId, CreatedAbilityInstance, DuelState } from './duel.js'
-import type { Effect } from './effect.js'
+import type { Effect, OwnDiscardEffect } from './effect.js'
 import { record } from './log.js'
 import { conditionHolds, resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
@@ -168,12 +168,29 @@ function resolveBanked(state: DuelState, banked: BankedAbility, chooser: Chooser
     return record(state, { kind: '能力が無効化された', controller: banked.controller, source: banked.source })
   }
 
-  return resolveEffect(state, banked.ability.effect, {
+  const { placed } = banked
+  if (placed === undefined) {
+    return resolveEffect(state, banked.ability.effect, {
+      controller: banked.controller,
+      via: '誘発',
+      source: banked.source,
+      chooser,
+      self: banked.self,
+    })
+  }
+
+  // 「このカードが捨札に置かれた時」の能力。置かれたカードは効果へ手渡し、命令の対象にできる
+  // ようにする（`resolve.ts` の `EffectContext.handed`）。解決する時までに捨札を離れていても
+  // 効果は実行する。そのカードを対象にする命令が、実行されないだけである（総合ルール 第1部
+  // 第1章 3）。ほかのことをする効果まで止めてしまわないためである。
+  const effect = banked.ability.effect as unknown as OwnDiscardEffect
+  return resolveEffect(state, (duel) => effect(duel, placed), {
     controller: banked.controller,
     via: '誘発',
     source: banked.source,
     chooser,
     self: banked.self,
+    handed: [placed],
   })
 }
 

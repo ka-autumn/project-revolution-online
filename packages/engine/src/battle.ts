@@ -4,12 +4,12 @@ import type { Square } from './board.js'
 import { bpOf, hasPep } from './card.js'
 import { bpModification } from './continuous.js'
 import type { UnitCard } from './card.js'
-import { discardFromSquares, discardedFromSquares } from './discard.js'
 import { cardsOn, dealDamage } from './duel.js'
 import type { BankedAbility, CardId, CardInstance, DuelState } from './duel.js'
 import { record } from './log.js'
 import { checkAttack } from './trap.js'
 import { trigger } from './trigger.js'
+import { discardedFromSquares, moveToZone } from './zone-move.js'
 
 /**
  * バトルを構成する 5 つの連続するステップ（総合ルール 第3部 第11章 3）。
@@ -352,7 +352,7 @@ function resolveEndOfBattle(state: DuelState, battle: Battle): DuelState {
     ...(bothRemain ? [battle.attacker] : []),
     ...state.playedIntoCenter,
   ])
-  const moved = discardFromSquares(state, discarded)
+  const moved = moveToZone(state, discarded, '捨札')
   const resolved =
     discarded.length === 0 ? moved : record(moved, { kind: 'ルールで捨札に置かれた', cards: discarded })
 

@@ -1,7 +1,6 @@
 import type { Card, UnitCard } from './card.js'
 import { continuousData } from './continuous.js'
 import { checkCourageCondition } from './courage.js'
-import { discardFromSquares } from './discard.js'
 import {
   cardsIn,
   damagePlayer,
@@ -12,7 +11,6 @@ import {
   findInZone,
   locateOnSquares,
   moveToSquare,
-  moveToZone,
   putInZone,
   setOrientationInEnergyZone,
   setOrientationOnSquare,
@@ -37,6 +35,7 @@ import { shuffle } from './random.js'
 import { checkIntrusion } from './trap.js'
 import { duelView } from './view.js'
 import type { PlayerZone } from './zone.js'
+import { discardedFromSquares, moveToZone } from './zone-move.js'
 
 /**
  * 候補の中から 1 つ選ぶ役。
@@ -273,7 +272,7 @@ interface Outcome {
  *
  * **盤面が変わらなかった命令は残さない。** 実行できない行動は実行されない（総合ルール
  * 第1部 第1章 3）ので、対象がすでにその場を離れていれば何も起きていない。engine の中の
- * 手続きは、何も起こらない時に渡された盤面をそのまま返す（`duel.ts` の `moveToZone`・
+ * 手続きは、何も起こらない時に渡された盤面をそのまま返す（`duel.ts` の `moveToZoneWithoutTriggers`・
  * `dealDamage` ほか）ので、入れ替わったかどうかで見分けられる。
  *
  * 選ぶことだけは盤面を変えないので、選ばれたものがあったかどうかで見る。
@@ -437,7 +436,7 @@ function apply(
         }
       }
       // 選び終えてから、まとめて捨札に置く。
-      const next = discarded.reduce((current, one) => moveToZone(current, one.id, '捨札'), state)
+      const next = moveToZone(state, discarded.map((one) => one.id), '捨札')
       return { state: next, value: undefined, subject: discarded }
     }
     case '相手の手札を見る': {
@@ -493,7 +492,10 @@ function apply(
       }
       // 破壊されたユニットは持ち主の捨札の一番上に置かれる（総合ルール 第2部 第21章 5-1）。
       // すでにスクエアを離れていればこの行動は実行されない。
-      return { state: discardFromSquares(state, [instruction.target.id]), value: undefined }
+      return {
+        state: moveToZone(state, discardedFromSquares(state, [instruction.target.id]), '捨札'),
+        value: undefined,
+      }
     }
     case 'プレイヤーにダメージを与える': {
       // スマッシュ判定はここでは始めない。効果の解決中はルールエフェクトがチェックされない
@@ -540,22 +542,13 @@ function apply(
 
       const owner = findAnywhere(state, instruction.card.id)?.owner
       // スクエアから捨札へ置くことは「破壊する」にあたり（総合ルール 第2部 第21章 1-5）、
-      // それを見て誘発する能力がある（同 第4部 第7章 6）。`moveToZone` はその誘発を
-      // 起こさないので、この場合だけ `destroy` と同じ経路を通す。向きの指定は使わない。
-      // 捨札のカードは常にリリース状態で置かれる（同 第2部 第21章 5-3）ためである。
-      if (instruction.to === '捨札' && locateOnSquares(state, instruction.card.id) !== undefined) {
-        return { state: discardFromSquares(state, [instruction.card.id]), value: undefined, owner }
-      }
-
+      // それを見て誘発する能力がある（同 第4部 第7章 6）。誘発は `moveToZone` が探す。
       return {
         owner,
-        state: moveToZone(
-          state,
-          instruction.card.id,
-          instruction.to,
-          instruction.orientation,
-          instruction.position,
-        ),
+        state: moveToZone(state, [instruction.card.id], instruction.to, {
+          orientation: instruction.orientation,
+          position: instruction.position,
+        }),
         value: undefined,
       }
     }
@@ -567,7 +560,7 @@ function apply(
       if (top === undefined) return { state, value: undefined }
 
       return {
-        state: moveToZone(state, top.id, instruction.to, instruction.orientation),
+        state: moveToZone(state, [top.id], instruction.to, { orientation: instruction.orientation }),
         value: undefined,
         subject: top,
       }

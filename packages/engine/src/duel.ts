@@ -146,7 +146,7 @@ export interface DuelState {
    * 残すものは、作ったカードがすぐ捨札へ行くので集め直す元が無い。盤面が値として持つ。
    * 発生した順を保つ（同 第12章 5-4 の順序を扱う時に要る）。取り除くのは、期限が来た時
    * （リカバリーフェイズの始めの処理、`progress.ts`）と、対象が「スクエアからスクエア」以外の
-   * ゾーン移動をした時（`moveToZone` ほか）である。
+   * ゾーン移動をした時（`moveToZoneWithoutTriggers` ほか）である。
    */
   readonly createdContinuousEffects: readonly CreatedContinuousEffect[]
   /**
@@ -167,7 +167,7 @@ export interface DuelState {
    *
    * **ここにあるのは、いずれかのスクエアにあるユニットだけである。** 対象になるのは
    * 「いずれかのスクエアに置かれていれば」（同 第3部 第16章 2-2）なので、スクエアを
-   * 離れてゾーンへ動いた時点でここから落ちる（`moveToZone`）。スクエアからスクエアへ
+   * 離れてゾーンへ動いた時点でここから落ちる（`moveToZoneWithoutTriggers`）。スクエアからスクエアへ
    * 動いただけなら残る。読む側は、まだスクエアにあるかどうかを確かめ直さなくてよい。
    */
   readonly playedIntoCenter: readonly CardId[]
@@ -319,7 +319,7 @@ export interface CreatedAbility {
    *
    * 作られた後、誘発イベントが満たされる前に、このカードが「スクエアからスクエア」以外の
    * ゾーン移動をした場合、この能力は消滅する（同 4-1）。取り除くのは `duel.ts` の
-   * `moveToZone` と `moveToSquare` である。
+   * `moveToZoneWithoutTriggers` と `moveToSquare` である。
    */
   readonly affecting: CardId
   /**
@@ -464,8 +464,18 @@ export interface TriggeredInstance {
    *
    * `source` と `controller` を別に持っているのは、バンクからどれを解決するかを選ぶ側
    * （`bank.ts`）が位置を必要としないためである。
+   *
+   * 「このカードが捨札に置かれた時」の能力では持たない。置かれるカードはスクエアの外から
+   * 置かれることがあり、その場合は位置が無い。かわりに `placed` を持つ。
    */
-  readonly self: UnitOnSquare
+  readonly self?: UnitOnSquare
+  /**
+   * 「このカードが捨札に置かれた時」の能力で、捨札に置かれたそのカード（ADR-0059）。
+   *
+   * 効果へ第 2 引数として手渡される（`effect.ts` の `OwnDiscardEffect`）。誘発した時点で
+   * 置かれていたものを保持する。ほかの誘発イベントの能力は持たない。
+   */
+  readonly placed?: CardInDiscardPile
 }
 
 /**
@@ -681,18 +691,6 @@ export function findAnywhere(state: DuelState, id: CardId): CardInstance | undef
 }
 
 /**
- * スクエアにあるカードを、そのカードの持ち主のゾーンの一番上に移す。スクエアになければ
- * 盤面はそのまま。
- *
- * スクエアを離れたカードだけを動かす。破壊やルールエフェクトの対象がすでにスクエアを
- * 離れていた場合に、手札や捨札にあるそのカードまで動かしてしまわないためである。
- */
-export function moveFromSquareTo(state: DuelState, id: CardId, zone: PlayerZone): DuelState {
-  if (findOnSquares(state, id) === undefined) return state
-  return moveToZone(state, id, zone)
-}
-
-/**
  * カードをいまある場所から取り除いて、持ち主のゾーンの 1 番上に置く。どこにもなければ
  * 盤面はそのまま。
  *
@@ -718,7 +716,7 @@ export function moveFromSquareTo(state: DuelState, id: CardId, zone: PlayerZone)
  * プランゾーンにあるカードは同時に山札の 1 番上のカードでもある（同 3-1）ため、裏向きに
  * しないまま上に別のカードを置くと、山札の 1 番上が 2 枚あることになってしまう。
  */
-export function moveToZone(
+export function moveToZoneWithoutTriggers(
   state: DuelState,
   id: CardId,
   zone: PlayerZone,
@@ -752,10 +750,10 @@ export function faceDownPlan(state: DuelState, player: Player): DuelState {
   const [plan] = cardsIn(state, player, 'プランゾーン')
   if (plan === undefined) return state
 
-  // 山札へ移すので、ほかのゾーン移動と同じく `moveToZone` を通す（そのカードあての作成された
-  // 継続効果を取り除くため）。`moveToZone` は山札の 1 番上に置く時にもう一度これを呼ぶが、
+  // 山札へ移すので、ほかのゾーン移動と同じく `moveToZoneWithoutTriggers` を通す（そのカードあての作成された
+  // 継続効果を取り除くため）。`moveToZoneWithoutTriggers` は山札の 1 番上に置く時にもう一度これを呼ぶが、
   // その時にはプランがもう無いので、そこで終わる。
-  return moveToZone(state, plan.id, '山札', plan.orientation)
+  return moveToZoneWithoutTriggers(state, plan.id, '山札', plan.orientation)
 }
 
 /**
@@ -950,9 +948,9 @@ export function draw(state: DuelState, player: Player): DuelState {
   const top = topOfLibrary(state, player)
   if (top === undefined) return state
 
-  // 手札の末尾に加える。ゾーンを移るので、`moveToZone` を通して、そのカードあての作成された
+  // 手札の末尾に加える。ゾーンを移るので、`moveToZoneWithoutTriggers` を通して、そのカードあての作成された
   // 継続効果も取り除く（総合ルール 第2部 第21章 1-4）。
-  return moveToZone(state, top.id, '手札', top.orientation, '1番下')
+  return moveToZoneWithoutTriggers(state, top.id, '手札', top.orientation, '1番下')
 }
 
 /**
@@ -1076,7 +1074,7 @@ export function setOrientationInEnergyZone(
  * 第24章 1）だからである。
  *
  * トラップゾーン・エネルギーゾーン・スマッシュゾーンはプレイヤーごとに分かれたゾーンで、
- * そこにあるカードは常にそのプレイヤー自身が支配する（`moveToZone` がそこへ動かす時に
+ * そこにあるカードは常にそのプレイヤー自身が支配する（`moveToZoneWithoutTriggers` がそこへ動かす時に
  * 支配者を持ち主へ戻すため）。スクエアは両者のカードが混在するので、支配者で選ぶ。
  */
 export function releaseAll(state: DuelState, player: Player): DuelState {

@@ -2,13 +2,13 @@ import { pendingBattle } from './battle.js'
 import { bpOf } from './card.js'
 import { bpModification } from './continuous.js'
 import type { BpModification } from './continuous.js'
-import { discardFromSquares, discardedFromSquares } from './discard.js'
 import { hasEnded, librarySize } from './duel.js'
 import type { CardId, CardInstance, DuelResult, DuelState } from './duel.js'
 import { record } from './log.js'
 import { PLAYERS, opponentOf } from './player.js'
 import type { Player } from './player.js'
 import { smashesOf } from './smash.js'
+import { discardedFromSquares, moveToZone } from './zone-move.js'
 
 /**
  * 発生しているルールエフェクトをすべて解決する。何も発生していなければ、渡された盤面を
@@ -18,7 +18,7 @@ import { smashesOf } from './smash.js'
  * ルールエフェクトは、カードの能力ではなくルールによって発生する効果であり、どちらの
  * プレイヤーにも支配されない（総合ルール 第4部 第14章 1）。そのため誰の選択も要らず、
  * 発生しているものは同時に解決される（同 2）。
- * スクエアから捨札への移動は `discardFromSquares` を通し、そこで誘発型能力も誘発させる。
+ * スクエアから捨札への移動は `moveToZone` を通し、そこで誘発型能力も誘発させる。
  *
  * 呼ぶのはプレイヤーが優先権を獲得する時だけである（同 2）。カードや能力の解決中には
  * チェックしない（同 3）。
@@ -64,7 +64,7 @@ export function checkRuleEffects(state: DuelState): DuelState {
 
   // すべてのルールエフェクトが同時に発生する（総合ルール 第4部 第14章 2）ので、
   // 1 枚ずつ捨札に置いていっても、途中の盤面でどれを捨札に置くかを決め直さない。
-  return record(discardFromSquares(state, discarded), {
+  return record(moveToZone(state, discarded, '捨札'), {
     kind: 'ルールで捨札に置かれた',
     cards: discarded,
   })

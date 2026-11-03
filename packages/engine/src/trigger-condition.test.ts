@@ -11,7 +11,7 @@ import {
 } from './bank.js'
 // スクエアから捨札への移動と、誘発イベントを満たすこと。誘発が移動前の盤面から起こる
 // ことを直接確かめるために、ここでだけ使う。公開する API ではない。
-import { discardFromSquares } from './discard.js'
+import { moveToZone } from './zone-move.js'
 // 盤面の組み替え（別のスクエアへ動かす、ゾーンの中身を差し替える）。公開する API ではない。
 import { moveToSquare, putInZone } from './duel.js'
 import { trigger } from './trigger.js'
@@ -308,7 +308,7 @@ describe('「自分自身が捨札に置かれた時」だけ誘発する能力'
   it('自分自身が置かれれば誘発する', () => {
     const state = boardOf([a, instantiate({ id: '自分', card: selfDiscardWatcher, owner: '先攻' })])
 
-    const discarded = discardFromSquares(state, ['自分'])
+    const discarded = moveToZone(state, ['自分'], '捨札')
 
     expect(sourcesOf(discarded)).toEqual(['自分'])
   })
@@ -320,7 +320,7 @@ describe('「自分自身が捨札に置かれた時」だけ誘発する能力'
       [b, instantiate({ id: '別のユニット', card: vanilla, owner: '先攻' })],
     )
 
-    const discarded = discardFromSquares(state, ['別のユニット'])
+    const discarded = moveToZone(state, ['別のユニット'], '捨札')
 
     expect(discarded.triggered).toEqual([])
   })
@@ -332,7 +332,7 @@ describe('「自分自身が捨札に置かれた時」だけ誘発する能力'
       [b, instantiate({ id: '二体目', card: selfDiscardWatcher, owner: '先攻' })],
     )
 
-    const discarded = discardFromSquares(state, ['一体目', '二体目'])
+    const discarded = moveToZone(state, ['一体目', '二体目'], '捨札')
 
     expect(sourcesOf(discarded)).toEqual(['一体目', '二体目'])
   })
@@ -344,7 +344,7 @@ describe('「自分自身が捨札に置かれた時」だけ誘発する能力'
       [b, instantiate({ id: '別のユニット', card: vanilla, owner: '先攻' })],
     )
 
-    const discarded = discardFromSquares(state, ['別のユニット'])
+    const discarded = moveToZone(state, ['別のユニット'], '捨札')
 
     expect(sourcesOf(discarded)).toEqual(['能力持ち'])
   })
@@ -363,7 +363,7 @@ describe('捨札に置かれた時のきっかけ', () => {
       [c, instantiate({ id: '別のユニット', card: vanilla, owner: '先攻' })],
     )
 
-    discardFromSquares(state, ['別のユニット'])
+    moveToZone(state, ['別のユニット'], '捨札')
 
     expect(seen).toEqual([{ square: c, controller: '先攻' }])
   })
@@ -377,8 +377,8 @@ describe('捨札に置かれた時のきっかけ', () => {
       [c, instantiate({ id: '右のユニット', card: vanilla, owner: '先攻' })],
     )
 
-    expect(discardFromSquares(state, ['中央のユニット']).triggered).toEqual([])
-    expect(sourcesOf(discardFromSquares(state, ['右のユニット']))).toEqual(['能力持ち'])
+    expect(moveToZone(state, ['中央のユニット'], '捨札').triggered).toEqual([])
+    expect(sourcesOf(moveToZone(state, ['右のユニット'], '捨札'))).toEqual(['能力持ち'])
   })
 
   // 総合ルール 第4部 第7章 6（ADR-0006）
@@ -390,7 +390,7 @@ describe('捨札に置かれた時のきっかけ', () => {
       [enemySquare, instantiate({ id: '相手のユニット', card: vanilla, owner: '後攻' })],
     )
 
-    const discarded = discardFromSquares(state, ['相手のユニット'])
+    const discarded = moveToZone(state, ['相手のユニット'], '捨札')
 
     expect(asked).not.toHaveBeenCalled()
     expect(discarded.triggered).toEqual([])
@@ -416,7 +416,7 @@ describe('捨札に置かれた時のきっかけ', () => {
     })
     const state = boardOf([a, instantiate({ id: '自分', card: watcher, owner: '先攻' })])
 
-    discardFromSquares(state, ['自分'])
+    moveToZone(state, ['自分'], '捨札')
 
     expect(seen).toEqual([{ bp: 1500, attributes: ['テスト属性'] }])
   })
@@ -450,7 +450,7 @@ describe('条件付誘発型能力', () => {
     const triggered = trigger(crowded(), 'エネルギーフェイズの始め')
     expect(triggered.triggered).toHaveLength(1)
 
-    const emptied = discardFromSquares(triggered, ['味方'])
+    const emptied = moveToZone(triggered, ['味方'], '捨札')
     const resolved = resolveAll(emptied)
 
     expect(executedInstructions(resolved)).toBe(0)
@@ -478,7 +478,7 @@ describe('条件付誘発型能力', () => {
       [enemySquare, instantiate({ id: '敵', card: vanilla, owner: '後攻' })],
     )
 
-    const discarded = discardFromSquares(state, ['自分'])
+    const discarded = moveToZone(state, ['自分'], '捨札')
     expect(sourcesOf(discarded)).toEqual(['自分'])
 
     const resolved = resolveAll(discarded)
@@ -490,7 +490,7 @@ describe('条件付誘発型能力', () => {
   it('捨札に置かれた時の誘発条件は、移動前の盤面で確かめる', () => {
     const state = boardOf([c, instantiate({ id: '自分', card: standingWatcher, owner: '先攻' })])
 
-    const discarded = discardFromSquares(state, ['自分'])
+    const discarded = moveToZone(state, ['自分'], '捨札')
 
     expect(sourcesOf(discarded)).toEqual(['自分'])
   })
@@ -503,7 +503,7 @@ describe('条件付誘発型能力', () => {
       [b, instantiate({ id: '別のユニット', card: vanilla, owner: '先攻' })],
     )
 
-    const discarded = discardFromSquares(state, ['別のユニット'])
+    const discarded = moveToZone(state, ['別のユニット'], '捨札')
     expect(sourcesOf(discarded)).toEqual(['能力持ち'])
 
     const resolved = resolveAll(discarded)
@@ -529,7 +529,7 @@ describe('条件付誘発型能力', () => {
         [a, instantiate({ id: '能力持ち', card, owner: '先攻' })],
         [b, instantiate({ id: '別のユニット', card: vanilla, owner: '先攻' })],
       )
-      return { when, condition, discarded: discardFromSquares(state, ['別のユニット']) }
+      return { when, condition, discarded: moveToZone(state, ['別のユニット'], '捨札') }
     }
 
     // 総合ルール 第4部 第7章 8（ADR-0006）
@@ -621,7 +621,7 @@ describe('条件付誘発型能力', () => {
       const state = boardOf([a, instantiate({ id: '能力持ち', card: leftColumnWatcher, owner: '先攻' })])
       const triggered = trigger(state, 'エネルギーフェイズの始め')
 
-      const left = discardFromSquares(triggered, ['能力持ち'])
+      const left = moveToZone(triggered, ['能力持ち'], '捨札')
       const resolved = resolveAll(left)
 
       expect(executedInstructions(resolved)).toBe(1)
@@ -642,7 +642,7 @@ describe('条件付誘発型能力', () => {
       expect(sourcesOf(triggered)).toEqual(['能力持ち'])
 
       // 解決する時: 継続効果の発生源がいなくなって、ＢＰは 1000 に戻っている。
-      const resolved = resolveAll(discardFromSquares(triggered, ['強くする']))
+      const resolved = resolveAll(moveToZone(triggered, ['強くする'], '捨札'))
 
       expect(executedInstructions(resolved)).toBe(0)
       expect(invalidations(resolved)).toBe(1)
@@ -748,7 +748,7 @@ describe('無効化のあとの流れ', () => {
     expect(energyPhase.bank.map((banked) => banked.source)).toEqual(['条件付', '無条件'])
 
     // 能力がバンクに入っている間に、条件を満たさなくなる。
-    const emptied = discardFromSquares(energyPhase, ['味方'])
+    const emptied = moveToZone(energyPhase, ['味方'], '捨札')
     const waiting = pass(emptied)
     expect(waiting.turn.priority).toBe('先攻')
 

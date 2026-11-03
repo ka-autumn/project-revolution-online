@@ -3,7 +3,7 @@ import { cannot, done } from './action.js'
 import type { ActionOutcome } from './action.js'
 import { activatedAbilitiesOf } from './card.js'
 import { payActivationEnergies } from './cost.js'
-import { hasEnded, locateOnSquares, moveToZone } from './duel.js'
+import { hasEnded, locateOnSquares } from './duel.js'
 import type { CardId, CardInstance, DuelState } from './duel.js'
 import type { UnitOnSquare } from './effect.js'
 import { recordAction } from './log.js'
@@ -11,6 +11,7 @@ import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
+import { moveToZone } from './zone-move.js'
 
 /**
  * スクエアにいるユニットが持つ起動型能力を 1 つ起動する（総合ルール 第4部 第2章）。
@@ -116,5 +117,5 @@ export function payActivationCost(
   )
   if (frozen === undefined) return undefined
 
-  return cost.discardsSelf ? moveToZone(frozen, instance.id, '捨札') : frozen
+  return cost.discardsSelf ? moveToZone(frozen, [instance.id], '捨札') : frozen
 }

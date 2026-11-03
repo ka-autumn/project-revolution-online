@@ -403,6 +403,21 @@ export type AttackTrapEffect = (duel: DuelView, occasion: AttackOccasion) => Eff
 export type SmashTrapEffect = (duel: DuelView, occasion: SmashOccasion) => EffectStep<void>
 
 /**
+ * 「このカードが捨札に置かれた時」に誘発する能力の効果。第 2 引数で、捨札に置かれたそのカードを
+ * 受け取る（ADR-0059）。
+ *
+ * `CreatedAbilityEffect` と同じく、盤面への問い合わせでは取れないものを engine から手渡される。
+ * 手札や山札から置かれたカードは、スクエアにいないので `DuelView.self` では取れない。渡される
+ * のは、誘発した時点で置かれていたそのカードである。解決する時までに捨札を離れていても、
+ * 効果は実行される。そのカードを対象にする命令が、実行されないだけである（総合ルール 第1部
+ * 第1章 3）。
+ *
+ * 手渡されたカードは、効果が命令の対象にできる（`createTriggeredAbilityForDiscardedCard` に
+ * 渡して、そのターンの終わりに手札へ加えるなど、ADR-0057）。
+ */
+export type OwnDiscardEffect = (duel: DuelView, placed: CardInDiscardPile) => EffectStep<void>
+
+/**
  * 作成された誘発型能力の効果。第 2 引数で、影響を与える対象のユニットを受け取る
  * （総合ルール 第4部 第3章 4-1）。
  *

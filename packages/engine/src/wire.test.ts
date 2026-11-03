@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 // ゾーンを組み立てるためだけに `putInZone` を使う。engine の中からゾーンを差し替えるための
 // 関数であり、公開する API ではない（`smash.test.ts` と同じ）。
-import { moveToZone, putInZone } from './duel.js'
+import { moveToZoneWithoutTriggers, putInZone } from './duel.js'
 // できごとを積む `record` も engine の内部にある。積む時に見え方が決まる（#129）。
 import { record } from './log.js'
 import {
@@ -394,7 +394,7 @@ describe('ログが名指ししているカード', () => {
   function withLog(): DuelState {
     const board = filledState()
     const acted = record(record(board, played('先攻', '先攻-スクエア')), played('後攻', '後攻-手札'))
-    return moveToZone(acted, '先攻-スクエア', '山札')
+    return moveToZoneWithoutTriggers(acted, '先攻-スクエア', '山札')
   }
 
   const sentWithLog = JSON.stringify(toWire(perspectiveOf(withLog(), '先攻')))

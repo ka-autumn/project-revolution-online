@@ -1,6 +1,7 @@
 import { indexOfSquare, squaresAdjacent } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
+import type { CardId } from './duel.js'
 import { bpPlus, damagePlayer, discardOpponentHand } from './effect.js'
 import type {
   AttributeAddition,
@@ -9,6 +10,7 @@ import type {
   CreatedDiscardAbilityEffect,
   DuelView,
   Effect,
+  OwnDiscardEffect,
   SpModifier,
   UnitOnSquare,
 } from './effect.js'
@@ -67,6 +69,9 @@ export const TRIGGER_EVENTS = [
   // ルールエフェクトのチェックや効果の解決でも起こり得るため、ターンの順には並ばない。
   // 総合ルール 第4部 第7章 6 の【例】。
   'あなたのユニットがスクエアから捨札に置かれた時',
+  // 置かれるカード自身の能力。スクエアにいるユニットからではなく、置かれるカードから探す。
+  // どのゾーンから置かれても誘発する（ADR-0059）。
+  'このカードが捨札に置かれた時',
 ] as const
 
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
@@ -82,6 +87,14 @@ export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
 export interface TriggeredAbility {
   readonly kind: '誘発型能力'
   readonly event: TriggerEvent
+  /**
+   * 効果。盤面への問い合わせだけを参照する `Effect` として持つ。
+   *
+   * 「このカードが捨札に置かれた時」の能力だけは、実装する時に第 2 引数で置かれたカードを受け取る
+   * （`OwnDiscardEffect`）。実装できる型を誘発イベントごとに絞るのは `triggeredAbility` で、
+   * 解決する時にその第 2 引数を渡すのは `bank.ts` の `resolveBanked` だけである。それ以外の
+   * 経路は、持っている効果をそのまま `Effect` として解決してよい。
+   */
   readonly effect: Effect
   /**
    * 誘発するかどうかの絞り込み。省略すれば、誘発イベントを満たすたびに誘発する。
@@ -102,7 +115,7 @@ export interface TriggeredAbility {
    * 登場した」を確かめようとしても、その時点でプランゾーンは無くなっている（同 第2部
    * 第21章 3-3）ので成立しない。
    */
-  readonly when?: TriggerCondition
+  readonly when?: TriggerCondition | OwnDiscardCondition
   /**
    * 条件付誘発型能力の誘発条件（総合ルール 第4部 第3章 3、第7章 8）。省略すれば無条件。
    *
@@ -125,7 +138,11 @@ export interface TriggeredAbility {
  *
  * - `when` のきっかけ（`DiscardOccasion`）
  *   - いつ: 置かれる直前。置かれたユニットがまだスクエアにいる盤面（同 第7章 10）。
- *   - データ: 継続効果を適用した後（`discard.ts`）。
+ *   - データ: 継続効果を適用した後（`zone-move.ts`）。
+ * - `when` のきっかけ（`OwnDiscardOccasion`）
+ *   - いつ: 置かれる直前。置かれるカードがまだ元のゾーンにある盤面（同 第7章 10）。
+ *   - データ: スクエアから置かれるなら継続効果を適用した後、スクエアの外からなら書かれたまま
+ *     （`zone-move.ts`）。
  * - `when` のきっかけ（`AllyAppearanceOccasion`）
  *   - いつ: 置かれた直後。登場したユニットがもうスクエアにいる盤面。
  *   - データ: 継続効果を適用した後（`bank.ts` の `triggerAllyAppearance`）。
@@ -186,9 +203,19 @@ export type OccasionOf<Event extends TriggerEvent> = Event extends '登場した
  * 引数が `never` の関数型には、どんな述語も代入できてしまう。述語の型ごと `never` にして、
  * 付けた時点でコンパイルエラーになるようにしている。
  */
-export type WhenFor<Event extends TriggerEvent> = [OccasionOf<Event>] extends [never]
-  ? never
-  : TriggerCondition<OccasionOf<Event>>
+export type WhenFor<Event extends TriggerEvent> = Event extends 'このカードが捨札に置かれた時'
+  ? OwnDiscardCondition
+  : [OccasionOf<Event>] extends [never]
+    ? never
+    : TriggerCondition<OccasionOf<Event>>
+
+/**
+ * 誘発イベントごとに実装できる効果の型。「このカードが捨札に置かれた時」だけが、置かれたカードを
+ * 第 2 引数で受け取る（`OwnDiscardEffect`）。ほかの誘発イベントは、盤面への問い合わせだけで実装する。
+ */
+export type EffectFor<Event extends TriggerEvent> = Event extends 'このカードが捨札に置かれた時'
+  ? OwnDiscardEffect
+  : Effect
 
 /** `triggeredAbility` に名前を付けて渡す、絞り込み（`when`）と誘発条件（`condition`）。 */
 export interface TriggeredAbilityOptions<Event extends TriggerEvent> {
@@ -229,8 +256,50 @@ export type TriggerRequirement = (duel: DuelView) => boolean
  *
  * どれも置かれたスクエアを `square` に持つ。スクエアで絞り込む述語を、きっかけの種類を
  * 分けずに書けるようにするためである。
+ *
+ * 「このカードが捨札に置かれた時」のきっかけ（`OwnDiscardOccasion`）はここに含めない。置かれる
+ * カードがスクエアの外にあることがあり、`square` を持たないためである。
  */
 export type TriggerOccasion = AppearanceOccasion | AllyAppearanceOccasion | DiscardOccasion
+
+/**
+ * 「このカードが捨札に置かれた時」のきっかけ（ADR-0059）。
+ *
+ * 置かれるカード自身についての、置かれる直前の事情である。能力を持つカード自身が置かれた
+ * ことしか誘発しないので、置かれたのが自分かどうかを見分ける `self` は受け取らない
+ * （`OwnDiscardCondition`）。「手札かスクエアから」のようなテキストは、`from` を参照して絞る。
+ *
+ * スクエアから置かれるなら継続効果を適用した後のデータ（置かれる直前の属性とＢＰ）を持ち、
+ * 置かれたスクエアも持つ。スクエアの外から置かれるなら、カードに書かれているデータを持つ。
+ */
+export type OwnDiscardOccasion = OwnDiscardFromSquare | OwnDiscardFromOtherZone
+
+/** スクエアから置かれた時の `OwnDiscardOccasion`。 */
+export interface OwnDiscardFromSquare extends UnitOnSquare {
+  readonly kind: '自身の捨札'
+  readonly from: 'スクエア'
+}
+
+/**
+ * スクエア以外から置かれた時の `OwnDiscardOccasion`。
+ *
+ * 解決が終わったストラテジー・トラップは、リゾルブゾーンから置かれる（総合ルール 第2部
+ * 第21章 12-1）。リゾルブゾーンはプレイヤーごとのゾーンではないので、`PlayerZone` とは別に持つ。
+ */
+export interface OwnDiscardFromOtherZone {
+  readonly kind: '自身の捨札'
+  readonly from: Exclude<PlayerZone, '捨札'> | 'リゾルブゾーン'
+  readonly id: CardId
+  readonly card: Card
+  /** 置かれる直前の支配者。スクエアの外にあるカードは、持ち主のゾーンにあるので持ち主である。 */
+  readonly controller: Player
+}
+
+/**
+ * 「このカードが捨札に置かれた時」の絞り込み（`when`）の型。置かれるカード自身のきっかけだけを
+ * 受け取る。能力を持つカードが置かれた時にしか探さないので、`self` は要らない。
+ */
+export type OwnDiscardCondition = (occasion: OwnDiscardOccasion, controller: Player) => boolean
 
 /**
  * 「あなたのユニットがスクエアから捨札に置かれた時」のきっかけ（総合ルール 第4部 第7章 6）。
@@ -776,7 +845,7 @@ export type Ability =
  */
 export function triggeredAbility<Event extends TriggerEvent>(
   event: Event,
-  effect: Effect,
+  effect: EffectFor<Event>,
   options?: WhenFor<Event> | TriggeredAbilityOptions<Event>,
 ): TriggeredAbility {
   // 述語が受け取るきっかけは誘発イベントごとに絞ってある（`WhenFor`）。能力として持つ
@@ -787,7 +856,7 @@ export function triggeredAbility<Event extends TriggerEvent>(
   return {
     kind: '誘発型能力',
     event,
-    effect,
+    effect: effect as Effect,
     ...(when === undefined ? {} : { when: when as unknown as TriggerCondition }),
     ...(condition === undefined ? {} : { condition }),
   }
