@@ -187,7 +187,7 @@ export type CardView =
  * まだ誘発していない、作成された誘発型能力 1 つ（ADR-0063）。カードの詳細の「誘発待ち」の枠の 1 行になる。
  */
 export interface PendingAbilityView {
-  /** 「ターンの終わりに、手札に加わる」のように、いつ誘発し何が起こるか。対象のカードは主語として含めない。 */
+  /** 「ターンの終わりに、このカードを手札に加える」のように、いつ誘発し何が起こるか。表示しているカード自身は「このカード」と言う。 */
   readonly text: string
   /**
    * 能力を作成したカードの名前。対象のカード自身が作成した時と、名前が見えない時は無い。
@@ -532,10 +532,11 @@ function visibleInstances(board: WirePerspective): readonly WireCardInstance[] {
  * 引き直す。
  */
 export function visibleCardViewsIn(board: WirePerspective): ReadonlyMap<CardId, CardView> {
+  const pending = pendingAbilitiesIn(board)
   return new Map(
     visibleInstances(board).map((instance) => [
       instance.id,
-      faceUpView(instance, board.viewer, board.effective, effectiveKeywordsOf(board), pendingAbilitiesIn(board)),
+      faceUpView(instance, board.viewer, board.effective, effectiveKeywordsOf(board), pending),
     ]),
   )
 }
@@ -554,8 +555,9 @@ export interface ShownCardView {
  * 手札など）を含むので、`visibleCardViewsIn` では引けない。
  */
 export function shownCardViewsIn(board: WirePerspective, choice: WireChoice): readonly ShownCardView[] {
+  const pending = pendingAbilitiesIn(board)
   return (choice.shown ?? []).map(({ instance, candidate }) => ({
-    card: faceUpView(instance, board.viewer, board.effective, effectiveKeywordsOf(board), pendingAbilitiesIn(board)) as Extract<
+    card: faceUpView(instance, board.viewer, board.effective, effectiveKeywordsOf(board), pending) as Extract<
       CardView,
       { readonly kind: '表' }
     >,
@@ -900,18 +902,21 @@ export function createdWhenLabel(trigger: CreatedTrigger, controller: Player, vi
  * 盤面にある、作成された誘発型能力を、対象のカードごとにまとめる（ADR-0063）。作成された順を保つ。
  * 読めない種類の能力（#285）は含めない。能力が無ければ、名前の表を作成せずに空を返す。
  */
-function pendingAbilitiesIn(board: WirePerspective): ReadonlyMap<CardId, readonly PendingAbilityView[]> {
+function pendingAbilitiesIn(
+  board: WirePerspective,
+  names?: ReadonlyMap<CardId, string>,
+): ReadonlyMap<CardId, readonly PendingAbilityView[]> {
   const created: readonly WirePerspective['createdAbilities'][number][] = board.createdAbilities
   if (created.length === 0) return new Map()
 
-  const names = namesIn(board)
+  const known = names ?? namesIn(board)
   const grouped = new Map<CardId, PendingAbilityView[]>()
   for (const each of created) {
     const when = createdWhenLabel(each.trigger, each.controller, board.viewer)
     if (when === undefined) continue
 
-    const by = each.createdBy === undefined || each.createdBy === each.affecting ? undefined : names.get(each.createdBy)
-    grouped.set(each.affecting, [...(grouped.get(each.affecting) ?? []), { text: `${when}、${each.description}`, by }])
+    const by = each.createdBy === undefined || each.createdBy === each.affecting ? undefined : known.get(each.createdBy)
+    grouped.set(each.affecting, [...(grouped.get(each.affecting) ?? []), { text: `${when}、このカードを${each.description}`, by }])
   }
 
   return grouped
@@ -973,11 +978,15 @@ function faceUpInSmashZone(board: WirePerspective): readonly CardId[] {
   return board.smashJudgments.flatMap((judgment) => (judgment.faceUp === undefined ? [] : [judgment.faceUp]))
 }
 
-function zoneView(board: WirePerspective, owner: Player, zone: PlayerZone): ZoneView {
+function zoneView(
+  board: WirePerspective,
+  owner: Player,
+  zone: PlayerZone,
+  pending: ReadonlyMap<CardId, readonly PendingAbilityView[]>,
+): ZoneView {
   const cards = board.zones[owner][zone]
   const faceUp = zone === 'スマッシュゾーン' ? faceUpInSmashZone(board) : []
   const counted = cards.filter((card) => !(card.kind === '見えている' && faceUp.includes(card.instance.id)))
-  const pending = pendingAbilitiesIn(board)
 
   return {
     zone,
@@ -1000,12 +1009,16 @@ function whoseOf(board: WirePerspective, player: Player): '自分' | '相手' {
   return whoseLabel(board.viewer, player)
 }
 
-function sideView(board: WirePerspective, player: Player): SideView {
+function sideView(
+  board: WirePerspective,
+  player: Player,
+  pending: ReadonlyMap<CardId, readonly PendingAbilityView[]>,
+): SideView {
   return {
     player,
     whose: whoseOf(board, player),
     damage: board.damage[player],
-    zones: ZONE_ORDER.map((zone) => zoneView(board, player, zone)),
+    zones: ZONE_ORDER.map((zone) => zoneView(board, player, zone, pending)),
   }
 }
 
@@ -1017,7 +1030,10 @@ function sideView(board: WirePerspective, player: Player): SideView {
  * `squareFromView` がすでに知っているので、それを使う。折り返した後の行 0 が見る人の手前
  * なので、画面では上下を逆にして並べる。
  */
-function squareViews(board: WirePerspective): readonly (readonly SquareView[])[] {
+function squareViews(
+  board: WirePerspective,
+  pending: ReadonlyMap<CardId, readonly PendingAbilityView[]>,
+): readonly (readonly SquareView[])[] {
   const seen = (row: SquareIndex, column: SquareIndex): Square => squareFromView(board.viewer, { row, column })
 
   return [...SQUARE_INDEXES].reverse().map((row) =>
@@ -1029,7 +1045,7 @@ function squareViews(board: WirePerspective): readonly (readonly SquareView[])[]
         // 継続効果を適用した後のデータを持つのは、スクエアにいるユニットだけである（#91）。
         cards: opponentFirst(
           board.squares[indexOfSquare(square)]?.map((card) =>
-            faceUpView(card, board.viewer, board.effective, undefined, pendingAbilitiesIn(board)),
+            faceUpView(card, board.viewer, board.effective, undefined, pending),
           ) ?? [],
         ),
       }
@@ -1693,14 +1709,14 @@ function instructionLine(
       )
     case 'スクエアへ置く':
       return about(named(instruction.card), 'を', `${squareLabel(board.viewer, instruction.square)}へ`)
-    // 対象のカードを主語に、そのカードがこの先どうなるかを言う（ADR-0063）。作成された継続効果の行と
-    // 同じ形にする。対象のカードの名前が見えない時は、行を出さない。
+    // カードのテキストと同じ、支配者の行動として言う（ADR-0063）。対象のカードは「〜を」で行の途中に入れ、
+    // 何をするかの文はその後に続ける。対象のカードの名前が見えない時は、行を出力しない。
     case '誘発型能力を作る': {
       const subject = named(instruction.card)
       if (subject === undefined) return OMITTED
 
       const when = createdWhenLabel(instruction.trigger, controller, board.viewer)
-      return when === undefined ? undefined : `${subject}は${when}、${instruction.description}`
+      return when === undefined ? undefined : `${when}、${subject}を${instruction.description}`
     }
     // 期限は、いつ戻るかが行から読めるように出す。ＢＰの数字は、画面のほかの所と同じく半角の
     // `BP` で書く（符号を添える。負の時は `-`）。
@@ -2109,6 +2125,7 @@ export function roomListView(views: readonly RoomView[], tab: RoomTab, query: st
 export function boardView(board: WirePerspective): BoardView {
   const opponent = board.viewer === '先攻' ? '後攻' : '先攻'
   const names = namesIn(board)
+  const pending = pendingAbilitiesIn(board, names)
 
   return {
     seat: board.viewer,
@@ -2119,9 +2136,9 @@ export function boardView(board: WirePerspective): BoardView {
     smashJudgments: smashJudgmentViews(board, names),
     bank: abilityViews(board, board.bank, names),
     triggered: abilityViews(board, board.triggered, names),
-    opponent: sideView(board, opponent),
-    own: sideView(board, board.viewer),
-    squares: squareViews(board),
+    opponent: sideView(board, opponent, pending),
+    own: sideView(board, board.viewer, pending),
+    squares: squareViews(board, pending),
     result: resultLine(board),
     log: logLines(board),
   }

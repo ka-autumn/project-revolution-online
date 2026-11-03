@@ -135,7 +135,7 @@ describe('誘発待ちの作成された誘発型能力', () => {
     controller: '先攻',
     affecting: '対象',
     trigger: 'あなたのターンの終わり',
-    description: '手札に戻る',
+    description: '手札に戻す',
     createdBy: undefined,
     ...overrides,
   })
@@ -161,13 +161,13 @@ describe('誘発待ちの作成された誘発型能力', () => {
     expect(pendingOf(withCreated())).toEqual([])
   })
 
-  it('いつ誘発し何が起こるかを、主語を除いた文で渡す', () => {
-    expect(pendingOf(withCreated(abilityOf()))).toEqual([{ text: '自分のターンの終わりに、手札に戻る', by: undefined }])
+  it('いつ誘発し何が起こるかを、「このカードを」に続けた文で渡す', () => {
+    expect(pendingOf(withCreated(abilityOf()))).toEqual([{ text: '自分のターンの終わりに、このカードを手札に戻す', by: undefined }])
   })
 
   it('作成したカードが対象と違う時は、その名前を添える', () => {
     expect(pendingOf(withCreated(abilityOf({ createdBy: '作成元' })))).toEqual([
-      { text: '自分のターンの終わりに、手札に戻る', by: 'テスト・作成元' },
+      { text: '自分のターンの終わりに、このカードを手札に戻す', by: 'テスト・作成元' },
     ])
   })
 
@@ -177,7 +177,7 @@ describe('誘発待ちの作成された誘発型能力', () => {
 
   // 相手の視点でも同じ内容が渡る。誰のターンかは見る人から見て言い換える。
   it('相手の能力は、相手のターンの終わりと言う', () => {
-    expect(pendingOf(withCreated(abilityOf({ controller: '後攻' })))[0]?.text).toBe('相手のターンの終わりに、手札に戻る')
+    expect(pendingOf(withCreated(abilityOf({ controller: '後攻' })))[0]?.text).toBe('相手のターンの終わりに、このカードを手札に戻す')
   })
 
   it('複数あれば、作成された順に並ぶ', () => {
@@ -188,7 +188,19 @@ describe('誘発待ちの作成された誘発型能力', () => {
       ),
     )
 
-    expect(view.map((each) => each.text)).toEqual(['ターンの終わりに、先に作成した', 'ターンの終わりに、後に作成した'])
+    expect(view.map((each) => each.text)).toEqual(['ターンの終わりに、このカードを先に作成した', 'ターンの終わりに、このカードを後に作成した'])
+  })
+
+  // 015・069 の実際の場面は、捨札のカードの詳細である。詳細は盤面の一覧から識別子で引く（`visibleCardViewsIn`）。
+  it('捨札のカードの詳細にも、誘発待ちが渡る', () => {
+    const inDiscard = instance('対象', '先攻', { card: unitFace('テスト・対象') })
+    const board = {
+      ...withZone(emptyBoard('先攻'), '先攻', '捨札', [{ kind: '見えている', instance: inDiscard }]),
+      createdAbilities: [abilityOf({ createdBy: '対象' })],
+    }
+    const view = visibleCardViewsIn(board).get('対象')
+
+    expect(view?.kind === '表' ? view.pending : undefined).toEqual([{ text: '自分のターンの終わりに、このカードを手札に戻す', by: undefined }])
   })
 
   it('別のカードを対象にした能力は、混ざらない', () => {
@@ -1638,32 +1650,32 @@ describe('操作ログ', () => {
       ): DuelEvent => ({
         kind: '命令を実行した',
         controller,
-        instruction: { kind: '誘発型能力を作る', card, trigger, description: '手札に戻る' },
+        instruction: { kind: '誘発型能力を作る', card, trigger, description: '手札に戻す' },
       })
 
-      it('作成したことは、対象を主語に、いつ誘発しどうなるかで出る', () => {
+      it('作成したことは、いつ誘発し、対象のカードをどうするかが出力される', () => {
         expect(logLines(withLog(made('置いてある', 'あなたのターンの終わり')))).toEqual([
-          { kind: 'できごと', whose: '自分', text: 'テスト・置いてあるは自分のターンの終わりに、手札に戻る', depth: 0 },
+          { kind: 'できごと', whose: '自分', text: '自分のターンの終わりに、テスト・置いてあるを手札に戻す', depth: 0 },
         ])
       })
 
       // 誰のターンかは、能力の支配者を基に見る人ごとに言い換える。
       it('相手の能力は、相手のターンの終わりと言う', () => {
         expect(texts(withLog(made('置いてある', 'あなたのターンの終わり', '後攻')))).toEqual([
-          'テスト・置いてあるは相手のターンの終わりに、手札に戻る',
+          '相手のターンの終わりに、テスト・置いてあるを手札に戻す',
         ])
       })
 
       it('誰のターンとも書かれていない「ターンの終わり」は、誰のターンとも言わない', () => {
         expect(texts(withLog(made('置いてある', 'ターンの終わり')))).toEqual([
-          'テスト・置いてあるはターンの終わりに、手札に戻る',
+          'ターンの終わりに、テスト・置いてあるを手札に戻す',
         ])
         expect(texts(withLog(made('置いてある', 'ターンの終わり', '後攻')))).toEqual([
-          'テスト・置いてあるはターンの終わりに、手札に戻る',
+          'ターンの終わりに、テスト・置いてあるを手札に戻す',
         ])
       })
 
-      it('対象の名前が見えない時は、行を出さない', () => {
+      it('対象の名前が見えない時は、行を出力しない', () => {
         expect(texts(withLog(made(undefined, 'あなたのターンの終わり')))).toEqual([])
       })
 
