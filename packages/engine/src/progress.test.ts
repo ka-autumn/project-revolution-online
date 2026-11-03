@@ -9,6 +9,7 @@ import {
   bpPlus,
   cardsIn,
   cardsOn,
+  choose,
   createContinuousEffect,
   createTriggeredAbility,
   createTriggeredAbilityForDiscardedCard,
@@ -485,7 +486,7 @@ describe('リカバリーフェイズと作成された継続効果', () => {
       triggeredAbility('ターンの終わり', function* (duel) {
         const ally = duel.allies().find((each) => each.id === '対象')
         if (ally === undefined) return
-        yield* createTriggeredAbility(ally, 'あなたのターンの終わり', function* (_duel, affected) {
+        yield* createTriggeredAbility(ally, 'あなたのターンの終わり', 'テストの説明', function* (_duel, affected) {
           yield* placeInZone(affected, 'エネルギーゾーン', 'フリーズ')
         })
       }),
@@ -881,12 +882,14 @@ describe('作成された誘発型能力', () => {
       kind: '作成された誘発型能力',
       place: 'スクエア',
       trigger: 'あなたのターンの終わり',
+      description: 'テストの説明',
       effect: function* (_duel, affected) {
         yield* placeInZone(affected, 'エネルギーゾーン', 'フリーズ')
       },
     },
     controller,
     affecting: '対象',
+    createdBy: undefined,
     createdIn: 1,
   })
 
@@ -933,6 +936,84 @@ describe('作成された誘発型能力', () => {
     expect(cardsIn(resolved, '後攻', 'エネルギーゾーン')[0]?.orientation).toBe('フリーズ')
   })
 
+  // ADR-0063。作成したカードは、ログと一覧に名前を表示するためだけに持つ。
+  describe('作成したカード', () => {
+    const maker = instantiate({ id: '作成元', card: target, owner: '後攻' })
+    /** 作成元が捨札にあり（見る人から見える）、能力がそのカードの作成として盤面にある。 */
+    const madeBy = (): DuelState => {
+      const state = created()
+      return {
+        ...putInZone(state, '後攻', '捨札', [maker]),
+        createdAbilities: state.createdAbilities.map((each) => ({ ...each, createdBy: '作成元' })),
+      }
+    }
+    const endOfSecondTurn = () => pass(pass(recoveryPhaseOfTurn(madeBy(), 2)))
+    const resolved = () => pass(pass(pass(pass(recoveryPhaseOfTurn(madeBy(), 2)))))
+
+    it('盤面の一覧は、作成したカードを発生源として送る', () => {
+      expect(perspectiveOf(endOfSecondTurn(), '先攻').bank).toEqual([{ controller: '後攻', source: '作成元' }])
+    })
+
+    it('解決の記録は、作成したカードを発生源にする', () => {
+      const sources = resolved()
+        .log.map(({ event }) => event)
+        .flatMap((event) => (event.kind === '能力を解決した' ? [event.source] : []))
+
+      expect(sources).toEqual(['作成元'])
+    })
+
+    const sourcesSeenBy = (state: DuelState, viewer: Player) =>
+      perspectiveOf(state, viewer).log.flatMap(({ event }) => (event.kind === '能力を解決した' ? [event.source] : []))
+
+    it('解決の記録は、見る人から見えていた作成したカードを名指しする', () => {
+      expect(sourcesSeenBy(resolved(), '先攻')).toEqual(['作成元'])
+    })
+
+    // 記録は過去の見え方で落とす（ADR-0011）。積んだ時に相手の手札にあったカードは、相手の視点では名指ししない。
+    it('作成したカードが相手の手札にあった時の解決の記録は、相手の視点では発生源を名指ししない', () => {
+      const inHand = (state: DuelState): DuelState => putInZone(putInZone(state, '後攻', '捨札', []), '後攻', '手札', [maker])
+      const state = pass(pass(pass(pass(recoveryPhaseOfTurn(inHand(madeBy()), 2)))))
+
+      expect(sourcesSeenBy(state, '先攻')).toEqual([undefined])
+      expect(sourcesSeenBy(state, '後攻')).toEqual(['作成元'])
+    })
+
+    // 見えていないカードの名前を送ると、手札や山札へ移ったカードが名指しされる（ADR-0004）。
+    it('作成したカードが見る人から見えていなければ、発生源を送らない', () => {
+      const hidden = (state: DuelState): DuelState => putInZone(putInZone(state, '後攻', '捨札', []), '後攻', '手札', [maker])
+
+      expect(perspectiveOf(hidden(endOfSecondTurn()), '先攻').bank).toEqual([{ controller: '後攻', source: undefined }])
+    })
+
+    // 効果へ渡す発生源には入れない。入れると、効果の中の「このカード」の扱いが変化しうる。
+    it('効果を実行する時の発生源は、作成したカードにならない', () => {
+      const sources: unknown[] = []
+      const chooser: Chooser = (candidates, _player, _purpose, _board, _mayDecline, source) => {
+        sources.push(source)
+        return candidates[0]
+      }
+      const asking: CreatedAbility = {
+        ...madeBy().createdAbilities[0]!,
+        ability: {
+          kind: '作成された誘発型能力',
+          place: 'スクエア',
+          trigger: 'あなたのターンの終わり',
+          description: 'テストの説明',
+          effect: function* (duel) {
+            yield* choose(duel.allies())
+          },
+        },
+      }
+      const state = { ...madeBy(), createdAbilities: [asking] }
+
+      let current = recoveryPhaseOfTurn(state, 2)
+      for (let passed = 0; passed < 4; passed++) current = passPriority(current, chooser)
+
+      expect(sources.length).toBeGreaterThan(0)
+      expect(sources.every((source) => source === undefined)).toBe(true)
+    })
+  })
+
   // 総合ルール 第4部 第3章 4-1
   it('対象がスクエアを離れていれば、そもそも誘発しない', () => {
     // 消滅させずに対象だけを取り除いた盤面。消滅（同 4-1）が働かなかった場合にどうなるかを
@@ -959,12 +1040,14 @@ describe('作成された誘発型能力', () => {
         kind: '作成された誘発型能力',
         place: '捨札',
         trigger: 'ターンの終わり',
+        description: 'テストの説明',
         effect: function* (_duel, affected) {
           yield* placeInZone(affected, '手札', 'リリース')
         },
       },
       controller,
       affecting: '捨札の対象',
+      createdBy: undefined,
       createdIn,
     })
 
@@ -1036,7 +1119,7 @@ describe('作成された誘発型能力', () => {
           triggeredAbility('ターンの終わり', function* (duel) {
             const [card] = duel.discardPile()
             if (card === undefined) return
-            yield* createTriggeredAbilityForDiscardedCard(card, 'ターンの終わり', function* (_duel, affected) {
+            yield* createTriggeredAbilityForDiscardedCard(card, 'ターンの終わり', 'テストの説明', function* (_duel, affected) {
               yield* placeInZone(affected, '手札', 'リリース')
             })
           }),

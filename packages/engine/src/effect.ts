@@ -965,15 +965,20 @@ export function* placeTopOfLibrary(to: PlayerZone, orientation: Orientation): Ef
  * 対象は engine が見せたカードでなければならない（`resolve.ts` の `shown`）。誘発した時に
  * その時点のユニットが効果へ手渡される（`CreatedAbilityEffect`）ので、作る側と誘発した側で対象を
  * 取り違えようがない。
+ *
+ * `description` は何をするかの文で、カードのテキストと同じ、支配者の行動として書く。対象のカードを
+ * 目的語（「〜を」）にした時に続く述語で、対象は含めない（「手札に加える」）。engine は中身を参照せず、
+ * 画面がログとカードの詳細に表示する（ADR-0063）。
  */
 export function* createTriggeredAbility(
   affecting: CardInZone | UnitOnSquare,
   trigger: CreatedTrigger,
+  description: string,
   effect: CreatedAbilityEffect,
 ): EffectStep<void> {
   yield {
     kind: '誘発型能力を作る',
-    ability: { kind: '作成された誘発型能力', place: 'スクエア', trigger, effect },
+    ability: { kind: '作成された誘発型能力', place: 'スクエア', trigger, description, effect },
     affecting,
   }
 }
@@ -993,11 +998,12 @@ export function* createTriggeredAbility(
 export function* createTriggeredAbilityForDiscardedCard(
   affecting: CardInDiscardPile,
   trigger: CreatedTrigger,
+  description: string,
   effect: CreatedDiscardAbilityEffect,
 ): EffectStep<void> {
   yield {
     kind: '誘発型能力を作る',
-    ability: { kind: '作成された誘発型能力', place: '捨札', trigger, effect },
+    ability: { kind: '作成された誘発型能力', place: '捨札', trigger, description, effect },
     affecting,
   }
 }

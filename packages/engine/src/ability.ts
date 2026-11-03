@@ -794,6 +794,12 @@ export interface CreatedOnSquareAbility {
   readonly kind: '作成された誘発型能力'
   readonly place: 'スクエア'
   readonly trigger: CreatedTrigger
+  /**
+   * 何をするかの文（ADR-0063）。カードのテキストと同じ、支配者の行動として書く。影響を与える対象のカードを
+   * 目的語（「〜を」）にした時に続く述語で、対象は含めない（「手札に加える」）。画面がログの行とカードの
+   * 詳細に、誘発する時を表す言葉と対象のカードの名前を組み合わせて表示する。
+   */
+  readonly description: string
   readonly effect: CreatedAbilityEffect
 }
 
@@ -802,6 +808,12 @@ export interface CreatedInDiscardPileAbility {
   readonly kind: '作成された誘発型能力'
   readonly place: '捨札'
   readonly trigger: CreatedTrigger
+  /**
+   * 何をするかの文（ADR-0063）。カードのテキストと同じ、支配者の行動として書く。影響を与える対象のカードを
+   * 目的語（「〜を」）にした時に続く述語で、対象は含めない（「手札に加える」）。画面がログの行とカードの
+   * 詳細に、誘発する時を表す言葉と対象のカードの名前を組み合わせて表示する。
+   */
+  readonly description: string
   readonly effect: CreatedDiscardAbilityEffect
 }
 

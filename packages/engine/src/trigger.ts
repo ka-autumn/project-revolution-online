@@ -88,7 +88,9 @@ function triggerCreated(state: DuelState, event: TriggerEvent): DuelState {
     const { ability } = created
     if (ability.place === '捨札') {
       const found = locateInDiscardPile(state, created.affecting)
-      return found === undefined ? [] : [{ ability, controller: created.controller, affected: found }]
+      return found === undefined
+        ? []
+        : [{ ability, controller: created.controller, createdBy: created.createdBy, affected: found }]
     }
 
     const located = locateOnSquares(state, created.affecting)
@@ -99,7 +101,7 @@ function triggerCreated(state: DuelState, event: TriggerEvent): DuelState {
     if (card.type !== 'ユニット') return []
 
     const affected: UnitOnSquare = { id: instance.id, square, card, controller: instance.controller }
-    return [{ ability, controller: created.controller, affected }]
+    return [{ ability, controller: created.controller, createdBy: created.createdBy, affected }]
   })
 
   return addTriggered(

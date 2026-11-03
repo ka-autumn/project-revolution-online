@@ -123,6 +123,103 @@ describe('カード 1 枚', () => {
   })
 })
 
+// ADR-0063。作成された誘発型能力の対象になっているカードの詳細に、誘発待ちの枠の行を渡す。
+describe('誘発待ちの作成された誘発型能力', () => {
+  const SQUARE: Square = { row: 0, column: 0 }
+  const target = instance('対象', '先攻', { card: unitFace('テスト・対象') })
+  const maker = instance('作成元', '先攻', { card: unitFace('テスト・作成元') })
+
+  const abilityOf = (
+    overrides: Partial<WirePerspective['createdAbilities'][number]> = {},
+  ): WirePerspective['createdAbilities'][number] => ({
+    controller: '先攻',
+    affecting: '対象',
+    trigger: 'あなたのターンの終わり',
+    description: '手札に戻す',
+    createdBy: undefined,
+    ...overrides,
+  })
+
+  /** 対象と作成元がスクエアにいて、能力が盤面にある盤面。 */
+  function withCreated(...abilities: WirePerspective['createdAbilities']): WirePerspective {
+    const board = withSquare(emptyBoard('先攻'), SQUARE, [target, maker])
+    return { ...board, createdAbilities: abilities }
+  }
+
+  /** 対象のカードが渡される誘発待ち。 */
+  function pendingOf(board: WirePerspective) {
+    const found = boardView(board)
+      .squares.flat()
+      .flatMap((square) => square.cards)
+      .find((card) => card.kind === '表' && card.id === '対象')
+    if (found === undefined || found.kind !== '表') throw new Error('対象が無い')
+
+    return found.pending
+  }
+
+  it('能力を持たないカードは、空', () => {
+    expect(pendingOf(withCreated())).toEqual([])
+  })
+
+  it('いつ誘発し何が起こるかを、「このカードを」に続けた文で渡す', () => {
+    expect(pendingOf(withCreated(abilityOf()))).toEqual([{ text: '自分のターンの終わりに、このカードを手札に戻す', by: undefined }])
+  })
+
+  it('作成したカードが対象と違う時は、その名前を添える', () => {
+    expect(pendingOf(withCreated(abilityOf({ createdBy: '作成元' })))).toEqual([
+      { text: '自分のターンの終わりに、このカードを手札に戻す', by: 'テスト・作成元' },
+    ])
+  })
+
+  it('作成したカードが対象自身の時は、名前を添えない', () => {
+    expect(pendingOf(withCreated(abilityOf({ createdBy: '対象' })))[0]?.by).toBeUndefined()
+  })
+
+  // 相手の視点でも同じ内容が渡る。誰のターンかは見る人から見て言い換える。
+  it('相手の能力は、相手のターンの終わりと言う', () => {
+    expect(pendingOf(withCreated(abilityOf({ controller: '後攻' })))[0]?.text).toBe('相手のターンの終わりに、このカードを手札に戻す')
+  })
+
+  it('複数あれば、作成された順に並ぶ', () => {
+    const view = pendingOf(
+      withCreated(
+        abilityOf({ trigger: 'ターンの終わり', description: '先に作成した' }),
+        abilityOf({ trigger: 'ターンの終わり', description: '後に作成した' }),
+      ),
+    )
+
+    expect(view.map((each) => each.text)).toEqual(['ターンの終わりに、このカードを先に作成した', 'ターンの終わりに、このカードを後に作成した'])
+  })
+
+  // 015・069 の実際の場面は、捨札のカードの詳細である。詳細は盤面の一覧から識別子で取得する（`visibleCardViewsIn`）。
+  it('捨札のカードの詳細にも、誘発待ちが渡る', () => {
+    const inDiscard = instance('対象', '先攻', { card: unitFace('テスト・対象') })
+    const board = {
+      ...withZone(emptyBoard('先攻'), '先攻', '捨札', [{ kind: '見えている', instance: inDiscard }]),
+      createdAbilities: [abilityOf({ createdBy: '対象' })],
+    }
+    const view = visibleCardViewsIn(board).get('対象')
+
+    expect(view?.kind === '表' ? view.pending : undefined).toEqual([{ text: '自分のターンの終わりに、このカードを手札に戻す', by: undefined }])
+  })
+
+  it('別のカードを対象にした能力は、混ざらない', () => {
+    expect(pendingOf(withCreated(abilityOf({ affecting: '作成元' })))).toEqual([])
+  })
+
+  // この画面が知らない誘発イベント（#285）は、誤った文を作り出さず、その能力だけを含めない。
+  it('知らない誘発イベントの能力は、含めない', () => {
+    const unknown = abilityOf({ trigger: '未来の誘発' as unknown as 'ターンの終わり' })
+
+    expect(pendingOf(withCreated(unknown, abilityOf()))).toHaveLength(1)
+  })
+
+  // 作成したカードの名前が届いていない時は、名前を作り出さず、添えない。
+  it('作成したカードが届いていなければ、名前を添えない', () => {
+    expect(pendingOf(withCreated(abilityOf({ createdBy: 'どこにも無い' })))[0]?.by).toBeUndefined()
+  })
+})
+
 /**
  * #93。カードに印刷されているテキスト（総合ルール 第2部 第10章）を、詳細に出す。
  *
@@ -1541,6 +1638,62 @@ describe('操作ログ', () => {
         it('名指しされたカードが 1 枚も無ければ、名前を添えない', () => {
           expect(texts(withLog(ended()))).toEqual(['ターンの終わりまでの効果が終わった'])
         })
+      })
+    })
+
+    // 総合ルール 第4部 第3章 4（ADR-0063）。「〈カード名〉は、いつ、どうなる」。
+    describe('作成された誘発型能力', () => {
+      const made = (
+        card: string | undefined,
+        trigger: 'あなたのターンの終わり' | 'ターンの終わり',
+        controller: Player = '先攻',
+      ): DuelEvent => ({
+        kind: '命令を実行した',
+        controller,
+        instruction: { kind: '誘発型能力を作る', card, trigger, description: '手札に戻す' },
+      })
+
+      it('作成したことは、いつ誘発し、対象のカードをどうするかが出力される', () => {
+        expect(logLines(withLog(made('置いてある', 'あなたのターンの終わり')))).toEqual([
+          { kind: 'できごと', whose: '自分', text: '自分のターンの終わりに、テスト・置いてあるを手札に戻す', depth: 0 },
+        ])
+      })
+
+      // 誰のターンかは、能力の支配者を基に見る人ごとに言い換える。
+      it('相手の能力は、相手のターンの終わりと言う', () => {
+        expect(texts(withLog(made('置いてある', 'あなたのターンの終わり', '後攻')))).toEqual([
+          '相手のターンの終わりに、テスト・置いてあるを手札に戻す',
+        ])
+      })
+
+      it('誰のターンとも書かれていない「ターンの終わり」は、誰のターンとも言わない', () => {
+        expect(texts(withLog(made('置いてある', 'ターンの終わり')))).toEqual([
+          'ターンの終わりに、テスト・置いてあるを手札に戻す',
+        ])
+        expect(texts(withLog(made('置いてある', 'ターンの終わり', '後攻')))).toEqual([
+          'ターンの終わりに、テスト・置いてあるを手札に戻す',
+        ])
+      })
+
+      it('対象の名前が見えない時は、行を出力しない', () => {
+        expect(texts(withLog(made(undefined, 'あなたのターンの終わり')))).toEqual([])
+      })
+
+      // この画面が知らない種類は、誤った文を作り出さず、読めなかったことを言う（#285）。
+      it('知らない誘発イベントは、読めない行になる', () => {
+        const unknown = made('置いてある', 'ターンの終わり')
+        if (unknown.kind !== '命令を実行した' || unknown.instruction.kind !== '誘発型能力を作る') throw new Error('作成する行のはず')
+
+        const sent = { ...unknown, instruction: { ...unknown.instruction, trigger: '未来の誘発' } } as unknown as DuelEvent
+
+        expect(texts(withLog(sent))).toEqual(['（表示できないログ）'])
+      })
+
+      // 発生源は作成したカードで、ほかの能力の解決と同じ行（「誘発：〈名前〉」）になる。
+      it('誘発して解決された行は、作成したカードの名前を言う', () => {
+        const resolved: DuelEvent = { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' }
+
+        expect(texts(withLog(resolved))).toEqual(['誘発：テスト・置いてある'])
       })
     })
 

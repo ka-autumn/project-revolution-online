@@ -3825,14 +3825,42 @@ body {
  * 収まらなくなるためである。空けた高さは、見出しと注記 3 行の分で、それを超える注記は枠の中で
  * 送る。スマートフォンのシートと一覧の上の段は高さが固定でないので、ここには含めない。
  */
-.duel .detail .card--注記つき {
+.duel .detail .card--注記つき,
+.duel .detail .card--誘発待ちつき {
   aspect-ratio: auto;
   height: calc(14.5rem * 1.5 - 5.2rem);
 }
 
-.duel .detail .detail__operational {
+.duel .detail .detail__operational,
+.duel .detail .detail__pending {
   max-height: 4.8rem;
   overflow-y: auto;
+}
+
+/*
+ * 作成された誘発型能力（ADR-0063）。まだ誘発していない能力なので、注記の枠と同じ置き方で、面の外に、
+ * 注記の枠と違う色（緑みの青）の枠で表示する。高さの詰め方は注記の枠と同じ（上の規則）。
+ */
+.detail__pending {
+  align-self: stretch;
+  margin: 0.4rem 0 0;
+  padding: 0.3rem 0.5rem;
+  border-left: 3px solid #3f7f7a;
+  border-radius: 0 6px 6px 0;
+  color: var(--ink);
+  background: rgb(63 127 122 / 0.14);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.detail__pending p {
+  margin: 0;
+}
+
+.detail__pending .detail__pending-title {
+  color: #2e6661;
+  font-size: 0.68rem;
+  font-weight: 800;
 }
 
 .card--拡大 {
@@ -7427,7 +7455,9 @@ body {
   }
 
   .duel .dialog__detail .detail__operational,
-  .duel .picker__detail .detail__operational {
+  .duel .picker__detail .detail__operational,
+  .duel .dialog__detail .detail__pending,
+  .duel .picker__detail .detail__pending {
     font-size: inherit;
   }
 

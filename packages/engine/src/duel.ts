@@ -323,6 +323,16 @@ export interface CreatedAbility {
    */
   readonly affecting: CardId
   /**
+   * この能力を作成したカード（作成した効果の発生源。ADR-0063）。発生源を持たない効果が作成した
+   * 場合は無い。作成された誘発型能力の効果が、さらに能力を作成した場合も無い（その効果は発生源を
+   * 持たないため。決定していない、ADR-0063 の未決定事項）。
+   *
+   * ログと一覧に、誰の能力かを表示するためだけに持つ。効果を実行する時に効果へ渡す発生源
+   * （`EffectContext.source`）には入れない。入れると、効果の中で「このカード」を参照する処理の
+   * 動きが変化しうる。
+   */
+  readonly createdBy: CardId | undefined
+  /**
    * この能力が作成されたターンの番号。
    *
    * 「ターンの終わり」の能力（誰のターンとも書かれていないもの）は、作成されたターンの終わりに
@@ -398,6 +408,11 @@ interface CreatedAbilityInstanceBase {
    * になる。「発生源のカードがあるとは限らない」という事実がそのまま型に出る。
    */
   readonly source?: undefined
+  /**
+   * この能力を作成したカード（`CreatedAbility.createdBy`）。`source` と違い、ログと一覧に名前を
+   * 表示するためだけに持つ。効果を実行する時に効果へ渡す発生源にはならない（ADR-0063）。
+   */
+  readonly createdBy: CardId | undefined
 }
 
 /** 対象がスクエアにいるユニットである、誘発した作成された誘発型能力。 */
