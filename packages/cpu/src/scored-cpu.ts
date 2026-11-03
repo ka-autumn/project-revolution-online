@@ -1,4 +1,4 @@
-import { activatedAbilitiesOf, courageOf, nextInt, squareInDirection } from '@revolution/engine'
+import { activatedAbilitiesOf, courageOf, hasDream, hopeOf, nextInt, squareInDirection } from '@revolution/engine'
 import type {
   Card,
   CardId,
@@ -16,6 +16,7 @@ import type {
   WireChoice,
 } from '@revolution/engine'
 import {
+  SQUARES,
   cardWorth,
   fighterOf,
   fighterOfCard,
@@ -35,8 +36,11 @@ import {
   energyColorsOf,
   findVisible,
   levelSatisfied,
+  opponentOf,
   releasedEnergyOf,
   sameSquare,
+  smashCountOf,
+  trustOf,
   unitsOf,
   visibleIn,
 } from './sight.js'
@@ -307,28 +311,91 @@ function movedThisPhase(perspective: DuelPerspective, id: CardId): boolean {
   return false
 }
 
+/** そのプレイヤーから見た、エリアの前後。味方エリアが 0、敵エリアが 2。 */
+function depthOf(me: Player, square: Square): number {
+  const area = areaFor(me, square)
+  return area === '味方エリア' ? 0 : area === '中央エリア' ? 1 : 2
+}
+
+/** そのユニットを移動先へ動かした後の盤面の射影。点数を比べるためだけに使う。 */
+function movedPerspective(perspective: DuelPerspective, id: CardId, destination: Square): DuelPerspective {
+  const from = perspective.squares.findIndex((cards) => cards.some((card) => card.id === id))
+  const moving = perspective.squares[from]?.find((card) => card.id === id)
+  if (moving === undefined) return perspective
+
+  const to = SQUARES.findIndex((square) => sameSquare(square, destination))
+  return {
+    ...perspective,
+    squares: perspective.squares.map((cards, index) =>
+      index === from ? cards.filter((card) => card.id !== id) : index === to ? [...cards, moving] : cards,
+    ),
+  }
+}
+
 /**
- * ユニットを移動する手の点数。
+ * 手札のユニットをいまプレイした時の、いちばん高い点数。プレイできるユニットが無ければ 0。
  *
- * 1 回のメインフェイズで同じユニットを移動するのは、敵のいるスクエアへ攻め込む時を除いて 1 回だけに
- * する。点数の差が小さい場所どうしを、行ったり来たりしないようにするためである。
+ * プレイできるのは、自分のユニットのいない味方エリアか中央エリアのスクエアである（総合ルール
+ * 第2部 第20章 1-3）。
+ */
+function bestUnitPlay(context: Context): number {
+  const { perspective, me } = context
+  // レベル 0 のカードは、エネルギーをフリーズせずにプレイできる（総合ルール 第1部 第2章 3-4）。
+  const released = releasedEnergyOf(perspective, me).length
+
+  let best = 0
+  for (const each of visibleIn(perspective, me, '手札')) {
+    if (each.card.type !== 'ユニット' || !levelSatisfied(perspective, me, each.card)) continue
+    if (each.card.level > 0 && released === 0) continue
+    for (const square of SQUARES) {
+      if (areaFor(me, square) === '敵エリア') continue
+      if (context.units.some((unit) => unit.controller === me && sameSquare(unit.square, square))) continue
+      best = Math.max(best, playScore(context, each.id, square))
+    }
+  }
+  return best
+}
+
+/** 「下がる」移動で、場所の値打ちがこれだけ上がらなければ移動しない。 */
+const RETREAT_MARGIN = 100
+
+/**
+ * ユニットを移動する手の点数（総合ルール 第3部 第8章 2-5）。目的のある移動にだけ点数を付ける。
+ *
+ * - 攻め込む: 移動先に敵がいる。バトルの予測で点数を付ける。
+ * - 前へ進む: 敵エリアに近づく。スマッシュのダメージが増える（同 第3部 第9章 1）。
+ * - 場所を空ける: 横へ動く。空けたスクエアに手札のユニットをプレイすると、プレイの点数が上がる時だけ
+ *   選ぶ。点数には、その後のプレイの点数を含める。信頼を持つユニットを中央のラインへ動かす時も選ぶ。
+ * - 下がる: 味方エリアの側へ戻る。場所の値打ちが一定以上上がる時だけ選ぶ。BP が高く SP が低い
+ *   ユニットが、敵を倒した後に味方エリアへ戻って守る、などである。
+ *
+ * 前へ進む移動と攻め込む移動は、同じメインフェイズに何回でも行う。場所を空ける移動と下がる移動は、
+ * そのユニットがこのメインフェイズにまだ移動していない時だけにする。行ったり来たりしないためである。
  */
 function moveScore(context: Context, id: CardId, destination: Square): number {
+  const { perspective, me } = context
   const unit = context.units.find((each) => each.id === id)
   if (unit === undefined) return NEVER
 
-  const attacking = context.units.some((each) => each.controller !== context.me && sameSquare(each.square, destination))
-  if (!attacking && movedThisPhase(context.perspective, id)) return NEVER
-
   const fighter = fighterOf(unit)
   const arrival: Arrival = { card: unit.card, bp: unit.bp, sp: unit.sp, fighter, from: { unit: id, energyUsed: 0 }, played: false }
-  const leaving = positionWorth(context.perspective, context.me, unit.square, {
-    card: unit.card,
-    bp: unit.bp,
-    sp: unit.sp,
-    fighter,
-  })
-  return arrivalScore(context, arrival, destination) - leaving - MOVE_COST
+  const leaving = positionWorth(perspective, me, unit.square, { card: unit.card, bp: unit.bp, sp: unit.sp, fighter })
+  const gain = arrivalScore(context, arrival, destination) - leaving - MOVE_COST
+
+  const attacking = context.units.some((each) => each.controller !== me && sameSquare(each.square, destination))
+  const step = depthOf(me, destination) - depthOf(me, unit.square)
+  if (attacking || step > 0) return gain
+  if (movedThisPhase(perspective, id)) return NEVER
+
+  if (step < 0) return gain >= RETREAT_MARGIN ? gain : NEVER
+
+  // 横へ動く。空けた後に手札のユニットをプレイした時の点数で比べる。
+  const moved = movedPerspective(perspective, id, destination)
+  const after = bestUnitPlay({ ...context, perspective: moved, units: unitsOf(moved) })
+  const now = bestUnitPlay(context)
+  const toMiddle = trustOf(unit.card) && destination.column === 1
+  if (after <= now && !toMiddle) return NEVER
+  return gain + after
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -381,27 +448,106 @@ function courageScore(context: Context, id: CardId): number {
   return Math.max(...scores) - keepWorth(card) - ABILITY_COST
 }
 
+/** 山札がこの枚数以下なら、プランしない。山札が 0 枚になれば敗北する（総合ルール 第3部 第3章 2）。 */
+const PLAN_LIBRARY_FLOOR = 10
+/** 手札に加われば有利だとみなす、カードの値打ち。 */
+const GOOD_CARD = 2000
+/** 盤面のユニットの値打ちが、相手をこれだけ上回っていれば、勝てそうだとみなす。 */
+const WINNING_MARGIN = 4000
+
+/** 次の相手のターンに、相手にスマッシュされうるか。相手のユニットが、スマッシュできる場所にいるか、前へ進める。 */
+function mayBeSmashed(context: Context): boolean {
+  const opponent = opponentOf(context.me)
+  return context.units.some(
+    (unit) =>
+      unit.controller === opponent &&
+      (areaFor(opponent, unit.square) !== '味方エリア' || unit.card.moveIcon.includes('上')),
+  )
+}
+
+/** そのカードの希望が、自分が受けたダメージで発動するか（総合ルール 第5部 第3章 2）。 */
+function hopeFires(context: Context, card: Card): boolean {
+  if (hopeOf(card) === undefined) return false
+  return levelSatisfied(context.perspective, context.me, card)
+}
+
+/** 手札に加われば有利になりそうなカードか。次のターンにレベルを満たせて、値打ちが高い。 */
+function goodInHand(context: Context, card: Card): boolean {
+  const { perspective, me } = context
+  const energy = countIn(perspective, me, 'エネルギーゾーン')
+  if (card.level > energy + 1) return false
+
+  if (card.type === 'ユニット') return unitWorth(card.bp, card.sp) >= GOOD_CARD
+  if (card.type === 'トラップ') return false
+  const effect = probeEffect({ perspective, controller: me }, card.effect)
+  return (effect ?? 0) >= GOOD_CARD / 2
+}
+
+/**
+ * 盤面と手札で勝てそうか。
+ *
+ * 次のターンのスマッシュで相手のスマッシュが 7 枚に届く見込みがあるか（総合ルール 第3部 第3章 1、
+ * 第3部 第9章 1）、盤面のユニットの値打ちが相手を大きく上回っている。
+ */
+function winning(context: Context): boolean {
+  const { perspective, me } = context
+  const opponent = opponentOf(me)
+  const damage = context.units
+    .filter((unit) => unit.controller === me)
+    .reduce((sum, unit) => sum + smashDamageFrom(me, unit.square, unit.sp), perspective.damage[opponent])
+  if (smashCountOf(perspective, opponent) + Math.floor(damage / 1000) >= 7) return true
+
+  const worth = (player: Player): number =>
+    context.units.filter((unit) => unit.controller === player).reduce((sum, unit) => sum + seenWorth(unit), 0)
+  return worth(me) - worth(opponent) >= WINNING_MARGIN
+}
+
+/**
+ * いまのプランを残す理由があるか。プランすると、いまのプランは捨札に置かれる（総合ルール 第3部
+ * 第8章 2-3）。
+ *
+ * - 夢を持ち、いまプレイできる。プランより先にプレイする（同 第2部 第21章 3、第5部 第1章）。
+ * - 相手にスマッシュされうる時に、発動できる希望を持っている（同 第5部 第3章）。
+ * - スマッシュされる見込みが低い時に、手札に加われば有利になりそう。プランは次のドローで手札に
+ *   加わる（同 第2部 第21章 3-1）。
+ * - 盤面と手札で勝てそうなので、山札を減らしてまで探す理由が無い。
+ */
+function keepsPlan(context: Context, plan: Card): boolean {
+  const { perspective, me } = context
+  if (hasDream(plan) && levelSatisfied(perspective, me, plan) && releasedEnergyOf(perspective, me).length > 0) return true
+
+  const threatened = mayBeSmashed(context)
+  if (threatened && hopeFires(context, plan)) return true
+  if (!threatened && goodInHand(context, plan)) return true
+  return winning(context)
+}
+
 /**
  * プランする手の点数（総合ルール 第3部 第8章 2-3）。エネルギーかスマッシュを 1 枚フリーズして、
- * 山札の 1 番上を表にする。
- *
- * プランゾーンにカードがある時にプランすると、そのカードは捨札に置かれ、山札が 1 枚減る。山札が
- * 0 枚になれば敗北する（同 第3部 第3章 2）ので、プランするのはプランゾーンが無い時だけにする。
+ * 山札の 1 番上を表にする。プランゾーンにカードがあれば、それを捨札に置いて次の 1 枚を表にする。
  *
  * リリース状態のスマッシュがあれば、それで支払える（同 第2部 第21章 7-5）ので、ほとんど損が無い。
- * エネルギーで支払うのは、手札にプレイできるカードが無く、エネルギーが余っている時だけにする。
+ * エネルギーで支払うのは、手札にレベルを満たすカードが無く、エネルギーが余っている時だけにする。
+ *
+ * プランゾーンにカードがあれば、それを残す理由が無い時だけプランする（`keepsPlan`）。山札が少ない
+ * 時はプランしない。
  */
 function planScore(context: Context): number {
   const { perspective, me } = context
-  if (countIn(perspective, me, 'プランゾーン') > 0) return NEVER
+  if (countIn(perspective, me, '山札') <= PLAN_LIBRARY_FLOOR) return NEVER
 
   const releasedSmash = perspective.zones[me]['スマッシュゾーン'].some(
     (card) => card.kind === '見えていない' && card.orientation === 'リリース',
   )
-  if (releasedSmash) return 120
-
   const playable = visibleIn(perspective, me, '手札').filter((each) => levelSatisfied(perspective, me, each.card))
-  return releasedEnergyOf(perspective, me).length > playable.length ? 60 : NEVER
+  const spareEnergy = releasedEnergyOf(perspective, me).length > playable.length
+  if (!releasedSmash && !spareEnergy) return NEVER
+
+  const plan = visibleIn(perspective, me, 'プランゾーン')[0]
+  if (plan !== undefined && keepsPlan(context, plan.card)) return NEVER
+
+  const base = releasedSmash ? 120 : 60
+  return plan === undefined ? base : base - 20
 }
 
 // ---------------------------------------------------------------------------------------------

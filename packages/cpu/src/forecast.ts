@@ -171,11 +171,43 @@ const TRUST_IN_MIDDLE = 300
 /** 信頼を持たないユニットを中央のラインに置いた時の差し引き。信頼を持つユニットの場所を残す。 */
 const PLAIN_IN_MIDDLE = 50
 
+/** 守っているスクエアへ移動で入って来られる敵を、入って来た時に倒せる場合に見込む割合。 */
+const GUARD_RATIO = 0.5
+
+/**
+ * 味方エリアのそのスクエアを守ることの値打ち。
+ *
+ * 次の相手のターンに、相手のユニットがそのスクエアへ移動で入って来られて（総合ルール 第4部 第6章 2-1）、
+ * 入って来たらこちらが勝つなら、その敵の値打ちの一部を見込む。味方エリアへ入った敵は、次に＋500 で
+ * スマッシュしてくる（同 第3部 第9章 1）ので、守る意味がある。
+ */
+function guardWorth(perspective: DuelPerspective, me: Player, square: Square, fighter: Fighter): number {
+  if (areaFor(me, square) !== '味方エリア') return 0
+
+  const opponent = opponentOf(me)
+  const defender: Fighter = { ...fighter, damage: 0 }
+  return unitsOf(perspective)
+    .filter(
+      (unit) =>
+        unit.controller === opponent &&
+        unit.card.moveIcon.some((direction) => {
+          const reached = squareInDirection(opponent, unit.square, direction)
+          return reached !== undefined && sameSquare(reached, square)
+        }),
+    )
+    .reduce((sum, unit) => {
+      const battle = forecastBattle({ bp: unit.bp, damage: 0, pep: pepOf(unit.card) }, defender)
+      return battle.defenderSurvives && !battle.attackerSurvives ? sum + seenWorth(unit) * GUARD_RATIO : sum
+    }, 0)
+}
+
 /**
  * ユニットがそのスクエアにいることの値打ち。
  *
  * スマッシュで与えるダメージと、場にいることの値打ちを、残れる見込みで割り引く。味方エリアの
- * ユニットはスマッシュできない（総合ルール 第3部 第9章 1）。
+ * ユニットはスマッシュできない（総合ルール 第3部 第9章 1）が、入って来る敵を倒せるなら守りの
+ * 値打ちがある（`guardWorth`）。BP が高く SP が低いユニットは、敵エリアより味方エリアにいるほうが
+ * 値打ちが高くなりうる。
  */
 export function positionWorth(
   perspective: DuelPerspective,
@@ -194,7 +226,9 @@ export function positionWorth(
   const presence = unitWorth(unit.bp, unit.sp) * PRESENCE_WEIGHT
   const middle = square.column === 1 ? (trustOf(unit.card) ? TRUST_IN_MIDDLE : -PLAIN_IN_MIDDLE) : 0
 
-  return survival * (smash + presence) + middle
+  const guard = guardWorth(perspective, me, square, unit.fighter)
+
+  return survival * (smash + presence + guard) + middle
 }
 
 /** バトルスペースのスクエアすべて。 */

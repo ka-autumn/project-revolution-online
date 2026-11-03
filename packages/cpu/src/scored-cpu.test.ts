@@ -12,6 +12,7 @@ import {
   legalActions,
   putOnSquare,
   randomFromSeed,
+  trust,
 } from '@revolution/engine'
 import type { Card, CardInstance, DuelState, LegalAction, Phase, Player, PlayerZone, Square } from '@revolution/engine'
 import { actionViewOf, choiceViewOf } from './player.js'
@@ -56,7 +57,7 @@ function withZone(state: DuelState, player: Player, zone: PlayerZone, cards: rea
 function sceneAt(phase: Phase): DuelState {
   const empty = emptyDuelState()
   const library = (player: Player): readonly CardInstance[] =>
-    Array.from({ length: 10 }, (_, index) => instantiate({ id: `${player}-山札${index}`, card: unit('山札', 0, 0), owner: player }))
+    Array.from({ length: 20 }, (_, index) => instantiate({ id: `${player}-山札${index}`, card: unit('山札', 0, 0), owner: player }))
   const state = withZone(withZone(empty, '先攻', '山札', library('先攻')), '後攻', '山札', library('後攻'))
   return { ...state, turn: { ...state.turn, number: 3, active: '先攻', priority: '先攻', phase, passedBy: undefined } }
 }
@@ -172,8 +173,29 @@ describe('メインフェイズ', () => {
     expect(picked(state)).toEqual({ kind: 'ユニットを移動する', unit: 'a', destination: at(ENEMY_AREA, 0) })
   })
 
-  /** 総合ルール 第3部 第8章 2-5。点数の差が小さい場所どうしを、行ったり来たりしない。 */
-  it('同じメインフェイズに、同じユニットを空いたスクエアへ 2 回は移動しない', () => {
+})
+
+describe('ユニットの移動', () => {
+  /** 移動した後、相手が放棄して優先権が戻ってきた盤面。移動すると相手に優先権が移る（総合ルール 第4部 第6章 2-5）。 */
+  function afterMove(state: DuelState, action: LegalAction): DuelState {
+    const progress = applyWithAnswers(state, action, [])
+    if (progress.kind !== '進んだ') throw new Error('移動は選ばせない')
+    return { ...progress.state, turn: { ...progress.state.turn, priority: '先攻' } }
+  }
+
+  /** 総合ルール 第3部 第8章 2-5、第3部 第9章 1。前へ進む移動は、同じメインフェイズに何回でも行う。 */
+  it('同じメインフェイズのうちに、味方エリアから敵エリアまで進む', () => {
+    const state = onSquare(sceneAt('メインフェイズ'), at(OWN_AREA, 0), 'a', unit('進む', 3000, 1000), '先攻')
+
+    const first = picked(state)
+    expect(first).toEqual({ kind: 'ユニットを移動する', unit: 'a', destination: at(CENTER, 0) })
+    if (first === undefined) return
+
+    expect(picked(afterMove(state, first))).toEqual({ kind: 'ユニットを移動する', unit: 'a', destination: at(ENEMY_AREA, 0) })
+  })
+
+  /** 前へ進んだ後に、目的の無い横の移動はしない。 */
+  it('前へ進んだ後に、空いたスクエアへ横に移動しない', () => {
     // 敵エリアへ進んだ後も、中央のラインから端のラインへ動けば、少しだけ点数が上がる（`positionWorth`）。
     const wandering = defineUnit({ name: 'テスト・上と右に動ける', level: 0, bp: 3000, sp: 1000, moveIcon: ['上', '右'] })
     const state = onSquare(sceneAt('メインフェイズ'), at(CENTER, 1), 'a', wandering, '先攻')
@@ -181,12 +203,78 @@ describe('メインフェイズ', () => {
     const first = picked(state)
     expect(first).toEqual({ kind: 'ユニットを移動する', unit: 'a', destination: at(ENEMY_AREA, 1) })
     if (first === undefined) return
-    const progress = applyWithAnswers(state, first, [])
-    if (progress.kind !== '進んだ') throw new Error('移動は選ばせない')
-    // 移動すると相手に優先権が移る（総合ルール 第4部 第6章 2-5）。相手が放棄して戻ってきた所を参照する。
-    const back = { ...progress.state, turn: { ...progress.state.turn, priority: '先攻' as const } }
 
-    expect(picked(back)).toEqual(PASS)
+    expect(picked(afterMove(state, first))).toEqual(PASS)
+  })
+
+  /**
+   * 総合ルール 第5部 第4章 2。信頼を持つユニットは、中央のラインに置くと左右の 2 スクエアを守れる。
+   * 中央のラインにいるユニットを横へ動かして、場所を空ける。
+   */
+  it('信頼を持つユニットをプレイする場所を空けるために、横へ移動する', () => {
+    const sliding = defineUnit({ name: 'テスト・左右に動ける', level: 0, bp: 3000, sp: 1000, moveIcon: ['左', '右'] })
+    const guarding = defineUnit({ name: 'テスト・信頼', level: 0, bp: 3000, sp: 1000, abilities: [trust] })
+    let state = onSquare(sceneAt('メインフェイズ'), at(OWN_AREA, 1), 'a', sliding, '先攻')
+    state = withZone(state, '先攻', '手札', [instantiate({ id: 'h', card: guarding, owner: '先攻' })])
+
+    const action = picked(state)
+    expect(action?.kind).toBe('ユニットを移動する')
+    if (action?.kind !== 'ユニットを移動する') return
+    expect(action.destination.row).toBe(OWN_AREA)
+  })
+
+  /**
+   * 総合ルール 第3部 第9章 1、第3部 第15章 1。BP が高く SP が低いユニットは、中央エリアにいてもスマッシュで
+   * 与えるダメージが小さい。味方エリアへ入って来られる敵を倒せるなら、下がって守る。
+   */
+  it('BP が高く SP が低いユニットは、味方エリアへ入って来る敵を倒すために下がる', () => {
+    const retreating = defineUnit({ name: 'テスト・下がれる', level: 0, bp: 5000, sp: 0, moveIcon: ['下'] })
+    // 後攻から見た「左」は、先攻から見て列が 1 つ増える向きである（`board.ts` の `squareInDirection`）。
+    const invading = defineUnit({ name: 'テスト・横に動ける敵', level: 0, bp: 2000, sp: 1000, moveIcon: ['左'] })
+    let state = onSquare(sceneAt('メインフェイズ'), at(CENTER, 2), 'a', retreating, '先攻')
+    state = onSquare(state, at(OWN_AREA, 1), 'e', invading, '後攻')
+
+    expect(picked(state)).toEqual({ kind: 'ユニットを移動する', unit: 'a', destination: at(OWN_AREA, 2) })
+  })
+})
+
+describe('プラン', () => {
+  /** リリース状態のスマッシュ 1 枚。プランのコストに使える（総合ルール 第2部 第21章 7-5）。 */
+  const smash = instantiate({ id: 'smash', card: unit('スマッシュ', 0, 0), owner: '先攻' })
+
+  /**
+   * 総合ルール 第3部 第8章 2-3。いまのプランが、レベルを満たせず値打ちも低いカードなら、スマッシュで
+   * 支払って次のカードを表にする。
+   */
+  it('残す理由の無いプランは、捨札に置いて次のカードを表にする', () => {
+    let state = withZone(sceneAt('メインフェイズ'), '先攻', 'スマッシュゾーン', [smash])
+    state = withZone(state, '先攻', 'プランゾーン', [
+      instantiate({ id: 'plan', card: unit('重い', 1000, 0, 9), owner: '先攻' }),
+    ])
+
+    expect(picked(state)).toEqual({ kind: 'プランする' })
+  })
+
+  /** 総合ルール 第5部 第3章 2。相手にスマッシュされうる時は、発動できる希望を持つプランを残す。 */
+  it('相手にスマッシュされうる時は、発動できる希望を持つプランを残す', () => {
+    const hoping = defineUnit({
+      name: 'テスト・希望',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 0,
+      abilities: [hope(function* () {})],
+    })
+    const energy = defineUnit({ name: 'テスト・赤のエネルギー', level: 0, colors: ['赤'], bp: 0, sp: 0 })
+    let state = withZone(sceneAt('メインフェイズ'), '先攻', 'スマッシュゾーン', [smash])
+    state = withZone(state, '先攻', 'プランゾーン', [instantiate({ id: 'plan', card: hoping, owner: '先攻' })])
+    state = withZone(state, '先攻', 'エネルギーゾーン', [
+      instantiate({ id: 'e', card: energy, owner: '先攻', orientation: 'フリーズ' }),
+    ])
+    // 相手の中央エリアにいるユニットは、次の相手のターンにスマッシュできる（総合ルール 第3部 第9章 1）。
+    state = onSquare(state, at(CENTER, 1), 'enemy', unit('敵', 9000, 1000), '後攻')
+
+    expect(picked(state)).not.toEqual({ kind: 'プランする' })
   })
 })
 
