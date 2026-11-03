@@ -544,9 +544,9 @@ function winning(context: Context): boolean {
     .reduce((sum, unit) => sum + smashDamageFrom(me, unit.square, unit.sp), perspective.damage[opponent])
   if (smashCountOf(perspective, opponent) + Math.floor(damage / 1000) >= 7) return true
 
-  const worth = (player: Player): number =>
+  const basePointsOf = (player: Player): number =>
     context.units.filter((unit) => unit.controller === player).reduce((sum, unit) => sum + seenBasePoints(unit), 0)
-  return worth(me) - worth(opponent) >= WINNING_MARGIN
+  return basePointsOf(me) - basePointsOf(opponent) >= WINNING_MARGIN
 }
 
 /**
