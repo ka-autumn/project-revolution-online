@@ -147,7 +147,7 @@ describe('CPU がユニットを登場させる場所', () => {
     return BATTLE_SPACE.filter((square) => areaOf(player, square) === area)
   }
 
-  /** 登場先として並んでいるスクエアを、エリアごとに数える。 */
+  /** 登場先として並んでいるスクエアの件数を、エリアごとに取得する。 */
   function placingIn(state: DuelState, actions: readonly LegalAction[], area: '味方エリア' | '中央エリア'): number {
     return actions.filter(
       (action) =>
