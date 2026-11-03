@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // 対戦サーバのほか、後で探索をワーカーへ出す時や画面で動かす時にも読めるように、
+    // Node にも DOM にも寄らせない（packages/engine と同じ、ADR-0060）。
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src"]
+}

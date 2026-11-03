@@ -49,6 +49,16 @@ importers:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@26.2.0)(vite@7.3.6(@types/node@26.2.0)(lightningcss@1.33.0))
 
+  packages/cpu:
+    dependencies:
+      '@revolution/engine':
+        specifier: workspace:*
+        version: link:../engine
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@26.2.0)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1))
+
   packages/engine:
     devDependencies:
       vitest:
@@ -63,6 +73,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@revolution/cpu':
+        specifier: workspace:*
+        version: link:../cpu
       '@revolution/engine':
         specifier: workspace:*
         version: link:../engine
