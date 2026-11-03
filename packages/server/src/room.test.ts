@@ -1335,6 +1335,21 @@ describe('CPU と対戦する', () => {
   })
 
   /**
+   * #366。部屋で打たせる CPU は、場面ごとに手へ点数を付けて選ぶ（ADR-0060 の段階 2）。人が放棄を
+   * 続けても、CPU が打ち続けて対戦が決着する。
+   */
+  it('人が放棄を続けても、CPU との対戦が決着まで進む', () => {
+    let current = send(emptyRooms(), 'あ', AGAINST_CPU)
+
+    for (let steps = 0; steps < 2000; steps += 1) {
+      if (latestBoard(current.deliveries, 'あ').result !== undefined) break
+      current = answerAll(send(current.rooms, 'あ', PASS))
+    }
+
+    expect(latestBoard(current.deliveries, 'あ').result).toBeDefined()
+  })
+
+  /**
    * ADR-0052。相手が CPU の時は、CPU が自分で答えて対戦が進む。N 枚の時も、人が答えるのと同じ道筋を通る。
    * 人がプレイしても、CPU が先にプレイして人に聞いても、どちらでも止まらずに優先権が人に戻る。
    */

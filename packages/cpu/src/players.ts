@@ -1,5 +1,6 @@
 import type { CpuPlayer } from './player.js'
 import { randomCpu } from './random-cpu.js'
+import { scoredCpu } from './scored-cpu.js'
 
 /**
  * 勝率を測る時に名前で選べる CPU（`tools/cpu-compare.mjs`）。
@@ -9,4 +10,5 @@ import { randomCpu } from './random-cpu.js'
  */
 export const CPU_PLAYERS: Readonly<Record<string, CpuPlayer>> = {
   random: randomCpu,
+  scored: scoredCpu,
 }
