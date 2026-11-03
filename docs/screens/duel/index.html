@@ -1334,7 +1334,7 @@ body {
 }
 
 /*
- * 右の列は高さが固定なので、注記か誘発待ちの枠を持つカードだけ面の高さを詰めて場所を空ける（幅は変えない）。
+ * 右の列は高さが固定なので、注記か誘発待ちの枠を持つカードだけ面の高さを詰めて場所を空ける（幅は変更しない）。
  * 空けた高さは、見出しと 3 行の分で、それを超える分は枠の中で送る。
  * スマートフォンのシートと一覧の上の段は高さが固定でないので、ここには含めない。
  */
@@ -2382,9 +2382,9 @@ body {
       <button type="button" class="phone-only sheet__close" data-close>閉じる</button>
       <h2 class="panel__title">操作ログ（11）</h2>
       <ol class="log__list" reversed>
-        <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>見本・メカナイトは相手のターンの終わりに、エネルギーゾーンにフリーズして置かれる</span></li>
+        <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>相手のターンの終わりに、見本・メカナイトをエネルギーゾーンにフリーズして置く</span></li>
         <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>誘発：見本・メカナイト</span></li>
-        <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・パルフェ・若葉はターンの終わりに、手札に戻る</span></li>
+        <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>ターンの終わりに、見本・パルフェ・若葉を手札に戻す</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>誘発：見本・底の抜けたバケツ</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>相手が手札を捨てた：見本・紅葉、見本・メカナイト</span></li>
         <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>自分が手札を捨てた：見本・紅葉、見本・メカナイト</span></li>
@@ -2530,9 +2530,9 @@ cards['見本・森の守護者'].text = ['相手が早起きをしているな�
 cards['見本・森の守護者'].note = ['「相手が早起きをしているなら」の条件は、このサービスでは常に満たすものとして扱います。対戦の外のことは確かめられないため、条件の無い行として動きます。']
 cards['見本・パルフェ・若葉'].stars = 1
 // 作成された誘発型能力の対象になっているカード（ADR-0063）。自分のカードは作成したカードが別のカード、相手のカードは
-// 作成したカードがそのカード自身。文は画面がログの行から主語を除いて組み立てる（誰のターンかは見る人ごとに言い換える）
-cards['見本・パルフェ・若葉'].pending = [{ whose: '自分', when: 'ターンの終わりに', does: '手札に戻る', by: '見本・底の抜けたバケツ' }]
-cards['見本・メカナイト'].pending = [{ whose: '相手', when: '相手のターンの終わりに', does: 'エネルギーゾーンにフリーズして置かれる', by: '見本・メカナイト' }]
+// 作成したカードがそのカード自身。文は画面がログの行の対象の名前を「このカード」に替えて組み立てる（誰のターンかは見る人ごとに言い換える）
+cards['見本・パルフェ・若葉'].pending = [{ whose: '自分', when: 'ターンの終わりに', does: '手札に戻す', by: '見本・底の抜けたバケツ' }]
+cards['見本・メカナイト'].pending = [{ whose: '相手', when: '相手のターンの終わりに', does: 'エネルギーゾーンにフリーズして置く', by: '見本・メカナイト' }]
 
 // スターアイコン。1 個なら ★ だけ、2 個以上は数字入りの ★（ダブルスター）
 function starIcon(n, reverse = false) {
@@ -3123,7 +3123,7 @@ function pendingBox(entries, name) {
   box.append(Object.assign(document.createElement('p'), { className: 'detail__pending-title', textContent: '誘発待ち' }))
   for (const each of entries) {
     const by = each.by === name ? '' : `（${each.by}）`
-    box.append(Object.assign(document.createElement('p'), { textContent: `${each.when}、${each.does}${by}` }))
+    box.append(Object.assign(document.createElement('p'), { textContent: `${each.when}、このカードを${each.does}${by}` }))
   }
   return box
 }
