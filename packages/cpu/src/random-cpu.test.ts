@@ -297,7 +297,7 @@ describe('CPU が選択に答える', () => {
   const perspective = perspectiveOf(prepared.state, '先攻')
 
   function answerOf(choice: WireChoice, random: Random): { readonly answer: ChoiceAnswer; readonly random: Random } {
-    return randomCpu.answer({ perspective, choice }, random)
+    return randomCpu.answer({ perspective, choice, deck: [] }, random)
   }
 
   const CHOICE = {

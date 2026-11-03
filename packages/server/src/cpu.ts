@@ -1,4 +1,4 @@
-import { randomCpu } from '@revolution/cpu'
+import { scoredCpu } from '@revolution/cpu'
 import type { CpuPlayer } from '@revolution/cpu'
 import type { RoomCode } from '@revolution/engine'
 import type { ParticipantId } from './room.js'
@@ -37,8 +37,9 @@ export function isCpu(participant: ParticipantId): boolean {
 /**
  * 部屋で打たせる CPU。
  *
- * いまは合法手からランダムに選ぶものである（#175）。強い CPU に替える時は、CPU 同士の勝率を測る
- * 仕組み（`@revolution/cpu` の `compareCpus`）で前の CPU に勝ち越すことを確認してから替える
- * （ADR-0060）。
+ * いまは場面ごとに手へ点数を付けて選ぶものである（ADR-0060 の段階 2、#366）。前の CPU（合法手から
+ * ランダムに選ぶもの、#175）に勝ち越したことを、CPU 同士の勝率を測る仕組み（`@revolution/cpu` の
+ * `compareCpus`）で確認して替えた。強い CPU に替える時も、同じ仕組みで前の CPU に勝ち越すことを
+ * 確認してから替える（ADR-0060・ADR-0061）。
  */
-export const ROOM_CPU: CpuPlayer = randomCpu
+export const ROOM_CPU: CpuPlayer = scoredCpu
