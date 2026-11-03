@@ -5,6 +5,8 @@ import { putTriggeredIntoBank, resolveFromBank } from './bank.js'
 import { moveToResolveZone, putInZone } from './duel.js'
 import {
   PLAYERS,
+  bpPlus,
+  modifying,
   perspectiveOf,
   activateAbility,
   activatedAbility,
@@ -96,6 +98,16 @@ const squareWatcher = defineUnit({
   abilities: [triggeredAbility('あなたのユニットがスクエアから捨札に置かれた時', function* () {})],
 })
 
+/** 味方のＢＰを 500 上げる常在型能力を持つユニット。 */
+const booster = defineUnit({
+  name: 'テスト・味方を強くする',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [modifying((duel) => duel.allies().map((ally) => bpPlus(ally, 500)))],
+})
+
 const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
 const strategyWithOwnDiscard = defineStrategy({
   name: 'テスト・ストラテジー',
@@ -122,7 +134,8 @@ function pendingSources(state: DuelState): readonly string[] {
 
 describe('置かれるカード自身の誘発', () => {
   // ADR-0059: 捨札以外のどのゾーンから置かれても誘発する。裏向きのゾーンも含む。
-  it.each(['手札', '山札', 'プランゾーン', 'トラップゾーン'] as const)('%s から捨札に置かれると誘発する', (zone) => {
+  // 総合ルール 第2部 第21章 1-2: 持ち主のゾーンにあるカードの支配者は持ち主である。
+  it.each(['手札', '山札', 'プランゾーン', 'トラップゾーン', 'エネルギーゾーン', 'スマッシュゾーン'] as const)('%s から捨札に置かれると誘発する', (zone) => {
     occasions.length = 0
     const state = putInZone(emptyDuelState(), '先攻', zone, [instance('自分')])
 
@@ -133,7 +146,7 @@ describe('置かれるカード自身の誘発', () => {
     expect(occasions).toMatchObject([{ kind: '自身の捨札', from: zone, id: '自分', controller: '先攻' }])
   })
 
-  // 第2部 第21章 12-1: 解決が終わったストラテジー・トラップはリゾルブゾーンから置かれる。
+  // 総合ルール 第2部 第21章 12-1: 解決が終わったストラテジー・トラップはリゾルブゾーンから置かれる。
   it('リゾルブゾーンから捨札に置かれると誘発する', () => {
     occasions.length = 0
     const inHand = putInZone(emptyDuelState(), '先攻', '手札', [instance('自分', strategyWithOwnDiscard)])
@@ -141,6 +154,20 @@ describe('置かれるカード自身の誘発', () => {
     const moved = moveToZone(moveToResolveZone(inHand, '自分'), ['自分'], '捨札')
 
     expect(triggeredSources(moved)).toEqual(['自分'])
+  })
+
+  // 総合ルール 第4部 第12章 2: スクエアから置かれる時のきっかけは、継続効果を適用した後のデータを持つ。
+  it('スクエアから置かれる時のきっかけは、継続効果を適用した後のデータを持つ', () => {
+    occasions.length = 0
+    const state = putOnSquare(
+      putOnSquare(emptyDuelState(), home, instance('自分')),
+      other,
+      instance('強くする役', booster),
+    )
+
+    moveToZone(state, ['自分'], '捨札')
+
+    expect(occasions).toMatchObject([{ from: 'スクエア', card: { bp: 1500 } }])
   })
 
   it('スクエアから捨札に置かれると、置かれたスクエアをきっかけに持って誘発する', () => {
@@ -153,7 +180,7 @@ describe('置かれるカード自身の誘発', () => {
     expect(occasions).toMatchObject([{ kind: '自身の捨札', from: 'スクエア', id: '自分', square: home, controller: '先攻' }])
   })
 
-  // 第2部 第21章 1-2: スクエアの外にあるカードの支配者は持ち主である。
+  // 総合ルール 第2部 第21章 1-2: スクエアの外にあるカードの支配者は持ち主である。
   it('相手の手札にあるカードが置かれたら、能力の支配者は持ち主になる', () => {
     const state = putInZone(emptyDuelState(), '後攻', '手札', [instance('相手のカード', ownWatcher, '後攻')])
 
@@ -162,6 +189,7 @@ describe('置かれるカード自身の誘発', () => {
     expect(moved.triggered.map((each) => each.controller)).toEqual(['後攻'])
   })
 
+  // ADR-0059: 置かれたカードは効果へ手渡され、命令の対象にできる。
   it('置かれたカードを、効果へ手渡す', () => {
     placedCards.length = 0
     const state = putInZone(emptyDuelState(), '先攻', '手札', [instance('自分')])
@@ -184,7 +212,7 @@ describe('置かれるカード自身の誘発', () => {
     expect(sources).toEqual(['自分'])
   })
 
-  // 第4部 第7章 6・10
+  // 総合ルール 第4部 第7章 6・10
   it('同時に 2 枚が置かれたら、カードごとに 1 度ずつ誘発する', () => {
     const state = putInZone(emptyDuelState(), '先攻', '手札', [instance('一枚目'), instance('二枚目')])
 
@@ -227,10 +255,23 @@ describe('置かれるカード自身の誘発', () => {
     expect(triggeredSources(moveToZone(fromSquare, ['スクエアから'], '捨札'))).toEqual(['スクエアから'])
   })
 
+  // ADR-0059: 今回、誘発を探すのは行き先が捨札の時だけである。
   it('捨札以外のゾーンへ動かしても誘発しない', () => {
     const state = putInZone(emptyDuelState(), '先攻', '山札', [instance('自分')])
 
     expect(triggeredSources(moveToZone(state, ['自分'], '手札'))).toEqual([])
+  })
+
+  // ADR-0059: 捨札以外のゾーンから置かれた時に誘発する。
+  // ADR-0059 の「実装」の節: スクエアにあるユニット以外のカードの自身の誘発は、運用が確認できるまで
+  // 誘発させない。置かれること自体は行われる。
+  it('スクエアにあるユニット以外のカードが置かれても、自身の誘発は起こさない', () => {
+    const state = putOnSquare(emptyDuelState(), home, instance('自分', strategyWithOwnDiscard))
+
+    const moved = moveToZone(state, ['自分'], '捨札')
+
+    expect(triggeredSources(moved)).toEqual([])
+    expect(cardsIn(moved, '先攻', '捨札').map((each) => each.id)).toEqual(['自分'])
   })
 
   it('すでに捨札にあるカードは、捨札から置かれたことにならない', () => {
@@ -243,7 +284,7 @@ describe('置かれるカード自身の誘発', () => {
     expect(triggeredSources(moveToZone(emptyDuelState(), ['無い'], '捨札'))).toEqual([])
   })
 
-  // 第4部 第7章 6: スクエアにいるユニットの「あなたのユニットがスクエアから捨札に置かれた時」は、
+  // 総合ルール 第4部 第7章 6: スクエアにいるユニットの「あなたのユニットがスクエアから捨札に置かれた時」は、
   // スクエアの外から置かれたカードでは誘発しない（動きを変更しない）。
   it('スクエアの外から置かれても、スクエアにいるユニットの「スクエアから」の能力は誘発しない', () => {
     const state = putOnSquare(
@@ -286,12 +327,14 @@ describe('捨札に置く経路', () => {
     return result.state
   }
 
+  // 総合ルール 第4部 第10章 2（ADR-0059）
   it('相手に手札を捨てさせる', () => {
     const state = putInZone(emptyDuelState(), '後攻', '手札', [instance('相手のカード', ownWatcher, '後攻')])
 
     expect(triggeredSources(effect(state, function* () { yield* discardOpponentHand(1) }))).toEqual(['相手のカード'])
   })
 
+  // ADR-0059: 効果の「ゾーンへ置く」
   it('効果でゾーンへ置く', () => {
     const state = putInZone(emptyDuelState(), '先攻', '手札', [instance('自分')])
 
@@ -303,18 +346,21 @@ describe('捨札に置く経路', () => {
     expect(triggeredSources(after)).toEqual(['自分'])
   })
 
+  // ADR-0059: 効果の「山札の1番上をゾーンへ置く」
   it('効果で山札の 1 番上を捨札に置く', () => {
     const state = putInZone(emptyDuelState(), '先攻', '山札', [instance('自分')])
 
     expect(triggeredSources(effect(state, function* () { yield* placeTopOfLibrary('捨札', 'リリース') }))).toEqual(['自分'])
   })
 
+  // 総合ルール 第2部 第20章 3-12（ADR-0059）
   it('トラップを廃棄する', () => {
     const state = putInZone(readyToAct('メインフェイズ'), '先攻', 'トラップゾーン', [instance('自分')])
 
     expect(pendingSources(outcome(discardTrap(state, '自分')))).toEqual(['自分'])
   })
 
+  // 総合ルール 第3部 第8章 2-3（ADR-0059）
   it('プランを置き換える時に、プランゾーンにあったカードを置く', () => {
     const ready = putInZone(readyToAct('メインフェイズ'), '先攻', '山札', [
       instance('次のプラン', vanilla),
@@ -332,6 +378,7 @@ describe('捨札に置く経路', () => {
     expect(pendingSources(outcome(plan(withPlan, chooseFirst)))).toEqual(['自分'])
   })
 
+  // 総合ルール 第4部 第2章 1（ADR-0059）
   it('コストで自分を捨札に置く', () => {
     const discardingSelf = defineUnit({
       name: 'テスト・自分を捨てる起動',
@@ -353,6 +400,7 @@ describe('捨札に置く経路', () => {
     expect(pendingSources(outcome(activateAbility(state, '自分', 0, chooseFirst)))).toEqual(['自分'])
   })
 
+  // 総合ルール 第2部 第21章 5-1（ADR-0059）
   it('効果でスクエアのユニットを破壊する', () => {
     const state = putOnSquare(emptyDuelState(), home, instance('自分'))
 
@@ -364,7 +412,7 @@ describe('捨札に置く経路', () => {
     expect(triggeredSources(after)).toEqual(['自分'])
   })
 
-  // 第4部 第14章 4-3: ＢＰが 0 以下のユニットはルールエフェクトで捨札に置かれる。
+  // 総合ルール 第4部 第14章 4-5: ＢＰが 0 以下のユニットはルールエフェクトで捨札に置かれる。
   it('ルールエフェクトでスクエアから捨札に置かれる', () => {
     const zeroBp = defineUnit({
       name: 'テスト・ＢＰ0',

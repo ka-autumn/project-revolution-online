@@ -232,7 +232,10 @@ export function triggeredByOwnDiscard(
   occasion: OwnDiscardOccasion,
 ): readonly TriggeredInstance[] {
   const placed: CardInDiscardPile = { id: instance.id, zone: '捨札', card: instance.card }
-  const self: UnitOnSquare | undefined = occasion.from === 'スクエア' ? occasion : undefined
+  const self: UnitOnSquare | undefined =
+    occasion.from === 'スクエア'
+      ? { id: occasion.id, square: occasion.square, card: occasion.card, controller: occasion.controller }
+      : undefined
 
   return instance.card.abilities.flatMap((ability) =>
     ability.kind === '誘発型能力' &&

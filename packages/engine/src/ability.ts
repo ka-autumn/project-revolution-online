@@ -88,10 +88,10 @@ export interface TriggeredAbility {
   readonly kind: '誘発型能力'
   readonly event: TriggerEvent
   /**
-   * 効果。盤面への問い合わせだけで書く `Effect` として持つ。
+   * 効果。盤面への問い合わせだけを参照する `Effect` として持つ。
    *
-   * 「このカードが捨札に置かれた時」の能力だけは、書く時に第 2 引数で置かれたカードを受け取る
-   * （`OwnDiscardEffect`）。書ける型を誘発イベントごとに絞るのは `triggeredAbility` で、
+   * 「このカードが捨札に置かれた時」の能力だけは、実装する時に第 2 引数で置かれたカードを受け取る
+   * （`OwnDiscardEffect`）。実装できる型を誘発イベントごとに絞るのは `triggeredAbility` で、
    * 解決する時にその第 2 引数を渡すのは `bank.ts` の `resolveBanked` だけである。それ以外の
    * 経路は、持っている効果をそのまま `Effect` として解決してよい。
    */
@@ -138,7 +138,7 @@ export interface TriggeredAbility {
  *
  * - `when` のきっかけ（`DiscardOccasion`）
  *   - いつ: 置かれる直前。置かれたユニットがまだスクエアにいる盤面（同 第7章 10）。
- *   - データ: 継続効果を適用した後（`discard.ts`）。
+ *   - データ: 継続効果を適用した後（`zone-move.ts`）。
  * - `when` のきっかけ（`OwnDiscardOccasion`）
  *   - いつ: 置かれる直前。置かれるカードがまだ元のゾーンにある盤面（同 第7章 10）。
  *   - データ: スクエアから置かれるなら継続効果を適用した後、スクエアの外からなら書かれたまま
@@ -210,8 +210,8 @@ export type WhenFor<Event extends TriggerEvent> = Event extends 'このカード
     : TriggerCondition<OccasionOf<Event>>
 
 /**
- * 誘発イベントごとに書ける効果の型。「このカードが捨札に置かれた時」だけが、置かれたカードを
- * 第 2 引数で受け取る（`OwnDiscardEffect`）。ほかの誘発イベントは、盤面への問い合わせだけで書く。
+ * 誘発イベントごとに実装できる効果の型。「このカードが捨札に置かれた時」だけが、置かれたカードを
+ * 第 2 引数で受け取る（`OwnDiscardEffect`）。ほかの誘発イベントは、盤面への問い合わせだけで実装する。
  */
 export type EffectFor<Event extends TriggerEvent> = Event extends 'このカードが捨札に置かれた時'
   ? OwnDiscardEffect
@@ -265,9 +265,9 @@ export type TriggerOccasion = AppearanceOccasion | AllyAppearanceOccasion | Disc
 /**
  * 「このカードが捨札に置かれた時」のきっかけ（ADR-0059）。
  *
- * 置かれるカード自身についての、置かれる直前の事情である。**能力を持つカード自身が置かれた
- * ことしか誘発しない**ので、置かれたのが自分かどうかを見分ける `self` は受け取らない
- * （`OwnDiscardCondition`）。「手札かスクエアから」のようなテキストは、`from` を見て絞る。
+ * 置かれるカード自身についての、置かれる直前の事情である。能力を持つカード自身が置かれた
+ * ことしか誘発しないので、置かれたのが自分かどうかを見分ける `self` は受け取らない
+ * （`OwnDiscardCondition`）。「手札かスクエアから」のようなテキストは、`from` を参照して絞る。
  *
  * スクエアから置かれるなら継続効果を適用した後のデータ（置かれる直前の属性とＢＰ）を持ち、
  * 置かれたスクエアも持つ。スクエアの外から置かれるなら、カードに書かれているデータを持つ。

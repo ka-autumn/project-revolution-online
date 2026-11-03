@@ -13,7 +13,7 @@ import type { PlayerZone } from './zone.js'
  *
  * ルールエフェクトは、同時に発生したものをまとめて 1 つの盤面から決める（総合ルール
  * 第4部 第14章 2）ため、同じカードが複数の条件で挙がることも、挙がった時にはもう
- * スクエアに無いこともある。**記録に残すのは「置こうとしたもの」ではなく「置かれるもの」**
+ * スクエアに無いこともある。記録に残すのは「置こうとしたもの」ではなく「置かれるもの」
  * なので、ログを積む側もここを通してから積む。スクエアにあるものだけを動かしたい呼び出し側
  * （破壊、ルールエフェクト）は、この結果を `moveToZone` に渡す。
  */
@@ -119,7 +119,16 @@ function triggeredByOwnDiscardOf(state: DuelState, id: CardId): readonly Trigger
   if (instance === undefined || !hasOwnDiscardAbility(instance.card)) return []
 
   const located = locateOnSquares(state, id)
-  if (located !== undefined && instance.card.type === 'ユニット') {
+  if (located !== undefined) {
+    // スクエアにあるユニット以外のカードは、誘発させない。総合ルールは、ユニットのテキストがスクエアに
+    // ある間有効になるとだけ書いていて（第2部 第10章 3）、ユニット以外のカードはスクエアに置かれると
+    // ルールエフェクトですぐ捨札に置かれる（第4部 第14章 4-3）。そのカードのテキストが、その短い間に
+    // 誘発するかは、実際の運用を確認できていない。該当するカードも無い。該当するカードが出た時に運用を
+    // 確認し、誘発させるなら `OwnDiscardFromSquare`（`UnitOnSquare` を拡張している）をユニット以外にも
+    // 広げて、ここで `from: 'スクエア'` のきっかけを作成する。ここで返さなくても、下の `zoneOf` が
+    // スクエアを探さないので結果は同じになるが、それでは誘発しないことが偶然になる。
+    if (instance.card.type !== 'ユニット') return []
+
     const unit = continuousData(state)(id, instance.card)
     return triggeredByOwnDiscard(state, instance, {
       kind: '自身の捨札',

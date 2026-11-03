@@ -322,7 +322,7 @@ function resolveHope(state: DuelState, placed: CardInstance, chooser: Chooser): 
   const hope = hopeOf(placed.card)
   if (hope === undefined) return state
 
-  // スマッシュゾーンに置かれたカードの支配者は持ち主に戻っている（`duel.ts` の `moveToZone`）。
+  // スマッシュゾーンに置かれたカードの支配者は持ち主に戻っている（`duel.ts` の `moveToZoneWithoutTriggers`）。
   const controller = placed.owner
   if (!satisfiesLevel(state, controller, placed.card)) return state
 

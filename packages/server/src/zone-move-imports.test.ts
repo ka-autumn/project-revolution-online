@@ -21,14 +21,17 @@ const ALLOWED = ['zone-move.ts', 'duel.ts']
 
 const engineSource = fileURLToPath(new URL('../../engine/src/', import.meta.url))
 
-/** `./duel.js` から土台の関数を取り込んでいる（再 export を含む）か。名前空間の import も含める。 */
+/**
+ * `./duel.js` から土台の関数を取り込んでいる（名前を列挙した import と export）か。名前空間の
+ * import と `export *` も含める。動的な `import()` は検出できない。
+ */
 function importsBaseFunction(source: string): boolean {
-  const named = /(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'\.\/duel\.js'/g
+  const named = /(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"]\.\/duel\.js['"]/g
   for (const match of source.matchAll(named)) {
     const names = (match[1] ?? '').split(',').map((name) => name.trim().split(/\s+as\s+/)[0])
     if (names.includes(BASE)) return true
   }
-  return /import\s+\*\s+as\s+\w+\s+from\s*'\.\/duel\.js'/.test(source)
+  return /(?:import\s+\*\s+as\s+\w+|export\s+\*)\s+from\s*['"]\.\/duel\.js['"]/.test(source)
 }
 
 describe('ゾーン移動の関数以外が、土台の関数を取り込まない', () => {
@@ -50,6 +53,8 @@ describe('ゾーン移動の関数以外が、土台の関数を取り込まな�
     expect(importsBaseFunction(`import { ${BASE} as move } from './duel.js'`)).toBe(true)
     expect(importsBaseFunction(`export { ${BASE} } from './duel.js'`)).toBe(true)
     expect(importsBaseFunction(`import * as duel from './duel.js'`)).toBe(true)
+    expect(importsBaseFunction(`export * from "./duel.js"`)).toBe(true)
+    expect(importsBaseFunction(`import { ${BASE} } from "./duel.js"`)).toBe(true)
   })
 
   it('土台の関数を含まない import は検出しない', () => {

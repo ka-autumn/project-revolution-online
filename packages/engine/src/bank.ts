@@ -194,7 +194,6 @@ function resolveBanked(state: DuelState, banked: BankedAbility, chooser: Chooser
   })
 }
 
-
 /** 作成された誘発型能力の効果に、手渡す対象を渡して、盤面の効果にしたもの。 */
 function createdEffectOf(banked: CreatedAbilityInstance): Effect {
   if (isInDiscardPile(banked)) {
