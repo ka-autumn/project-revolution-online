@@ -437,7 +437,7 @@ export type LoggedInstruction =
       readonly card: CardId | undefined
       /** いつ誘発するか。誰のターンかは、できごとの支配者を基に、見る人ごとに画面が言い換える（ADR-0063）。 */
       readonly trigger: CreatedTrigger
-      /** 何をするかの文。対象のカードを主語にした形で、主語は含まない。 */
+      /** 何をするかの文。支配者の行動として書かれた述語で、対象のカードは含まない。 */
       readonly description: string
     }
   /**

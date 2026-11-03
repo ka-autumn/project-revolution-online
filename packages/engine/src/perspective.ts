@@ -80,8 +80,9 @@ export type VisibleCard =
  * ある視点から見た、解決を待っている能力 1 つ（ADR-0004）。
  *
  * **効果そのものを持たない。** 効果は関数（`Effect`）なので通信に載らず、クライアントに渡す
- * 手立てが無い。作成された誘発型能力（`duel.ts` の `CreatedAbilityInstance`）にいたっては、
- * 効果が実行中に作った能力なので、カードを指す名前すら持たない。
+ * 手立てが無い。作成された誘発型能力（`duel.ts` の `CreatedAbilityInstance`）は、効果が実行中に
+ * 作成した能力なので発生源のカードを持たないが、作成したカードが見えていれば、それを発生源として
+ * 渡す（`visibleAbility`、ADR-0063）。
  *
  * 落としても困らないのは、バンクについて両方のプレイヤーが必要とするのが「誰が支配している
  * 能力がいくつあるか」までだからである。どれを解決するかは支配者で決まり（総合ルール 第2部
@@ -90,7 +91,10 @@ export type VisibleCard =
  */
 export interface VisibleAbility {
   readonly controller: Player
-  /** 発生源のカード。作成された誘発型能力は持たない。 */
+  /**
+   * 発生源のカード。作成された誘発型能力は、作成したカードが見えていればそのカード、見えていなければ
+   * 無い（ADR-0063）。
+   */
   readonly source: CardId | undefined
 }
 
@@ -106,7 +110,7 @@ export interface VisibleCreatedAbility {
   readonly affecting: CardId
   /** いつ誘発するか。誰のターンかは、`controller` を基に、見る人ごとに画面が言い換える（ADR-0063）。 */
   readonly trigger: CreatedTrigger
-  /** 何をするかの文。`affecting` のカードを主語にした形で、主語は含まない（`CreatedTriggeredAbility.description`）。 */
+  /** 何をするかの文。支配者の行動として書かれた述語で、`affecting` のカードは含まない（`CreatedTriggeredAbility.description`）。 */
   readonly description: string
   /**
    * この能力を作成したカード（ADR-0063）。見る人から見えていなければ無い。

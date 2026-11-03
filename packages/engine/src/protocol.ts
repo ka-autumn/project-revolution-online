@@ -432,8 +432,8 @@ export type WireCandidate =
   /**
    * カードそのものではなく、解決を待っている能力。
    *
-   * `source` は発生源のカード。見えていないか、発生源を持たない能力（作成された誘発型能力、
-   * `duel.ts` の `CreatedAbilityInstance`）なら `undefined` になる。
+   * `source` は発生源のカード。作成された誘発型能力（`duel.ts` の `CreatedAbilityInstance`）は、
+   * 作成したカードである（ADR-0063）。見えていないか、発生源を持たない能力なら `undefined` になる。
    */
   | { readonly kind: '能力'; readonly source: CardId | undefined }
   /**
@@ -1013,13 +1013,16 @@ function isChoiceNeeded(thrown: unknown): thrown is ChoiceNeeded {
  * `PlanReplacementCandidate`）ので、同じ形で読める。
  *
  * 作成された誘発型能力は発生源のカードを持たない（同 `CreatedAbilityInstance.source`）ので、
- * その場合は `undefined` になる。
+ * 作成したカード（同 `createdBy`）を発生源として扱う（ADR-0063）。バンクと誘発した能力の一覧の
+ * 発生源（`perspective.ts` の `visibleAbility`）と同じにするためである。作成したカードも無ければ
+ * `undefined` になる。
  */
 function sourceOf(candidate: unknown): CardId | undefined {
   if (typeof candidate !== 'object' || candidate === null) return undefined
 
-  const { source } = candidate as { readonly source?: unknown }
-  return typeof source === 'string' ? source : undefined
+  const { source, createdBy } = candidate as { readonly source?: unknown; readonly createdBy?: unknown }
+  if (typeof source === 'string') return source
+  return typeof createdBy === 'string' ? createdBy : undefined
 }
 
 /**

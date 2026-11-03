@@ -795,8 +795,9 @@ export interface CreatedOnSquareAbility {
   readonly place: 'スクエア'
   readonly trigger: CreatedTrigger
   /**
-   * 何をするかの文（ADR-0063）。影響を与える対象のカードを主語にした形で書く（「手札に戻る」）。主語は含めない。
-   * 画面がログの行とカードの詳細に、誘発する時を表す言葉と組み合わせて表示する。
+   * 何をするかの文（ADR-0063）。カードのテキストと同じ、支配者の行動として書く。影響を与える対象のカードを
+   * 目的語（「〜を」）にした時に続く述語で、対象は含めない（「手札に加える」）。画面がログの行とカードの
+   * 詳細に、誘発する時を表す言葉と対象のカードの名前を組み合わせて表示する。
    */
   readonly description: string
   readonly effect: CreatedAbilityEffect
@@ -808,8 +809,9 @@ export interface CreatedInDiscardPileAbility {
   readonly place: '捨札'
   readonly trigger: CreatedTrigger
   /**
-   * 何をするかの文（ADR-0063）。影響を与える対象のカードを主語にした形で書く（「手札に戻る」）。主語は含めない。
-   * 画面がログの行とカードの詳細に、誘発する時を表す言葉と組み合わせて表示する。
+   * 何をするかの文（ADR-0063）。カードのテキストと同じ、支配者の行動として書く。影響を与える対象のカードを
+   * 目的語（「〜を」）にした時に続く述語で、対象は含めない（「手札に加える」）。画面がログの行とカードの
+   * 詳細に、誘発する時を表す言葉と対象のカードの名前を組み合わせて表示する。
    */
   readonly description: string
   readonly effect: CreatedDiscardAbilityEffect

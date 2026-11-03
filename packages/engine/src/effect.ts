@@ -966,8 +966,9 @@ export function* placeTopOfLibrary(to: PlayerZone, orientation: Orientation): Ef
  * その時点のユニットが効果へ手渡される（`CreatedAbilityEffect`）ので、作る側と誘発した側で対象を
  * 取り違えようがない。
  *
- * `description` は何をするかの文で、対象のカードを主語にした形で書く（「手札に戻る」）。主語は
- * 含めない。engine は中身を参照せず、画面がログとカードの詳細に表示する（ADR-0063）。
+ * `description` は何をするかの文で、カードのテキストと同じ、支配者の行動として書く。対象のカードを
+ * 目的語（「〜を」）にした時に続く述語で、対象は含めない（「手札に加える」）。engine は中身を参照せず、
+ * 画面がログとカードの詳細に表示する（ADR-0063）。
  */
 export function* createTriggeredAbility(
   affecting: CardInZone | UnitOnSquare,

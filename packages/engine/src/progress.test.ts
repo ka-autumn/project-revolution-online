@@ -962,6 +962,22 @@ describe('作成された誘発型能力', () => {
       expect(sources).toEqual(['作成元'])
     })
 
+    const sourcesSeenBy = (state: DuelState, viewer: Player) =>
+      perspectiveOf(state, viewer).log.flatMap(({ event }) => (event.kind === '能力を解決した' ? [event.source] : []))
+
+    it('解決の記録は、見る人から見えていた作成したカードを名指しする', () => {
+      expect(sourcesSeenBy(resolved(), '先攻')).toEqual(['作成元'])
+    })
+
+    // 記録は過去の見え方で落とす（ADR-0011）。積んだ時に相手の手札にあったカードは、相手の視点では名指ししない。
+    it('作成したカードが相手の手札にあった時の解決の記録は、相手の視点では発生源を名指ししない', () => {
+      const inHand = (state: DuelState): DuelState => putInZone(putInZone(state, '後攻', '捨札', []), '後攻', '手札', [maker])
+      const state = pass(pass(pass(pass(recoveryPhaseOfTurn(inHand(madeBy()), 2)))))
+
+      expect(sourcesSeenBy(state, '先攻')).toEqual([undefined])
+      expect(sourcesSeenBy(state, '後攻')).toEqual(['作成元'])
+    })
+
     // 見えていないカードの名前を送ると、手札や山札へ移ったカードが名指しされる（ADR-0004）。
     it('作成したカードが見る人から見えていなければ、発生源を送らない', () => {
       const hidden = (state: DuelState): DuelState => putInZone(putInZone(state, '後攻', '捨札', []), '後攻', '手札', [maker])
@@ -969,7 +985,7 @@ describe('作成された誘発型能力', () => {
       expect(perspectiveOf(hidden(endOfSecondTurn()), '先攻').bank).toEqual([{ controller: '後攻', source: undefined }])
     })
 
-    // 効果へ渡す発生源には入れない。入れると、効果の中の「このカード」の扱いが変わりうる。
+    // 効果へ渡す発生源には入れない。入れると、効果の中の「このカード」の扱いが変化しうる。
     it('効果を実行する時の発生源は、作成したカードにならない', () => {
       const sources: unknown[] = []
       const chooser: Chooser = (candidates, _player, _purpose, _board, _mayDecline, source) => {

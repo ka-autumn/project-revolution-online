@@ -863,6 +863,50 @@ describe('バンクの能力を選ぶ', () => {
     expect(progress.choice.candidates.some((candidate) => candidate.kind === '見えていない')).toBe(false)
   })
 
+  // ADR-0063。作成された誘発型能力は、作成したカードを発生源にする。一覧と同じく、見えていなければ無い。
+  describe('作成された誘発型能力', () => {
+    /** 印刷された能力 1 つに、作成された能力 1 つが加わったバンク。作成したカードは捨札にある。 */
+    function withCreated(createdBy: string): DuelState {
+      const waiting = waitingInBank()
+      const target = { id: '対象', zone: '捨札' as const, card: source }
+      const created = {
+        ability: {
+          kind: '作成された誘発型能力' as const,
+          place: '捨札' as const,
+          trigger: 'ターンの終わり' as const,
+          description: 'テストの説明',
+          effect: function* () {},
+        },
+        controller: '先攻' as const,
+        createdBy,
+        affected: target,
+      }
+      const withMaker = putInZone(waiting, '先攻', '捨札', [instantiate({ id: '作成元', card: source, owner: '先攻' })])
+
+      return { ...withMaker, bank: [...waiting.bank.slice(0, 1), created] }
+    }
+
+    it('作成したカードが見えていれば、その能力として並ぶ', () => {
+      const progress = applyWithAnswers(withCreated('作成元'), PASS, [])
+
+      expectChoice(progress)
+      expect(progress.choice.candidates).toEqual([
+        { kind: '能力', source: '誘発したユニットA' },
+        { kind: '能力', source: '作成元' },
+      ])
+    })
+
+    it('作成したカードが見えていなければ、発生源を持たない能力として並ぶ', () => {
+      const progress = applyWithAnswers(withCreated('どこにも無い'), PASS, [])
+
+      expectChoice(progress)
+      expect(progress.choice.candidates).toEqual([
+        { kind: '能力', source: '誘発したユニットA' },
+        { kind: '能力', source: undefined },
+      ])
+    })
+  })
+
   /** 1 つしか無ければ選ぶ余地が無いので、聞かずに解決する。 */
   it('バンクに 1 つしか無ければ聞かない', () => {
     const only = waitingInBank()
