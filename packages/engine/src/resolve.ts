@@ -743,7 +743,7 @@ function effectView(
   return duelView(currentState, {
     controller: context.controller,
     /**
-     * 発生源を解決する時の姿で返す。スクエアを離れていれば誘発した時点の写しを使う
+     * 発生源を解決する時のデータで返す。スクエアを離れていれば誘発した時点の写しを使う
      * （総合ルール 第4部 第8章 2-5、`effect.ts` の `DuelView.self`）。
      */
     self: () => {

@@ -9,12 +9,12 @@ import type { Player } from './player.js'
 import type { PlayerZone } from './zone.js'
 
 /**
- * スクエアにいるユニットのデータを、いま効果に見せる姿に写す。
+ * スクエアにいるユニットのデータを、いま効果に見せるデータに写す。
  *
  * 継続効果はカードのデータを変える（総合ルール 第4部 第12章 2）が、盤面には書き込まれて
  * いない。**書かれているデータを持つのは盤面で、効果に見せる写しは適用した後のデータを
  * 持つ。** 実際に何を適用するかは `continuous.ts` が決める。ここが関数を受け取るだけに
- * しているのは、継続効果を集める側もこの写しを使う（適用の途中の姿を見せる必要がある）
+ * しているのは、継続効果を集める側もこの写しを使う（適用の途中のデータを見せる必要がある）
  * ためで、写す側が集める側を知っていると輪になる。
  */
 export type UnitData = (id: CardId, written: UnitCard) => UnitCard
@@ -83,7 +83,7 @@ export function unitsOnSquares(state: DuelState): readonly UnitOnSquare[] {
 export function duelView(currentState: () => DuelState, source: ViewSource): DuelView {
   const { controller } = source
 
-  /** スクエアにいるユニットを、継続効果を適用した後の姿で写す。 */
+  /** スクエアにいるユニットを、継続効果を適用した後のデータで写す。 */
   const units = (): readonly UnitOnSquare[] => {
     const state = currentState()
     const data = source.data(state)
@@ -113,10 +113,10 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
     controller,
     opponent: opponentOf(controller),
     /**
-     * 発生源も、スクエアにいる間は継続効果を適用した後の姿で写す。
+     * 発生源も、スクエアにいる間は継続効果を適用した後のデータで写す。
      *
      * スクエアを離れていれば渡された写しをそのまま返す。そのカードにはもう継続効果が
-     * 及んでいない（総合ルール 第4部 第12章 4-1）ためで、返るのは離れる直前の姿になる
+     * 及んでいない（総合ルール 第4部 第12章 4-1）ためで、返るのは離れる直前のデータになる
      * （同 第8章 2-5）。
      */
     self: () => {
@@ -171,7 +171,7 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
       for (const trap of traps) source.show(trap.id)
       return traps
     },
-    // 継続効果を適用した後の姿を読む。与えられた能力は、上の `units()` が返す写しの
+    // 継続効果を適用した後のデータを読む。与えられた能力は、上の `units()` が返す写しの
     // `card.abilities` に載っている（`continuous.ts` の `continuousData`）ので、ここは書かれた
     // 能力と区別せずに読める。与えられた能力が生むＢＰの変更を集める側（`continuous.ts` の
     // `gather`）は、書かれた能力から引いているので、与えられる種類を増やす時に別に直す。写しが

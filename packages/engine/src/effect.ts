@@ -237,7 +237,7 @@ export interface DuelView {
    * 「他の、友情を持つ味方のＢＰを＋Ｎ」のように、持つ能力で対象を絞るテキストのために
    * 要る。数値を持つキーワード能力でも、数値は問わない。
    *
-   * 継続効果を適用した後の姿を読む。属性（`UnitOnSquare.card.attributes`）と同じ扱いで、
+   * 継続効果を適用した後のデータを読む。属性（`UnitOnSquare.card.attributes`）と同じ扱いで、
    * 能力を与える効果（`granting`）が与えた能力は、`units()` の返す写しの `card.abilities`
    * に載る（`continuous.ts` の `continuousData`）。尋ねる口はここなので、写しの作り方が
    * 変わってもカードの側は直さずに済む。ただし、与えられた能力が生むＢＰの変更を集める側
@@ -410,7 +410,7 @@ export type SmashTrapEffect = (duel: DuelView, occasion: SmashOccasion) => Effec
  * 手渡される。対象は作られた時に決まっていて（「そのユニットを」）、後から盤面を見ても
  * どれだったのかを見分ける手立てが無いためである。
  *
- * 渡されるのは**誘発した時点の姿**で、作られた時点のものではない。作られてから誘発するまでの
+ * 渡されるのは**誘発した時点のもの**で、作られた時点のものではない。作られてから誘発するまでの
  * 間にスクエアからスクエアへ移動していれば、移動した後の位置になる。それ以外のゾーン移動を
  * していれば能力そのものが消滅している（同 4-1）ので、誘発する時点で対象は必ずスクエアに
  * いる。
@@ -423,7 +423,7 @@ export type CreatedAbilityEffect = (duel: DuelView, affected: UnitOnSquare) => E
  * 捨札のカードを対象にする、作成された誘発型能力の効果（ADR-0057）。第 2 引数で、影響を与える
  * 対象のカードを受け取る。
  *
- * `CreatedAbilityEffect` と同じく、渡されるのは誘発した時点の姿である。対象は、誘発する時に
+ * `CreatedAbilityEffect` と同じく、渡されるのは誘発した時点のものである。対象は、誘発する時に
  * 捨札にある場合だけ誘発する。作成された後に捨札を離れていれば能力は消滅している（総合ルール
  * 第4部 第3章 4-1）ので、通常、誘発する時点で対象は捨札にある。捨札に無ければ誘発しない
  * （`trigger.ts` の `triggerCreated`）。
@@ -469,7 +469,7 @@ export interface SpModifier {
  * 型で絞っているのは、engine が「与えられた分」まで読むようにした種類だけである。いまは
  * 「夢」だけで、それ以外を渡すとコンパイルの時点で弾かれる。与えたのに働かない能力を、
  * 書けないようにするためである。種類を足す時は、その種類を読む所（`continuous.ts` の
- * `gather` など、書かれた能力から引いている所）を、適用した後の姿から読むように切り替えてから、
+ * `gather` など、書かれた能力から引いている所）を、適用した後のデータから読むように切り替えてから、
  * ここに足す。
  */
 export type GrantableAbility = DreamAbility
@@ -948,7 +948,7 @@ export function* placeTopOfLibrary(to: PlayerZone, orientation: Orientation): Ef
  * テキストが出てきた時に、無しで作れる形を足す。
  *
  * 対象は engine が見せたカードでなければならない（`resolve.ts` の `shown`）。誘発した時に
- * その時点の姿が効果へ手渡される（`CreatedAbilityEffect`）ので、作る側と誘発した側で対象を
+ * その時点のユニットが効果へ手渡される（`CreatedAbilityEffect`）ので、作る側と誘発した側で対象を
  * 取り違えようがない。
  */
 export function* createTriggeredAbility(
@@ -968,7 +968,7 @@ export function* createTriggeredAbility(
  *
  * 「このカードが捨札に置かれた時、そのターンの終わりに、捨札にあるこのカードを手札に加える」の
  * 後半にあたる。`createTriggeredAbility` と違い、誘発する時に対象が捨札にある場合だけ誘発し、
- * 効果へは捨札でのカードの姿（`CardInDiscardPile`）が手渡される。対象が捨札以外のカードだと、
+ * 効果へは捨札にあるカード（`CardInDiscardPile`）が手渡される。対象が捨札以外のカードだと、
  * 型検査が止める。
  *
  * 作成した時点で対象が捨札に無ければ、能力は作成されない（実行できない行動は実行されない。同 第1部

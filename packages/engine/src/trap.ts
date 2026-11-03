@@ -34,7 +34,7 @@ import { deferringRights } from './priority.js'
  * 優先権を得る時であり、その時にバトルやスマッシュ判定が発生していれば遅れる（同 3-8 の
  * ただし書き、`trapRightsOf`）。
  *
- * 侵入してきたユニットは、置かれたその瞬間の姿を写して満たされた発動条件と一緒に持つ
+ * 侵入してきたユニットは、置かれたその瞬間のデータを写して満たされた発動条件と一緒に持つ
  * （`IntrusionOccasion`）。発動した効果がそれを見る（`effect.ts` の `TrapEffect`）。
  *
  * 呼ぶのはユニットをスクエアに置いた側である。条文は置き方を限っていないので、`play.ts` の
@@ -71,8 +71,8 @@ export function checkIntrusion(state: DuelState, invader: UnitOnSquare): DuelSta
  *
  * 見るのは、攻撃されたユニットの支配者のトラップゾーンだけである。絞り込みがあれば、
  * 攻撃されたユニットがその軸でその値を持つ時だけ満たされる。色と属性は継続効果を適用した後の
- * 姿で確かめる（ADR-0036）。メーカーシンボルは、継続効果で変わらないので、カードのデータを
- * 見る（ADR-0035）。適用後の姿は判定にだけ使い、きっかけには持たせない（`AttackOccasion`）。
+ * データで確かめる（ADR-0036）。メーカーシンボルは、継続効果で変わらないので、カードのデータを
+ * 見る（ADR-0035）。適用後のデータは判定にだけ使い、きっかけには持たせない（`AttackOccasion`）。
  */
 export function checkAttack(state: DuelState, attacker: UnitOnSquare, attacked: UnitOnSquare): DuelState {
   const traps = cardsIn(state, attacked.controller, 'トラップゾーン')

@@ -145,7 +145,7 @@ describe('侵入', () => {
 
   // 侵入してきたユニットも、侵入されたスクエアも、発動する時の盤面からは引けない
   // （`ability.ts` の `IntrusionOccasion`）。満たされた発動条件と一緒に写して持つ。
-  it('満たされた発動条件は、侵入してきたユニットをその瞬間の姿で持つ', () => {
+  it('満たされた発動条件は、侵入してきたユニットをその瞬間のデータで持つ', () => {
     const invader = intruder('後攻', targetSquare)
 
     const after = checkIntrusion(withTrap(), invader)
@@ -276,8 +276,8 @@ describe('攻撃された', () => {
   })
 
   // 総合ルール 第4部 第12章 5-2 の(3)、ADR-0036。色を変える継続効果はまだ無いので、色は書かれている
-  // 色のまま確かめる。属性を加える継続効果は、適用した後の姿で確かめる。
-  describe('継続効果を適用した後の姿で確かめる', () => {
+  // 色のまま確かめる。属性を加える継続効果は、適用した後のデータで確かめる。
+  describe('継続効果を適用した後のデータで確かめる', () => {
     const attributed = attackTrapWith({ axis: '属性', value: 'テスト属性' })
     /** 後攻のトラップと、後攻の「属性を加える」ユニットのいる盤面。攻撃されたユニットも同じ後攻。 */
     function withGranter(): DuelState {
@@ -298,8 +298,8 @@ describe('攻撃された', () => {
       expect(trapsMet(checkAttack(withTrap(attributed, '後攻'), attacker, attacked))).toEqual([])
     })
 
-    // 侵入の写し方（印刷された姿）と混ぜない。適用後の姿は判定にだけ使う。
-    it('きっかけに写すのは、適用後の姿ではなく印刷された姿である', () => {
+    // 侵入の写し方（カードに書かれているデータ）と混ぜない。適用後のデータは判定にだけ使う。
+    it('きっかけに写すのは、適用後のデータではなくカードに書かれているデータである', () => {
       const { attacker, attacked } = battlers(plainUnit)
 
       const after = checkAttack(withGranter(), attacker, attacked)

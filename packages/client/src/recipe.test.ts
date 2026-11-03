@@ -326,7 +326,7 @@ describe('レシピの画面', () => {
     expect(shareRowsOf(RECIPE)[0]?.rulesLabel).toBe('構築戦・テストのリストで確かめて共有')
   })
 
-  // 完了条件 3: レシピには「何が何枚か」だけが写され、カードの姿は焼き付けられていない——プールを引く。
+  // 完了条件 3: レシピには「何が何枚か」だけが写され、カードのデータは焼き付けられていない——プールを引く。
   it('プールを引いて、何が何枚かを出す', () => {
     expect(recipeCardRows(POOL, RECIPE.cards)).toEqual([
       { name: 'テスト・カードＡ', count: 2 },

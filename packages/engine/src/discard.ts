@@ -37,7 +37,7 @@ function onSquares(state: DuelState, ids: readonly CardId[]): readonly CardInsta
  *
  * 置かれたユニットごとに、そのユニットをきっかけ（`DiscardOccasion`）として判定する。
  * 能力の側は、置かれたのが自分自身かどうかをきっかけから確かめられる。きっかけの
- * ユニットは、継続効果を適用した後の姿（置かれる直前の属性とＢＰ）で渡す。
+ * ユニットは、継続効果を適用した後のデータ（置かれる直前の属性とＢＰ）で渡す。
  */
 export function discardFromSquares(state: DuelState, ids: readonly CardId[]): DuelState {
   const discarded = onSquares(state, ids)

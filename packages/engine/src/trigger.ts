@@ -106,7 +106,7 @@ function triggerCreated(state: DuelState, event: TriggerEvent): DuelState {
   )
 }
 
-/** 捨札にあるそのカードの、効果に手渡す姿。どちらのプレイヤーの捨札にも無ければ `undefined`。 */
+/** 捨札にあるそのカードの、効果に手渡すもの。どちらのプレイヤーの捨札にも無ければ `undefined`。 */
 function locateInDiscardPile(state: DuelState, id: CardId): CardInDiscardPile | undefined {
   for (const player of PLAYERS) {
     const found = findInZone(state, player, '捨札', id)
@@ -185,7 +185,7 @@ function triggers(
   if (ability.condition === undefined) return true
 
   // 誘発する時の条件は、能力を探しているこの盤面で確かめる。誘発してから解決するまでに
-  // 盤面が変わっても、ここで見るのは誘発の瞬間の姿である。確かめるだけで命令を出さない
+  // 盤面が変わっても、ここで見るのは誘発の瞬間の盤面である。確かめるだけで命令を出さない
   // ので、見せたカードは覚えない。ここで読んだカードが、効果の対象に取れるようになる
   // ことは無い。
   const duel = duelView(() => state, {

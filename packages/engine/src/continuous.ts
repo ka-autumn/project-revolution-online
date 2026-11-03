@@ -82,7 +82,7 @@ export function grantedAbilitiesOn(state: DuelState): GrantedAbilities {
  *
  * 与えられた能力が、カードの `abilities` の末尾に載る。与えられていなければ、渡されたカードを
  * そのまま返す。スクエアにいるユニットは `continuousData` が同じことをする。カードが「夢」を
- * 持つかを尋ねる側（プランゾーンからのプレイの判定など）は、書かれた能力ではなく、この姿から
+ * 持つかを尋ねる側（プランゾーンからのプレイの判定など）は、書かれた能力ではなく、このデータから
  * 読む（ADR-0036）。
  */
 export function appliedCard<C extends Card>(state: DuelState, id: CardId, card: C): C {

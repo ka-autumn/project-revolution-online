@@ -195,7 +195,7 @@ describe('「勇気」の起動条件', () => {
    * と同じ理由）。効果はこのユニットにダメージを与える（同 第5部 第2章 2）ので、満たされた
    * 起動条件と一緒に写して持つ。
    */
-  it('満たされた起動条件は、置かれたユニットをその瞬間の姿で持つ', () => {
+  it('満たされた起動条件は、置かれたユニットをその瞬間のデータで持つ', () => {
     const placed = placedUnit('後攻', homeSquare)
 
     const after = checkCourageCondition(ready(), placed)

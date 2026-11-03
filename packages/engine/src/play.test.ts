@@ -596,7 +596,7 @@ describe('味方の登場', () => {
     expect(sourcesOf(stateOf(fromHand))).toEqual([])
   })
 
-  // 総合ルール 第4部 第12章 2。登場したユニットは、置かれた直後の、継続効果を適用した後の姿で渡る。
+  // 総合ルール 第4部 第12章 2。登場したユニットは、置かれた直後の、継続効果を適用した後のデータで渡る。
   it('継続効果で属性とＢＰが変わる盤面に登場した時は、変わった後の値を絞り込みが読める', () => {
     const seen: { readonly bp: number; readonly attributes: readonly string[] }[] = []
     const strengtheningWatcher = defineUnit({

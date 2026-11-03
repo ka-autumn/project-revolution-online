@@ -25,7 +25,7 @@ import type { PlayerZone } from './zone.js'
 /**
  * どの種別のカードにも書かれていることのうち、通信に載せる分（総合ルール 第2部 第2章 1）。
  *
- * 載せるのは**カードに印刷されている値そのもの**であって、継続効果を適用した後の姿ではない。
+ * 載せるのは**カードに印刷されている値そのもの**であって、継続効果を適用した後のデータではない。
  * 修整を適用するのは `view.ts` の仕事で、それには完全な盤面が要る。修整を適用した後のＢＰと
  * 属性は、カードの表記とは別の項目として盤面の側に載っている（`WirePerspective.effective`、#91）。
  */
@@ -130,7 +130,7 @@ export interface WireUnitOnSquare {
 
 /**
  * 通信に載せる形にした `TrapOccasion`。種類は、トリガーアイコンの種類と同じ 3 つである
- * （ADR-0039）。ユニットは、できごとが起きた時点の、印刷された姿の写しを持つ。
+ * （ADR-0039）。ユニットは、できごとが起きた時点の、カードに書かれているデータの写しを持つ。
  */
 export type WireTrapOccasion =
   | { readonly kind: '侵入'; readonly invader: WireUnitOnSquare }

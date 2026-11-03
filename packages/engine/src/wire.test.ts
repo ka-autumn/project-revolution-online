@@ -260,7 +260,7 @@ describe('通信に載せる形', () => {
     expect(sent.courageConditionsMet.map((met) => Object.keys(met).sort())).toEqual([['placed', 'player', 'satisfied']])
   })
 
-  // ADR-0039。攻撃・スマッシュのきっかけも、侵入と同じ入れ物に載る。ユニットは書かれた姿の表記に
+  // ADR-0039。攻撃・スマッシュのきっかけも、侵入と同じ入れ物に載る。ユニットはカードに書かれているデータの表記に
   // 書き出され、判定にだけ使う `metAt` は載らない。
   it('攻撃・スマッシュのきっかけは、ユニットを書き出して載せる', () => {
     const unit = (id: string, controller: '先攻' | '後攻'): UnitOnSquare => ({
