@@ -111,6 +111,7 @@ import type {
   ModifiedData,
   Overlay,
   Paged,
+  PendingAbilityView,
   PhaseView,
   ResultView,
   RoomTab,
@@ -5222,19 +5223,34 @@ function operationalNoteElement(lines: readonly string[]): HTMLElement {
   return box
 }
 
-/** 拡大した面と、運用の注記（持つカードだけ）と、その下の補足の 1 行。 */
+/**
+ * 誘発待ちの枠（ADR-0063）。そのカードを対象にしている、作成された誘発型能力を 1 つにつき 1 行で並べる。
+ * 作成したカードが対象のカード自身と違う時だけ、行の末に名前を添える。印刷されたテキストではないので、
+ * 面の外に、注記の枠と違う色の枠で表示する。
+ */
+function pendingAbilitiesElement(pending: readonly PendingAbilityView[]): HTMLElement {
+  const box = element('div', 'detail__pending')
+  box.append(element('p', 'detail__pending-title', '誘発待ち'))
+  for (const each of pending) box.append(element('p', '', each.by === undefined ? each.text : `${each.text}（${each.by}）`))
+
+  return box
+}
+
+/** 拡大した面と、運用の注記・誘発待ち（持つカードだけ）と、その下の補足の 1 行。 */
 function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   const noted = card.operationalNote.length > 0
-  // 右の列は高さが固定なので、注記を持つカードは面の高さを詰めて場所を空ける（ADR-0027）。
+  const waiting = card.pending.length > 0
+  // 右の列は高さが固定なので、注記か誘発待ちを持つカードは面の高さを詰めて場所を空ける（ADR-0027）。
   const big = element(
     'div',
-    `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大${noted ? ' card--注記つき' : ''}`,
+    `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大${noted ? ' card--注記つき' : ''}${waiting ? ' card--誘発待ちつき' : ''}`,
   )
   big.append(faceElement(card, { big: true }))
 
   return [
     big,
     ...(noted ? [operationalNoteElement(card.operationalNote)] : []),
+    ...(waiting ? [pendingAbilitiesElement(card.pending)] : []),
     element('p', 'detail__note', detailNoteOf(card)),
   ]
 }
@@ -5271,6 +5287,7 @@ function phoneDetailParts(card: CardView & { readonly kind: '表' }): HTMLElemen
     info.append(text)
   }
   if (noted) info.append(operationalNoteElement(card.operationalNote))
+  if (card.pending.length > 0) info.append(pendingAbilitiesElement(card.pending))
   info.append(element('p', 'detail__note', detailNoteOf(card)))
 
   return [face, info]
