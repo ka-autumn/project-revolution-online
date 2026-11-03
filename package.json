@@ -8,6 +8,7 @@
   },
   "scripts": {
     "serve": "node tools/serve.mjs",
+    "cpu-match": "node tools/cpu-match.mjs",
     "build:server": "node tools/build-server.mjs",
     "deploy:server": "node tools/deploy-server.mjs",
     "deploy:server:verify": "node tools/deploy-server-verify.mjs",

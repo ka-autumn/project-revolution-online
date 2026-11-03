@@ -10,6 +10,7 @@ import {
   prepareDuel,
   toWire,
 } from '@revolution/engine'
+import { actionViewOf, choiceViewOf } from '@revolution/cpu'
 import type {
   ActionProgress,
   ChoiceAnswer,
@@ -32,7 +33,7 @@ import type {
   WireRoom,
   WireRoomRules,
 } from '@revolution/engine'
-import { cpuParticipantOf, isCpu, pickCpuAction, pickCpuAnswer } from './cpu.js'
+import { ROOM_CPU, cpuParticipantOf, isCpu } from './cpu.js'
 import type { RestrictionList } from './deck.js'
 
 /**
@@ -1481,7 +1482,8 @@ function cpuStep(rooms: Rooms, room: Room): RoomOutcome | undefined {
     const progress = pendingProgress(duel)
     if (progress === undefined) return undefined
 
-    const picked = pickCpuAnswer(progress.choice, duel.random)
+    // 答える人に見せるのと同じ、その選択が起きている盤面の射影を渡す（#142、ADR-0060）。
+    const picked = ROOM_CPU.answer(choiceViewOf(progress.board, progress.choice), duel.random)
     const stepped: DuelInRoom = { ...duel, random: picked.random }
     return advance(rooms, { ...room, duel: stepped }, stepped, {
       ...pending,
@@ -1491,7 +1493,8 @@ function cpuStep(rooms: Rooms, room: Room): RoomOutcome | undefined {
 
   if (duel.state.turn.priority !== seat) return undefined
 
-  const picked = pickCpuAction(duel.state, duel.random)
+  // 人の画面に送る盤面（`boards`）と同じものを渡す。完全な盤面は渡さない（ADR-0060）。
+  const picked = ROOM_CPU.pickAction(actionViewOf(duel.state, seat), duel.random)
   if (picked === undefined) return undefined
 
   const stepped: DuelInRoom = { ...duel, random: picked.random }

@@ -71,3 +71,12 @@ CPU（`server` の `cpu.ts`）は、合法手からランダムに手を選ぶ�
 - `server` の CPU が、盤面の代わりに射影の盤面を受け取るようになる。部屋の決まりごとは、CPU に渡す前に射影する。
 - CPU 同士の勝率を測る仕組みができる。CPU を変える変更は、その勝率で確かめてから入れる。
 - 仮の盤面を作る段階（3 以降）では、射影の盤面から盤面を作り直す仕組みが要る。
+
+## 実装
+
+- 置き場: 新しいパッケージ `packages/cpu`（`@revolution/cpu`）。engine にだけ依存する。`server` はこれに依存する
+- CPU の型: `CpuPlayer`。手を選ぶ口が `pickAction(view: ActionView, random)`、選択に答える口が `answer(view: ChoiceView, random)`
+- CPU が受け取るもの: `ActionView`（射影の盤面・行える行動・放棄したら何が起きるか）と `ChoiceView`（その選択が起きている盤面の射影・選択）。完全な盤面から作るのは `actionViewOf`・`choiceViewOf` だけ
+- いまの CPU: `randomCpu`。部屋で打たせる CPU は `server` の `cpu.ts` の `ROOM_CPU`
+- CPU 同士の勝率を測る関数: 1 局が `playCpuMatch`、比べるのが `compareCpus`。手元で動かすコマンドは `pnpm cpu-match`（`tools/cpu-match.mjs`）。名前で選べる CPU は `CPU_PLAYERS`
+- 勝ち越したと言える基準（#365）: 決着した局の勝率の 95% 信頼区間（Wilson）の下限が 50% を上回ること（`verdictOf`）。引き分けと手数上限は勝率に入れない。既定は 200 局で、2 局を 1 組にし、同じシード・同じデッキで CPU の席だけを入れ替える
