@@ -1310,13 +1310,39 @@ body {
 }
 
 /*
- * 右の列は高さが固定なので、注記を持つカードだけ面の高さを詰めて場所を空ける（幅は変えない）。
- * 空けた高さは、見出しと注記 3 行の分で、それを超える注記は枠の中で送る。
+ * 作成された誘発型能力（ADR-0063）。まだ誘発していない能力なので、注記の枠と同じ置き方で、面の外に、
+ * 注記の枠と違う色（緑みの青）の枠で表示する。
+ */
+.detail__pending {
+  align-self: stretch;
+  margin: 0.4rem 0 0;
+  padding: 0.3rem 0.5rem;
+  border-left: 3px solid #3f7f7a;
+  border-radius: 0 6px 6px 0;
+  color: var(--ink);
+  background: rgb(63 127 122 / 0.14);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.detail__pending p { margin: 0; }
+
+.detail__pending-title {
+  color: #2e6661;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+/*
+ * 右の列は高さが固定なので、注記か誘発待ちの枠を持つカードだけ面の高さを詰めて場所を空ける（幅は変えない）。
+ * 空けた高さは、見出しと 3 行の分で、それを超える分は枠の中で送る。
  * スマートフォンのシートと一覧の上の段は高さが固定でないので、ここには含めない。
  */
 @media (min-width: 769px) {
-  .detail .card--注記つき { aspect-ratio: auto; height: calc(14.5rem * 1.5 - 5.2rem); }
-  .detail .detail__operational { max-height: 4.8rem; overflow-y: auto; }
+  .detail .card--注記つき,
+  .detail .card--誘発待ちつき { aspect-ratio: auto; height: calc(14.5rem * 1.5 - 5.2rem); }
+  .detail .detail__operational,
+  .detail .detail__pending { max-height: 4.8rem; overflow-y: auto; }
 }
 
 .card--拡大 {
@@ -2223,7 +2249,8 @@ body {
   .detail__rows dd { margin: 0; font-weight: 600; }
   .detail__text { margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid rgb(220 166 64 / 0.5); line-height: 1.5; }
   .detail__text p { margin: 0 0 0.2rem; }
-  .detail__info .detail__operational { font-size: inherit; }
+  .detail__info .detail__operational,
+  .detail__info .detail__pending { font-size: inherit; }
   .picker__detail .detail__none,
   .duel .dialog__detail .detail__none { grid-column: 1 / -1; align-self: center; text-align: center; }
   .picker__box { max-height: 100%; overflow-y: auto; }
@@ -2355,6 +2382,10 @@ body {
       <button type="button" class="phone-only sheet__close" data-close>閉じる</button>
       <h2 class="panel__title">操作ログ（11）</h2>
       <ol class="log__list" reversed>
+        <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>見本・メカナイトは相手のターンの終わりに、エネルギーゾーンにフリーズして置かれる</span></li>
+        <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>誘発：見本・メカナイト</span></li>
+        <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・パルフェ・若葉はターンの終わりに、手札に戻る</span></li>
+        <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>誘発：見本・底の抜けたバケツ</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>相手が手札を捨てた：見本・紅葉、見本・メカナイト</span></li>
         <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>自分が手札を捨てた：見本・紅葉、見本・メカナイト</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>相手に手札を見せた：見本・光の祈り手、見本・竜の飛翔</span></li>
@@ -2498,6 +2529,10 @@ cards['見本・もちぬい'].note = ['「相手と握手をしたなら」の�
 cards['見本・森の守護者'].text = ['相手が早起きをしているなら、このユニットの BP を +1000 する。']
 cards['見本・森の守護者'].note = ['「相手が早起きをしているなら」の条件は、このサービスでは常に満たすものとして扱います。対戦の外のことは確かめられないため、条件の無い行として動きます。']
 cards['見本・パルフェ・若葉'].stars = 1
+// 作成された誘発型能力の対象になっているカード（ADR-0063）。自分のカードは作成したカードが別のカード、相手のカードは
+// 作成したカードがそのカード自身。文は画面がログの行から主語を除いて組み立てる（誰のターンかは見る人ごとに言い換える）
+cards['見本・パルフェ・若葉'].pending = [{ whose: '自分', when: 'ターンの終わりに', does: '手札に戻る', by: '見本・底の抜けたバケツ' }]
+cards['見本・メカナイト'].pending = [{ whose: '相手', when: '相手のターンの終わりに', does: 'エネルギーゾーンにフリーズして置かれる', by: '見本・メカナイト' }]
 
 // スターアイコン。1 個なら ★ だけ、2 個以上は数字入りの ★（ダブルスター）
 function starIcon(n, reverse = false) {
@@ -3015,7 +3050,8 @@ function detailParts(node) {
   const name = node.dataset.name
   const c = cards[name]
   const big = document.createElement('div')
-  big.className = `card card--拡大 card--${node.dataset.whose} card--色-${c.color}${c.note ? ' card--注記つき' : ''}`
+  const pending = pendingOf(node)
+  big.className = `card card--拡大 card--${node.dataset.whose} card--色-${c.color}${c.note ? ' card--注記つき' : ''}${pending.length ? ' card--誘発待ちつき' : ''}`
   big.innerHTML = faceHtml(name, { text: true, bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage })
   const notes = [`${node.dataset.whose}のカード`]
   if (node.dataset.freeze) notes.push('フリーズ')
@@ -3024,6 +3060,7 @@ function detailParts(node) {
   if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
   const parts = [big]
   if (c.note) parts.push(operationalNote(c.note))
+  if (pending.length) parts.push(pendingBox(pending, name))
   return [...parts, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
 }
 // スマートフォンのカードの詳細：左にカードの面、右に文字で情報を全部書く（デッキを組む画面の詳細と同じ並べ方）。
@@ -3061,6 +3098,8 @@ function phoneDetailParts(node) {
     info.append(text)
   }
   if (c.note) info.append(operationalNote(c.note))
+  const pending = pendingOf(node)
+  if (pending.length) info.append(pendingBox(pending, name))
   const notes = [`${node.dataset.whose}のカード`]
   if (node.dataset.freeze) notes.push('フリーズ')
   if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
@@ -3072,6 +3111,20 @@ function operationalNote(lines) {
   const box = Object.assign(document.createElement('div'), { className: 'detail__operational' })
   box.append(Object.assign(document.createElement('p'), { className: 'detail__operational-title', textContent: '注記' }))
   for (const line of lines) box.append(Object.assign(document.createElement('p'), { textContent: line }))
+  return box
+}
+// 作成された誘発型能力の対象になっているカードの、誘発待ちの枠（ADR-0063）。能力 1 つにつき 1 行で、作成された順に並べる。
+// 作成したカードが、見ているカード自身と違う時だけ、行の末に添える
+function pendingOf(node) {
+  return (cards[node.dataset.name].pending ?? []).filter((each) => each.whose === node.dataset.whose)
+}
+function pendingBox(entries, name) {
+  const box = Object.assign(document.createElement('div'), { className: 'detail__pending' })
+  box.append(Object.assign(document.createElement('p'), { className: 'detail__pending-title', textContent: '誘発待ち' }))
+  for (const each of entries) {
+    const by = each.by === name ? '' : `（${each.by}）`
+    box.append(Object.assign(document.createElement('p'), { textContent: `${each.when}、${each.does}${by}` }))
+  }
   return box
 }
 function selected() {
