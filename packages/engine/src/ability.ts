@@ -283,7 +283,7 @@ export interface AllyAppearanceOccasion {
 export interface IntrusionOccasion {
   readonly kind: '侵入'
   /**
-   * 侵入してきたユニット。置かれた**その瞬間**のデータを写して持つ。
+   * 侵入してきたユニット。後から引き直すのではなく、置かれたその瞬間のデータを写して持つ。
    *
    * したがって `invader.square` が侵入されたスクエアである。トラップが発動されるまでに
    * そのユニットがスクエアを離れていても、エリアの判定はこの写しから行う。効果が解決される
@@ -306,7 +306,7 @@ export interface IntrusionOccasion {
  * 発動条件が満たされた時に写して盤面が持ち（`duel.ts` の `trapConditionsMet`）、発動した
  * トラップの効果に渡される（`effect.ts` の `AttackTrapEffect`）。
  *
- * どちらのユニットも、満たされた**その瞬間**の、カードに書かれているデータを写して持つ（侵入の
+ * どちらのユニットも、満たされたその瞬間の、カードに書かれているデータを写して持つ（侵入の
  * `invader` と同じ）。継続効果を適用した後のデータは、絞り込みの判定にだけ使い（`trap.ts` の
  * `checkAttack`）、ここには持たせない。効果が発動の時点の色や属性を知りたければ、
  * `DuelView` から引き直す。

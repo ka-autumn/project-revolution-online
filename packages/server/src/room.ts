@@ -1269,8 +1269,8 @@ function seats(duel: DuelInRoom): readonly (readonly [Player, ParticipantId])[] 
  *
  * `showing` は、送る盤面を差し替えるためにある。選ぶのを待っている間は**その選択が起きている
  * 盤面**を送る（#142）。行動が終わるまで `duel.state` は動かない（ADR-0008）ので、そのまま
- * 送ると、選ぶ人が見るのは行動を始める前の盤面になってしまう。**差し替えるのは送るものだけで、
- * `duel.state` は動かさない。** やり直しの起点がそこにある。
+ * 送ると、選ぶ人が見るのは行動を始める前の盤面になってしまう。差し替えるのは送るものだけで、
+ * `duel.state` は動かさない。やり直しの起点がそこにある。
  */
 function boards(duel: DuelInRoom, showing: DuelState = duel.state): readonly Delivery[] {
   const actions = duel.pending === undefined ? legalActions(duel.state) : []
