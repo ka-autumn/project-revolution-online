@@ -1,4 +1,5 @@
 import { areaOf, indexOfSquare, lineOf, PHASES, PLAYERS, squareFromView } from '@revolution/engine'
+import { mayDoneLine, maySkippedLine } from './may-wording.js'
 import type {
   Area,
   Attribute,
@@ -1241,12 +1242,19 @@ function didLine(
  * **新しいものを先頭にする（#111）。** `board.log` 自体は起きた順（古いものが先）のままで、
  * 並べ替えるのはここだけである。最新を確認するのに毎回下までスクロールしなくて済む。
  */
-export function logLines(board: WirePerspective): readonly LogLine[] {
+export function logLines(board: WirePerspective, choosing = false): readonly LogLine[] {
   const names = namesIn(board)
   const whose = (player: Player): '自分' | '相手' => whoseOf(board, player)
   /** 名指しされているなら、その名前。名指しされていなければ `undefined`。 */
   const named = (card: CardId | undefined): string | undefined =>
     card === undefined ? undefined : nameOf(names, card)
+
+  const folded = foldedInstructions(
+    board.log.map(({ event }) => event),
+    named,
+    board.viewer,
+    choosing,
+  )
 
   return withCostsJoined(board.log)
     .flatMap((entry) => {
@@ -1327,6 +1335,7 @@ export function logLines(board: WirePerspective): readonly LogLine[] {
         return { whose: whose(event.controller), text: `${subject}は、条件を満たさなかったため無効になった` }
       }
       case '命令を実行した': {
+        if (folded.has(event)) return undefined
         // 知らない種類の命令は、知らない種類のできごとと同じ行にする。支配者は届いているが、
         // 同じ文が 2 通りの見た目で出ないよう、誰のものかは言わない。
         const text = instructionLine(event.instruction, board, named, whose, event.controller)
@@ -1665,6 +1674,115 @@ function placedZoneLabel(
   return player === undefined ? zone : `${whose(player)}の${zone}`
 }
 
+/**
+ * 同じことを 2 回言う行を落とす（ADR-0064）。落とす行は、できごとそのもので指す。
+ *
+ * - 選んだ行（「〈名前〉を選択した」）は、同じ解決の中で、後の命令の行が、選んだカード・スクエアを名指しする時に
+ *   落とす。後の行がその見る人に名前を出力する時だけで、見る人が知る情報は減らない。「選択しなかった」は残す。
+ * - 「してもよいか聞く」で「はい」と答えた直後の、手札へ置いた行は、「〈名前〉を手札に加えた」の行が言っているので
+ *   落とす。
+ *
+ * - 答えを待っている間（`choosing`）は、いまの解決の中の、選んだ行をすべて落とす。答えは「ひとつ戻る」で戻せ、戻すと
+ *   選んだ行は消える。確定する前の行を表示して、消えるのを避ける。効果が進んで、後の行が届いた時に、まとまった形で表示される。
+ *
+ * 解決のまとまりは、「能力を解決した」から、次の「能力を解決した」・手・進行の切り替わりまでである。
+ * ログの行にもカットインにも、同じ集合を使う。
+ */
+function foldedInstructions(
+  events: readonly DuelEvent[],
+  named: (card: CardId | undefined) => string | undefined,
+  viewer: Player,
+  choosing: boolean,
+): ReadonlySet<DuelEvent> {
+  const folded = new Set<DuelEvent>()
+
+  /** 名前を取得できるカードだけ。行が名前を出力するものである。 */
+  const nameable = (cards: readonly (CardId | undefined)[]): readonly CardId[] =>
+    cards.flatMap((card) => (card !== undefined && named(card) !== undefined ? [card] : []))
+
+  /** 後の命令の行が、見る人に名指しするもの。 */
+  const namedBy = (instruction: LoggedInstruction, controller: Player): { readonly cards: readonly CardId[]; readonly squares: readonly number[] } => {
+    switch (instruction.kind) {
+      case 'ゾーンへ置く':
+      case '山札の1番上をゾーンへ置く':
+      case '破壊する':
+      case 'ユニットにダメージを与える':
+      case '向きを変える':
+        return { cards: nameable([instruction.card]), squares: [] }
+      // 画面が知らない種類の継続効果・きっかけ（古い画面）は、行が「読めなかった」になって名前を出力しないので、
+      // 名指ししたことにしない。
+      case '誘発型能力を作る':
+        return {
+          cards: createdWhenLabel(instruction.trigger, controller, viewer) === undefined ? [] : nameable([instruction.card]),
+          squares: [],
+        }
+      case '継続効果を作成する':
+        return {
+          cards: continuousChangeLabel(instruction.change) === undefined ? [] : nameable([instruction.card]),
+          squares: [],
+        }
+      case 'スクエアへ置く':
+        return { cards: nameable([instruction.card]), squares: [indexOfSquare(instruction.square)] }
+      case 'してもよいか聞く':
+        return { cards: nameable(instruction.cards), squares: [] }
+      default:
+        return { cards: [], squares: [] }
+    }
+  }
+
+  const endsResolution = (event: DuelEvent): boolean =>
+    event.kind === '能力を解決した' || event.kind === '行動した' || event.kind === '進行が変わった'
+
+  if (choosing) {
+    const boundary = events.reduce((last, event, at) => (endsResolution(event) ? at : last), -1)
+    events.forEach((event, at) => {
+      if (at > boundary && event.kind === '命令を実行した' && event.instruction.kind === '選ぶ') folded.add(event)
+    })
+  }
+
+  events.forEach((event, at) => {
+    if (event.kind !== '命令を実行した') return
+
+    const { instruction } = event
+    if (instruction.kind === '選ぶ' && instruction.declined !== true) {
+      for (let next = at + 1; next < events.length; next += 1) {
+        const later = events[next]
+        if (later === undefined || endsResolution(later)) break
+        if (later.kind !== '命令を実行した') continue
+        // 選んだ人と後の行の持ち主が違う（相手が選んだ）時は、選んだのが誰かを、行頭のマークが言っているので、残す。
+        if (later.controller !== event.controller) continue
+
+        const names = namedBy(later.instruction, later.controller)
+        const chosenSquare = instruction.square === undefined ? undefined : indexOfSquare(instruction.square)
+        if (
+          (instruction.card !== undefined && names.cards.includes(instruction.card)) ||
+          (chosenSquare !== undefined && names.squares.includes(chosenSquare))
+        ) {
+          folded.add(event)
+          break
+        }
+      }
+    }
+
+    if (instruction.kind === 'してもよいか聞く' && instruction.answer === 'はい') {
+      // 行を言えない（名前を取得できない）時は、手札へ置いた行を残す。
+      if (mayDoneLine(instruction.action, instruction.cards.flatMap((card) => named(card) ?? [])) === undefined) return
+
+      const remaining = new Set(instruction.cards)
+      for (let next = at + 1; next < events.length; next += 1) {
+        const later = events[next]
+        if (later?.kind !== '命令を実行した') break
+        if (later.instruction.kind !== 'ゾーンへ置く' || later.instruction.to !== '手札' || !remaining.has(later.instruction.card ?? '')) break
+
+        remaining.delete(later.instruction.card ?? '')
+        folded.add(later)
+      }
+    }
+  })
+
+  return folded
+}
+
 /** 命令 1 つを 1 行にする。 */
 function instructionLine(
   instruction: LoggedInstruction,
@@ -1693,6 +1811,17 @@ function instructionLine(
     }
     case '破壊する':
       return about(named(instruction.card), 'を', '破壊した')
+    // カードのテキストと同じ、支配者の行動として言う（ADR-0064。ADR-0063 と同じ書き方）。対象は 2 人に見えている
+    // カードなので、名前を取得できないことは無いはずだが、取得できなければ行を出力しない。「はい」の後の、手札へ置いた
+    // 行は、この行が言っているので落とす（`foldedInstructions`）。
+    case 'してもよいか聞く': {
+      const targets = instruction.cards.flatMap((card) => named(card) ?? [])
+      const line =
+        instruction.answer === 'はい'
+          ? mayDoneLine(instruction.action, targets)
+          : maySkippedLine(instruction.action, targets)
+      return line === undefined ? OMITTED : line
+    }
     case 'プレイヤーにダメージを与える':
       return `${whose(instruction.player)}にダメージ${instruction.amount}`
     case 'ユニットにダメージを与える':
@@ -1844,7 +1973,7 @@ function headingOf(via: ResolutionVia, name: string | undefined): string {
  *
  * 本文は既存の `instructionLine` をそのまま使い回す。**新しい言い換えを二度書かない。**
  */
-export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]): readonly CutInView[] {
+export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[], choosing = false): readonly CutInView[] {
   const names = namesIn(board)
   const whose = (player: Player): '自分' | '相手' => whoseOf(board, player)
   const named = (card: CardId | undefined): string | undefined =>
@@ -1853,6 +1982,13 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
   const views: { whose: '自分' | '相手'; heading: string; lines: string[]; omitted: boolean; unreadable: boolean }[] = []
   let open: (typeof views)[number] | undefined
 
+  const folded = foldedInstructions(
+    fresh.map(({ event }) => event),
+    named,
+    board.viewer,
+    choosing,
+  )
+
   for (const { event } of fresh) {
     if (event.kind === '能力を解決した') {
       open = { whose: whose(event.controller), heading: headingOf(event.via, named(event.source)), lines: [], omitted: false, unreadable: false }
@@ -1860,6 +1996,7 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
       continue
     }
     if (event.kind === '命令を実行した' && open !== undefined) {
+      if (folded.has(event)) continue
       // 知らない種類の命令（#285）は並べない。カットインは読める分を見せる演出で、読めなかった
       // ことはログの欄が言う（`UNREADABLE_LOG`）。全部が読めなければ、見出しだけになる。
       const line = instructionLine(event.instruction, board, named, whose, event.controller)
@@ -2122,7 +2259,7 @@ export function roomListView(views: readonly RoomView[], tab: RoomTab, query: st
 }
 
 /** 届いた盤面を、画面に出す形にする。 */
-export function boardView(board: WirePerspective): BoardView {
+export function boardView(board: WirePerspective, choosing = false): BoardView {
   const opponent = board.viewer === '先攻' ? '後攻' : '先攻'
   const names = namesIn(board)
   const pending = pendingAbilitiesIn(board, names)
@@ -2140,6 +2277,6 @@ export function boardView(board: WirePerspective): BoardView {
     own: sideView(board, board.viewer, pending),
     squares: squareViews(board, pending),
     result: resultLine(board),
-    log: logLines(board),
+    log: logLines(board, choosing),
   }
 }

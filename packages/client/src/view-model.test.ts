@@ -3,6 +3,7 @@ import { indexOfSquare } from '@revolution/engine'
 import type {
   DuelEvent,
   LoggedEvent,
+  LoggedContinuousChange,
   LoggedInstruction,
   Player,
   PlayerZone,
@@ -2227,6 +2228,226 @@ describe('操作ログ', () => {
 })
 
 /**
+ * 同じことを 2 回言う行を落とす（ADR-0064）。選んだ行は、同じ解決の中の後の命令の行が、選んだものを名指しする
+ * 時に落とす。「してもよい」は、聞いた行と答えが 1 行で、その後の手札へ置いた行は落とす。
+ */
+describe('操作ログのまとめ', () => {
+  const ON_SQUARE: Square = { row: 1, column: 1 }
+  const OTHER_SQUARE: Square = { row: 1, column: 2 }
+  const base = withSquare(withSquare(emptyBoard('先攻'), ON_SQUARE, [instance('A', '先攻')]), OTHER_SQUARE, [instance('B', '先攻')])
+  const withLog = (...events: readonly DuelEvent[]): WirePerspective => ({ ...base, log: logged(events) })
+  /** 出力された行の文。古いものが先（読む順）。 */
+  const texts = (board: WirePerspective): readonly string[] =>
+    logLines(board)
+      .map((line) => line.text)
+      .reverse()
+
+  const RESOLVED: DuelEvent = { kind: '能力を解決した', controller: '先攻', via: '誘発', source: 'A' }
+  const instruct = (instruction: LoggedInstruction): DuelEvent => ({ kind: '命令を実行した', controller: '先攻', instruction })
+  const choose = (card: string): DuelEvent => instruct({ kind: '選ぶ', card, square: undefined })
+  const mayAsk = (answer: 'はい' | 'いいえ', action: '手札に加える', card = 'A'): DuelEvent =>
+    instruct({ kind: 'してもよいか聞く', action, count: 1, cards: [card], answer })
+  const placeInHand = (card: string): DuelEvent => instruct({ kind: 'ゾーンへ置く', card, to: '手札', player: '先攻' })
+
+  describe('選んだ行', () => {
+    it('選んだカードを後の命令が名指しするなら、選んだ行は出ない', () => {
+      const board = withLog(RESOLVED, choose('A'), instruct({ kind: '破壊する', card: 'A' }))
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを破壊した'])
+    })
+
+    it('ゾーンへ置く行・ダメージの行も、選んだカードを名指しするなら同じ', () => {
+      const board = withLog(
+        RESOLVED,
+        choose('A'),
+        placeInHand('A'),
+        choose('B'),
+        instruct({ kind: 'ユニットにダメージを与える', card: 'B', amount: 3000 }),
+      )
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを自分の手札へ', 'テスト・Bにダメージ3000'])
+    })
+
+    it('カードとスクエアを選んで、そのカードをそのスクエアへ置くなら、置く行だけになる', () => {
+      const board = withLog(
+        RESOLVED,
+        choose('A'),
+        instruct({ kind: '選ぶ', card: undefined, square: OTHER_SQUARE }),
+        instruct({ kind: 'スクエアへ置く', card: 'A', square: OTHER_SQUARE }),
+      )
+
+      expect(texts(board)).toHaveLength(2)
+      expect(texts(board)[1]).toMatch(/^テスト・Aを.+へ$/)
+    })
+
+    it('後の命令が名指ししないなら、選んだ行は残る', () => {
+      const board = withLog(RESOLVED, choose('A'), instruct({ kind: '破壊する', card: 'B' }))
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを選択した', 'テスト・Bを破壊した'])
+    })
+
+    it('名指しする行が、次の手のあとにあるなら、選んだ行は残る', () => {
+      const board = withLog(
+        RESOLVED,
+        choose('A'),
+        { kind: '行動した', player: '先攻', action: 'プランする', card: undefined, square: undefined },
+        instruct({ kind: '破壊する', card: 'A' }),
+      )
+
+      expect(texts(board)).toContain('テスト・Aを選択した')
+    })
+
+    it('選ばないことを選んだ行は、後の命令があっても残る', () => {
+      const board = withLog(
+        RESOLVED,
+        instruct({ kind: '選ぶ', card: undefined, square: undefined, declined: true }),
+        instruct({ kind: '破壊する', card: 'A' }),
+      )
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', '選択しなかった', 'テスト・Aを破壊した'])
+    })
+
+    it('向きを変える行（リリース）・BP の変更の行も、選んだカードを名指しするなら同じ', () => {
+      const board = withLog(
+        RESOLVED,
+        choose('A'),
+        instruct({ kind: '向きを変える', card: 'A', orientation: 'リリース' }),
+        choose('B'),
+        instruct({ kind: '継続効果を作成する', card: 'B', duration: 'ターンの終わりまで', change: { kind: 'ＢＰの変更', amount: 1000 } }),
+      )
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aをリリース', 'テスト・Bはターンの終わりまでBP+1000'])
+    })
+
+    // 画面が知らない種類の継続効果（古い画面）は、行が「読めなかった」になり、名前を出力しない。選んだ行を落とさない。
+    it('後の行が名前を出力しない（読めない）なら、同じカードを名指ししていても、選んだ行は残る', () => {
+      const unknownChange = { kind: 'この画面が知らない変更' } as unknown as LoggedContinuousChange
+      const board = withLog(
+        RESOLVED,
+        choose('A'),
+        instruct({ kind: '継続効果を作成する', card: 'A', duration: 'ターンの終わりまで', change: unknownChange }),
+      )
+
+      expect(texts(board)).toContain('テスト・Aを選択した')
+    })
+
+    // ADR-0052。相手が支配者の手札を見て選ぶ時、選んだ行の持ち主は相手、続く置く行の持ち主は支配者である。
+    it('選んだ人と、名指しする行の持ち主が違うなら、選んだ行は残る（相手が選んだことが読める）', () => {
+      const board = withLog(
+        RESOLVED,
+        { kind: '命令を実行した', controller: '後攻', instruction: { kind: '選ぶ', card: 'A', square: undefined } },
+        instruct({ kind: 'ゾーンへ置く', card: 'A', to: '捨札', player: '先攻' }),
+      )
+
+      expect(logLines(board).map((line) => [line.whose, line.text]).reverse()).toEqual([
+        ['自分', '誘発：テスト・A'],
+        ['相手', 'テスト・Aを選択した'],
+        ['自分', 'テスト・Aを自分の捨札へ'],
+      ])
+    })
+
+    it('相手の視点でも、見えるカードなら同じようにまとまる', () => {
+      const board = { ...withLog(RESOLVED, choose('A'), instruct({ kind: '破壊する', card: 'A' })), viewer: '後攻' as const }
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを破壊した'])
+    })
+  })
+
+  // 答えは「ひとつ戻る」で戻せ、戻すと選んだ行は消える。答えを待っている間は、確定する前の選んだ行を表示しない。
+  describe('答えを待っている間', () => {
+    const textsWhileChoosing = (board: WirePerspective): readonly string[] =>
+      logLines(board, true)
+        .map((line) => line.text)
+        .reverse()
+
+    it('いまの解決の選んだ行は、表示しない', () => {
+      const board = withLog(RESOLVED, choose('A'))
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを選択した'])
+      expect(textsWhileChoosing(board)).toEqual(['誘発：テスト・A'])
+    })
+
+    it('選ばないことを選んだ行も、表示しない', () => {
+      const board = withLog(RESOLVED, instruct({ kind: '選ぶ', card: undefined, square: undefined, declined: true }))
+
+      expect(textsWhileChoosing(board)).toEqual(['誘発：テスト・A'])
+    })
+
+    it('前の解決の選んだ行は、確定しているので、そのまま表示する', () => {
+      const board = withLog(
+        RESOLVED,
+        choose('A'),
+        instruct({ kind: '破壊する', card: 'B' }),
+        { kind: '能力を解決した', controller: '先攻', via: '誘発', source: 'B' },
+        choose('B'),
+      )
+
+      expect(textsWhileChoosing(board)).toEqual(['誘発：テスト・A', 'テスト・Aを選択した', 'テスト・Bを破壊した', '誘発：テスト・B'])
+    })
+
+    it('選んだ行以外は、答えを待っていても表示する', () => {
+      const board = withLog(RESOLVED, mayAsk('はい', '手札に加える'), placeInHand('A'), choose('B'))
+
+      expect(textsWhileChoosing(board)).toEqual(['誘発：テスト・A', 'テスト・Aを手札に加えた'])
+    })
+
+    it('カットインも、選んだ行は並べない（見出しは残る）', () => {
+      const fresh: readonly DuelEvent[] = [RESOLVED, choose('A')]
+
+      expect(cutInViews(base, logged(fresh), true)).toEqual([{ whose: '自分', heading: 'テスト・Aの効果、誘発！', lines: [] }])
+      expect(cutInViews(base, logged(fresh))[0]?.lines).toEqual(['テスト・Aを選択した'])
+    })
+  })
+
+  describe('してもよい', () => {
+    it('「はい」なら、「手札に加える」の行が 1 行で出力され、続く手札へ置いた行は出力されない', () => {
+      const board = withLog(RESOLVED, mayAsk('はい', '手札に加える'), placeInHand('A'))
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを手札に加えた'])
+    })
+
+    it('「いいえ」なら、「手札に加える」をしなかったことが 1 行で出力される', () => {
+      const board = withLog(RESOLVED, mayAsk('いいえ', '手札に加える'))
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを手札に加えなかった'])
+    })
+
+    it('2 人の視点で同じ文が出力される。行の持ち主は、能力の支配者である', () => {
+      const board = withLog(RESOLVED, mayAsk('はい', '手札に加える'))
+
+      expect(logLines(board)[0]).toMatchObject({ whose: '自分', text: 'テスト・Aを手札に加えた' })
+      expect(logLines({ ...board, viewer: '後攻' })[0]).toMatchObject({ whose: '相手', text: 'テスト・Aを手札に加えた' })
+    })
+
+    it('相手の視点でも、「はい」の 1 行だけになる（手札へ置いた行は落ちる）', () => {
+      const board = { ...withLog(RESOLVED, mayAsk('はい', '手札に加える'), placeInHand('A')), viewer: '後攻' as const }
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを手札に加えた'])
+    })
+
+    it('続く別のカードの行は残る（手札に加えたあとに、手札のカードを選んで捨てる）', () => {
+      const board = withLog(
+        RESOLVED,
+        mayAsk('はい', '手札に加える'),
+        placeInHand('A'),
+        choose('B'),
+        instruct({ kind: 'ゾーンへ置く', card: 'B', to: '捨札', player: '先攻' }),
+      )
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを手札に加えた', 'テスト・Bを自分の捨札へ'])
+    })
+
+    // 名指しが落ちたログ（見る人に見えていなかったカード）。枚数は残るが、名前が無いので行を言えない。
+    it('名指しが落ちていたら、聞いた行は出さず、手札へ置いた行は落とさない', () => {
+      const dropped = instruct({ kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: [], answer: 'はい' })
+      const board = withLog(RESOLVED, dropped, instruct({ kind: 'ゾーンへ置く', card: undefined, to: '手札', player: '先攻' }))
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', '自分の手札へ'])
+    })
+  })
+})
+
+/**
  * 効果の解決 1 つ分のカットイン（#104）。
  *
  * 見出しの言葉が経路と取り違えられていないこと、本文が命令から組み立てられること、
@@ -2276,11 +2497,36 @@ describe('カットイン', () => {
   it('本文は命令 1 つにつき 1 行になる', () => {
     const fresh: readonly DuelEvent[] = [
       { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: 'プレイヤーにダメージを与える', player: '後攻', amount: 500 } },
+    ]
+
+    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を破壊した`, '相手にダメージ500'])
+  })
+
+  // ADR-0064。選んだカードを、同じ解決の中の後の命令が名指しするなら、選んだ行は並べない。
+  it('選んだカードを後の命令が名指しするなら、選んだ行は並べず、その命令の行だけになる', () => {
+    const fresh: readonly DuelEvent[] = [
+      { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: '選ぶ', card: '置いてある', square: undefined } },
       { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
     ]
 
-    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を選択した`, `${NAME}を破壊した`])
+    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を破壊した`])
+  })
+
+  it('してもよいと答えた行は 1 行になり、続く手札へ置いた行は並べない', () => {
+    const fresh: readonly DuelEvent[] = [
+      { kind: '能力を解決した', controller: '先攻', via: '誘発', source: '置いてある' },
+      {
+        kind: '命令を実行した',
+        controller: '先攻',
+        instruction: { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: ['置いてある'], answer: 'はい' },
+      },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: 'ゾーンへ置く', card: '置いてある', to: '手札', player: '先攻' } },
+    ]
+
+    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を手札に加えた`])
   })
 
   // 見えないカードを選んだ行は、カットインにも並べない。その行だけで本文が空になる解決は、空のカットインを出さない。

@@ -70,7 +70,7 @@ import type {
   PoolView,
   TypeCount,
 } from './deck-builder.js'
-import type { ActionView, AimKind, AskOption, AskView, ChoiceView, DestinationView, PickView } from './input-model.js'
+import type { ActionView, AimKind, AskOption, AskView, ChoiceView, DestinationView, MayView, PickView } from './input-model.js'
 import { countName, DISPLAY_NAME_LIMIT } from './name-count.js'
 import { zoneTally } from './zone-tally.js'
 import type { TallySymbol, TallyZone } from './zone-tally.js'
@@ -5803,6 +5803,55 @@ export function choosePickerElement(
   if (sent) lock.lock()
   // 能力の札は文字だけなので、枠の幅は中身に合わせて狭める（ADR-0031）。
   if (abilityOnly) root.classList.add('picker--ability')
+
+  return root
+}
+
+/** 「してもよい」のダイアログで押せるもの。 */
+export interface MayHandlers {
+  /** 「はい」「いいえ」。答えは、候補の 0 番と「選ばない」である（ADR-0064）。 */
+  readonly onAnswer: (yes: boolean) => void
+  readonly onRewind: () => void
+  readonly onCancel: () => void
+}
+
+/**
+ * 「してもよい」を聞く「はい／いいえ」のダイアログ（ADR-0064）。カードの一覧と同じ枠に、聞く文と足もとの
+ * ボタンだけを置く（カードは並べない）。
+ *
+ * 足もとは、左から「ひとつ戻る」「この行動をやめる」（行える場面だけ）、「いいえ」、「はい」（金の主ボタン）。
+ * 最初の手は「はい」に置く。答えが必ず要るので、Esc・暗くしたところを押す、は何もしない。行動そのものを
+ * 取り消すのは「この行動をやめる」だけである（ADR-0033）。
+ *
+ * 答えを送ったあとは、返事が届いて描き直されるまで、すべてのボタンを押せなくして「通信中…」を表示する
+ * （`choosePickerElement` と同じ、ADR-0031）。返事より先に描き直されたときは、呼ぶ側が `sent` で渡す。
+ */
+export function mayElement(
+  view: MayView,
+  rawHandlers: MayHandlers,
+  /** スマートフォンのときだけ渡す（ADR-0034）。見出しの下に表示する、対象のカードの詳細。 */
+  detail?: HTMLElement,
+  sent = false,
+): HTMLElement {
+  const lock = senderLock()
+  const handlers: MayHandlers = {
+    onAnswer: lock.once(rawHandlers.onAnswer),
+    onRewind: lock.once(rawHandlers.onRewind),
+    onCancel: lock.once(rawHandlers.onCancel),
+  }
+
+  const foot = element('div', 'picker__foot')
+  if (view.mayRewind) foot.append(button('ひとつ戻る', handlers.onRewind))
+  if (view.mayCancel) foot.append(button('この行動をやめる', handlers.onCancel))
+  foot.append(button('いいえ', () => handlers.onAnswer(false)))
+  const yes = button('はい', () => handlers.onAnswer(true), true)
+  yes.setAttribute(INITIAL_FOCUS_ATTRIBUTE, '')
+  foot.append(yes)
+
+  const root = pickerElement('選ぶ', view.heading, view.lead, [], foot, lock.sending, undefined, detail)
+  root.classList.add('picker--may')
+  lock.bind(root)
+  if (sent) lock.lock()
 
   return root
 }
