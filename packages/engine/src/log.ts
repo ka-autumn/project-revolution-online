@@ -4,7 +4,7 @@ import { BATTLE_SPACE, isArea, rowOfArea } from './board.js'
 import type { Square, SquareIndex } from './board.js'
 import type { CardId, DuelResult, DuelState } from './duel.js'
 import { loggedChangeOf } from './effect.js'
-import type { Duration, Instruction, LoggedContinuousChange } from './effect.js'
+import type { Duration, Instruction, LoggedContinuousChange, MayAction } from './effect.js'
 import type { LegalAction } from './legal-action.js'
 import type { Orientation, OrientedZone } from './orientation.js'
 import { seenByOf } from './perspective.js'
@@ -518,6 +518,21 @@ export type LoggedInstruction =
    * 誰のカードだったかは名指ししなくても盤面とログから分かる。名前は載せない。
    */
   | { readonly kind: '山札をシャッフルする'; readonly withPlan: boolean }
+  /**
+   * 支配者が「してもよい」かを聞かれ、答えた（ADR-0064）。答えは「はい」か「いいえ」で、「はい」の時の
+   * 動き（ゾーンへ置く）は、この行の後に続く。
+   *
+   * 対象は 2 人から見えているカードだけなので、名指しは 2 人に同じ内容で出力する。名指しを落とすかどうかは
+   * 射影に任せるが、枚数は落とさない（`カードを引く` と同じ構造）。聞かずに済んだ時（対象が場所を離れている）は
+   * 積まない。
+   */
+  | {
+      readonly kind: 'してもよいか聞く'
+      readonly action: MayAction
+      readonly count: number
+      readonly cards: readonly CardId[]
+      readonly answer: 'はい' | 'いいえ'
+    }
 
 /**
  * そのできごとが名指しするカードのうち、そのプレイヤーから表側が見えていたもの（#129）。
@@ -718,6 +733,9 @@ export function loggedInstruction(
     // 選んだ行は、命令が選んだカードごとに自分で積む（`resolve.ts`、ADR-0055）。この関数には来ない。
     case '複数を選ぶ':
       throw new Error('複数を選ぶ命令の行は、命令が自分で積む')
+    // 聞いたことと答えは、命令が自分で積む（`resolve.ts`、ADR-0064）。この関数には来ない。
+    case 'してもよいか聞く':
+      throw new Error('してもよいか聞く命令の行は、命令が自分で積む')
     case '破壊する':
       return { kind: '破壊する', card: instruction.target.id }
     case 'プレイヤーにダメージを与える':

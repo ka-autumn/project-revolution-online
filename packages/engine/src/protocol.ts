@@ -3,7 +3,7 @@ import type { CardType, Color } from './card.js'
 import type { DeckViolation, DuelFormat } from './deck.js'
 import { cardsIn } from './duel.js'
 import type { CardId, CardInstance, CourageConditionMet, DuelState, TrapConditionMet } from './duel.js'
-import type { UnitOnSquare } from './effect.js'
+import type { MayAction, UnitOnSquare } from './effect.js'
 import { applyLegalAction } from './legal-action.js'
 import type { LegalAction } from './legal-action.js'
 import { areaRowOf, cardIdOf, squareOf } from './log.js'
@@ -12,7 +12,7 @@ import type { PassOutcome } from './progress.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
 import { CONFIRMATION } from './resolve.js'
-import type { ChoicePurpose, ChoiceSeries, Chooser } from './resolve.js'
+import type { ChoiceMay, ChoicePurpose, ChoiceSeries, Chooser } from './resolve.js'
 import { instanceToWire } from './wire.js'
 import type { WireCardFace, WireCardInstance, WirePerspective } from './wire.js'
 import { PLAYER_ZONES } from './zone.js'
@@ -516,6 +516,14 @@ export interface WireShownCard {
   readonly candidate?: number
 }
 
+/** 「してもよい」で聞く内容（`WireChoice.may`）。 */
+export interface WireMay {
+  /** 「はい」の時に実行される動き。画面は、値ごとの言い方の表から問いの文を取得する。 */
+  readonly action: MayAction
+  /** 対象のカード。選ぶ人から見えているものだけ。 */
+  readonly targets: readonly CardId[]
+}
+
 /** 選んでほしいこと 1 つ。**選ぶプレイヤーにだけ送る**（ADR-0008）。 */
 export interface WireChoice {
   readonly player: Player
@@ -573,6 +581,14 @@ export interface WireChoice {
    * 1 枚ずつ選べる。
    */
   readonly series?: ChoiceSeries
+  /**
+   * 「してもよい」で聞く内容（ADR-0064）。`purpose` が `してもよい` の選択にだけ含まれる。
+   *
+   * 候補は「確認した」の 1 つで、「はい」は候補の 0 番、「いいえ」は「選ばない」で答える。画面は、これを見て
+   * 「はい／いいえ」のダイアログを表示する。`targets` は、選ぶ人に見えているカードだけである。古い画面は知らない
+   * 選択の目的として、「選んでください」と表示する（ADR-0038）。
+   */
+  readonly may?: WireMay
   /**
    * この行動を戻せるか。`ひとつ戻る` と `取り消す` の両方にかかる（#142）。
    *
@@ -1063,7 +1079,7 @@ function describeCandidate(
   chooser: Player,
 ): WireCandidate {
   // 確認だけの選択。候補は何も指さない。
-  if (purpose === '見たカードの確認') return { kind: '確認' }
+  if (purpose === '見たカードの確認' || purpose === 'してもよい') return { kind: '確認' }
 
   // 能力が並ぶ場面。カードではないので、発生源のカードで指す。
   if (purpose === '解決する能力' || purpose === 'プランの置き換え') {
@@ -1143,6 +1159,7 @@ function describeChoice(
   source: CardId | undefined,
   shown: readonly CardInstance[] | undefined,
   series: ChoiceSeries | undefined,
+  may: ChoiceMay | undefined,
 ): WireChoice {
   const visible = visibleIdsOf(board, player)
   const before = visibleIdsOf(started, player)
@@ -1163,6 +1180,8 @@ function describeChoice(
     candidates: candidates.map((candidate) => describeCandidate(candidate, purpose, seen, board, player)),
     ...(shown === undefined ? {} : { shown: describeAllShown(shown, candidates) }),
     ...(series === undefined ? {} : { series }),
+    // 選ぶ人に見えているカードだけを送る。見えていないカードの識別子は渡さない（候補と同じ扱い）。
+    ...(may === undefined ? {} : { may: { action: may.action, targets: may.targets.filter((card) => visible.has(card)) } }),
   }
 }
 
@@ -1235,7 +1254,7 @@ export function applyWithAnswers(
   const runStart: { player: Player | undefined; board: DuelState | undefined } = { player: undefined, board: undefined }
   // 行動したのは優先権を持つプレイヤーである（`room.ts` の `act`）。
   const actor = state.turn.priority
-  const chooser: Chooser = (candidates, player, purpose, board, mayDecline = false, source, shown, series) => {
+  const chooser: Chooser = (candidates, player, purpose, board, mayDecline = false, source, shown, series, may) => {
     // 選ぶ余地が無いなら聞かない。候補が 1 つで、選ばないことも選べないなら、答えは 1 通りしか
     // 無く、押させても盤面は同じところへ進む。**答えとして数えない**ので、`ひとつ戻る`
     // （ADR-0008）はこの手前の選択まで戻る。確認の選択だけは別で、答えることが見せる一覧を
@@ -1256,7 +1275,7 @@ export function applyWithAnswers(
       const mayCancel = player === actor && answeredBy.every((who) => who === actor)
       // 取り消せる人は、行動を始める前の盤面と比べる。取り消せない人は、続けて答え始めた盤面と比べる。
       const base = mayCancel ? state : (runStart.board ?? state)
-      const choice = describeChoice(board, base, candidates, player, purpose, mayDecline, run, mayCancel, source, shown, series)
+      const choice = describeChoice(board, base, candidates, player, purpose, mayDecline, run, mayCancel, source, shown, series, may)
       throw { kind: CHOICE_NEEDED, choice, board } satisfies ChoiceNeeded
     }
 
