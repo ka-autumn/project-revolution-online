@@ -806,6 +806,10 @@ function scoreChoice(view: ChoiceView): { readonly scores: readonly number[]; re
       return byCandidate((candidate) => -cardBasePoints(candidateCard(perspective, candidate) ?? DUMMY))
     case '山札から選ぶ':
       return byCandidate((candidate) => cardBasePoints(candidateCard(perspective, candidate) ?? DUMMY))
+    // 「してもよい」（ADR-0064）。候補は「確認」の 1 つで、いまはいつも「はい」と答える。効果を空回しして
+    // 「はい」と「いいえ」を比べるのは、手の選び方の改善（#366）で扱う。
+    case 'してもよい':
+      return byCandidate(() => 0)
     case 'トラップのきっかけ':
     case '勇気のきっかけ':
       return byCandidate((candidate) => occasionScore(perspective, candidate))
