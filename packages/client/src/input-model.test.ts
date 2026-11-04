@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHOICE_PURPOSES, indexOfSquare } from '@revolution/engine'
+import { CHOICE_PURPOSES, MAY_ACTIONS, indexOfSquare } from '@revolution/engine'
 import type {
   LegalAction,
   PassOutcome,
@@ -15,7 +15,10 @@ import {
   abilityLabels,
   abilityListSource,
   isAbilityChoice,
+  isEffectChoice,
+  isMayChoice,
   isSeriesChoice,
+  mayView,
   nextSeriesAnswer,
   actionViews,
   automaticAction,
@@ -27,6 +30,7 @@ import {
   showsChoicePicker,
   shownTitleOf,
 } from './input-model.js'
+import { mayDoneLine, maySkippedLine, mayQuestion } from './may-wording.js'
 import { applyMessage, connecting } from './session.js'
 import { answersOnlyByDeclining, cardInfoRowsOf, dimsUnselectable, shownCardViewsIn, squareLabel } from './view-model.js'
 import type { Session } from './session.js'
@@ -2424,5 +2428,106 @@ describe('続きの選択に自動で送る分', () => {
       queue: ['手札の2枚目'],
       sending: true,
     })
+  })
+})
+
+// ADR-0064。「してもよい」は、候補が「確認」の 1 つで、「はい／いいえ」のダイアログで聞く。
+describe('isMayChoice・mayView', () => {
+  const asked = (overrides: Partial<WireChoice> = {}): WireChoice => ({
+    player: '先攻',
+    purpose: 'してもよい',
+    mayDecline: true,
+    answered: 0,
+    mayGoBack: false,
+    mayCancel: true,
+    candidates: [{ kind: '確認' }],
+    may: { action: '手札に加える', targets: ['スクエアの1枚'] },
+    ...overrides,
+  })
+
+  it('目的が「してもよい」で、聞く内容を持つ選択だけが、「してもよい」の選択', () => {
+    expect(isMayChoice(asked())).toBe(true)
+    expect(isMayChoice(asked({ may: undefined }))).toBe(false)
+    expect(isMayChoice(asked({ purpose: '効果の対象' }))).toBe(false)
+  })
+
+  it('聞く文は、対象の名前と、動きの値ごとの言い方から作成する', () => {
+    const view = mayView(board(), asked() as Parameters<typeof mayView>[1])
+
+    expect(view.lead).toBe('テスト・盤上の戦士を手札に加えますか？')
+    expect(view.target).toBe('スクエアの1枚')
+  })
+
+  it('発生源が分からなければ、見出しは「確認」', () => {
+    expect(mayView(board(), asked() as Parameters<typeof mayView>[1]).heading).toBe('確認')
+  })
+
+  it('発生源の名前を取得できるなら、「〇〇 の効果」を見出しにする', () => {
+    const view = mayView(board(), asked({ source: 'スクエアの1枚' }) as Parameters<typeof mayView>[1])
+
+    expect(view.heading).toBe('テスト・盤上の戦士 の効果')
+  })
+
+  it('名前を取得できない対象は、文に入れない（名前を作り出さない）', () => {
+    const view = mayView(board(), asked({ may: { action: '手札に加える', targets: [] } }) as Parameters<typeof mayView>[1])
+
+    expect(view.lead).toBe('手札に加えますか？')
+    expect(view.target).toBeUndefined()
+  })
+
+  it('戻れるか・やめられるかは、届いた値をそのまま重ねる（判断はサーバ）', () => {
+    const none = mayView(board(), asked({ mayGoBack: false, answered: 2 }) as Parameters<typeof mayView>[1])
+    const rewind = mayView(board(), asked({ mayGoBack: true, answered: 1, mayCancel: false }) as Parameters<typeof mayView>[1])
+    const cancel = mayView(board(), asked({ mayGoBack: true, answered: 0, mayCancel: true }) as Parameters<typeof mayView>[1])
+
+    expect([none.mayRewind, none.mayCancel]).toEqual([false, false])
+    expect([rewind.mayRewind, rewind.mayCancel]).toEqual([true, false])
+    expect([cancel.mayRewind, cancel.mayCancel]).toEqual([false, true])
+  })
+})
+
+describe('isEffectChoice', () => {
+  const choiceOf = (purpose: WireChoice['purpose']): WireChoice => ({
+    player: '先攻',
+    purpose,
+    mayDecline: false,
+    answered: 0,
+    mayGoBack: false,
+    mayCancel: false,
+    candidates: [],
+  })
+
+  it('効果の途中の選択だけが、対象になる', () => {
+    const effectPurposes = new Set(['効果の対象', '山札から選ぶ', '捨てる手札', 'してもよい', '見たカードの確認'])
+
+    for (const purpose of CHOICE_PURPOSES) {
+      expect(isEffectChoice(choiceOf(purpose))).toBe(effectPurposes.has(purpose))
+    }
+  })
+})
+
+describe('「してもよい」の言い方の表', () => {
+  it('動きの値のすべてに、聞く・した・しなかったの 3 つの言い方がある', () => {
+    for (const action of MAY_ACTIONS) {
+      expect(mayQuestion(action, ['名前'])).toMatch(/^名前を.+ますか？$/)
+      expect(mayDoneLine(action, ['名前'])).toMatch(/^名前を.+た$/)
+      expect(maySkippedLine(action, ['名前'])).toMatch(/^名前を.+なかった$/)
+    }
+  })
+
+  it('テキストの動詞（加える）で、聞く・した・しなかったの言い方になる', () => {
+    expect(mayQuestion('手札に加える', ['A'])).toBe('Aを手札に加えますか？')
+    expect(mayDoneLine('手札に加える', ['A'])).toBe('Aを手札に加えた')
+    expect(maySkippedLine('手札に加える', ['A'])).toBe('Aを手札に加えなかった')
+  })
+
+  it('対象が 2 枚なら「と」でつなぐ（名前の「・」と区別するため）', () => {
+    expect(mayQuestion('手札に加える', ['テスト・A', 'B'])).toBe('テスト・AとBを手札に加えますか？')
+  })
+
+  it('対象の名前が 1 つも無ければ、聞く文は述語だけ、ログの行は出さない', () => {
+    expect(mayQuestion('手札に加える', [])).toBe('手札に加えますか？')
+    expect(mayDoneLine('手札に加える', [])).toBeUndefined()
+    expect(maySkippedLine('手札に加える', [])).toBeUndefined()
   })
 })

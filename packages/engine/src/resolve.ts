@@ -24,6 +24,7 @@ import type {
   DuelView,
   Effect,
   Instruction,
+  MayAction,
   SmashCard,
   UnitOnSquare,
 } from './effect.js'
@@ -84,6 +85,12 @@ export const CHOICE_PURPOSES = [
    * 自身の手札で、効果には見えない。N 枚を選ばせる時は、1 枚ずつ N 回聞く（`ChoiceSeries`）。
    */
   '捨てる手札',
+  /**
+   * 「してもよい」を「はい／いいえ」で聞く（`effect.ts` の `mayDo`、ADR-0064）。候補は「確認した」の
+   * 1 つで、「はい」が候補の 0 番、「いいえ」が「選ばない」にあたる。聞く内容（動きと対象）は、
+   * 選択の要求の `may` が持つ。
+   */
+  'してもよい',
   /** ユニットを移動するための追加コストの支払い（同 第4部 第6章 2-2）。 */
   '移動のコスト',
   /** 起動型能力のコストの支払い（同 第4部 第2章 1）。 */
@@ -118,6 +125,16 @@ export interface ChoiceSeries {
 }
 
 /**
+ * 「してもよい」で聞く内容（ADR-0064）。`Chooser` の `may` で渡し、選択の要求にそのまま含まれる。
+ * `purpose` と同じく、返す答えを左右しない。
+ */
+export interface ChoiceMay {
+  readonly action: MayAction
+  /** 聞く時点で、効果が読んだ場所にあるカード。 */
+  readonly targets: readonly CardId[]
+}
+
+/**
  * 選ばせる手立て。呼ぶ側が渡す。
  *
  * `purpose` は選ぶ人に見せるためのもので、返す答えを左右しない。答えを自動で決める実装
@@ -142,6 +159,8 @@ export interface ChoiceSeries {
  * `player` は、テキストが指定した選ぶ人である。効果の中なら、能力の支配者か、その相手（ADR-0052）。
  *
  * `series` は、N 枚を続けて選ばせる選択の何枚目かである。`purpose` と同じく返す答えを左右しない。
+ *
+ * `may` は、`してもよい` の選択で聞く内容である（ADR-0064）。それ以外の選択には渡さない。
  */
 export type Chooser = (
   candidates: readonly unknown[],
@@ -152,6 +171,7 @@ export type Chooser = (
   source?: CardId,
   shown?: readonly CardInstance[],
   series?: ChoiceSeries,
+  may?: ChoiceMay,
 ) => unknown
 
 /**
@@ -366,6 +386,61 @@ function apply(
         throw new Error('候補にないものが選ばれた')
       }
       return { state: board, value: chosen, subject: chosen }
+    }
+    case 'してもよいか聞く': {
+      // 対象は、他の命令と同じく engine が見せたカードでなければならない。
+      for (const target of instruction.targets) {
+        if (!shown.has(target.id)) throw new Error('効果に見せていないカードが対象にされた')
+      }
+      // 聞く時点で効果が読んだ場所を離れているカードは、対象から外す。残らなければ、この行動は実行されない
+      // （総合ルール 第1部 第1章 3）ので、聞かずに「いいえ」として進み、ログも積まない。
+      const targets = instruction.targets.filter((target) => isWhereRead(state, target))
+      if (targets.length === 0) return { state, value: false }
+
+      const answered = context.chooser(
+        [CONFIRMATION],
+        context.controller,
+        'してもよい',
+        state,
+        true,
+        context.source,
+        undefined,
+        undefined,
+        { action: instruction.action, targets: targets.map(({ id }) => id) },
+      )
+      const yes = answered !== undefined
+      // 聞いたことと答えを、先に 1 行で積む。「はい」の後の動きの行（ゾーンへ置く）は、その後に続く。
+      let current = record(state, {
+        kind: '命令を実行した',
+        controller: context.controller,
+        instruction: {
+          kind: 'してもよいか聞く',
+          action: instruction.action,
+          count: targets.length,
+          cards: targets.map(({ id }) => id),
+          answer: yes ? 'はい' : 'いいえ',
+        },
+      })
+      if (!yes) return { state: current, value: false, logged: true }
+
+      // 動きは、手札へ置く（「加える」も「戻す」も同じ）。動かしたカードの名指しを残せるよう、動かす前の盤面を渡す。
+      for (const target of targets) {
+        const owner = findAnywhere(current, target.id)?.owner
+        const moved = moveToZone(current, [target.id], '手札', { orientation: 'リリース' })
+        current =
+          moved === current || owner === undefined
+            ? moved
+            : record(
+                moved,
+                {
+                  kind: '命令を実行した',
+                  controller: context.controller,
+                  instruction: { kind: 'ゾーンへ置く', card: target.id, to: '手札', player: owner },
+                },
+                current,
+              )
+      }
+      return { state: current, value: true, logged: true }
     }
     case '複数を選ぶ': {
       // 選ぶのは能力の支配者で、1 枚ずつ聞く。選んだものは次の候補から外れる。途中で盤面は変わらない

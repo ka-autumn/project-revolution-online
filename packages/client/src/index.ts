@@ -64,7 +64,10 @@ import {
   choiceView,
   abilityListSource,
   isAbilityChoice,
+  isEffectChoice,
+  isMayChoice,
   isSeriesChoice,
+  mayView,
   remainingOf,
   nextSeriesAnswer,
   shownTitleOf,
@@ -97,6 +100,7 @@ import {
   chooseZoneListElement,
   choosePickerElement,
   type ChoosePickerHandlers,
+  mayElement,
   seriesPickerElement,
   shownPickerElement,
   choosesFrom,
@@ -913,7 +917,8 @@ function draw(
     // 盤面から答える。払う一覧からは描き直さずに送る（一覧が自分で止めて「通信中…」を出す）。
     const answer = (found: number | undefined, redrawNow = true): boolean =>
       found !== undefined && duel.move({ kind: '選ぶ', answer: found }, redrawNow)
-    const boardData = boardView(board)
+    // 答えを待っている間は、選んだ行をログに表示しない（戻すと消えるため。`view-model.ts` の `foldedInstructions`）。
+    const boardData = boardView(board, stage.choice !== undefined && isEffectChoice(stage.choice))
     // 選択の要求が見せる一覧（相手の手札など）は盤面のどこにも載っていないので、詳細の引き先に足す。
     const shownCards = stage.choice?.shown === undefined ? [] : shownCardViewsIn(board, stage.choice)
     const cardsById = new Map([...visibleCardViewsIn(board), ...shownCards.map(({ card }) => [card.id, card] as const)])
@@ -1033,6 +1038,7 @@ function draw(
       connected &&
       stage.choice !== undefined &&
       (stage.choice.shown !== undefined ||
+        isMayChoice(stage.choice) ||
         isSeriesChoice(stage.choice) ||
         showsChoicePicker(stage.choice, offBoard) ||
         (clickMode && isAbilityChoice(stage.choice)))
@@ -1133,6 +1139,24 @@ function draw(
               onCancel: () => {
                 if (duel.move({ kind: '取り消す' }, false)) duel.onPickerAnswered()
               },
+            }
+            // 「してもよい」は、クリックモードでもボタンモードでも、「はい／いいえ」のダイアログで聞く（ADR-0064）。
+            // 答えは候補の 0 番（はい）と「選ばない」（いいえ）で、通信の答えの形式は選ぶ選択と同じである。
+            if (isMayChoice(choice)) {
+              const may = mayView(board, choice)
+              const target = may.target === undefined ? undefined : cardsById.get(may.target)
+              return mayElement(
+                may,
+                {
+                  onAnswer: (yes) => {
+                    if (duel.move({ kind: '選ぶ', answer: yes ? 0 : '選ばない' }, false)) duel.onPickerAnswered()
+                  },
+                  onRewind: handlers.onRewind,
+                  onCancel: handlers.onCancel,
+                },
+                phone === undefined ? undefined : sheetDetailElement(target),
+                awaiting,
+              )
             }
             // N 枚をまとめて選ぶ選択（ADR-0052）。候補が盤面にも載っていても（自分の手札）、一覧で N 枚に
             // 印を付けさせる。1 枚目を送った後の続きは、届くたびに印を付けたカードから引き直して送る。
@@ -2489,7 +2513,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     if (stage.board === undefined) return
 
     const transitions = transitionViews(stage.fresh, stage.board)
-    const cutIns = cutInViews(stage.board, stage.fresh)
+    const cutIns = cutInViews(stage.board, stage.fresh, stage.choice !== undefined && isEffectChoice(stage.choice))
     if (transitions.length === 0 && cutIns.length === 0) return
 
     queue = [...queue, { transitions, cutIns }]

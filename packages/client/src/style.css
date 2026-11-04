@@ -4330,6 +4330,30 @@ body {
   grid-template-columns: 1fr;
 }
 
+/* 「してもよい」の「はい／いいえ」（ADR-0064）は、カードを並べない。枠を狭め、空のカードの並びは出さない。 */
+.duel .picker--may .picker__box {
+  width: min(28rem, 100%);
+}
+
+.duel .picker--may .picker__cards {
+  display: none;
+}
+
+/* 聞く文が主役なので、見出しの下に、本文の大きさで置く（見出しと同じ行に小さく並べない） */
+.duel .picker--may .picker__head {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.9rem 1.2rem 1rem;
+  border-bottom: 0;
+}
+
+.duel .picker--may .picker__lead {
+  font-size: 1.05rem;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
 .duel .picker__foot {
   display: flex;
   align-items: center;
@@ -7482,6 +7506,15 @@ body {
 
   .duel .picker--ability .picker__box {
     width: 100%;
+  }
+
+  /* 「してもよい」は、中身の高さだけの低い枠にして、画面の下に寄せる。 */
+  .duel .picker--may {
+    align-items: flex-end;
+  }
+
+  .duel .picker--may .picker__box {
+    height: auto;
   }
 
   .duel .picker__head {

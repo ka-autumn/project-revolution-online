@@ -180,6 +180,23 @@ function runScripted(start: () => EffectStep<void>, script: readonly ScriptStep[
         case '複数を選ぶ':
           reply = instruction.candidates.slice(0, instruction.count)
           break
+        // 「してもよい」は、「はい」（候補の 0 番）と「いいえ」（選ばない）の 2 通りとして回す（ADR-0064）。エンジンと
+        // 同じに、対象が無ければ聞かずに「いいえ」で進む。「はい」の動き（手札へ置く）は、エンジンが実行するので、
+        // ここで同じ命令を並べて、点数に反映する。
+        case 'してもよいか聞く': {
+          if (instruction.targets.length === 0) break
+          if (used >= script.length) return { kind: '選ぶ', candidates: [{ kind: '確認' }], mayDecline: true, picker: '支配者' }
+
+          const answer = script[used]
+          used += 1
+          if (answer === '選ばない' || answer === undefined) break
+
+          for (const target of instruction.targets) {
+            instructions.push({ kind: 'ゾーンへ置く', card: target, to: '手札', orientation: 'リリース', position: '1番上' })
+          }
+          reply = true
+          break
+        }
         case '自分の山札を読む':
           reply = []
           break

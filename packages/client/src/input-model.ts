@@ -13,6 +13,7 @@ import type {
   WirePerspective,
 } from '@revolution/engine'
 import { indexOfSquare } from '@revolution/engine'
+import { mayQuestion } from './may-wording.js'
 import type { Session } from './session.js'
 import { areaLabel, drawnOnBoard, keyOfPosition, nameOf, namesIn, squareLabel } from './view-model.js'
 
@@ -357,6 +358,9 @@ function askingFor(
         : `${source} を発動するきっかけを選んでください`
     case '見たカードの確認':
       return '相手の手札を見ています'
+    // 「はい／いいえ」のダイアログで聞く（`mayView`、ADR-0064）ので、番号のボタンで並べる場面には来ない。
+    case 'してもよい':
+      return 'してもよいか選んでください'
     // 条件に合うカードが無い山札も聞かれる（選ばないことだけを選べる、ADR-0042）。
     case '山札から選ぶ':
       return hasCandidates ? 'カードを選択してください' : '条件に合うカードはありません'
@@ -487,6 +491,70 @@ export function choiceView(board: WirePerspective, choice: WireChoice, picking?:
  */
 export function isAbilityChoice(choice: WireChoice): boolean {
   return choice.candidates.length > 0 && choice.candidates.every((candidate) => candidate.kind === '能力')
+}
+
+/**
+ * 効果の途中の選択か（ADR-0064）。答えを待っている間、いまの解決の選んだ行を表示しない対象である
+ * （`view-model.ts` の `foldedInstructions`）。コストの支払い・バンクから解決する能力・プランの置き換え・きっかけの
+ * 選択は、解決の前後にあり、いまの解決の選んだ行は無いので、含めない。
+ */
+export function isEffectChoice(choice: WireChoice): boolean {
+  switch (choice.purpose) {
+    case '効果の対象':
+    case '山札から選ぶ':
+    case '捨てる手札':
+    case 'してもよい':
+    case '見たカードの確認':
+      return true
+    default:
+      return false
+  }
+}
+
+/** 「してもよい」を聞く「はい／いいえ」のダイアログ（ADR-0064）。 */
+export interface MayView {
+  /** 見出し。発生源が分かれば「〇〇 の効果」、分からなければ「確認」。 */
+  readonly heading: string
+  /** 聞く文。「見張りの猫を手札に加えますか？」。 */
+  readonly lead: string
+  /** 直前に答えたものを取り消せるか。`ChoiceView` と同じ。 */
+  readonly mayRewind: boolean
+  /** 行動そのものをやめられるか。`ChoiceView` と同じ。 */
+  readonly mayCancel: boolean
+  /** スマートフォンで、見出しの下に詳細を表示する対象のカード（先頭の 1 枚）。 */
+  readonly target: CardId | undefined
+}
+
+/** `may` を持つ、「してもよい」の選択。 */
+export type MayChoice = WireChoice & { readonly may: NonNullable<WireChoice['may']> }
+
+/**
+ * 「してもよい」を聞く選択か（ADR-0064）。クリックモードでもボタンモードでも、いつも「はい／いいえ」の
+ * ダイアログ（`render.ts` の `mayElement`）で聞く。候補は「確認」の 1 つで、番号のボタンで並べる意味が無い。
+ */
+export function isMayChoice(choice: WireChoice): choice is MayChoice {
+  return choice.purpose === 'してもよい' && choice.may !== undefined
+}
+
+/**
+ * 「してもよい」のダイアログの中身。聞く文は、動きの値ごとの表（`may-wording.ts`）から取得する。
+ * 名前を作り出さない（#95）ので、名前を取得できない対象は文に入れない。
+ */
+export function mayView(board: WirePerspective, choice: MayChoice): MayView {
+  const names = namesIn(board)
+  const source = choice.source === undefined ? undefined : names.get(choice.source)
+  const targetNames = choice.may.targets.flatMap((card) => {
+    const name = names.get(card)
+    return name === undefined ? [] : [name]
+  })
+  const opponents = choice.source !== undefined && isOpponentsSource(board, choice.source)
+  return {
+    heading: source === undefined ? '確認' : `${opponents ? '相手の ' : ''}${source} の効果`,
+    lead: mayQuestion(choice.may.action, targetNames),
+    mayRewind: choice.mayGoBack && choice.answered > 0,
+    mayCancel: choice.mayGoBack && choice.mayCancel,
+    target: choice.may.targets[0],
+  }
 }
 
 /**

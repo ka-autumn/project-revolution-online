@@ -249,6 +249,18 @@ export interface DuelView {
 }
 
 /**
+ * 「してもよい」で「はい」と答えた時に、エンジンが実行する動き（ADR-0064）。
+ *
+ * テキストの動詞まで含めた 1 つの値にする。同じ手札へ置く動きでも、テキストが「加える」と「戻す」を
+ * 書き分けているので、使うテキストを実装する時に、ダイアログとログの言い方を合わせるために別の値を
+ * 追加する。値は、それを使うテキストを実装する時に追加する。画面は、値ごとの言い方の表を持つ
+ * （`MAY_ACTIONS` を網羅する）。
+ */
+export const MAY_ACTIONS = ['手札に加える'] as const
+
+export type MayAction = (typeof MAY_ACTIONS)[number]
+
+/**
  * 効果が engine に出す命令。
  *
  * 効果は盤面を自分で書き換えず、何をしたいかを命令として返す。実際に盤面を変えるのは
@@ -328,6 +340,18 @@ export type Instruction =
    * から混ぜる。混ぜた後はプランゾーンは無い。
    */
   | { readonly kind: '山札をシャッフルする' }
+  /**
+   * 支配者に、「してもよい」かを「はい／いいえ」で聞く（ADR-0064）。「はい」なら、`targets` に `action` を
+   * エンジンが実行する。効果には、「はい」なら `true` が返る。
+   *
+   * 聞く時点で、対象のすべてが、効果が読んだ場所を離れていれば、聞かずに `false` を返す（総合ルール 第1部
+   * 第1章 3）。ログも積まない。
+   */
+  | {
+      readonly kind: 'してもよいか聞く'
+      readonly targets: readonly (CardInZone | UnitOnSquare | SmashCard | CardInTrapZone)[]
+      readonly action: MayAction
+    }
   | { readonly kind: 'プランを裏返す'; readonly player: Player }
   | {
       readonly kind: 'スクエアへ置く'
@@ -824,6 +848,24 @@ export function* lookAtOpponentHand(): EffectStep<void> {
  */
 export function* discardOpponentHand(count: number): EffectStep<void> {
   yield { kind: '相手に手札を捨てさせる', count }
+}
+
+/**
+ * 「してもよい」かを、支配者に「はい／いいえ」で聞く（ADR-0064）。「はい」なら `targets` に `action` を
+ * エンジンが実行し、`true` を返す。「いいえ」なら何も起きず、`false` を返す。
+ *
+ * 対象が決まっていて、するかしないかだけを選ぶテキストに使う。「選び、〜してよい」のように、選ぶ操作が
+ * ある場合は、`chooseAtMostOne` を使う。続きの処置（「そうしたら、〜」）は、`true` を受け取った後に、
+ * 効果の側で書く。問いの文と実際の動きがずれないよう、動きは値で渡す（`MayAction`）。
+ *
+ * 聞く時点で、対象のすべてが、効果が読んだ場所を離れていれば、聞かずに `false` を返す。
+ */
+export function* mayDo(
+  targets: readonly (CardInZone | UnitOnSquare | SmashCard | CardInTrapZone)[],
+  action: MayAction,
+): EffectStep<boolean> {
+  const answered = yield { kind: 'してもよいか聞く', targets, action }
+  return answered === true
 }
 
 /**

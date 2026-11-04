@@ -70,6 +70,12 @@ button.b:disabled { opacity: 0.5; cursor: default; }
 .picker__ability[aria-disabled='true'] { cursor: default; opacity: 0.6; pointer-events: none; }
 .picker__foot { flex-wrap: wrap; display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; padding: 0.7rem 1rem; border-top: 1px solid rgb(220 166 64 / 0.5); }
 .picker__foot button { white-space: nowrap; }
+/* 「してもよい」の「はい／いいえ」（ADR-0064）。カードを並べないので、枠を狭め、空の並びは出さない */
+.picker--may .picker__box { width: min(28rem, 100%); }
+.picker--may .picker__cards { display: none; }
+/* 聞く文が主役なので、見出しの下に、本文の大きさで置く（見出しと同じ行に小さく並べない） */
+.picker--may .picker__head { flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 0.9rem 1.2rem 1rem; border-bottom: 0; }
+.picker--may .picker__lead { font-size: 1.05rem; color: var(--ink); overflow-wrap: anywhere; }
 .dialog__actions { display: flex; flex-direction: column; gap: var(--gap); }
 .dialog__actions button { width: 100%; text-align: left; }
 .dialog__row { display: flex; gap: var(--gap); justify-content: flex-end; }
@@ -94,7 +100,7 @@ button.b:disabled { opacity: 0.5; cursor: default; }
 /*
  * スマートフォン（幅 768px 以下、縦向き）。カードを押したときの確認・選ぶダイアログは、下からせり上がる
  * シートにし、右の列の代わりにカードの詳細をシートの上の段に一緒に出す（対戦画面のカードのシートと
- * 同じもの）。能力を選ぶ一覧は画面いっぱいに出し、上の段に発生源のカードの詳細を出す。
+ * 同じもの）。能力を選ぶ一覧は画面いっぱいに表示し、上の段に発生源のカードの詳細を表示する。
  * 後ろの盤面は、骨組みを 1 列にして盤面だけを見せる（対戦画面の並べ方は ../duel/ を見る）。
  */
 @media (max-width: 768px) {
@@ -152,6 +158,8 @@ button.b:disabled { opacity: 0.5; cursor: default; }
   <button data-v="sending">通信中</button>
   <button data-v="ability">能力を選ぶ</button>
   <button data-v="ability-sending">能力を選ぶ（通信中）</button>
+  <button data-v="may">してもよい</button>
+  <button data-v="may-sending">してもよい（通信中）</button>
 </div>
 <div class="note" id="note"></div>
 
@@ -233,12 +241,23 @@ const variants = {
       <div class="picker__ability" role="button" aria-disabled="true" aria-label="発生源のない能力">発生源のない能力</div></div>
       <div class="picker__foot"><button class="b" disabled>選ばない</button><button class="b" disabled>ひとつ戻る</button><button class="b" disabled>この行動をやめる</button><button class="b primary" disabled>これに決める</button></div></div></div>`,
   },
+  may: {
+    detail: '<h3>見本・番人</h3><p>ユニット／黒／レベル3</p><p>【夜回り】ターンの終わりに、このカードを手札に加えてもよい。</p>',
+    note: '「してもよい」（対象が決まっていて、するかしないかだけを選ぶ場合、ADR-0064）。カードの一覧と同じ枠に、聞く文と足もとのボタンだけを置く（カードは並べない）。聞く文は「〈対象〉を〈動き〉ますか？」で、動きの言い方は動きの値ごとに決まっている（「手札に加えますか」。テキストが「戻す」と書くものは、そのテキストを実装する時に別の値を追加する）。見出しは「〇〇 の効果」（発生源が分かる時）、分からなければ「確認」。足もとは左から「ひとつ戻る」「この行動をやめる」（行える場面だけ）、「いいえ」、「はい」（金の主ボタン）。最初の手は「はい」に置く。答えが必ず要るので、Esc・暗くしたところを押す、は何も起きない。「いいえ」はカードの一覧の「選ばない」にあたり、記録の上の答えは同じ。クリックモードでもボタンモードでも、このダイアログで聞く。',
+    html: `<div class="dialog picker--may" role="dialog" aria-modal="true" aria-label="確認"><div class="picker__box"><div class="picker__head"><h2 class="picker__title">確認</h2><p class="picker__lead">見本・番人を手札に加えますか？</p><p class="picker__sending" role="status"></p></div>
+      <div class="picker__foot"><button class="b">この行動をやめる</button><button class="b">いいえ</button><button class="b primary focus">はい</button></div></div></div>`,
+  },
+  'may-sending': {
+    note: '「はい」「いいえ」を押したあと、返事が届くまで。ボタンをすべて押せなくし、「通信中…」を表示する（能力を選ぶ一覧と同じ）。',
+    html: `<div class="dialog picker--may" role="dialog" aria-modal="true" aria-label="確認" aria-busy="true"><div class="picker__box"><div class="picker__head"><h2 class="picker__title">確認</h2><p class="picker__lead">見本・番人を手札に加えますか？</p><p class="picker__sending" role="status">通信中…</p></div>
+      <div class="picker__foot"><button class="b" disabled>この行動をやめる</button><button class="b" disabled>いいえ</button><button class="b primary" disabled>はい</button></div></div></div>`,
+  },
 }
 const defaultDetail = document.getElementById('detail').innerHTML
 const tabs = document.querySelectorAll('.tabs button')
 // スマホでの注記（どの見本にも共通）
 const phoneNote = 'スマホ（幅 768px 以下）では、確認・選ぶダイアログは下からのシートになり、上の段にカードの詳細を一緒に出す。'
-  + 'カードを 1 回押すと出るシート（対戦画面のモック）がこれにあたる。能力を選ぶ一覧は画面いっぱいに出し、上の段に発生源のカードの詳細を出す。'
+  + 'カードを 1 回押すと表示されるシート（対戦画面のモック）がこれにあたる。能力を選ぶ一覧は画面いっぱいに表示し、上の段に発生源のカードの詳細を出す。「してもよい」は、中身の高さだけの低い枠にして画面の下に寄せ、見出しの下に対象のカードの詳細を表示する。'
   + 'ボタンは指で押せる高さ（2.75rem）にし、確認では手を上・キャンセルを下に並べる。'
 function show(v) {
   tabs.forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.v === v)))
