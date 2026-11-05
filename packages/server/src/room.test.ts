@@ -4,11 +4,13 @@ import {
   applyWithAnswers,
   cardsIn,
   choose,
+  createUntargetedTriggeredAbility,
   defineStrategy,
   defineUnit,
   discardOpponentHand,
   drawCards,
   legalActions,
+  mayDo,
   placeTopOfLibrary,
   prepareDuel,
   shuffleLibrary,
@@ -166,6 +168,31 @@ const ALTERNATING: Card = defineStrategy({
 
 /** 2 度選ばせるストラテジーを、選ぶ人が入れ替わるものに差し替えたまとまり。ほかは同じ。 */
 const ALTERNATING_DECKS = deckSource({ ...CARDS, 'TEST-S': ALTERNATING })
+
+/**
+ * 期限を持つ、対象を持たない作成された誘発型能力を作り、すぐに自分のスマッシュゾーンへ山札の 1 番上を置くストラテジー
+ * （ADR-0065）。置いたことで能力が誘発し、「してもよい」を聞く。期限が終了するターンまで対戦を進める場面を作る。
+ */
+const WATCHING_NAME = 'テスト・部屋の見張り'
+
+const WATCHING: Card = defineStrategy({
+  name: WATCHING_NAME,
+  level: 0,
+  effect: function* () {
+    yield* createUntargetedTriggeredAbility(
+      'あなたのカードがスマッシュゾーンに置かれた時',
+      '1枚引いてもよい',
+      function* () {
+        yield* mayDo([], '1枚引く')
+      },
+      '次の相手のターンの終わりまで',
+    )
+    yield* placeTopOfLibrary('スマッシュゾーン', 'リリース')
+  },
+})
+
+/** 2 度選ばせるストラテジーを、期限を持つ作成された誘発型能力を作るものに差し替えたまとまり。ほかは同じ。 */
+const WATCHING_DECKS = deckSource({ ...CARDS, 'TEST-S': WATCHING })
 
 /**
  * 相手に 2 枚捨てさせてから、続けて 2 度選ぶストラテジー（ADR-0052）。相手の答えの後に、行動した側が
@@ -1865,6 +1892,65 @@ describe('記録から立て直す', () => {
         expect(cardsIn(restored, player, zone).map((card) => card.id)).toEqual(cardsIn(state, player, zone).map((card) => card.id))
       }
     }
+    expect(restored.log).toEqual(state.log)
+  })
+
+  /**
+   * ADR-0018・ADR-0065。期限を持つ、対象を持たない作成された誘発型能力と、それが誘発して聞く「してもよい」を含み、
+   * さらに期限が終了するターンをまたぐ対戦も、記録（行動と答えの番号の並び）を打ち直すと、同じ盤面になる。
+   */
+  it('期限を持つ作成された誘発型能力を含み、期限をまたぐ対戦も、記録を打ち直すと同じ盤面になる', () => {
+    const record = started(WATCHING_DECKS).records.find((each) => each.kind === '始まった')
+    if (record?.kind !== '始まった') throw new Error('始まった記録があるはずだった')
+    const first = WATCHING_DECKS.from(record.decks[0])
+    const second = WATCHING_DECKS.from(record.decks[1])
+    if (first === undefined || second === undefined) throw new Error('デッキが引けるはずだった')
+    const prepared = prepareDuel({ decks: [first.cards, second.cards], seed: record.seed })
+    if (prepared.kind !== '準備完了') throw new Error('準備できるはずだった')
+
+    let state: DuelState = prepared.state
+    const steps: { action: LegalAction; answers: ChoiceAnswer[] }[] = []
+    let played = false
+    let triggered = false
+    let expired = false
+    for (let count = 0; count < 800 && state.turn.number < 6 && !expired; count += 1) {
+      const actions = legalActions(state)
+      const playing = actions.find((action) => {
+        if (action.kind !== 'カードをプレイする' || played) return false
+        const hand = cardsIn(state, state.turn.priority, '手札')
+        return hand.find((card) => card.id === action.declaration.card)?.card.name === WATCHING_NAME
+      })
+      const action = playing ?? actions.find((one) => one.kind === '優先権を放棄する')
+      if (action === undefined) throw new Error('進められる手があるはずだった')
+
+      const answers: ChoiceAnswer[] = []
+      for (;;) {
+        const progress = applyWithAnswers(state, action, answers)
+        if (progress.kind === '進んだ') {
+          state = progress.state
+          break
+        }
+        answers.push(0)
+      }
+      steps.push({ action, answers })
+      if (playing !== undefined) played = true
+      if (state.log.some(({ event }) => event.kind === '命令を実行した' && event.instruction.kind === 'してもよいか聞く')) triggered = true
+      if (played && state.createdAbilities.length === 0) expired = true
+    }
+    // プレイして能力を作成し、置いたことで誘発して「してもよい」を聞き、期限が終了して盤面から無くなる。
+    expect(played).toBe(true)
+    expect(triggered).toBe(true)
+    expect(expired).toBe(true)
+
+    const restored = restore([{ ...record, kind: '読めた', steps }], WATCHING_DECKS).get(record.code)?.duel?.state as DuelState
+
+    expect(restored).toBeDefined()
+    for (const player of ['先攻', '後攻'] as const) {
+      for (const zone of ['手札', '捨札', '山札', 'スマッシュゾーン'] as const) {
+        expect(cardsIn(restored, player, zone).map((card) => card.id)).toEqual(cardsIn(state, player, zone).map((card) => card.id))
+      }
+    }
+    expect(restored.createdAbilities).toHaveLength(state.createdAbilities.length)
     expect(restored.log).toEqual(state.log)
   })
 
