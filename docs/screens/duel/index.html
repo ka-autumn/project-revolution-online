@@ -2380,9 +2380,11 @@ body {
   <aside class="duel__right">
     <section class="panel log" id="log">
       <button type="button" class="phone-only sheet__close" data-close>閉じる</button>
-      <h2 class="panel__title">操作ログ（11）</h2>
+      <h2 class="panel__title">操作ログ（13）</h2>
       <ol class="log__list" reversed>
-        <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>相手のターンの終わりに、見本・メカナイトをエネルギーゾーンにフリーズして置く</span></li>
+        <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>相手は、自身のターンの終わりに、見本・メカナイトをエネルギーゾーンにフリーズして置く</span></li>
+        <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>相手は、こちらのターンの終わりまで、自身のカードがスマッシュゾーンに置かれるたびに、山札をシャッフルしてもよい</span></li>
+        <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>相手のターンの終わりまで、自分のカードがスマッシュゾーンに置かれるたびに、山札をシャッフルしてもよい</span></li>
         <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>誘発：見本・メカナイト</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>ターンの終わりに、見本・パルフェ・若葉を手札に戻す</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>誘発：見本・底の抜けたバケツ</span></li>
@@ -2530,9 +2532,10 @@ cards['見本・森の守護者'].text = ['相手が早起きをしているな�
 cards['見本・森の守護者'].note = ['「相手が早起きをしているなら」の条件は、このサービスでは常に満たすものとして扱います。対戦の外のことは確かめられないため、条件の無い行として動きます。']
 cards['見本・パルフェ・若葉'].stars = 1
 // 作成された誘発型能力の対象になっているカード（ADR-0063）。自分のカードは作成したカードが別のカード、相手のカードは
-// 作成したカードがそのカード自身。文は画面がログの行の対象の名前を「このカード」に替えて組み立てる（誰のターンかは見る人ごとに言い換える）
+// 作成したカードがそのカード自身。文は画面がログの行の対象の名前を「このカード」に替えて組み立てる（誰のターンかは見る人ごとに言い換える）。
+// 支配者が相手の行は、行頭に「相手は、」を付け、支配者を「自身の」と言う（ADR-0065）
 cards['見本・パルフェ・若葉'].pending = [{ whose: '自分', when: 'ターンの終わりに', does: '手札に戻す', by: '見本・底の抜けたバケツ' }]
-cards['見本・メカナイト'].pending = [{ whose: '相手', when: '相手のターンの終わりに', does: 'エネルギーゾーンにフリーズして置く', by: '見本・メカナイト' }]
+cards['見本・メカナイト'].pending = [{ whose: '相手', when: '自身のターンの終わりに', does: 'エネルギーゾーンにフリーズして置く', by: '見本・メカナイト' }]
 
 // スターアイコン。1 個なら ★ だけ、2 個以上は数字入りの ★（ダブルスター）
 function starIcon(n, reverse = false) {
@@ -3123,7 +3126,7 @@ function pendingBox(entries, name) {
   box.append(Object.assign(document.createElement('p'), { className: 'detail__pending-title', textContent: '誘発待ち' }))
   for (const each of entries) {
     const by = each.by === name ? '' : `（${each.by}）`
-    box.append(Object.assign(document.createElement('p'), { textContent: `${each.when}、このカードを${each.does}${by}` }))
+    box.append(Object.assign(document.createElement('p'), { textContent: `${each.whose === '相手' ? '相手は、' : ''}${each.when}、このカードを${each.does}${by}` }))
   }
   return box
 }
