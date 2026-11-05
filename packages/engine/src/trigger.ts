@@ -68,8 +68,8 @@ function hasTriggeredThisTurn(state: DuelState, source: CardId, ability: Trigger
  * （総合ルール 第4部 第3章 4）。
  *
  * 特別に規定された期限が無ければ、次にそのできごとが起こった時に 1 度だけ誘発する（同 4）。
- * **誘発と同時に取り除く**ことがそのまま「1 度だけ」にあたる。期限を持つ能力（同 4 の 2 文目）
- * を書けるようになった時に、取り除かずに残す道を足す。
+ * **誘発と同時に取り除く**ことがそのまま「1 度だけ」にあたる。期限を持つ能力（同 4 の 2 文目。
+ * ADR-0065）は、取り除かずに残し、期限が終了するまで誘発イベントが起きるたびに誘発する。
  *
  * 誘発するできごとは、誰のターンかまで含んだ 1 つの値である（`CreatedTrigger`）。「あなたの
  * ターンの終わり」は、支配者がアクティブプレイヤーであるターンの終わりを指す。「ターンの
@@ -81,11 +81,36 @@ function hasTriggeredThisTurn(state: DuelState, source: CardId, ability: Trigger
  * 捨札のカードを対象にする能力は、対象がいまも捨札にある場合だけ誘発する（ADR-0057）。
  */
 function triggerCreated(state: DuelState, event: TriggerEvent): DuelState {
-  const firing = state.createdAbilities.filter((created) => matchesEvent(created, event, state.turn))
+  return fireCreated(state, (created) => matchesEvent(created, event, state.turn))
+}
+
+/**
+ * そのプレイヤーのスマッシュゾーンにカードが置かれたことで、作成された誘発型能力を誘発させる
+ * （ADR-0065）。カードは持ち主のスマッシュゾーンにしか置かれない（総合ルール 第2部 第21章 1-2）ので、
+ * 「あなたのカード」は、支配者のスマッシュゾーンに置かれたカードを指す。1 枚置かれるたびに 1 度ずつ呼ぶ。
+ */
+export function triggerOnSmashZone(state: DuelState, owner: Player): DuelState {
+  return fireCreated(
+    state,
+    (created) =>
+      created.ability.trigger === 'あなたのカードがスマッシュゾーンに置かれた時' && created.controller === owner,
+  )
+}
+
+/**
+ * 条件に合う作成された誘発型能力を誘発させる。期限を持つ能力（ADR-0065）は誘発しても盤面に残す。
+ * それ以外は、誘発と同時に取り除く。
+ */
+function fireCreated(state: DuelState, fires: (created: CreatedAbility) => boolean): DuelState {
+  const firing = state.createdAbilities.filter(fires)
   if (firing.length === 0) return state
 
   const instances = firing.flatMap((created): CreatedAbilityInstance[] => {
     const { ability } = created
+    if (ability.place === 'なし') {
+      return [{ ability, controller: created.controller, createdBy: created.createdBy }]
+    }
+    if (created.affecting === undefined) return []
     if (ability.place === '捨札') {
       const found = locateInDiscardPile(state, created.affecting)
       return found === undefined
@@ -104,10 +129,13 @@ function triggerCreated(state: DuelState, event: TriggerEvent): DuelState {
     return [{ ability, controller: created.controller, createdBy: created.createdBy, affected }]
   })
 
-  return addTriggered(
-    { ...state, createdAbilities: state.createdAbilities.filter((created) => !firing.includes(created)) },
-    instances,
-  )
+  const kept = state.createdAbilities.filter((created) => !firing.includes(created) || hasDuration(created))
+  return addTriggered({ ...state, createdAbilities: kept }, instances)
+}
+
+/** 期限を持つ、作成された誘発型能力か。 */
+function hasDuration(created: CreatedAbility): boolean {
+  return created.ability.place === 'なし' && created.ability.duration !== undefined
 }
 
 /** 捨札にあるそのカードの、効果に手渡すもの。どちらのプレイヤーの捨札にも無ければ `undefined`。 */
@@ -126,6 +154,9 @@ function matchesEvent(created: CreatedAbility, event: TriggerEvent, turn: Turn):
       return event === 'ターンの終わり' && created.controller === turn.active
     case 'ターンの終わり':
       return event === 'ターンの終わり' && created.createdIn === turn.number
+    // スマッシュゾーンに置かれたことは、`triggerOnSmashZone` が直接誘発させる。
+    case 'あなたのカードがスマッシュゾーンに置かれた時':
+      return false
   }
 }
 

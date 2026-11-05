@@ -636,13 +636,20 @@ function projectBoard(state: DuelState, viewer: Player): DuelPerspective {
     bank: state.bank.map((banked) => visibleAbility(banked, visible)),
     resolveZone: state.resolveZone,
     triggered: state.triggered.map((banked) => visibleAbility(banked, visible)),
-    createdAbilities: state.createdAbilities.map(({ controller, affecting, ability, createdBy }) => ({
-      controller,
-      affecting,
-      trigger: ability.trigger,
-      description: ability.description,
-      createdBy: createdBy !== undefined && visible().has(createdBy) ? createdBy : undefined,
-    })),
+    // 対象を持たない能力（ADR-0065）は、画面に表示する場所が無いので送らない。
+    createdAbilities: state.createdAbilities.flatMap(({ controller, affecting, ability, createdBy }) =>
+      affecting === undefined
+        ? []
+        : [
+            {
+              controller,
+              affecting,
+              trigger: ability.trigger,
+              description: ability.description,
+              createdBy: createdBy !== undefined && visible().has(createdBy) ? createdBy : undefined,
+            },
+          ],
+    ),
     playedIntoCenter: state.playedIntoCenter,
     trapConditionsMet: state.trapConditionsMet.filter((met) => ownsTrap(state, viewer, met)),
     courageConditionsMet: state.courageConditionsMet.filter((met) => met.player === viewer),

@@ -1,4 +1,4 @@
-import { hasKeyword } from '@revolution/engine'
+import { UNTARGETED_MAY_ACTIONS, hasKeyword } from '@revolution/engine'
 import type {
   CardId,
   CardInDiscardPile,
@@ -150,7 +150,7 @@ const MAX_STEPS = 200
  * 並びを使い切って、さらに選ぶことがあれば、そこで止めて候補を返す。`複数を選ぶ` は前から順に
  * 選ぶ。山札を読む命令には、空の山札を返す（山札の中身は見えない）。
  */
-function runScripted(start: () => EffectStep<void>, script: readonly ScriptStep[]): Run {
+function runScripted(start: () => EffectStep<void>, script: readonly ScriptStep[], controller: Player): Run {
   const instructions: Instruction[] = []
   let used = 0
   try {
@@ -184,14 +184,21 @@ function runScripted(start: () => EffectStep<void>, script: readonly ScriptStep[
         // 同じに、対象が無ければ聞かずに「いいえ」で進む。「はい」の動き（手札へ置く）は、エンジンが実行するので、
         // ここで同じ命令を並べて、点数に反映する。
         case 'してもよいか聞く': {
-          if (instruction.targets.length === 0) break
+          // 対象を持たない動き（「1枚引く」など。ADR-0065）は、対象が無くても聞く。
+          const untargeted = UNTARGETED_MAY_ACTIONS.includes(instruction.action)
+          if (instruction.targets.length === 0 && !untargeted) break
           if (used >= script.length) return { kind: '選ぶ', candidates: [{ kind: '確認' }], mayDecline: true, picker: '支配者' }
 
           const answer = script[used]
           used += 1
           if (answer === '選ばない' || answer === undefined) break
 
-          for (const target of instruction.targets) {
+          if (instruction.action === '1枚引く') {
+            instructions.push({ kind: 'カードを引く', player: controller, count: 1 })
+          } else if (instruction.action === '山札の1番上のカードをエネルギーゾーンにフリーズして置く') {
+            instructions.push({ kind: '山札の1番上をゾーンへ置く', to: 'エネルギーゾーン', orientation: 'フリーズ' })
+          }
+          for (const target of untargeted ? [] : instruction.targets) {
             instructions.push({ kind: 'ゾーンへ置く', card: target, to: '手札', orientation: 'リリース', position: '1番上' })
           }
           reply = true
@@ -216,6 +223,8 @@ const BUDGET = 300
 
 interface Budget {
   remaining: number
+  /** 空回しをする能力の支配者。引くなどの動きを、誰のものとして点数にするかを決定する。 */
+  readonly controller: Player
 }
 
 /** その選択で選べる答え。 */
@@ -244,7 +253,7 @@ function best(
   if (budget.remaining <= 0) return undefined
   budget.remaining -= 1
 
-  const run = runScripted(start, script)
+  const run = runScripted(start, script, budget.controller)
   if (run.kind === '回せない') return undefined
   if (run.kind === '終わった') return { score: score(run.instructions), instructions: run.instructions }
 
@@ -261,7 +270,7 @@ function best(
 /** 効果を回して、支配者から見た損得の点数と、その時の命令の並びを返す。回せなければ `undefined`。 */
 export function probeEffectRun(setting: ProbeSetting, start: (view: DuelView) => EffectStep<void>): Scored | undefined {
   const view = viewFrom(setting)
-  return best(() => start(view), [], (instructions) => scoreInstructions(setting, instructions), { remaining: BUDGET })
+  return best(() => start(view), [], (instructions) => scoreInstructions(setting, instructions), { remaining: BUDGET, controller: setting.controller })
 }
 
 /** 効果を回して、支配者から見た損得の点数を返す。回せなければ `undefined`。 */
@@ -285,14 +294,14 @@ export function probeChoice(
   const view = viewFrom(setting)
   const begin = (): EffectStep<void> => start(view)
   const score = (instructions: readonly Instruction[]): number => scoreInstructions(setting, instructions)
-  const budget: Budget = { remaining: BUDGET }
+  const budget: Budget = { remaining: BUDGET, controller: setting.controller }
   const wanted = [...keys].sort().join('|')
 
   const search = (script: readonly ScriptStep[]): ReturnType<typeof probeChoice> => {
     if (budget.remaining <= 0) return undefined
     budget.remaining -= 1
 
-    const run = runScripted(begin, script)
+    const run = runScripted(begin, script, budget.controller)
     if (run.kind !== '選ぶ') return undefined
 
     const probeKeys = run.candidates.map(keyOfProbe)
@@ -425,6 +434,7 @@ export function scoreInstructions(
         break
       }
       case '誘発型能力を作る':
+      case '対象を持たない誘発型能力を作る':
         total += 50
         break
       default:

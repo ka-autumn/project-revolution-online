@@ -3,7 +3,7 @@ import { resolveFromBank } from './bank.js'
 import { advanceBattle } from './battle.js'
 import { INITIAL_RECOVERY, draw, frozenCardsOf, hasEnded, releaseAll, removeAllDamage, topOfLibrary } from './duel.js'
 import type { DuelState } from './duel.js'
-import { loggedChangeOf } from './effect.js'
+import { durationEnds, loggedChangeOf } from './effect.js'
 import { record } from './log.js'
 import type { Progress } from './log.js'
 import { opponentOf } from './player.js'
@@ -336,15 +336,32 @@ function removeDamage(state: DuelState): DuelState {
  * まとめて積む（`継続効果が終了した`）。
  */
 function endContinuousEffects(state: DuelState): DuelState {
-  const ending = state.createdContinuousEffects.filter((created) => created.until === 'ターンの終わりまで')
-  if (ending.length === 0) return state
+  const ending = state.createdContinuousEffects.filter((created) =>
+    durationEnds(created.until, created.createdIn, created.controller, state.turn),
+  )
+  const abilities = withoutEndedAbilities(state)
+  if (ending.length === 0) return abilities
 
   const remaining = state.createdContinuousEffects.filter((created) => !ending.includes(created))
   return record(
-    { ...state, createdContinuousEffects: remaining },
+    { ...abilities, createdContinuousEffects: remaining },
     { kind: '継続効果が終了した', effects: ending.map(({ target, change }) => ({ card: target, change: loggedChangeOf(change) })) },
     state,
   )
+}
+
+/**
+ * 期限が終了した、作成された誘発型能力を取り除く（ADR-0065）。継続効果の期限と同じ時点で終了する。
+ * 取り除いたことは、ログに積まない（ADR-0058 と同じ）。
+ */
+function withoutEndedAbilities(state: DuelState): DuelState {
+  const remaining = state.createdAbilities.filter((created) => {
+    const { ability } = created
+    return ability.place !== 'なし' || ability.duration === undefined
+      ? true
+      : !durationEnds(ability.duration, created.createdIn, created.controller, state.turn)
+  })
+  return remaining.length === state.createdAbilities.length ? state : { ...state, createdAbilities: remaining }
 }
 
 /**

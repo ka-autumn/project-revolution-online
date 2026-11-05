@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHOICE_PURPOSES, MAY_ACTIONS, indexOfSquare } from '@revolution/engine'
+import { CHOICE_PURPOSES, MAY_ACTIONS, UNTARGETED_MAY_ACTIONS, indexOfSquare } from '@revolution/engine'
 import type {
   LegalAction,
   PassOutcome,
@@ -2509,10 +2509,23 @@ describe('isEffectChoice', () => {
 describe('「してもよい」の言い方の表', () => {
   it('動きの値のすべてに、聞く・した・しなかったの 3 つの言い方がある', () => {
     for (const action of MAY_ACTIONS) {
+      if (UNTARGETED_MAY_ACTIONS.includes(action)) continue
+
       expect(mayQuestion(action, ['名前'])).toMatch(/^名前を.+ますか？$/)
       expect(mayDoneLine(action, ['名前'])).toMatch(/^名前を.+た$/)
       expect(maySkippedLine(action, ['名前'])).toMatch(/^名前を.+なかった$/)
     }
+  })
+
+  // 対象を持たない動き（ADR-0065）。聞く文と「いいえ」の行は、対象の「〜を」を入れない。「はい」の行は、動きの命令が
+  // 自分の行を積むので、言わない。
+  it('対象を持たない動きは、「〜を」を入れずに聞き、「はい」の行を言わない', () => {
+    expect(mayQuestion('1枚引く', [])).toBe('1枚引きますか？')
+    expect(maySkippedLine('1枚引く', [])).toBe('1枚引かなかった')
+    expect(mayDoneLine('1枚引く', [])).toBeUndefined()
+    expect(mayQuestion('山札の1番上のカードをエネルギーゾーンにフリーズして置く', [])).toBe(
+      '山札の1番上のカードをエネルギーゾーンにフリーズして置きますか？',
+    )
   })
 
   it('テキストの動詞（加える）で、聞く・した・しなかったの言い方になる', () => {
