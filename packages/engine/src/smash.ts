@@ -7,7 +7,6 @@ import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
 import { resolveEffect } from './resolve.js'
 import type { Chooser } from './resolve.js'
-import { triggerOnSmashZone } from './trigger.js'
 import { moveToZone } from './zone-move.js'
 
 /**
@@ -298,9 +297,8 @@ function beginHopeStep(state: DuelState, judgment: SmashJudgment, chooser: Choos
     card: top.id,
     name: top.card.name,
   })
-  // 置かれたことで誘発する、期限を持つ作成された誘発型能力（ADR-0065）。誘発した能力は、次に優先権が
-  // 発生した時にバンクに入る。
-  return resolveHope(triggerOnSmashZone(placed, judgment.player), top, chooser)
+  // 置かれたことで誘発する、作成された誘発型能力（ADR-0065）は、`moveToZone` が誘発させている。
+  return resolveHope(placed, top, chooser)
 }
 
 /**

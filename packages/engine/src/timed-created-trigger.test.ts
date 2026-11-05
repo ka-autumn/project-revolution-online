@@ -15,6 +15,7 @@ import {
   mayDo,
   passPriority,
   perspectiveOf,
+  placeInZone,
   putOnSquare,
   resolveEffect,
   smash,
@@ -132,6 +133,40 @@ describe('期限を持つ、対象を持たない作成された誘発型能力'
       const done = finishJudgment(before)
 
       expect(handSize(done, '先攻')).toBe(handBefore)
+    })
+
+    // 希望ステップのほかに、効果でスマッシュゾーンへ置かれる経路もある（ADR-0065）。
+    it('効果で、持ち主のスマッシュゾーンに置かれた時も、1 枚につき 1 回誘発する', () => {
+      const placing = defineStrategy({
+        name: 'テスト・スマッシュゾーンへ置く',
+        level: 0,
+        effect: function* (duel) {
+          const [card] = duel.hand().filter((each) => each.id === '置かれるカード')
+          if (card !== undefined) yield* placeInZone(card, 'スマッシュゾーン', 'リリース')
+        },
+      })
+      let current = stocked()
+      while (current.turn.phase !== 'メインフェイズ') current = passPriority(current, chooseFirst)
+      current = passPriority(current, chooseFirst)
+      const start: DuelState = {
+        ...putInZone(current, '先攻', '手札', [
+          instantiate({ id: 'ストラテジー', card: placing, owner: '先攻' }),
+          instantiate({ id: '置かれるカード', card: filler, owner: '先攻' }),
+        ]),
+        createdAbilities: [watcher('次の相手のターンの終わりまで', '先攻')],
+      }
+      const handBefore = handSize(start, '先攻')
+
+      const played = applyWithAnswers(start, { kind: 'カードをプレイする', declaration: { card: 'ストラテジー' } }, [])
+      if (played.kind !== '進んだ') throw new Error(`進んだはずだった: ${played.kind}`)
+      let done = played.state
+      for (let steps = 0; steps < 50 && (done.triggered.length > 0 || done.bank.length > 0); steps += 1) {
+        done = passPriority(done, chooseFirst)
+      }
+
+      // ストラテジーと置かれるカードが手札を出る（-2）。置かれたことで 1 枚引く（+1）。
+      expect(handSize(done, '先攻')).toBe(handBefore - 2 + 1)
+      expect(cardsIn(done, '先攻', 'スマッシュゾーン').map((card) => card.id)).toEqual(['置かれるカード'])
     })
 
     it('能力を 2 つ作成していれば、1 枚置かれるたびに 2 回誘発する', () => {
