@@ -29,7 +29,15 @@ import type { PlayerZone } from './zone.js'
  * 修整を適用するのは `view.ts` の仕事で、それには完全な盤面が要る。修整を適用した後のＢＰと
  * 属性は、カードの表記とは別の項目として盤面の側に載っている（`WirePerspective.effective`、#91）。
  */
-interface WireWrittenCard {
+export interface WireCardPresentation {
+  readonly key?: string
+  readonly artwork?: { readonly url?: string; readonly flavor?: string }
+}
+
+export type CardPresentationOf = (card: Card) => WireCardPresentation
+const withoutPresentation: CardPresentationOf = () => ({})
+
+interface WireWrittenCard extends WireCardPresentation {
   readonly name: string
   readonly level: number
   readonly colors: readonly Color[]
@@ -48,10 +56,10 @@ interface WireWrittenCard {
    * カードに印刷されているテキスト（総合ルール 第2部 第10章）。#93
    *
    * 改行ごとに別の能力になる（同 第4部 第1章 3）ので、行の並びで載せる。engine が読まない
-   * 表示のためだけのデータ（`card.ts` の `WrittenCard.text`）だが、**印刷されている表記で
-   * ある**以上、載せるところは他の項目と同じである。
+   * 表示のためだけのデータ（`card.ts` の `WrittenCard.text`）だが、印刷されている表記で
+   * ある以上、載せるところは他の項目と同じである。
    *
-   * **見えていないカードには載らない。** 表記が載るのは表側が見えているカードだけで
+   * 見えていないカードには載らない。 表記が載るのは表側が見えているカードだけで
    * （`perspective.ts` の `VisibleCard`）、テキストもその中の 1 項目だからである。
    */
   readonly text: readonly string[]
@@ -90,12 +98,12 @@ export interface WireTrapFace extends WireWrittenCard {
 /**
  * カードに書かれていることのうち、画面に出すもの（ADR-0010）。
  *
- * **カードの同一性を指すものではない。** 同じ名前のカードは複数あり（総合ルール 第3部 第1章 3-1
+ * カードの同一性を指すものではない。 同じ名前のカードは複数あり（総合ルール 第3部 第1章 3-1
  * の「同名のカードはデッキに 4 枚まで」が成り立つのはそのためである）、表記では 1 枚を指せない。
  * 盤面の 1 枚を指すのは識別子（`CardInstance.id`）であって、こちらは「その 1 枚に何が書かれて
  * いるか」だけを持つ。
  *
- * **能力を持たない。** 能力は関数（`Ability` の `Effect`）なので通信に載らない。落としても
+ * 能力を持たない。 能力は関数（`Ability` の `Effect`）なので通信に載らない。落としても
  * 困らないのは、クライアントがルールの判断を持たない（ADR-0010）ためである。何が起こるかは、
  * 解決した結果が次の盤面として届く。
  *
@@ -154,15 +162,15 @@ export interface WireCourageConditionMet {
  * サーバがクライアントへ送る、視点ごとの盤面（ADR-0004 / ADR-0010）。
  *
  * `DuelPerspective` が「誰に何が見えてよいか」を決めた形であるのに対して、これは「それをどう
- * 送るか」を決めた形である。**違いはカードの持ち方だけで、それ以外はそのまま写している。**
+ * 送るか」を決めた形である。違いはカードの持ち方だけで、それ以外はそのまま写している。
  * 能力の効果はすでに射影の側で落ちている（`perspective.ts` の `VisibleAbility`）。
  *
  * 残っていた `CardInstance.card` は、カードのデータと効果（関数）を持つ `Card` そのものなので
- * 送れない。かわりに**カードに書かれていること**（`WireCardFace`）を載せる。表記はどれもただの
+ * 送れない。かわりにカードに書かれていること（`WireCardFace`）を載せる。表記はどれもただの
  * 値なので、engine がカードを知らないまま（ADR-0002）自分で書き出せる。受け取った側にカードの
  * 実装は要らず、クライアントは公開のまま作れる（ADR-0010）。
  *
- * **この型は JSON にできるものだけでできている。** 関数も `Map` も `Set` も含まない。
+ * この型は JSON にできるものだけでできている。 関数も `Map` も `Set` も含まない。
  */
 export interface WirePerspective {
   readonly viewer: Player
@@ -198,7 +206,7 @@ export interface WirePerspective {
   /**
    * ここまでに起きたできごと（#95）。射影が落とした後のものがそのまま載る。
    *
-   * **形を変えずに済むのは、できごとがカードを識別子でしか指していないためである**
+   * 形を変えずに済むのは、できごとがカードを識別子でしか指していないためである
    * （`log.ts` の `DuelEvent`）。カードそのものを持っていないので、表記に書き出す必要が無い。
    * 名前を出したければ、受け取った側が引き直す。引く先は、盤面に載っているカードと
    * `namedInLog` の 2 つである。
@@ -211,7 +219,7 @@ export interface WirePerspective {
    * `log` が名指ししているカードのうち、盤面に載っていないもの（#139）。
    *
    * 射影がすでに選んだもの（`perspective.ts` の `DuelPerspective.namedInLog`）を、盤面の
-   * カードと同じ形に書き出して載せる。**ここで新しく見せているものは無い。** 載るのは射影を
+   * カードと同じ形に書き出して載せる。ここで新しく見せているものは無い。 載るのは射影を
    * 通ったログに名指しが残っている識別子だけで、その時点で見てよいことは決まっている。
    */
   readonly namedInLog: readonly WireCardInstance[]
@@ -242,10 +250,10 @@ function unitFaceOf(card: UnitCard): WireUnitFace {
  * カードに書かれていることを写す（ADR-0010）。
  *
  * `{ ...card }` で写していないのは、そうすると能力と効果まで載ってしまうためである。関数は
- * `JSON.stringify` で黙って落ちるので、混ざっていても通信の相手からは見えない。**混ぜないこと
- * を型で保てるように、項目を 1 つずつ書き写している。**
+ * `JSON.stringify` で黙って落ちるので、混ざっていても通信の相手からは見えない。混ぜないこと
+ * を型で保てるように、項目を 1 つずつ書き写している。
  *
- * **盤面ができる前にも使う**（ADR-0021）。デッキを組む人に配るカードプールも、盤面に載るのと
+ * 盤面ができる前にも使う（ADR-0021）。デッキを組む人に配るカードプールも、盤面に載るのと
  * 同じこの形で書き出す（`server` の `deck.ts` の `poolFacesOf`）。別の書き出し方を作らない。
  */
 export function faceOf(card: Card): WireCardFace {
@@ -260,68 +268,68 @@ export function faceOf(card: Card): WireCardFace {
   }
 }
 
-export function instanceToWire(instance: CardInstance): WireCardInstance {
-  return { ...instance, card: faceOf(instance.card) }
+export function instanceToWire(instance: CardInstance, presentationOf: CardPresentationOf = withoutPresentation): WireCardInstance {
+  return { ...instance, card: { ...faceOf(instance.card), ...presentationOf(instance.card) } }
 }
 
-function unitToWire(unit: UnitOnSquare): WireUnitOnSquare {
-  return { ...unit, card: unitFaceOf(unit.card) }
+function unitToWire(unit: UnitOnSquare, presentationOf: CardPresentationOf): WireUnitOnSquare {
+  return { ...unit, card: { ...unitFaceOf(unit.card), ...presentationOf(unit.card) } }
 }
 
-function occasionToWire(occasion: TrapOccasion): WireTrapOccasion {
+function occasionToWire(occasion: TrapOccasion, presentationOf: CardPresentationOf): WireTrapOccasion {
   switch (occasion.kind) {
     case '侵入':
-      return { kind: '侵入', invader: unitToWire(occasion.invader) }
+      return { kind: '侵入', invader: unitToWire(occasion.invader, presentationOf) }
     case '攻撃':
-      return { kind: '攻撃', attacker: unitToWire(occasion.attacker), attacked: unitToWire(occasion.attacked) }
+      return { kind: '攻撃', attacker: unitToWire(occasion.attacker, presentationOf), attacked: unitToWire(occasion.attacked, presentationOf) }
     case 'スマッシュ':
-      return { kind: 'スマッシュ', smasher: unitToWire(occasion.smasher) }
+      return { kind: 'スマッシュ', smasher: unitToWire(occasion.smasher, presentationOf) }
   }
 }
 
-function visibleToWire(visible: VisibleCard): WireVisibleCard {
+function visibleToWire(visible: VisibleCard, presentationOf: CardPresentationOf): WireVisibleCard {
   return visible.kind === '見えている'
-    ? { kind: '見えている', instance: instanceToWire(visible.instance) }
+    ? { kind: '見えている', instance: instanceToWire(visible.instance, presentationOf) }
     : visible
 }
 
 /**
  * 視点ごとの盤面を、通信に載せる形にする（ADR-0004）。
  *
- * 射影（`perspectiveOf`）を通した後のものを渡す。**完全な盤面をここに渡してはならない。**
+ * 射影（`perspectiveOf`）を通した後のものを渡す。完全な盤面をここに渡してはならない。
  * 落とす仕事はこの関数ではなく射影が持っていて、ここは形を変えるだけである。
  *
- * **逆向きの変換は無い。** 表記からカードには戻せず、戻せる必要も無い。受け取ったクライアントは
+ * 逆向きの変換は無い。 表記からカードには戻せず、戻せる必要も無い。受け取ったクライアントは
  * 盤面を描いて選んだものを送るだけで、デュエルを進めるのは完全な盤面を持つサーバだけである
  * （ADR-0010）。
  */
-export function toWire(perspective: DuelPerspective): WirePerspective {
+export function toWire(perspective: DuelPerspective, presentationOf: CardPresentationOf = withoutPresentation): WirePerspective {
   const zonesOf = (owner: Player): Readonly<Record<PlayerZone, readonly WireVisibleCard[]>> =>
     Object.fromEntries(
       PLAYER_ZONES.map((zone): readonly [PlayerZone, readonly WireVisibleCard[]] => [
         zone,
-        perspective.zones[owner][zone].map(visibleToWire),
+        perspective.zones[owner][zone].map((visible) => visibleToWire(visible, presentationOf)),
       ]),
     ) as Record<PlayerZone, readonly WireVisibleCard[]>
 
   return {
     ...perspective,
-    squares: perspective.squares.map((square) => square.map(instanceToWire)),
-    namedInLog: perspective.namedInLog.map(instanceToWire),
+    squares: perspective.squares.map((square) => square.map((instance) => instanceToWire(instance, presentationOf))),
+    namedInLog: perspective.namedInLog.map((instance) => instanceToWire(instance, presentationOf)),
     effective: perspective.effective,
     effectiveKeywords: perspective.effectiveKeywords,
     zones: Object.fromEntries(PLAYERS.map((owner) => [owner, zonesOf(owner)])) as WirePerspective['zones'],
-    resolveZone: perspective.resolveZone.map(instanceToWire),
+    resolveZone: perspective.resolveZone.map((instance) => instanceToWire(instance, presentationOf)),
     // `metAt` は権利の判定にだけ使う値（`priority.ts` の `deferringRights`）なので、載せない。
     // 発動できるかどうかは行える手に現れる（ADR-0010）。
     trapConditionsMet: perspective.trapConditionsMet.map(({ trap, occasion }) => ({
       trap,
-      occasion: occasionToWire(occasion),
+      occasion: occasionToWire(occasion, presentationOf),
     })),
     courageConditionsMet: perspective.courageConditionsMet.map(({ player, satisfied, placed }) => ({
       player,
       satisfied,
-      placed: unitToWire(placed),
+      placed: unitToWire(placed, presentationOf),
     })),
   }
 }

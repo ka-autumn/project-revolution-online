@@ -333,6 +333,8 @@ export { PHASES } from './turn.js'
 export type { Phase, Turn } from './turn.js'
 export { faceOf, toWire } from './wire.js'
 export type {
+  CardPresentationOf,
+  WireCardPresentation,
   WireCardFace,
   WireCardInstance,
   WireCourageConditionMet,

@@ -13,6 +13,7 @@ import {
 import { actionViewOf, choiceViewOf } from '@revolution/cpu'
 import type {
   ActionProgress,
+  CardPresentationOf,
   ChoiceAnswer,
   Deck,
   DeckId,
@@ -39,11 +40,11 @@ import type { RestrictionList } from './deck.js'
 /**
  * ルームコードで 2 人を繋いで 1 つのデュエルを進めるところ（ADR-0004 / ADR-0008、#13）。
  *
- * **通信の手立ては持たない。** 受け取ったメッセージ 1 つから、次の部屋の状態と「誰に何を送るか」を
+ * 通信の手立ては持たない。 受け取ったメッセージ 1 つから、次の部屋の状態と「誰に何を送るか」を
  * 返すだけの純粋な関数である。ソケットを張るのも、受け取ったバイト列を組み立て直すのも、これを
  * 呼ぶ側の仕事になる。盤面を進めるところと同じように（ADR-0001）、決まりごとと I/O を分けている。
  *
- * **カードを知らない。** 使うデッキは外から渡してもらう（`RoomSetup`）。サーバがカードの実装に
+ * カードを知らない。 使うデッキは外から渡してもらう（`RoomSetup`）。サーバがカードの実装に
  * 依存すると、カードを持たない環境（ADR-0002）で組み立てられなくなる。盤面に載せるカードの
  * 表記は engine が自分で書き出す（ADR-0010、`wire.ts`）ので、ここで読むことは無い。
  */
@@ -54,12 +55,12 @@ export type ParticipantId = string
 /**
  * 参加者の表示名を引く（ADR-0020）。
  *
- * **部屋は名前を持たない。** 預かっているのは置き場で（`store.ts`）、部屋が知っているのは席に
+ * 部屋は名前を持たない。 預かっているのは置き場で（`store.ts`）、部屋が知っているのは席に
  * いる人の識別子だけである。ここでも決まりごとと I/O を分けている——引き方を渡してもらえば、
  * 部屋は置き場を知らないままロビーに名前を出せる。
  *
- * 渡されなければ、識別子をそのまま名前として使う。**手元で立てたときは名乗りがそのまま表示名に
- * なる**（ADR-0020）ので、そこがちょうど既定になる。
+ * 渡されなければ、識別子をそのまま名前として使う。手元で立てたときは名乗りがそのまま表示名に
+ * なる（ADR-0020）ので、そこがちょうど既定になる。
  */
 export type Names = (participant: ParticipantId) => string
 
@@ -68,7 +69,7 @@ const asNamed: Names = (participant) => participant
 /**
  * 席に持ち込まれたデッキ 1 つ（ADR-0021）。
  *
- * **識別子の並びと、その中身の両方を持つ。** 打つのに要るのはカードのほうで、記録に残すのは
+ * 識別子の並びと、その中身の両方を持つ。 打つのに要るのはカードのほうで、記録に残すのは
  * 識別子のほうである——カードそのものは非公開で（ADR-0002）、置き場に持ち込めない。
  */
 export interface SeatedDeck {
@@ -80,7 +81,7 @@ export interface SeatedDeck {
 /**
  * デッキを引いた結果（ADR-0021）。
  *
- * **なりうる形を数え上げる。** 引けたかどうかを真偽で返すと、なぜ引けなかったのかが落ちる——
+ * なりうる形を数え上げる。 引けたかどうかを真偽で返すと、なぜ引けなかったのかが落ちる——
  * 席に着けないデッキは理由が分かる形で断る（#194）ので、断り分けられる形で返す。
  */
 export type SeatedDeckReading =
@@ -90,7 +91,7 @@ export type SeatedDeckReading =
   /**
    * 取り下げられたカードを含む（ADR-0021）。
    *
-   * **置き場からは消えないが、席には着けない。** デッキは識別子の並びで、指す先がプールから
+   * 置き場からは消えないが、席には着けない。 デッキは識別子の並びで、指す先がプールから
    * 無くなれば組み直せない。抜けば、また席に着ける。
    */
   | { readonly kind: '使えないカードがある' }
@@ -98,37 +99,38 @@ export type SeatedDeckReading =
 /**
  * 席に持ち込めるデッキの引き方（ADR-0021）。
  *
- * **部屋はカードを知らない**ので、引くところを渡してもらう。何が引けるかを決めるのは、立てる時に
+ * 部屋はカードを知らないので、引くところを渡してもらう。何が引けるかを決めるのは、立てる時に
  * 渡されたものである（`deck.ts` の `deckSourceFrom`）。
  */
 export interface DeckSource {
+  readonly presentationOf?: CardPresentationOf
   /**
    * 座る人のデッキを識別子で引く。
    *
-   * **誰が座るかを一緒に渡す。** 自分のデッキは持ち主のものなので（ADR-0021）、識別子だけでは
-   * 引けない。**他人のデッキの識別子を送っても引けない**のは、ここで持ち主を見るからである。
+   * 誰が座るかを一緒に渡す。 自分のデッキは持ち主のものなので（ADR-0021）、識別子だけでは
+   * 引けない。他人のデッキの識別子を送っても引けないのは、ここで持ち主を見るからである。
    */
   readonly of: (participant: ParticipantId, id: DeckId) => SeatedDeckReading
   /**
-   * 選ばずに座った人が使うデッキ（ADR-0021）。**人によって違うので、値ではなく引くところを
-   * 渡してもらう。**
+   * 選ばずに座った人が使うデッキ（ADR-0021）。人によって違うので、値ではなく引くところを
+   * 渡してもらう。
    *
-   * **既定が決まらないこともある**（`undefined`）。前に選んだデッキが消えていた時がそれで、
-   * その人は選び直すまで席に着けない。**黙って別のデッキを差し込まない**——選んだ覚えのない
+   * 既定が決まらないこともある（`undefined`）。前に選んだデッキが消えていた時がそれで、
+   * その人は選び直すまで席に着けない。黙って別のデッキを差し込まない——選んだ覚えのない
    * デッキで相手の前に座ることになる。
    */
   readonly fallbackFor: (participant: ParticipantId) => DeckId | undefined
   /**
-   * CPU の席に、何も選ばずに座らせる時のデッキ（ADR-0021、#195）。**部屋を作る人ごとに決まる。**
+   * CPU の席に、何も選ばずに座らせる時のデッキ（ADR-0021、#195）。部屋を作る人ごとに決まる。
    *
-   * `fallbackFor` とは別に覚える——自分が座るデッキと CPU に持たせるデッキは違ってよい。**決まらない
-   * こともあり**（`undefined`）、その時は黙って別のものを差し込まずに断る。
+   * `fallbackFor` とは別に覚える——自分が座るデッキと CPU に持たせるデッキは違ってよい。決まらない
+   * こともあり（`undefined`）、その時は黙って別のものを差し込まずに断る。
    */
   readonly cpuFallbackFor: (owner: ParticipantId) => DeckId | undefined
   /** 識別子の並びから組み直す。1 つでも引けなければ `undefined`（`restore`）。 */
   readonly from: (keys: readonly string[]) => SeatedDeck | undefined
   /**
-   * 部屋に当てられる禁止／制限リスト（ADR-0021）。渡された順で、**先頭が既定になる**（`rulesFor`）。
+   * 部屋に当てられる禁止／制限リスト（ADR-0021）。渡された順で、先頭が既定になる（`rulesFor`）。
    *
    * デッキと一緒に渡してもらうのは、どちらも立てる時に渡されたものから決まり、部屋ごとに変わら
    * ないからである。
@@ -137,7 +139,7 @@ export interface DeckSource {
 }
 
 /**
- * 部屋のルール（ADR-0021）。**部屋を作る人が決め、席に着くデッキはこれで確かめる。**
+ * 部屋のルール（ADR-0021）。部屋を作る人が決め、席に着くデッキはこれで確かめる。
  *
  * デッキはどのルールで組んだかを持たない（同）ので、同じデッキがある部屋では通り、別の部屋では
  * 通らない。
@@ -151,7 +153,7 @@ export interface RoomRules {
 }
 
 /**
- * 記録に残す部屋のルール（ADR-0018）。**リストは識別子だけを残す**——中身は立てるたびに渡される
+ * 記録に残す部屋のルール（ADR-0018）。リストは識別子だけを残す——中身は立てるたびに渡される
  * もので、残すと渡す側が直したリストと食い違う。
  */
 export interface RecordedRules {
@@ -163,7 +165,7 @@ export interface RecordedRules {
 /**
  * 部屋を作ってデュエルを始めるのに要るもの。呼ぶ側が用意する。
  *
- * **デッキは入っていない。** どのデッキで座るかは座る人が決める（ADR-0021）ので、部屋ごとに
+ * デッキは入っていない。 どのデッキで座るかは座る人が決める（ADR-0021）ので、部屋ごとに
  * 引くのはシードと合言葉だけである。
  */
 export interface RoomSetup {
@@ -172,7 +174,7 @@ export interface RoomSetup {
   /**
    * 新しい部屋に付ける合言葉（`部屋を作る`、#175）。すでに使われていれば、これを元に別のものを作る。
    *
-   * **シードから作ってはならない。** 合言葉はロビーにいる全員に見える（`WireRoom`）ので、
+   * シードから作ってはならない。 合言葉はロビーにいる全員に見える（`WireRoom`）ので、
    * シードが読み取れると山札の並びまで読み取れてしまう（ADR-0005）。
    */
   readonly code: RoomCode
@@ -188,6 +190,7 @@ interface PendingAction {
 
 /** 始まっているデュエル。 */
 interface DuelInRoom {
+  readonly presentationOf?: CardPresentationOf
   readonly state: DuelState
   /** どちらの席に誰がいるか。 */
   readonly seats: Readonly<Record<Player, ParticipantId>>
@@ -207,7 +210,7 @@ export interface Room {
   /**
    * ロビーに出す名前（#175）。付けられていなければ合言葉がそのまま入る。
    *
-   * **席とは関係が無い。** 誰がいるかは出せない（名乗りは席に座れる合言葉である、ADR-0009）
+   * 席とは関係が無い。 誰がいるかは出せない（名乗りは席に座れる合言葉である、ADR-0009）
    * ので、ロビーで部屋を見分けるためだけにある。
    */
   readonly name: string
@@ -218,7 +221,7 @@ export interface Room {
   /**
    * 待っている人が選んだデッキ（ADR-0021）。選んでいなければ `undefined`。
    *
-   * **始まるまでの預かりものである。** 相手が来た時に、待っていた人がどのデッキで座るかはここから
+   * 始まるまでの預かりものである。 相手が来た時に、待っていた人がどのデッキで座るかはここから
    * 決まる。席に着いた後は使わない——デッキはもう盤面の中にある。
    *
    * 相手を待っている部屋には 1 人しかいないので、1 つで足りる。
@@ -247,10 +250,10 @@ export interface Delivery {
 /**
  * 置き場へ書き足すもの 1 つ（ADR-0018）。
  *
- * **盤面は入っていない。** 残すのはデッキとシードと「行動と答えの並び」で、そこから同じ盤面を
+ * 盤面は入っていない。 残すのはデッキとシードと「行動と答えの並び」で、そこから同じ盤面を
  * いつでも作り直せる（ADR-0008）。盤面を残すと 3 桁大きくなる。
  *
- * **ここは値を作るだけで、書かない。** 書くのは接続を持つ側である（`serve.ts`）。部屋の
+ * ここは値を作るだけで、書かない。 書くのは接続を持つ側である（`serve.ts`）。部屋の
  * 決まりごとが I/O を持たないのは、送るものについてと同じである。
  */
 export type DuelRecord =
@@ -264,13 +267,13 @@ export type DuelRecord =
       /**
        * 席の順に並べた、デッキに入っていたカードの識別子（ADR-0021）。
        *
-       * **カードそのものは残せない**（非公開である、ADR-0002）ので、指すものだけを残す。
-       * **その対戦で使われたデッキそのものである**——サーバに渡されているデッキと突き合わせて
+       * カードそのものは残せない（非公開である、ADR-0002）ので、指すものだけを残す。
+       * その対戦で使われたデッキそのものである——サーバに渡されているデッキと突き合わせて
        * いた頃（#105）は、デッキが 1 組しか無い前提の作りだった。座る人がデッキを選ぶように
        * なれば、その前提は消える。
        *
        * 戻すときは識別子からカードを引き直す（`restore`）。プールから取り下げられたカードを
-       * 含む記録は作り直せない——**それは避けられない**（ADR-0018）。
+       * 含む記録は作り直せない——それは避けられない（ADR-0018）。
        */
       readonly decks: readonly [readonly string[], readonly string[]]
       /** その部屋のルール（ADR-0021）。立て直した部屋も同じルールになる（`restore`）。 */
@@ -284,7 +287,7 @@ export type DuelRecord =
     }
   | {
       /**
-       * その部屋がもう無い。**記録は消さない**（ADR-0018）が、戻す先が無い。
+       * その部屋がもう無い。記録は消さない（ADR-0018）が、戻す先が無い。
        *
        * 打っている途中に投げ出された対戦も、決着して全員が出た部屋も、ここへ来る（ADR-0017）。
        */
@@ -334,19 +337,19 @@ export function emptyRooms(): Rooms {
 /**
  * 置き場に残っていた対戦から、部屋を作り直す（ADR-0018）。
  *
- * **立て直しても対戦が消えなくなる。** ADR-0009 と ADR-0014 と ADR-0015 が「置き直せばそのとき
+ * 立て直しても対戦が消えなくなる。 ADR-0009 と ADR-0014 と ADR-0015 が「置き直せばそのとき
  * 進んでいた対戦は消える」と書いてきたのは、残す先が無かったからである。
  *
  * 作り直すのは、記録した入力をもう一度打ち直すことである。エンジンが純粋で、同じ盤面と同じ
- * 答えの並びからは必ず同じところへ進む（ADR-0001、ADR-0008）ので、**盤面を残しておく必要が無い。**
+ * 答えの並びからは必ず同じところへ進む（ADR-0001、ADR-0008）ので、盤面を残しておく必要が無い。
  *
- * **選びかけていたものは戻らない。** 答えは行動が終わるまで確定しないので書いていない
- * （`advance`）。繋ぎ直した人は、その行動をもう一度選ぶところから始める。**貯めた答えを
- * 覚えておく仕組みは要らない**（ADR-0008）。
+ * 選びかけていたものは戻らない。 答えは行動が終わるまで確定しないので書いていない
+ * （`advance`）。繋ぎ直した人は、その行動をもう一度選ぶところから始める。貯めた答えを
+ * 覚えておく仕組みは要らない（ADR-0008）。
  *
- * **作り直せなかった対戦は捨てる。消すのではない。** 記録は置き場に残っており、戻す先の部屋が
+ * 作り直せなかった対戦は捨てる。消すのではない。 記録は置き場に残っており、戻す先の部屋が
  * できないだけである。使われていたカードがプールから取り下げられていれば、同じところへ進まない
- * ——**これは避けられない**（ADR-0018）。
+ * ——これは避けられない（ADR-0018）。
  *
  * 捨てた対戦は `skipped` で知らせる（#308）。受けた側がログに出す。ルールの結果を変えた
  * サーバで、変える前の記録を打ち直すと、エンジンが例外を投げうる。例外も捨てる理由の 1 つ
@@ -403,12 +406,12 @@ function replayCaught(stored: StoredDuel, source: DeckSource): Replayed {
 
 /** 記録した入力を打ち直して部屋を作る。同じところへ進まなければ、捨てる理由を返す。 */
 function replay(stored: StoredDuel, source: DeckSource): Replayed {
-  // **記録が持っているデッキで打ち直す**（ADR-0021）。識別子の並びが残っているので、いま渡されて
+  // 記録が持っているデッキで打ち直す（ADR-0021）。識別子の並びが残っているので、いま渡されて
   // いるものと突き合わせる必要は無い。並び順まで残すのは、それがシャッフルの入力そのもの
   // だからである（`prepareDuel`）。
   const first = source.from(stored.decks[0])
   const second = source.from(stored.decks[1])
-  // 引けないカードを含むなら、その対戦は作り直せない。**記録は消さない**（ADR-0018）。
+  // 引けないカードを含むなら、その対戦は作り直せない。記録は消さない（ADR-0018）。
   if (first === undefined || second === undefined) return { kind: '捨てた', reason: 'デッキが引けない' }
 
   const decks: readonly [Deck, Deck] = [first.cards, second.cards]
@@ -418,7 +421,7 @@ function replay(stored: StoredDuel, source: DeckSource): Replayed {
   let state = prepared.state
   for (const step of stored.steps) {
     const progress = applyWithAnswers(state, step.action, step.answers)
-    // 答えが足りないなら、そこから先は作り直せない。**途中まで作った盤面は使わない**——打った
+    // 答えが足りないなら、そこから先は作り直せない。途中まで作った盤面は使わない——打った
     // 人が知らない盤面を席に出すことになる。行えない行動、範囲外の答え、余った答えは、エンジンが
     // 例外を投げる（`replayCaught`）。
     if (progress.kind !== '進んだ') return { kind: '捨てた', reason: '答えが足りない' }
@@ -433,13 +436,14 @@ function replay(stored: StoredDuel, source: DeckSource): Replayed {
     // 席に着いた後の部屋なので、選びかけのデッキは持たない。
     deck: undefined,
     rules: rulesRestored(stored.rules, source.restrictions),
-    // 入ってきた順は残していない。**席に着いている 2 人であることだけが要る。**
+    // 入ってきた順は残していない。席に着いている 2 人であることだけが要る。
     participants: seated,
     duel: {
       state,
       seats: stored.seats,
+      presentationOf: source.presentationOf,
       pending: undefined,
-      // 準備で使った続きから始める。**CPU がこの先どう打つかは、立て直す前とは変わる**
+      // 準備で使った続きから始める。CPU がこの先どう打つかは、立て直す前とは変わる
       // （選ぶのに使った乱数は記録していない）。打たれた手は変わらない。
       random: prepared.random,
     },
@@ -451,10 +455,10 @@ function replay(stored: StoredDuel, source: DeckSource): Replayed {
 /**
  * 記録に残っていたルールを、いま渡されているリストに当て直す（ADR-0021）。
  *
- * **残っていた識別子のリストがもう渡されていなければ、渡されたリストの先頭を当てる。** 1 つも
+ * 残っていた識別子のリストがもう渡されていなければ、渡されたリストの先頭を当てる。 1 つも
  * 無ければ `制限なし` にする。渡す側がリストを差し替えた後に立て直した場合がこれにあたる。
  *
- * **デッキは確かめ直さない。** 立て直す部屋はもう打ち始めていて、席に着いた時のリストで確かめて
+ * デッキは確かめ直さない。 立て直す部屋はもう打ち始めていて、席に着いた時のリストで確かめて
  * ある。当て直しで変わるのは、ロビーに出るルールだけである。
  */
 function rulesRestored(recorded: RecordedRules, lists: readonly RestrictionList[]): RoomRules {
@@ -506,14 +510,14 @@ export function readRestrictionChoice(raw: unknown): RestrictionChoiceReading {
 /**
  * 部屋を作る人が選んだものから、部屋のルールを決める（ADR-0021）。決められなければ断る理由を返す。
  *
- * **選ばなければ、形式は構築戦、リストは渡された先頭のものになる。** リストが 1 つも渡されて
+ * 選ばなければ、形式は構築戦、リストは渡された先頭のものになる。 リストが 1 つも渡されて
  * いなければ `制限なし` である。
  *
- * 形式もリストも送られてきた値なので、知らないものは断る。**画面は選択肢の中からしか送らない
- * はずだが、それを信じない**（ADR-0010）。
+ * 形式もリストも送られてきた値なので、知らないものは断る。画面は選択肢の中からしか送らない
+ * はずだが、それを信じない（ADR-0010）。
  *
- * デッキを組みながら確かめる時も、ここで決める（`serve.ts`）。**部屋を作る時と既定が食い違うと、
- * 組んでいる時に通ったデッキが、何も選ばずに作った部屋で断られる。**
+ * デッキを組みながら確かめる時も、ここで決める（`serve.ts`）。部屋を作る時と既定が食い違うと、
+ * 組んでいる時に通ったデッキが、何も選ばずに作った部屋で断られる。
  */
 export function rulesFor(
   format: DuelFormat | undefined,
@@ -550,7 +554,7 @@ function defaultRules(lists: readonly RestrictionList[]): RoomRules {
 /**
  * デッキがルールで通らない点（ADR-0021）。通るなら空。
  *
- * **形式の規定と、禁止／制限リストの上限の両方を当てる。** 席に着く時（`refusalOfDeck`）と、
+ * 形式の規定と、禁止／制限リストの上限の両方を当てる。 席に着く時（`refusalOfDeck`）と、
  * 組みながら確かめる時（`serve.ts`）で同じものを当てる。
  */
 export function violationsUnder(deck: Deck, rules: RoomRules): readonly DeckViolation[] {
@@ -563,7 +567,7 @@ export function violationsUnder(deck: Deck, rules: RoomRules): readonly DeckViol
 /**
  * 持ち込もうとしているデッキが、部屋のルールで通らない理由（ADR-0021）。通るなら `undefined`。
  *
- * **席に着く時に確かめる。** 形式の規定と、禁止／制限リストの上限の両方を当てる。デッキを選び
+ * 席に着く時に確かめる。 形式の規定と、禁止／制限リストの上限の両方を当てる。デッキを選び
  * 直せば通るかもしれないので、何が足りないかを添えて返す。
  */
 function refusalOfDeck(
@@ -577,7 +581,7 @@ function refusalOfDeck(
 
 /**
  * 席に着こうとしているデッキが、部屋のルールで通らない理由。通るなら `undefined`。
- * **デッキの識別子は決まったものを受け取る**——何を既定にするかは席ごとに違う（CPU の席は
+ * デッキの識別子は決まったものを受け取る——何を既定にするかは席ごとに違う（CPU の席は
  * `cpuFallbackFor`）ので、呼ぶ側が決めてから渡す。
  */
 function refusalOfSeating(
@@ -620,7 +624,7 @@ function refusalOfReading(
 /**
  * デッキの不備 1 つを、断る理由として読める文にする。
  *
- * **`serve.ts` の共有（ADR-0022）からも使う。** 共有する時に規定を満たしているかを確かめるのは
+ * `serve.ts` の共有（ADR-0022）からも使う。 共有する時に規定を満たしているかを確かめるのは
  * 席に着く時と同じ判定（`violationsUnder`）なので、断る理由の書き方も揃える。
  */
 export function describeViolation(violation: DeckViolation): string {
@@ -654,7 +658,7 @@ function wireRulesOf(rules: RoomRules): WireRoomRules {
  * メッセージを 1 つ受け取り、次の部屋の状態と送るものを返す。
  *
  * 受け取れないメッセージ（部屋にいない、優先権が無い、行えない行動）には `行えなかった` を
- * 送り主にだけ返し、部屋はそのままにする。**相手には何も送らない。** 何を試したかは、相手に
+ * 送り主にだけ返し、部屋はそのままにする。相手には何も送らない。 何を試したかは、相手に
  * とっては知る筋合いの無いことである。
  */
 export function receive(
@@ -668,13 +672,13 @@ export function receive(
 ): RoomOutcome {
   const outcome = handle(rooms, participant, message, setup, decks, connected, names)
 
-  // 相手が CPU なら、そのまま打てるところまで打つ（#175）。**送り主のいる部屋だけを進める。**
+  // 相手が CPU なら、そのまま打てるところまで打つ（#175）。送り主のいる部屋だけを進める。
   // ほかの部屋の CPU は、その部屋で手が打たれた時に動く。
   const code = roomOf(outcome.rooms, participant)?.code
   const played = code === undefined ? outcome : withCpu(outcome, code)
 
   // CPU は繋がっていないので、宛てたものは届く先が無い（`serve.ts`）。ここで落とす。
-  // **記録は落とさない。** CPU が打った手も、その対戦を作り直すのに要る（ADR-0018）。
+  // 記録は落とさない。 CPU が打った手も、その対戦を作り直すのに要る（ADR-0018）。
   return { ...played, deliveries: played.deliveries.filter((delivery) => !isCpu(delivery.to)) }
 }
 
@@ -693,7 +697,7 @@ function handle(
     case '部屋を作る':
       return open(rooms, participant, message, setup, decks, connected, names)
     // 表示名を決めるのは部屋の外のことである（ADR-0020）。預かるのは置き場で、決まりを見るのは
-    // `name.ts`、受けるのは `serve.ts` である。**部屋に届く頃には名前は決まっている。**
+    // `name.ts`、受けるのは `serve.ts` である。部屋に届く頃には名前は決まっている。
     case '名前を決める':
       return { rooms, deliveries: [], records: [] }
     // 自分のデッキも部屋の外のことである（ADR-0021）。預かるのは置き場で、決まりを見るのは
@@ -727,10 +731,10 @@ function handle(
 /**
  * いま開いている部屋の一覧（#175）。作られた順に並ぶ。
  *
- * **そこにいる人の表示名を出す**（ADR-0020）。名乗りが席に座れる合言葉だった頃は出せなかった
+ * そこにいる人の表示名を出す（ADR-0020）。名乗りが席に座れる合言葉だった頃は出せなかった
  * （ADR-0009）が、席はログインから来る身元で決まるようになった（ADR-0019）。
  *
- * **CPU の名乗りは出さない。** 座っているかどうかは `cpu` が持っており、CPU に表示名は無い。
+ * CPU の名乗りは出さない。 座っているかどうかは `cpu` が持っており、CPU に表示名は無い。
  */
 export function lobbyOf(rooms: Rooms, names: Names = asNamed): readonly WireRoom[] {
   return [...rooms.values()].map((room) => ({
@@ -752,8 +756,8 @@ function statusOf(room: Room): WireRoom['status'] {
 /**
  * その部屋で誰と打っているか（ADR-0020）。
  *
- * **見る人ごとに違う。** 相手が誰かは席によって変わるので、相手そのものを受け取る。**部屋から
- * 引き当てない**——`席についた` は 2 人ぶん作られ、それぞれの相手はもう一方である。
+ * 見る人ごとに違う。 相手が誰かは席によって変わるので、相手そのものを受け取る。部屋から
+ * 引き当てない——`席についた` は 2 人ぶん作られ、それぞれの相手はもう一方である。
  */
 function opponentOf(room: Room, partner: ParticipantId, names: Names): Opponent {
   return room.cpu === undefined ? { kind: '人間', name: names(partner) } : { kind: 'CPU' }
@@ -770,8 +774,8 @@ function withRoom(rooms: Rooms, room: Room): Rooms {
 /**
  * 先に起きたことを、後から起きたことの前に足す（ADR-0018）。
  *
- * 部屋を移るときは、出たことと入ったことが 1 つのメッセージで両方起きる。**書く順は起きた順で
- * なければならない**——閉じたことを後に書くと、新しく始まった対戦のほうが閉じられる。
+ * 部屋を移るときは、出たことと入ったことが 1 つのメッセージで両方起きる。書く順は起きた順で
+ * なければならない——閉じたことを後に書くと、新しく始まった対戦のほうが閉じられる。
  */
 function after(records: readonly DuelRecord[], outcome: RoomOutcome): RoomOutcome {
   return records.length === 0 ? outcome : { ...outcome, records: [...records, ...outcome.records] }
@@ -780,12 +784,12 @@ function after(records: readonly DuelRecord[], outcome: RoomOutcome): RoomOutcom
 /**
  * その部屋から 1 人を抜けさせる。誰もいなくなった部屋は取り除く。
  *
- * **打っている途中に抜けられたら、部屋ごと取り除く**（#175）。席は 2 つで（ADR-0004）、抜けた
- * 席に誰かが座り直すことはない（`enter` が断る）ので、**その対戦はもう続けられない。** 残して
+ * 打っている途中に抜けられたら、部屋ごと取り除く（#175）。席は 2 つで（ADR-0004）、抜けた
+ * 席に誰かが座り直すことはない（`enter` が断る）ので、その対戦はもう続けられない。 残して
  * おくと、動かない対戦がロビーに「対戦中」として残り、戻ってきた相手は誰も来ない席に座り続ける
  * ことになる。
  *
- * **終わった対戦の部屋は残す。** 終わった盤面はもう動かない（総合ルール 第3部 第3章 3）ので、
+ * 終わった対戦の部屋は残す。 終わった盤面はもう動かない（総合ルール 第3部 第3章 3）ので、
  * 残ったほうが入り直せば、同じ席で終わった盤面を見られる。席の並び（`duel.seats`）から抜かない
  * のもそのためである。
  */
@@ -795,7 +799,7 @@ function withoutParticipant(
   participant: ParticipantId,
 ): { readonly rooms: Rooms; readonly records: readonly DuelRecord[] } {
   const next = new Map(rooms)
-  // 部屋が無くなったことは置き場にも伝える（ADR-0018）。**記録そのものは消さない。** 戻す先が
+  // 部屋が無くなったことは置き場にも伝える（ADR-0018）。記録そのものは消さない。 戻す先が
   // 無くなっただけで、そこで何が打たれたかは残る。
   const closed: readonly DuelRecord[] = [{ kind: '閉じた', code: room.code }]
 
@@ -819,17 +823,17 @@ function withoutParticipant(
 /**
  * その部屋を抜けられるか（#92）。
  *
- * 抜けられるのは、まだ相手を待っているだけの部屋と、決着した部屋である。**打っている途中の
- * 部屋は抜けられない。** 合言葉を打ち間違えただけで対戦が消えることになるためである。人を
+ * 抜けられるのは、まだ相手を待っているだけの部屋と、決着した部屋である。打っている途中の
+ * 部屋は抜けられない。 合言葉を打ち間違えただけで対戦が消えることになるためである。人を
  * 相手に意図して投げ出す経路は、席をどう扱うかを決めてから別に足す。
  *
  * 打っている途中でも抜けられるのは 2 つの場合だけである（#175）。
  *
- * - **CPU との対戦。** 抜けられなくしているのは相手の対戦を消さないためであり、CPU の側には
+ * - CPU との対戦。 抜けられなくしているのは相手の対戦を消さないためであり、CPU の側には
  *   消えて困るものが無い。1 人で始めた対戦を終えるまでロビーに戻れないのはおかしい。
- * - **相手が繋がっていない対戦。** 相手が画面を閉じるとその席には誰も戻ってこない（名乗りは
+ * - 相手が繋がっていない対戦。 相手が画面を閉じるとその席には誰も戻ってこない（名乗りは
  *   画面が覚えているもので、閉じれば消える、ADR-0009）。残された側が永久に待たされ、その部屋も
- *   ロビーに残り続けることになる。**回線が切れただけなら相手は戻ってくる**（ADR-0016）ので、
+ *   ロビーに残り続けることになる。回線が切れただけなら相手は戻ってくる（ADR-0016）ので、
  *   抜けるかどうかは人が決める。ここでは口を開けるだけである。
  */
 function canLeave(room: Room, participant: ParticipantId, connected: ReadonlySet<ParticipantId>): boolean {
@@ -847,8 +851,8 @@ export function roomOf(rooms: Rooms, participant: ParticipantId): Room | undefin
 /**
  * その人の向かいの席にいる相手。まだデュエルが始まっていなければ `undefined`（#175）。
  *
- * **席から引く。部屋にいる人から引くのではない。** 相手が部屋を出た後も席の並びは残る
- * （`withoutParticipant`）ので、**出ていった相手もここでは分かる。** 出ていったかどうかは、
+ * 席から引く。部屋にいる人から引くのではない。 相手が部屋を出た後も席の並びは残る
+ * （`withoutParticipant`）ので、出ていった相手もここでは分かる。 出ていったかどうかは、
  * その名乗りが `participants` にあるかで見る。
  */
 export function partnerOf(room: Room, participant: ParticipantId): ParticipantId | undefined {
@@ -879,14 +883,14 @@ function unusedCode(rooms: Rooms, code: RoomCode): RoomCode {
 /**
  * 新しい部屋を作って、そこに入る（#175）。
  *
- * **合言葉を決めるのはサーバである。** 打つ前に相手と決めておかなくても、ロビーに並んだ部屋を
+ * 合言葉を決めるのはサーバである。 打つ前に相手と決めておかなくても、ロビーに並んだ部屋を
  * 選べば入れる。相手が `CPU` なら、もう一方の席には繋がっていない参加者（`cpu.ts`）が座り、
  * 2 人揃ったものとしてそのまま始まる。
  *
  * いま打っている途中の部屋にいるなら断る。抜けられる部屋にいるなら、そこを出てから作る
  * （`enter` と同じ扱い、#92）。
  *
- * **作る人が選んだルールで、その人のデッキを確かめる**（ADR-0021）。通らなければ部屋を作らずに
+ * 作る人が選んだルールで、その人のデッキを確かめる（ADR-0021）。通らなければ部屋を作らずに
  * 断り、いる部屋からも出さない。相手が CPU なら、CPU の席のデッキも確かめる——通らないまま
  * 作ると、始まらない部屋ができる。
  */
@@ -910,16 +914,16 @@ function open(
   const rules = rulesFor(opening.format, restriction.choice, decks.restrictions)
   if (typeof rules === 'string') return refuse(rooms, participant, rules)
 
-  // **合言葉と CPU の席を、デッキを確かめる前に決める。** CPU のデッキも誰が座るかで引くので
-  // （`DeckSource`）、席に着く人が分かっていないと確かめられない。**どちらも部屋を作らずに
-  // 決まる**ので、断る時は今までどおり何も変えずに返る。
+  // 合言葉と CPU の席を、デッキを確かめる前に決める。 CPU のデッキも誰が座るかで引くので
+  // （`DeckSource`）、席に着く人が分かっていないと確かめられない。どちらも部屋を作らずに
+  // 決まるので、断る時は今までどおり何も変えずに返る。
   const leaving = current === undefined ? undefined : withoutParticipant(rooms, current, participant)
   const left = leaving?.rooms ?? rooms
   const closed = leaving?.records ?? []
   const code = unusedCode(left, setup.code)
   const cpu = against === 'CPU' ? cpuParticipantOf(code) : undefined
 
-  // **CPU の席のデッキは、作る人の棚から引く**（#195）。既定も作る人ごとに決まる。
+  // CPU の席のデッキは、作る人の棚から引く（#195）。既定も作る人ごとに決まる。
   // 人の部屋では使わないので、既定も引かない（置き場への問い合わせを増やさない）。
   const cpuDeck = cpu === undefined ? undefined : (opening.cpuDeck ?? decks.cpuFallbackFor(participant))
   const refusal =
@@ -944,7 +948,7 @@ function open(
     }
   }
 
-  // **確かめたデッキと座るデッキは同じものである。** 既定を決めたあとの識別子をそのまま渡す
+  // 確かめたデッキと座るデッキは同じものである。 既定を決めたあとの識別子をそのまま渡す
   // ——`start` に既定を決め直させると、CPU の席が人の席の既定で引かれてしまう。
   const seating: Seating = { participant, deck: opening.deck, seat: '人' }
   const cpuSeating: Seating = { participant: opened.cpu, deck: cpuDeck, seat: 'CPU', shelf: participant }
@@ -954,7 +958,7 @@ function open(
 /**
  * いる部屋を出てロビーに戻る（#175）。
  *
- * 出られる部屋は `canLeave` が決める。**何も送らない。** 部屋から出たことは、ロビーが届くこと
+ * 出られる部屋は `canLeave` が決める。何も送らない。 部屋から出たことは、ロビーが届くこと
  * そのもので分かる（`serve.ts`）。
  */
 function leave(rooms: Rooms, participant: ParticipantId, connected: ReadonlySet<ParticipantId>): RoomOutcome {
@@ -972,11 +976,11 @@ function leave(rooms: Rooms, participant: ParticipantId, connected: ReadonlySet<
  * 空いていれば作って待ち、1 人いれば 2 人目として入ってデュエルが始まる。定員は 2 人で、
  * 観戦は扱わない。相手の非公開情報を見てよい人がいない（ADR-0004）ためである。
  *
- * すでにその部屋にいる参加者が入り直した場合は、**再入場として扱う**（ADR-0009）。接続が
+ * すでにその部屋にいる参加者が入り直した場合は、再入場として扱う（ADR-0009）。接続が
  * 切れて繋ぎ直した場合がこれにあたる。
  *
- * 違う合言葉が来た場合は、抜けてよい部屋にいるなら移る（#92）。**入れなかった場合は元の部屋に
- * いるまま**にする。移れないことが分かった時点で抜けたことにすると、どこにもいない参加者が
+ * 違う合言葉が来た場合は、抜けてよい部屋にいるなら移る（#92）。入れなかった場合は元の部屋に
+ * いるままにする。移れないことが分かった時点で抜けたことにすると、どこにもいない参加者が
  * できてしまう。
  */
 function enter(
@@ -1001,7 +1005,7 @@ function enter(
   const room = left.get(code)
   if (room === undefined) {
     // 合言葉を直に指して入った部屋。ロビーで見分けるものが無いので、合言葉を名前にする。
-    // **ルールを選ぶ場所が無い**（ロビーを通っていない）ので、何も選ばなかったものとして決める。
+    // ルールを選ぶ場所が無い（ロビーを通っていない）ので、何も選ばなかったものとして決める。
     const rules = defaultRules(decks.restrictions)
     const refusal = refusalOfDeck(rules, participant, chosen, decks)
     if (refusal !== undefined) return refuse(rooms, participant, refusal)
@@ -1030,7 +1034,7 @@ function enter(
   if (room.duel !== undefined) {
     return refuse(rooms, participant, '対戦が終わっている部屋')
   }
-  // **入る人のデッキを、その部屋のルールで確かめる**（ADR-0021）。通らなければ入れず、待っている
+  // 入る人のデッキを、その部屋のルールで確かめる（ADR-0021）。通らなければ入れず、待っている
   // 人には何も送らない——デッキを選び直せば入れるかもしれず、相手が知る筋合いのことではない。
   const refusal = refusalOfDeck(room.rules, participant, chosen, decks)
   if (refusal !== undefined) return refuse(rooms, participant, refusal)
@@ -1050,16 +1054,16 @@ function enter(
 }
 
 /**
- * 入り直した人に、いまの様子を送り直す（ADR-0009）。**部屋は変えない。**
+ * 入り直した人に、いまの様子を送り直す（ADR-0009）。部屋は変えない。
  *
  * 盤面は差分ではなく毎回まるごと送っている（`wire.ts`）ので、追いつかせる仕組みは要らない。
  * いまの盤面をもう一度送れば足りる。
  *
  * 選択の途中で切れていた場合は、貯めた答えの並びで適用をやり直せば同じ「選んでほしい」が
- * 返る（ADR-0008）。**送ったメッセージを覚えておく必要は無い。**
+ * 返る（ADR-0008）。送ったメッセージを覚えておく必要は無い。
  *
- * 相手を待っている間なら、持ち込むデッキは選び直せる（ADR-0021）。**選ばずに入り直した人の
- * ものは変えない**——繋ぎ直した時に飛ぶのも同じメッセージで、そこには選んだものが入っていない
+ * 相手を待っている間なら、持ち込むデッキは選び直せる（ADR-0021）。選ばずに入り直した人の
+ * ものは変えない——繋ぎ直した時に飛ぶのも同じメッセージで、そこには選んだものが入っていない
  * （`FromClient` の `部屋に入る`）。選び直したデッキがその部屋のルールで通らなければ断り、前に
  * 選んでいたものを残す。
  */
@@ -1105,7 +1109,7 @@ function rejoin(
       ...boards(duel, pendingProgress(duel)?.board).filter((delivery) => delivery.to === participant),
       ...pendingChoice(duel, seat),
     ],
-    // 入り直しは、その人に送り直しているだけである。**新しく起きたことは何も無い。**
+    // 入り直しは、その人に送り直しているだけである。新しく起きたことは何も無い。
     records: [],
   }
 }
@@ -1113,7 +1117,7 @@ function rejoin(
 /**
  * 選ぶのを待っているなら、いまその選択がどうなっているか。待っていなければ `undefined`。
  *
- * **覚えておく必要が無い。** 貯めた答えの並びで適用をやり直せば同じところへ進む（ADR-0008）
+ * 覚えておく必要が無い。 貯めた答えの並びで適用をやり直せば同じところへ進む（ADR-0008）
  * ので、送った候補も、見せた盤面も、尋ねるたびにここで作り直せる。
  */
 function pendingProgress(duel: DuelInRoom): Extract<ActionProgress, { kind: '選んでほしい' }> | undefined {
@@ -1156,12 +1160,12 @@ function start(
     records: [],
   })
 
-  // **席に着く時にも確かめる**（ADR-0021）。渡された時に確かめただけでは、その後にプールが
+  // 席に着く時にも確かめる（ADR-0021）。渡された時に確かめただけでは、その後にプールが
   // 変わったデッキがそのまま席に着ける。
   //
-  // **引き直すのは、部屋を作った時や入った時と同じものとは限らないからである。** 選ばずに座った
+  // 引き直すのは、部屋を作った時や入った時と同じものとは限らないからである。 選ばずに座った
   // 人のデッキはその人の既定から決まり（`fallbackFor`）、既定は待っている間に変わりうる。
-  // **だから部屋のルールもここで当て直す**——確かめた時のデッキのまま座るとは限らない。
+  // だから部屋のルールもここで当て直す——確かめた時のデッキのまま座るとは限らない。
   const brought = [first, second].map((seating) => {
     const id = seating.deck ?? decks.fallbackFor(seating.participant)
     return id === undefined ? ({ kind: '無い' } as const) : decks.of(seating.shelf ?? seating.participant, id)
@@ -1186,6 +1190,7 @@ function start(
   }
 
   const duel: DuelInRoom = {
+    presentationOf: decks.presentationOf,
     state: prepared.state,
     seats: prepared.first === 0 ? { 先攻: waiting, 後攻: joining } : { 先攻: joining, 後攻: waiting },
     pending: undefined,
@@ -1203,14 +1208,14 @@ function start(
           kind: '席についた',
           seat: player,
           room: room.code,
-          // 相手は、もう一方の席にいる人である。**2 人ぶんで別のものになる。**
+          // 相手は、もう一方の席にいる人である。2 人ぶんで別のものになる。
           opponent: opponentOf(seated, duel.seats[player === '先攻' ? '後攻' : '先攻'], names),
           own: names(to),
         } as const,
       })),
       ...boards(duel),
     ],
-    // ここから先の手を書き足していく先ができる（ADR-0018）。**デッキは識別子の並びだけ残す**
+    // ここから先の手を書き足していく先ができる（ADR-0018）。デッキは識別子の並びだけ残す
     // ——カードそのものは非公開で（ADR-0002）、置き場に持ち込めない。席の順で並べる
     // （先攻・後攻の順ではない、`prepareDuel`）。
     records: [
@@ -1235,8 +1240,8 @@ interface Seating {
   /** 席に座るのが人か CPU か。**断る理由に誰のデッキかを添えるのに使う**（`whoseOf`）。 */
   readonly seat: SeatKind
   /**
-   * デッキを引く棚の持ち主（#195）。**CPU の席は、部屋を作った人の棚から引く**——CPU は自分の
-   * デッキを持たない。省くと、座る人自身の棚である。**誰のデッキと書くかは決めない**（`seat`）。
+   * デッキを引く棚の持ち主（#195）。CPU の席は、部屋を作った人の棚から引く——CPU は自分の
+   * デッキを持たない。省くと、座る人自身の棚である。誰のデッキと書くかは決めない（`seat`）。
    */
   readonly shelf?: ParticipantId
 }
@@ -1265,11 +1270,11 @@ function seats(duel: DuelInRoom): readonly (readonly [Player, ParticipantId])[] 
  * ので、送るものが無い。
  *
  * 選ぶのを待っている間も空で届く。行動の途中であり、次に受け取るのは答えだけだからである
- * （`act` が `選ぶのを待っている` として断る）。**打てない手を並べさせないために、断る側と
- * 送る側で同じ判断をしている。**
+ * （`act` が `選ぶのを待っている` として断る）。打てない手を並べさせないために、断る側と
+ * 送る側で同じ判断をしている。
  *
- * `showing` は、送る盤面を差し替えるためにある。選ぶのを待っている間は**その選択が起きている
- * 盤面**を送る（#142）。行動が終わるまで `duel.state` は動かない（ADR-0008）ので、そのまま
+ * `showing` は、送る盤面を差し替えるためにある。選ぶのを待っている間はその選択が起きている
+ * 盤面を送る（#142）。行動が終わるまで `duel.state` は動かない（ADR-0008）ので、そのまま
  * 送ると、選ぶ人が見るのは行動を始める前の盤面になってしまう。差し替えるのは送るものだけで、
  * `duel.state` は動かさない。やり直しの起点がそこにある。
  */
@@ -1280,7 +1285,7 @@ function boards(duel: DuelInRoom, showing: DuelState = duel.state): readonly Del
     to,
     message: {
       kind: '盤面',
-      perspective: toWire(perspectiveOf(showing, player)),
+      perspective: toWire(perspectiveOf(showing, player), duel.presentationOf),
       actions: player === duel.state.turn.priority ? actions : [],
       // 放棄したら何が起きるかは、進行中の盤面ではなく確定した盤面から決まる。押すのは
       // これから（`duel.state` に対して）だからである（#130）。
@@ -1298,7 +1303,7 @@ function seatOf(duel: DuelInRoom, participant: ParticipantId): Player | undefine
  * 行動する。
  *
  * 行えるのは優先権を持っているプレイヤーだけで、行えるのは合法手だけである。どちらも
- * 確かめるのはサーバの側である。**クライアントはルールの判断を持たない**（ADR-0010）ので、
+ * 確かめるのはサーバの側である。クライアントはルールの判断を持たない（ADR-0010）ので、
  * ここが唯一の関門になる。
  */
 function act(rooms: Rooms, participant: ParticipantId, action: LegalAction): RoomOutcome {
@@ -1337,9 +1342,9 @@ type Rewind = 'ひとつ' | 'すべて'
 /**
  * 選びかけているものを戻す（ADR-0008）。
  *
- * **戻れるのは、盤面をまだ進めていないからである。** 答えが足りているところまで進めては
+ * 戻れるのは、盤面をまだ進めていないからである。 答えが足りているところまで進めては
  * やり直す形なので、行動が終わるまで `duel.state` は動かない。貯めた答えを捨てれば、行動を
- * 始める前と同じ盤面がそこにある。**取り消すために巻き戻す仕組みは要らない。**
+ * 始める前と同じ盤面がそこにある。取り消すために巻き戻す仕組みは要らない。
  *
  * 見たものを見なかったことにはできないので、戻せるかどうかは `protocol.ts` の `describeChoice`
  * （`mayGoBack`）が決める。比べる先は、取り消せる人なら行動を始める前の盤面、取り消せない人なら続けて
@@ -1358,8 +1363,8 @@ function rewind(rooms: Rooms, participant: ParticipantId, how: Rewind): RoomOutc
   if (pending === undefined) return refuse(rooms, participant, '選ぶところではない')
   if (seatOf(duel, participant) !== pending.player) return refuse(rooms, participant, '選ぶ人ではない')
 
-  // 戻れるか・取り消せるかを決めるのはエンジンである（`protocol.ts` の `describeChoice`）。**ここは
-  // それを尋ねて従うだけで、自分では数えない。** 画面に載せる値（`WireChoice`）と、ここで断るかどうかが
+  // 戻れるか・取り消せるかを決めるのはエンジンである（`protocol.ts` の `describeChoice`）。ここは
+  // それを尋ねて従うだけで、自分では数えない。 画面に載せる値（`WireChoice`）と、ここで断るかどうかが
   // 食い違わないための形である（#142、ADR-0052）。選択がもう要らないところまで進んでいれば、戻る話に
   // ならない。
   const choice = pendingProgress(duel)?.choice
@@ -1389,10 +1394,10 @@ function rewind(rooms: Rooms, participant: ParticipantId, how: Rewind): RoomOutc
 /**
  * 答えの並びで行動を適用し、進んだか、まだ選ぶことがあるかで分かれる（ADR-0008）。
  *
- * 進んだなら両方に新しい盤面を送る。まだ選ぶことがあるなら、**選ぶプレイヤーにだけ**候補を送る。
+ * 進んだなら両方に新しい盤面を送る。まだ選ぶことがあるなら、選ぶプレイヤーにだけ候補を送る。
  * 候補にはそのプレイヤーだけが見てよいものが含まれる（総合ルール 第2部 第23章 3）。
  *
- * **止まった時は、両方に盤面も送り直す**（#141）。選んでいる間は誰も何も行えない（`act` が
+ * 止まった時は、両方に盤面も送り直す（#141）。選んでいる間は誰も何も行えない（`act` が
  * 断り、`boards` が `actions` を空にする）ので、選ばないほうのプレイヤーに 1 つ前の盤面と
  * 一緒に届いた手が並んだままになってはならない。
  */
@@ -1404,15 +1409,15 @@ function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAct
     return {
       rooms: withRoom(rooms, { ...room, duel: waiting }),
       deliveries: [
-        // 送るのは**その選択が起きている盤面**である（#142）。答えを受け取っている間
+        // 送るのはその選択が起きている盤面である（#142）。答えを受け取っている間
         // `duel.state` は動かない（ADR-0008）ので、そのままだと選ぶ人が見るのは行動を
         // 始める前の盤面になる。答えが増えれば進む先も変わるので、毎回送り直す
         ...boards(waiting, progress.board),
-        // **盤面より後に送る。** 受け取った側は盤面が届くと選択を畳む（`session.ts`）ので、
+        // 盤面より後に送る。 受け取った側は盤面が届くと選択を畳む（`session.ts`）ので、
         // 先に送ると選んでほしいことが消える。`rejoin` も同じ順で送っている。
         { to: waiting.seats[choice.player], message: { kind: '選んでほしい', choice } },
       ],
-      // **まだ書かない。** 答えは戻せる（`rewind`）ので、行動が終わるまでは決まっていない。
+      // まだ書かない。 答えは戻せる（`rewind`）ので、行動が終わるまでは決まっていない。
       // 途中の答えを書くと、戻された答えまで記録に残る。
       records: [],
     }
@@ -1422,7 +1427,7 @@ function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAct
   return {
     rooms: withRoom(rooms, { ...room, duel: advanced }),
     deliveries: boards(advanced),
-    // **行動が終わったところで、1 手として書く**（ADR-0008、ADR-0018）。ここまでの答えは
+    // 行動が終わったところで、1 手として書く（ADR-0008、ADR-0018）。ここまでの答えは
     // もう戻せないので、これが確定した 1 手である。
     records: [{ kind: '打たれた', code: room.code, action: pending.action, answers: pending.answers }],
   }
@@ -1431,7 +1436,7 @@ function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAct
 /**
  * CPU が 1 度に打つ手数の上限（#175）。
  *
- * **終わらない手順に落ちてもサーバが止まらないようにするためだけにある。** 打つのは自分の
+ * 終わらない手順に落ちてもサーバが止まらないようにするためだけにある。 打つのは自分の
  * 優先権がある間だけで、1 手ごとに相手へ優先権が渡る（`play.ts` の `grantPriorityToInactive`）
  * ため、実際に続けて打つのは数手である。ここに届くのはエンジンの穴であり、その時は打ち切って
  * 盤面を止める——回り続けて応答を返さないよりは、止まって見えるほうがましである。
@@ -1441,7 +1446,7 @@ const CPU_STEP_LIMIT = 200
 /**
  * CPU の番である限り、CPU に打たせる（#175）。
  *
- * **人が打った後に呼ぶ。** 1 手ごとに盤面が両方に送られる（`advance`）ので、人の画面には
+ * 人が打った後に呼ぶ。 1 手ごとに盤面が両方に送られる（`advance`）ので、人の画面には
  * CPU が何をしたかが順に届く。CPU 宛てのものを落とすのは呼ぶ側（`receive`）である。
  */
 function withCpu(outcome: RoomOutcome, code: RoomCode): RoomOutcome {
@@ -1465,8 +1470,8 @@ function withCpu(outcome: RoomOutcome, code: RoomCode): RoomOutcome {
 /**
  * CPU の番なら 1 手だけ進める。CPU の番でなければ `undefined`。
  *
- * 打つのも答えるのも、人が送ってきた時と同じ道筋（`advance`）を通す。**CPU のために別の
- * 進め方を作らない。** 通り道が分かれると、片方だけで起きる違いが生まれる。
+ * 打つのも答えるのも、人が送ってきた時と同じ道筋（`advance`）を通す。CPU のために別の
+ * 進め方を作らない。 通り道が分かれると、片方だけで起きる違いが生まれる。
  */
 function cpuStep(rooms: Rooms, room: Room): RoomOutcome | undefined {
   const duel = room.duel
@@ -1505,7 +1510,7 @@ function cpuStep(rooms: Rooms, room: Room): RoomOutcome | undefined {
  * 同じ行動か。
  *
  * 送られてきた値と `legalActions` が返したものを見比べて、合法かどうかを決める。`JSON.stringify`
- * では比べられない。**通信を通ると項目の並びは送り主の書いた順のままになる**ので、同じ行動でも
+ * では比べられない。通信を通ると項目の並びは送り主の書いた順のままになるので、同じ行動でも
  * 文字列としては違いうる。種類ごとに、指しているものを並べて比べる。
  */
 function sameAction(one: LegalAction, other: LegalAction): boolean {

@@ -1,3 +1,4 @@
+import { handleArtwork } from './card-art.js'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { WebSocketServer } from 'ws'
@@ -38,23 +39,23 @@ import type { Store } from './store.js'
 /**
  * WebSocket で 2 人を繋ぐ（ADR-0009、#83）。
  *
- * 決まりごとを持っているのは `room.ts` で、ここは**受け取ったバイト列を組み立て直して渡し、
- * 返ってきたものを送り分けるだけ**である。盤面を進めるところと同じように（ADR-0001）、
+ * 決まりごとを持っているのは `room.ts` で、ここは受け取ったバイト列を組み立て直して渡し、
+ * 返ってきたものを送り分けるだけである。盤面を進めるところと同じように（ADR-0001）、
  * 決まりごとと I/O を分けている。
  *
- * **接続 1 本が参加者 1 人に対応する。** 誰であるかは 2 通りのどちらかで決まる（ADR-0019）。
+ * 接続 1 本が参加者 1 人に対応する。 誰であるかは 2 通りのどちらかで決まる（ADR-0019）。
  *
- * - **ログインの設定があるとき** — 握手に付いてきた Cookie のセッションで決まる。`?participant=`
- *   は読まない。**両方であることはできない**ので、開いているかどうかを別の旗で持たず、
+ * - ログインの設定があるとき — 握手に付いてきた Cookie のセッションで決まる。`?participant=`
+ *   は読まない。両方であることはできないので、開いているかどうかを別の旗で持たず、
  *   設定が渡されたかどうかがそのまま境目になる
- * - **設定が無いとき** — 繋ぐ時の URL で名乗る（`?participant=`）。これは認証ではなく、知って
+ * - 設定が無いとき — 繋ぐ時の URL で名乗る（`?participant=`）。これは認証ではなく、知って
  *   いる人がその席に座れる合言葉である（ADR-0009）。手元で 2 人ぶん試すためのものである
  *
  * 同じ人として繋ぎ直すと、部屋はそのままに続きから打てる。切れた接続は覚えておかず、その人に
- * 紐づく接続を新しいものに差し替えるだけでよい。**入り直した人にいまの盤面を送り直すのは
- * `room.ts` の仕事**である。
+ * 紐づく接続を新しいものに差し替えるだけでよい。入り直した人にいまの盤面を送り直すのは
+ * `room.ts` の仕事である。
  *
- * **HTTP も同じポートで喋る**（ADR-0019）。ログインの口（`sign-in.ts`）がそこに乗る。中継の
+ * HTTP も同じポートで喋る（ADR-0019）。ログインの口（`sign-in.ts`）がそこに乗る。中継の
  * 設定も、WebSocket を通すだけでなく通常の HTTP の道が要る（ADR-0015）。
  */
 
@@ -70,22 +71,22 @@ export interface ServeOptions {
   /**
    * 席に持ち込めるデッキ（ADR-0021、`deck.ts` の `deckSourceFrom`）。
    *
-   * **部屋ごとに変わらないので、`setup` とは別に受け取る。** 引けるものを決めるのは立てる時に
+   * 部屋ごとに変わらないので、`setup` とは別に受け取る。 引けるものを決めるのは立てる時に
    * 渡されたもので、シードや合言葉のように部屋ごとに引き直すものではない。
    */
   readonly decks: DeckSource
   /**
    * コピー元としてロビーに出す既製デッキ（`deck.ts` の `deckChoicesOf`）。
    *
-   * **引くところ（`decks`）と別に受け取る。** 引けるかどうかと、選ぶ人に見せるかどうかは
+   * 引くところ（`decks`）と別に受け取る。 引けるかどうかと、選ぶ人に見せるかどうかは
    * 別である——記録を立て直す時に引くデッキは、棚に並んでいるとは限らない。
    *
-   * **席に着く時に選べるものではない**（ADR-0021、#194）。座るのは自分のデッキで、既製デッキは
+   * 席に着く時に選べるものではない（ADR-0021、#194）。座るのは自分のデッキで、既製デッキは
    * コピーしてから使う。
    */
   readonly deckChoices: readonly WirePresetDeck[]
   /**
-   * 立てる時に渡されたもの一式（`deck.ts` の `CardSupply`）。**自分のデッキを預かる時に引く**
+   * 立てる時に渡されたもの一式（`deck.ts` の `CardSupply`）。自分のデッキを預かる時に引く
    * （ADR-0021）。
    *
    * 保存されるデッキにプールに無いカードが入っていないかを見るのにプールが、コピーするのと
@@ -97,14 +98,14 @@ export interface ServeOptions {
   /**
    * 書いたものが残る置き場（ADR-0018、`store.ts`）。
    *
-   * **渡さなければ何も残らない。** 立て直せば対戦は消える——ADR-0018 より前と同じ振る舞いに
+   * 渡さなければ何も残らない。 立て直せば対戦は消える——ADR-0018 より前と同じ振る舞いに
    * なる。置き場を持つかどうかを決めるのは、サーバを立てる側である（`tools/bundle-server.mjs`）。
    */
   readonly store?: Store
   /**
    * ログインの口（ADR-0019、`sign-in.ts`）。
    *
-   * **渡すと `?participant=` は受け付けなくなる。** 誰であるかは Cookie のセッションだけから
+   * 渡すと `?participant=` は受け付けなくなる。 誰であるかは Cookie のセッションだけから
    * 決まり、ログインしていない接続は断られる。渡さなければ今までどおり名乗りで入れる。
    */
   readonly signIn?: SignIn
@@ -125,7 +126,7 @@ function participantOf(url: string | undefined): ParticipantId | undefined {
 /**
  * 握手してきた接続を誰のものとするか（ADR-0019）。
  *
- * **なりうる形を数え上げる。** 「誰であるか」と「断る理由」を別々に持つと、どちらも無い形や
+ * なりうる形を数え上げる。 「誰であるか」と「断る理由」を別々に持つと、どちらも無い形や
  * どちらもある形が書けてしまう。
  */
 type Seating =
@@ -135,7 +136,7 @@ type Seating =
 /**
  * 受け取ってよいメッセージの種類（`protocol.ts` の `FromClient`）。
  *
- * `FromClient` に足したら、ここにも足す。**足し忘れると読めないメッセージとして黙って断られる**
+ * `FromClient` に足したら、ここにも足す。足し忘れると読めないメッセージとして黙って断られる
  * ので、種類をキーにした表にして、抜けが型検査で落ちるようにしている。
  */
 const ACCEPTED: Readonly<Record<FromClient['kind'], true>> = {
@@ -193,11 +194,11 @@ interface CopySource {
 /**
  * `デッキをコピーする` の `origin` から、写す中身を決める（ADR-0022）。
  *
- * **種類を数え上げる形で書く。** 足すはずの種類を弾く側に書き足し忘れると、新しいコピー元が
+ * 種類を数え上げる形で書く。 足すはずの種類を弾く側に書き足し忘れると、新しいコピー元が
  * サイレントに「そのデッキはありません」で終わる——`switch` を種類で割り、抜けは `default` で
  * 捕まえる形にして、足し忘れに気付きやすくする。
  *
- * **画面から来るものは型のとおりとは限らない**（`parse` が見るのは種類だけである）ので、`origin`
+ * 画面から来るものは型のとおりとは限らない（`parse` が見るのは種類だけである）ので、`origin`
  * を `unknown` として読み直す。
  */
 function copySourceOf(origin: unknown, presets: readonly PresetDeck[], store: Store): CopySource | undefined {
@@ -215,7 +216,7 @@ function copySourceOf(origin: unknown, presets: readonly PresetDeck[], store: St
     case '共有レシピ': {
       const { share: shareId } = origin as { readonly share?: unknown }
       if (typeof shareId !== 'string') return undefined
-      // **持ち主を見ない。** 他人が「一覧に載せる」・「リンクを知っている人だけ」で出した共有も、
+      // 持ち主を見ない。 他人が「一覧に載せる」・「リンクを知っている人だけ」で出した共有も、
       // 誰でもコピーできる（ADR-0022）。取り消された共有だけはここで弾く。
       const share = store.shareById(shareId)
       if (share === undefined || share.revoked) return undefined
@@ -248,8 +249,8 @@ function parse(data: unknown): FromClient | undefined {
  * 生きているかを確かめる間隔（ミリ秒）。
  *
  * 不安定な回線では、切れたことが TCP から降りてこないまま黙って死ぬ接続ができる。放っておくと
- * その席は埋まったままになり、繋ぎ直してきた本人が入れなくなる——のではなく、**繋ぎ直した側は
- * 入れるが、死んだ接続がずっと残る**（ADR-0016）。合わせて、間に置いた中継が黙っている接続を
+ * その席は埋まったままになり、繋ぎ直してきた本人が入れなくなる——のではなく、繋ぎ直した側は
+ * 入れるが、死んだ接続がずっと残る（ADR-0016）。合わせて、間に置いた中継が黙っている接続を
  * 切る場合の予防にもなる（ADR-0015）。
  *
  * 30 秒にしているのは、よくある中継のアイドル打ち切り（60 秒）の半分だからである。
@@ -275,6 +276,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   const http = createServer((request, response) => {
     if (options.signIn?.handle(request, response) === true) return
     if (handlePublicShare(request, response)) return
+    if (handleArtwork(request, response, options.supply.artwork)) return
 
     response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
     response.end('ここには何もありません')
@@ -294,13 +296,13 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   /**
    * その人に最後に伝えた「相手が繋がっているか」（#175）。同じことを言い続けないために覚えている。
    *
-   * 切れたら消す。**繋ぎ直してきた人には、変わっていなくてももう一度伝える。**
+   * 切れたら消す。繋ぎ直してきた人には、変わっていなくてももう一度伝える。
    */
   const linkSent = new Map<ParticipantId, boolean>()
   /**
    * 置き場に残っていた対戦から始める（ADR-0018）。
    *
-   * **立て直しても対戦が消えない。** 作り直すのは記録した入力を打ち直すことで、決着まで打った
+   * 立て直しても対戦が消えない。 作り直すのは記録した入力を打ち直すことで、決着まで打った
    * 1 本でも 18ms しかかからない（`room.ts` の `restore`）。デッキは記録に残っている識別子から
    * 引き直し（ADR-0021）、引けないカードを含んでいればその対戦は作り直さない。
    *
@@ -320,8 +322,8 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   /**
    * その人が付けた表示名。まだ決めていなければ `undefined`（ADR-0020）。
    *
-   * **預かるのは置き場である**（`store.ts`）。ログインの設定が無いときは預ける先が無いので、
-   * **名乗りがそのまま表示名になる**——ここでも、設定が渡されたかどうかがそのまま境目である
+   * 預かるのは置き場である（`store.ts`）。ログインの設定が無いときは預ける先が無いので、
+   * 名乗りがそのまま表示名になる——ここでも、設定が渡されたかどうかがそのまま境目である
    * （ADR-0019、ADR-0020）。
    */
   function nameOf(participant: ParticipantId): string | undefined {
@@ -333,7 +335,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   /**
    * 部屋に渡す名前の引き方（`room.ts` の `Names`）。
    *
-   * **CPU は置き場に居ない。** 部屋の側は CPU の名前を尋ねないが（ロビーからは外し、相手が CPU
+   * CPU は置き場に居ない。 部屋の側は CPU の名前を尋ねないが（ロビーからは外し、相手が CPU
    * なら名前を持たない）、尋ねられても置き場を引きに行かせない。
    */
   const names: Names = (participant) => (isCpu(participant) ? participant : (nameOf(participant) ?? participant))
@@ -342,7 +344,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   const named = (participant: ParticipantId): boolean => nameOf(participant) !== undefined
 
   /**
-   * デッキを預かる置き場。**ログインを持たない立て方では `undefined`**（ADR-0021）。
+   * デッキを預かる置き場。ログインを持たない立て方では `undefined`（ADR-0021）。
    *
    * 名乗りは認証ではなく、知っている人がその席に座れる合言葉である（ADR-0009）。そこにデッキを
    * 紐づけると、名乗りを知っている人が他人のデッキを書き換えられる。
@@ -350,10 +352,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   const deckStore: Store | undefined = options.signIn === undefined ? undefined : options.store
 
   /**
-   * 席に持ち込めるデッキ（ADR-0021、#194）。**自分のデッキを預かれるなら、そこからも引く。**
+   * 席に持ち込めるデッキ（ADR-0021、#194）。自分のデッキを預かれるなら、そこからも引く。
    *
-   * **CPU の席には自分のデッキが無い。** CPU は身元を持たない参加者（`cpu.ts`）で、置き場に
-   * 引きに行くと身元の識別子として読めずに落ちる。**引く前に外す。**
+   * CPU の席には自分のデッキが無い。 CPU は身元を持たない参加者（`cpu.ts`）で、置き場に
+   * 引きに行くと身元の識別子として読めずに落ちる。引く前に外す。
    */
   const decks: DeckSource =
     deckStore === undefined
@@ -375,7 +377,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   }
 
   /**
-   * 自分のデッキを送る（ADR-0021）。**1 つも持っていなければ、先に既製デッキを 1 つ配る。**
+   * 自分のデッキを送る（ADR-0021）。1 つも持っていなければ、先に既製デッキを 1 つ配る。
    *
    * 配るのを「初めて表示名を決めた時」にしないのは、それより前に名前を決めた人に届かないから
    * である。最後の 1 つは消せないので、消した後に知らないデッキが湧いて出ることはない。
@@ -390,7 +392,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   }
 
   /**
-   * 配るカードプール（ADR-0021）。**プールは立てている間変わらないので、書き出すのは 1 度でよい。**
+   * 配るカードプール（ADR-0021）。プールは立てている間変わらないので、書き出すのは 1 度でよい。
    *
    * デッキを預かれない立て方では配らない。組んでも残す場所が無い。
    */
@@ -496,10 +498,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   /**
    * 握手してきた接続が誰のものかを決める（ADR-0019）。
    *
-   * **ログインの設定があるなら Cookie だけを見る。** URL の名乗りは読まない——読めば、他人の
-   * 識別子を名乗るだけでその席に座れてしまう。**両方であることはできない。**
+   * ログインの設定があるなら Cookie だけを見る。 URL の名乗りは読まない——読めば、他人の
+   * 識別子を名乗るだけでその席に座れてしまう。両方であることはできない。
    *
-   * 断るときは理由を送ってから閉じる。**握手そのものを断らない**のは、ブラウザの `WebSocket`
+   * 断るときは理由を送ってから閉じる。握手そのものを断らないのは、ブラウザの `WebSocket`
    * には閉じた理由が降りてこないからである。画面はこの返事を見てログインへ送る（同）。
    */
   function whoIs(cookie: string | undefined, url: string | undefined): Seating {
@@ -520,7 +522,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   /**
    * 部屋が返したものを、それぞれの宛先へ送る。ロビーも送り直す。
    *
-   * **送る前に書く**（ADR-0018）。書く前に送ると、書けないまま人の画面だけが先に進む。書いてから
+   * 送る前に書く（ADR-0018）。書く前に送ると、書けないまま人の画面だけが先に進む。書いてから
    * 落ちたなら、繋ぎ直した先で同じ盤面が作り直される。
    */
   function deliver(outcome: RoomOutcome): void {
@@ -533,7 +535,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   /**
    * 起きたことを置き場へ書き足す（ADR-0018）。
    *
-   * **書けなくても対戦は止めない。** 記録が欠けるのは失うものだが、打てなくなるほうが重い。
+   * 書けなくても対戦は止めない。 記録が欠けるのは失うものだが、打てなくなるほうが重い。
    * 黙って落とさずに残すのは、置き場が壊れていることに気付けるようにするためである。
    */
   function keep(outcome: RoomOutcome): void {
@@ -565,7 +567,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   /**
    * その部屋にいる人それぞれに、相手が繋がっているかを伝える（#175）。
    *
-   * **繋がりを知っているのはここだけである。** 部屋は決まりごとしか持たない（`room.ts`）ので、
+   * 繋がりを知っているのはここだけである。 部屋は決まりごとしか持たない（`room.ts`）ので、
    * 誰が繋がっているかは渡す側の仕事になる。相手が閉じたまま戻らない対戦から抜けられるかも、
    * 同じものから決まる（同 `canLeave`）。
    *
@@ -579,7 +581,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       const partner = partnerOf(room, participant)
       if (partner === undefined) continue
 
-      // 繋がっていない人には送れない。**覚えてもおかない。** 繋ぎ直してきた時に、変わって
+      // 繋がっていない人には送れない。覚えてもおかない。 繋ぎ直してきた時に、変わって
       // いないからと黙ってしまうことになる。
       const socket = sockets.get(participant)
       if (socket === undefined) {
@@ -587,10 +589,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         continue
       }
 
-      // **部屋を出た相手は繋がっていない。** 出た人はその席に戻れない（`enter` が断る）ので、
+      // 部屋を出た相手は繋がっていない。 出た人はその席に戻れない（`enter` が断る）ので、
       // 繋ぎ直してくるかどうかに関わらず、待っていても相手は来ない。
       const present = room.participants.includes(partner) && sockets.has(partner)
-      // **変わった時だけ送る。** 同じことを言い続けると、受け取るたびに畳み直す側
+      // 変わった時だけ送る。 同じことを言い続けると、受け取るたびに畳み直す側
       // （`client` の `index.ts`）が動くことになる。
       if (linkSent.get(participant) === present) continue
 
@@ -602,7 +604,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   /**
    * どの部屋にもいない人に、いまのロビーを送る（#175）。
    *
-   * **部屋の様子が変わりうるたびに呼ぶ。** 尋ねに来るのを待たずに送ることで、誰かが部屋を
+   * 部屋の様子が変わりうるたびに呼ぶ。 尋ねに来るのを待たずに送ることで、誰かが部屋を
    * 作れば、ほかの人の一覧にすぐ出る。前に送ったものと同じなら送らない。
    */
   function pushLobby(): void {
@@ -612,19 +614,19 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         lobbySent.delete(participant)
         continue
       }
-      // 名前を決めていない人には出さない（ADR-0020）。**入れない場所を見せない**——ここから
+      // 名前を決めていない人には出さない（ADR-0020）。入れない場所を見せない——ここから
       // 押せるものは、どれも名前を決めるまで断られる。
       if (!named(participant)) {
         lobbySent.delete(participant)
         continue
       }
-      // **人ごとに違うものを送る。** 既定のデッキはその人のものである（ADR-0021、#194）ので、
+      // 人ごとに違うものを送る。 既定のデッキはその人のものである（ADR-0021、#194）ので、
       // 部屋の一覧が同じでも同じメッセージにはならない。
       const message = {
         kind: 'ロビー',
         rooms: lobby,
         presets: options.deckChoices,
-        // **座る時に使うものと同じところで決める**（`room.ts` の `refusalOfDeck`）。既定を
+        // 座る時に使うものと同じところで決める（`room.ts` の `refusalOfDeck`）。既定を
         // 2 か所で決めると、出ているものと座るものがずれる。
         chosen: decks.fallbackFor(participant),
         // CPU の席の既定も、座る時に使うものと同じところで決める（`room.ts` の `open`、#195）。
@@ -644,7 +646,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    * 生きているかを確かめて、返事の無かった接続を落とす。
    *
    * 落とすと `close` が起きるので、表から外すのは今までどおりそちらの仕事である。相手の
-   * 返事（pong）は `ws` が勝手に返すので、**繋いでいる側は何もしなくてよい**。
+   * 返事（pong）は `ws` が勝手に返すので、繋いでいる側は何もしなくてよい。
    */
   const heartbeat = setInterval(() => {
     for (const socket of server.clients) {
@@ -676,7 +678,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
 
     // 同じ合言葉で繋ぎ直された場合、古い接続は捨てる。部屋の側は入り直しとして扱う。
     sockets.set(participant, socket)
-    // **新しい接続には、覚えていることを言い直す。** 送ったかどうかは名乗りで覚えている
+    // 新しい接続には、覚えていることを言い直す。 送ったかどうかは名乗りで覚えている
     // （`lobbySent`・`linkSent`）ので、消しておかないと、同じ名乗りで繋ぎ直した先が
     // 「もう伝えてある」として黙って何も受け取れないままになる。
     lobbySent.delete(participant)
@@ -685,12 +687,12 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     /**
      * 部屋にいるならその様子を、いないならロビーを送る（#175）。
      *
-     * **どこにいるかを知っているのはサーバである。** 画面を読み込み直すと、繋ぐ側は自分が
+     * どこにいるかを知っているのはサーバである。 画面を読み込み直すと、繋ぐ側は自分が
      * どの部屋にいたかを忘れている（合言葉を決めたのはサーバなので、URL にも無い）。入り直しを
      * 待っていると、誰も何も送らないまま止まる。部屋にいる人には、入り直したものとして
      * いまの盤面を送る（ADR-0009、`room.ts` の `rejoin`）。
      *
-     * **名前を決めていないなら、そこへ通さない**（ADR-0020）。繋ぎはするが、決まるまで先へは
+     * 名前を決めていないなら、そこへ通さない（ADR-0020）。繋ぎはするが、決まるまで先へは
      * 進めない。名前を決め終わったところで、もう一度ここを通る。
      */
     function admit(): void {
@@ -699,7 +701,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         return
       }
 
-      // **カードプールはデッキより先に送る。** デッキは識別子の並びで、引く先がプールである。
+      // カードプールはデッキより先に送る。 デッキは識別子の並びで、引く先がプールである。
       // `admit` は接続ごとに 1 度だけ通る（名前を初めて決めた時か、決め終えた人が繋いだ時）。
       sendPool(socket)
       sendOwnDecks(socket, participant)
@@ -707,7 +709,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       const current = roomOf(rooms, participant)
       if (current === undefined) pushLobby()
       else {
-        // **デッキは選び直さない。** どれで座っていたかは部屋が覚えている（`room.ts` の
+        // デッキは選び直さない。 どれで座っていたかは部屋が覚えている（`room.ts` の
         // `rejoin`）ので、入り直しで上書きしない（ADR-0021）。
         const entering = { kind: '部屋に入る', room: current.code, deck: undefined } as const
         deliver(receive(rooms, participant, entering, options.setup(), decks, linked(), names))
@@ -719,8 +721,8 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     /**
      * 送られてきたものを表示名として預かる（ADR-0020）。
      *
-     * **決まりを見るのは `name.ts` である。** 通らなければ理由を添えて尋ね直し、置き場には
-     * 何も書かない。**通れば、そこで初めて先へ進める**（`admit`）。
+     * 決まりを見るのは `name.ts` である。 通らなければ理由を添えて尋ね直し、置き場には
+     * 何も書かない。通れば、そこで初めて先へ進める（`admit`）。
      */
     function decideName(raw: string): void {
       const store = options.store
@@ -736,12 +738,12 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         return
       }
 
-      // **初めて決めた人だけを、そこで先へ通す。** すでに入っている人まで通し直すと、名前を
+      // 初めて決めた人だけを、そこで先へ通す。 すでに入っている人まで通し直すと、名前を
       // 変えるたびに盤面が送り直される（`admit` は入り直しと同じ道筋である）。
       const first = !named(participant)
       store.rename(participant, reading.name)
       if (first) admit()
-      // **ロビーの中身は人の名前でも変わる**（ADR-0020）。名前を変えた人だけでなく、ロビーに
+      // ロビーの中身は人の名前でも変わる（ADR-0020）。名前を変えた人だけでなく、ロビーに
       // いる全員に送り直す。前と同じなら送られない（`pushLobby`）。
       pushLobby()
     }
@@ -749,12 +751,12 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     /**
      * 自分のデッキに手を加える（ADR-0021）。
      *
-     * **決まりを見るのは `owned-deck.ts` である。** ここが見るのは、置き場の中身を数えないと
+     * 決まりを見るのは `owned-deck.ts` である。 ここが見るのは、置き場の中身を数えないと
      * 決まらないこと——持てる数の上限と、最後の 1 つかどうか——だけである。
      *
-     * **変わった 1 件だけを送る**（ADR-0026）。`自分のデッキ` を送り直すと、上限いっぱいまで
+     * 変わった 1 件だけを送る（ADR-0026）。`自分のデッキ` を送り直すと、上限いっぱいまで
      * 埋めた人は保存を 1 回押すたびに約 1.6MB が流れる（#200）。全件は繋いだ時にしか送らない——
-     * ただし、**手元の一覧が置き場とずれている兆しの断りだけは例外**で、断りに続けて `自分のデッキ`
+     * ただし、手元の一覧が置き場とずれている兆しの断りだけは例外で、断りに続けて `自分のデッキ`
      * を全件送り直す（`refuseAndResync`、ADR-0026 の「ADR-0016 との関係」）。同じ本人が別のタブで
      * 消したり足したりしたデッキは、ここまで届かない限り繋ぎ直すまで揃わない。
      */
@@ -764,7 +766,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         return
       }
       const refuse = (reason: string): void => send(socket, { kind: '行えなかった', reason })
-      // **数え違い（上限・最後の1つ）と、無いデッキを指す断りだけが対象。** 送られてきた中身
+      // 数え違い（上限・最後の1つ）と、無いデッキを指す断りだけが対象。 送られてきた中身
       // そのものが規則を満たさない（`readDeck` の断り）は、一覧のずれとは関係が無いので送り直さない。
       const refuseAndResync = (reason: string): void => {
         refuse(reason)
@@ -782,7 +784,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           const saved = deckStore.saveDeck(participant, message.deck, reading.deck)
           if (saved === undefined) return refuseAndResync('そのデッキはありません')
 
-          // **置き場を読み直さない。** 保存した中身は `reading.deck`（読んで揃えたもの）が持って
+          // 置き場を読み直さない。 保存した中身は `reading.deck`（読んで揃えたもの）が持って
           // いるので、識別子を添えるだけで返す形が組み上がる。
           send(socket, {
             kind: 'デッキを保存した',
@@ -794,7 +796,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         case 'デッキを消す': {
           const decks = deckStore.decksOf(participant)
           if (!decks.some((deck) => deck.id === message.deck)) return refuseAndResync('そのデッキはありません')
-          // **最後の 1 つは消せない。** 消せると、次に繋いだ時に既製デッキが配られ直して、消した
+          // 最後の 1 つは消せない。 消せると、次に繋いだ時に既製デッキが配られ直して、消した
           // はずのところに知らないデッキが湧いて出る（`sendOwnDecks`）。
           if (decks.length === 1) return refuseAndResync('最後のデッキは消せません')
 
@@ -803,7 +805,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           break
         }
         case 'デッキをコピーする': {
-          // **コピー元の種類は数え上げる**（ADR-0022）——既製デッキと共有レシピのどちらも、
+          // コピー元の種類は数え上げる（ADR-0022）——既製デッキと共有レシピのどちらも、
           // ここでは同じ形に揃えてから写す。
           const source = copySourceOf(message.origin, presets, deckStore)
           if (source === undefined) return refuseAndResync('そのデッキはありません')
@@ -817,7 +819,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           })
           if (saved === undefined) return refuseAndResync('そのデッキはありません')
 
-          // **コピー数はレシピ単位で数える**（ADR-0022）。既製デッキのコピーは数えない——一覧に
+          // コピー数はレシピ単位で数える（ADR-0022）。既製デッキのコピーは数えない——一覧に
           // 並ぶのはレシピだけである。
           if (source.copiedRecipe !== undefined) deckStore.recordCopy(source.copiedRecipe)
 
@@ -830,15 +832,15 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         }
       }
 
-      // **ロビーは送り直す。** 何も選ばずに座った時のデッキはその人のデッキから決まる（#194）ので、
-      // デッキが増えたり消えたりすると変わりうる。**部屋の様子が変わっていなくても送り直す。**
+      // ロビーは送り直す。 何も選ばずに座った時のデッキはその人のデッキから決まる（#194）ので、
+      // デッキが増えたり消えたりすると変わりうる。部屋の様子が変わっていなくても送り直す。
       pushLobby()
     }
 
     /**
-     * 組んでいるデッキを、選んだルールで確かめる（ADR-0021）。**置き場には触らない。**
+     * 組んでいるデッキを、選んだルールで確かめる（ADR-0021）。置き場には触らない。
      *
-     * **ログインを持たない立て方では断る。** 組んでも残す場所が無く、カードプールも配っていない
+     * ログインを持たない立て方では断る。 組んでも残す場所が無く、カードプールも配っていない
      * （`sendPool`）。確かめる口だけを開けておく理由が無い。
      */
     function checkDeck(message: Extract<FromClient, { readonly kind: 'デッキを確かめる' }>): void {
@@ -872,17 +874,17 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     /**
      * レシピと共有に手を加える・見る（ADR-0022）。
      *
-     * **決まりを見るのは `recipe.ts` である。** ここが見るのは、置き場の中身を読まないと決まら
+     * 決まりを見るのは `recipe.ts` である。 ここが見るのは、置き場の中身を読まないと決まら
      * ないこと——共有しようとしているデッキの中身、規定を満たしているか、共有や共有先のレシピが
      * あるかどうか——だけである。
      *
-     * **ログインを持たない立て方では断る。** 組んだデッキを残す場所が無く、共有もできない
+     * ログインを持たない立て方では断る。 組んだデッキを残す場所が無く、共有もできない
      * （`changeDecks` と同じ理由）。
      */
     function handleRecipe(message: RecipeRequest): void {
       const refuse = (reason: string): void => send(socket, { kind: '行えなかった', reason })
       if (deckStore === undefined) {
-        // **断る理由は、しようとしたことに対応させる。** 見ようとしただけの人に「共有できません」
+        // 断る理由は、しようとしたことに対応させる。 見ようとしただけの人に「共有できません」
         // は返さない。
         const viewing = message.kind === 'レシピを見る' || message.kind === 'レシピの一覧を見る'
         return refuse(viewing ? 'ログインしていないと見られません' : 'ログインしていないと共有できません')
@@ -912,7 +914,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           }
 
           const key = recipeKeyOf(deck.cards)
-          // **上限は、新しく行が増える時だけ数える**（ADR-0022 の防御、`recipe.ts` の
+          // 上限は、新しく行が増える時だけ数える（ADR-0022 の防御、`recipe.ts` の
           // `SHARE_LIMIT`）。同じレシピへの生きている共有がすでにあれば、それは書き換わるだけで
           // 行は増えない（`store.ts` の `addShare`）ので、上限に当てない。
           const owned = deckStore.sharesOf(participant)
@@ -942,7 +944,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           return
         }
         case '共有の公開範囲を変える': {
-          // **公開の段階は 2 値しかない**（ADR-0010）。文字列でさえあれば通す形にすると、知らない
+          // 公開の段階は 2 値しかない（ADR-0010）。文字列でさえあれば通す形にすると、知らない
           // 値が `shares.visibility` 列にそのまま書き込まれる。
           if (!isShareVisibility(message.visibility)) return refuse('公開の段階が読めません')
           if (!deckStore.setShareVisibility(participant, message.share, message.visibility)) {
@@ -958,7 +960,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           if (typeof message.recipe !== 'string') return refuse('レシピの鍵が読めません')
 
           const cards = deckStore.recipeCards(message.recipe)
-          // **共有が 1 つも残っていない（全部取り消された）レシピは開けない**（ADR-0022）。鍵を
+          // 共有が 1 つも残っていない（全部取り消された）レシピは開けない（ADR-0022）。鍵を
           // 知らない場合と同じ形で返す——見分けても、開けないことは変わらない。
           const shares = deckStore.sharesOfRecipe(message.recipe)
           if (cards === undefined || shares.length === 0) {
@@ -971,7 +973,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
             recipe: {
               key: message.recipe,
               cards,
-              // **同じミリ秒に 2 つ共有されうる**（置き場の側と同じ前提、`store.ts` の
+              // 同じミリ秒に 2 つ共有されうる（置き場の側と同じ前提、`store.ts` の
               // `publicShareRows`）ので、`shared_at` が並んだら行番号の新しいほうを勝たせる。
               //
               // ここに並ぶのは他人の共有もある（レシピの画面は共有を全部並べる、ADR-0022）
@@ -998,23 +1000,23 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     }
 
     /**
-     * 席に着く時に選んだデッキを覚える（ADR-0021、#194）。**次にロビーへ出た時の既定になる。**
+     * 席に着く時に選んだデッキを覚える（ADR-0021、#194）。次にロビーへ出た時の既定になる。
      *
-     * **選ばずに座った人の既定も覚える。** 画面は既定を選んだ状態で出している（`ロビー` の
-     * `chosen`）ので、そのまま座ったのは、出ていたものを選んだのと同じことである。**覚えないと、
-     * そのデッキを消した時に別のデッキが黙って既定になる**——仕組みが防ごうとしているものが、
+     * 選ばずに座った人の既定も覚える。 画面は既定を選んだ状態で出している（`ロビー` の
+     * `chosen`）ので、そのまま座ったのは、出ていたものを選んだのと同じことである。覚えないと、
+     * そのデッキを消した時に別のデッキが黙って既定になる——仕組みが防ごうとしているものが、
      * 一度も選び直さなかった人にだけ起きる。
      *
-     * **入り直し（ADR-0016）で既定が変わることはない。** 繋ぎ直した人に送り直すのはサーバの側で
+     * 入り直し（ADR-0016）で既定が変わることはない。 繋ぎ直した人に送り直すのはサーバの側で
      * （`admit`）、ここを通らない。画面から同じ部屋へ選ばずに入り直した場合も、覚えているものを
      * 引き直して同じ値を書くだけである。選んで入り直したなら、待っている間のデッキは選び直せる
      * （`room.ts` の `rejoin`）ので、そのまま覚えてよい。
      *
-     * **選んだことだけを覚え、座れたかどうかは見ない。** 部屋のルールで断られたとしても、その人が
+     * 選んだことだけを覚え、座れたかどうかは見ない。 部屋のルールで断られたとしても、その人が
      * 選んだのはそのデッキである。通るかどうかは部屋ごとに変わる（同）ので、断られたことを理由に
      * 忘れると、ルールの違う部屋を覗いただけで既定が消える。
      *
-     * **自分のデッキでなければ覚えない。** 既製デッキは選ぶところに並ばず（#194）、他人のデッキの
+     * 自分のデッキでなければ覚えない。 既製デッキは選ぶところに並ばず（#194）、他人のデッキの
      * 識別子は送られてきただけのものである。
      */
     function rememberChoice(message: FromClient): void {
@@ -1029,7 +1031,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
     }
 
     /**
-     * CPU の席に選んだデッキを覚える（#195）。**自分のデッキでなければ覚えない**（`rememberChoice`
+     * CPU の席に選んだデッキを覚える（#195）。自分のデッキでなければ覚えない（`rememberChoice`
      * と同じ）。相手が人の部屋では `cpuDeck` は読まれないので、覚えない。
      */
     function rememberCpuChoice(message: FromClient): void {
@@ -1055,7 +1057,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         decideName(message.name)
         return
       }
-      // **決まるまで、ほかのことは受け付けない**（ADR-0020）。断るのではなく尋ね直すのは、
+      // 決まるまで、ほかのことは受け付けない（ADR-0020）。断るのではなく尋ね直すのは、
       // 画面がそこで止まっているとは限らないためである（繋ぎ直した先など）。
       if (!named(participant)) {
         send(socket, { kind: '名前を決めてほしい', current: undefined, reason: undefined })
@@ -1090,7 +1092,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       if (sockets.get(participant) === socket) sockets.delete(participant)
       lobbySent.delete(participant)
       linkSent.delete(participant)
-      // 待っている相手には伝える。**止まっている理由が読めないままにしない**（#175）。
+      // 待っている相手には伝える。止まっている理由が読めないままにしない（#175）。
       tellLinks(roomOf(rooms, participant))
     })
   })
@@ -1105,11 +1107,11 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
           new Promise((done, failed) => {
             clearInterval(heartbeat)
             for (const socket of sockets.values()) socket.terminate()
-            // **両方閉じる。** ポートを持っているのは HTTP のほうで、WebSocket はその上に
+            // 両方閉じる。 ポートを持っているのは HTTP のほうで、WebSocket はその上に
             // 乗っている（ADR-0019）。片方だけ閉じるとポートが空かない。
             server.close(() => {
               http.close((error) => (error === undefined ? done() : failed(error)))
-              // **繋ぎっぱなしのものを待たない。** HTTP は返事の後も繋いだままにされうるので、
+              // 繋ぎっぱなしのものを待たない。 HTTP は返事の後も繋いだままにされうるので、
               // 閉じるのを頼むだけでは、誰も何もしていなくてもポートが空かないことがある。
               http.closeAllConnections()
             })

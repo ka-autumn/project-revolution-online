@@ -1,3 +1,4 @@
+import { configureArtworkOrigin } from './card-art.js'
 import './style.css'
 import { SIGN_IN_PATH } from '@revolution/engine'
 import { mount } from './index.js'
@@ -8,7 +9,7 @@ import { recipeKeyFromPath, shareKeyFromPath, takePendingRecipe, takePendingShar
 /**
  * ブラウザで開いた時の入口。`index.html` が読み込む。
  *
- * **開くだけで始められる**（#175）。誰であるかは画面が用意し、どの部屋に入るかはロビーで選ぶ。
+ * 開くだけで始められる（#175）。誰であるかは画面が用意し、どの部屋に入るかはロビーで選ぶ。
  * URL に付けて指すこともできる。
  *
  *     /?participant=わたし&room=あいことば
@@ -26,7 +27,7 @@ const DEFAULT_SERVER_PORT = 8787
  * 2. ビルド時に渡された `VITE_SERVER_URL` — 画面とサーバを別々の場所に置いた時
  * 3. 同じホストの 8787 番 — 手元で両方立てている時
  *
- * **画面とサーバは同じ場所に無くてよい**（ADR-0013）。WebSocket 1 本を直に張るだけで
+ * 画面とサーバは同じ場所に無くてよい（ADR-0013）。WebSocket 1 本を直に張るだけで
  * （ADR-0009）、画面はただの静的なファイルだからである。
  */
 function serverUrl(params: URLSearchParams): string {
@@ -64,15 +65,15 @@ const PARTICIPANT_KEY = 'revolution.participant'
 /**
  * この画面の名乗り（ADR-0009、#175）。無ければ作って覚える。
  *
- * **ブラウザごとに覚える**（`localStorage`）。**閉じても同じ人として戻れる**ようにするためで
+ * ブラウザごとに覚える（`localStorage`）。閉じても同じ人として戻れるようにするためで
  * ある。名乗りは席に座れる合言葉であり、それを忘れると自分の席に戻る手立てが無くなる——画面が
  * 作った名乗りは、人が控えることもできない。
  *
- * そのぶん、**同じブラウザで開いた 2 つのタブは同じ人になる。** 手元で 2 人ぶん試すときは、
+ * そのぶん、同じブラウザで開いた 2 つのタブは同じ人になる。 手元で 2 人ぶん試すときは、
  * `?participant=` で名乗り分けるか、別のブラウザで開く。
  *
  * 覚えられない場合（保存を断っているブラウザ）は、その場限りのものを使う。読み込み直すと別人に
- * なるが、**打てないよりはよい。** 席に戻りたい人は `?participant=` で名乗れる。
+ * なるが、打てないよりはよい。 席に戻りたい人は `?participant=` で名乗れる。
  */
 function participantId(): string {
   const made = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -93,6 +94,7 @@ const root = document.getElementById('board')
 if (root === null) throw new Error('#board が無い')
 
 const server = serverUrl(params)
+configureArtworkOrigin(server)
 
 // 横向きのスマートフォンでは、どの画面も案内で覆う（ADR-0034）。公開ページも含めるので、分岐の前に置く。
 watchRotateCover(root)
