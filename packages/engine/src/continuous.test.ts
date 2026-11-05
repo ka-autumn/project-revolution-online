@@ -839,6 +839,7 @@ describe('ＳＰを変更する常在型能力', () => {
           change: { kind: 'ＳＰの変更', amount: 300 } as const,
           until: 'ターンの終わりまで' as const,
           controller: '先攻' as const,
+          createdIn: 1,
         },
       ],
     }

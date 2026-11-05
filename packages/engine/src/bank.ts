@@ -1,6 +1,6 @@
 import type { AllyAppearanceOccasion, AppearanceOccasion, TriggerEvent, TriggerOccasion } from './ability.js'
 import { continuousData } from './continuous.js'
-import { isInDiscardPile, locateOnSquares } from './duel.js'
+import { isInDiscardPile, isUntargeted, locateOnSquares } from './duel.js'
 import type { BankedAbility, CardId, CreatedAbilityInstance, DuelState } from './duel.js'
 import type { Effect, OwnDiscardEffect } from './effect.js'
 import { record } from './log.js'
@@ -159,7 +159,8 @@ function resolveBanked(state: DuelState, banked: BankedAbility, chooser: Chooser
       via: '誘発',
       loggedSource: banked.createdBy,
       chooser,
-      handed: [banked.affected],
+      // 対象を持たない能力（ADR-0065）は、手渡すものが無い。
+      handed: isUntargeted(banked) ? [] : [banked.affected],
     })
   }
   // 解決する時に誘発条件を満たしていなければ無効化される（総合ルール 第4部 第7章 8）。
@@ -197,6 +198,10 @@ function resolveBanked(state: DuelState, banked: BankedAbility, chooser: Chooser
 
 /** 作成された誘発型能力の効果に、手渡す対象を渡して、盤面の効果にしたもの。 */
 function createdEffectOf(banked: CreatedAbilityInstance): Effect {
+  if (isUntargeted(banked)) {
+    const { effect } = banked.ability
+    return (duel) => effect(duel)
+  }
   if (isInDiscardPile(banked)) {
     const { ability, affected } = banked
     return (duel) => ability.effect(duel, affected)

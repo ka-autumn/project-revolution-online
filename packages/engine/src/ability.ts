@@ -8,7 +8,9 @@ import type {
   BpModifier,
   CreatedAbilityEffect,
   CreatedDiscardAbilityEffect,
+  CreatedUntargetedAbilityEffect,
   DuelView,
+  Duration,
   Effect,
   OwnDiscardEffect,
   SpModifier,
@@ -769,7 +771,12 @@ export interface CourageAbility {
  * 取り除かれる（ADR-0058）。「あなたのターンの終わり」は、次に来る自分のターンの終わりに
  * 誘発する。
  */
-export const CREATED_TRIGGERS = ['あなたのターンの終わり', 'ターンの終わり'] as const
+export const CREATED_TRIGGERS = [
+  'あなたのターンの終わり',
+  'ターンの終わり',
+  // 支配者のスマッシュゾーンにカードが置かれるたびに誘発する（ADR-0065）。期限を持つ能力が使う。
+  'あなたのカードがスマッシュゾーンに置かれた時',
+] as const
 
 export type CreatedTrigger = (typeof CREATED_TRIGGERS)[number]
 
@@ -787,7 +794,7 @@ export type CreatedTrigger = (typeof CREATED_TRIGGERS)[number]
  * 影響を与える対象がどこにあるかは `place` で決まり、効果が受け取る対象の型もそれで決まる
  * （ADR-0057）。作成に使った関数が `place` を決める。
  */
-export type CreatedTriggeredAbility = CreatedOnSquareAbility | CreatedInDiscardPileAbility
+export type CreatedTriggeredAbility = CreatedOnSquareAbility | CreatedInDiscardPileAbility | CreatedUntargetedAbility
 
 /** 対象がスクエアにいるユニットである、作成された誘発型能力（`createTriggeredAbility`）。 */
 export interface CreatedOnSquareAbility {
@@ -815,6 +822,23 @@ export interface CreatedInDiscardPileAbility {
    */
   readonly description: string
   readonly effect: CreatedDiscardAbilityEffect
+}
+
+/**
+ * 対象を持たない、作成された誘発型能力（`createUntargetedTriggeredAbility`。ADR-0065）。
+ *
+ * 影響を与える特定のカードが無いので、効果は対象を受け取らず、総合ルール 第4部 第3章 4-1 の消滅も無い。
+ * 期限を持てば、期限まで誘発イベントが起きるたびに誘発する。
+ */
+export interface CreatedUntargetedAbility {
+  readonly kind: '作成された誘発型能力'
+  readonly place: 'なし'
+  readonly trigger: CreatedTrigger
+  /** 何をするかの文（ADR-0063）。対象のカードが無いので、「〜を」に続く述語ではなく、行動の文そのものを書く。 */
+  readonly description: string
+  /** 期限。無ければ、次に誘発イベントが起こった時に 1 度だけ誘発する。 */
+  readonly duration?: Duration | undefined
+  readonly effect: CreatedUntargetedAbilityEffect
 }
 
 /**

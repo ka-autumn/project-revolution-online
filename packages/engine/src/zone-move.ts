@@ -4,7 +4,7 @@ import { findAnywhere, findInZone, findOnSquares, locateOnSquares, moveToZoneWit
 import type { CardId, CardInstance, DuelState, LibraryPosition, TriggeredInstance } from './duel.js'
 import type { Orientation } from './orientation.js'
 import { PLAYERS } from './player.js'
-import { addTriggered, hasOwnDiscardAbility, triggeredByOwnDiscard, triggeredOnSquares } from './trigger.js'
+import { addTriggered, hasOwnDiscardAbility, triggerOnSmashZone, triggeredByOwnDiscard, triggeredOnSquares } from './trigger.js'
 import { PLAYER_ZONES } from './zone.js'
 import type { PlayerZone } from './zone.js'
 
@@ -43,8 +43,9 @@ export interface ZoneMoveOptions {
  *
  * 動かす前に、行き先のゾーンに置かれた時に誘発する能力を探してから動かす。同時に複数枚を
  * 動かす時は、能力を持つカード自身も同時にゾーンを離れ得るため、すべての能力を移動前の盤面から
- * 探してからカードを動かす（総合ルール 第4部 第7章 10）。いま誘発を探すのは、行き先が
- * 捨札の時だけである。ほかのゾーンが行き先の時は、誘発を探さずに動かす。
+ * 探してからカードを動かす（総合ルール 第4部 第7章 10）。カードに書かれた能力の誘発を探すのは、
+ * 行き先が捨札の時だけである。ほかのゾーンが行き先の時は、誘発を探さずに動かす。行き先が
+ * スマッシュゾーンの時は、動かした後に、作成された誘発型能力を誘発させる（ADR-0065）。
  *
  * 同じカードが複数の条件を満たしていても、1 回のゾーン移動につき誘発イベントを満たすのは
  * 1 度だけである（同 第7章 6）ため、id は重複除去する。どこにも無いカードは動かさない。
@@ -60,10 +61,13 @@ export function moveToZone(
 ): DuelState {
   const unique = [...new Set(ids)]
   const withTriggered = zone === '捨札' ? addTriggered(state, triggeredByDiscard(state, unique)) : state
-  return unique.reduce(
-    (current, id) => moveToZoneWithoutTriggers(current, id, zone, options.orientation, options.position),
-    withTriggered,
-  )
+  return unique.reduce((current, id) => {
+    // 希望ステップで置かれる時も、効果で置かれる時も、ここを通る。実際に動いたカードだけが、持ち主の
+    // スマッシュゾーンに置かれたことで、作成された誘発型能力を誘発させる（ADR-0065）。
+    const owner = zone === 'スマッシュゾーン' ? findAnywhere(current, id)?.owner : undefined
+    const moved = moveToZoneWithoutTriggers(current, id, zone, options.orientation, options.position)
+    return owner === undefined || moved === current ? moved : triggerOnSmashZone(moved, owner)
+  }, withTriggered)
 }
 
 /**

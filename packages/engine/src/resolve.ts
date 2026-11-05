@@ -28,6 +28,7 @@ import type {
   SmashCard,
   UnitOnSquare,
 } from './effect.js'
+import { UNTARGETED_MAY_ACTIONS } from './effect.js'
 import { loggedInstruction, record } from './log.js'
 import type { LoggedInstruction, ResolutionVia } from './log.js'
 import { opponentOf, PLAYERS } from './player.js'
@@ -394,8 +395,12 @@ function apply(
       }
       // 聞く時点で効果が読んだ場所を離れているカードは、対象から外す。残らなければ、この行動は実行されない
       // （総合ルール 第1部 第1章 3）ので、聞かずに「いいえ」として進み、ログも積まない。
-      const targets = instruction.targets.filter((target) => isWhereRead(state, target))
-      if (targets.length === 0) return { state, value: false }
+      // 対象を持たない動き（「1枚引く」など。ADR-0065）は、対象が残らないことで実行できなくならないので聞く。
+      const untargeted = UNTARGETED_MAY_ACTIONS.includes(instruction.action)
+      const targets = untargeted ? [] : instruction.targets.filter((target) => isWhereRead(state, target))
+      if (!untargeted && targets.length === 0) return { state, value: false }
+      // 引く・山札の 1 番上を置くは、山札が空なら実行できない（総合ルール 第1部 第1章 3）ので、聞かずに「いいえ」として進む。
+      if (untargeted && topOfLibrary(state, context.controller) === undefined) return { state, value: false }
 
       const answered = context.chooser(
         [CONFIRMATION],
@@ -422,6 +427,16 @@ function apply(
         },
       })
       if (!yes) return { state: current, value: false, logged: true }
+
+      // 対象を持たない動きは、同じ動きの命令を実行する。その命令が自分の行をログに積む（ADR-0065）。
+      if (instruction.action === '1枚引く') {
+        const drawing: Instruction = { kind: 'カードを引く', player: context.controller, count: 1 }
+        return { state: runInstruction(current, drawing, context, shown), value: true, logged: true }
+      }
+      if (instruction.action === '山札の1番上のカードをエネルギーゾーンにフリーズして置く') {
+        const placing: Instruction = { kind: '山札の1番上をゾーンへ置く', to: 'エネルギーゾーン', orientation: 'フリーズ' }
+        return { state: runInstruction(current, placing, context, shown), value: true, logged: true }
+      }
 
       // 動きは、手札へ置く（「加える」も「戻す」も同じ）。動かしたカードの名指しを残せるよう、動かす前の盤面を渡す。
       for (const target of targets) {
@@ -660,6 +675,18 @@ function apply(
       })
       return { state: checkPlacedByEffect(moved, instruction.card.id), value: undefined }
     }
+    case '対象を持たない誘発型能力を作る': {
+      // 作成された能力の支配者は、作成した効果の支配者である（総合ルール 第4部 第7章 1）。対象が無いので、
+      // `shown` の検査も、対象の場所の検査も要らない。
+      const created = {
+        ability: instruction.ability,
+        controller: context.controller,
+        affecting: undefined,
+        createdBy: context.source,
+        createdIn: state.turn.number,
+      }
+      return { state: { ...state, createdAbilities: [...state.createdAbilities, created] }, value: undefined }
+    }
     case '誘発型能力を作る': {
       // 対象を持つ命令なので、他と同じく engine が見せたカードでなければならない。
       if (!shown.has(instruction.affecting.id)) {
@@ -694,6 +721,7 @@ function apply(
         change: instruction.change,
         until: instruction.duration,
         controller: context.controller,
+        createdIn: state.turn.number,
       }
       return { state: { ...state, createdContinuousEffects: [...state.createdContinuousEffects, created] }, value: undefined }
     }
@@ -719,6 +747,16 @@ function apply(
       return { state: current, value: undefined, subject: drawn.length === 0 ? undefined : drawn }
     }
   }
+}
+
+/** 命令を 1 つ実行し、ログに残す。「してもよい」の「はい」の動きが、同じ命令を使うために呼ぶ。 */
+function runInstruction(
+  state: DuelState,
+  instruction: Instruction,
+  context: EffectContext,
+  shown: Set<CardId>,
+): DuelState {
+  return recorded(state, apply(state, instruction, context, shown), instruction, context.controller)
 }
 
 /** そのカードが、いずれかのプレイヤーの捨札にあるか。 */

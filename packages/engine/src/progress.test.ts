@@ -498,6 +498,7 @@ describe('リカバリーフェイズと作成された継続効果', () => {
     change: { kind: 'ＢＰの変更', amount },
     until: 'ターンの終わりまで',
     controller: '先攻',
+    createdIn: 1,
   })
 
   /** そのターンのリカバリーフェイズが始まったところまで進めた盤面。 */
@@ -551,6 +552,7 @@ describe('リカバリーフェイズと作成された継続効果', () => {
       change: { kind: 'ＳＰの変更', amount: 500 },
       until: 'ターンの終わりまで',
       controller: '先攻',
+      createdIn: 1,
     }
     const board = withEffectBefore(effectOn('対象', 300), spEffect)
     expect(spModification(board)('対象')).toBe(500)
@@ -575,6 +577,7 @@ describe('リカバリーフェイズと作成された継続効果', () => {
       change: { kind: '能力の付与', ability: dream },
       until: 'ターンの終わりまで',
       controller: '先攻',
+      createdIn: 1,
     }
     const board: DuelState = {
       ...putInZone(startedDuel(), '先攻', 'プランゾーン', [instantiate({ id: 'プラン', card: vanilla, owner: '先攻' })]),

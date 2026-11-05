@@ -491,7 +491,7 @@ describe('バトルダメージの応酬', () => {
     const lowered: DuelState = {
       ...battle,
       createdContinuousEffects: [
-        { target: '攻撃した', change: { kind: 'ＢＰの変更', amount: -5000 }, until: 'ターンの終わりまで', controller: '先攻' },
+        { target: '攻撃した', change: { kind: 'ＢＰの変更', amount: -5000 }, until: 'ターンの終わりまで', controller: '先攻', createdIn: 1 },
       ],
     }
 

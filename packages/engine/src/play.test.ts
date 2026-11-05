@@ -1393,6 +1393,7 @@ describe('プランゾーンからのプレイ', () => {
       change: { kind: '能力の付与', ability: dream },
       until: 'ターンの終わりまで',
       controller: '先攻',
+      createdIn: 1,
     })
 
     const withGrant = (target: string): DuelState => ({

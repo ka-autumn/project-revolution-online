@@ -1,7 +1,10 @@
 import type {
   AttackOccasion,
   CreatedTrigger,
+  CreatedInDiscardPileAbility,
+  CreatedOnSquareAbility,
   CreatedTriggeredAbility,
+  CreatedUntargetedAbility,
   DreamAbility,
   IntrusionOccasion,
   PassiveKeyword,
@@ -12,6 +15,7 @@ import type { Attribute, Card, UnitCard } from './card.js'
 import type { CardId, LibraryPosition } from './duel.js'
 import type { Orientation } from './orientation.js'
 import type { Player } from './player.js'
+import type { Turn } from './turn.js'
 import type { PlayerZone } from './zone.js'
 
 /**
@@ -256,9 +260,15 @@ export interface DuelView {
  * 追加する。値は、それを使うテキストを実装する時に追加する。画面は、値ごとの言い方の表を持つ
  * （`MAY_ACTIONS` を網羅する）。
  */
-export const MAY_ACTIONS = ['手札に加える'] as const
+export const MAY_ACTIONS = ['手札に加える', '1枚引く', '山札の1番上のカードをエネルギーゾーンにフリーズして置く'] as const
 
 export type MayAction = (typeof MAY_ACTIONS)[number]
+
+/**
+ * 対象を持たない動き（ADR-0065）。対象のカードが無いので、「対象が場所を離れていたら聞かない」ことが起こらず、
+ * いつも聞く。聞く文とログの行は、対象の「〜を」を入れない。
+ */
+export const UNTARGETED_MAY_ACTIONS: readonly MayAction[] = ['1枚引く', '山札の1番上のカードをエネルギーゾーンにフリーズして置く']
 
 /**
  * 効果が engine に出す命令。
@@ -359,9 +369,10 @@ export type Instruction =
       readonly square: Square
       readonly orientation: Orientation
     }
+  | { readonly kind: '対象を持たない誘発型能力を作る'; readonly ability: CreatedUntargetedAbility }
   | {
       readonly kind: '誘発型能力を作る'
-      readonly ability: CreatedTriggeredAbility
+      readonly ability: CreatedOnSquareAbility | CreatedInDiscardPileAbility
       /**
        * その能力が影響を与える特定のカード（総合ルール 第4部 第3章 4-1）。
        *
@@ -472,6 +483,14 @@ export type CreatedAbilityEffect = (duel: DuelView, affected: UnitOnSquare) => E
 export type CreatedDiscardAbilityEffect = (duel: DuelView, affected: CardInDiscardPile) => EffectStep<void>
 
 /**
+ * 対象を持たない、作成された誘発型能力の効果（ADR-0065）。影響を与える特定のカードが無いので、
+ * 対象を受け取らない。
+ *
+ * 発生源のカードが無いので、`DuelView.self` は常に `undefined` になる。
+ */
+export type CreatedUntargetedAbilityEffect = (duel: DuelView) => EffectStep<void>
+
+/**
  * 継続効果が 1 枚のユニットのＢＰに与える変更（総合ルール 第4部 第12章 5-2 の(5)）。
  *
  * 単発効果と違って命令にならない。命令は engine が 1 つずつ実行して盤面を変えていくもの
@@ -540,9 +559,26 @@ export type ContinuousModifier = BpModifier | SpModifier | GrantModifier
  * 誘発するできごと `CREATED_TRIGGERS` と同じ形）。「このターンの間」は「ターンの終わりまで」と
  * 同じ時に終わる（同 第3部 第10章 1）ので、そのテキストが出た時に値を足す。
  */
-export const DURATIONS = ['ターンの終わりまで'] as const
+export const DURATIONS = ['ターンの終わりまで', '次の相手のターンの終わりまで'] as const
 
 export type Duration = (typeof DURATIONS)[number]
+
+/**
+ * その期限が、いま始まったリカバリーフェイズで終了するか（総合ルール 第3部 第10章 1。ADR-0065）。
+ *
+ * 作成された継続効果と作成された誘発型能力が共有する。「ターンの終わりまで」は、作成された後に来る
+ * 最初のリカバリーフェイズの始めに終了する。「次の相手のターンの終わりまで」は、作成されたターンより後に
+ * 来る、支配者の相手のターンのリカバリーフェイズの始めに終了する。支配者のターンに作成されれば
+ * 続く相手のターンで、相手のターンに作成されれば、そのターンではなく次の相手のターンで終了する。
+ */
+export function durationEnds(duration: Duration, createdIn: number, controller: Player, turn: Turn): boolean {
+  switch (duration) {
+    case 'ターンの終わりまで':
+      return true
+    case '次の相手のターンの終わりまで':
+      return turn.number > createdIn && turn.active !== controller
+  }
+}
 
 /**
  * 作成された継続効果が、カードのデータをどう変えるか（総合ルール 第4部 第12章 5-2）。
@@ -1022,6 +1058,31 @@ export function* createTriggeredAbility(
     kind: '誘発型能力を作る',
     ability: { kind: '作成された誘発型能力', place: 'スクエア', trigger, description, effect },
     affecting,
+  }
+}
+
+/**
+ * 対象を持たない誘発型能力を 1 つ作成する（総合ルール 第4部 第3章 4。ADR-0065）。
+ *
+ * 「次の相手のターンの終わりまで、あなたのカードがスマッシュゾーンに置かれた時、〜してよい」のように、
+ * 影響を与える特定のカードが無い能力である。このため、第4部 第3章 4-1（対象がゾーン移動すると消滅する）は
+ * 適用されない。盤面から無くなるのは、期限が終了した時と、期限を持たずに誘発した時だけである。
+ *
+ * `duration` を渡すと、その期限まで、誘発イベントが起きるたびに何度でも誘発する（同 4 の 2 文目）。
+ * 渡さなければ、次に誘発イベントが起こった時に 1 度だけ誘発する。
+ *
+ * `description` は何をするかの文で、カードのテキストと同じ、支配者の行動として書く。「自分の」「相手の」は
+ * 書かない（見る人ごとの言い換えが及ばないため。ADR-0065）。
+ */
+export function* createUntargetedTriggeredAbility(
+  trigger: CreatedTrigger,
+  description: string,
+  effect: CreatedUntargetedAbilityEffect,
+  duration?: Duration,
+): EffectStep<void> {
+  yield {
+    kind: '対象を持たない誘発型能力を作る',
+    ability: { kind: '作成された誘発型能力', place: 'なし', trigger, description, duration, effect },
   }
 }
 
