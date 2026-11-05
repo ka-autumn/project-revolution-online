@@ -11,6 +11,7 @@ import type {
   EffectiveKeywords,
   EffectiveUnitData,
   DuelEvent,
+  Duration,
   DuelResult,
   LegalAction,
   LoggedContinuousChange,
@@ -880,23 +881,59 @@ function effectiveKeywordsOf(board: WirePerspective): readonly EffectiveKeywords
 }
 
 /**
- * 作成された誘発型能力の「いつ」を、見る人に向けた言葉にする（ADR-0063）。
+ * 作成された誘発型能力の、いつ何をするかの文を、見る人に向けた言葉にする（ADR-0063・ADR-0065）。
  *
- * 誰のターンかは、見る人ごとに言い換える。「あなたのターンの終わり」は、能力の支配者が見る人なら
- * 「自分のターンの終わりに」、相手なら「相手のターンの終わりに」。誰のターンとも書かれていない
- * 「ターンの終わり」は「ターンの終わりに」。この画面が知らない種類（#285）は、読めなかったことを
- * 呼ぶ側に返す。
+ * 能力の支配者が見る人自身なら、主語を書かず、支配者を「自分の」、その相手を「相手の」と言う。支配者が
+ * 見る人の相手なら、行頭に主語「相手は、」を書き、支配者を「自身の」、見る人を「こちらの」と言う
+ * （主語を書いた文の「自分の」「相手の」は、主語から見た言い方にも読めるため）。
+ *
+ * 期限を持つ能力は「〈期限〉、〈誘発イベント〉、〈何をするか〉」と言い、期限には「次の」を付けない。
+ * 誰のターンとも書かれていない「ターンの終わり」は「ターンの終わりに」。この画面が知らない種類（#285）は、
+ * 読めなかったことを呼ぶ側に返す。`doing` は何をするかの文で、対象のカードがあれば、その名前を含む。
  */
-export function createdWhenLabel(trigger: CreatedTrigger, controller: Player, viewer: Player): string | undefined {
+export function createdAbilityText(
+  trigger: CreatedTrigger,
+  duration: Duration | undefined,
+  controller: Player,
+  viewer: Player,
+  doing: string,
+): string | undefined {
+  const mine = controller === viewer
+  const self = mine ? '自分' : '自身'
+  const other = mine ? '相手' : 'こちら'
+
+  let when: string
   switch (trigger) {
     case 'あなたのターンの終わり':
-      return `${whoseLabel(viewer, controller)}のターンの終わりに`
+      when = `${self}のターンの終わりに`
+      break
     case 'ターンの終わり':
-      return 'ターンの終わりに'
+      when = 'ターンの終わりに'
+      break
+    case 'あなたのカードがスマッシュゾーンに置かれた時':
+      when = `${self}のカードがスマッシュゾーンに置かれるたびに`
+      break
     default:
       trigger satisfies never
       return undefined
   }
+
+  let until = ''
+  if (duration !== undefined) {
+    switch (duration) {
+      case 'ターンの終わりまで':
+        until = 'ターンの終わりまで、'
+        break
+      case '次の相手のターンの終わりまで':
+        until = `${other}のターンの終わりまで、`
+        break
+      default:
+        duration satisfies never
+        return undefined
+    }
+  }
+
+  return `${mine ? '' : '相手は、'}${until}${when}、${doing}`
 }
 
 /**
@@ -913,11 +950,11 @@ function pendingAbilitiesIn(
   const known = names ?? namesIn(board)
   const grouped = new Map<CardId, PendingAbilityView[]>()
   for (const each of created) {
-    const when = createdWhenLabel(each.trigger, each.controller, board.viewer)
-    if (when === undefined) continue
+    const text = createdAbilityText(each.trigger, undefined, each.controller, board.viewer, `このカードを${each.description}`)
+    if (text === undefined) continue
 
     const by = each.createdBy === undefined || each.createdBy === each.affecting ? undefined : known.get(each.createdBy)
-    grouped.set(each.affecting, [...(grouped.get(each.affecting) ?? []), { text: `${when}、このカードを${each.description}`, by }])
+    grouped.set(each.affecting, [...(grouped.get(each.affecting) ?? []), { text, by }])
   }
 
   return grouped
@@ -1713,7 +1750,7 @@ function foldedInstructions(
       // 名指ししたことにしない。
       case '誘発型能力を作る':
         return {
-          cards: createdWhenLabel(instruction.trigger, controller, viewer) === undefined ? [] : nameable([instruction.card]),
+          cards: createdAbilityText(instruction.trigger, undefined, controller, viewer, '') === undefined ? [] : nameable([instruction.card]),
           squares: [],
         }
       case '継続効果を作成する':
@@ -1844,9 +1881,11 @@ function instructionLine(
       const subject = named(instruction.card)
       if (subject === undefined) return OMITTED
 
-      const when = createdWhenLabel(instruction.trigger, controller, board.viewer)
-      return when === undefined ? undefined : `${when}、${subject}を${instruction.description}`
+      return createdAbilityText(instruction.trigger, undefined, controller, board.viewer, `${subject}を${instruction.description}`)
     }
+    // 対象のカードが無いので、「〜を」を入れない。何をするかの文だけを続ける（ADR-0065）。
+    case '対象を持たない誘発型能力を作る':
+      return createdAbilityText(instruction.trigger, instruction.duration, controller, board.viewer, instruction.description)
     // 期限は、いつ戻るかが行から読めるように出す。ＢＰの数字は、画面のほかの所と同じく半角の
     // `BP` で書く（符号を添える。負の時は `-`）。
     case '継続効果を作成する': {

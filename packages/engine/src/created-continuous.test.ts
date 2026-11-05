@@ -104,7 +104,7 @@ describe('作成された継続効果を作る', () => {
     const state = resolved(boardOf([middle, '味方']), boostAlly(3000), '味方')
 
     expect(state.createdContinuousEffects).toEqual([
-      { target: '味方', change: { kind: 'ＢＰの変更', amount: 3000 }, until: 'ターンの終わりまで', controller: '先攻' },
+      { target: '味方', change: { kind: 'ＢＰの変更', amount: 3000 }, until: 'ターンの終わりまで', controller: '先攻', createdIn: 1 },
     ])
   })
 
@@ -252,7 +252,7 @@ describe('作成された継続効果と、カードの移動', () => {
     const state: DuelState = {
       ...inZone,
       createdContinuousEffects: [
-        { target: 'B', change: { kind: 'ＢＰの変更', amount: 3000 }, until: 'ターンの終わりまで', controller: '先攻' },
+        { target: 'B', change: { kind: 'ＢＰの変更', amount: 3000 }, until: 'ターンの終わりまで', controller: '先攻', createdIn: 1 },
       ],
     }
 
@@ -272,6 +272,7 @@ describe('作成された継続効果と、カードの移動', () => {
       change: { kind: 'ＢＰの変更', amount: 3000 } as const,
       until: 'ターンの終わりまで' as const,
       controller: '先攻' as const,
+      createdIn: 1,
     })
 
     /** 山札の 1 番上のカードに効果がある盤面。プランゾーンは無い。 */
@@ -421,7 +422,7 @@ describe('ＳＰを変える作成された継続効果', () => {
     const state = resolved(boardOf([middle, '味方']), raiseSp(500), '味方')
 
     expect(state.createdContinuousEffects).toEqual([
-      { target: '味方', change: { kind: 'ＳＰの変更', amount: 500 }, until: 'ターンの終わりまで', controller: '先攻' },
+      { target: '味方', change: { kind: 'ＳＰの変更', amount: 500 }, until: 'ターンの終わりまで', controller: '先攻', createdIn: 1 },
     ])
   })
 
@@ -595,7 +596,7 @@ describe('能力を与える作成された継続効果', () => {
     const state = resolved(boardOf([middle, '味方']), grantDreamToAlly, '味方')
 
     expect(state.createdContinuousEffects).toEqual([
-      { target: '味方', change: { kind: '能力の付与', ability: dream }, until: 'ターンの終わりまで', controller: '先攻' },
+      { target: '味方', change: { kind: '能力の付与', ability: dream }, until: 'ターンの終わりまで', controller: '先攻', createdIn: 1 },
     ])
   })
 

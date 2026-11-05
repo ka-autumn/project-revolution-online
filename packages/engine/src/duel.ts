@@ -2,6 +2,7 @@ import type {
   CreatedInDiscardPileAbility,
   CreatedOnSquareAbility,
   CreatedTriggeredAbility,
+  CreatedUntargetedAbility,
   IntrusionOccasion,
   TrapOccasion,
   TriggeredAbility,
@@ -303,9 +304,9 @@ export function hasEnded(state: DuelState): boolean {
 /**
  * 盤面が持っている、作成された誘発型能力 1 つ（総合ルール 第4部 第3章 4）。
  *
- * まだ誘発していない。誘発すると `CreatedAbilityInstance` になってバンクへ向かい、ここからは
- * 取り除かれる。特別に規定された期限が無ければ次に 1 度だけ誘発する（同 4）ので、誘発と
- * 同時に取り除けばそれがそのまま守られる。
+ * まだ誘発していない。誘発すると `CreatedAbilityInstance` になってバンクへ向かう。特別に規定された
+ * 期限が無ければ次に 1 度だけ誘発する（同 4）ので、誘発と同時にここから取り除けばそれが守られる。
+ * 期限を持つ能力（ADR-0065）は、誘発しても取り除かず、期限が終了するまで何度でも誘発する。
  *
  * `TriggeredInstance` と違って発生源のカードを持たない。作った効果はすでに解決を終えて
  * いて、作ったカードもたいていは捨札にある。支配者は作った効果の支配者を写して持つ。
@@ -315,13 +316,13 @@ export interface CreatedAbility {
   /** 能力の支配者。作った効果の支配者である（総合ルール 第4部 第7章 1）。 */
   readonly controller: Player
   /**
-   * 影響を与える特定のカード（総合ルール 第4部 第3章 4-1）。
+   * 影響を与える特定のカード（総合ルール 第4部 第3章 4-1）。対象を持たない能力（ADR-0065）は無い。
    *
    * 作られた後、誘発イベントが満たされる前に、このカードが「スクエアからスクエア」以外の
    * ゾーン移動をした場合、この能力は消滅する（同 4-1）。取り除くのは `duel.ts` の
    * `moveToZoneWithoutTriggers` と `moveToSquare` である。
    */
-  readonly affecting: CardId
+  readonly affecting: CardId | undefined
   /**
    * この能力を作成したカード（作成した効果の発生源。ADR-0063）。発生源を持たない効果が作成した
    * 場合は無い。作成された誘発型能力の効果が、さらに能力を作成した場合も無い（その効果は発生源を
@@ -336,8 +337,9 @@ export interface CreatedAbility {
    * この能力が作成されたターンの番号。
    *
    * 「ターンの終わり」の能力（誰のターンとも書かれていないもの）は、作成されたターンの終わりに
-   * だけ誘発する（ADR-0058）ので、どのターンかを覚えておく。ほかの能力は読まない。通信には
-   * 含めない（`perspective.ts` の `VisibleCreatedAbility`）。
+   * だけ誘発する（ADR-0058）ので、どのターンかを覚えておく。期限を持つ能力は、期限の終了を決定する
+   * ために参照する（ADR-0065）。ほかの能力は読まない。通信には含めない（`perspective.ts` の
+   * `VisibleCreatedAbility`）。
    */
   readonly createdIn: number
 }
@@ -357,6 +359,8 @@ export interface CreatedContinuousEffect {
   readonly until: Duration
   /** 効果の支配者。作った効果の支配者である（同 第4部 第7章 1）。 */
   readonly controller: Player
+  /** 作成されたターンの番号。期限の終了を決定するために参照する（`durationEnds`、ADR-0065）。 */
+  readonly createdIn: number
 }
 
 /**
@@ -397,7 +401,7 @@ export interface TriggeredOnce {
  * 対象がどこにあるかで 2 つに分かれる（ADR-0057）。見分けるのは `ability.place` で、
  * 述語 `isInDiscardPile` を通して絞り込む。
  */
-export type CreatedAbilityInstance = CreatedOnSquareInstance | CreatedInDiscardPileInstance
+export type CreatedAbilityInstance = CreatedOnSquareInstance | CreatedInDiscardPileInstance | CreatedUntargetedInstance
 
 interface CreatedAbilityInstanceBase {
   readonly controller: Player
@@ -437,6 +441,16 @@ export interface CreatedInDiscardPileInstance extends CreatedAbilityInstanceBase
    * されないだけである。
    */
   readonly affected: CardInDiscardPile
+}
+
+/** 対象を持たない、誘発した作成された誘発型能力（ADR-0065）。誘発した時点の対象が無い。 */
+export interface CreatedUntargetedInstance extends CreatedAbilityInstanceBase {
+  readonly ability: CreatedUntargetedAbility
+}
+
+/** その作成された誘発型能力が、対象を持たないものか。 */
+export function isUntargeted(instance: CreatedAbilityInstance): instance is CreatedUntargetedInstance {
+  return instance.ability.place === 'なし'
 }
 
 /** その作成された誘発型能力が、捨札のカードを対象にするものか。 */

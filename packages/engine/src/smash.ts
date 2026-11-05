@@ -297,6 +297,7 @@ function beginHopeStep(state: DuelState, judgment: SmashJudgment, chooser: Choos
     card: top.id,
     name: top.card.name,
   })
+  // 置かれたことで誘発する、作成された誘発型能力（ADR-0065）は、`moveToZone` が誘発させている。
   return resolveHope(placed, top, chooser)
 }
 

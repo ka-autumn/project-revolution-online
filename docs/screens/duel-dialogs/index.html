@@ -160,6 +160,7 @@ button.b:disabled { opacity: 0.5; cursor: default; }
   <button data-v="ability-sending">能力を選ぶ（通信中）</button>
   <button data-v="may">してもよい</button>
   <button data-v="may-sending">してもよい（通信中）</button>
+  <button data-v="may-none">してもよい（対象が無い）</button>
 </div>
 <div class="note" id="note"></div>
 
@@ -246,6 +247,12 @@ const variants = {
     note: '「してもよい」（対象が決まっていて、するかしないかだけを選ぶ場合、ADR-0064）。カードの一覧と同じ枠に、聞く文と足もとのボタンだけを置く（カードは並べない）。聞く文は「〈対象〉を〈動き〉ますか？」で、動きの言い方は動きの値ごとに決まっている（「手札に加えますか」。テキストが「戻す」と書くものは、そのテキストを実装する時に別の値を追加する）。見出しは「〇〇 の効果」（発生源が分かる時）、分からなければ「確認」。足もとは左から「ひとつ戻る」「この行動をやめる」（行える場面だけ）、「いいえ」、「はい」（金の主ボタン）。最初の手は「はい」に置く。答えが必ず要るので、Esc・暗くしたところを押す、は何も起きない。「いいえ」はカードの一覧の「選ばない」にあたり、記録の上の答えは同じ。クリックモードでもボタンモードでも、このダイアログで聞く。',
     html: `<div class="dialog picker--may" role="dialog" aria-modal="true" aria-label="確認"><div class="picker__box"><div class="picker__head"><h2 class="picker__title">確認</h2><p class="picker__lead">見本・番人を手札に加えますか？</p><p class="picker__sending" role="status"></p></div>
       <div class="picker__foot"><button class="b">この行動をやめる</button><button class="b">いいえ</button><button class="b primary focus">はい</button></div></div></div>`,
+  },
+  'may-none': {
+    detail: '<h3>見本・朝市</h3><p>ストラテジー／黒／レベル4</p><p>【朝の買い出し】次の相手のターンの終わりまで、あなたのカードがスマッシュゾーンに置かれた時、山札をシャッフルしてよい。</p>',
+    note: '対象が無い「してもよい」（ADR-0065）。聞く文は動きの言い方だけで、「〜を」を入れない（「山札をシャッフルしますか？」）。作成された誘発型能力は発生源を持たないので、見出しは「確認」。それ以外は、対象のある「してもよい」と同じ。',
+    html: `<div class="dialog picker--may" role="dialog" aria-modal="true" aria-label="確認"><div class="picker__box"><div class="picker__head"><h2 class="picker__title">確認</h2><p class="picker__lead">山札をシャッフルしますか？</p><p class="picker__sending" role="status"></p></div>
+      <div class="picker__foot"><button class="b">いいえ</button><button class="b primary focus">はい</button></div></div></div>`,
   },
   'may-sending': {
     note: '「はい」「いいえ」を押したあと、返事が届くまで。ボタンをすべて押せなくし、「通信中…」を表示する（能力を選ぶ一覧と同じ）。',

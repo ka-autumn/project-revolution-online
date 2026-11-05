@@ -440,6 +440,15 @@ export type LoggedInstruction =
       /** 何をするかの文。支配者の行動として書かれた述語で、対象のカードは含まない。 */
       readonly description: string
     }
+  | {
+      readonly kind: '対象を持たない誘発型能力を作る'
+      /** いつ誘発するか。誰のターンかは、できごとの支配者を基に、見る人ごとに画面が言い換える（ADR-0063）。 */
+      readonly trigger: CreatedTrigger
+      /** 何をするかの文。支配者の行動として書かれた文で、持ち主を言わない（ADR-0065）。 */
+      readonly description: string
+      /** 期限。無ければ、1 度だけ誘発する。 */
+      readonly duration: Duration | undefined
+    }
   /**
    * 解決が、作成された継続効果を 1 件作った（総合ルール 第4部 第12章 3）。
    *
@@ -756,6 +765,13 @@ export function loggedInstruction(
       return { kind: '山札の1番上をゾーンへ置く', card: cardIdOf(subject), to: instruction.to, player: controller }
     case 'スクエアへ置く':
       return { kind: 'スクエアへ置く', card: instruction.card.id, square: instruction.square }
+    case '対象を持たない誘発型能力を作る':
+      return {
+        kind: '対象を持たない誘発型能力を作る',
+        trigger: instruction.ability.trigger,
+        description: instruction.ability.description,
+        duration: instruction.ability.duration,
+      }
     case '誘発型能力を作る':
       return {
         kind: '誘発型能力を作る',

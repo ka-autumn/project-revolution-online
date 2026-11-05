@@ -71,6 +71,42 @@ describe('してもよいか聞く命令の空回し', () => {
   })
 })
 
+// ADR-0065。対象を持たない動きは、対象が無くても聞き、「はい」なら動きの命令を並べる。
+describe('対象を持たない「してもよい」の空回し', () => {
+  const setting = { perspective: perspectiveOf(emptyDuelState(), '先攻'), controller: '先攻' } as const
+
+  it('「1枚引く」は、「はい」なら、支配者が引く命令を並べる', () => {
+    const run = probeEffectRun(setting, function* () {
+      yield* mayDo([], '1枚引く')
+    })
+
+    expect(run?.instructions).toEqual([{ kind: 'カードを引く', player: '先攻', count: 1 }])
+  })
+
+  it('「山札の1番上のカードをエネルギーゾーンにフリーズして置く」は、「はい」なら、置く命令を並べる', () => {
+    const run = probeEffectRun(setting, function* () {
+      yield* mayDo([], '山札の1番上のカードをエネルギーゾーンにフリーズして置く')
+    })
+
+    expect(run?.instructions).toEqual([{ kind: '山札の1番上をゾーンへ置く', to: 'エネルギーゾーン', orientation: 'フリーズ' }])
+  })
+
+  it('CPU は、対象を持たない「してもよい」にも、「はい」（候補の 0 番）と答える', () => {
+    const choice = {
+      player: '先攻',
+      purpose: 'してもよい',
+      mayDecline: true,
+      answered: 0,
+      mayGoBack: false,
+      mayCancel: false,
+      candidates: [{ kind: '確認' }],
+      may: { action: '1枚引く', targets: [] },
+    } as const
+
+    expect(scoredCpu.answer(choiceViewOf(emptyDuelState(), choice), randomFromSeed(1)).answer).toBe(0)
+  })
+})
+
 describe('CPU が「してもよい」に答える', () => {
   it('候補は「確認」の 1 つで、いつも「はい」（候補の 0 番）と答える', () => {
     const state = withZone(emptyDuelState(), '先攻', '捨札', [instantiate({ id: '捨札の1枚', card: strong, owner: '先攻' })])
