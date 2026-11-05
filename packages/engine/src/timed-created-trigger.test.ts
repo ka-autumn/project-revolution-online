@@ -144,6 +144,7 @@ describe('期限を持つ、対象を持たない作成された誘発型能力'
     })
   })
 
+  // 総合ルール 第3部 第10章 1（ターンの終わりまでの効果は、リカバリーフェイズの始めに終了する）
   describe('期限', () => {
     it('「ターンの終わりまで」は、作成されたターンに関わらず、そのリカバリーフェイズの始めに終了する', () => {
       expect(durationEnds('ターンの終わりまで', 1, '先攻', recoveryOf(1, '先攻'))).toBe(true)
@@ -167,6 +168,62 @@ describe('期限を持つ、対象を持たない作成された誘発型能力'
       const remaining = new Map<number, number>()
       for (let steps = 0; steps < 200 && current.turn.number < 3; steps += 1) {
         if (current.turn.phase === 'リカバリーフェイズ') remaining.set(current.turn.number, current.createdAbilities.length)
+        current = passPriority(current, chooseFirst)
+      }
+
+      expect(remaining.get(1)).toBe(1)
+      expect(remaining.get(2)).toBe(0)
+    })
+
+    /** 盤面を進めながら、各ターンの指定したフェイズの始めに、作成された誘発型能力がいくつ残っているかを取得する。 */
+    function remainingAt(start: DuelState, phase: DuelState['turn']['phase'], untilTurn: number): Map<number, number> {
+      let current = start
+      const remaining = new Map<number, number>()
+      for (let steps = 0; steps < 400 && current.turn.number <= untilTurn; steps += 1) {
+        if (current.turn.phase === phase && !remaining.has(current.turn.number)) {
+          remaining.set(current.turn.number, current.createdAbilities.length)
+        }
+        current = passPriority(current, chooseFirst)
+      }
+      return remaining
+    }
+
+    it('期限の間（支配者の相手のターンのメインフェイズ）は、残っている', () => {
+      const start: DuelState = { ...stocked(), createdAbilities: [watcher('次の相手のターンの終わりまで', '先攻', 1)] }
+
+      expect(remainingAt(start, 'メインフェイズ', 2).get(2)).toBe(1)
+    })
+
+    it('相手のターンに作成された能力は、そのターンのリカバリーフェイズでは終了せず、次の相手のターンで終了する', () => {
+      // 先攻が支配者で、後攻のターン（第 2 ターン）に作成された。
+      const start: DuelState = { ...stocked(), createdAbilities: [watcher('次の相手のターンの終わりまで', '先攻', 2)] }
+      const atTurn2 = ((): DuelState => {
+        let current = start
+        while (current.turn.number < 2) current = passPriority(current, chooseFirst)
+        return current
+      })()
+
+      const remaining = remainingAt(atTurn2, 'リカバリーフェイズ', 4)
+
+      expect(remaining.get(2)).toBe(1)
+      expect(remaining.get(3)).toBe(1)
+      expect(remaining.get(4)).toBe(0)
+    })
+
+    it('作成された継続効果も、同じ時点で終了する', () => {
+      const effect = {
+        target: 'ユニット',
+        change: { kind: 'ＢＰの変更', amount: 1000 } as const,
+        until: '次の相手のターンの終わりまで' as const,
+        controller: '先攻' as const,
+        createdIn: 1,
+      }
+      let current: DuelState = { ...stocked(), createdContinuousEffects: [effect] }
+      const remaining = new Map<number, number>()
+      for (let steps = 0; steps < 400 && current.turn.number < 3; steps += 1) {
+        if (current.turn.phase === 'リカバリーフェイズ' && !remaining.has(current.turn.number)) {
+          remaining.set(current.turn.number, current.createdContinuousEffects.length)
+        }
         current = passPriority(current, chooseFirst)
       }
 

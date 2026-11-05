@@ -676,7 +676,7 @@ function apply(
       return { state: checkPlacedByEffect(moved, instruction.card.id), value: undefined }
     }
     case '対象を持たない誘発型能力を作る': {
-      // 作られた能力の支配者は、作った効果の支配者である（総合ルール 第4部 第7章 1）。対象が無いので、
+      // 作成された能力の支配者は、作成した効果の支配者である（総合ルール 第4部 第7章 1）。対象が無いので、
       // `shown` の検査も、対象の場所の検査も要らない。
       const created = {
         ability: instruction.ability,
