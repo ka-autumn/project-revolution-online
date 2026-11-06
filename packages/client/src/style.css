@@ -1,4 +1,5 @@
 @import '../../../docs/screens/shared/card-art.css';
+@import '../../../docs/screens/shared/detail-layout.css';
 @import '../../../docs/screens/shared/hand-layout.css';
 /*
  * 対戦画面の見た目。
@@ -3821,26 +3822,8 @@ body {
 }
 
 /*
- * 右の列は高さが固定なので、注記を持つカードだけ面の高さを詰めて場所を空ける。詰まるのは、
- * 面の上側の何も書かれていない部分である。幅を縮めないのは、名前が省略され、テキストの欄にも
- * 収まらなくなるためである。空けた高さは、見出しと注記 3 行の分で、それを超える注記は枠の中で
- * 送る。スマートフォンのシートと一覧の上の段は高さが固定でないので、ここには含めない。
- */
-.duel .detail .card--注記つき,
-.duel .detail .card--誘発待ちつき {
-  aspect-ratio: auto;
-  height: calc(14.5rem * 1.5 - 5.2rem);
-}
-
-.duel .detail .detail__operational,
-.duel .detail .detail__pending {
-  max-height: 4.8rem;
-  overflow-y: auto;
-}
-
-/*
  * 作成された誘発型能力（ADR-0063）。まだ誘発していない能力なので、注記の枠と同じ置き方で、面の外に、
- * 注記の枠と違う色（緑みの青）の枠で表示する。高さの詰め方は注記の枠と同じ（上の規則）。
+ * 注記の枠と違う色（緑みの青）の枠で表示する。カード本体とは別の領域に置く。
  */
 .detail__pending {
   align-self: stretch;

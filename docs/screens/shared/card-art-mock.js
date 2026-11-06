@@ -6,9 +6,11 @@
    const card = face.closest('.card'); const bottom = face.querySelector('.card__bottom'); const title=face.querySelector('.card__title');
    if (!bottom || !title) continue;
    face.classList.add('card-art-face');
+   face.classList.toggle('card-art-textless',card.classList.contains('card--拡大') && !face.querySelector('.card__text'));
    const isTrap=!!face.querySelector('.trigger-icon'); const isUnit=!!face.querySelector('.card__stats');
    face.classList.toggle('card-art-nonunit',!isUnit); face.classList.toggle('card-art-trap',isTrap);
    if (!card.classList.contains('card--拡大')) bottom.prepend(title);
+   for (const logo of face.querySelectorAll('.block-logo')) logo.remove();
    const footer=document.createElement('div'); footer.className='card-art-footer';
    for(const part of [bottom.querySelector('.card__stats'),bottom.querySelector('.card__traits')]) if(part) footer.append(part);
    if(footer.childElementCount) bottom.append(footer);

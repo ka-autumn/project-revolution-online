@@ -596,6 +596,7 @@ type FaceCard = FaceFields & {
  * 共有する（ADR-0028）。
  */
 function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptions): void {
+  node.classList.toggle('card-art-textless', options.showText === false)
   const top = element('div', 'card__top')
   const level = element('span', 'card__level')
   const levelIconImg = document.createElement('img')
@@ -5251,19 +5252,17 @@ function pendingAbilitiesElement(pending: readonly PendingAbilityView[]): HTMLEl
 function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   const noted = card.operationalNote.length > 0
   const waiting = card.pending.length > 0
-  // 右の列は高さが固定なので、注記か誘発待ちを持つカードは面の高さを詰めて場所を空ける（ADR-0027）。
   const big = element(
     'div',
     `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大${noted ? ' card--注記つき' : ''}${waiting ? ' card--誘発待ちつき' : ''}`,
   )
   big.append(faceElement(card, { big: true }))
 
-  return [
-    big,
-    ...(noted ? [operationalNoteElement(card.operationalNote)] : []),
-    ...(waiting ? [pendingAbilitiesElement(card.pending)] : []),
-    element('p', 'detail__note', detailNoteOf(card)),
-  ]
+  const annotations = element('div', 'detail__annotations')
+  if (noted) annotations.append(operationalNoteElement(card.operationalNote))
+  if (waiting) annotations.append(pendingAbilitiesElement(card.pending))
+
+  return [big, annotations, element('p', 'detail__note', detailNoteOf(card))]
 }
 
 /**
