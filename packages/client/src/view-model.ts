@@ -2121,7 +2121,7 @@ export interface RoomView {
    */
   readonly name: string
   readonly status: RoomStatusLabel
-  /** 入れるか。**入れない部屋は押せる形で出さない**（ADR-0010）。 */
+  /** 入れるか。入れない部屋は押せる形で出さない（ADR-0010）。 */
   readonly joinable: boolean
   /**
    * 席ごとの表示名（ADR-0020）。入ってきた順で、空いている席は `undefined`。

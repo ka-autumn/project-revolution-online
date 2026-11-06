@@ -1364,7 +1364,7 @@ export interface LobbyHandlers {
   readonly onCreate: (name: string, against: OpponentKind) => void
   /** 相手を待っている部屋に入る。 */
   readonly onJoin: (code: RoomCode) => void
-  /** 打ち込んだ名前が変わった。**画面は描き直されるので、覚えておくのは呼ぶ側である。** */
+  /** 打ち込んだ名前が変わった。画面は描き直されるので、覚えておくのは呼ぶ側である。 */
   readonly onName: (name: string) => void
   /** 使用するデッキを選び直した（ADR-0021）。名前と同じく、覚えておくのは呼ぶ側である。 */
   readonly onDeck: (deck: DeckId) => void
@@ -1401,7 +1401,7 @@ export interface ChosenRules {
   readonly restriction: RestrictionChoice | undefined
 }
 
-/** 禁止／制限リストを当てないことを指す `select` の値。**リストの識別子とは重ならない**——リストは番号で指す。 */
+/** 禁止／制限リストを当てないことを指す `select` の値。リストの識別子とは重ならない——リストは番号で指す。 */
 const UNRESTRICTED_VALUE = '制限なし'
 
 /**
@@ -2774,7 +2774,7 @@ export interface DeckListHandlers {
   readonly onDuplicate: (deck: DeckId) => void
   /** 共有する下書きを開く（ADR-0022・ADR-0028）。 */
   readonly onShare: (deck: DeckId) => void
-  /** 自分のデッキを消す。**最後の 1 つは消せない**が、断るのはサーバである。 */
+  /** 自分のデッキを消す。最後の 1 つは消せないが、断るのはサーバである。 */
   readonly onDelete: (deck: DeckId, name: string) => void
   readonly onClose: () => void
   /** 自分が出した共有を並べるところを開く（ADR-0022）。 */
@@ -3041,9 +3041,9 @@ export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'on
   /** 詳しく出したままにするカードを決める。同じカードをもう一度押したら、やめる。 */
   readonly onPin: (key: string) => void
   readonly onSave: () => void
-  /** デッキの一覧に戻る。**保存していない変更を捨てるかを尋ねるのは呼ぶ側である。** */
+  /** デッキの一覧に戻る。保存していない変更を捨てるかを尋ねるのは呼ぶ側である。 */
   readonly onBack: () => void
-  /** 絞り込みの条件を変えた。**覚えておくのも、絞り込むのも呼ぶ側である**（`pool-filter.ts`）。 */
+  /** 絞り込みの条件を変えた。覚えておくのも、絞り込むのも呼ぶ側である（`pool-filter.ts`）。 */
   readonly onFilter: (filter: PoolFilter) => void
   /** 詳しく絞り込むところを開く・閉じる。 */
   readonly onFilterOpen: (open: boolean) => void
@@ -4154,7 +4154,7 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
   return node
 }
 
-/** 公開の段階を選ぶところ（ADR-0022）。**選べるのは 2 つだけ**なので、`select` ではなくボタンで選ばせる。 */
+/** 公開の段階を選ぶところ（ADR-0022）。選べるのは 2 つだけなので、`select` ではなくボタンで選ばせる。 */
 function visibilityPicker(chosen: ShareVisibility, onVisibility: (visibility: ShareVisibility) => void): HTMLElement {
   const node = element('div', 'share__visibility')
   node.append(element('span', 'share__visibility-label', '公開の段階'))
@@ -4172,7 +4172,7 @@ export interface ShareDialogHandlers {
   readonly onFormat: (format: DuelFormat) => void
   readonly onRestriction: (restriction: RestrictionChoice) => void
   readonly onShare: () => void
-  /** リンクをコピーする。**組み立てるのは呼ぶ側**（`recipe.ts` の `recipeLinkOf`）。 */
+  /** リンクをコピーする。組み立てるのは呼ぶ側（`recipe.ts` の `recipeLinkOf`）。 */
   readonly onCopyLink: (link: string) => void
   readonly onClose: () => void
 }
@@ -4570,9 +4570,9 @@ export function confirmElement(view: ConfirmView, onConfirm: () => void, onCance
 
 /** 名前を決めるところで押せるもの（ADR-0020）。 */
 export interface NamingHandlers {
-  /** 打ち込んだものが変わった。**画面は描き直されるので、覚えておくのは呼ぶ側である。** */
+  /** 打ち込んだものが変わった。画面は描き直されるので、覚えておくのは呼ぶ側である。 */
   readonly onDraft: (value: string) => void
-  /** これで決める。**通るかどうかを決めるのはサーバである**（`server` の `name.ts`）。 */
+  /** これで決める。通るかどうかを決めるのはサーバである（`server` の `name.ts`）。 */
   readonly onDecide: (name: string) => void
 }
 
@@ -5214,6 +5214,7 @@ function detailPanelElement(): HTMLElement {
   const node = element('section', 'panel detail')
   node.setAttribute('aria-label', 'カードの詳細')
   node.setAttribute('aria-live', 'polite')
+  node.tabIndex = -1
   node.append(detailGuideElement())
 
   return node
@@ -5310,7 +5311,14 @@ function fillDetailPanel(node: HTMLElement, card: (CardView & { readonly kind: '
     return
   }
 
-  node.replaceChildren(...detailParts(card))
+  node.replaceChildren(...detailParts(card), element('p', 'detail__read-guide', 'Dキーで詳細へ・Escキーでカードへ'))
+  for (const [selector, label] of [['.card__lines', 'カードの本文'], ['.detail__annotations', '注記と誘発待ち']] as const) {
+    const region = node.querySelector<HTMLElement>(selector)
+    if (region === null || region.childElementCount === 0) continue
+    region.tabIndex = 0
+    region.setAttribute('role', 'region')
+    region.setAttribute('aria-label', label)
+  }
 }
 
 /**
@@ -5338,7 +5346,7 @@ export function sheetDetailElement(card: CardView | undefined): HTMLElement | un
 /**
  * 乗せた・フォーカスしたカードをカードの詳細に出す配線（ADR-0027）。選んでいる間は、
  * 選んでいるカードが既定になる。別のカードに乗せる（フォーカスする）とそれに切り替わり、
- * 外れると既定に戻る。
+ * 外れた後も保持し、詳細へ移動して長文を読めるようにする。
  *
  * 組み終わった DOM 全体から、識別子（`data-card-id`）を頼りに拾う。面を組み立てる関数
  * （`cardElement`）ごとに配線すると、盤面・手札・一覧のどこに出てきても同じ動きにするための
@@ -5358,22 +5366,39 @@ function wireCardDetailHover(
     elementsById.set(id, [...(elementsById.get(id) ?? []), node])
   }
 
+  let shownId: CardId | undefined
+  let source: HTMLElement | undefined
   const show = (id: CardId | undefined): void => {
+    if (id === shownId && detail.querySelector('.card--拡大') !== null) return
+    shownId = id
     for (const marked of root.querySelectorAll('.card--詳細中')) marked.classList.remove('card--詳細中')
     if (id !== undefined) for (const node of elementsById.get(id) ?? []) node.classList.add('card--詳細中')
     const card = id === undefined ? undefined : cardsById.get(id)
     fillDetailPanel(detail, card?.kind === '表' ? card : undefined)
   }
-  const restore = (): void => show(defaultId)
-  restore()
+  show(defaultId)
+  detail.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || source === undefined) return
+    event.preventDefault()
+    event.stopPropagation()
+    source.focus({ preventScroll: true })
+  })
 
   for (const node of nodes) {
     const id = node.dataset.cardId
     if (id === undefined) continue
-    node.addEventListener('mouseenter', () => show(id))
-    node.addEventListener('focus', () => show(id))
-    node.addEventListener('mouseleave', restore)
-    node.addEventListener('blur', restore)
+    const reveal = (): void => { source = node; show(id) }
+    node.addEventListener('mouseenter', reveal)
+    node.addEventListener('focus', reveal)
+    node.setAttribute('aria-keyshortcuts', 'd')
+    node.addEventListener('keydown', (event) => {
+      if (event.key.toLowerCase() !== 'd' || event.altKey || event.ctrlKey || event.metaKey) return
+      event.preventDefault()
+      event.stopPropagation()
+      reveal()
+      const firstRegion = detail.querySelector<HTMLElement>('.card__lines[tabindex], .detail__annotations[tabindex]') ?? detail
+      firstRegion.focus({ preventScroll: true })
+    })
   }
 }
 

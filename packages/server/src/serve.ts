@@ -340,7 +340,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    */
   const names: Names = (participant) => (isCpu(participant) ? participant : (nameOf(participant) ?? participant))
 
-  /** 表示名を決めたか（ADR-0020）。**決めるまで、ほかのことは受け付けない。** */
+  /** 表示名を決めたか（ADR-0020）。決めるまで、ほかのことは受け付けない。 */
   const named = (participant: ParticipantId): boolean => nameOf(participant) !== undefined
 
   /**
@@ -398,7 +398,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
    */
   const poolFaces = deckStore === undefined ? undefined : poolFacesOf(options.supply)
 
-  /** カードプールを送る（ADR-0021）。**繋いだ接続ごとに 1 度だけ呼ぶ**——中身は変わらない。 */
+  /** カードプールを送る（ADR-0021）。繋いだ接続ごとに 1 度だけ呼ぶ——中身は変わらない。 */
   function sendPool(socket: WebSocket): void {
     if (poolFaces === undefined) return
 

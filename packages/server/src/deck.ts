@@ -46,7 +46,7 @@ export type CardPool = Readonly<Record<CardKey, Card>>
  */
 export interface PresetDeck {
   readonly id: DeckId
-  /** 選ぶ人に見せる名前。**指すのは識別子のほうである**（`WireDeck`）。 */
+  /** 選ぶ人に見せる名前。指すのは識別子のほうである（`WireDeck`）。 */
   readonly name: string
   readonly cards: readonly CardKey[]
 }
@@ -71,7 +71,7 @@ export interface PresetDeck {
 export interface RestrictionList {
   readonly id: RestrictionListId
   readonly name: string
-  /** カード名ごとの、デッキに入れてよい枚数。`0` が禁止カード。**載っていないカードに上限は無い。** */
+  /** カード名ごとの、デッキに入れてよい枚数。`0` が禁止カード。載っていないカードに上限は無い。 */
   readonly limits: CardLimits
 }
 
@@ -84,7 +84,7 @@ export interface RestrictionList {
 export interface CardSupply {
   readonly artwork?: CardArtwork
   readonly pool: CardPool
-  /** 誰でも使える既製デッキ。**少なくとも 1 つ要る**——デッキを組む場所がまだ無い（ADR-0021）。 */
+  /** 誰でも使える既製デッキ。少なくとも 1 つ要る——デッキを組む場所がまだ無い（ADR-0021）。 */
   readonly presets: readonly PresetDeck[]
   /**
    * 名前の付いた禁止／制限リスト。空でよい。
@@ -111,12 +111,12 @@ export interface CardSupply {
  * プールに無いカードを含んでよい。 収録されていることと実装済みであることは別に決まる。
  */
 export interface Expansion {
-  /** 画面に出す名前。**エキスパンションはこれで指す**ので、重ならない。 */
+  /** 画面に出す名前。エキスパンションはこれで指すので、重ならない。 */
   readonly name: string
   readonly cards: readonly CardKey[]
 }
 
-/** 渡されたものを読んだ結果。**なりうる形を数え上げる**——読めたのに理由もある形を書けなくする。 */
+/** 渡されたものを読んだ結果。なりうる形を数え上げる——読めたのに理由もある形を書けなくする。 */
 export type SupplyReading =
   | { readonly kind: '通す'; readonly supply: CardSupply }
   | { readonly kind: '断る'; readonly reason: string }
@@ -125,7 +125,7 @@ function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** カードとして通す形か。**中身までは見ない**——engine の `Card` を組み立て直すのはここの仕事ではない。 */
+/** カードとして通す形か。中身までは見ない——engine の `Card` を組み立て直すのはここの仕事ではない。 */
 function isCard(value: unknown): value is Card {
   return isObject(value) && typeof value['name'] === 'string'
 }

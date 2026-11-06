@@ -45,3 +45,6 @@
     overflow: visible;
   }
 }
+
+.duel .detail__read-guide { margin: 0; flex: none; font-size: .65rem; color: var(--ink-dim); }
+.duel .detail [role="region"]:focus-visible { outline: 2px solid var(--gold-deep); outline-offset: 1px; }

@@ -74,7 +74,7 @@ const asNamed: Names = (participant) => participant
  */
 export interface SeatedDeck {
   readonly cards: Deck
-  /** カードを指す識別子の並び。**部屋はこれを読み取らず、そのまま記録へ渡す。** */
+  /** カードを指す識別子の並び。部屋はこれを読み取らず、そのまま記録へ渡す。 */
   readonly keys: readonly string[]
 }
 
@@ -146,7 +146,7 @@ export interface DeckSource {
  */
 export interface RoomRules {
   readonly format: DuelFormat
-  /** 当てる禁止／制限リスト。**`制限なし` はリストを 1 つも当てないことである。** */
+  /** 当てる禁止／制限リスト。`制限なし` はリストを 1 つも当てないことである。 */
   readonly restriction:
     | { readonly kind: '制限なし' }
     | { readonly kind: '禁止／制限リスト'; readonly list: RestrictionList }
@@ -642,7 +642,7 @@ export function describeViolation(violation: DeckViolation): string {
   }
 }
 
-/** ロビーに出す形にする。**リストの中身は出さない**（`WireRoomRules`）。 */
+/** ロビーに出す形にする。リストの中身は出さない（`WireRoomRules`）。 */
 function wireRulesOf(rules: RoomRules): WireRoomRules {
   const restriction = rules.restriction
   return {
@@ -1237,7 +1237,7 @@ function start(
 interface Seating {
   readonly participant: ParticipantId
   readonly deck: DeckId | undefined
-  /** 席に座るのが人か CPU か。**断る理由に誰のデッキかを添えるのに使う**（`whoseOf`）。 */
+  /** 席に座るのが人か CPU か。断る理由に誰のデッキかを添えるのに使う（`whoseOf`）。 */
   readonly seat: SeatKind
   /**
    * デッキを引く棚の持ち主（#195）。CPU の席は、部屋を作った人の棚から引く——CPU は自分の
@@ -1246,7 +1246,7 @@ interface Seating {
   readonly shelf?: ParticipantId
 }
 
-/** 断る理由に添える、誰のデッキか。**人の席には何も付けない**（既存の言い回しのまま）。 */
+/** 断る理由に添える、誰のデッキか。人の席には何も付けない（既存の言い回しのまま）。 */
 function whoseOf(seat: SeatKind): '' | 'CPU の' {
   return seat === 'CPU' ? 'CPU の' : ''
 }

@@ -3033,9 +3033,13 @@ pickers.append(picker('見せる一覧・該当なし', '山札（32）からカ
 
 // ---- カードの詳細 ----
 // 何も無ければ案内だけ。カードを選んでいる間はそのカードが既定。乗せたカードに切り替わり、
-// 外れると既定に戻る。
+// 外れた後も保持し、詳細へ移動して長文を読めるようにする。
 const detail = document.getElementById('detail')
+detail.tabIndex = -1
+let detailSource
 function renderDetail(node) {
+  if (node === detailSource && detail.querySelector('.card--拡大')) return
+  detailSource = node
   if (!node) {
     detail.innerHTML = '<p class="detail__none">カードにマウスを乗せるか、フォーカスすると、ここに詳細が出ます。</p>'
     return
@@ -3043,6 +3047,16 @@ function renderDetail(node) {
   detail.replaceChildren(...(matchMedia('(max-width: 768px)').matches ? phoneDetailParts(node) : detailParts(node)))
   for (const n of document.querySelectorAll('.card--詳細中')) n.classList.remove('card--詳細中')
   node.classList.add('card--詳細中')
+  if (!matchMedia('(max-width: 768px)').matches) {
+    detail.append(Object.assign(document.createElement('p'), { className: 'detail__read-guide', textContent: 'Dキーで詳細へ・Escキーでカードへ' }))
+    for (const [selector, label] of [['.card__lines', 'カードの本文'], ['.detail__annotations', '注記と誘発待ち']]) {
+      const region = detail.querySelector(selector)
+      if (!region || !region.childElementCount) continue
+      region.tabIndex = 0
+      region.setAttribute('role', 'region')
+      region.setAttribute('aria-label', label)
+    }
+  }
 }
 // 拡大した面と、その下の補足の 1 行
 function detailParts(node) {
@@ -3131,14 +3145,22 @@ function selected() {
   return document.querySelector('.card--選択中[data-name]')
 }
 function restoreDetail() {
+  detailSource = undefined
   for (const n of document.querySelectorAll('.card--詳細中')) n.classList.remove('card--詳細中')
   renderDetail(selected())
 }
 for (const node of document.querySelectorAll('.card[data-name]')) {
   node.addEventListener('mouseenter', () => { if (!phone.matches) renderDetail(node) })
   node.addEventListener('focus', () => { if (!phone.matches) renderDetail(node) })
-  node.addEventListener('mouseleave', () => { if (!phone.matches) restoreDetail() })
-  node.addEventListener('blur', () => { if (!phone.matches) restoreDetail() })
+  node.setAttribute('aria-keyshortcuts', 'd')
+  node.addEventListener('keydown', (event) => {
+    if (phone.matches || event.key.toLowerCase() !== 'd' || event.altKey || event.ctrlKey || event.metaKey) return
+    event.preventDefault()
+    event.stopPropagation()
+    renderDetail(node)
+    const firstRegion = detail.querySelector('.card__lines[tabindex], .detail__annotations[tabindex]') ?? detail
+    firstRegion.focus({ preventScroll: true })
+  })
   node.addEventListener('click', () => {
     if (!phone.matches) return
     // 光っているエリアのスクエアの中のユニットは、押すとそのスクエアのシートになる（盤面のクリックで開く）
@@ -3148,6 +3170,13 @@ for (const node of document.querySelectorAll('.card[data-name]')) {
     else openCardSheet(node)
   })
 }
+
+detail.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !detailSource) return
+  event.preventDefault()
+  event.stopPropagation()
+  detailSource.focus({ preventScroll: true })
+})
 
 // ---- スマホ：シート ----
 // カードを 1 回押すと、詳細と、そのカードで行える手のボタンをシートに出す。手のボタンを押すと、

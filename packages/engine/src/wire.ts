@@ -225,7 +225,7 @@ export interface WirePerspective {
   readonly namedInLog: readonly WireCardInstance[]
 }
 
-/** 種別によらず書かれていることを写す。**能力と効果は写さない。** */
+/** 種別によらず書かれていることを写す。能力と効果は写さない。 */
 function written(card: Card): WireWrittenCard & { readonly type: CardType } {
   return {
     type: card.type,
