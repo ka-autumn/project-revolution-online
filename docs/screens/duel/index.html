@@ -367,6 +367,9 @@ body {
 
 .controls__list button { text-align: left; }
 
+#controls .controls__list[hidden],
+.mock-deck > [hidden] { display: none; }
+
 .controls__leave {
   padding: 0.6rem 0.9rem;
   border-top: 1px dashed rgb(125 104 72 / 0.3);
@@ -3598,7 +3601,14 @@ function apply() {
     if (awaiting) b.setAttribute('aria-disabled', 'true')
     else b.removeAttribute('aria-disabled')
   }
-  const picking = duel.classList.contains('show-picking') && !awaiting
+  const clickMode = duel.classList.contains('show-picking')
+  document.querySelector('#controls .controls__list').hidden = clickMode
+  for (const button of document.querySelectorAll('#controls .mode button')) {
+    const selected = (button.textContent === 'クリック') === clickMode
+    button.classList.toggle('mode--選択中', selected)
+    button.setAttribute('aria-pressed', String(selected))
+  }
+  const picking = clickMode && !awaiting
   for (const c of document.querySelectorAll('.mock-pickable')) c.classList.toggle('card--押せる', picking)
   for (const s of document.querySelectorAll('.mock-target')) s.classList.toggle('square--置き先', picking)
   document.querySelector('.hand--自分 .card')?.classList.toggle('card--選択中', picking)
