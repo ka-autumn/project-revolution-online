@@ -159,3 +159,11 @@
 .card-art-caption { color: var(--lv-deep); font-weight: 700; -webkit-text-stroke: .35px white; paint-order: stroke fill; }
 .card-art-caption--unit { -webkit-text-stroke-width: 1.7px; }
 .card-art-caption.card--色-白 { color: white; -webkit-text-stroke: 1.7px #111; }
+
+.card-art-face .card-art-footer :is(.card__bp--上, .card__sp--上) { color: #d4101c; }
+.card-art-face .card-art-footer :is(.card__bp--下, .card__sp--下) { color: #1553c8; }
+.card-art-face .card-art-footer :is(.card__bp--上, .card__sp--上, .card__bp--下, .card__sp--下) {
+  text-shadow: none;
+  -webkit-text-stroke: .05em #fff;
+  paint-order: stroke fill;
+}

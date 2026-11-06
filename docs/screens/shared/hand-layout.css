@@ -6,14 +6,14 @@
 
   .duel .duel__center > .hand--自分 {
     margin-top: -3rem;
-    padding-top: .75rem;
+    padding-top: 0;
     z-index: 2;
     pointer-events: none;
   }
 
   .duel .duel__center > .hand--自分 .hand__label {
-    top: -.25rem;
-    bottom: auto;
+    top: auto;
+    bottom: -.55rem;
   }
 
   .duel .duel__center > .hand--自分 .card {
@@ -45,11 +45,7 @@
   }
 
   .duel .duel__center > .hand--自分 {
-    padding-top: 1.5rem;
-  }
-
-  .duel .duel__center > .hand--自分 .hand__label {
-    top: 0;
+    padding-top: .75rem;
   }
 
   .duel .duel__center > .hand--自分 .card {
@@ -111,4 +107,13 @@
 
 .duel .zone--山札 .pile__keywords {
   bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .duel .duel__center > .hand--自分 .hand__label,
+  .duel > .hand--自分 .hand__label {
+    align-self: flex-end;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
 }
