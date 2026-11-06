@@ -2,6 +2,7 @@ import { COLORS, DUEL_FORMATS } from '@revolution/engine'
 import { FOCUS_KEY_ATTRIBUTE, REGION_ATTRIBUTE, type Region, wireBoardKeyboard } from './board-keyboard.js'
 import { highlightedSquares } from './area-highlight.js'
 import { cardTextParagraphs } from './card-text.js'
+import { applyCardArtwork } from './card-art.js'
 import type { AreaPointerStore } from './area-highlight.js'
 import { INITIAL_FOCUS_ATTRIBUTE, ignoreKeyRepeat, onLayerEscape } from './dialog-focus.js'
 import type {
@@ -144,7 +145,7 @@ import {
 /**
  * 画面に出す値（`view-model.ts`）を DOM にする。
  *
- * **ここに判断を置かない。** 何を出すかはビューモデルがすでに決めていて、ここは要素を作って
+ * ここに判断を置かない。 何を出すかはビューモデルがすでに決めていて、ここは要素を作って
  * 並べるだけである。テストがあるのはビューモデルまでで、この層は薄く保つ（#14）。
  *
  * 対戦画面のカードの詳細（`detailElement`）だけは例外で、乗せた・フォーカスしたカードを
@@ -163,11 +164,11 @@ function element(tag: string, className: string, text?: string): HTMLElement {
 /**
  * 盤面をクリックして操作するための手がかり（#94）。押していない時は `undefined`。
  *
- * **どれを押せるかはここで決めない。** 届いた手が指しているところを `input-model.ts` が
+ * どれを押せるかはここで決めない。 届いた手が指しているところを `input-model.ts` が
  * すでに並べていて（`pickView`）、ここはそれを描くだけである。
  */
 /**
- * 押せるスクエア 1 つ。**押した時に何を送るかはここに無い。** 置き先なら手を送り
+ * 押せるスクエア 1 つ。押した時に何を送るかはここに無い。 置き先なら手を送り
  * （`input-model.ts` の `DestinationView`）、効果が選ばせているなら候補の番号で答える
  * （同 `ChoiceSquareView`）。どちらかは渡す側が知っている。
  */
@@ -197,7 +198,7 @@ export interface BoardPicking {
    * 押せる裏向きのカードの置き場所（#127）。行える手を選ぶ場面では渡されない。
    *
    * 裏向きのカードは識別子を持たない（`view-model.ts` の `CardView`）ので、押せるかどうかも
-   * 置き場所で引く。**どれが押せるかはここで決めない**のは、表向きのカードと同じである。
+   * 置き場所で引く。どれが押せるかはここで決めないのは、表向きのカードと同じである。
    */
   readonly hidden?: readonly WireCardPosition[]
   /**
@@ -470,13 +471,16 @@ function smashIconParts(): readonly SVGElement[] {
  */
 function intrusionIconParts(cells: readonly Square[]): readonly SVGElement[] {
   const parts = [
-    svgElement('rect', { x: '0', y: '0', width: '20.6', height: '20.6', rx: '1.4', fill: '#fff', stroke: '#222', 'stroke-width': '0.6' }),
+    svgElement('rect', { x: '0', y: '0', width: '20.6', height: '20.6', rx: '1.4', fill: '#4d4d4d', stroke: '#222', 'stroke-width': '0.6' }),
   ]
   for (let row = 0; row < 3; row++) {
     for (let column = 0; column < 3; column++) {
       const hit = cells.some((square) => square.row === row && square.column === column)
       // 印刷の行 0 は支配者の味方エリア（手前）なので、図では下段に描く。
-      parts.push(iconRect(1 + column * 6.2, 1 + (2 - row) * 6.2, 5.6, 5.6, { fill: hit ? '#e8202a' : '#4d4d4d' }))
+      const x = 1 + column * 6.2, y = 1 + (2 - row) * 6.2
+      parts.push(iconRect(x, y, 5.6, 5.6, { fill: hit ? '#e8202a' : '#4d4d4d', rx: '.15', stroke: '#b9b6b0', 'stroke-width': '.23' }))
+      parts.push(svgElement('path', { d: `M${x+5.37} ${y+.23}H${x+.23}V${y+5.37}`, fill: 'none', stroke: '#000', 'stroke-opacity': '.68', 'stroke-width': '.42', 'aria-hidden': 'true' }))
+      parts.push(svgElement('path', { d: `M${x+.23} ${y+5.37}H${x+5.37}V${y+.23}`, fill: 'none', stroke: '#fff', 'stroke-opacity': '.58', 'stroke-width': '.32', 'aria-hidden': 'true' }))
     }
   }
 
@@ -592,6 +596,7 @@ type FaceCard = FaceFields & {
  * 共有する（ADR-0028）。
  */
 function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptions): void {
+  node.classList.toggle('card-art-textless', options.showText === false)
   const top = element('div', 'card__top')
   const level = element('span', 'card__level')
   const levelIconImg = document.createElement('img')
@@ -637,6 +642,7 @@ function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptio
   }
 
   if (card.damage > 0) node.append(element('span', 'card__damage', `ダメージ ${card.damage}`))
+  applyCardArtwork(node, card, options.big === true)
 }
 
 /**
@@ -1313,13 +1319,13 @@ function button(label: string, onPress: () => void, primary = false): HTMLElemen
 /**
  * 行える手を並べる。
  *
- * 並べるのは届いたものだけである。**押せない手は画面に出ない**（ADR-0010）。
+ * 並べるのは届いたものだけである。押せない手は画面に出ない（ADR-0010）。
  */
 /**
  * 見出しの行（#128）。
  *
  * `aside` を渡すと、見出しと同じ行の右端に置く。操作するところは器ひとつにまとめてあり
- * （`index.ts` の `controls`）、その高さは決め打ちなので、**行を増やさずに済ませたい**。
+ * （`index.ts` の `controls`）、その高さは決め打ちなので、行を増やさずに済ませたい。
  * 操作のしかたの切り替え（#94）は行える手に添えるものなので、ここに入る。
  */
 function titleRow(className: string, text: string, aside: HTMLElement | undefined): HTMLElement {
@@ -1358,7 +1364,7 @@ export interface LobbyHandlers {
   readonly onCreate: (name: string, against: OpponentKind) => void
   /** 相手を待っている部屋に入る。 */
   readonly onJoin: (code: RoomCode) => void
-  /** 打ち込んだ名前が変わった。**画面は描き直されるので、覚えておくのは呼ぶ側である。** */
+  /** 打ち込んだ名前が変わった。画面は描き直されるので、覚えておくのは呼ぶ側である。 */
   readonly onName: (name: string) => void
   /** 使用するデッキを選び直した（ADR-0021）。名前と同じく、覚えておくのは呼ぶ側である。 */
   readonly onDeck: (deck: DeckId) => void
@@ -1387,7 +1393,7 @@ export interface LobbyHandlers {
 /**
  * 作る部屋のルールとして、ロビーで選んでいるもの（ADR-0021）。まだ選んでいなければ `undefined`。
  *
- * **選ばないまま作ってもよい。** 選ばなかったものは、サーバが既定を当てる（`server` の `room.ts`
+ * 選ばないまま作ってもよい。 選ばなかったものは、サーバが既定を当てる（`server` の `room.ts`
  * の `rulesFor`）。画面はどれが既定かを決めない（ADR-0010）。
  */
 export interface ChosenRules {
@@ -1395,13 +1401,13 @@ export interface ChosenRules {
   readonly restriction: RestrictionChoice | undefined
 }
 
-/** 禁止／制限リストを当てないことを指す `select` の値。**リストの識別子とは重ならない**——リストは番号で指す。 */
+/** 禁止／制限リストを当てないことを指す `select` の値。リストの識別子とは重ならない——リストは番号で指す。 */
 const UNRESTRICTED_VALUE = '制限なし'
 
 /**
- * 作る部屋のルールを選ぶところ（ADR-0021）。**選べるものは届いたものだけである。**
+ * 作る部屋のルールを選ぶところ（ADR-0021）。選べるものは届いたものだけである。
  *
- * 形式が 1 つしか無くても出す。**どの形式で打つ部屋かは、作る人にも分かっていなければならない。**
+ * 形式が 1 つしか無くても出す。どの形式で打つ部屋かは、作る人にも分かっていなければならない。
  */
 function rulesPicker(
   restrictions: readonly WireRestrictionList[],
@@ -1439,7 +1445,7 @@ function rulesPicker(
   const lists = document.createElement('select')
   lists.className = 'lobby__rule-select'
   if (focusKey !== undefined) lists.dataset[KEEP_FOCUS] = `${focusKey}-リスト`
-  // **渡されたリストを先に、制限なしを後に並べる。** 選ばれていなければ先頭が選ばれた形になり、
+  // 渡されたリストを先に、制限なしを後に並べる。 選ばれていなければ先頭が選ばれた形になり、
   // サーバも選ばれなかった部屋に渡された先頭のリストを当てる（リストが無ければ制限なし）ので、
   // 出ているものと当たるものがずれない。
   restrictions.forEach((list, index) => {
@@ -2147,7 +2153,7 @@ function lobbyHumanElement(view: LobbyView, handlers: LobbyHandlers): { readonly
   input.addEventListener('input', () => handlers.onName(input.value))
   label.append(input)
   body.append(label, element('p', 'lobby__note', '作成した部屋は対戦部屋一覧に出て、ほかのプレイヤーが参加できます。'), element('span', 'lobby__spacer'))
-  // 押した時の入力欄の中身を読む。**渡された `name` ではない。** あれは描き直した時点の値で、
+  // 押した時の入力欄の中身を読む。渡された `name` ではない。 あれは描き直した時点の値で、
   // その後に打ち込まれた分が入っていない（打っている間は描き直さない）。
   // 押せない手は出さない（ADR-0029）。使うデッキが選べていないか、選んでいるルールに合わなければ、
   // 押して断られる前に理由を出す。
@@ -2768,7 +2774,7 @@ export interface DeckListHandlers {
   readonly onDuplicate: (deck: DeckId) => void
   /** 共有する下書きを開く（ADR-0022・ADR-0028）。 */
   readonly onShare: (deck: DeckId) => void
-  /** 自分のデッキを消す。**最後の 1 つは消せない**が、断るのはサーバである。 */
+  /** 自分のデッキを消す。最後の 1 つは消せないが、断るのはサーバである。 */
   readonly onDelete: (deck: DeckId, name: string) => void
   readonly onClose: () => void
   /** 自分が出した共有を並べるところを開く（ADR-0022）。 */
@@ -2802,7 +2808,7 @@ export interface DeckListView {
 }
 
 /**
- * 絵文字だけのボタン。**何をするかは読み上げと、カーソルを合わせた時の説明に書く。**
+ * 絵文字だけのボタン。何をするかは読み上げと、カーソルを合わせた時の説明に書く。
  *
  * 絵文字は目で見れば分かるが、読み上げでは「鉛筆」「ごみ箱」としか伝わらず、どのデッキに何をするかが
  * 分からない。
@@ -3035,9 +3041,9 @@ export interface DeckEditorHandlers extends Pick<LobbyHandlers, 'onFormat' | 'on
   /** 詳しく出したままにするカードを決める。同じカードをもう一度押したら、やめる。 */
   readonly onPin: (key: string) => void
   readonly onSave: () => void
-  /** デッキの一覧に戻る。**保存していない変更を捨てるかを尋ねるのは呼ぶ側である。** */
+  /** デッキの一覧に戻る。保存していない変更を捨てるかを尋ねるのは呼ぶ側である。 */
   readonly onBack: () => void
-  /** 絞り込みの条件を変えた。**覚えておくのも、絞り込むのも呼ぶ側である**（`pool-filter.ts`）。 */
+  /** 絞り込みの条件を変えた。覚えておくのも、絞り込むのも呼ぶ側である（`pool-filter.ts`）。 */
   readonly onFilter: (filter: PoolFilter) => void
   /** 詳しく絞り込むところを開く・閉じる。 */
   readonly onFilterOpen: (open: boolean) => void
@@ -3106,7 +3112,7 @@ const DECK_DESCRIPTION_LIMIT = 1000
 /**
  * 描き直しても、スクロールした位置を戻す印（`index.ts` の `draw`）。
  *
- * **画面は丸ごと描き直される。** 1 枚入れるたびに、確かめた結果が届くたびに作り直すので、長い
+ * 画面は丸ごと描き直される。 1 枚入れるたびに、確かめた結果が届くたびに作り直すので、長い
  * 一覧が毎回先頭へ戻ると、続けて入れられない。縦（`scrollTop`）だけでなく横（`scrollLeft`）も
  * 戻す（`index.ts` の `scrollPositions`）——1 行表示を狭い幅で横にスクロールした状態から
  * ＋・−を押しても、左端へ戻らないようにするため（ADR-0028）。
@@ -3330,7 +3336,7 @@ function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers):
   search.setAttribute('aria-label', '名前・テキストで探す')
   search.value = filter.text
   search.dataset[KEEP_FOCUS] = '絞り込みの文字'
-  // **変換している間は絞り込まない。** 1 文字ごとに一覧を作り直すと入力欄も作り直され、変換中の
+  // 変換している間は絞り込まない。 1 文字ごとに一覧を作り直すと入力欄も作り直され、変換中の
   // 文字が消える。確定してから絞り込む。
   search.addEventListener('input', (event) => {
     if (!(event instanceof InputEvent && event.isComposing)) change({ text: search.value })
@@ -3448,6 +3454,7 @@ function fillPoolDetail(node: HTMLElement, detail: CardDetail | undefined): void
   for (const row of detail.rows) rows.append(element('dt', '', row.label), element('dd', '', row.value))
   info.append(rows)
 
+  if (detail.face.artwork?.flavor) info.append(flavorElement(detail.face.artwork.flavor, detail.face.colors, detail.face.type))
   if (detail.text.length > 0) {
     const text = element('div', 'detail__text')
     text.append(...cardTextParagraphs(detail.text))
@@ -4005,7 +4012,7 @@ function cardSheetElements(view: DeckEditorView, handlers: DeckEditorHandlers, p
  * デッキを組むところ（#193、ADR-0028）。上に帯、下に 3 列（絞り込みとカードの詳細／カード一覧／
  * デッキ）を並べ、画面の高さに収める。
  *
- * **不備があっても保存できる**（ADR-0021）。確かめた結果は読むためのもので、保存を止めない。
+ * 不備があっても保存できる（ADR-0021）。確かめた結果は読むためのもので、保存を止めない。
  *
  * 打ち込む欄には `KEEP_FOCUS` を付ける。描き直した後に、打っていた人の手を戻すのは `index.ts` である。
  */
@@ -4053,7 +4060,7 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
       : undefined
   if (detailPanel !== undefined) left.append(detailPanel)
 
-  // カーソルを合わせている間は仮に出し、離れたらクリックで決めたものに戻す。**描き直さない**——
+  // カーソルを合わせている間は仮に出し、離れたらクリックで決めたものに戻す。描き直さない——
   // 一覧を丸ごと作り直すほどのことではない。
   const detailBody = detailPanel?.querySelector<HTMLElement>('.detail') ?? null
   const showPinned = (): void => {
@@ -4147,7 +4154,7 @@ export function deckEditorElement(view: DeckEditorView, handlers: DeckEditorHand
   return node
 }
 
-/** 公開の段階を選ぶところ（ADR-0022）。**選べるのは 2 つだけ**なので、`select` ではなくボタンで選ばせる。 */
+/** 公開の段階を選ぶところ（ADR-0022）。選べるのは 2 つだけなので、`select` ではなくボタンで選ばせる。 */
 function visibilityPicker(chosen: ShareVisibility, onVisibility: (visibility: ShareVisibility) => void): HTMLElement {
   const node = element('div', 'share__visibility')
   node.append(element('span', 'share__visibility-label', '公開の段階'))
@@ -4165,16 +4172,16 @@ export interface ShareDialogHandlers {
   readonly onFormat: (format: DuelFormat) => void
   readonly onRestriction: (restriction: RestrictionChoice) => void
   readonly onShare: () => void
-  /** リンクをコピーする。**組み立てるのは呼ぶ側**（`recipe.ts` の `recipeLinkOf`）。 */
+  /** リンクをコピーする。組み立てるのは呼ぶ側（`recipe.ts` の `recipeLinkOf`）。 */
   readonly onCopyLink: (link: string) => void
   readonly onClose: () => void
 }
 
 /**
- * デッキを共有するダイアログ（ADR-0022）。**確認ダイアログと同じく、画面の中に重ねる**——ブラウザの
+ * デッキを共有するダイアログ（ADR-0022）。確認ダイアログと同じく、画面の中に重ねる——ブラウザの
  * 確認ダイアログは使わない（`confirmElement` と同じ理由）。
  *
- * 共有できたら、打ち込むところの代わりにリンクを出す。**リンクは呼ぶ側が組み立てて渡す**——渡す人が
+ * 共有できたら、打ち込むところの代わりにリンクを出す。リンクは呼ぶ側が組み立てて渡す——渡す人が
  * アドレスバーをコピーすると `?participant=` まで付いてきて、席に座れる合言葉を渡すことになる
  * （ADR-0022）ため、ここでは打ち込んだ値をそのまま出さない。
  */
@@ -4230,7 +4237,7 @@ export function shareDialogElement(state: SharingState, restrictions: readonly W
   box.append(description)
 
   box.append(visibilityPicker(draft.visibility, handlers.onVisibility))
-  // **共有する人が形式と禁止／制限リストを選んで規定を確かめる**（ADR-0022）。部屋を作る時と同じ
+  // 共有する人が形式と禁止／制限リストを選んで規定を確かめる（ADR-0022）。部屋を作る時と同じ
   // 選び方（`rulesPicker`）を使う。
   box.append(rulesPicker(restrictions, { format: draft.format, restriction: draft.restriction }, handlers))
 
@@ -4256,7 +4263,7 @@ export interface MyShareHandlers {
 /**
  * 自分が出した共有を並べ、公開の段階を変えたり取り消したりするところ（ADR-0022）。
  *
- * **取り消したものも並べる**——取り消した本人には、取り消したことが見えたままでよい
+ * 取り消したものも並べる——取り消した本人には、取り消したことが見えたままでよい
  * （`Session.myShares`）。
  */
 export function myShareListElement(rows: readonly MyShareRow[], linkOf: (key: ShareKey) => string, handlers: MyShareHandlers): HTMLElement {
@@ -4312,7 +4319,7 @@ export interface RecipeListHandlers {
 /**
  * 「一覧に載せる」共有があるレシピの一覧（ADR-0022）。
  *
- * **絞り込みは作らない**（範囲外、ADR-0022）。並べ方だけ、新着順とコピー数順を切り替えられる。
+ * 絞り込みは作らない（範囲外、ADR-0022）。並べ方だけ、新着順とコピー数順を切り替えられる。
  */
 export function recipeListElement(rows: readonly RecipeSummaryRow[], order: RecipeListOrder, handlers: RecipeListHandlers): HTMLElement {
   const node = element('section', 'decks')
@@ -4348,10 +4355,10 @@ export interface RecipeViewHandlers {
 }
 
 /**
- * `/recipe/<鍵>` の画面（ADR-0022）。**開けるのはログインしている人だけ**——ここに渡す `cards` は
+ * `/recipe/<鍵>` の画面（ADR-0022）。開けるのはログインしている人だけ——ここに渡す `cards` は
  * カードプールを引いた後の形で、それが届くのは席に着ける人だけである。
  *
- * **共有を全部並べる。** 同じ中身に複数の人の読みが並びうる。共有ごとにコピーできる。
+ * 共有を全部並べる。 同じ中身に複数の人の読みが並びうる。共有ごとにコピーできる。
  */
 export function recipeElement(
   cards: readonly RecipeCardRow[],
@@ -4378,7 +4385,7 @@ export function recipeElement(
     const item = element('div', 'decks__row')
     item.append(element('span', 'decks__name', `${share.name}（${share.sharer}）`))
     if (share.description !== '') item.append(element('span', 'share__description-preview', share.description))
-    // **書き込むだけで読み出す経路が無かった**ので、確かめた形式とリストを添える（ADR-0022）。
+    // 書き込むだけで読み出す経路が無かったので、確かめた形式とリストを添える（ADR-0022）。
     item.append(element('span', 'share__rules', share.rulesLabel))
     const copy = button('コピーして自分のデッキにする', () => handlers.onCopy(share.id))
     copy.toggleAttribute('disabled', copying)
@@ -4405,6 +4412,7 @@ function publicShareCardElement(card: PublicShareCard): HTMLElement {
       rows.append(element('dt', 'card__panel-label', row.label), element('dd', 'card__panel-value', row.value))
     }
     detail.append(rows)
+    if (card.detail.artwork?.flavor) detail.append(flavorElement(card.detail.artwork.flavor, card.detail.colors, card.detail.type))
     // 改行ごとに別の能力になる（総合ルール 第2部 第10章 1、第4部 第1章 3）ので、1 行ずつ出す。
     if (card.detail.text.length > 0) {
       const text = element('div', 'card__panel-text')
@@ -4523,10 +4531,10 @@ export function publicShareNotFoundElement(): HTMLElement {
 }
 
 /**
- * 押す前に尋ねるところ（#193）。**ブラウザの確認ダイアログは使わない。**
+ * 押す前に尋ねるところ（#193）。ブラウザの確認ダイアログは使わない。
  *
  * 画面の上に重ね、答えるまで下を押せなくする。尋ねている間に描き直されても、呼ぶ側が状態として
- * 持っているので消えない（`deck-builder.ts` の `BuilderConfirm`）。**初めにやめる側に手を置く**——
+ * 持っているので消えない（`deck-builder.ts` の `BuilderConfirm`）。初めにやめる側に手を置く——
  * 戻せないことを尋ねているので、Enter を押しただけで進まないようにする。Escape でもやめられる。
  */
 export function confirmElement(view: ConfirmView, onConfirm: () => void, onCancel: () => void): HTMLElement {
@@ -4562,16 +4570,16 @@ export function confirmElement(view: ConfirmView, onConfirm: () => void, onCance
 
 /** 名前を決めるところで押せるもの（ADR-0020）。 */
 export interface NamingHandlers {
-  /** 打ち込んだものが変わった。**画面は描き直されるので、覚えておくのは呼ぶ側である。** */
+  /** 打ち込んだものが変わった。画面は描き直されるので、覚えておくのは呼ぶ側である。 */
   readonly onDraft: (value: string) => void
-  /** これで決める。**通るかどうかを決めるのはサーバである**（`server` の `name.ts`）。 */
+  /** これで決める。通るかどうかを決めるのはサーバである（`server` の `name.ts`）。 */
   readonly onDecide: (name: string) => void
 }
 
 /**
- * 表示名を決めるところ（ADR-0020）。**決まるまで、ほかへは進めない。**
+ * 表示名を決めるところ（ADR-0020）。決まるまで、ほかへは進めない。
  *
- * ここに決まりの判断は無い。**上限を入力欄に持たせているのは打ち込みかけを切るためだけ**で、
+ * ここに決まりの判断は無い。上限を入力欄に持たせているのは打ち込みかけを切るためだけで、
  * 断るのはサーバである（ADR-0010）。通らなかった理由も、こちらで作らずに届いたものを出す。
  */
 export function nameElement(
@@ -4610,7 +4618,7 @@ export function nameElement(
     syncCount()
     handlers.onDraft(input.value)
   })
-  // 打ち終わってそのまま押せるようにする。**押す口も残す**——鍵盤が出ている画面では、
+  // 打ち終わってそのまま押せるようにする。押す口も残す——鍵盤が出ている画面では、
   // Enter が送るものだと読み取れないことがある。
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') handlers.onDecide(input.value)
@@ -4883,7 +4891,7 @@ export function areaSheetElement(
  * 演出が出ている間、行える手のかわりに出すもの（#115）。
  *
  * 待ち行列は実際の盤面より遅れているので、出ている演出のフェイズと、行える手が指すフェイズが
- * 食い違う。手を出さないことで、**画面が実際と違うことを言っている**状態を作らない。
+ * 食い違う。手を出さないことで、画面が実際と違うことを言っている状態を作らない。
  */
 export function waitingForOverlayElement(aside?: HTMLElement): HTMLElement {
   const node = element('section', 'actions')
@@ -4933,7 +4941,7 @@ export interface ChoiceHandlers {
  * 選ぶ候補を並べる。答えるのは番号である（ADR-0008）。
  *
  * クリックで操作している間、盤面から押せる候補はここに出ない（#150、`input-model.ts` の
- * `choiceView`）。**どれを出すかはすでに決まっている**ので、ここでは残ったものを並べるだけで
+ * `choiceView`）。どれを出すかはすでに決まっているので、ここでは残ったものを並べるだけで
  * ある（#14）。
  */
 export function choiceElement(view: ChoiceView, handlers: ChoiceHandlers, aside?: HTMLElement): HTMLElement {
@@ -5047,7 +5055,7 @@ function resultElement(result: ResultView): HTMLElement {
 /**
  * 演出を重ねる層（#96・#104）。
  *
- * 盤面の上に重ねるだけで、**押せる場所は塞がない**（`style.css` の `.overlay-layer` の
+ * 盤面の上に重ねるだけで、押せる場所は塞がない（`style.css` の `.overlay-layer` の
  * `pointer-events: none`）。いつ消すかはここでは決めない。溜めない出し方の管理は
  * `index.ts` のタイマーの仕事である——フェイズ・ターンの切り替わりも効果解決のカットインも、
  * 同じ待ち行列を通って出る（`view-model.ts` の `Overlay`）。
@@ -5206,9 +5214,14 @@ function detailPanelElement(): HTMLElement {
   const node = element('section', 'panel detail')
   node.setAttribute('aria-label', 'カードの詳細')
   node.setAttribute('aria-live', 'polite')
+  node.tabIndex = -1
   node.append(detailGuideElement())
 
   return node
+}
+
+function flavorElement(flavor: string, colors: readonly Color[], type: WireCardFace['type']): HTMLElement {
+  return element('p', `card-art-caption card--色-${primaryColorOf(colors)}${type === 'ユニット' ? ' card-art-caption--unit' : ''}`, '【' + flavor + '】')
 }
 
 /**
@@ -5240,19 +5253,17 @@ function pendingAbilitiesElement(pending: readonly PendingAbilityView[]): HTMLEl
 function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   const noted = card.operationalNote.length > 0
   const waiting = card.pending.length > 0
-  // 右の列は高さが固定なので、注記か誘発待ちを持つカードは面の高さを詰めて場所を空ける（ADR-0027）。
   const big = element(
     'div',
     `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大${noted ? ' card--注記つき' : ''}${waiting ? ' card--誘発待ちつき' : ''}`,
   )
   big.append(faceElement(card, { big: true }))
 
-  return [
-    big,
-    ...(noted ? [operationalNoteElement(card.operationalNote)] : []),
-    ...(waiting ? [pendingAbilitiesElement(card.pending)] : []),
-    element('p', 'detail__note', detailNoteOf(card)),
-  ]
+  const annotations = element('div', 'detail__annotations')
+  if (noted) annotations.append(operationalNoteElement(card.operationalNote))
+  if (waiting) annotations.append(pendingAbilitiesElement(card.pending))
+
+  return [big, annotations, element('p', 'detail__note', detailNoteOf(card))]
 }
 
 /**
@@ -5281,6 +5292,7 @@ function phoneDetailParts(card: CardView & { readonly kind: '表' }): HTMLElemen
   const rows = element('dl', 'detail__rows')
   for (const row of cardInfoRowsOf(card)) rows.append(element('dt', '', row.label), element('dd', '', row.value))
   info.append(rows)
+  if (card.artwork?.flavor) info.append(flavorElement(card.artwork.flavor, card.colors, card.type))
   if (card.text.length > 0) {
     const text = element('div', 'detail__text')
     text.append(...cardTextParagraphs(card.text))
@@ -5299,7 +5311,14 @@ function fillDetailPanel(node: HTMLElement, card: (CardView & { readonly kind: '
     return
   }
 
-  node.replaceChildren(...detailParts(card))
+  node.replaceChildren(...detailParts(card), element('p', 'detail__read-guide', 'Dキーで詳細へ・Escキーでカードへ'))
+  for (const [selector, label] of [['.card__lines', 'カードの本文'], ['.detail__annotations', '注記と誘発待ち']] as const) {
+    const region = node.querySelector<HTMLElement>(selector)
+    if (region === null || region.childElementCount === 0) continue
+    region.tabIndex = 0
+    region.setAttribute('role', 'region')
+    region.setAttribute('aria-label', label)
+  }
 }
 
 /**
@@ -5327,7 +5346,7 @@ export function sheetDetailElement(card: CardView | undefined): HTMLElement | un
 /**
  * 乗せた・フォーカスしたカードをカードの詳細に出す配線（ADR-0027）。選んでいる間は、
  * 選んでいるカードが既定になる。別のカードに乗せる（フォーカスする）とそれに切り替わり、
- * 外れると既定に戻る。
+ * 外れた後も保持し、詳細へ移動して長文を読めるようにする。
  *
  * 組み終わった DOM 全体から、識別子（`data-card-id`）を頼りに拾う。面を組み立てる関数
  * （`cardElement`）ごとに配線すると、盤面・手札・一覧のどこに出てきても同じ動きにするための
@@ -5347,22 +5366,39 @@ function wireCardDetailHover(
     elementsById.set(id, [...(elementsById.get(id) ?? []), node])
   }
 
+  let shownId: CardId | undefined
+  let source: HTMLElement | undefined
   const show = (id: CardId | undefined): void => {
+    if (id === shownId && detail.querySelector('.card--拡大') !== null) return
+    shownId = id
     for (const marked of root.querySelectorAll('.card--詳細中')) marked.classList.remove('card--詳細中')
     if (id !== undefined) for (const node of elementsById.get(id) ?? []) node.classList.add('card--詳細中')
     const card = id === undefined ? undefined : cardsById.get(id)
     fillDetailPanel(detail, card?.kind === '表' ? card : undefined)
   }
-  const restore = (): void => show(defaultId)
-  restore()
+  show(defaultId)
+  detail.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || source === undefined) return
+    event.preventDefault()
+    event.stopPropagation()
+    source.focus({ preventScroll: true })
+  })
 
   for (const node of nodes) {
     const id = node.dataset.cardId
     if (id === undefined) continue
-    node.addEventListener('mouseenter', () => show(id))
-    node.addEventListener('focus', () => show(id))
-    node.addEventListener('mouseleave', restore)
-    node.addEventListener('blur', restore)
+    const reveal = (): void => { source = node; show(id) }
+    node.addEventListener('mouseenter', reveal)
+    node.addEventListener('focus', reveal)
+    node.setAttribute('aria-keyshortcuts', 'd')
+    node.addEventListener('keydown', (event) => {
+      if (event.key.toLowerCase() !== 'd' || event.altKey || event.ctrlKey || event.metaKey) return
+      event.preventDefault()
+      event.stopPropagation()
+      reveal()
+      const firstRegion = detail.querySelector<HTMLElement>('.card__lines[tabindex], .detail__annotations[tabindex]') ?? detail
+      firstRegion.focus({ preventScroll: true })
+    })
   }
 }
 

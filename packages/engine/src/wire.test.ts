@@ -190,7 +190,7 @@ describe('通信に載せる形', () => {
    * 能力は載らない（ADR-0010）。
    *
    * クライアントはルールの判断を持たないので、能力が何をするかは要らない。効果は関数なので
-   * `JSON.stringify` で黙って落ちる。**落ちるからよい**のではなく、**そもそも写していない**
+   * `JSON.stringify` で黙って落ちる。落ちるからよいのではなく、そもそも写していない
    * ことをここで見る（`wire.ts` の `faceOf`）。
    */
   it('能力は載らない', () => {
@@ -376,7 +376,7 @@ describe('通信内容に現れないもの', () => {
  * #139。ログが名指ししているカードは、盤面から居なくなっていても名前を引けるように載る
  * （`perspective.ts` の `DuelPerspective.namedInLog`）。
  *
- * **ここで新しく見せるものは無い。** 載るのは射影を通ったログに名指しが残っている識別子
+ * ここで新しく見せるものは無い。 載るのは射影を通ったログに名指しが残っている識別子
  * だけなので、一度も見えていないカードは今までどおり現れない。
  */
 describe('ログが名指ししているカード', () => {
@@ -420,5 +420,20 @@ describe('ログが名指ししているカード', () => {
     const stillOnSquare = record(filledState(), played('先攻', '先攻-スクエア'))
 
     expect(toWire(perspectiveOf(stillOnSquare, '先攻')).namedInLog).toEqual([])
+  })
+})
+
+
+describe('表側だけに表示情報を追加する', () => {
+  it('隠されたカードでは表示情報の供給元を呼び出さない', () => {
+    const described: Card[] = []
+    const wire = toWire(perspectiveOf(filledState(), '先攻'), (card) => {
+      described.push(card)
+      return { key: card === CARDS.隠されるカード ? 'secret-key' : 'visible-key', artwork: { url: '/card-art/visible-key', flavor: '架空のフレーバー' } }
+    })
+    expect(described).not.toContain(CARDS.隠されるカード)
+    expect(JSON.stringify(wire)).not.toContain('secret-key')
+    expect(wire.zones.後攻.手札.every(card => card.kind === '見えていない')).toBe(true)
+    expect(wire.squares.flat().every(card => card.card.key === 'visible-key')).toBe(true)
   })
 })

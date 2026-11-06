@@ -23,11 +23,11 @@ export const DUEL_ROWS = 6
 export const BOARD_ROW = 3
 export const HAND_ROW = 4
 
-/** 自分の手札の段の最低の高さ（rem）。`style.css` の `minmax(3.2rem, 1fr)`。手札は上半分だけを出す。 */
-export const HAND_MIN_REM = 3.2
+/** 名前帯と数値が隠れないよう、hand-layout.css と同じ高さを先に確保する。 */
+export const HAND_MIN_REM = 9
 
 /** 段の高さが測れないときに、盤面のほかの段と余白（操作の帯の余白を除く）に残す高さ（rem）。 */
-export const FALLBACK_RESERVED_REM = 14
+export const FALLBACK_RESERVED_REM = 19.8
 
 /** 操作の帯の高さが測れず、前に測った値も無いときに、帯の分として空けておく高さ（rem）。 */
 export const FALLBACK_CONTROLS_REM = 4.8

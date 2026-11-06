@@ -1,0 +1,50 @@
+.card--拡大 .card-art-textless .card__bottom {
+  height: auto;
+}
+
+.card--拡大 .card-art-textless .card__bottom > .card__icons {
+  position: absolute;
+  right: .15rem;
+  bottom: calc(100% + .2rem);
+}
+
+.card--拡大 .card-art-textless .card__bottom > .card__icons--trigger {
+  left: .15rem;
+  right: auto;
+}
+
+.card--拡大 .card-art-textless .card__bottom > .card__icons .move-icon,
+.card--拡大 .card-art-textless .card__bottom > .card__icons .trigger-icon {
+  width: calc(var(--card-width) * .25);
+  height: calc(var(--card-width) * .25);
+}
+
+@media (min-width: 769px) {
+  .duel .duel__right .detail {
+    height: calc(14.5rem * 1.5 + 8.4rem);
+    justify-content: flex-start;
+  }
+
+  .duel .detail .card--拡大 {
+    flex: none;
+    width: 14.5rem;
+    height: 21.75rem;
+    aspect-ratio: 2 / 3;
+  }
+
+  .duel .detail .detail__annotations {
+    flex: 1;
+    min-height: 0;
+    align-self: stretch;
+    overflow-y: auto;
+  }
+
+  .duel .detail .detail__annotations > .detail__operational,
+  .duel .detail .detail__annotations > .detail__pending {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+.duel .detail__read-guide { margin: 0; flex: none; font-size: .65rem; color: var(--ink-dim); }
+.duel .detail [role="region"]:focus-visible { outline: 2px solid var(--gold-deep); outline-offset: 1px; }

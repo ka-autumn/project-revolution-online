@@ -367,6 +367,9 @@ body {
 
 .controls__list button { text-align: left; }
 
+#controls .controls__list[hidden],
+.mock-deck > [hidden] { display: none; }
+
 .controls__leave {
   padding: 0.6rem 0.9rem;
   border-top: 1px dashed rgb(125 104 72 / 0.3);
@@ -408,8 +411,7 @@ body {
 /* ---------- 真ん中の列：盤面 ---------- */
 
 /*
- * 進行中の手順の帯は、出ていないときも高さを取っておく。出た瞬間に盤面が上下に飛ばないように
- * するためと、盤面を常に縦いっぱいに広げるため。
+ * PCの高さ配分は hand-layout.css で指定する。スマートフォンでは手順の表示で操作領域が移動しないよう、高さを残す。
  */
 .duel__center {
   display: grid;
@@ -1333,16 +1335,7 @@ body {
   font-weight: 800;
 }
 
-/*
- * 右の列は高さが固定なので、注記か誘発待ちの枠を持つカードだけ面の高さを詰めて場所を空ける（幅は変更しない）。
- * 空けた高さは、見出しと 3 行の分で、それを超える分は枠の中で送る。
- * スマートフォンのシートと一覧の上の段は高さが固定でないので、ここには含めない。
- */
-@media (min-width: 769px) {
-  .detail .card--注記つき,
-  .detail .card--誘発待ちつき { aspect-ratio: auto; height: calc(14.5rem * 1.5 - 5.2rem); }
-  .detail .detail__operational,
-  .detail .detail__pending { max-height: 4.8rem; overflow-y: auto; }
+
 }
 
 .card--拡大 {
@@ -2263,6 +2256,9 @@ body {
   .mock-switch:hover, .mock-switch:focus-within { max-height: 60vh; overflow-y: auto; }
 }
 </style>
+<link rel="stylesheet" href="../shared/card-art.css">
+<link rel="stylesheet" href="../shared/detail-layout.css">
+<link rel="stylesheet" href="../shared/hand-layout.css">
 </head>
 <body>
 
@@ -3037,9 +3033,13 @@ pickers.append(picker('見せる一覧・該当なし', '山札（32）からカ
 
 // ---- カードの詳細 ----
 // 何も無ければ案内だけ。カードを選んでいる間はそのカードが既定。乗せたカードに切り替わり、
-// 外れると既定に戻る。
+// 外れた後も保持し、詳細へ移動して長文を読めるようにする。
 const detail = document.getElementById('detail')
+detail.tabIndex = -1
+let detailSource
 function renderDetail(node) {
+  if (node === detailSource && detail.querySelector('.card--拡大')) return
+  detailSource = node
   if (!node) {
     detail.innerHTML = '<p class="detail__none">カードにマウスを乗せるか、フォーカスすると、ここに詳細が出ます。</p>'
     return
@@ -3047,6 +3047,16 @@ function renderDetail(node) {
   detail.replaceChildren(...(matchMedia('(max-width: 768px)').matches ? phoneDetailParts(node) : detailParts(node)))
   for (const n of document.querySelectorAll('.card--詳細中')) n.classList.remove('card--詳細中')
   node.classList.add('card--詳細中')
+  if (!matchMedia('(max-width: 768px)').matches) {
+    detail.append(Object.assign(document.createElement('p'), { className: 'detail__read-guide', textContent: 'Dキーで詳細へ・Escキーでカードへ' }))
+    for (const [selector, label] of [['.card__lines', 'カードの本文'], ['.detail__annotations', '注記と誘発待ち']]) {
+      const region = detail.querySelector(selector)
+      if (!region || !region.childElementCount) continue
+      region.tabIndex = 0
+      region.setAttribute('role', 'region')
+      region.setAttribute('aria-label', label)
+    }
+  }
 }
 // 拡大した面と、その下の補足の 1 行
 function detailParts(node) {
@@ -3061,10 +3071,11 @@ function detailParts(node) {
   if (node.dataset.bp && Number(node.dataset.bp) !== c.bp) notes.push(`BP ${c.bp}→${node.dataset.bp}`)
   if (node.dataset.sp && Number(node.dataset.sp) !== c.sp) notes.push(`SP ${c.sp}→${node.dataset.sp}`)
   if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
-  const parts = [big]
-  if (c.note) parts.push(operationalNote(c.note))
-  if (pending.length) parts.push(pendingBox(pending, name))
-  return [...parts, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
+  const annotations = document.createElement('div')
+  annotations.className = 'detail__annotations'
+  if (c.note) annotations.append(operationalNote(c.note))
+  if (pending.length) annotations.append(pendingBox(pending, name))
+  return [big, annotations, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
 }
 // スマートフォンのカードの詳細：左にカードの面、右に文字で情報を全部書く（デッキを組む画面の詳細と同じ並べ方）。
 // 面は、カードの一覧と同じ小さな面にする（拡大しない。拡大した面は小さい枠では内容が収まらず潰れる）。内容は右の欄で読む
@@ -3134,14 +3145,22 @@ function selected() {
   return document.querySelector('.card--選択中[data-name]')
 }
 function restoreDetail() {
+  detailSource = undefined
   for (const n of document.querySelectorAll('.card--詳細中')) n.classList.remove('card--詳細中')
   renderDetail(selected())
 }
 for (const node of document.querySelectorAll('.card[data-name]')) {
   node.addEventListener('mouseenter', () => { if (!phone.matches) renderDetail(node) })
   node.addEventListener('focus', () => { if (!phone.matches) renderDetail(node) })
-  node.addEventListener('mouseleave', () => { if (!phone.matches) restoreDetail() })
-  node.addEventListener('blur', () => { if (!phone.matches) restoreDetail() })
+  node.setAttribute('aria-keyshortcuts', 'd')
+  node.addEventListener('keydown', (event) => {
+    if (phone.matches || event.key.toLowerCase() !== 'd' || event.altKey || event.ctrlKey || event.metaKey) return
+    event.preventDefault()
+    event.stopPropagation()
+    renderDetail(node)
+    const firstRegion = detail.querySelector('.card__lines[tabindex], .detail__annotations[tabindex]') ?? detail
+    firstRegion.focus({ preventScroll: true })
+  })
   node.addEventListener('click', () => {
     if (!phone.matches) return
     // 光っているエリアのスクエアの中のユニットは、押すとそのスクエアのシートになる（盤面のクリックで開く）
@@ -3151,6 +3170,13 @@ for (const node of document.querySelectorAll('.card[data-name]')) {
     else openCardSheet(node)
   })
 }
+
+detail.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !detailSource) return
+  event.preventDefault()
+  event.stopPropagation()
+  detailSource.focus({ preventScroll: true })
+})
 
 // ---- スマホ：シート ----
 // カードを 1 回押すと、詳細と、そのカードで行える手のボタンをシートに出す。手のボタンを押すと、
@@ -3536,7 +3562,7 @@ function fitBoard() {
   const rows = style.gridTemplateRows.split(' ').map(parseFloat)
   const natural = rows.reduce((a, b) => a + b, 0) + parseFloat(style.rowGap) * (rows.length - 1)
   const byWidth = (innerWidth - 16) / (47.3 * rem)
-  const byHeight = (innerHeight - 20.5 * rem) / natural
+  const byHeight = (innerHeight - 26.3 * rem) / natural
   board.style.setProperty('--board-zoom', Math.min(1, byWidth, byHeight).toFixed(3))
   placeDrawers()
 }
@@ -3604,7 +3630,14 @@ function apply() {
     if (awaiting) b.setAttribute('aria-disabled', 'true')
     else b.removeAttribute('aria-disabled')
   }
-  const picking = duel.classList.contains('show-picking') && !awaiting
+  const clickMode = duel.classList.contains('show-picking')
+  document.querySelector('#controls .controls__list').hidden = clickMode
+  for (const button of document.querySelectorAll('#controls .mode button')) {
+    const selected = (button.textContent === 'クリック') === clickMode
+    button.classList.toggle('mode--選択中', selected)
+    button.setAttribute('aria-pressed', String(selected))
+  }
+  const picking = clickMode && !awaiting
   for (const c of document.querySelectorAll('.mock-pickable')) c.classList.toggle('card--押せる', picking)
   for (const s of document.querySelectorAll('.mock-target')) s.classList.toggle('square--置き先', picking)
   document.querySelector('.hand--自分 .card')?.classList.toggle('card--選択中', picking)
@@ -3751,5 +3784,6 @@ if (new URLSearchParams(location.search).has('trap-occasions')) {
   <p>画面を縦向きにしてください</p>
   <p class="rotate-cover__sub">スマートフォンでは縦向きで遊べます</p>
 </div>
+<script src="../shared/card-art-mock.js"></script>
 </body>
 </html>

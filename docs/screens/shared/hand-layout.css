@@ -1,0 +1,119 @@
+@media (min-width: 769px) {
+  .duel .duel__center {
+    grid-template-rows: 2rem 0 minmax(0, 1fr) 6rem;
+    row-gap: .2rem;
+  }
+
+  .duel .duel__center > .hand--自分 {
+    margin-top: -3rem;
+    padding-top: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .duel .duel__center > .hand--自分 .hand__label {
+    top: auto;
+    bottom: -.55rem;
+  }
+
+  .duel .duel__center > .hand--自分 .card {
+    --card-width: 4.6rem;
+    pointer-events: auto;
+    margin-inline: -.3rem;
+  }
+
+  .duel .duel__center > .hand--自分:has(> .card:nth-last-child(n+8)) .card {
+    margin-inline: -.9rem;
+  }
+
+  .duel .duel__center > .hand--自分 .card:not(:hover):not(:focus-within):not(.card--選択中) {
+    transform: rotate(clamp(-10deg, var(--r, 0deg), 10deg)) translateY(min(var(--y, 0rem), .75rem));
+  }
+}
+
+@media (min-width: 769px) and (max-height: 799px) {
+  .duel .area-label {
+    font-size: .7rem;
+    line-height: 1;
+    letter-spacing: .05em;
+  }
+}
+
+@media (min-width: 769px) and (min-height: 800px) {
+  .duel .duel__center {
+    grid-template-rows: 2rem 0 minmax(0, 1fr) 9rem;
+  }
+
+  .duel .duel__center > .hand--自分 {
+    padding-top: .75rem;
+  }
+
+  .duel .duel__center > .hand--自分 .card {
+    --card-width: 6rem;
+  }
+}
+
+@media (max-width: 768px) {
+  body .duel {
+    grid-template-rows: auto 2rem 1.5rem auto minmax(9rem, 1fr) auto;
+  }
+}
+
+@media (min-width: 769px) {
+  .duel .duel__center:has(> .procedure--出ている),
+  .duel.show-battle .duel__center {
+    grid-template-rows: 2rem 1.9rem minmax(0, 1fr) 6rem;
+  }
+}
+
+@media (min-width: 769px) and (min-height: 800px) {
+  .duel .duel__center:has(> .procedure--出ている),
+  .duel.show-battle .duel__center {
+    grid-template-rows: 2rem 1.9rem minmax(0, 1fr) 9rem;
+  }
+}
+
+.duel .zone--山札 {
+  padding-block: .125rem;
+}
+
+.duel .zone--山札 .zone__title {
+  margin-bottom: 0;
+  line-height: 1;
+}
+
+.duel .zone--山札 .zone__cards {
+  container-type: size;
+}
+
+.duel .zone--山札 .pile {
+  --pile-extra: .25rem;
+}
+
+.duel .zone--山札 .pile:has(> .pile__plan:not([hidden])) {
+  --pile-extra: 1.75rem;
+  padding-block: .45rem .8rem;
+}
+
+.duel .zone--山札 .pile > .card,
+.duel .zone--山札 .pile > .zone__empty {
+  --card-width: clamp(0px, calc((100cqh - var(--pile-extra)) * 2 / 3), 3.2rem);
+  width: var(--card-width);
+}
+
+.duel .zone--山札 .pile__plan {
+  top: 0;
+}
+
+.duel .zone--山札 .pile__keywords {
+  bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .duel .duel__center > .hand--自分 .hand__label,
+  .duel > .hand--自分 .hand__label {
+    align-self: flex-end;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}
