@@ -1,0 +1,59 @@
+@media (min-width: 769px) {
+  .duel .duel__center {
+    grid-template-rows: 3.2rem 1.9rem minmax(0, 1fr) 9rem;
+  }
+
+  .duel .duel__center > .hand--自分 {
+    padding-top: .75rem;
+  }
+
+  .duel .duel__center > .hand--自分 .hand__label {
+    top: -.25rem;
+    bottom: auto;
+  }
+
+  .duel .duel__center > .hand--自分 .card {
+    --card-width: 4.6rem;
+    margin-inline: -.3rem;
+  }
+
+  .duel .duel__center > .hand--自分:has(> .card:nth-last-child(n+8)) .card {
+    margin-inline: -.9rem;
+  }
+
+  .duel .duel__center > .hand--自分 .card:not(:hover):not(:focus-within):not(.card--選択中) {
+    transform: rotate(clamp(-10deg, var(--r, 0deg), 10deg)) translateY(min(var(--y, 0rem), .75rem));
+  }
+}
+
+@media (min-width: 769px) and (max-height: 799px) {
+  .duel .area-label {
+    font-size: .7rem;
+    line-height: 1;
+    letter-spacing: .05em;
+  }
+}
+
+@media (min-width: 769px) and (min-height: 800px) {
+  .duel .duel__center {
+    grid-template-rows: 3.2rem 1.9rem minmax(0, 1fr) 12rem;
+  }
+
+  .duel .duel__center > .hand--自分 {
+    padding-top: 1.5rem;
+  }
+
+  .duel .duel__center > .hand--自分 .hand__label {
+    top: 0;
+  }
+
+  .duel .duel__center > .hand--自分 .card {
+    --card-width: 6rem;
+  }
+}
+
+@media (max-width: 768px) {
+  body .duel {
+    grid-template-rows: auto 2rem 1.5rem auto minmax(9rem, 1fr) auto;
+  }
+}

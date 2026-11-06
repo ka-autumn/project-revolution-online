@@ -1,4 +1,5 @@
 @import '../../../docs/screens/shared/card-art.css';
+@import '../../../docs/screens/shared/hand-layout.css';
 /*
  * 対戦画面の見た目。
  *
@@ -2621,7 +2622,7 @@ body {
   grid-row: 4;
 }
 
-/* 手札：画面の端から上半分（レベル・種別・名前）だけ出ている扇。乗せると全体が飛び出す */
+/* 自分の手札の下部を隠さない配置は、共通の hand-layout.css で指定する。 */
 .duel .hand {
   position: relative;
   display: flex;

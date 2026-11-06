@@ -2264,6 +2264,7 @@ body {
 }
 </style>
 <link rel="stylesheet" href="../shared/card-art.css">
+<link rel="stylesheet" href="../shared/hand-layout.css">
 </head>
 <body>
 
@@ -3537,7 +3538,7 @@ function fitBoard() {
   const rows = style.gridTemplateRows.split(' ').map(parseFloat)
   const natural = rows.reduce((a, b) => a + b, 0) + parseFloat(style.rowGap) * (rows.length - 1)
   const byWidth = (innerWidth - 16) / (47.3 * rem)
-  const byHeight = (innerHeight - 20.5 * rem) / natural
+  const byHeight = (innerHeight - 26.3 * rem) / natural
   board.style.setProperty('--board-zoom', Math.min(1, byWidth, byHeight).toFixed(3))
   placeDrawers()
 }
