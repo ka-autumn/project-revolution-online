@@ -37,3 +37,4 @@
 - サーバ: `CardSupply.artwork`、`presentationOfPool`、`handleArtwork`。画像の供給ディレクトリは起動時の作業ディレクトリを基準に解決し、登録済みPNGだけを `/card-art/<カードキー>` で配信する。
 - 表示: `applyCardArtwork`。縮小は同時4件、縮小キャッシュは64件かつ32MiB以下。失敗した画像は128件まで記録して再描画による連続要求を抑える。
 - 見た目の正は `docs/screens/shared/spec.md`。モックは架空カードと共通CSSを使用する。
+- 配信形式の追加: `artworkContentType` が登録されたファイル名を検証し、PNG と WebP をそれぞれの Content-Type で配信する。
