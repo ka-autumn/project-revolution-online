@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createServer } from 'node:http'
+import { createHash } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -28,7 +29,7 @@ describe('カードキーに対応する表示情報', () => {
 
   it('素材未登録の供給元を使用でき、不正な画像パスを起動前に拒否する', () => {
     expect(readArtwork(undefined)).toBeUndefined()
-    for (const image of ['../secret.png', 'folder/image.png', 'C:\\secret.png']) expect(typeof readArtwork({ directory: '.', cards: { sample: { image } } })).toBe('string')
+    for (const image of ['../secret.png', 'folder/image.png', 'C:\\secret.png', '../secret.webp', 'image.svg']) expect(typeof readArtwork({ directory: '.', cards: { sample: { image } } })).toBe('string')
     expect(typeof readArtwork({ directory: '.', cards: { sample: { flavor: 1 } } })).toBe('string')
     expect(readSupply({ pool: { sample: defineUnit({ name: '架空', level: 0, bp: 100, sp: 100 }) }, presets: [{ id: 'one', name: '架空', cards: ['sample'] }], artwork: { directory: '.', cards: { sample: { image: '../secret.png' } } } }).kind).toBe('断る')
   })
@@ -38,7 +39,14 @@ describe('カードキーに対応する表示情報', () => {
     cleanups.push(() => rm(directory, { recursive: true, force: true }))
     await writeFile(join(directory, 'sample.png'), Buffer.from([137,80,78,71]))
     await writeFile(join(directory, 'unlisted.png'), 'not supplied')
-    const artwork = { directory, cards: { sample: { image: 'sample.png' }, missing: { image: 'missing.png' } } }
+    const webpBytes = Buffer.from('UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEAAUAmJaQAA3AA/v89WAAAAA==', 'base64')
+    const hash = createHash('sha256').update(webpBytes).digest('hex')
+    const filename = 'compressed.' + hash + '.webp'
+    await writeFile(join(directory, filename), webpBytes)
+    const artwork = { directory, cards: { sample: { image: 'sample.png' }, compressed: { image: filename }, missing: { image: 'missing.' + hash + '.webp' } } }
+    const card = defineUnit({ name: '架空のカード', level: 1, bp: 100, sp: 100 })
+    const compressedPath = presentationOfPool({ compressed: card }, artwork)(card).artwork?.url
+    expect(compressedPath).toBe('/card-art/compressed/' + hash)
     const server = createServer((request, response) => { if (!handleArtwork(request, response, artwork)) { response.writeHead(404); response.end() } })
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
     cleanups.push(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())))
@@ -46,10 +54,35 @@ describe('カードキーに対応する表示情報', () => {
     const base = 'http://127.0.0.1:' + address.port
     const response = await fetch(base + '/card-art/sample')
     expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('image/png')
     expect(response.headers.get('access-control-allow-origin')).toBe('*')
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([137,80,78,71]))
-    const head = await fetch(base + '/card-art/sample', { method: 'HEAD' }); expect(head.status).toBe(200); expect(await head.text()).toBe('')
+    expect(response.headers.get('cache-control')).toBe('no-cache')
+    const compressed = await fetch(base + compressedPath)
+    expect(compressed.status).toBe(200)
+    expect(compressed.headers.get('content-type')).toBe('image/webp')
+    expect(compressed.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+    expect(Buffer.from(await compressed.arrayBuffer())).toEqual(webpBytes)
+
+    const head = await fetch(base + compressedPath, { method: 'HEAD' })
+    expect(head.status).toBe(200)
+    expect(head.headers.get('content-type')).toBe('image/webp')
+    expect(head.headers.get('content-length')).toBe(String(webpBytes.length))
+    expect(head.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+    expect(await head.text()).toBe('')
     for (const key of ['missing','unknown','unlisted.png','%ZZ','..%2Fsample.png']) expect((await fetch(base + '/card-art/' + key)).status).toBe(404)
+    const unversioned = await fetch(base + '/card-art/compressed')
+    expect(unversioned.status).toBe(200)
+    expect(unversioned.headers.get('cache-control')).toBe('no-cache')
+    for (const path of ['/card-art/compressed/' + '0'.repeat(64), compressedPath + '/' + hash, '/card-art/missing/' + hash, '/card-art/sample/' + hash]) {
+      const rejected = await fetch(base + path)
+      expect(rejected.status).toBe(404)
+      expect(rejected.headers.get('cache-control')).toBe('no-store')
+    }
+    await writeFile(join(directory, filename), 'changed under the same filename')
+    const changed = await fetch(base + compressedPath)
+    expect(changed.status).toBe(404)
+    expect(changed.headers.get('cache-control')).toBe('no-store')
     expect((await fetch(base + '/card-art/sample')).status).toBe(200)
   })
 })
