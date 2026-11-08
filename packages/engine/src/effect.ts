@@ -368,11 +368,15 @@ export type Instruction =
       readonly kind: 'スクエアへ置く'
       readonly card: CardInZone | UnitOnSquare
       readonly square: Square
-      /**
-       * 置く向き。`'変えない'`は、置く瞬間にスクエアにいるユニットの向きをそのまま使う。
-       * スクエアにいるユニットを置き直す時だけ指定できる（`placeOnSquareKeepingOrientation`）。
-       */
-      readonly orientation: Orientation | '変えない'
+      readonly orientation: Orientation
+    }
+  | {
+      // 置く瞬間にスクエアにいるユニットの向きをそのまま使う（`placeOnSquareKeepingOrientation`）。
+      // スクエアにいるユニットを置き直す時だけ指定できるので、`card` はユニットに限る。
+      readonly kind: 'スクエアへ置く'
+      readonly card: UnitOnSquare
+      readonly square: Square
+      readonly orientation: '変えない'
     }
   | { readonly kind: '対象を持たない誘発型能力を作る'; readonly ability: CreatedUntargetedAbility }
   | {
