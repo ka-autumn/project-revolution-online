@@ -806,10 +806,13 @@ function scoreChoice(view: ChoiceView): { readonly scores: readonly number[]; re
       return byCandidate((candidate) => -cardBasePoints(candidateCard(perspective, candidate) ?? DUMMY))
     case '山札から選ぶ':
       return byCandidate((candidate) => cardBasePoints(candidateCard(perspective, candidate) ?? DUMMY))
-    // 「してもよい」（ADR-0064）。候補は「確認」の 1 つで、いまはいつも「はい」と答える。効果を空回しして
+    // 「してもよい」（ADR-0064）。候補は「確認」の 1 つで、基本は「はい」と答える。効果を空回しして
     // 「はい」と「いいえ」を比べるのは、手の選び方の改善（#366）で扱う。
+    // 同じターンのうちに、同じ動きを同じカードへ「はい」と答えていれば、「いいえ」と答える。EB1.0 の 069 は、
+    // 手札に戻った自分を捨てるとまた誘発し、同じターンの終わりにまた聞かれる。エンジンはこの繰り返しを
+    // 止めず、支配者が断れば止まる（ADR-0059）。いつも「はい」だと、CPU のターンが終わらない。
     case 'してもよい':
-      return byCandidate(() => 0)
+      return { scores: choice.candidates.map(() => 0), declined: hasAcceptedThisTurn(perspective, choice) ? 1 : NEVER }
     case 'トラップのきっかけ':
     case '勇気のきっかけ':
       return byCandidate((candidate) => occasionScore(perspective, candidate))
@@ -823,6 +826,32 @@ function scoreChoice(view: ChoiceView): { readonly scores: readonly number[]; re
     default:
       return byCandidate(() => 0)
   }
+}
+
+/**
+ * 同じターンのうちに、同じ動きを同じカードへ「してもよい」かと聞かれ、「はい」と答えていたか。
+ *
+ * ログを新しい順にたどり、そのターンが始まった行（`進行が変わった` でターン数が変化した行）で止める。対象を持たない動き（「1枚引く」など。ADR-0065）は
+ * 何度答えても繰り返しにならないので、対象のある問いだけを見る。
+ */
+function hasAcceptedThisTurn(perspective: DuelPerspective, choice: WireChoice): boolean {
+  const may = choice.may
+  if (may === undefined || may.targets.length === 0) return false
+
+  const sameCards = (cards: readonly CardId[]): boolean =>
+    cards.length === may.targets.length && cards.every((card) => may.targets.includes(card))
+  for (let index = perspective.log.length - 1; index >= 0; index--) {
+    const event = perspective.log[index]?.event
+    if (event === undefined) continue
+    if (event.kind === '進行が変わった' && event.from?.turn !== event.to.turn) return false
+    if (event.kind !== '命令を実行した' || event.controller !== choice.player) continue
+
+    const instruction = event.instruction
+    if (instruction.kind === 'してもよいか聞く' && instruction.action === may.action && instruction.answer === 'はい' && sameCards(instruction.cards)) {
+      return true
+    }
+  }
+  return false
 }
 
 /** 基礎点を見積もれないカードの代わり。基礎点は 0 として扱う。 */
