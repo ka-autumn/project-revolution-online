@@ -160,11 +160,32 @@ function matchesEvent(created: CreatedAbility, event: TriggerEvent, turn: Turn):
   }
 }
 
-/** 誘発した能力を、まだバンクに入っていない能力の並びに積む。何も無ければ盤面はそのまま。 */
+/**
+ * 誘発した能力を、まだバンクに入っていない能力の並びに積む。何も無ければ盤面はそのまま。
+ *
+ * 渡された中に「気合」（`TriggeredAbility.keyword`）があれば、同じ支配者のスクエアにいるユニットの
+ * 「あなたの「気合」が誘発した時」の能力も一緒に積む。そのため、新しく誘発した能力だけを渡すこと。
+ * すでに積まれている能力を渡し直すと、「気合」への反応が二重に積まれる。
+ */
 export function addTriggered(state: DuelState, triggered: readonly BankedAbility[]): DuelState {
   if (triggered.length === 0) return state
 
-  return { ...state, triggered: [...state.triggered, ...triggered] }
+  return { ...state, triggered: [...state.triggered, ...triggered, ...triggeredBySpirit(state, triggered)] }
+}
+
+/**
+ * 「気合」が誘発したことで誘発する、「あなたの「気合」が誘発した時」の能力。
+ *
+ * 誘発した「気合」の支配者のスクエアにいるユニットが参照する。能力を探す盤面は、「気合」を探した
+ * 盤面と同じである。誘発した「気合」の持ち主自身も、スクエアにいれば数に入る。ここで積む能力は
+ * 「気合」ではないので、さらに誘発することは無い。
+ */
+function triggeredBySpirit(state: DuelState, triggered: readonly BankedAbility[]): readonly TriggeredInstance[] {
+  return triggered.flatMap((each) =>
+    each.ability.kind === '誘発型能力' && each.ability.keyword === '気合'
+      ? triggeredOnSquares(state, 'あなたの「気合」が誘発した時', (instance) => instance.controller === each.controller)
+      : [],
+  )
 }
 
 /**

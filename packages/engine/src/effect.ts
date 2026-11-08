@@ -7,7 +7,7 @@ import type {
   CreatedUntargetedAbility,
   DreamAbility,
   IntrusionOccasion,
-  PassiveKeyword,
+  NamedKeyword,
   SmashOccasion,
 } from './ability.js'
 import type { Square } from './board.js'
@@ -249,7 +249,7 @@ export interface DuelView {
    * （`GrantableAbility`）を増やす時に別に直す。盤面から来た写しの `card` に `card.ts` の
    * `hasKeyword` を呼んでも同じ答えになる。
    */
-  hasKeyword(unit: UnitOnSquare, keyword: PassiveKeyword): boolean
+  hasKeyword(unit: UnitOnSquare, keyword: NamedKeyword): boolean
 }
 
 /**
@@ -323,6 +323,7 @@ export type Instruction =
       readonly orientation: Orientation
       readonly position: LibraryPosition
     }
+  | { readonly kind: 'トラップゾーンのカードを捨札に置く'; readonly card: CardInTrapZone }
   | { readonly kind: '山札の1番上をゾーンへ置く'; readonly to: PlayerZone; readonly orientation: Orientation }
   | { readonly kind: 'カードを引く'; readonly player: Player; readonly count: number }
   /**
@@ -368,6 +369,14 @@ export type Instruction =
       readonly card: CardInZone | UnitOnSquare
       readonly square: Square
       readonly orientation: Orientation
+    }
+  | {
+      // 置く瞬間にスクエアにいるユニットの向きをそのまま使う（`placeOnSquareKeepingOrientation`）。
+      // スクエアにいるユニットを置き直す時だけ指定できるので、`card` はユニットに限る。
+      readonly kind: 'スクエアへ置く'
+      readonly card: UnitOnSquare
+      readonly square: Square
+      readonly orientation: '変えない'
     }
   | { readonly kind: '対象を持たない誘発型能力を作る'; readonly ability: CreatedUntargetedAbility }
   | {
@@ -994,6 +1003,20 @@ export function* placeOnSquare(
 }
 
 /**
+ * スクエアにいるユニットを、向きを変えずに別のスクエアに置く（「向きを変えずに置く」）。
+ *
+ * 向きは、置く瞬間にそのユニットがスクエアで持っている向きをそのまま使う。効果に見せたユニットの
+ * 向きを取得して渡す形にしないのは、誘発した時に見せたユニットが、置くまでの間に向きを変更している
+ * ことがあるためである。見せたユニットが置く時にもうスクエアにいなければ、この行動は実行されない
+ * （総合ルール 第1部 第1章 3）。
+ *
+ * 登場ではない点、敵のいるスクエアにも置ける点は `placeOnSquare` と同じである。
+ */
+export function* placeOnSquareKeepingOrientation(unit: UnitOnSquare, square: Square): EffectStep<void> {
+  yield { kind: 'スクエアへ置く', card: unit, square, orientation: '変えない' }
+}
+
+/**
  * そのプレイヤーのプランを裏返す（総合ルール 第2部 第21章 3-4）。
  *
  * 山札の 1 番上のカードが表向きの場合にそれをプランと呼ぶ（同 3-1・3-2）ので、裏返すことは
@@ -1010,6 +1033,25 @@ export function* placeOnSquare(
  */
 export function* flipPlan(player: Player): EffectStep<void> {
   yield { kind: 'プランを裏返す', player }
+}
+
+/**
+ * トラップゾーンのカードを持ち主の捨札に置き、置いた後のカードの表記を返す（ADR-0067）。
+ *
+ * 「トラップを 1 枚選び、捨札に置く。それが本物のトラップなら〜」のように、置いた後のカードが
+ * 何だったかで続きが分かれるテキストのための命令である。トラップゾーンのカードは、置く前は中身を
+ * 持たない値（`CardInTrapZone`）でしか見えない（ADR-0040）。捨札に置かれて公開された後の表記を
+ * 返すので、隠れた情報の境目は動かない。
+ *
+ * 返すのは表記だけで、捨札にあるそのカードを指す値は返さない。相手の捨札のカードを、対象として
+ * 扱える経路を作成しないためである。本物のトラップかどうかは、カードの側が返ってきた表記の種別で
+ * 判定する。
+ *
+ * すでにトラップゾーンを離れていて実行されなかった場合は、何も返さない（総合ルール 第1部 第1章 3）。
+ * 持ち主以外のトラップゾーンのカードも、置かれる先は持ち主の捨札である（同 第2部 第21章 1-2）。
+ */
+export function* discardTrapZoneCard(card: CardInTrapZone): EffectStep<Card | undefined> {
+  return (yield { kind: 'トラップゾーンのカードを捨札に置く', card }) as Card | undefined
 }
 
 /**

@@ -19,6 +19,7 @@ import {
   defineTrap,
   defineUnit,
   destroy,
+  discardTrapZoneCard,
   drawCards,
   emptyDuelState,
   flipPlan,
@@ -31,6 +32,7 @@ import {
   indexOfSquare,
   putOnSquare,
   release,
+  placeOnSquareKeepingOrientation,
   resolveEffect,
   squaresBeside,
   triggeredAbility,
@@ -1834,6 +1836,118 @@ describe('効果から見えるトラップゾーンのカード', () => {
   })
 })
 
+// 総合ルール 第2部 第20章 3-5、第21章 1-2・9-2（ADR-0006・ADR-0067）
+describe('トラップゾーンのカードを捨札に置き、置いた後の表記を返す', () => {
+  const realTrap = defineTrap({
+    name: 'テスト・本物のトラップ',
+    level: 1,
+    colors: ['赤'],
+    triggerIcon: { kind: '侵入', squares: [] },
+  })
+
+  /** トラップゾーンに、種別がトラップのカードと、トラップ以外のカードを 1 枚ずつ置いた盤面。 */
+  function withTraps(): DuelState {
+    return [
+      ['先攻', '先攻の本物', realTrap],
+      ['先攻', '先攻の偽物', vanilla],
+      ['後攻', '後攻の本物', realTrap],
+      ['後攻', '後攻の偽物', vanilla],
+    ].reduce(
+      (state, [player, id, card]) =>
+        putInZone(state, player as '先攻' | '後攻', 'トラップゾーン', [
+          ...cardsIn(state, player as '先攻' | '後攻', 'トラップゾーン'),
+          instantiate({ id: id as string, card: card as typeof vanilla, owner: player as '先攻' | '後攻' }),
+        ]),
+      emptyDuelState(),
+    )
+  }
+
+  /** 指定した識別子のカードを捨札に置き、返ってきた表記を取り出す。先攻の効果。 */
+  function discarding(state: DuelState, id: string) {
+    let returned: unknown = 'まだ実行していない'
+    const resolved = resolveEffect(
+      state,
+      function* (duel) {
+        const target = duel.trapZone().find((each) => each.id === id)
+        if (target === undefined) throw new Error('トラップゾーンにあるはずだった')
+        returned = yield* discardTrapZoneCard(target)
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+    return { state: resolved, returned }
+  }
+
+  it('種別がトラップのカードを置くと、そのカードの表記が返る', () => {
+    const { returned } = discarding(withTraps(), '後攻の本物')
+
+    expect(returned).toBe(realTrap)
+    expect((returned as typeof realTrap).type).toBe('トラップ')
+  })
+
+  // 同 第20章 3-5。トラップ以外のカードも、トラップゾーンにある間は「トラップ」と呼ばれるが、種別は変化しない。
+  it('トラップとして置かれたトラップ以外のカードを置くと、種別がトラップではない表記が返る', () => {
+    const { returned } = discarding(withTraps(), '後攻の偽物')
+
+    expect(returned).toBe(vanilla)
+    expect((returned as typeof vanilla).type).not.toBe('トラップ')
+  })
+
+  it('自分のトラップゾーンのカードも置ける。置かれる先は持ち主の捨札', () => {
+    const { state, returned } = discarding(withTraps(), '先攻の本物')
+
+    expect(returned).toBe(realTrap)
+    expect(idsOf(cardsIn(state, '先攻', '捨札'))).toEqual(['先攻の本物'])
+    expect(idsOf(cardsIn(state, '先攻', 'トラップゾーン'))).toEqual(['先攻の偽物'])
+  })
+
+  it('相手のトラップゾーンのカードを置くと、相手の捨札に置かれる。自分の捨札は変化しない', () => {
+    const { state } = discarding(withTraps(), '後攻の本物')
+
+    expect(idsOf(cardsIn(state, '後攻', '捨札'))).toEqual(['後攻の本物'])
+    expect(cardsIn(state, '先攻', '捨札')).toEqual([])
+  })
+
+  // 総合ルール 第1部 第1章 3
+  it('すでにトラップゾーンを離れていれば実行されず、何も返らない', () => {
+    let returned: unknown = 'まだ実行していない'
+    const state = withTraps()
+    const resolved = resolveEffect(
+      state,
+      function* (duel) {
+        const target = duel.trapZone().find((each) => each.id === '後攻の本物')
+        if (target === undefined) throw new Error('トラップゾーンにあるはずだった')
+        yield* discardTrapZoneCard(target)
+        returned = yield* discardTrapZoneCard(target)
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+
+    expect(returned).toBeUndefined()
+    expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['後攻の本物'])
+  })
+
+  it('「ゾーンへ置く」の行が、置いたカードの識別子で積まれる', () => {
+    const { state } = discarding(withTraps(), '後攻の本物')
+
+    const placed = state.log.flatMap(({ event }) =>
+      event.kind === '命令を実行した' && event.instruction.kind === 'ゾーンへ置く' ? [event.instruction] : [],
+    )
+    expect(placed).toEqual([{ kind: 'ゾーンへ置く', card: '後攻の本物', to: '捨札', player: '後攻' }])
+  })
+
+  it('見せていないトラップゾーンのカードは対象にできない', () => {
+    expect(() =>
+      resolveEffect(
+        withTraps(),
+        function* () {
+          yield* discardTrapZoneCard({ id: '後攻の本物', zone: 'トラップゾーン', player: '後攻' })
+        },
+        { controller: '先攻', via: VIA, chooser: chooseFirst },
+      ),
+    ).toThrowError('効果に見せていないカードが対象にされた')
+  })
+})
+
 // 総合ルール 第4部 第3章 4（ADR-0006）
 describe('効果が誘発型能力を作る', () => {
   /** 味方を 1 枚選び、その味方をあなたのターンの終わりにエネルギーゾーンへ置く能力を作る。 */
@@ -2321,5 +2435,115 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
 
       expect(seen).toEqual(['2 体目'])
     })
+  })
+})
+
+// 総合ルール 第1部 第1章 3、第2部 第24章 1（ADR-0006）
+describe('向きを変えずにスクエアに置く', () => {
+  /** 味方を 1 枚選び、敵のいるスクエアに向きを変えずに置く。 */
+  const replacingUnchanged = triggeredAbility('登場した時', function* (duel) {
+    const ally = yield* choose(duel.allies())
+    if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+    yield* placeOnSquareKeepingOrientation(ally, enemySquare)
+  })
+
+  const unit = (orientation: 'リリース' | 'フリーズ') =>
+    instantiate({ id: '味方', card: vanilla, owner: '先攻', orientation })
+
+  const run = (state: DuelState, effect = replacingUnchanged.effect) =>
+    resolveEffect(state, effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+  it('フリーズしているユニットは、フリーズしたまま置かれる', () => {
+    const resolved = run(boardOf([mySquare, unit('フリーズ')], [enemySquare, theirs('敵')]))
+
+    expect(idsOf(cardsOn(resolved, enemySquare))).toEqual(['敵', '味方'])
+    expect(cardsOn(resolved, enemySquare).find((card) => card.id === '味方')?.orientation).toBe('フリーズ')
+    expect(cardsOn(resolved, mySquare)).toEqual([])
+  })
+
+  it('リリースしているユニットは、リリースしたまま置かれる', () => {
+    const resolved = run(boardOf([mySquare, unit('リリース')], [enemySquare, theirs('敵')]))
+
+    expect(cardsOn(resolved, enemySquare).find((card) => card.id === '味方')?.orientation).toBe('リリース')
+  })
+
+  // 効果に見せたユニットの向きは、読んだ時点のものである。置く瞬間の向きを使う。
+  it('見せた後に向きが変更されていれば、置く瞬間の向きで置かれる', () => {
+    const releasedBeforePlacing = triggeredAbility('登場した時', function* (duel) {
+      const ally = yield* choose(duel.allies())
+      if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+      yield* release(ally)
+      yield* placeOnSquareKeepingOrientation(ally, enemySquare)
+    })
+
+    const resolved = run(boardOf([mySquare, unit('フリーズ')]), releasedBeforePlacing.effect)
+
+    expect(cardsOn(resolved, enemySquare).find((card) => card.id === '味方')?.orientation).toBe('リリース')
+  })
+
+  // 第1部 第1章 3
+  it('置く時にもうスクエアにいなければ、実行されない', () => {
+    const destroyedBeforePlacing = triggeredAbility('登場した時', function* (duel) {
+      const ally = yield* choose(duel.allies())
+      if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+      yield* destroy(ally)
+      yield* placeOnSquareKeepingOrientation(ally, enemySquare)
+    })
+
+    const resolved = run(boardOf([mySquare, unit('フリーズ')]), destroyedBeforePlacing.effect)
+
+    expect(cardsOn(resolved, enemySquare)).toEqual([])
+    expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['味方'])
+  })
+
+  // 「登場」ではないので、登場の誘発も「根性」の向きの置換も起こらない。
+  it('「登場した時」に誘発する能力は誘発しない', () => {
+    const appearingUnit = instantiate({
+      id: '味方',
+      card: defineUnit({
+        name: 'テスト・登場誘発持ち',
+        level: 1,
+        colors: ['赤'],
+        bp: 1000,
+        sp: 1000,
+        abilities: [triggeredAbility('登場した時', function* () {})],
+      }),
+      owner: '先攻',
+      orientation: 'リリース',
+    })
+
+    const resolved = run(boardOf([mySquare, appearingUnit]))
+
+    expect(cardsOn(resolved, enemySquare)[0]?.orientation).toBe('リリース')
+    expect(resolved.triggered).toEqual([])
+  })
+})
+
+// 総合ルール 第3部 第13章 1・第15章 1（ADR-0006）。誘発するのはバトルダメージの応酬で受けた時だけである。
+describe('効果によるダメージは「このカードがバトルダメージを受けた時」を誘発しない', () => {
+  const watcher = defineUnit({
+    name: 'テスト・バトルダメージを見張る',
+    level: 1,
+    colors: ['赤'],
+    bp: 5000,
+    sp: 1000,
+    abilities: [triggeredAbility('このカードがバトルダメージを受けた時', function* () {})],
+  })
+
+  it('ダメージを受けても、誘発もバンクへの追加も起こらない', () => {
+    const state = boardOf([mySquare, instantiate({ id: '見張り', card: watcher, owner: '先攻' })])
+
+    const resolved = resolveEffect(
+      state,
+      function* (duel) {
+        const target = yield* choose(duel.allies())
+        if (target !== undefined) yield* damageUnit(target, 500)
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+
+    expect(cardsOn(resolved, mySquare)[0]?.damage).toBe(500)
+    expect(resolved.triggered).toEqual([])
+    expect(resolved.bank).toEqual([])
   })
 })

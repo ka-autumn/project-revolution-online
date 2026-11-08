@@ -11,6 +11,9 @@ import { addTriggered, triggeredBy, triggeredOnSquares } from './trigger.js'
 /**
  * 誘発イベントを満たしたそのカード自身の能力だけを誘発させる。
  *
+ * 誘発した能力に「気合」があれば、同じ支配者のスクエアにいるユニットの「あなたの「気合」が
+ * 誘発した時」の能力も一緒に積まれる（`trigger.ts` の `addTriggered`）。
+ *
  * 「登場した時」「移動が起動された時」は、誘発イベントを満たすのがそのカード自身の
  * できごとであって、盤面に同じ能力を持つ他のカードがあることではない。`trigger` は
  * イベントを満たすスクエアの全ユニットを見てしまうので、対象を 1 枚に絞れるようここを
@@ -99,6 +102,15 @@ export function triggerAttack(state: DuelState, attacker: CardId, attacked: Card
  */
 export function triggerBattleWin(state: DuelState, winner: CardId): DuelState {
   return triggerSelf(state, winner, 'バトルに勝った時')
+}
+
+/**
+ * ユニットがバトルダメージを受けたことで、そのユニット自身の「このカードがバトルダメージを
+ * 受けた時」を誘発させる（総合ルール 第3部 第13章 1・第15章 1）。呼ぶのはバトルダメージを
+ * 与えた側（`battle.ts`）だけである。効果によるダメージでは誘発しない。
+ */
+export function triggerBattleDamaged(state: DuelState, damaged: CardId): DuelState {
+  return triggerSelf(state, damaged, 'このカードがバトルダメージを受けた時')
 }
 
 /**

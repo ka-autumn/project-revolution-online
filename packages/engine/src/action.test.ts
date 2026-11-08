@@ -293,6 +293,62 @@ describe('プランによるめくりの置換', () => {
 
     expect(idsOf(cardsIn(after, '先攻', 'プランゾーン'))).toEqual(['1 枚目'])
   })
+
+  // 「自分の手札が１枚以下なら、かわりに〜」。条件は、プランをしてカードをめくる時の盤面で判定する。
+  describe('手札の枚数を条件に持つ置換効果', () => {
+    const conditional = defineUnit({
+      name: 'テスト・条件つきプランの置換',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [
+        planReplacing(
+          (each) => each.attributes.includes('目印'),
+          (duel) => duel.handCount(duel.controller) <= 1,
+        ),
+      ],
+    })
+
+    /** 条件つきの置換効果を持つユニットと、指定した枚数の手札を持つ盤面。 */
+    function withHand(handSize: number): DuelState {
+      const base = phaseReadyToAct('メインフェイズ')
+      const placed = putOnSquare(
+        base,
+        { row: 0, column: 1 },
+        instantiate({ id: '置換するユニット', card: conditional, owner: '先攻' }),
+      )
+      const hand = Array.from({ length: handSize }, (_, index) => card(`手札${index}`))
+      const stocked = putInZone(
+        putInZone(placed, '先攻', '山札', [card('1 枚目'), markedCard('目印つき')]),
+        '先攻',
+        '手札',
+        hand,
+      )
+      return putInZone(stocked, '先攻', 'エネルギーゾーン', [card('エネ')])
+    }
+
+    it('手札が 1 枚以下なら、置換効果が働き、条件を満たすカードが表返るまで繰り返す', () => {
+      for (const handSize of [0, 1]) {
+        const after = stateOf(plan(withHand(handSize), replace))
+
+        expect(idsOf(cardsIn(after, '先攻', 'プランゾーン'))).toEqual(['目印つき'])
+      }
+    })
+
+    it('手札が 2 枚以上なら、置換効果は候補にならず、1 枚だけ表返す', () => {
+      const asked: string[] = []
+      const watching: Chooser = (candidates, player, purpose, board, mayDecline) => {
+        asked.push(purpose)
+        return replace(candidates, player, purpose, board, mayDecline)
+      }
+
+      const after = stateOf(plan(withHand(2), watching))
+
+      expect(idsOf(cardsIn(after, '先攻', 'プランゾーン'))).toEqual(['1 枚目'])
+      expect(asked).not.toContain('プランの置き換え')
+    })
+  })
 })
 
 // 総合ルール 第2部 第20章 3-12（ADR-0006）

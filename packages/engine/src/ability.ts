@@ -65,6 +65,11 @@ export const TRIGGER_EVENTS = [
   // 総合ルール 第3部 第16章 1-1。負けたユニットはスクエアに残っていないため、
   // 「バトルに負けた時」に誘発する能力は自分では誘発しようがない。誘発させる側が
   // 書けるようになるまで持たない。
+  // 1 以上のバトルダメージ（総合ルール 第3部 第13章 1・第15章 1）を受けたユニット自身の能力。
+  // ダメージが 0 の時は受けたことにならない。受けたユニットがそのダメージで捨札に置かれる場合も
+  // 誘発するが、解決する時にはもうスクエアにいないので、実行できない行動は実行されない
+  // （同 第1部 第1章 3）。
+  'このカードがバトルダメージを受けた時',
   'バトルに勝った時',
   'バトル終了ステップの始め',
   'バトルの終わりに',
@@ -74,9 +79,15 @@ export const TRIGGER_EVENTS = [
   // 置かれるカード自身の能力。スクエアにいるユニットからではなく、置かれるカードから探す。
   // どのゾーンから置かれても誘発する（ADR-0059）。
   'このカードが捨札に置かれた時',
+  // 同じ支配者の「気合」（`TriggeredAbility.keyword`）が誘発したことで、スクエアのユニット全員が参照する。
+  // 誘発した「気合」の持ち主自身も含む。誘発した時に積まれるもので、解決は待たない。
+  'あなたの「気合」が誘発した時',
 ] as const
 
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
+
+/** 名前を持つ誘発型能力のキーワード（総合ルール 第5部 第9章・第10章）。 */
+export type TriggeredKeyword = '気合' | '才気'
 
 /**
  * 誘発イベントが満たされるたびに自動的に誘発する能力（総合ルール 第4部 第3章 2）。
@@ -89,6 +100,14 @@ export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
 export interface TriggeredAbility {
   readonly kind: '誘発型能力'
   readonly event: TriggerEvent
+  /**
+   * キーワード能力としての名前（`気合`・`才気`）。キーワード能力でない誘発型能力は持たない。
+   *
+   * 「友情」（`FriendshipAbility`）と同じく、効果を持つ能力に名前を追加した形である。名前で
+   * 判定するので、カードの側が能力の値そのものを比較する必要は無い。能力を与える効果で
+   * 作成された「気合」のコピーも、名前で判定できる。
+   */
+  readonly keyword?: TriggeredKeyword
   /**
    * 効果。盤面への問い合わせだけを参照する `Effect` として持つ。
    *
@@ -563,6 +582,12 @@ export type PassiveKeywordAbility = DreamAbility | PepAbility | TrustAbility | G
 export type PassiveKeyword = PassiveKeywordAbility['keyword']
 
 /**
+ * 名前で参照できるキーワード能力。常在型（`PassiveKeyword`）と、名前を持つ誘発型（`TriggeredKeyword`）の
+ * 両方を含む。「そのカードがそのキーワード能力を持つか」を尋ねる範囲として使う。
+ */
+export type NamedKeyword = PassiveKeyword | TriggeredKeyword
+
+/**
  * 属性を加える継続効果を生み出す常在型能力（総合ルール 第2部 第13章 4、
  * 第4部 第12章 5-2 の(3)）。
  *
@@ -658,6 +683,14 @@ export interface PlanReplacingAbility {
    * 選ばせるかどうかを能力の側が持ってはいない。選べないテキストが出てきた時に足す。
    */
   readonly turnsUpUntil: (card: Card) => boolean
+  /**
+   * 置換効果が働く条件（「自分の手札が１枚以下なら、かわりに〜」の「〜なら」）。省略すれば無条件。
+   *
+   * プランをしてカードをめくる時の盤面で、`duel` から取得して判定する。支配者は `duel.controller`、
+   * 能力を持つユニット自身は `duel.self()` である。満たされていなければ、この置換効果は候補にも
+   * ならず、ふつうに山札の 1 番上を 1 枚めくる。
+   */
+  readonly condition?: TriggerRequirement
 }
 
 /**
@@ -957,9 +990,12 @@ export const guts: GutsAbility = { kind: '常在型能力', keyword: '根性' }
  *
  * 「夢」と同じく、何回書いても同じものなので 1 つを使い回す。
  */
-export const spirit: TriggeredAbility = triggeredAbility('登場した時', function* (duel) {
-  yield* damagePlayer(duel.controller, 1000)
-})
+export const spirit: TriggeredAbility = {
+  ...triggeredAbility('登場した時', function* (duel) {
+    yield* damagePlayer(duel.controller, 1000)
+  }),
+  keyword: '気合',
+}
 
 /**
  * キーワード能力「才気」（総合ルール 第5部 第10章）。
@@ -970,9 +1006,12 @@ export const spirit: TriggeredAbility = triggeredAbility('登場した時', func
  * 捨てるカードを選ぶのは相手で（同 2。ランダムには捨てない、ADR-0052）、相手の手札が 1 枚以下なら
  * 聞かずにあるだけ捨てる。
  */
-export const wit: TriggeredAbility = triggeredAbility('登場した時', function* () {
-  yield* discardOpponentHand(1)
-})
+export const wit: TriggeredAbility = {
+  ...triggeredAbility('登場した時', function* () {
+    yield* discardOpponentHand(1)
+  }),
+  keyword: '才気',
+}
 
 /** 「希望―［効果］」を 1 つ書く。効果はカードごとに違うので受け取る。 */
 export function hope(effect: Effect): HopeAbility {
@@ -986,10 +1025,13 @@ export function modifying(modifiers: PassiveModifiersFromBoard): ModifyingAbilit
 
 /**
  * プランによるめくりを「〜が出るまでめくる」に置き換える常在型能力を 1 つ書く。
- * 止まる条件はカードごとに違うので受け取る。
+ * 止まる条件はカードごとに違うので受け取る。置換効果が働く条件があるテキストは、第 2 引数で渡す。
  */
-export function planReplacing(turnsUpUntil: (card: Card) => boolean): PlanReplacingAbility {
-  return { kind: '常在型能力', turnsUpUntil }
+export function planReplacing(
+  turnsUpUntil: (card: Card) => boolean,
+  condition?: TriggerRequirement,
+): PlanReplacingAbility {
+  return { kind: '常在型能力', turnsUpUntil, ...(condition === undefined ? {} : { condition }) }
 }
 
 /**

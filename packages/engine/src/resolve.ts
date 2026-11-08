@@ -648,6 +648,21 @@ function apply(
         value: undefined,
       }
     }
+    case 'トラップゾーンのカードを捨札に置く': {
+      if (!shown.has(instruction.card.id)) {
+        throw new Error('効果に見せていないカードが対象にされた')
+      }
+      // すでにトラップゾーンを離れていれば実行されない（総合ルール 第1部 第1章 3）。
+      const found = findInZone(state, instruction.card.player, 'トラップゾーン', instruction.card.id)
+      if (found === undefined) return { state, value: undefined }
+
+      // 置いた後は捨札で公開されるので、その表記を効果に返す（ADR-0067）。
+      return {
+        owner: instruction.card.player,
+        state: moveToZone(state, [instruction.card.id], '捨札', { orientation: 'リリース' }),
+        value: found.card,
+      }
+    }
     case '山札の1番上をゾーンへ置く': {
       // 効果に見せていないカードだが、選ばれたものではなく位置で指定されたものなので
       // `shown` の検査は要らない。効果はどのカードが動いたかを知らないままである。
@@ -669,9 +684,17 @@ function apply(
       // ことで、「登場した時」「味方が登場した時」の誘発（`triggerAppearance`・
       // `triggerAllyAppearance`）も「根性」による向きの置換
       // （総合ルール 第5部 第6章 3）も起こらない。指定された向きがそのまま使われる。
+      // 「向きを変えない」なら、置く瞬間にスクエアにいるユニットの向きを使う。スクエアにいなければ
+      // 実行されない（総合ルール 第1部 第1章 3）。
+      const orientation =
+        instruction.orientation === '変えない'
+          ? locateOnSquares(state, instruction.card.id)?.instance.orientation
+          : instruction.orientation
+      if (orientation === undefined) return { state, value: undefined }
+
       const moved = moveToSquare(state, instruction.card.id, instruction.square, {
         controller: context.controller,
-        orientation: instruction.orientation,
+        orientation,
       })
       return { state: checkPlacedByEffect(moved, instruction.card.id), value: undefined }
     }

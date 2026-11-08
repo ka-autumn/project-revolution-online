@@ -1,4 +1,4 @@
-import { triggerAttack, triggerBattleWin } from './bank.js'
+import { triggerAttack, triggerBattleDamaged, triggerBattleWin } from './bank.js'
 import { BATTLE_SPACE, indexOfSquare } from './board.js'
 import type { Square } from './board.js'
 import { bpOf, hasPep } from './card.js'
@@ -271,13 +271,16 @@ function exchangeBattleDamage(state: DuelState, battle: Battle): DuelState {
     amount: bpOf(unit.card, modification(unit.id)),
   }))
   const damaged = damages.reduce(
-    (current, { from, target, amount }) =>
-      record(dealDamage(current, target, amount), {
+    (current, { from, target, amount }) => {
+      const logged = record(dealDamage(current, target, amount), {
         kind: 'バトルダメージを与えた',
         from,
         to: target,
         amount,
-      }),
+      })
+      // 与えた量が 0 なら、ダメージを受けたことにならない。
+      return amount >= 1 ? triggerBattleDamaged(logged, target) : logged
+    },
     state,
   )
 

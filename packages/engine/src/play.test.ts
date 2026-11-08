@@ -32,6 +32,7 @@ import {
   spirit,
   triggeredAbility,
   trust,
+  wit,
 } from './index.js'
 import type {
   ActionOutcome,
@@ -44,6 +45,7 @@ import type {
   Square,
   TrapCard,
   TrapConditionMet,
+  UnitCard,
   UnitOnSquare,
 } from './index.js'
 
@@ -1527,5 +1529,72 @@ describe('「気合」', () => {
     expect(idsOf(cardsOn(stateOf(play(ready, { card: '別のユニット', square: otherHomeSquare })), otherHomeSquare))).toEqual([
       '別のユニット',
     ])
+  })
+})
+
+// 総合ルール 第5部 第9章 2、第4部 第3章 2（ADR-0006）
+describe('「あなたの『気合』が誘発した時」', () => {
+  const spiritedUnit = defineUnit({
+    name: 'テスト・気合ユニット',
+    level: 2,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [spirit],
+  })
+  const watchSpirit = triggeredAbility('あなたの「気合」が誘発した時', function* () {})
+  /** 自分の「気合」を見張るだけのユニット。 */
+  const watcher = defineUnit({
+    name: 'テスト・気合を見張る',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [watchSpirit],
+  })
+  /** 「気合」を持ち、「気合」を見張りもするユニット。 */
+  const spiritedWatcher = defineUnit({
+    name: 'テスト・気合を持ち見張る',
+    level: 2,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [spirit, watchSpirit],
+  })
+  const wittyUnit = defineUnit({
+    name: 'テスト・才気ユニット',
+    level: 2,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [wit],
+  })
+
+  /** 手札のユニットをプレイした直後の、バンクにある能力の発生源。盤面には味方と敵の見張りを置く。 */
+  function sourcesAfterPlaying(card: UnitCard): readonly string[] {
+    const ready = readyToPlay([instantiate({ id: '登場', card, owner: '先攻' })], twoEnergies())
+    const placed = putOnSquare(
+      putOnSquare(ready, otherHomeSquare, instantiate({ id: '味方の見張り', card: watcher, owner: '先攻' })),
+      enemySquare,
+      instantiate({ id: '敵の見張り', card: watcher, owner: '後攻' }),
+    )
+    const played = stateOf(play(placed, { card: '登場', square: homeSquare }))
+    return played.bank.map((banked) => banked.source ?? '').sort()
+  }
+
+  it('自分の「気合」が誘発した時、スクエアにいる味方の見張りが誘発する。相手の見張りは誘発しない', () => {
+    expect(sourcesAfterPlaying(spiritedUnit)).toEqual(['味方の見張り', '登場'])
+  })
+
+  it('気合を持つユニット自身がスクエアに登場していれば、自分の気合でも誘発する', () => {
+    expect(sourcesAfterPlaying(spiritedWatcher)).toEqual(['味方の見張り', '登場', '登場'])
+  })
+
+  it('気合を持たないユニットの登場では誘発しない', () => {
+    expect(sourcesAfterPlaying(redUnit)).toEqual([])
+  })
+
+  it('才気が誘発しても誘発しない。同じ登場した時の誘発型能力でも、名前で見分ける', () => {
+    expect(sourcesAfterPlaying(wittyUnit)).toEqual(['登場'])
   })
 })

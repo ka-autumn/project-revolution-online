@@ -6,7 +6,7 @@ import type {
   ModifyingAbility,
   HopeAbility,
   MoveCostingAbility,
-  PassiveKeyword,
+  NamedKeyword,
   PlanReplacingAbility,
 } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
@@ -395,11 +395,11 @@ export function hasMakerSymbol(card: Card, symbol: MakerSymbol): boolean {
 /**
  * そのカードがそのキーワード能力を持つか。
  *
- * 常在型のキーワード能力だけを見る。テキストに書かれた能力のうち、名前だけで参照できて
- * 内容を持たないのはこの形のものである（`ability.ts` の `DreamAbility`・`PepAbility`）。
- * 常在型能力には内容を持つもの（`ModifyingAbility`）もあるので、名前で引く前に
- * 名前を持つ側であることを確かめる。「友情」はその例で、ＢＰを修整する常在型能力に名前を
- * 足した形（`FriendshipAbility`）で持つ。
+ * 常在型のキーワード能力と、名前を持つ誘発型能力（「気合」「才気」。`TriggeredAbility.keyword`）を
+ * 参照する。テキストに書かれた能力のうち、名前だけで参照できて内容を持たないのは常在型の定義のものである
+ * （`ability.ts` の `DreamAbility`・`PepAbility`）。常在型能力には内容を持つもの（`ModifyingAbility`）
+ * もあるので、名前を取得する前に名前を持つ側であることを確認する。「友情」はその例で、ＢＰを修整する
+ * 常在型能力に名前を追加した形（`FriendshipAbility`）で持つ。
  *
  * 見るのは、渡されたカードの `abilities` だけである。盤面から来た写し（`DuelView` の
  * `allies`・`enemies`・`self` が返す、継続効果を適用した後の `card`）を渡す限り、与えられた能力も含めて正しく答える
@@ -407,9 +407,12 @@ export function hasMakerSymbol(card: Card, symbol: MakerSymbol): boolean {
  * カードの定義そのもの（`defineUnit` が返したもの）を渡すと、書かれた能力しか見ない。
  * 盤面にいるユニットのことは `DuelView.hasKeyword` で尋ねるとよい。
  */
-export function hasKeyword(card: Card, keyword: PassiveKeyword): boolean {
+export function hasKeyword(card: Card, keyword: NamedKeyword): boolean {
   return card.abilities.some(
-    (ability) => ability.kind === '常在型能力' && 'keyword' in ability && ability.keyword === keyword,
+    (ability) =>
+      (ability.kind === '常在型能力' || ability.kind === '誘発型能力') &&
+      'keyword' in ability &&
+      ability.keyword === keyword,
   )
 }
 
@@ -431,6 +434,11 @@ export function hasTrust(card: Card): boolean {
 /** そのカードが「根性」を持つか（総合ルール 第5部 第6章 2）。 */
 export function hasGuts(card: Card): boolean {
   return hasKeyword(card, '根性')
+}
+
+/** そのカードが「気合」を持つか（総合ルール 第5部 第9章 2）。 */
+export function hasSpirit(card: Card): boolean {
+  return hasKeyword(card, '気合')
 }
 
 /** そのカードが「友情」を持つか（総合ルール 第5部 第5章 2）。数値（友情－Ｘ のＸ）は問わない。 */

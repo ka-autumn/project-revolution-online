@@ -760,6 +760,10 @@ export function loggedInstruction(
       // 相手のカードを相手のゾーンへ置いたのに「自分の」と出る気づきにくい誤りになるので、例外にする（#349）。
       if (outcome.owner === undefined) throw new Error('持ち主の分からないカードをゾーンへ置いた行を作ろうとした')
       return { kind: 'ゾーンへ置く', card: instruction.card.id, to: instruction.to, player: outcome.owner }
+    case 'トラップゾーンのカードを捨札に置く':
+      // ログの上では、トラップゾーンのカードをゾーンへ置いた行と同じに積む。
+      if (outcome.owner === undefined) throw new Error('持ち主の分からないカードをゾーンへ置いた行を作ろうとした')
+      return { kind: 'ゾーンへ置く', card: instruction.card.id, to: '捨札', player: outcome.owner }
     case '山札の1番上をゾーンへ置く':
       // どのカードが動いたかは命令に書かれていない（位置で指定されている）。
       return { kind: '山札の1番上をゾーンへ置く', card: cardIdOf(subject), to: instruction.to, player: controller }
