@@ -31,6 +31,7 @@ import {
   indexOfSquare,
   putOnSquare,
   release,
+  placeOnSquareKeepingOrientation,
   resolveEffect,
   squaresBeside,
   triggeredAbility,
@@ -2321,5 +2322,86 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
 
       expect(seen).toEqual(['2 体目'])
     })
+  })
+})
+
+// 総合ルール 第1部 第1章 3、第2部 第24章 1（ADR-0006）
+describe('向きを変えずにスクエアに置く', () => {
+  /** 味方を 1 枚選び、敵のいるスクエアに向きを変えずに置く。 */
+  const replacingUnchanged = triggeredAbility('登場した時', function* (duel) {
+    const ally = yield* choose(duel.allies())
+    if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+    yield* placeOnSquareKeepingOrientation(ally, enemySquare)
+  })
+
+  const unit = (orientation: 'リリース' | 'フリーズ') =>
+    instantiate({ id: '味方', card: vanilla, owner: '先攻', orientation })
+
+  const run = (state: DuelState, effect = replacingUnchanged.effect) =>
+    resolveEffect(state, effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
+
+  it('フリーズしているユニットは、フリーズしたまま置かれる', () => {
+    const resolved = run(boardOf([mySquare, unit('フリーズ')], [enemySquare, theirs('敵')]))
+
+    expect(idsOf(cardsOn(resolved, enemySquare))).toEqual(['敵', '味方'])
+    expect(cardsOn(resolved, enemySquare).find((card) => card.id === '味方')?.orientation).toBe('フリーズ')
+    expect(cardsOn(resolved, mySquare)).toEqual([])
+  })
+
+  it('リリースしているユニットは、リリースしたまま置かれる', () => {
+    const resolved = run(boardOf([mySquare, unit('リリース')], [enemySquare, theirs('敵')]))
+
+    expect(cardsOn(resolved, enemySquare).find((card) => card.id === '味方')?.orientation).toBe('リリース')
+  })
+
+  // 効果に見せたユニットの向きは、読んだ時点のものである。置く瞬間の向きを使う。
+  it('見せた後に向きが変わっていれば、置く瞬間の向きで置かれる', () => {
+    const releasedBeforePlacing = triggeredAbility('登場した時', function* (duel) {
+      const ally = yield* choose(duel.allies())
+      if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+      yield* release(ally)
+      yield* placeOnSquareKeepingOrientation(ally, enemySquare)
+    })
+
+    const resolved = run(boardOf([mySquare, unit('フリーズ')]), releasedBeforePlacing.effect)
+
+    expect(cardsOn(resolved, enemySquare).find((card) => card.id === '味方')?.orientation).toBe('リリース')
+  })
+
+  // 第1部 第1章 3
+  it('置く時にもうスクエアにいなければ、実行されない', () => {
+    const destroyedBeforePlacing = triggeredAbility('登場した時', function* (duel) {
+      const ally = yield* choose(duel.allies())
+      if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
+      yield* destroy(ally)
+      yield* placeOnSquareKeepingOrientation(ally, enemySquare)
+    })
+
+    const resolved = run(boardOf([mySquare, unit('フリーズ')]), destroyedBeforePlacing.effect)
+
+    expect(cardsOn(resolved, enemySquare)).toEqual([])
+    expect(idsOf(cardsIn(resolved, '先攻', '捨札'))).toEqual(['味方'])
+  })
+
+  // 「登場」ではないので、登場の誘発も「根性」の向きの置換も起こらない。
+  it('「登場した時」に誘発する能力は誘発しない', () => {
+    const appearingUnit = instantiate({
+      id: '味方',
+      card: defineUnit({
+        name: 'テスト・登場誘発持ち',
+        level: 1,
+        colors: ['赤'],
+        bp: 1000,
+        sp: 1000,
+        abilities: [triggeredAbility('登場した時', function* () {})],
+      }),
+      owner: '先攻',
+      orientation: 'リリース',
+    })
+
+    const resolved = run(boardOf([mySquare, appearingUnit]))
+
+    expect(cardsOn(resolved, enemySquare)[0]?.orientation).toBe('リリース')
+    expect(resolved.triggered).toEqual([])
   })
 })

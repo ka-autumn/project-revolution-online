@@ -367,7 +367,11 @@ export type Instruction =
       readonly kind: 'スクエアへ置く'
       readonly card: CardInZone | UnitOnSquare
       readonly square: Square
-      readonly orientation: Orientation
+      /**
+       * 置く向き。`'変えない'`は、置く瞬間にスクエアにいるユニットの向きをそのまま使う。
+       * スクエアにいるユニットを置き直す時だけ指定できる（`placeOnSquareKeepingOrientation`）。
+       */
+      readonly orientation: Orientation | '変えない'
     }
   | { readonly kind: '対象を持たない誘発型能力を作る'; readonly ability: CreatedUntargetedAbility }
   | {
@@ -991,6 +995,20 @@ export function* placeOnSquare(
   orientation: Orientation,
 ): EffectStep<void> {
   yield { kind: 'スクエアへ置く', card, square, orientation }
+}
+
+/**
+ * スクエアにいるユニットを、向きを変えずに別のスクエアに置く（「向きを変えずに置く」）。
+ *
+ * 向きは、置く瞬間にそのユニットがスクエアで持っている向きをそのまま使う。効果に見せたユニットの
+ * 向きを読んで渡す形にしないのは、誘発した時に見せたユニットが、置くまでの間に向きを変えている
+ * ことがあるためである。見せたユニットが置く時にもうスクエアにいなければ、この行動は実行されない
+ * （総合ルール 第1部 第1章 3）。
+ *
+ * 登場ではない点、敵のいるスクエアにも置ける点は `placeOnSquare` と同じである。
+ */
+export function* placeOnSquareKeepingOrientation(unit: UnitOnSquare, square: Square): EffectStep<void> {
+  yield { kind: 'スクエアへ置く', card: unit, square, orientation: '変えない' }
 }
 
 /**

@@ -669,9 +669,17 @@ function apply(
       // ことで、「登場した時」「味方が登場した時」の誘発（`triggerAppearance`・
       // `triggerAllyAppearance`）も「根性」による向きの置換
       // （総合ルール 第5部 第6章 3）も起こらない。指定された向きがそのまま使われる。
+      // 「向きを変えない」なら、置く瞬間にスクエアにいるユニットの向きを使う。スクエアにいなければ
+      // 実行されない（総合ルール 第1部 第1章 3）。
+      const orientation =
+        instruction.orientation === '変えない'
+          ? locateOnSquares(state, instruction.card.id)?.instance.orientation
+          : instruction.orientation
+      if (orientation === undefined) return { state, value: undefined }
+
       const moved = moveToSquare(state, instruction.card.id, instruction.square, {
         controller: context.controller,
-        orientation: instruction.orientation,
+        orientation,
       })
       return { state: checkPlacedByEffect(moved, instruction.card.id), value: undefined }
     }

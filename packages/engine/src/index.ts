@@ -202,6 +202,7 @@ export {
   mayDo,
   placeInZone,
   placeOnSquare,
+  placeOnSquareKeepingOrientation,
   placeTopOfLibrary,
   readLibrary,
   release,
