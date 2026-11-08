@@ -648,6 +648,21 @@ function apply(
         value: undefined,
       }
     }
+    case 'トラップゾーンのカードを捨札に置く': {
+      if (!shown.has(instruction.card.id)) {
+        throw new Error('効果に見せていないカードが対象にされた')
+      }
+      // すでにトラップゾーンを離れていれば実行されない（総合ルール 第1部 第1章 3）。
+      const found = findInZone(state, instruction.card.player, 'トラップゾーン', instruction.card.id)
+      if (found === undefined) return { state, value: undefined }
+
+      // 置いた後は捨札で公開されるので、その表記を効果に返す（ADR-0067）。
+      return {
+        owner: instruction.card.player,
+        state: moveToZone(state, [instruction.card.id], '捨札', { orientation: 'リリース' }),
+        value: found.card,
+      }
+    }
     case '山札の1番上をゾーンへ置く': {
       // 効果に見せていないカードだが、選ばれたものではなく位置で指定されたものなので
       // `shown` の検査は要らない。効果はどのカードが動いたかを知らないままである。

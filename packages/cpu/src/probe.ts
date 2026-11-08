@@ -401,6 +401,9 @@ export function scoreInstructions(
       case 'ゾーンへ置く':
         total += scoreZoneMove(setting, units, instruction.card, instruction.to, remove)
         break
+      case 'トラップゾーンのカードを捨札に置く':
+        total += scoreZoneMove(setting, units, instruction.card, '捨札', remove)
+        break
       case '山札の1番上をゾーンへ置く':
         total +=
           instruction.to === '手札' ? CARD_GAIN : instruction.to === 'エネルギーゾーン' ? 250 : instruction.to === 'スマッシュゾーン' ? -600 : 0

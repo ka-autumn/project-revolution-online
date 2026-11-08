@@ -19,6 +19,7 @@ import {
   defineTrap,
   defineUnit,
   destroy,
+  discardTrapZoneCard,
   drawCards,
   emptyDuelState,
   flipPlan,
@@ -1836,6 +1837,118 @@ describe('効果から見えるトラップゾーンのカード', () => {
 })
 
 // 総合ルール 第4部 第3章 4（ADR-0006）
+// 総合ルール 第2部 第20章 3-5、第21章 1-2・9-2（ADR-0006・ADR-0067）
+describe('トラップゾーンのカードを捨札に置き、置いた後の表記を返す', () => {
+  const realTrap = defineTrap({
+    name: 'テスト・本物のトラップ',
+    level: 1,
+    colors: ['赤'],
+    triggerIcon: { kind: '侵入', squares: [] },
+  })
+
+  /** トラップゾーンに、種別がトラップのカードと、トラップ以外のカードを 1 枚ずつ置いた盤面。 */
+  function withTraps(): DuelState {
+    return [
+      ['先攻', '先攻の本物', realTrap],
+      ['先攻', '先攻の偽物', vanilla],
+      ['後攻', '後攻の本物', realTrap],
+      ['後攻', '後攻の偽物', vanilla],
+    ].reduce(
+      (state, [player, id, card]) =>
+        putInZone(state, player as '先攻' | '後攻', 'トラップゾーン', [
+          ...cardsIn(state, player as '先攻' | '後攻', 'トラップゾーン'),
+          instantiate({ id: id as string, card: card as typeof vanilla, owner: player as '先攻' | '後攻' }),
+        ]),
+      emptyDuelState(),
+    )
+  }
+
+  /** 指定した識別子のカードを捨札に置き、返ってきた表記を取り出す。先攻の効果。 */
+  function discarding(state: DuelState, id: string) {
+    let returned: unknown = 'まだ実行していない'
+    const resolved = resolveEffect(
+      state,
+      function* (duel) {
+        const target = duel.trapZone().find((each) => each.id === id)
+        if (target === undefined) throw new Error('トラップゾーンにあるはずだった')
+        returned = yield* discardTrapZoneCard(target)
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+    return { state: resolved, returned }
+  }
+
+  it('種別がトラップのカードを置くと、そのカードの表記が返る', () => {
+    const { returned } = discarding(withTraps(), '後攻の本物')
+
+    expect(returned).toBe(realTrap)
+    expect((returned as typeof realTrap).type).toBe('トラップ')
+  })
+
+  // 同 第20章 3-5。トラップ以外のカードも、トラップゾーンにある間は「トラップ」と呼ばれるが、種別は変わらない。
+  it('トラップとして置かれたトラップ以外のカードを置くと、種別がトラップではない表記が返る', () => {
+    const { returned } = discarding(withTraps(), '後攻の偽物')
+
+    expect(returned).toBe(vanilla)
+    expect((returned as typeof vanilla).type).not.toBe('トラップ')
+  })
+
+  it('自分のトラップゾーンのカードも置ける。置かれる先は持ち主の捨札', () => {
+    const { state, returned } = discarding(withTraps(), '先攻の本物')
+
+    expect(returned).toBe(realTrap)
+    expect(idsOf(cardsIn(state, '先攻', '捨札'))).toEqual(['先攻の本物'])
+    expect(idsOf(cardsIn(state, '先攻', 'トラップゾーン'))).toEqual(['先攻の偽物'])
+  })
+
+  it('相手のトラップゾーンのカードを置くと、相手の捨札に置かれる。自分の捨札は変化しない', () => {
+    const { state } = discarding(withTraps(), '後攻の本物')
+
+    expect(idsOf(cardsIn(state, '後攻', '捨札'))).toEqual(['後攻の本物'])
+    expect(cardsIn(state, '先攻', '捨札')).toEqual([])
+  })
+
+  // 総合ルール 第1部 第1章 3
+  it('すでにトラップゾーンを離れていれば実行されず、何も返らない', () => {
+    let returned: unknown = 'まだ実行していない'
+    const state = withTraps()
+    const resolved = resolveEffect(
+      state,
+      function* (duel) {
+        const target = duel.trapZone().find((each) => each.id === '後攻の本物')
+        if (target === undefined) throw new Error('トラップゾーンにあるはずだった')
+        yield* discardTrapZoneCard(target)
+        returned = yield* discardTrapZoneCard(target)
+      },
+      { controller: '先攻', via: VIA, chooser: chooseFirst },
+    )
+
+    expect(returned).toBeUndefined()
+    expect(idsOf(cardsIn(resolved, '後攻', '捨札'))).toEqual(['後攻の本物'])
+  })
+
+  it('「ゾーンへ置く」の行が、置いたカードの識別子で積まれる', () => {
+    const { state } = discarding(withTraps(), '後攻の本物')
+
+    const placed = state.log.flatMap(({ event }) =>
+      event.kind === '命令を実行した' && event.instruction.kind === 'ゾーンへ置く' ? [event.instruction] : [],
+    )
+    expect(placed).toEqual([{ kind: 'ゾーンへ置く', card: '後攻の本物', to: '捨札', player: '後攻' }])
+  })
+
+  it('見せていないトラップゾーンのカードは対象にできない', () => {
+    expect(() =>
+      resolveEffect(
+        withTraps(),
+        function* () {
+          yield* discardTrapZoneCard({ id: '後攻の本物', zone: 'トラップゾーン', player: '後攻' })
+        },
+        { controller: '先攻', via: VIA, chooser: chooseFirst },
+      ),
+    ).toThrowError('効果に見せていないカードが対象にされた')
+  })
+})
+
 describe('効果が誘発型能力を作る', () => {
   /** 味方を 1 枚選び、その味方をあなたのターンの終わりにエネルギーゾーンへ置く能力を作る。 */
   const postponing = triggeredAbility('登場した時', function* (duel) {

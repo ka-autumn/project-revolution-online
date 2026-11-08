@@ -203,6 +203,7 @@ export {
   placeInZone,
   placeOnSquare,
   placeOnSquareKeepingOrientation,
+  discardTrapZoneCard,
   placeTopOfLibrary,
   readLibrary,
   release,
