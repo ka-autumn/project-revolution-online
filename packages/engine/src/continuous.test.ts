@@ -23,6 +23,7 @@ import {
   friendship,
   hasFriendship,
   hasMakerSymbol,
+  hasSpirit,
   instantiate,
   passPriority,
   playCard,
@@ -30,6 +31,8 @@ import {
   resolveEffect,
   spModification,
   spPlus,
+  spirit,
+  wit,
 } from './index.js'
 import type { Attribute, Chooser, DuelState, Player, ResolutionVia, Square, UnitCard } from './index.js'
 
@@ -900,5 +903,86 @@ describe('相手の手札の枚数を参照する常在型能力', () => {
     ])
 
     expect(bpOn(board, '後攻のユニット', strongWhenOpponentHandEmpty)).toBe(1000)
+  })
+})
+
+/** 「気合」を持つユニット。 */
+const spirited = defineUnit({
+  name: 'テスト・気合',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [spirit],
+})
+
+/** 「才気」を持つユニット。「気合」と同じ誘発型能力だが、別のキーワードである。 */
+const witty = defineUnit({
+  name: 'テスト・才気',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [wit],
+})
+
+/** 「他の『気合』を持つ味方のＢＰを＋1000」。 */
+const boostingSpirited = defineUnit({
+  name: 'テスト・気合持ちを強化',
+  level: 1,
+  colors: ['赤'],
+  bp: 1000,
+  sp: 1000,
+  abilities: [
+    modifying((duel) =>
+      duel
+        .allies()
+        .filter((ally) => ally.id !== duel.self()?.id && duel.hasKeyword(ally, '気合'))
+        .map((ally) => bpPlus(ally, 1000)),
+    ),
+  ],
+})
+
+// 総合ルール 第5部 第9章 2、第4部 第12章 5-2 の(5)（ADR-0006）
+describe('気合を持つユニットで対象を絞るＢＰの修整', () => {
+  it('気合という名前を持つ', () => {
+    expect(spirit.keyword).toBe('気合')
+    expect(hasSpirit(spirited)).toBe(true)
+    expect(hasSpirit(vanilla)).toBe(false)
+  })
+
+  it('才気は気合ではない。同じ登場した時の誘発型能力でも、名前で見分ける', () => {
+    expect(wit.keyword).toBe('才気')
+    expect(hasSpirit(witty)).toBe(false)
+  })
+
+  it('気合を持つ味方のＢＰを修整する。隣かどうかは問わない', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingSpirited],
+      [centerCenter, '遠くの気合', spirited],
+    )
+
+    expect(bpOn(board, '遠くの気合', spirited)).toBe(2000)
+  })
+
+  it('気合を持たない味方は修整されない。才気を持っていても同じ', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingSpirited],
+      [homeCenter, '何も持たない味方', vanilla],
+      [homeRight, '才気を持つ味方', witty],
+    )
+
+    expect(bpOn(board, '何も持たない味方', vanilla)).toBe(1000)
+    expect(bpOn(board, '才気を持つ味方', witty)).toBe(1000)
+  })
+
+  it('自分自身のＢＰは修整されない。気合を持つ敵も修整されない', () => {
+    const board = boardOf(
+      [homeLeft, '強化するユニット', boostingSpirited],
+      [centerCenter, '敵の気合', spirited, '後攻'],
+    )
+
+    expect(bpOn(board, '強化するユニット', boostingSpirited)).toBe(1000)
+    expect(bpOn(board, '敵の気合', spirited)).toBe(1000)
   })
 })

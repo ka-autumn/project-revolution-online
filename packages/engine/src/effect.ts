@@ -7,7 +7,7 @@ import type {
   CreatedUntargetedAbility,
   DreamAbility,
   IntrusionOccasion,
-  PassiveKeyword,
+  NamedKeyword,
   SmashOccasion,
 } from './ability.js'
 import type { Square } from './board.js'
@@ -249,7 +249,7 @@ export interface DuelView {
    * （`GrantableAbility`）を増やす時に別に直す。盤面から来た写しの `card` に `card.ts` の
    * `hasKeyword` を呼んでも同じ答えになる。
    */
-  hasKeyword(unit: UnitOnSquare, keyword: PassiveKeyword): boolean
+  hasKeyword(unit: UnitOnSquare, keyword: NamedKeyword): boolean
 }
 
 /**

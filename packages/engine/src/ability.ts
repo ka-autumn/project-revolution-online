@@ -78,6 +78,9 @@ export const TRIGGER_EVENTS = [
 
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
 
+/** 名前を持つ誘発型能力のキーワード（総合ルール 第5部 第9章・第10章）。 */
+export type TriggeredKeyword = '気合' | '才気'
+
 /**
  * 誘発イベントが満たされるたびに自動的に誘発する能力（総合ルール 第4部 第3章 2）。
  *
@@ -89,6 +92,14 @@ export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
 export interface TriggeredAbility {
   readonly kind: '誘発型能力'
   readonly event: TriggerEvent
+  /**
+   * キーワード能力としての名前（`気合`・`才気`）。キーワード能力でない誘発型能力は持たない。
+   *
+   * 「友情」（`FriendshipAbility`）と同じく、効果を持つ能力に名前を追加した形である。名前で
+   * 判定するので、カードの側が能力の値そのものを比較する必要は無い。能力を与える効果で
+   * 作成された「気合」のコピーも、名前で判定できる。
+   */
+  readonly keyword?: TriggeredKeyword
   /**
    * 効果。盤面への問い合わせだけを参照する `Effect` として持つ。
    *
@@ -563,6 +574,12 @@ export type PassiveKeywordAbility = DreamAbility | PepAbility | TrustAbility | G
 export type PassiveKeyword = PassiveKeywordAbility['keyword']
 
 /**
+ * 名前で参照できるキーワード能力。常在型（`PassiveKeyword`）と、名前を持つ誘発型（`TriggeredKeyword`）の
+ * 両方を含む。「そのカードがそのキーワード能力を持つか」を尋ねる範囲として使う。
+ */
+export type NamedKeyword = PassiveKeyword | TriggeredKeyword
+
+/**
  * 属性を加える継続効果を生み出す常在型能力（総合ルール 第2部 第13章 4、
  * 第4部 第12章 5-2 の(3)）。
  *
@@ -957,9 +974,12 @@ export const guts: GutsAbility = { kind: '常在型能力', keyword: '根性' }
  *
  * 「夢」と同じく、何回書いても同じものなので 1 つを使い回す。
  */
-export const spirit: TriggeredAbility = triggeredAbility('登場した時', function* (duel) {
-  yield* damagePlayer(duel.controller, 1000)
-})
+export const spirit: TriggeredAbility = {
+  ...triggeredAbility('登場した時', function* (duel) {
+    yield* damagePlayer(duel.controller, 1000)
+  }),
+  keyword: '気合',
+}
 
 /**
  * キーワード能力「才気」（総合ルール 第5部 第10章）。
@@ -970,9 +990,12 @@ export const spirit: TriggeredAbility = triggeredAbility('登場した時', func
  * 捨てるカードを選ぶのは相手で（同 2。ランダムには捨てない、ADR-0052）、相手の手札が 1 枚以下なら
  * 聞かずにあるだけ捨てる。
  */
-export const wit: TriggeredAbility = triggeredAbility('登場した時', function* () {
-  yield* discardOpponentHand(1)
-})
+export const wit: TriggeredAbility = {
+  ...triggeredAbility('登場した時', function* () {
+    yield* discardOpponentHand(1)
+  }),
+  keyword: '才気',
+}
 
 /** 「希望―［効果］」を 1 つ書く。効果はカードごとに違うので受け取る。 */
 export function hope(effect: Effect): HopeAbility {
