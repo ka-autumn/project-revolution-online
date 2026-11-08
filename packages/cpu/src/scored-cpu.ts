@@ -831,8 +831,10 @@ function scoreChoice(view: ChoiceView): { readonly scores: readonly number[]; re
 /**
  * 同じターンのうちに、同じ動きを同じカードへ「してもよい」かと聞かれ、「はい」と答えていたか。
  *
- * ログを新しい順にたどり、そのターンが始まった行（`進行が変わった` でターン数が変化した行）で止める。対象を持たない動き（「1枚引く」など。ADR-0065）は
- * 何度答えても繰り返しにならないので、対象のある問いだけを見る。
+ * ログを新しい順にたどり、そのターンが始まった行（`進行が変わった` でターン数が変化した行）で止める。
+ * リカバリーフェイズのやり直しはターン数が変化しないので、そこでは止めない。相手の答えは参照しない。
+ * 対象を持たない動き（「1枚引く」など。ADR-0065）は、何度答えても繰り返しにならないので、対象のある
+ * 問いだけを参照する。
  */
 function hasAcceptedThisTurn(perspective: DuelPerspective, choice: WireChoice): boolean {
   const may = choice.may

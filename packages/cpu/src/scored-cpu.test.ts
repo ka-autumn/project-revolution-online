@@ -19,7 +19,19 @@ import {
   triggeredAbility,
   trust,
 } from '@revolution/engine'
-import type { Card, CardInstance, ChoiceAnswer, DuelState, LegalAction, Phase, Player, PlayerZone, Square } from '@revolution/engine'
+import type {
+  Card,
+  CardInstance,
+  ChoiceAnswer,
+  DuelState,
+  LegalAction,
+  Phase,
+  Player,
+  PlayerZone,
+  RecordedEvent,
+  Square,
+  WireChoice,
+} from '@revolution/engine'
 import { actionViewOf, choiceViewOf } from './player.js'
 import { energyTargetOf, scoredCpu } from './scored-cpu.js'
 
@@ -546,5 +558,53 @@ describe('同じターンの終わりに手札へ戻る「してもよい」', (
     )
     expect(asked).toEqual(['はい', 'いいえ'])
     expect(state.zones.先攻.捨札.map((each) => each.id)).toContain(RETURNING)
+  })
+
+  describe('前に答えた「してもよい」のうち、断る理由にするもの', () => {
+    const seenBy = { 先攻: [RETURNING], 後攻: [RETURNING] }
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: 'してもよい',
+      mayDecline: true,
+      answered: 0,
+      mayGoBack: false,
+      mayCancel: false,
+      candidates: [{ kind: '確認' }],
+      may: { action: '手札に加える', targets: [RETURNING] },
+    }
+
+    /** そのターンから次のターンへ進んだ行。`from` と `to` が同じなら、リカバリーフェイズのやり直し。 */
+    const progressed = (from: number | undefined, to: number): RecordedEvent => ({
+      event: {
+        kind: '進行が変わった',
+        from: from === undefined ? undefined : { turn: from, active: '先攻', phase: 'リカバリーフェイズ' },
+        to: { turn: to, active: '先攻', phase: from === to ? 'リカバリーフェイズ' : 'リリースフェイズ' },
+      },
+      during: [],
+      seenBy,
+    })
+
+    const answered = (controller: Player, answer: 'はい' | 'いいえ'): RecordedEvent => ({
+      event: {
+        kind: '命令を実行した',
+        controller,
+        instruction: { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: [RETURNING], answer },
+      },
+      during: [],
+      seenBy,
+    })
+
+    const answerWith = (log: readonly RecordedEvent[]) =>
+      scoredCpu.answer(choiceViewOf({ ...emptyDuelState(), log }, choice), randomFromSeed(1)).answer
+
+    it.each([
+      ['同じターンに自分が「はい」と答えていれば、断る', [progressed(undefined, 1), answered('先攻', 'はい')], '選ばない'],
+      ['リカバリーフェイズがやり直されても、同じターンなので断る', [progressed(undefined, 1), answered('先攻', 'はい'), progressed(1, 1)], '選ばない'],
+      ['「はい」が前のターンなら、また「はい」と答える', [progressed(undefined, 1), answered('先攻', 'はい'), progressed(1, 2)], 0],
+      ['「はい」と答えたのが相手なら、「はい」と答える', [progressed(undefined, 1), answered('後攻', 'はい')], 0],
+      ['自分の前の答えが「いいえ」なら、「はい」と答える', [progressed(undefined, 1), answered('先攻', 'いいえ')], 0],
+    ] as const)('%s', (_label, log, expected) => {
+      expect(answerWith(log)).toBe(expected)
+    })
   })
 })
