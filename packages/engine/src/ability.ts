@@ -74,6 +74,9 @@ export const TRIGGER_EVENTS = [
   // 置かれるカード自身の能力。スクエアにいるユニットからではなく、置かれるカードから探す。
   // どのゾーンから置かれても誘発する（ADR-0059）。
   'このカードが捨札に置かれた時',
+  // 同じ支配者の「気合」（`TriggeredAbility.keyword`）が誘発したことで、スクエアのユニット全員が見る。
+  // 誘発した「気合」の持ち主自身も含む。誘発した時に積まれるもので、解決は待たない。
+  'あなたの「気合」が誘発した時',
 ] as const
 
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
