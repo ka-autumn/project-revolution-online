@@ -20,7 +20,7 @@ import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import type { Chooser } from './resolve.js'
 import type { UnitOnSquare } from './effect.js'
 import { checkSmash } from './trap.js'
-import { unitsOnSquares } from './view.js'
+import { duelView, unitsOnSquares } from './view.js'
 import { moveToZone } from './zone-move.js'
 
 /**
@@ -184,6 +184,24 @@ interface PlanReplacementCandidate {
 }
 
 /**
+ * 置換効果が働く条件を満たしているか。条件を持たない置換効果は常に満たす。
+ *
+ * 条件はプランをしてカードをめくる時の盤面で判定する。判定するだけで命令を出さないので、
+ * 見せたカードは覚えない（`trigger.ts` の誘発条件と同じ）。
+ */
+function planReplacementApplies(state: DuelState, ability: PlanReplacingAbility, unit: UnitOnSquare): boolean {
+  if (ability.condition === undefined) return true
+
+  const duel = duelView(() => state, {
+    controller: unit.controller,
+    self: () => unit,
+    show: () => {},
+    data: continuousData,
+  })
+  return ability.condition(duel)
+}
+
+/**
  * そのプレイヤーが適用することを選んだ、プランのめくりの置換効果。選ばなければ `undefined`。
  *
  * 置換効果を生み出しているのは、そのプレイヤーが支配するスクエアにあるユニットの常在型能力
@@ -197,7 +215,11 @@ function chosenPlanReplacement(
 ): PlanReplacingAbility | undefined {
   const candidates: readonly PlanReplacementCandidate[] = unitsOnSquares(state)
     .filter((unit) => unit.controller === player)
-    .flatMap((unit) => planReplacingAbilitiesOf(unit.card).map((ability) => ({ ability, source: unit.id })))
+    .flatMap((unit) =>
+      planReplacingAbilitiesOf(unit.card)
+        .filter((ability) => planReplacementApplies(state, ability, unit))
+        .map((ability) => ({ ability, source: unit.id })),
+    )
   if (candidates.length === 0) return undefined
 
   // 「かわりに〜してよい」なので、選ばないことを選べる。

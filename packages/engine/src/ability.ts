@@ -683,6 +683,14 @@ export interface PlanReplacingAbility {
    * 選ばせるかどうかを能力の側が持ってはいない。選べないテキストが出てきた時に足す。
    */
   readonly turnsUpUntil: (card: Card) => boolean
+  /**
+   * 置換効果が働く条件（「自分の手札が１枚以下なら、かわりに〜」の「〜なら」）。省略すれば無条件。
+   *
+   * プランをしてカードをめくる時の盤面で、`duel` から取得して判定する。支配者は `duel.controller`、
+   * 能力を持つユニット自身は `duel.self()` である。満たされていなければ、この置換効果は候補にも
+   * ならず、ふつうに山札の 1 番上を 1 枚めくる。
+   */
+  readonly condition?: TriggerRequirement
 }
 
 /**
@@ -1017,10 +1025,13 @@ export function modifying(modifiers: PassiveModifiersFromBoard): ModifyingAbilit
 
 /**
  * プランによるめくりを「〜が出るまでめくる」に置き換える常在型能力を 1 つ書く。
- * 止まる条件はカードごとに違うので受け取る。
+ * 止まる条件はカードごとに違うので受け取る。置換効果が働く条件があるテキストは、第 2 引数で渡す。
  */
-export function planReplacing(turnsUpUntil: (card: Card) => boolean): PlanReplacingAbility {
-  return { kind: '常在型能力', turnsUpUntil }
+export function planReplacing(
+  turnsUpUntil: (card: Card) => boolean,
+  condition?: TriggerRequirement,
+): PlanReplacingAbility {
+  return { kind: '常在型能力', turnsUpUntil, ...(condition === undefined ? {} : { condition }) }
 }
 
 /**
