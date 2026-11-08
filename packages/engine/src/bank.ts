@@ -102,6 +102,15 @@ export function triggerBattleWin(state: DuelState, winner: CardId): DuelState {
 }
 
 /**
+ * ユニットがバトルダメージを受けたことで、そのユニット自身の「このカードがバトルダメージを
+ * 受けた時」を誘発させる（総合ルール 第3部 第13章 1・第15章 1）。呼ぶのはバトルダメージを
+ * 与えた側（`battle.ts`）だけである。効果によるダメージでは誘発しない。
+ */
+export function triggerBattleDamaged(state: DuelState, damaged: CardId): DuelState {
+  return triggerSelf(state, damaged, 'このカードがバトルダメージを受けた時')
+}
+
+/**
  * 誘発していた能力をすべてバンクに入れる。
  *
  * 複数の誘発型能力が誘発していた場合、すべて同時にバンクに入る（総合ルール 第4部

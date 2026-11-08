@@ -1579,7 +1579,7 @@ describe('「あなたの『気合』が誘発した時」', () => {
       instantiate({ id: '敵の見張り', card: watcher, owner: '後攻' }),
     )
     const played = stateOf(play(placed, { card: '登場', square: homeSquare }))
-    return played.bank.map((banked) => banked.source).sort()
+    return played.bank.map((banked) => banked.source ?? '').sort()
   }
 
   it('自分の「気合」が誘発した時、スクエアにいる味方の見張りが誘発する。相手の見張りは誘発しない', () => {

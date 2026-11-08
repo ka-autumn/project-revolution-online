@@ -750,3 +750,59 @@ describe('中央エリアを指定してプレイされたユニット', () => {
     },
   )
 })
+
+// 総合ルール 第3部 第13章 1・第15章 1、第1部 第1章 3（ADR-0006）
+describe('「このカードがバトルダメージを受けた時」', () => {
+  const damagedAbility = triggeredAbility('このカードがバトルダメージを受けた時', function* () {})
+  /** バトルダメージを受けても捨札に置かれない、ＢＰの大きいユニット。 */
+  const sturdyWatcher = defineUnit({
+    name: 'テスト・バトルダメージを見張る（大ＢＰ）',
+    level: 1,
+    colors: ['赤'],
+    bp: 5000,
+    sp: 1000,
+    abilities: [damagedAbility],
+  })
+  /** バトルダメージで捨札に置かれる、ＢＰの小さいユニット。 */
+  const frailWatcher = defineUnit({
+    name: 'テスト・バトルダメージを見張る（小ＢＰ）',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [damagedAbility],
+  })
+
+  const waiting = (state: DuelState) => banked(state).filter((each) => each.endsWith('／このカードがバトルダメージを受けた時'))
+
+  it('バトルダメージを受けたユニット自身の能力が誘発する', () => {
+    const damaged = atStep(atStep(battling(sturdyWatcher, vanilla), '第１ダメージステップ'), '第２ダメージステップ')
+
+    expect(damageOn(damaged, homeSquare, '攻撃された')).toBe(3000)
+    expect(waiting(damaged)).toEqual(['攻撃された／このカードがバトルダメージを受けた時'])
+  })
+
+  it('ダメージを与えた側ではなく、受けた側だけが誘発する', () => {
+    const damaged = atStep(atStep(battling(vanilla, sturdyWatcher), '第１ダメージステップ'), '第２ダメージステップ')
+
+    expect(waiting(damaged)).toEqual(['攻撃した／このカードがバトルダメージを受けた時'])
+  })
+
+  it('バトルダメージが発生するまでは誘発しない', () => {
+    const first = atStep(battling(sturdyWatcher, vanilla), '第１ダメージステップ')
+
+    expect(waiting(first)).toEqual([])
+  })
+
+  // 第1部 第1章 3: 実行できない行動は実行されない。そのダメージで捨札に置かれても、誘発はする。
+  it('そのダメージで捨札に置かれても誘発し、解決しても何も起こらない', () => {
+    const damaged = atStep(atStep(battling(frailWatcher, vanilla), '第１ダメージステップ'), '第２ダメージステップ')
+
+    expect(idsOf(cardsIn(damaged, '後攻', '捨札'))).toEqual(['攻撃された'])
+    expect(waiting(damaged)).toEqual(['攻撃された／このカードがバトルダメージを受けた時'])
+
+    const after = afterBattle(damaged)
+    expect(idsOf(cardsIn(after, '後攻', '捨札'))).toEqual(['攻撃された'])
+    expect(after.bank).toEqual([])
+  })
+})
