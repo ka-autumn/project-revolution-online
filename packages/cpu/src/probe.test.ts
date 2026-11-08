@@ -108,7 +108,7 @@ describe('対象を持たない「してもよい」の空回し', () => {
 })
 
 describe('CPU が「してもよい」に答える', () => {
-  it('候補は「確認」の 1 つで、いつも「はい」（候補の 0 番）と答える', () => {
+  it('候補は「確認」の 1 つで、このターンに同じ問いへ答えていなければ「はい」（候補の 0 番）と答える', () => {
     const state = withZone(emptyDuelState(), '先攻', '捨札', [instantiate({ id: '捨札の1枚', card: strong, owner: '先攻' })])
     const choice = {
       player: '先攻',

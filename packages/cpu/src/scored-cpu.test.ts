@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyWithAnswers,
   choose,
+  createTriggeredAbilityForDiscardedCard,
   damageUnit,
   defineStrategy,
   defineUnit,
@@ -11,11 +12,26 @@ import {
   instantiate,
   placeInZone,
   legalActions,
+  mayDo,
+  placeTopOfLibrary,
   putOnSquare,
   randomFromSeed,
+  triggeredAbility,
   trust,
 } from '@revolution/engine'
-import type { Card, CardInstance, DuelState, LegalAction, Phase, Player, PlayerZone, Square } from '@revolution/engine'
+import type {
+  Card,
+  CardInstance,
+  ChoiceAnswer,
+  DuelState,
+  LegalAction,
+  Phase,
+  Player,
+  PlayerZone,
+  RecordedEvent,
+  Square,
+  WireChoice,
+} from '@revolution/engine'
 import { actionViewOf, choiceViewOf } from './player.js'
 import { energyTargetOf, scoredCpu } from './scored-cpu.js'
 
@@ -455,5 +471,140 @@ describe('選択への答え', () => {
     expect(typeof answer).toBe('number')
     if (typeof answer !== 'number') return
     expect(progress.choice.candidates[answer]).toEqual({ kind: '見えている', card: 'enemy' })
+  })
+})
+
+/**
+ * EB1.0 の 069 と同じ形の能力（捨札に置かれた時、そのターンの終わりに、捨札のこのカードを手札に加えて
+ * もよい。そうしたら、手札を 1 枚捨てる）。手札が戻ったこのカードだけなら、捨てる 1 枚もこのカードになり、
+ * また誘発する。エンジンはこの繰り返しを止めず、支配者が断れば止まる（ADR-0059）。
+ */
+describe('同じターンの終わりに手札へ戻る「してもよい」', () => {
+  const RETURNING = '戻るユニット'
+  const STRATEGY = '山札の上を捨札に置く'
+
+  const returning = defineUnit({
+    name: 'テスト・捨札から戻る',
+    level: 7,
+    bp: 6500,
+    sp: 2500,
+    abilities: [
+      triggeredAbility('このカードが捨札に置かれた時', function* (_duel, placed) {
+        yield* createTriggeredAbilityForDiscardedCard(placed, 'ターンの終わり', '手札に加えてもよい。そうしたら、手札を1枚捨てる', function* (duel, affected) {
+          const inDiscardPile = duel.discardPile().find((each) => each.id === affected.id)
+          const added = yield* mayDo(inDiscardPile === undefined ? [] : [inDiscardPile], '手札に加える')
+          if (!added) return
+
+          const discarded = yield* choose(duel.hand())
+          if (discarded !== undefined) yield* placeInZone(discarded, '捨札', 'リリース')
+        })
+      }),
+    ],
+  })
+
+  const milling = defineStrategy({
+    name: 'テスト・山札の上を捨札に置く',
+    level: 0,
+    effect: function* () {
+      yield* placeTopOfLibrary('捨札', 'リリース')
+    },
+  })
+
+  /** 先攻の手札はストラテジー 1 枚だけで、山札の 1 番上に戻るユニットがある盤面。 */
+  function scene(): DuelState {
+    const base = sceneAt('メインフェイズ')
+    const withStrategy = withZone(base, '先攻', '手札', [instantiate({ id: STRATEGY, card: milling, owner: '先攻' })])
+    const library = withStrategy.zones.先攻.山札
+    return {
+      ...withStrategy,
+      zones: {
+        ...withStrategy.zones,
+        先攻: { ...withStrategy.zones.先攻, 山札: [instantiate({ id: RETURNING, card: returning, owner: '先攻' }), ...library] },
+      },
+    }
+  }
+
+  /** 行動を 1 つ、選択には CPU が答えながら適用する。答えが `limit` 件を超えたら投げる。 */
+  function applyAnswering(state: DuelState, action: LegalAction, limit: number): { state: DuelState; answers: number } {
+    const answers: ChoiceAnswer[] = []
+    for (;;) {
+      const progress = applyWithAnswers(state, action, answers)
+      if (progress.kind === '進んだ') return { state: progress.state, answers: answers.length }
+      if (answers.length >= limit) throw new Error('選択への答えが終わらない')
+
+      answers.push(scoredCpu.answer(choiceViewOf(progress.board, progress.choice), randomFromSeed(answers.length)).answer)
+    }
+  }
+
+  it('先攻の手札が 0 枚でも、CPU が答えるとそのターンが有限回で終わる', () => {
+    const played = applyAnswering(scene(), { kind: 'カードをプレイする', declaration: { card: STRATEGY } }, 20).state
+    expect(played.zones.先攻.手札).toEqual([])
+    expect(played.zones.先攻.捨札.map((each) => each.id)).toContain(RETURNING)
+
+    let state = played
+    let steps = 0
+    while (state.turn.number === played.turn.number) {
+      if (steps >= 100) throw new Error('ターンが終わらない')
+      const action = scoredCpu.pickAction(actionViewOf(state, state.turn.priority), randomFromSeed(steps))?.action
+      if (action === undefined) throw new Error('CPU が手を選ばなかった')
+      state = applyAnswering(state, action, 20).state
+      steps += 1
+    }
+
+    expect(state.turn.number).toBe(played.turn.number + 1)
+    // 1 回目は手札に加え、戻った自分を捨てて、また聞かれた 2 回目は断る。
+    const asked = state.log.flatMap(({ event }) =>
+      event.kind === '命令を実行した' && event.instruction.kind === 'してもよいか聞く' ? [event.instruction.answer] : [],
+    )
+    expect(asked).toEqual(['はい', 'いいえ'])
+    expect(state.zones.先攻.捨札.map((each) => each.id)).toContain(RETURNING)
+  })
+
+  describe('前に答えた「してもよい」のうち、断る理由にするもの', () => {
+    const seenBy = { 先攻: [RETURNING], 後攻: [RETURNING] }
+    const choice: WireChoice = {
+      player: '先攻',
+      purpose: 'してもよい',
+      mayDecline: true,
+      answered: 0,
+      mayGoBack: false,
+      mayCancel: false,
+      candidates: [{ kind: '確認' }],
+      may: { action: '手札に加える', targets: [RETURNING] },
+    }
+
+    /** そのターンから次のターンへ進んだ行。`from` と `to` が同じなら、リカバリーフェイズのやり直し。 */
+    const progressed = (from: number | undefined, to: number): RecordedEvent => ({
+      event: {
+        kind: '進行が変わった',
+        from: from === undefined ? undefined : { turn: from, active: '先攻', phase: 'リカバリーフェイズ' },
+        to: { turn: to, active: '先攻', phase: from === to ? 'リカバリーフェイズ' : 'リリースフェイズ' },
+      },
+      during: [],
+      seenBy,
+    })
+
+    const answered = (controller: Player, answer: 'はい' | 'いいえ'): RecordedEvent => ({
+      event: {
+        kind: '命令を実行した',
+        controller,
+        instruction: { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: [RETURNING], answer },
+      },
+      during: [],
+      seenBy,
+    })
+
+    const answerWith = (log: readonly RecordedEvent[]) =>
+      scoredCpu.answer(choiceViewOf({ ...emptyDuelState(), log }, choice), randomFromSeed(1)).answer
+
+    it.each([
+      ['同じターンに自分が「はい」と答えていれば、断る', [progressed(undefined, 1), answered('先攻', 'はい')], '選ばない'],
+      ['リカバリーフェイズがやり直されても、同じターンなので断る', [progressed(undefined, 1), answered('先攻', 'はい'), progressed(1, 1)], '選ばない'],
+      ['「はい」が前のターンなら、また「はい」と答える', [progressed(undefined, 1), answered('先攻', 'はい'), progressed(1, 2)], 0],
+      ['「はい」と答えたのが相手なら、「はい」と答える', [progressed(undefined, 1), answered('後攻', 'はい')], 0],
+      ['自分の前の答えが「いいえ」なら、「はい」と答える', [progressed(undefined, 1), answered('先攻', 'いいえ')], 0],
+    ] as const)('%s', (_label, log, expected) => {
+      expect(answerWith(log)).toBe(expected)
+    })
   })
 })
