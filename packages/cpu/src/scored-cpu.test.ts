@@ -13,9 +13,11 @@ import {
   placeInZone,
   legalActions,
   mayDo,
+  movePreventing,
   placeTopOfLibrary,
   putOnSquare,
   randomFromSeed,
+  squaresAdjacent,
   triggeredAbility,
   trust,
 } from '@revolution/engine'
@@ -346,6 +348,60 @@ describe('ユニットの移動', () => {
     state = onSquare(state, at(OWN_AREA, 1), 'e', invading, '後攻')
 
     expect(picked(state)).toEqual({ kind: 'ユニットを移動する', unit: 'a', destination: at(OWN_AREA, 2) })
+  })
+})
+
+// 総合ルール 第3部 第8章 2-5（ADR-0068）。移動を妨げる常在型能力で動けないユニットは、見積もりにも動けないものとして入る。
+describe('移動を妨げる常在型能力', () => {
+  /** 「隣にいる敵と味方は移動できない」というテキストの常在型能力を持つ、動かないユニット。 */
+  const guard = defineUnit({
+    name: 'テスト・隣を止める',
+    level: 0,
+    bp: 1000,
+    sp: 0,
+    abilities: [
+      movePreventing((duel, occasion) => {
+        const self = duel.self()
+        if (self === undefined || self.id === occasion.unit.id) return false
+        return squaresAdjacent(self.square).some(
+          (beside) => beside.row === occasion.unit.square.row && beside.column === occasion.unit.square.column,
+        )
+      }),
+    ],
+  })
+
+  /** 下がって守る場面（上の「ユニットの移動」と同じ）。敵のいるスクエアの隣に、敵ごと動きを止めるユニットを置ける。 */
+  function retreatScene(withGuard: boolean): DuelState {
+    const retreating = defineUnit({ name: 'テスト・下がれる', level: 0, bp: 5000, sp: 0, moveIcon: ['下'] })
+    const invading = defineUnit({ name: 'テスト・横に動ける敵', level: 0, bp: 2000, sp: 1000, moveIcon: ['左'] })
+    let state = onSquare(sceneAt('メインフェイズ'), at(CENTER, 2), 'a', retreating, '先攻')
+    state = onSquare(state, at(OWN_AREA, 1), 'e', invading, '後攻')
+    return withGuard ? onSquare(state, at(OWN_AREA, 0), 'g', guard, '後攻') : state
+  }
+
+  it('味方エリアへ入って来る敵が動けないなら、下がって守らない', () => {
+    const retreat = { kind: 'ユニットを移動する', unit: 'a', destination: at(OWN_AREA, 2) }
+
+    expect(picked(retreatScene(false))).toEqual(retreat)
+    expect(picked(retreatScene(true))).not.toEqual(retreat)
+  })
+
+  /** 負けるバトルの後の追い打ちを、動けない味方に期待しない。 */
+  function followUpScene(withGuard: boolean): DuelState {
+    const follower = defineUnit({ name: 'テスト・追い打ちする味方', level: 0, bp: 2500, sp: 0, moveIcon: ['下'] })
+    let state = withZone(sceneAt('メインフェイズ'), '先攻', '手札', [
+      instantiate({ id: 'first', card: unit('先に攻める', 2000, 0), owner: '先攻' }),
+    ])
+    state = onSquare(state, at(OWN_AREA, 0), 'e', unit('強い敵', 4000, 1000), '後攻')
+    state = onSquare(state, at(CENTER, 0), 'f', follower, '先攻')
+    return withGuard ? onSquare(state, at(CENTER, 1), 'g', guard, '後攻') : state
+  }
+
+  it('追い打ちできる味方が動けないなら、負けるバトルに攻め込まない', () => {
+    const attack = { kind: 'カードをプレイする', declaration: { card: 'first', square: at(OWN_AREA, 0) } }
+
+    expect(picked(followUpScene(false))).toEqual(attack)
+    expect(picked(followUpScene(true))).not.toEqual(attack)
   })
 })
 

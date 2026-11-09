@@ -1,4 +1,4 @@
-import { UNTARGETED_MAY_ACTIONS, hasKeyword } from '@revolution/engine'
+import { UNTARGETED_MAY_ACTIONS, hasKeyword, movePreventingAbilitiesOf } from '@revolution/engine'
 import type {
   CardId,
   CardInDiscardPile,
@@ -11,6 +11,7 @@ import type {
   Instruction,
   Player,
   PlayerZone,
+  Square,
   SmashCard,
   UnitOnSquare,
   WireCandidate,
@@ -49,6 +50,34 @@ function onSquareOf(unit: SeenUnit): UnitOnSquare {
   // 継続効果を適用した後の BP を見せる。効果が書かれた BP を参照して判定するテキストもあるが、
   // 損得の見積もりにはこちらが近い。
   return { id: unit.id, square: unit.square, card: { ...unit.card, bp: unit.bp, sp: unit.sp }, controller: unit.controller }
+}
+
+/**
+ * そのユニットのその移動を、移動を妨げる常在型能力が妨げているか（ADR-0068）。
+ *
+ * エンジンの `moveUnit` が行う判定を、射影した盤面で再現する。見積もりのための空回しなので、
+ * 能力が射影した盤面で見えないものを読もうとして例外になることがある。その時の答えは `onError`
+ * で決める。動けるものと見込むと危険を大きく見積もり、動けないものと見込むと期待を小さく見積もる。
+ */
+export function movePrevented(
+  perspective: DuelPerspective,
+  mover: SeenUnit,
+  destination: Square,
+  onError: boolean,
+): boolean {
+  const occasion = { kind: '移動' as const, unit: onSquareOf(mover), destination }
+  return unitsOf(perspective).some((source) =>
+    movePreventingAbilitiesOf(source.card).some((ability) => {
+      try {
+        return ability.preventsMove(
+          viewFrom({ perspective, controller: source.controller, self: onSquareOf(source) }),
+          occasion,
+        )
+      } catch {
+        return onError
+      }
+    }),
+  )
 }
 
 /** 射影した盤面から、効果に見せる問い合わせを作成する。 */

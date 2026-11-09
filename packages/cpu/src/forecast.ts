@@ -2,6 +2,7 @@ import { BATTLE_SPACE, squareInDirection, squaresBeside } from '@revolution/engi
 import type { Card, CardId, DuelPerspective, Player, Square, UnitCard } from '@revolution/engine'
 import { areaFor, countIn, opponentOf, pepOf, sameSquare, trustOf, unitsOf } from './sight.js'
 import type { SeenUnit } from './sight.js'
+import { movePrevented } from './probe.js'
 
 /**
  * バトルの勝ち負けと、ユニットの基礎点の見積もり（ADR-0060 の段階 2、#366）。
@@ -151,7 +152,8 @@ export function survivalAt(
         unit.controller === opponent &&
         unit.card.moveIcon.some((direction) => {
           const reached = squareInDirection(opponent, unit.square, direction)
-          return reached !== undefined && sameSquare(reached, square)
+          // 移動を妨げる常在型能力で動けない敵は、攻め込んでこない（ADR-0068）。
+          return reached !== undefined && sameSquare(reached, square) && !movePrevented(perspective, unit, reached, false)
         }) &&
         !forecastBattle({ bp: unit.bp, damage: 0, pep: pepOf(unit.card) }, recovered).defenderSurvives,
     )
@@ -193,7 +195,7 @@ function guardBasePoints(perspective: DuelPerspective, me: Player, square: Squar
         unit.controller === opponent &&
         unit.card.moveIcon.some((direction) => {
           const reached = squareInDirection(opponent, unit.square, direction)
-          return reached !== undefined && sameSquare(reached, square)
+          return reached !== undefined && sameSquare(reached, square) && !movePrevented(perspective, unit, reached, false)
         }),
     )
     .reduce((sum, unit) => {
