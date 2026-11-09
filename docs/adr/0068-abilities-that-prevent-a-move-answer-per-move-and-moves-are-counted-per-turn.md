@@ -85,9 +85,9 @@ CPU は、EB1.0 の 029 の隣の敵が攻め込んでくると見込んで身�
   「能力によって移動できない」。判定は `moveUnit` が追加コストの支払いより前に行う。
 - 盤面のプロパティは `DuelState.movedThisTurn`（移動のたびに 1 件ずつ並ぶ）、効果が取得するメソッドは
   `DuelView.movesThisTurn`。
-- CPU の空回しに渡すため、`movedThisTurn` を視点（`DuelPerspective`）と通信（`WirePerspective`）にも追加した。
-  決定事項の「通信のデータの形式は変更しない」は画面の表示についての記述だったが、読み取り専用の
-  プロパティが 1 つ増えたので、ここに残す。
+- CPU の空回しに渡すため、`movedThisTurn` を視点（`DuelPerspective`）に追加した。CPU はサーバの中で
+  完全な盤面から視点を作成して受け取り、画面は参照しないので、通信（`WirePerspective`）には含めない。
+  `toWire` が視点を展開する際に落とす。通信のデータの形式は変更しない。
 - CPU の先読みで移動を妨げる能力を参照する箇所は、決定時に挙げた 2 か所のほかに 2 か所ある。守りの基礎点
   （`guardBasePoints`）と、敵が前へ進めるかの判定（`mayBeSmashed`）で、いずれも敵が移動できるかを
   エンジンを通さずに見積もっていたため、同じ関数（`movePrevented`）を通した。
