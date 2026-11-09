@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 // 手札やトラップゾーンを組み立てるためだけに `putInZone` を使う。engine の中からゾーンを
 // 差し替えるための関数であり、公開する API ではない。
 import { moveToSquare, moveToZoneWithoutTriggers, putInZone } from './duel.js'
@@ -6,6 +6,7 @@ import {
   PLAYERS,
   cardsIn,
   cardsOn,
+  choose,
   courage,
   defineTrap,
   defineUnit,
@@ -17,12 +18,14 @@ import {
   movePreventing,
   moveUnit,
   passPriority,
+  placeOnSquare,
   putOnSquare,
+  resolveEffect,
   squaresAdjacent,
   triggeredAbility,
   trust,
 } from './index.js'
-import type { ActionOutcome, CardInstance, Chooser, DuelState, Phase, Player, Square, UnitCard } from './index.js'
+import type { ActionOutcome, CardInstance, Chooser, DuelState, Effect, Phase, Player, Square, UnitCard } from './index.js'
 
 /** 選択を求められたら常に最初の候補を選ぶ。どれを選ぶかを問わないテストで使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -431,7 +434,7 @@ describe('移動を妨げる常在型能力', () => {
     )
   }
 
-  // 総合ルール 第8章 2-5。隣にいる敵も味方も止める。
+  // 総合ルール 第3部 第8章 2-5。隣にいる敵も味方も止める。
   it('隣にいる味方は移動できない', () => {
     expect(violationOf(moveUnit(guarded(homeLeftSquare, '先攻'), 'ユニット', centerSquare, chooseFirst))).toBe(
       '能力によって移動できない',
@@ -475,6 +478,50 @@ describe('移動を妨げる常在型能力', () => {
 
     expect(cardsOn(placed, centerSquare)[0]?.id).toBe('ユニット')
     expect(placed.movedThisTurn).toEqual([])
+  })
+
+  // 総合ルール 第3部 第8章 2-5。効果の命令でスクエアからスクエアへ置く経路を通す。
+  describe('効果でスクエアからスクエアへ置く', () => {
+    const placeAlly = (square: Square): Effect =>
+      function* (duel) {
+        const ally = yield* choose(duel.allies())
+        if (ally !== undefined) yield* placeOnSquare(ally, square, 'リリース')
+      }
+    const resolve = (state: DuelState, effect: Effect) =>
+      resolveEffect(state, effect, { controller: '先攻', via: 'プレイ', chooser: chooseFirst })
+
+    it('隣を止める能力があっても置けて、移動の記録は増えない', () => {
+      const resolved = resolve(guarded(homeLeftSquare), placeAlly(centerSquare))
+
+      expect(cardsOn(resolved, centerSquare).map((each) => each.id)).toEqual(['ユニット'])
+      expect(resolved.movedThisTurn).toEqual([])
+    })
+
+    it('1 ターンに 1 回しか移動できないユニットは、置き直された後も 1 回移動できる', () => {
+      const board = putOnSquare(mainPhase(), homeSquare, unit('疲れたユニット', tired))
+      const resolved = resolve(board, placeAlly(centerSquare))
+
+      expect(resolved.movedThisTurn).toEqual([])
+      expect(cardsOn(stateOf(moveUnit(resolved, '疲れたユニット', farSquare, chooseFirst)), farSquare)).toHaveLength(1)
+    })
+  })
+
+  // 移動を妨げる判定は、追加コストの支払いより前に行う（ADR-0068）。
+  it('妨げられる移動では、追加コストのための選択を求めない', () => {
+    const both = defineUnit({
+      name: 'テスト・コストを課して止める',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [moveCosting(() => ({ energiesFrozen: 1 })), movePreventing(() => true)],
+    })
+    const board = putOnSquare(putOnSquare(mainPhase(), homeSquare, unit('ユニット')), farSquare, unit('コストを課して止める', both, '後攻'))
+    const state = putInZone(board, '先攻', 'エネルギーゾーン', [unit('エネ')])
+    const chooser = vi.fn<Chooser>(chooseFirst)
+
+    expect(violationOf(moveUnit(state, 'ユニット', centerSquare, chooser))).toBe('能力によって移動できない')
+    expect(chooser).not.toHaveBeenCalled()
   })
 
   describe('1 ターンに 1 回しか移動できない', () => {

@@ -661,7 +661,7 @@ export interface MoveCostingAbility {
  * 払えるかどうかではなく、その移動を行えるかどうかを返す。
  *
  * 妨げるのは移動の行動だけである。効果でスクエアからスクエアへ置くことは移動ではない
- * （同）ので、妨げない。どの移動を妨げるかはカードの読み方なので、きっかけを見て答えるこの
+ * （同）ので、妨げない。どの移動を妨げるかはカードの読み方なので、きっかけを参照して返すこの
  * 関数で表す（`MoveCostingAbility` と同じ）。
  */
 export interface MovePreventingAbility {
