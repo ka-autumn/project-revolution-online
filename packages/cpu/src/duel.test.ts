@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { defineUnit } from '@revolution/engine'
+import { defineUnit, indexOfSquare, movePreventing, squaresAdjacent } from '@revolution/engine'
 import type { Card, Deck } from '@revolution/engine'
 import { playCpuDuel } from './duel.js'
 import { randomCpu } from './random-cpu.js'
+import { scoredCpu } from './scored-cpu.js'
 
 /**
  * CPU 同士で 1 回のデュエルを打つ（ADR-0060 の段階 1、#365）。
@@ -58,5 +59,57 @@ describe('CPU 同士の 1 回のデュエル', () => {
     })
 
     expect(result).toEqual({ kind: '手数上限', first: result.first, actionsTaken: 3 })
+  })
+})
+
+// 総合ルール 第3部 第8章 2-5（ADR-0068）。移動を妨げる能力を持つユニットが混ざったデッキでも、CPU は止まらず打ち切る。
+describe('移動を妨げる常在型能力を持つユニットを含むデッキ', () => {
+  /** 「隣にいる敵と味方は移動できない」。 */
+  const guard = defineUnit({
+    name: 'テスト・デュエルの隣を止める',
+    level: 0,
+    bp: 3000,
+    sp: 1000,
+    moveIcon: ['上'],
+    abilities: [
+      movePreventing((duel, occasion) => {
+        const self = duel.self()
+        if (self === undefined || self.id === occasion.unit.id) return false
+        return squaresAdjacent(self.square).some((beside) => indexOfSquare(beside) === indexOfSquare(occasion.unit.square))
+      }),
+    ],
+  })
+
+  /** 「このカードは１ターンに１回しか移動できない」。 */
+  const tired = defineUnit({
+    name: 'テスト・デュエルの1回だけ移動',
+    level: 0,
+    bp: 3000,
+    sp: 1000,
+    moveIcon: ['上', '右', '左'],
+    abilities: [
+      movePreventing((duel, occasion) => {
+        const self = duel.self()
+        return self !== undefined && self.id === occasion.unit.id && duel.movesThisTurn(occasion.unit) >= 1
+      }),
+    ],
+  })
+
+  const mixed = (label: string): Deck => [
+    ...[guard, tired].flatMap((card) => Array.from({ length: 4 }, () => card)),
+    ...deckOf(label, 2000).slice(8),
+  ]
+
+  it.each([1, 2, 3, 4])('点数で選ぶ CPU 同士が、最後まで打てる（シード %i）', (seed) => {
+    const result = playCpuDuel({
+      seats: [
+        { cpu: scoredCpu, deck: mixed('A') },
+        { cpu: scoredCpu, deck: mixed('B') },
+      ],
+      seed,
+      maxActions: 5000,
+    })
+
+    expect(result.kind).toBe('決着')
   })
 })
