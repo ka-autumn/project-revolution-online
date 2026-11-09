@@ -173,6 +173,15 @@ export interface DuelState {
    */
   readonly playedIntoCenter: readonly CardId[]
   /**
+   * このターンに移動したユニット（総合ルール 第3部 第8章 2-5。ADR-0068）。移動のたびに 1 件ずつ
+   * 並ぶので、同じユニットが 2 回移動していれば 2 件ある。ターンが替わる時に空にする。
+   *
+   * 効果による配置は移動ではないので、ここには並ばない。スクエアを離れてゾーンへ動いたカードは
+   * 新しいカードとして扱われる（同 第2部 第21章 1-4）ため、その時点でそのカードの分を取り除く
+   * （`withoutEffectsCreatedOn`）。スクエアからスクエアへ動いただけなら残る。
+   */
+  readonly movedThisTurn: readonly CardId[]
+  /**
    * トラップゾーンにあり、発動条件が満たされているカード（総合ルール 第2部 第20章 3-8）。
    *
    * 発動条件が満たされたこと（`trap.ts` の `checkIntrusion`・`checkAttack`・`checkSmash`）を
@@ -611,6 +620,7 @@ export function emptyDuelState(): DuelState {
     createdContinuousEffects: [],
     recovery: INITIAL_RECOVERY,
     playedIntoCenter: [],
+    movedThisTurn: [],
     trapConditionsMet: [],
     courageConditionsMet: [],
     battles: [],
@@ -882,8 +892,8 @@ function detach(state: DuelState, id: CardId): { readonly state: DuelState; read
 
 /**
  * そのカードに影響を与える、作成された誘発型能力を消滅させ（総合ルール 第4部 第3章 4-1）、
- * そのカードあての作成された継続効果を取り除く（同 第12章。ADR-0036）。無ければ盤面は
- * そのまま。
+ * そのカードあての作成された継続効果を取り除く（同 第12章。ADR-0036）。このターンに移動した
+ * 記録も取り除く（ADR-0068）。無ければ盤面はそのまま。
  *
  * ゾーンを移ったカードは新しいカードとして扱われる（同 第2部 第21章 1-4）。engine の中では
  * 同じ識別子を持ち続ける（#284）ので、取り除かなければ、手札に戻って同じターンに出し直した
@@ -899,10 +909,13 @@ function withoutEffectsCreatedOn(state: DuelState, id: CardId): DuelState {
   const effects = state.createdContinuousEffects.filter((created) => created.target !== id)
   // 新しいカードの能力は、このターンにまだ誘発していない（総合ルール 第3部 第10章 5）。
   const once = state.recovery.triggered.filter((fired) => fired.source !== id)
+  // このターンに移動した回数も、新しいカードには引き継がれない（ADR-0068）。
+  const moved = state.movedThisTurn.filter((each) => each !== id)
   if (
     abilities.length === state.createdAbilities.length &&
     effects.length === state.createdContinuousEffects.length &&
-    once.length === state.recovery.triggered.length
+    once.length === state.recovery.triggered.length &&
+    moved.length === state.movedThisTurn.length
   ) {
     return state
   }
@@ -911,6 +924,7 @@ function withoutEffectsCreatedOn(state: DuelState, id: CardId): DuelState {
     createdAbilities: abilities,
     createdContinuousEffects: effects,
     recovery: { ...state.recovery, triggered: once },
+    movedThisTurn: moved,
   }
 }
 

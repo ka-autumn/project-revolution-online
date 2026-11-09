@@ -6,6 +6,7 @@ import type {
   ModifyingAbility,
   HopeAbility,
   MoveCostingAbility,
+  MovePreventingAbility,
   NamedKeyword,
   PlanReplacingAbility,
 } from './ability.js'
@@ -552,6 +553,15 @@ export function planReplacingAbilitiesOf(card: Card): readonly PlanReplacingAbil
 export function moveCostingAbilitiesOf(card: Card): readonly MoveCostingAbility[] {
   return card.abilities.filter(
     (ability): ability is MoveCostingAbility => ability.kind === '常在型能力' && 'moveCost' in ability,
+  )
+}
+
+/**
+ * そのカードが持つ、ユニットの移動を妨げる常在型能力（総合ルール 第3部 第8章 2-5。ADR-0068）。
+ */
+export function movePreventingAbilitiesOf(card: Card): readonly MovePreventingAbility[] {
+  return card.abilities.filter(
+    (ability): ability is MovePreventingAbility => ability.kind === '常在型能力' && 'preventsMove' in ability,
   )
 }
 

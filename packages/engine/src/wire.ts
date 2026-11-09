@@ -198,6 +198,7 @@ export interface WirePerspective {
   readonly triggered: readonly VisibleAbility[]
   readonly createdAbilities: readonly VisibleCreatedAbility[]
   readonly playedIntoCenter: readonly CardId[]
+  readonly movedThisTurn: readonly CardId[]
   readonly trapConditionsMet: readonly WireTrapConditionMet[]
   readonly courageConditionsMet: readonly WireCourageConditionMet[]
   readonly battles: readonly VisibleBattle[]

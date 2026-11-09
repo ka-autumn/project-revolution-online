@@ -192,6 +192,12 @@ export interface DuelPerspective {
   readonly triggered: readonly VisibleAbility[]
   readonly createdAbilities: readonly VisibleCreatedAbility[]
   readonly playedIntoCenter: readonly CardId[]
+  /**
+   * このターンに移動したユニット。移動のたびに 1 件ずつ並ぶ（`DuelState.movedThisTurn`、ADR-0068）。
+   * 移動を妨げる常在型能力の判定を、CPU が空回しで再現するために渡す。スクエアにいるユニットが
+   * 動いたことは両方のプレイヤーに見えているので、視点によって落とすものは無い。
+   */
+  readonly movedThisTurn: readonly CardId[]
   /** 視点のプレイヤーが持っている、発動条件が満たされているトラップ。きっかけごとに 1 件ずつ並び、同じトラップの件が複数あってよい（ADR-0039）。 */
   readonly trapConditionsMet: readonly TrapConditionMet[]
   /** 視点のプレイヤーの、「勇気」の起動条件が満たされていること。きっかけごとに 1 件ずつ並ぶ（ADR-0039）。 */
@@ -651,6 +657,7 @@ function projectBoard(state: DuelState, viewer: Player): DuelPerspective {
           ],
     ),
     playedIntoCenter: state.playedIntoCenter,
+    movedThisTurn: state.movedThisTurn,
     trapConditionsMet: state.trapConditionsMet.filter((met) => ownsTrap(state, viewer, met)),
     courageConditionsMet: state.courageConditionsMet.filter((met) => met.player === viewer),
     battles: state.battles.map((battle) => visibleBattle(battle, visible)),

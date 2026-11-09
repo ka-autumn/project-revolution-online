@@ -654,6 +654,23 @@ export interface MoveCostingAbility {
 }
 
 /**
+ * ユニットの移動を妨げる常在型能力（総合ルール 第3部 第8章 2-5。ADR-0068）。
+ *
+ * 「隣にいる敵と味方は移動できない」「このカードは１ターンに１回しか移動できない」のように、
+ * 移動そのものを行えなくする。追加コストを課す `MoveCostingAbility` とは別で、コストを
+ * 払えるかどうかではなく、その移動を行えるかどうかを返す。
+ *
+ * 妨げるのは移動の行動だけである。効果でスクエアからスクエアへ置くことは移動ではない
+ * （同）ので、妨げない。どの移動を妨げるかはカードの読み方なので、きっかけを見て答えるこの
+ * 関数で表す（`MoveCostingAbility` と同じ）。
+ */
+export interface MovePreventingAbility {
+  readonly kind: '常在型能力'
+  /** その移動を妨げるなら `true`。 */
+  readonly preventsMove: (duel: DuelView, occasion: MovementOccasion) => boolean
+}
+
+/**
  * プランによるめくりを置き換える置換効果を生み出す常在型能力
  * （総合ルール 第4部 第13章、第3部 第8章 2-3）。
  *
@@ -896,6 +913,7 @@ export type Ability =
   | AttributeAddingAbility
   | PlanReplacingAbility
   | MoveCostingAbility
+  | MovePreventingAbility
 
 /**
  * 誘発型能力を 1 つ書く。
@@ -1042,6 +1060,16 @@ export function moveCosting(
   moveCost: (duel: DuelView, occasion: MovementOccasion) => MoveCost | undefined,
 ): MoveCostingAbility {
   return { kind: '常在型能力', moveCost }
+}
+
+/**
+ * ユニットの移動を妨げる常在型能力を 1 つ実装する。
+ * どの移動を妨げるかはカードごとに違うので受け取る。
+ */
+export function movePreventing(
+  preventsMove: (duel: DuelView, occasion: MovementOccasion) => boolean,
+): MovePreventingAbility {
+  return { kind: '常在型能力', preventsMove }
 }
 
 /** 属性を加える常在型能力を 1 つ書く。加える内容はカードごとに違うので受け取る。 */

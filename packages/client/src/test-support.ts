@@ -49,6 +49,7 @@ export function emptyBoard(viewer: Player): WirePerspective {
     triggered: [],
     createdAbilities: [],
     playedIntoCenter: [],
+    movedThisTurn: [],
     trapConditionsMet: [],
     courageConditionsMet: [],
     battles: [],

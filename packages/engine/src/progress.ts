@@ -204,7 +204,8 @@ function repeatRecovery(state: DuelState): DuelState {
 function beginNextPhase(state: DuelState): DuelState {
   const after = turnAfter(state.turn)
   const changed = record(state, { kind: '進行が変わった', from: progressOf(state.turn), to: progressOf(after) })
-  const expired = after.number === state.turn.number ? changed : withoutEndOfTurnAbilities(changed)
+  const expired =
+    after.number === state.turn.number ? changed : { ...withoutEndOfTurnAbilities(changed), movedThisTurn: [] }
   return beginCurrentPhase({ ...expired, turn: after, recovery: INITIAL_RECOVERY })
 }
 

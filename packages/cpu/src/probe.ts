@@ -67,6 +67,7 @@ export function viewFrom(setting: ProbeSetting): DuelView {
     enemies: () => units.filter((unit) => unit.controller !== controller),
     hand: () => (controller === perspective.viewer ? own('手札') : []),
     handCount: (player) => countIn(perspective, player, '手札'),
+    movesThisTurn: (unit) => perspective.movedThisTurn.filter((each) => each === unit.id).length,
     discardPile: () => own('捨札') as readonly CardInDiscardPile[],
     planZone: () => own('プランゾーン'),
     energyCount: (player) => countIn(perspective, player, 'エネルギーゾーン'),
