@@ -37,7 +37,7 @@ import {
 } from './forecast.js'
 import type { Fighter } from './forecast.js'
 import type { ActionView, ChoiceView, CpuPlayer } from './player.js'
-import { keyOfWire, probeChoice, probeEffect, viewFrom } from './probe.js'
+import { keyOfWire, movePrevented, probeChoice, probeEffect, viewFrom } from './probe.js'
 import type { ProbeSetting } from './probe.js'
 import {
   areaFor,
@@ -197,7 +197,8 @@ function payableBy(card: Card, released: readonly CardInstance[], energyLeft: nu
  *
  * 手札のユニットを、残りのリリース状態のエネルギーでプレイするか（相手の敵エリアにはプレイ
  * できない、総合ルール 第2部 第20章 1-3）、すでにいる味方ユニットを移動して攻め込む。移動に追加
- * コストがあれば、それも残りのエネルギーで支払えなければならない（同 第4部 第6章 2-2・2-3）。
+ * コストがあれば、それも残りのエネルギーで支払えなければならない（同 第4部 第6章 2-2・2-3）。移動を
+ * 妨げる常在型能力で動けない味方は、移動して倒すものとして見込まない（ADR-0068）。
  * レベル 0 のカードは、エネルギーをフリーズせずにプレイできる（同 第1部 第2章 3-4）。プランで
  * めくれるカードは見込まない。
  */
@@ -233,6 +234,8 @@ function canFinish(
         const reached = squareInDirection(me, unit.square, direction)
         return reached !== undefined && sameSquare(reached, enemy.square)
       }) &&
+      // 移動を妨げる常在型能力で動けない味方は、追い打ちにならない（ADR-0068）。
+      !movePrevented(perspective, unit, enemy.square, true) &&
       moveCostOf(perspective, unit, enemy.square) <= energyLeft &&
       !forecastBattle(fighterOf(unit), target).defenderSurvives,
   )
@@ -502,13 +505,20 @@ const GOOD_CARD = 2000
 /** 盤面のユニットの基礎点が、相手をこれだけ上回っていれば、勝てそうだとみなす。 */
 const WINNING_MARGIN = 4000
 
+/** そのユニットが、前（ムーブアイコンの上）へ進めるか。移動を妨げる常在型能力で動けなければ進めない（ADR-0068）。 */
+function mayAdvance(perspective: DuelPerspective, controller: Player, unit: SeenUnit): boolean {
+  if (!unit.card.moveIcon.includes('上')) return false
+  const forward = squareInDirection(controller, unit.square, '上')
+  return forward === undefined || !movePrevented(perspective, unit, forward, false)
+}
+
 /** 次の相手のターンに、相手にスマッシュされうるか。相手のユニットが、スマッシュできる場所にいるか、前へ進める。 */
 function mayBeSmashed(context: Context): boolean {
   const opponent = opponentOf(context.me)
   return context.units.some(
     (unit) =>
       unit.controller === opponent &&
-      (areaFor(opponent, unit.square) !== '味方エリア' || unit.card.moveIcon.includes('上')),
+      (areaFor(opponent, unit.square) !== '味方エリア' || mayAdvance(context.perspective, opponent, unit)),
   )
 }
 

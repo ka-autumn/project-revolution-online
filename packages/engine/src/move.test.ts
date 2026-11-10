@@ -1,25 +1,31 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 // 手札やトラップゾーンを組み立てるためだけに `putInZone` を使う。engine の中からゾーンを
 // 差し替えるための関数であり、公開する API ではない。
-import { putInZone } from './duel.js'
+import { moveToSquare, moveToZoneWithoutTriggers, putInZone } from './duel.js'
 import {
   PLAYERS,
   cardsIn,
   cardsOn,
+  choose,
   courage,
   defineTrap,
   defineUnit,
   emptyDuelState,
   indexOfSquare,
   instantiate,
+  legalActions,
   moveCosting,
+  movePreventing,
   moveUnit,
   passPriority,
+  placeOnSquare,
   putOnSquare,
+  resolveEffect,
+  squaresAdjacent,
   triggeredAbility,
   trust,
 } from './index.js'
-import type { ActionOutcome, CardInstance, Chooser, DuelState, Phase, Player, Square, UnitCard } from './index.js'
+import type { ActionOutcome, CardInstance, Chooser, DuelState, Effect, Phase, Player, Square, UnitCard } from './index.js'
 
 /** 選択を求められたら常に最初の候補を選ぶ。どれを選ぶかを問わないテストで使う。 */
 const chooseFirst: Chooser = (candidates) => candidates[0]
@@ -379,5 +385,188 @@ describe('移動に課される追加コスト', () => {
     const after = stateOf(moveUnit(facingTax(0, homeLeftSquare), 'ユニット', centerSquare, chooseFirst))
 
     expect(cardsOn(after, centerSquare).map((each) => each.id)).toContain('ユニット')
+  })
+})
+
+// 総合ルール 第3部 第8章 2-5（ADR-0006、ADR-0068）
+describe('移動を妨げる常在型能力', () => {
+  /** 「隣にいる敵と味方は移動できない」というテキストの常在型能力を持つ、自分では動かないユニット。 */
+  const guard = defineUnit({
+    name: 'テスト・隣を止めるユニット',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    abilities: [
+      movePreventing((duel, occasion) => {
+        const self = duel.self()
+        if (self === undefined || self.id === occasion.unit.id) return false
+        return squaresAdjacent(self.square).some((beside) => indexOfSquare(beside) === indexOfSquare(occasion.unit.square))
+      }),
+    ],
+  })
+
+  /** 「このカードは１ターンに１回しか移動できない」というテキストの常在型能力を持つユニット。 */
+  const tired = defineUnit({
+    name: 'テスト・1回しか移動できないユニット',
+    level: 1,
+    colors: ['赤'],
+    bp: 1000,
+    sp: 1000,
+    moveIcon: ['上', '下', '左', '右'],
+    abilities: [
+      movePreventing((duel, occasion) => {
+        const self = duel.self()
+        return self !== undefined && self.id === occasion.unit.id && duel.movesThisTurn(occasion.unit) >= 1
+      }),
+    ],
+  })
+
+  /** `homeSquare` の左下の、斜めに接するスクエア。 */
+  const centerLeftSquare: Square = { row: 1, column: 0 }
+
+  /** 動かしたいユニットが `homeSquare` に、止めるユニットが指定したスクエアにいる盤面。 */
+  function guarded(guardSquare: Square, guardOwner: Player = '後攻'): DuelState {
+    return putOnSquare(
+      putOnSquare(mainPhase(), homeSquare, unit('ユニット')),
+      guardSquare,
+      unit('止めるユニット', guard, guardOwner),
+    )
+  }
+
+  // 総合ルール 第3部 第8章 2-5。隣にいる敵も味方も止める。
+  it('隣にいる味方は移動できない', () => {
+    expect(violationOf(moveUnit(guarded(homeLeftSquare, '先攻'), 'ユニット', centerSquare, chooseFirst))).toBe(
+      '能力によって移動できない',
+    )
+  })
+
+  it('隣にいる敵は移動できない', () => {
+    expect(violationOf(moveUnit(guarded(homeLeftSquare, '後攻'), 'ユニット', centerSquare, chooseFirst))).toBe(
+      '能力によって移動できない',
+    )
+  })
+
+  // 総合ルール 第2部 第21章 8-7。斜めに接するスクエアは「隣」ではない。
+  it('斜めに接するユニットは移動できる', () => {
+    const after = stateOf(moveUnit(guarded(centerLeftSquare), 'ユニット', centerSquare, chooseFirst))
+
+    expect(cardsOn(after, centerSquare)[0]?.id).toBe('ユニット')
+  })
+
+  it('止めるユニット自身は移動できる', () => {
+    const state = putOnSquare(mainPhase(), homeSquare, unit('止めるユニット', { ...guard, moveIcon: ['上'] } as UnitCard, '先攻'))
+
+    expect(cardsOn(stateOf(moveUnit(state, '止めるユニット', centerSquare, chooseFirst)), centerSquare)).toHaveLength(1)
+  })
+
+  it('止めるユニットがスクエアを離れると、隣にいたユニットはまた移動できる', () => {
+    const left = moveToZoneWithoutTriggers(guarded(homeLeftSquare), '止めるユニット', '手札')
+
+    expect(cardsOn(stateOf(moveUnit(left, 'ユニット', centerSquare, chooseFirst)), centerSquare)).toHaveLength(1)
+  })
+
+  it('妨げられた移動は、移動の候補に含まれない', () => {
+    const moves = legalActions(guarded(homeLeftSquare)).filter((action) => action.kind === 'ユニットを移動する')
+
+    expect(moves).toEqual([])
+  })
+
+  // 総合ルール 第3部 第8章 2-5。効果でスクエアからスクエアへ置くことは移動ではない。
+  it('効果でスクエアからスクエアへ置かれることは妨げられない', () => {
+    const placed = moveToSquare(guarded(homeLeftSquare), 'ユニット', centerSquare, { controller: '先攻', orientation: 'リリース' })
+
+    expect(cardsOn(placed, centerSquare)[0]?.id).toBe('ユニット')
+    expect(placed.movedThisTurn).toEqual([])
+  })
+
+  // 総合ルール 第3部 第8章 2-5。効果の命令でスクエアからスクエアへ置く経路を通す。
+  describe('効果でスクエアからスクエアへ置く', () => {
+    const placeAlly = (square: Square): Effect =>
+      function* (duel) {
+        const ally = yield* choose(duel.allies())
+        if (ally !== undefined) yield* placeOnSquare(ally, square, 'リリース')
+      }
+    const resolve = (state: DuelState, effect: Effect) =>
+      resolveEffect(state, effect, { controller: '先攻', via: 'プレイ', chooser: chooseFirst })
+
+    it('隣を止める能力があっても置けて、移動の記録は増えない', () => {
+      const resolved = resolve(guarded(homeLeftSquare), placeAlly(centerSquare))
+
+      expect(cardsOn(resolved, centerSquare).map((each) => each.id)).toEqual(['ユニット'])
+      expect(resolved.movedThisTurn).toEqual([])
+    })
+
+    it('1 ターンに 1 回しか移動できないユニットは、置き直された後も 1 回移動できる', () => {
+      const board = putOnSquare(mainPhase(), homeSquare, unit('疲れたユニット', tired))
+      const resolved = resolve(board, placeAlly(centerSquare))
+
+      expect(resolved.movedThisTurn).toEqual([])
+      expect(cardsOn(stateOf(moveUnit(resolved, '疲れたユニット', farSquare, chooseFirst)), farSquare)).toHaveLength(1)
+    })
+  })
+
+  // 移動を妨げる判定は、追加コストの支払いより前に行う（ADR-0068）。
+  it('妨げられる移動では、追加コストのための選択を求めない', () => {
+    const both = defineUnit({
+      name: 'テスト・コストを課して止める',
+      level: 1,
+      colors: ['赤'],
+      bp: 1000,
+      sp: 1000,
+      abilities: [moveCosting(() => ({ energiesFrozen: 1 })), movePreventing(() => true)],
+    })
+    const board = putOnSquare(putOnSquare(mainPhase(), homeSquare, unit('ユニット')), farSquare, unit('コストを課して止める', both, '後攻'))
+    const state = putInZone(board, '先攻', 'エネルギーゾーン', [unit('エネ')])
+    const chooser = vi.fn<Chooser>(chooseFirst)
+
+    expect(violationOf(moveUnit(state, 'ユニット', centerSquare, chooser))).toBe('能力によって移動できない')
+    expect(chooser).not.toHaveBeenCalled()
+  })
+
+  describe('1 ターンに 1 回しか移動できない', () => {
+    function withTired(): DuelState {
+      return putOnSquare(mainPhase(), homeSquare, unit('疲れたユニット', tired))
+    }
+
+    /** 移動した後は非アクティブプレイヤーに優先権が移る（総合ルール 第4部 第6章 2-5）ので、放棄させて戻す。 */
+    function movedOnce(): DuelState {
+      return passPriority(stateOf(moveUnit(withTired(), '疲れたユニット', centerSquare, chooseFirst)), chooseFirst)
+    }
+
+    it('1 回目の移動はできて、同じターンの 2 回目は移動できない', () => {
+      const first = movedOnce()
+      // 移動したユニットはリリース状態で置かれるので、2 回目を妨げているのは能力だけである。
+      expect(first.movedThisTurn).toEqual(['疲れたユニット'])
+      expect(violationOf(moveUnit(first, '疲れたユニット', farSquare, chooseFirst))).toBe('能力によって移動できない')
+    })
+
+    it('次のターンには、また移動できる', () => {
+      let current = movedOnce()
+      while (current.turn.number < 3 || current.turn.phase !== 'メインフェイズ') {
+        current = passPriority(current, chooseFirst)
+      }
+      current = passPriority(current, chooseFirst)
+
+      expect(current.movedThisTurn).toEqual([])
+      expect(cardsOn(stateOf(moveUnit(current, '疲れたユニット', farSquare, chooseFirst)), farSquare)).toHaveLength(1)
+    })
+
+    // 総合ルール 第2部 第21章 1-4。ゾーンを移ったカードは新しいカードとして扱われる。
+    it('手札に戻って同じターンに出し直されたら、もう 1 回移動できる', () => {
+      const first = movedOnce()
+      const back = moveToZoneWithoutTriggers(first, '疲れたユニット', '手札')
+      const replayed = moveToSquare(back, '疲れたユニット', homeSquare, { controller: '先攻', orientation: 'リリース' })
+
+      expect(replayed.movedThisTurn).toEqual([])
+      expect(cardsOn(stateOf(moveUnit(replayed, '疲れたユニット', centerSquare, chooseFirst)), centerSquare)).toHaveLength(1)
+    })
+
+    it('スクエアからスクエアへ置かれても、移動した記録は残る', () => {
+      const first = movedOnce()
+      const placed = moveToSquare(first, '疲れたユニット', homeSquare, { controller: '先攻', orientation: 'リリース' })
+
+      expect(placed.movedThisTurn).toEqual(['疲れたユニット'])
+    })
   })
 })

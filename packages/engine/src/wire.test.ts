@@ -83,6 +83,13 @@ const wire = toWire(先攻から)
 
 // ADR-0004 / ADR-0010。サーバがクライアントへ送る形。
 describe('通信に載せる形', () => {
+  // ADR-0068。このターンに移動したユニットは CPU が読む視点にだけあり、画面は参照しないので載せない。
+  it('このターンに移動したユニットの記録を載せない', () => {
+    const moved = toWire(perspectiveOf({ ...filledState(), movedThisTurn: ['先攻-スクエア'] }, '先攻'))
+
+    expect(moved).not.toHaveProperty('movedThisTurn')
+  })
+
   /**
    * JSON にできることが、この型の存在意義そのものである。
    *

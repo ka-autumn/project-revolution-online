@@ -312,8 +312,11 @@ export function toWire(perspective: DuelPerspective, presentationOf: CardPresent
       ]),
     ) as Record<PlayerZone, readonly WireVisibleCard[]>
 
+  // 画面は使わないので、通信には載せない（ADR-0068）。CPU が読む視点にだけある。
+  const { movedThisTurn: _movedThisTurn, ...shown } = perspective
+
   return {
-    ...perspective,
+    ...shown,
     squares: perspective.squares.map((square) => square.map((instance) => instanceToWire(instance, presentationOf))),
     namedInLog: perspective.namedInLog.map((instance) => instanceToWire(instance, presentationOf)),
     effective: perspective.effective,

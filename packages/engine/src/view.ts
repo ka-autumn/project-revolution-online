@@ -12,8 +12,8 @@ import type { PlayerZone } from './zone.js'
  * スクエアにいるユニットのデータを、いま効果に見せるデータに写す。
  *
  * 継続効果はカードのデータを変える（総合ルール 第4部 第12章 2）が、盤面には書き込まれて
- * いない。**書かれているデータを持つのは盤面で、効果に見せる写しは適用した後のデータを
- * 持つ。** 実際に何を適用するかは `continuous.ts` が決める。ここが関数を受け取るだけに
+ * いない。書かれているデータを持つのは盤面で、効果に見せる写しは適用した後のデータを
+ * 持つ。実際に何を適用するかは `continuous.ts` が決める。ここが関数を受け取るだけに
  * しているのは、継続効果を集める側もこの写しを使う（適用の途中のデータを見せる必要がある）
  * ためで、写す側が集める側を知っていると輪になる。
  */
@@ -136,6 +136,8 @@ export function duelView(currentState: () => DuelState, source: ViewSource): Due
     // 枚数だけを返すので、見せたカードとして覚えるものが無い。数えたことによって、その
     // カードを対象にできるようにはならない。
     energyCount: (player) => cardsIn(currentState(), player, 'エネルギーゾーン').length,
+    // 回数だけを返すので、見せたカードとして覚えるものが無い。
+    movesThisTurn: (unit) => currentState().movedThisTurn.filter((each) => each === unit.id).length,
     energyZone: () => {
       const energies = cardsIn(currentState(), controller, 'エネルギーゾーン').map(
         (instance): EnergyInZone => ({

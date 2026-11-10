@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { defineUnit } from '@revolution/engine'
+import { defineUnit, indexOfSquare, movePreventing, squaresAdjacent } from '@revolution/engine'
 import type { Card, Deck } from '@revolution/engine'
 import { playCpuDuel } from './duel.js'
+import type { CpuPlayer } from './player.js'
 import { randomCpu } from './random-cpu.js'
+import { scoredCpu } from './scored-cpu.js'
 
 /**
  * CPU 同士で 1 回のデュエルを打つ（ADR-0060 の段階 1、#365）。
@@ -58,5 +60,87 @@ describe('CPU 同士の 1 回のデュエル', () => {
     })
 
     expect(result).toEqual({ kind: '手数上限', first: result.first, actionsTaken: 3 })
+  })
+})
+
+// 総合ルール 第3部 第8章 2-5（ADR-0068）。移動を妨げる能力を持つユニットが混ざったデッキでも、CPU は止まらず打ち切る。
+describe('移動を妨げる常在型能力を持つユニットを含むデッキ', () => {
+  // 能力が実際に移動を断った回数。CPU の先読み（pickAction の中）で断られた分は数えず、
+  // エンジンが合法手を作る時と手を適用する時に断った分だけを数える。
+  const engineRefusals = { guard: 0, tired: 0 }
+  let inCpuPick = false
+
+  /** 手を選んでいる間だけ `inCpuPick` を立てる CPU。 */
+  const observedCpu: CpuPlayer = {
+    ...scoredCpu,
+    pickAction: (view, random) => {
+      inCpuPick = true
+      try {
+        return scoredCpu.pickAction(view, random)
+      } finally {
+        inCpuPick = false
+      }
+    },
+  }
+
+  /** 「隣にいる敵と味方は移動できない」。 */
+  const guard = defineUnit({
+    name: 'テスト・デュエルの隣を止める',
+    level: 0,
+    bp: 3000,
+    sp: 1000,
+    moveIcon: ['上'],
+    abilities: [
+      movePreventing((duel, occasion) => {
+        const self = duel.self()
+        if (self === undefined || self.id === occasion.unit.id) return false
+        const prevents = squaresAdjacent(self.square).some(
+          (beside) => indexOfSquare(beside) === indexOfSquare(occasion.unit.square),
+        )
+        if (prevents && !inCpuPick) engineRefusals.guard += 1
+        return prevents
+      }),
+    ],
+  })
+
+  /** 「このカードは１ターンに１回しか移動できない」。 */
+  const tired = defineUnit({
+    name: 'テスト・デュエルの1回だけ移動',
+    level: 0,
+    bp: 3000,
+    sp: 1000,
+    moveIcon: ['上', '右', '左'],
+    abilities: [
+      movePreventing((duel, occasion) => {
+        const self = duel.self()
+        const prevents = self !== undefined && self.id === occasion.unit.id && duel.movesThisTurn(occasion.unit) >= 1
+        if (prevents && !inCpuPick) engineRefusals.tired += 1
+        return prevents
+      }),
+    ],
+  })
+
+  const mixed = (label: string): Deck => [
+    ...[guard, tired].flatMap((card) => Array.from({ length: 4 }, () => card)),
+    ...deckOf(label, 2000).slice(8),
+  ]
+
+  it.each([1, 2, 3, 4])('点数で選ぶ CPU 同士が、最後まで打てる（シード %i）', (seed) => {
+    const result = playCpuDuel({
+      seats: [
+        { cpu: observedCpu, deck: mixed('A') },
+        { cpu: observedCpu, deck: mixed('B') },
+      ],
+      seed,
+      maxActions: 5000,
+    })
+
+    expect(result.kind).toBe('決着')
+  })
+
+  it('4 つのシードの対戦のうちに、隣を止める能力も 1 回だけの能力も、実際に移動を断っている', () => {
+    // 上の対戦が通っても、能力が一度も効かないまま決着しただけかもしれない。効いたことを確かめる。
+    expect(engineRefusals.guard).toBeGreaterThan(0)
+    expect(engineRefusals.tired).toBeGreaterThan(0)
   })
 })

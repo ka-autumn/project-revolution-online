@@ -1,4 +1,4 @@
-import { UNTARGETED_MAY_ACTIONS, hasKeyword } from '@revolution/engine'
+import { UNTARGETED_MAY_ACTIONS, hasKeyword, movePreventingAbilitiesOf } from '@revolution/engine'
 import type {
   CardId,
   CardInDiscardPile,
@@ -11,6 +11,7 @@ import type {
   Instruction,
   Player,
   PlayerZone,
+  Square,
   SmashCard,
   UnitOnSquare,
   WireCandidate,
@@ -51,6 +52,34 @@ function onSquareOf(unit: SeenUnit): UnitOnSquare {
   return { id: unit.id, square: unit.square, card: { ...unit.card, bp: unit.bp, sp: unit.sp }, controller: unit.controller }
 }
 
+/**
+ * そのユニットのその移動を、移動を妨げる常在型能力が妨げているか（ADR-0068）。
+ *
+ * エンジンの `moveUnit` が行う判定を、射影した盤面で再現する。見積もりのための空回しなので、
+ * 能力が射影した盤面で見えないものを参照しようとして例外になることがある。その時の戻り値は `onError`
+ * で指定する。動けるものと見込むと危険を大きく見積もり、動けないものと見込むと期待を小さく見積もる。
+ */
+export function movePrevented(
+  perspective: DuelPerspective,
+  mover: SeenUnit,
+  destination: Square,
+  onError: boolean,
+): boolean {
+  const occasion = { kind: '移動' as const, unit: onSquareOf(mover), destination }
+  return unitsOf(perspective).some((source) =>
+    movePreventingAbilitiesOf(source.card).some((ability) => {
+      try {
+        return ability.preventsMove(
+          viewFrom({ perspective, controller: source.controller, self: onSquareOf(source) }),
+          occasion,
+        )
+      } catch {
+        return onError
+      }
+    }),
+  )
+}
+
 /** 射影した盤面から、効果に見せる問い合わせを作成する。 */
 export function viewFrom(setting: ProbeSetting): DuelView {
   const { perspective, controller } = setting
@@ -67,6 +96,7 @@ export function viewFrom(setting: ProbeSetting): DuelView {
     enemies: () => units.filter((unit) => unit.controller !== controller),
     hand: () => (controller === perspective.viewer ? own('手札') : []),
     handCount: (player) => countIn(perspective, player, '手札'),
+    movesThisTurn: (unit) => perspective.movedThisTurn.filter((each) => each === unit.id).length,
     discardPile: () => own('捨札') as readonly CardInDiscardPile[],
     planZone: () => own('プランゾーン'),
     energyCount: (player) => countIn(perspective, player, 'エネルギーゾーン'),

@@ -4,7 +4,7 @@ import type { ActionOutcome } from './action.js'
 import { triggerMovement } from './bank.js'
 import { indexOfSquare, squareInDirection, squaresBeside } from './board.js'
 import type { MoveDirection, Square } from './board.js'
-import { hasTrust, moveCostingAbilitiesOf } from './card.js'
+import { hasTrust, moveCostingAbilitiesOf, movePreventingAbilitiesOf } from './card.js'
 import type { UnitCard } from './card.js'
 import { continuousData } from './continuous.js'
 import { freezeEnergies } from './cost.js'
@@ -56,11 +56,14 @@ export function moveUnit(
   if (blockedByTrust(state, player, destination)) return cannot('「信頼」によって移動できない')
 
   const declared = { id: unit, square: moving.square, card: moving.card }
+  if (preventedByAbility(state, player, declared, destination)) return cannot('能力によって移動できない')
+
   const paid = payMoveCosts(state, player, declared, destination, chooser)
   if (paid === undefined) return cannot('コストを支払えない')
 
+  const counted = { ...paid, movedThisTurn: [...paid.movedThisTurn, unit] }
   const moved = recordAction(
-    moveToSquare(paid, unit, destination, { controller: player, orientation: 'リリース' }),
+    moveToSquare(counted, unit, destination, { controller: player, orientation: 'リリース' }),
     state,
     'ユニットを移動する',
     unit,
@@ -75,11 +78,47 @@ export function moveUnit(
 }
 
 /**
+ * 移動を妨げる常在型能力が、その移動を妨げているか（総合ルール 第3部 第8章 2-5。ADR-0068）。
+ *
+ * 妨げる能力を持つのはスクエアにいるユニットで、移動するユニット自身も含む。カードに見せるのは
+ * 継続効果を適用した後の盤面（同 第4部 第12章 2）で、移動するユニットも継続効果を適用した後の
+ * データで渡す。追加コストの支払いより前に判定するので、妨げられる移動でエネルギーの選択を
+ * 求めることはない。
+ */
+function preventedByAbility(
+  state: DuelState,
+  player: Player,
+  moving: { readonly id: CardId; readonly square: Square; readonly card: UnitCard },
+  destination: Square,
+): boolean {
+  const data = continuousData(state)
+  const occasion: MovementOccasion = {
+    kind: '移動',
+    unit: { id: moving.id, square: moving.square, card: data(moving.id, moving.card), controller: player },
+    destination,
+  }
+
+  return unitsOnSquares(state).some((source) =>
+    movePreventingAbilitiesOf(source.card).some((ability) =>
+      ability.preventsMove(
+        duelView(() => state, {
+          controller: source.controller,
+          self: () => source,
+          show: () => {},
+          data: continuousData,
+        }),
+        occasion,
+      ),
+    ),
+  )
+}
+
+/**
  * その移動に課されている追加コストをすべて支払う（総合ルール 第4部 第6章 2-2・2-3）。
  * 支払えなければ `undefined`。
  *
- * 支払うのは移動するプレイヤーである。**移動を妨げるものはこの関数と `blockedByTrust` の
- * 2 つだけで、どちらも `moveUnit` から呼ぶ。** 移動できるかどうかを決める場所が散らばると、
+ * 支払うのは移動するプレイヤーである。移動を妨げるものはこの関数と `blockedByTrust`・
+ * `preventedByAbility` の 3 つだけで、いずれも `moveUnit` から呼ぶ。移動できるかどうかを決める場所が散らばると、
  * 後から矛盾する。
  *
  * コストを課すのはスクエアにいるユニットの常在型能力である（同 第4章 1）。カードに見せる

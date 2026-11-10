@@ -19,7 +19,7 @@ import type { Phase, Turn } from './turn.js'
 /**
  * 優先権を放棄した時に起きること（#130）。
  *
- * **数え上げられる。** `passPriority` が振り分ける先がそのまま並ぶので、述語ではなく値で
+ * 数え上げられる。`passPriority` が振り分ける先がそのまま並ぶので、述語ではなく値で
  * 持つ。画面はこれを言葉にするだけで、どれになるかを自分で決めない（ADR-0010）。
  */
 export type PassOutcome =
@@ -106,11 +106,11 @@ export function passPriority(state: DuelState, chooser: Chooser): DuelState {
 /**
  * いま優先権を放棄したら何が起きるか（#130）。放棄しても何も起きないなら `undefined`。
  *
- * **ルールの判断には使わない。** 押す前に「このボタンが何をするのか」を伝えるためだけに持つ
+ * ルールの判断には使わない。押す前に「このボタンが何をするのか」を伝えるためだけに持つ
  * （`resolve.ts` の `ChoicePurpose` と同じ考え方）。`優先権を放棄する` は総合ルールの語
  * （第3部 第4章 4）そのままで、打っている側から見ると何が起きるのか分かりにくい。
  *
- * **`passPriority` のすぐ隣に置き、同じ順で振り分ける。** 画面がこれを言い当てるには
+ * `passPriority` のすぐ隣に置き、同じ順で振り分ける。画面がこれを言い当てるには
  * 分岐表とフェイズの並びが要るが、それをクライアントへ写すと進行の規則が 2 か所になる
  * （ADR-0010）。ここで 1 度だけ決めて、値として渡す。
  */
@@ -197,14 +197,15 @@ function repeatRecovery(state: DuelState): DuelState {
  * すべてのフェイズが終了したらそのターンは終了し、アクティブプレイヤーが交代して次の
  * ターンに移る（総合ルール 第3部 第4章 6）。
  *
- * **移り変わりをログに積むのはここだけである**（#133）。ターンの境目もフェイズの移り変わりも
+ * 移り変わりをログに積むのはここだけである（#133）。ターンの境目もフェイズの移り変わりも
  * `turnAfter` が 1 つの遷移として決めるので、積まれるできごとも 1 件になる。フェイズの始めの
  * 処理（`beginCurrentPhase`）より前に積むことで、そのフェイズで起きたことが後ろに並ぶ。
  */
 function beginNextPhase(state: DuelState): DuelState {
   const after = turnAfter(state.turn)
   const changed = record(state, { kind: '進行が変わった', from: progressOf(state.turn), to: progressOf(after) })
-  const expired = after.number === state.turn.number ? changed : withoutEndOfTurnAbilities(changed)
+  const expired =
+    after.number === state.turn.number ? changed : { ...withoutEndOfTurnAbilities(changed), movedThisTurn: [] }
   return beginCurrentPhase({ ...expired, turn: after, recovery: INITIAL_RECOVERY })
 }
 
@@ -231,7 +232,7 @@ function progressOf(turn: Turn): Progress {
  * 次に始まるフェイズ。とばされるフェイズは存在しないものとして飛ばす（総合ルール 第3部
  * 第4章 5）。最後のフェイズの次はターンの境目で、相手のターンの最初のフェイズになる。
  *
- * **どのフェイズが次に来るかを決めるのはここだけである。** 実際に始める側（`beginNextPhase`）
+ * どのフェイズが次に来るかを決めるのはここだけである。実際に始める側（`beginNextPhase`）
  * と、押す前に何が起きるかを言う側（`passOutcome`）が同じところを通る。片方だけ直すと、
  * 画面が言うことと実際の進み方がずれる。
  */
@@ -272,8 +273,8 @@ function beginCurrentPhase(state: DuelState): DuelState {
  * 第6章 1-1）と、リカバリーフェイズのダメージの除去、およびそれと同時に終了する
  * 「ターンの終わりまで」の効果の終了（同 第10章 1）である。
  *
- * **どれも積む（#157）。** 自動で行われる処理は、盤面だけを見ても何が起きたのか読めない。
- * ただし**行われなかった処理は積まない**——リリースするカードが無いフェイズに「リリース
+ * どれも積む（#157）。自動で行われる処理は、盤面だけを見ても何が起きたのか読めない。
+ * ただし行われなかった処理は積まない——リリースするカードが無いフェイズに「リリース
  * した」とは書かない。フェイズがあったこと自体は `進行が変わった` が言っている。
  */
 function takeBeginningAction(state: DuelState): DuelState {
