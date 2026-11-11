@@ -444,6 +444,11 @@ export function scoreInstructions(
       case '相手に手札を捨てさせる':
         total += CARD_GAIN * instruction.count
         break
+      // 相手の手札を見て選んで捨てる（ADR-0069）。空回しでは相手の手札が空なので、絞り込みに合うカードが
+      // あるかは分からない。絞り込みつきの形も、カード 1 枚分の得にそろえる（割り引く根拠が無い）。
+      case '相手の手札を見て選ぶ':
+        total += CARD_GAIN
+        break
       case 'スクエアへ置く': {
         const card = instruction.card.card
         if (!units.has(instruction.card.id) && card.type === 'ユニット') total += unitBasePoints(card.bp, card.sp) * 0.8

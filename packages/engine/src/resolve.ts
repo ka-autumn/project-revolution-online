@@ -23,6 +23,7 @@ import type {
   CardInZone,
   DuelView,
   Effect,
+  HandCondition,
   Instruction,
   MayAction,
   SmashCard,
@@ -76,6 +77,12 @@ export const CHOICE_PURPOSES = [
    * 一覧が付く。候補が 1 つでも聞く——聞かなければ、見た側に一覧が届かない。
    */
   '見たカードの確認',
+  /**
+   * 相手の手札を見て、絞り込みに合うカードから選ぶ（`effect.ts` の `lookAtOpponentHandAndDiscard`、ADR-0069）。
+   * 見せる一覧は相手の手札の全部で、候補は絞り込みに合うカード。合うカードが無い時は、候補が「確認した」の
+   * 1 つだけになる。候補が 1 つでも聞く——聞かなければ、見た側に一覧が届かない。
+   */
+  '相手の手札から選ぶ',
   /**
    * 自分の山札を読んで、条件に合うカードを選ぶ（ADR-0042）。候補は条件に合うカードで、山札の
    * 全体が見せる一覧として付く。候補が無くても聞く（選ばないことを選ぶ）。
@@ -289,7 +296,7 @@ interface Outcome {
   /**
    * 命令が自分でログを積んだ。`recorded` はこの命令の行を足さない。聞かずに済んだ、見せただけの
    * 選択（`選ぶ` の相手に手札を見せる形で手札が 0 枚）で、選んだ行を残さないためと、`複数を選ぶ` が
-   * 選んだカードごとに `選ぶ` の行を 1 行ずつ積むために使う。
+   * 選んだカードごとに `選ぶ` の行を 1 行ずつ積むためと、`相手の手札を見て選ぶ` が見たことと捨てたカードの行を自分で積むために使う。
    */
   readonly logged?: true
 }
@@ -556,6 +563,53 @@ function apply(
       // 見たカードは効果に返さない。効果が相手の手札の中身で分岐する口は作らない。
       return { state, value: undefined, subject: hand }
     }
+    case '相手の手札を見て選ぶ': {
+      // 見るのも選ぶのも能力の支配者で、見られるのはその相手の手札である（ADR-0069）。並びは
+      // `相手の手札を見る` と同じく、中身だけで決める。
+      const opponent = opponentOf(context.controller)
+      const hand = [...cardsIn(state, opponent, '手札')].sort(byNameThenId)
+      const looked = (current: DuelState): DuelState =>
+        record(current, {
+          kind: '命令を実行した',
+          controller: context.controller,
+          instruction: { kind: '相手の手札を見る', count: hand.length, cards: hand.map(({ id }) => id) },
+        })
+      // 0 枚なら新しく見えるものが無い。聞かずに、見たことだけを積む。
+      if (hand.length === 0) return { state: looked(state), value: undefined, logged: true }
+
+      // 絞り込みに合うカードが無くても、一覧は届ける（確認だけの選択）。見ることは絞り込みによらず起きる。
+      const matching = hand.filter((one) => matchesHandConditions(one.card, instruction.conditions))
+      const chosen = context.chooser(
+        matching.length === 0 ? [CONFIRMATION] : matching,
+        context.controller,
+        '相手の手札から選ぶ',
+        state,
+        matching.length === 0 ? false : instruction.mayDecline,
+        context.source,
+        hand,
+      )
+      // 見たことは、答えを受け取ってから積む（`相手の手札を見る` と同じ）。選んだ行は積まない。
+      const afterLook = looked(state)
+      if (chosen === undefined || chosen === CONFIRMATION) return { state: afterLook, value: undefined, logged: true }
+      if (!matching.includes(chosen as CardInstance)) throw new Error('候補にないものが選ばれた')
+
+      // 処置は種類で持つ。今は「捨てる」だけで、相手の捨札に表向きで置かれる（名前は 2 人に出る）。
+      const target = chosen as CardInstance
+      const moved = moveToZone(afterLook, [target.id], '捨札')
+      return {
+        state: record(
+          moved,
+          {
+            kind: '命令を実行した',
+            controller: context.controller,
+            instruction: { kind: 'ゾーンへ置く', card: target.id, to: '捨札', player: opponent },
+          },
+          afterLook,
+        ),
+        value: undefined,
+        logged: true,
+      }
+    }
     case '自分の山札を読む': {
       // 読むのは能力の支配者で、読まれるのはその山札である（ADR-0042）。山札の順序は効果に渡さない。
       // 並びは中身だけで決める——持ち順で返すと、山札の順序が読めてしまう。
@@ -816,6 +870,16 @@ function inZone(instance: CardInstance, zone: '山札' | 'プランゾーン'): 
 function byNameThenId(a: { readonly id: CardId; readonly card: Card }, b: { readonly id: CardId; readonly card: Card }): number {
   if (a.card.name !== b.card.name) return a.card.name < b.card.name ? -1 : 1
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
+/**
+ * 手札のカードが、絞り込みの条件をすべて満たすか（ADR-0069）。空の並びは、絞り込まない。
+ * 属性は、カードに書かれたものを参照する。手札のカードには継続効果が及ばない。
+ */
+function matchesHandConditions(card: Card, conditions: readonly HandCondition[]): boolean {
+  return conditions.every((condition) =>
+    condition.axis === '種別' ? card.type === condition.value : card.attributes.includes(condition.value),
+  )
 }
 
 /**

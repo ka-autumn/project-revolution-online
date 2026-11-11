@@ -2205,6 +2205,67 @@ describe('見せる一覧つきの選択', () => {
     expect(shownCardViewsIn(board(), mixed).map(({ candidate }) => candidate)).toEqual([undefined, 0])
   })
 
+  // ADR-0069。相手の手札を見て、絞り込みに合うカードを選ぶ。
+  describe('相手の手札から選ぶ', () => {
+    const choosing: WireChoice = {
+      player: '先攻',
+      purpose: '相手の手札から選ぶ',
+      source: 'スクエアの1枚',
+      mayDecline: true,
+      answered: 0,
+      mayGoBack: false,
+      mayCancel: true,
+      candidates: [{ kind: '見えている', card: '相手の1枚目' }],
+      shown: [
+        { instance: instance('相手の1枚目', '後攻', { card: unitFace('テスト・あ') }), candidate: 0 },
+        { instance: instance('相手の2枚目', '後攻', { card: unitFace('テスト・い') }) },
+      ],
+    }
+
+    it('見出しは、相手の手札と枚数を言う', () => {
+      expect(shownTitleOf(choosing)).toBe('相手の手札（2）')
+    })
+
+    it('何を聞かれているかを、発生源と一緒に言う', () => {
+      expect(choiceView(board(), choosing).asking).toBe('テスト・盤上の戦士 の効果で、相手の手札から捨札にするカードを選んでください')
+    })
+
+    it('発生源が見えなければ、発生源を言わない', () => {
+      const { source: _source, ...withoutSource } = choosing
+
+      expect(choiceView(board(), withoutSource).asking).toBe('相手の手札から捨札にするカードを選んでください')
+    })
+
+    it('選べるカードが混じる一覧では、選べないカードを薄くする', () => {
+      expect(dimsUnselectable(shownCardViewsIn(board(), choosing))).toBe(true)
+    })
+
+    // 合うカードが無い時は、確認だけの選択が届く。選べるものが無いので、見せるための一覧にする。
+    describe('絞り込みに合うカードが無い時', () => {
+      const noMatch: WireChoice = {
+        ...choosing,
+        mayDecline: false,
+        candidates: [{ kind: '確認' }],
+        shown: [
+          { instance: instance('相手の1枚目', '後攻', { card: unitFace('テスト・あ') }) },
+          { instance: instance('相手の2枚目', '後攻', { card: unitFace('テスト・い') }) },
+        ],
+      }
+
+      it('無いことを言う', () => {
+        expect(choiceView(board(), noMatch).asking).toBe('相手の手札に条件に合うカードはありません')
+      })
+
+      it('候補は「確認した」と出る', () => {
+        expect(choiceView(board(), noMatch).candidates).toEqual([{ index: 0, label: '1 番目: 確認した' }])
+      })
+
+      it('一覧は薄くしない', () => {
+        expect(dimsUnselectable(shownCardViewsIn(board(), noMatch))).toBe(false)
+      })
+    })
+  })
+
   // ADR-0042。山札の全体を見せて、条件に合うカードを選ぶ。
   describe('山札から選ぶ', () => {
     const searching: WireChoice = {
@@ -2498,7 +2559,7 @@ describe('isEffectChoice', () => {
   })
 
   it('効果の途中の選択だけが、対象になる', () => {
-    const effectPurposes = new Set(['効果の対象', '山札から選ぶ', '捨てる手札', 'してもよい', '見たカードの確認'])
+    const effectPurposes = new Set(['効果の対象', '山札から選ぶ', '捨てる手札', 'してもよい', '見たカードの確認', '相手の手札から選ぶ'])
 
     for (const purpose of CHOICE_PURPOSES) {
       expect(isEffectChoice(choiceOf(purpose))).toBe(effectPurposes.has(purpose))

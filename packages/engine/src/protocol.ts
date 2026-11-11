@@ -1080,6 +1080,8 @@ function describeCandidate(
 ): WireCandidate {
   // 確認だけの選択。候補は何も指さない。
   if (purpose === '見たカードの確認' || purpose === 'してもよい') return { kind: '確認' }
+  // 絞り込みに合うカードが無い時は、確認だけの選択になる（ADR-0069）。
+  if (purpose === '相手の手札から選ぶ' && candidate === CONFIRMATION) return { kind: '確認' }
 
   // 能力が並ぶ場面。カードではないので、発生源のカードで指す。
   if (purpose === '解決する能力' || purpose === 'プランの置き換え') {
@@ -1139,7 +1141,8 @@ function describeCandidate(
  * 見えるようになったかを決めるのは射影ひとつ（`perspective.ts` の `visibleIdsOf`）である。
  *
  * 見たことのある選択も戻せない（ADR-0041）。盤面の見え方は変わらないので、見えるように
- * なったかでは決められない。確認の選択そのものと、同じ行動の中でそれより後に出る選択は、
+ * なったかでは決められない。確認の選択そのもの（相手の手札を見て選ぶ選択を含む。見たことのログは
+ * 答えの後に積まれるので、目的で判定する、ADR-0069）と、同じ行動の中でそれより後に出る選択は、
  * 比べる先の盤面より後に積まれたログに、相手の手札を見たこと・見せたこと・山札を読んだこと
  * （`isRevealingHidden`、ADR-0042・ADR-0052）があるかで決める。0 枚なら何も見えて
  * いないので、戻せる。
@@ -1167,8 +1170,12 @@ function describeChoice(
   // 山札のカードが候補になる時、候補を位置のない「見えていない」で送ると、見ているものと記述が
   // 食い違う。戻れるかの判定には使わない（見せたことは、ログで見分ける）。
   const seen = shown === undefined ? visible : new Set([...visible, ...shown.map(({ id }) => id)])
+  // 相手の手札を見て選ぶ選択（ADR-0069）も、見た選択そのものなので戻せない。見たことは答えの後に積まれる
+  // ため、ログでは判定できず、目的で判定する。
   const looked =
-    purpose === '見たカードの確認' || board.log.slice(started.log.length).some(({ event }) => isRevealingHidden(event))
+    purpose === '見たカードの確認' ||
+    purpose === '相手の手札から選ぶ' ||
+    board.log.slice(started.log.length).some(({ event }) => isRevealingHidden(event))
   return {
     player,
     purpose,
@@ -1260,7 +1267,8 @@ export function applyWithAnswers(
     // （ADR-0008）はこの手前の選択まで戻る。確認の選択だけは別で、答えることが見せる一覧を
     // 届ける手段になっている（ADR-0041）ので、候補が 1 つでも聞く。
     const [only] = candidates
-    if (candidates.length === 1 && !mayDecline && purpose !== '見たカードの確認') return only
+    // 相手の手札を見て選ぶ選択（ADR-0069）も同じで、手札が 1 枚の時に聞かずに進むと、一覧が届かないまま捨てられる。
+    if (candidates.length === 1 && !mayDecline && purpose !== '見たカードの確認' && purpose !== '相手の手札から選ぶ') return only
 
     if (runStart.player !== player) {
       runStart.player = player

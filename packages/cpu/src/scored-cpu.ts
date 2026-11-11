@@ -816,6 +816,14 @@ function scoreChoice(view: ChoiceView): { readonly scores: readonly number[]; re
       return byCandidate((candidate) => -cardBasePoints(candidateCard(perspective, candidate) ?? DUMMY))
     case '山札から選ぶ':
       return byCandidate((candidate) => cardBasePoints(candidateCard(perspective, candidate) ?? DUMMY))
+    // 相手の手札を見て選ぶ（ADR-0069）。候補のカードは盤面には載っていない（相手の手札は枚数だけ）ので、
+    // 選択の要求が見せる一覧から取得する。候補のうち基礎点が最も高いカードを選ぶ。選ばないことは選ばない。
+    case '相手の手札から選ぶ':
+      return byCandidate((candidate) => {
+        if (candidate.kind !== '見えている') return 0
+        const shown = choice.shown?.find(({ instance }) => instance.id === candidate.card)
+        return shown === undefined ? 0 : cardBasePoints(shown.instance.card)
+      })
     // 「してもよい」（ADR-0064）。候補は「確認」の 1 つで、基本は「はい」と答える。効果を空回しして
     // 「はい」と「いいえ」を比べるのは、手の選び方の改善（#366）で扱う。
     // 同じターンのうちに、同じ動きを同じカードへ「はい」と答えていれば、「いいえ」と答える。EB1.0 の 069 は、
