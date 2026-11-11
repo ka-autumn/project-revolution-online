@@ -3012,6 +3012,27 @@ pickers.append(picker('確認', '相手の手札（3）', '相手の手札を見
   [card('見本・メカナイト', '相手'), card('見本・アクアシールド', '相手'), card('見本・紅葉', '相手')],
   '<button type="button" class="button--primary">確認した</button>'))
 
+// 自分が相手の手札を見て選ぶ選択（ADR-0069）。一覧は相手の手札の全部で、絞り込みに合うカードだけが橙の枠で押せる。
+// 見えるだけのカードは薄くする。この見本は「選ばない」を認める効果で、必ず選ぶ効果は「選ばない」を置かない。
+// 戻る・取り消すは出ない（見た後なので）
+const lookAndChooseList = [
+  card('見本・メカナイト', '相手'),
+  card('見本・アクアシールド', '相手'),
+  card('見本・紅葉', '相手'),
+  card('見本・光の祈り手', '相手'),
+]
+for (const n of lookAndChooseList.slice(0, 2)) n.classList.add('card--押せる')
+lookAndChooseList[1].classList.add('card--選択中')
+for (const n of lookAndChooseList.slice(2)) n.classList.add('card--見るだけ')
+pickers.append(picker('相手の手札から選ぶ', '相手の手札（4）', '見本・パルフェ・若葉 の効果で、相手の手札から選んでください',
+  lookAndChooseList,
+  '<button type="button">選ばない</button><button type="button" class="button--primary">これに決める</button>'))
+
+// 絞り込みに合うカードが 1 枚も無い時。見せるための一覧なので薄くせず、足もとは「確認した」だけ
+pickers.append(picker('相手の手札から選ぶ・該当なし', '相手の手札（3）', '相手の手札に条件に合うカードはありません',
+  [card('見本・メカナイト', '相手'), card('見本・アクアシールド', '相手'), card('見本・紅葉', '相手')],
+  '<button type="button" class="button--primary">確認した</button>'))
+
 // 山札の全体を見せて、条件に合うカードだけを選ばせる場合（ADR-0042）。山札は 32 枚（プランゾーンのカードを含む）。
 // 選べるカードを先頭にまとめ、残りの見えるだけのカードは薄くする。並びはカード名の順で、山札の順序は出さない。
 // 数十枚でも、枠の中で縦に送って全部を見られる
