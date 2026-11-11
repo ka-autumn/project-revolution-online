@@ -12,6 +12,7 @@ import {
   instantiate,
   placeInZone,
   legalActions,
+  lookAtOpponentHandAndDiscard,
   mayDo,
   movePreventing,
   placeTopOfLibrary,
@@ -26,6 +27,7 @@ import type {
   CardInstance,
   ChoiceAnswer,
   DuelState,
+  HandCondition,
   LegalAction,
   Phase,
   Player,
@@ -662,5 +664,72 @@ describe('同じターンの終わりに手札へ戻る「してもよい」', (
     ] as const)('%s', (_label, log, expected) => {
       expect(answerWith(log)).toBe(expected)
     })
+  })
+})
+
+// ADR-0069。相手の手札を見て選ぶ選択では、相手の手札のカードは盤面に載っていない（枚数だけ）ので、
+// CPU は選択の要求が見せる一覧から、候補のカードを引いて点数を付ける。
+describe('相手の手札を見て選ぶ選択への答え', () => {
+  const discarder = (conditions: readonly HandCondition[], upTo: boolean) =>
+    defineStrategy({
+      name: 'テスト・見て捨てる',
+      level: 0,
+      effect: function* () {
+        yield* lookAtOpponentHandAndDiscard(conditions, { upTo })
+      },
+    })
+
+  function asked(card: ReturnType<typeof discarder>, opponentHand: readonly CardInstance[]) {
+    const state = withZone(withZone(sceneAt('メインフェイズ'), '先攻', '手札', [instantiate({ id: 'play', card, owner: '先攻' })]), '後攻', '手札', opponentHand)
+    const play = legalActions(state).find((action) => action.kind === 'カードをプレイする')
+    if (play === undefined) throw new Error('ストラテジーをプレイできるはずだった')
+    const progress = applyWithAnswers(state, play, [])
+    if (progress.kind !== '選んでほしい') throw new Error('選ばせるはずだった')
+
+    return progress
+  }
+
+  const hand = [
+    instantiate({ id: 'weak', card: unit('弱い', 1000, 500), owner: '後攻' }),
+    instantiate({ id: 'strong', card: unit('強い', 6000, 2000), owner: '後攻' }),
+    instantiate({ id: 'middle', card: unit('普通', 3000, 1000), owner: '後攻' }),
+  ]
+
+  // 点数が同じなら乱数で選ぶので、実装が無ければ seed によって別の答えになる。どの seed でも同じカードになることで確かめる。
+  const pickedWith = (upTo: boolean): readonly (string | undefined)[] => {
+    const progress = asked(discarder([], upTo), hand)
+    return Array.from({ length: 20 }, (_, seed) => {
+      const { answer } = scoredCpu.answer(choiceViewOf(progress.board, progress.choice), randomFromSeed(seed))
+      const candidate = typeof answer === 'number' ? progress.choice.candidates[answer] : undefined
+      return candidate?.kind === '見えている' ? candidate.card : undefined
+    })
+  }
+
+  it('候補のうち、基礎点が最も高いカードを、どの seed でも選ぶ', () => {
+    expect(new Set(pickedWith(false))).toEqual(new Set(['strong']))
+  })
+
+  it('1 枚までの形でも、候補があれば選ばないとは答えず、基礎点が最も高いカードを選ぶ', () => {
+    expect(new Set(pickedWith(true))).toEqual(new Set(['strong']))
+  })
+
+  it('絞り込みに合うカードが無い確認だけの選択には、確認した（0 番）と答える', () => {
+    const progress = asked(discarder([{ axis: '種別', value: 'トラップ' }], true), hand)
+
+    expect(progress.choice.candidates).toEqual([{ kind: '確認' }])
+    expect(scoredCpu.answer(choiceViewOf(progress.board, progress.choice), randomFromSeed(1)).answer).toBe(0)
+  })
+
+  // 同じ問いを繰り返さない: 答えの後、効果は先へ進み、同じ選択は出ない。
+  it('答えると効果が進み、同じ問いを繰り返さない', () => {
+    const progress = asked(discarder([], false), hand)
+    const { answer } = scoredCpu.answer(choiceViewOf(progress.board, progress.choice), randomFromSeed(1))
+    const state = withZone(withZone(sceneAt('メインフェイズ'), '先攻', '手札', [instantiate({ id: 'play', card: discarder([], false), owner: '先攻' })]), '後攻', '手札', hand)
+    const play = legalActions(state).find((action) => action.kind === 'カードをプレイする')
+    if (play === undefined) throw new Error('ストラテジーをプレイできるはずだった')
+
+    const next = applyWithAnswers(state, play, [answer as number])
+
+    expect(next.kind).toBe('進んだ')
   })
 })

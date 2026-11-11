@@ -572,7 +572,7 @@ export function shownCardViewsIn(board: WirePerspective, choice: WireChoice): re
 /**
  * 見せる一覧で、選べないカードを薄くするか（ADR-0041）。選べるカードが 1 枚でもある一覧だけで薄くし、
  * 選べるカードと見分けられるようにする。選べるカードが 1 枚も無い一覧（相手の手札を見る確認、条件に
- * 合うカードが無い山札）は、見せるための一覧なので薄くしない。
+ * 合うカードが無い山札、合うカードが無い相手の手札）は、見せるための一覧なので薄くしない。
  */
 export function dimsUnselectable(shown: readonly ShownCardView[]): boolean {
   return shown.some(({ candidate }) => candidate !== undefined)

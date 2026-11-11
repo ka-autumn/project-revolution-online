@@ -11,7 +11,7 @@ import type {
   SmashOccasion,
 } from './ability.js'
 import type { Square } from './board.js'
-import type { Attribute, Card, UnitCard } from './card.js'
+import type { Attribute, Card, CardType, UnitCard } from './card.js'
 import type { CardId, LibraryPosition } from './duel.js'
 import type { Orientation } from './orientation.js'
 import type { Player } from './player.js'
@@ -340,6 +340,20 @@ export type Instruction =
    * 項目を持たないのは、書ける形をテキストにある形に限るためである。
    */
   | { readonly kind: '相手の手札を見る' }
+  /**
+   * 支配者が、相手の手札を見て、`conditions` をすべて満たすカードから 1 枚を選び、`disposal` する（ADR-0069）。
+   * 効果には何も返さない。
+   *
+   * 候補の作成・選択・処置は、エンジンが行う。相手の手札のカードは、見た後も効果に渡さない
+   * （ADR-0004）ので、絞り込みは関数ではなく値で渡す。`mayDecline` は、「1 枚まで」（選ばないことを選べる）
+   * か、「1 枚」（必ず選ぶ）か。枚数は 1 枚に限る。
+   */
+  | {
+      readonly kind: '相手の手札を見て選ぶ'
+      readonly conditions: readonly HandCondition[]
+      readonly disposal: HandDisposal
+      readonly mayDecline: boolean
+    }
   /**
    * 相手が自分の手札から、1 枚ずつ `count` 枚を選んで捨てる（ADR-0052）。効果には何も返さない。
    *
@@ -889,6 +903,37 @@ export function* drawCards(player: Player, count: number): EffectStep<void> {
  */
 export function* lookAtOpponentHand(): EffectStep<void> {
   yield { kind: '相手の手札を見る' }
+}
+
+/**
+ * 相手の手札を見て選ぶ命令（`相手の手札を見て選ぶ`）の絞り込みの条件 1 つ。軸と値の組で持つ（ADR-0069）。
+ *
+ * 軸は数え上げられるので、述語にはしない。述語にすると、カードの側の関数が相手の手札のカードを受け取る
+ * ことになる。軸が増える時は、値を 1 つ足す。並べた条件をすべて満たすカードが候補になり、空の並びは
+ * 絞り込まない。属性は、手札のカードに書かれたものを参照する。
+ */
+export type HandCondition =
+  | { readonly axis: '種別'; readonly value: CardType }
+  | { readonly axis: '属性'; readonly value: Attribute }
+
+/**
+ * 相手の手札を見て選ぶ命令で、選んだカードに行う処置（ADR-0069）。処置が増える時は、値を 1 つ足す。
+ */
+export type HandDisposal = '捨てる'
+
+/**
+ * 支配者が相手の手札を見て、`conditions` をすべて満たすカードを 1 枚（`upTo` なら 1 枚まで）選び、捨てる
+ * （ADR-0069）。
+ *
+ * 見るのも選ぶのもプレイヤーであって、効果ではない。相手の手札のカードは、候補にも選ばれたカードにも、
+ * 効果は触れない。選択は 1 回で、支配者には相手の手札の全部が見せる一覧として届き、条件に合うカードだけが
+ * 選べる。合うカードが無くても一覧は届き、確認だけして先へ進む。相手の手札が 0 枚なら、聞かずにログだけを積む。
+ */
+export function* lookAtOpponentHandAndDiscard(
+  conditions: readonly HandCondition[],
+  options: { readonly upTo: boolean },
+): EffectStep<void> {
+  yield { kind: '相手の手札を見て選ぶ', conditions, disposal: '捨てる', mayDecline: options.upTo }
 }
 
 /**

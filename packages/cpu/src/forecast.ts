@@ -1,5 +1,5 @@
 import { BATTLE_SPACE, squareInDirection, squaresBeside } from '@revolution/engine'
-import type { Card, CardId, DuelPerspective, Player, Square, UnitCard } from '@revolution/engine'
+import type { Card, CardId, DuelPerspective, Player, Square, UnitCard, WireCardFace } from '@revolution/engine'
 import { areaFor, countIn, opponentOf, pepOf, sameSquare, trustOf, unitsOf } from './sight.js'
 import type { SeenUnit } from './sight.js'
 import { movePrevented } from './probe.js'
@@ -82,8 +82,11 @@ export function seenBasePoints(unit: SeenUnit): number {
   return unitBasePoints(unit.bp, unit.sp)
 }
 
-/** 手札に持っておく基礎点。エネルギーに置くカードと、捨てるカードを選ぶのに使う。 */
-export function cardBasePoints(card: Card): number {
+/**
+ * 手札に持っておく基礎点。エネルギーに置くカードと、捨てるカードを選ぶのに使う。選択の要求が見せる一覧のカード
+ * （通信に載せる表記）も受け取る。基礎点に要るのは、種別と、ユニットのＢＰ・ＳＰだけである。
+ */
+export function cardBasePoints(card: Card | WireCardFace): number {
   switch (card.type) {
     case 'ユニット':
       return unitBasePoints(card.bp, card.sp)

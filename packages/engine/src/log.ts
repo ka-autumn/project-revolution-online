@@ -742,6 +742,9 @@ export function loggedInstruction(
     // 選んだ行は、命令が選んだカードごとに自分で積む（`resolve.ts`、ADR-0055）。この関数には来ない。
     case '複数を選ぶ':
       throw new Error('複数を選ぶ命令の行は、命令が自分で積む')
+    // 見たことと捨てたカードは、命令が自分で積む（`resolve.ts`、ADR-0069）。この関数には来ない。
+    case '相手の手札を見て選ぶ':
+      throw new Error('相手の手札を見て選ぶ命令の行は、命令が自分で積む')
     // 聞いたことと答えは、命令が自分で積む（`resolve.ts`、ADR-0064）。この関数には来ない。
     case 'してもよいか聞く':
       throw new Error('してもよいか聞く命令の行は、命令が自分で積む')

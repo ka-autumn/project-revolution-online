@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { damagePlayer, defineUnit, drawCards, emptyDuelState, instantiate, mayDo, perspectiveOf, randomFromSeed } from '@revolution/engine'
+import {
+  damagePlayer,
+  defineUnit,
+  discardOpponentHand,
+  drawCards,
+  emptyDuelState,
+  instantiate,
+  lookAtOpponentHandAndDiscard,
+  mayDo,
+  perspectiveOf,
+  randomFromSeed,
+} from '@revolution/engine'
 import type { CardInstance, DuelState, Player, PlayerZone } from '@revolution/engine'
 import { choiceViewOf } from './player.js'
 import { probeEffectRun } from './probe.js'
@@ -122,5 +133,32 @@ describe('CPU が「してもよい」に答える', () => {
     } as const
 
     expect(scoredCpu.answer(choiceViewOf(state, choice), randomFromSeed(1)).answer).toBe(0)
+  })
+})
+
+// ADR-0069。相手の手札を見て選ぶ命令は、空回しでは相手の手札が空でも止まらず、命令として並ぶ。
+describe('相手の手札を見て選ぶ命令の空回し', () => {
+  const setting = { perspective: perspectiveOf(emptyDuelState(), '先攻'), controller: '先攻' } as const
+
+  it('命令が並び、後ろの命令も続けて並ぶ（効果には何も返らないので、止まらない）', () => {
+    const run = probeEffectRun(setting, function* (duel) {
+      yield* lookAtOpponentHandAndDiscard([{ axis: '種別', value: 'ユニット' }], { upTo: true })
+      yield* drawCards(duel.controller, 1)
+    })
+
+    expect(run?.instructions.map((each) => each.kind)).toEqual(['相手の手札を見て選ぶ', 'カードを引く'])
+  })
+
+  it('損得は、相手に手札を 1 枚捨てさせる命令と同じ値になる', () => {
+    const scoreOf = (effect: Parameters<typeof probeEffectRun>[1]): number | undefined => probeEffectRun(setting, effect)?.score
+    const looking = scoreOf(function* () {
+      yield* lookAtOpponentHandAndDiscard([], { upTo: false })
+    })
+    const discarding = scoreOf(function* () {
+      yield* discardOpponentHand(1)
+    })
+
+    expect(looking).toBeDefined()
+    expect(looking).toBe(discarding)
   })
 })

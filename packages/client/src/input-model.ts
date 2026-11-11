@@ -364,6 +364,11 @@ function askingFor(
     // 条件に合うカードが無い山札も聞かれる（選ばないことだけを選べる、ADR-0042）。
     case '山札から選ぶ':
       return hasCandidates ? 'カードを選択してください' : '条件に合うカードはありません'
+    // 相手の手札を見て選ぶ（ADR-0069）。合うカードが無い時は、確認だけの選択が届く（`hasCandidates` が偽）。
+    // 発生源が見えなければ、発生源を言わない。
+    case '相手の手札から選ぶ':
+      if (!hasCandidates) return '相手の手札に条件に合うカードはありません'
+      return source === undefined ? '相手の手札から選んでください' : `${source} の効果で、相手の手札から選んでください`
     case '勇気のきっかけ':
       return source === undefined
         ? '「勇気」でダメージを与えるユニットを選んでください'
@@ -463,7 +468,8 @@ export function choiceView(board: WirePerspective, choice: WireChoice, picking?:
     asking: askingFor(
       choice.purpose,
       choice.source === undefined ? undefined : names.get(choice.source),
-      choice.candidates.length > 0,
+      // 選べる候補があるか。確認だけの選択（相手の手札を見て選ぶ選択で、合うカードが無い時）は、選べない。
+      choice.candidates.some((candidate) => candidate.kind !== '確認'),
       choice.source !== undefined && isOpponentsSource(board, choice.source),
       remainingOf(choice),
     ),
@@ -505,6 +511,7 @@ export function isEffectChoice(choice: WireChoice): boolean {
     case '捨てる手札':
     case 'してもよい':
     case '見たカードの確認':
+    case '相手の手札から選ぶ':
       return true
     default:
       return false
@@ -1220,14 +1227,15 @@ export function isSeriesChoice(choice: WireChoice): boolean {
 }
 
 /**
- * 見せる一覧つきの選択（ADR-0041）の見出し。相手の手札を見る確認と、相手の効果で自分が選ぶ選択
- * （一覧は相手が支配者の手札、ADR-0052）は、見ている一覧の名前と枚数を言う。それ以外は、候補から
- * 選ぶ一覧と同じ見出しにする。
+ * 見せる一覧つきの選択（ADR-0041）の見出し。相手の手札を見る確認と、相手の手札を見て選ぶ選択
+ * （ADR-0069）と、相手の効果で自分が選ぶ選択（一覧は相手が支配者の手札、ADR-0052）は、見ている
+ * 一覧の名前と枚数を言う。それ以外は、候補から選ぶ一覧と同じ見出しにする。
  */
 export function shownTitleOf(choice: WireChoice): string {
   const count = choice.shown?.length ?? 0
   switch (choice.purpose) {
     case '見たカードの確認':
+    case '相手の手札から選ぶ':
     // 見せる一覧つきで目的が `効果の対象` になるのは、相手に支配者の手札から選ばせる時だけである
     // （自分の山札を読む形は `山札から選ぶ`）。
     case '効果の対象':
