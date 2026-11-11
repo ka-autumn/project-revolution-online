@@ -3024,7 +3024,7 @@ const lookAndChooseList = [
 for (const n of lookAndChooseList.slice(0, 2)) n.classList.add('card--押せる')
 lookAndChooseList[1].classList.add('card--選択中')
 for (const n of lookAndChooseList.slice(2)) n.classList.add('card--見るだけ')
-pickers.append(picker('相手の手札から選ぶ', '相手の手札（4）', '見本・パルフェ・若葉 の効果で、相手の手札から選んでください',
+pickers.append(picker('相手の手札から選ぶ', '相手の手札（4）', '見本・パルフェ・若葉 の効果で、相手の手札から捨札にするカードを選んでください',
   lookAndChooseList,
   '<button type="button">選ばない</button><button type="button" class="button--primary">これに決める</button>'))
 

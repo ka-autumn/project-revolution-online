@@ -2227,13 +2227,13 @@ describe('見せる一覧つきの選択', () => {
     })
 
     it('何を聞かれているかを、発生源と一緒に言う', () => {
-      expect(choiceView(board(), choosing).asking).toBe('テスト・盤上の戦士 の効果で、相手の手札から選んでください')
+      expect(choiceView(board(), choosing).asking).toBe('テスト・盤上の戦士 の効果で、相手の手札から捨札にするカードを選んでください')
     })
 
     it('発生源が見えなければ、発生源を言わない', () => {
       const { source: _source, ...withoutSource } = choosing
 
-      expect(choiceView(board(), withoutSource).asking).toBe('相手の手札から選んでください')
+      expect(choiceView(board(), withoutSource).asking).toBe('相手の手札から捨札にするカードを選んでください')
     })
 
     it('選べるカードが混じる一覧では、選べないカードを薄くする', () => {

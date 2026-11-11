@@ -368,7 +368,9 @@ function askingFor(
     // 発生源が見えなければ、発生源を言わない。
     case '相手の手札から選ぶ':
       if (!hasCandidates) return '相手の手札に条件に合うカードはありません'
-      return source === undefined ? '相手の手札から選んでください' : `${source} の効果で、相手の手札から選んでください`
+      return source === undefined
+        ? '相手の手札から捨札にするカードを選んでください'
+        : `${source} の効果で、相手の手札から捨札にするカードを選んでください`
     case '勇気のきっかけ':
       return source === undefined
         ? '「勇気」でダメージを与えるユニットを選んでください'
