@@ -560,18 +560,37 @@ function winning(context: Context): boolean {
 }
 
 /**
+ * そのプランゾーンのカードが、いま「夢」を持っているか。
+ *
+ * カードに書かれた「夢」だけでなく、継続効果や常在型能力が与えた「夢」も含める（ADR-0036・ADR-0070）。
+ * 与えられた分は、書かれた能力と違うカードの分だけ視点が持つ（`DuelPerspective.effectiveKeywords`）。
+ * 書かれたとおりのカードは含まれないので、その場合は書かれた能力を参照する。
+ */
+function hasDreamNow(perspective: DuelPerspective, plan: CardInstance): boolean {
+  const applied = perspective.effectiveKeywords.find((each) => each.card === plan.id)
+  return applied === undefined ? hasDream(plan.card) : applied.keywords.includes('夢')
+}
+
+/**
  * いまのプランを残す理由があるか。プランすると、いまのプランは捨札に置かれる（総合ルール 第3部
  * 第8章 2-3）。
  *
- * - 夢を持ち、いまプレイできる。プランより先にプレイする（同 第2部 第21章 3、第5部 第1章）。
+ * - 夢を持ち（与えられた「夢」を含む）、いまプレイできる。プランより先にプレイする（同 第2部 第21章 3、第5部 第1章）。
  * - 相手にスマッシュされうる時に、発動できる希望を持っている（同 第5部 第3章）。
  * - スマッシュされる見込みが低い時に、手札に加われば有利になりそう。プランは次のドローで手札に
  *   加わる（同 第2部 第21章 3-1）。
  * - 盤面と手札で勝てそうなので、山札を減らしてまで探す理由が無い。
  */
-function keepsPlan(context: Context, plan: Card): boolean {
+function keepsPlan(context: Context, planInstance: CardInstance): boolean {
   const { perspective, me } = context
-  if (hasDream(plan) && levelSatisfied(perspective, me, plan) && releasedEnergyOf(perspective, me).length > 0) return true
+  const plan = planInstance.card
+  if (
+    hasDreamNow(perspective, planInstance) &&
+    levelSatisfied(perspective, me, plan) &&
+    releasedEnergyOf(perspective, me).length > 0
+  ) {
+    return true
+  }
 
   const threatened = mayBeSmashed(context)
   if (threatened && hopeFires(context, plan)) return true
@@ -601,7 +620,7 @@ function planScore(context: Context): number {
   if (!releasedSmash && !spareEnergy) return NEVER
 
   const plan = visibleIn(perspective, me, 'プランゾーン')[0]
-  if (plan !== undefined && keepsPlan(context, plan.card)) return NEVER
+  if (plan !== undefined && keepsPlan(context, plan)) return NEVER
 
   const base = releasedSmash ? 120 : 60
   return plan === undefined ? base : base - 20

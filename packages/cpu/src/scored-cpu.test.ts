@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  abilityGranting,
   applyWithAnswers,
   choose,
   createTriggeredAbilityForDiscardedCard,
@@ -7,7 +8,9 @@ import {
   defineStrategy,
   defineUnit,
   destroy,
+  dream,
   emptyDuelState,
+  granting,
   hope,
   instantiate,
   placeInZone,
@@ -444,6 +447,48 @@ describe('プラン', () => {
     state = onSquare(state, at(CENTER, 1), 'enemy', unit('敵', 9000, 1000), '後攻')
 
     expect(picked(state)).not.toEqual({ kind: 'プランする' })
+  })
+})
+
+describe('プラン（与えられた「夢」）', () => {
+  /** リリース状態のスマッシュ 1 枚。プランのコストに使える（総合ルール 第2部 第21章 7-5）。 */
+  const smash = instantiate({ id: 'smash', card: unit('スマッシュ', 0, 0), owner: '先攻' })
+  /**
+   * レベルを満たせる、基礎点の無いプラン。「夢」を持たない。プレイしても得が無いので、プレイする点数より
+   * プランする点数が高くなり、プランを残す判定（`keepsPlan`）だけが、プランするかどうかを分ける。
+   */
+  const lightPlan = defineUnit({ name: 'テスト・軽いプラン', level: 1, colors: ['赤'], bp: 0, sp: 0 })
+  const energy = defineUnit({ name: 'テスト・赤のエネルギー', level: 0, colors: ['赤'], bp: 0, sp: 0 })
+  /** 自分のプランゾーンのカードに「夢」を与える常在型能力を持つユニット（ADR-0070）。 */
+  const planGranter = defineUnit({
+    name: 'テスト・プランへ夢を与えるユニット',
+    level: 0,
+    bp: 1000,
+    sp: 0,
+    abilities: [abilityGranting((duel) => duel.planZone().map((card) => granting(card, dream)))],
+  })
+
+  /** 同じユニットでも、何も与えないもの。与えられた「夢」の有無だけを変更して比べるための対照。 */
+  const idleGranter = defineUnit({
+    name: 'テスト・何も与えないユニット',
+    level: 0,
+    bp: 1000,
+    sp: 0,
+    abilities: [abilityGranting(() => [])],
+  })
+
+  function scene(granter?: Card): DuelState {
+    let state = withZone(sceneAt('メインフェイズ'), '先攻', 'スマッシュゾーン', [smash])
+    state = withZone(state, '先攻', 'プランゾーン', [instantiate({ id: 'plan', card: lightPlan, owner: '先攻' })])
+    state = withZone(state, '先攻', 'エネルギーゾーン', [instantiate({ id: 'e', card: energy, owner: '先攻' })])
+    return granter === undefined ? state : onSquare(state, at(OWN_AREA, 0), 'granter', granter, '先攻')
+  }
+
+  /** 総合ルール 第5部 第1章 2。与えられた「夢」でプランゾーンからプレイできるプランは、捨札に置かずに残す。 */
+  it('与えられた「夢」でプレイできるプランは、捨札に置かずにプレイする', () => {
+    expect(picked(scene())).toEqual({ kind: 'プランする' })
+    expect(picked(scene(idleGranter))).toEqual({ kind: 'プランする' })
+    expect(picked(scene(planGranter))).toMatchObject({ kind: 'カードをプレイする', declaration: { card: 'plan' } })
   })
 })
 
