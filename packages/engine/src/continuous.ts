@@ -1,7 +1,7 @@
-import { attributeAddingAbilitiesOf, modifyingAbilitiesOf, bpOf, spOf } from './card.js'
+import { abilityGrantingAbilitiesOf, attributeAddingAbilitiesOf, modifyingAbilitiesOf, bpOf, spOf } from './card.js'
 import type { Attribute, Card } from './card.js'
 import type { CardId, DuelState } from './duel.js'
-import type { ContinuousChange, DuelView, GrantableAbility, UnitOnSquare } from './effect.js'
+import type { ContinuousChange, DuelView, GrantableAbility } from './effect.js'
 import { duelView, unitsOnSquares } from './view.js'
 import type { UnitData } from './view.js'
 
@@ -25,8 +25,8 @@ export type SpModification = (id: CardId) => number
 /**
  * 継続効果を適用した後の、スクエアにいるユニットのデータ（総合ルール 第4部 第12章 2）。
  *
- * **盤面（`DuelState`）はカードに書かれているデータを持ち、効果に見せる写し（`DuelView`）は
- * これを通した後のデータを持つ。** カードの実装が読む場所を 1 つにするためで、そうしないと
+ * 盤面（`DuelState`）はカードに書かれているデータを持ち、効果に見せるビュー（`DuelView`）は
+ * これを通した後のデータを持つ。カードの実装が読む場所を 1 つにするためで、そうしないと
  * 「書かれている属性」と「いま持っている属性」の 2 か所ができ、間違って書かれても型には
  * 出ない。総合ルールの「データ」には属性もＢＰも含まれる（同 第2部 第2章 2）。
  *
@@ -64,16 +64,39 @@ export function continuousData(state: DuelState): UnitData {
  *
  * 能力を与える効果（総合ルール 第4部 第12章 5-2 の(2)）は、ＢＰ・ＳＰの変更と違って、対象が
  * スクエアにいるユニットとは限らない。プランゾーンのユニットに「夢」を与えるテキストのためで、
- * どのゾーンにいるカードあてのものも数える。並びは、発生した順を保つ。
+ * どのゾーンにいるカードあてのものも含める。並びは、作成された継続効果の発生した順、
+ * 常在型能力の順である。
  */
 export type GrantedAbilities = (id: CardId) => readonly GrantableAbility[]
 
+/**
+ * 与えられた能力を集計する。集計元は 2 つある。
+ *
+ * - 解決が残した、作成された継続効果。盤面が値として持っている（ADR-0036）。
+ * - 能力を与える常在型能力（ADR-0070）。参照するたびに、スクエアにいるユニットから集計し直す。
+ *
+ * 常在型能力に見せるのは、書かれたとおりの盤面である。この関数が返す集計を通したビューを見せると、
+ * 集計が自分自身を呼んで止まらなくなる。テキストを変更する継続効果は最初に適用される（総合ルール
+ * 第4部 第12章 5-2 の(2)）ので、属性もまだ追加されていない。
+ */
 export function grantedAbilitiesOn(state: DuelState): GrantedAbilities {
   const granted = new Map<CardId, GrantableAbility[]>()
+  const add = (target: CardId, ability: GrantableAbility): void => {
+    granted.set(target, [...(granted.get(target) ?? []), ability])
+  }
+
   for (const created of state.createdContinuousEffects) {
     if (created.change.kind !== '能力の付与') continue
-    granted.set(created.target, [...(granted.get(created.target) ?? []), created.change.ability])
+    add(created.target, created.change.ability)
   }
+
+  const written: UnitData = (_id, card) => card
+  for (const grant of gather(state, written, abilityGrantingAbilitiesOf, (ability, duel) =>
+    ability.abilitiesGranted(duel),
+  )) {
+    add(grant.target, grant.ability)
+  }
+
   return (id) => granted.get(id) ?? []
 }
 
@@ -151,7 +174,7 @@ function amountOf(change: ContinuousChange): number | undefined {
 /**
  * いま発生している、ＢＰを変更する継続効果をすべて集める（総合ルール 第4部 第12章）。
  *
- * **常在型能力のぶんは、ＢＰを読むたびに集め直す。** 常在型能力の生み出す継続効果は、能力を
+ * 常在型能力のぶんは、ＢＰを参照するたびに集計し直す。常在型能力の生み出す継続効果は、能力を
  * 持つカードが必要なゾーンに置かれている間ずっと続き（同 4-1）、発生した時点で影響を受け
  * なかったカードにも影響を与える（同 4-2）。集め直す形にすれば、発生元がスクエアを離れた時に
  * 変更を取り消す処理も、後から置かれたユニットに効かせる処理も要らない。
@@ -177,9 +200,7 @@ function modifiedBy(state: DuelState, data: UnitData): { readonly bp: BpModifica
   const bp = new Map<CardId, number>()
   const sp = new Map<CardId, number>()
 
-  for (const modifier of gather(state, data, (source, duel) =>
-    modifyingAbilitiesOf(source.card).flatMap((ability) => ability.modifiers(duel)),
-  )) {
+  for (const modifier of gather(state, data, modifyingAbilitiesOf, (ability, duel) => ability.modifiers(duel))) {
     if (!onSquare(state, modifier.target)) continue
     const total = modifier.kind === 'ＢＰの変更' ? bp : sp
     total.set(modifier.target, (total.get(modifier.target) ?? 0) + modifier.amount)
@@ -214,8 +235,8 @@ type AddedAttributes = (id: CardId) => readonly Attribute[]
 function attributesAddedOn(state: DuelState, text: UnitData): AddedAttributes {
   const added = new Map<CardId, Attribute[]>()
 
-  for (const addition of gather(state, text, (source, duel) =>
-    attributeAddingAbilitiesOf(source.card).flatMap((ability) => ability.attributesAdded(duel)),
+  for (const addition of gather(state, text, attributeAddingAbilitiesOf, (ability, duel) =>
+    ability.attributesAdded(duel),
   )) {
     const target = unitsOnSquares(state).find((unit) => unit.id === addition.target)
     if (target === undefined) continue
@@ -247,18 +268,24 @@ function applying(added: AddedAttributes, text: UnitData): UnitData {
  * 置かれる（同 第14章 4-3）ので、そこにある間にデータが読まれることは無い。手札にある時に
  * 働く常在型能力を持つようになった時に、そのゾーンを見に来る。
  *
- * 能力そのものはカードに書かれているものから引く。能力を与える効果（同 第12章 5-2 の(2)）が
- * 与えるのは「夢」だけで、これはＢＰの変更も誘発も起動も生まない。与えられた能力は写しの
- * `card.abilities` に載る形で表し（`effect.ts` の `DuelView.hasKeyword`）、尋ねる側は写しから
+ * 能力そのものはカードに書かれているものから取得する（`abilitiesOf`）。能力を与える効果（同 第12章
+ * 5-2 の(2)）が与えるのは「夢」だけで、これはＢＰの変更も誘発も起動も生まない。与えられた能力は
+ * ビューの `card.abilities` に含まれる形で表し（`effect.ts` の `DuelView.hasKeyword`）、尋ねる側はビューから
  * 読む。誘発型・起動型・ＢＰを変更する常在型の能力を与える時は、ここも写しから引くように
  * 切り替えてから、渡せる種類（`GrantableAbility`）に足す。
+ *
+ * 該当する能力を持たないユニットには、盤面を表すビューを作成しない。この集計は、カードを 1 枚
+ * 参照するたびに呼ばれる（`appliedCard`）ので、ユニットごとにビューを作成すると呼ぶ回数に比例して重くなる。
  */
-function gather<T>(
+function gather<A, T>(
   state: DuelState,
   data: UnitData,
-  from: (source: UnitOnSquare, duel: DuelView) => readonly T[],
+  abilitiesOf: (card: Card) => readonly A[],
+  from: (ability: A, duel: DuelView) => readonly T[],
 ): readonly T[] {
   return unitsOnSquares(state).flatMap((source) => {
+    const abilities = abilitiesOf(source.card)
+    if (abilities.length === 0) return []
     // 発生源はいまスクエアにいるユニット自身である。継続効果が発生しているのはそこに
     // 置かれているからで（総合ルール 第4部 第12章 4-1）、解決を待つ間に位置が変わること
     // が無い。問い合わせるだけで命令を出さないので、見せたカードも覚えない。
@@ -268,7 +295,7 @@ function gather<T>(
       show: () => {},
       data: () => data,
     })
-    return from(source, duel)
+    return abilities.flatMap((ability) => from(ability, duel))
   })
 }
 
