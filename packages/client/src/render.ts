@@ -2,6 +2,7 @@ import { COLORS, DUEL_FORMATS } from '@revolution/engine'
 import { FOCUS_KEY_ATTRIBUTE, REGION_ATTRIBUTE, type Region, wireBoardKeyboard } from './board-keyboard.js'
 import { highlightedSquares } from './area-highlight.js'
 import { cardTextParagraphs } from './card-text.js'
+import { grantedParagraphs, keywordsElement } from './granted-keyword.js'
 import { applyCardArtwork } from './card-art.js'
 import type { AreaPointerStore } from './area-highlight.js'
 import { INITIAL_FOCUS_ATTRIBUTE, ignoreKeyRepeat, onLayerEscape } from './dialog-focus.js'
@@ -131,7 +132,6 @@ import {
   cardInfoRowsOf,
   dimsUnselectable,
   faceFieldsOf,
-  grantedKeywordText,
   keyOfPosition,
   pagedOf,
   primaryColorOf,
@@ -331,45 +331,6 @@ function starElement(count: number, reverse: boolean): HTMLElement | undefined {
   if (count >= 2) node.append(element('span', '', String(count)))
 
   return node
-}
-
-/**
- * キーワード能力のアイコン 1 つ。与えられた能力は、書かれたものと見分けるため、右下に「＋」の宝石を付ける
- * （スタイルは `style.css`。ADR-0073）。読み上げでは「（与えられた能力）」を添える。
- */
-function keywordElement(keyword: PlanKeyword, granted = false): HTMLElement {
-  const node = element('span', `keyword keyword--${keyword}${granted ? ' keyword--与えられた' : ''}`)
-  node.setAttribute('role', 'img')
-  node.setAttribute('aria-label', granted ? `${keyword}（与えられた能力）` : keyword)
-  node.append(element('span', '', keyword))
-
-  return node
-}
-
-/** キーワード能力のアイコンの並び。`granted` は、そのうち与えられたもの。持たなければ `undefined`。 */
-function keywordsElement(keywords: readonly PlanKeyword[], granted: readonly PlanKeyword[] = []): HTMLElement | undefined {
-  if (keywords.length === 0) return undefined
-
-  const node = element('span', 'keywords')
-  for (const keyword of keywords) node.append(keywordElement(keyword, granted.includes(keyword)))
-
-  return node
-}
-
-/**
- * 与えられたキーワード能力の、カードの詳細に追加する行（1 つにつき 1 行）。行頭は「●」ではなく太い十字の「＋」で、
- * 書かれたテキストと見分ける。「与えられた能力」の注記は目には表示せず、読み上げにだけ伝える。
- */
-function grantedParagraphs(granted: readonly PlanKeyword[]): HTMLParagraphElement[] {
-  return granted.map((keyword) => {
-    const paragraph = document.createElement('p')
-    paragraph.className = 'card__granted'
-    // 太い十字。白い縁取りは、暗い地（黒いカードなど）でも読めるようにするためで、CSS で付ける。
-    const mark = svgElement('svg', { class: 'card__granted-mark', viewBox: '-0.7 -0.7 11.4 11.4', 'aria-hidden': 'true' })
-    mark.append(svgElement('path', { d: 'M3.6 0.6h2.8v3h3v2.8h-3v3H3.6v-3h-3V3.6h3z' }))
-    paragraph.append(mark, element('span', 'card__granted-reading', '与えられた能力: '), document.createTextNode(grantedKeywordText(keyword)))
-    return paragraph
-  })
 }
 
 /** ムーブアイコン。動ける向きだけ白く、ほかは暗くする（総合ルール 第2部 第11章）。 */
