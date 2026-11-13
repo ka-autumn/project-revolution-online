@@ -12,6 +12,7 @@ import type {
   DuelView,
   Duration,
   Effect,
+  GrantModifier,
   OwnDiscardEffect,
   SpModifier,
   UnitOnSquare,
@@ -608,6 +609,29 @@ export interface AttributeAddingAbility {
 }
 
 /**
+ * 能力を与える継続効果を生み出す常在型能力（総合ルール 第4部 第4章 1、第12章 5-2 の(2)、ADR-0070）。
+ *
+ * `AttributeAddingAbility` と同じ形で、与えた能力の在りかは盤面ではなく、参照するたびに集計し直す
+ * （`continuous.ts` の `grantedAbilitiesOn`）。発生源がスクエアを離れれば、次に参照した時には
+ * 与えられていない。プランゾーンに置かれるカードは、置かれた時点で能力を与えられている（同
+ * 第12章 2）。テキストを変更する継続効果 (2) は最初に適用されるので（同 5-2）、渡される
+ * `DuelView` が表すのは、能力も属性もまだ追加されていない、書かれたとおりの盤面である。
+ *
+ * 能力を与える能力どうしの順番（同 5-3〜5-5）は扱わない。与えられるのは「夢」だけで、「夢」を
+ * 持つかを与える条件にするテキストが無いので、どの順に適用しても結果は変化しない。
+ */
+export interface AbilityGrantingAbility {
+  readonly kind: '常在型能力'
+  /**
+   * この能力がいま与えている能力すべて。与える先が 1 枚も無ければ空になる。
+   *
+   * 与える先は `DuelView` で参照できるカード（スクエアのユニットと、支配者のプランゾーン・手札・
+   * 捨札のカード）から選ぶ。
+   */
+  readonly abilitiesGranted: (duel: DuelView) => readonly GrantModifier[]
+}
+
+/**
  * ユニットの移動が宣言されたこと（総合ルール 第4部 第6章 2-1）のきっかけ。
  *
  * 移動に追加コストを課す常在型能力（`MoveCostingAbility`）に渡される。誘発イベントの
@@ -911,6 +935,7 @@ export type Ability =
   | ModifyingAbility
   | FriendshipAbility
   | AttributeAddingAbility
+  | AbilityGrantingAbility
   | PlanReplacingAbility
   | MoveCostingAbility
   | MovePreventingAbility
@@ -1077,6 +1102,13 @@ export function attributeAdding(
   attributesAdded: (duel: DuelView) => readonly AttributeAddition[],
 ): AttributeAddingAbility {
   return { kind: '常在型能力', attributesAdded }
+}
+
+/** 能力を与える常在型能力を 1 つ実装する。与える先と能力はカードごとに違うので受け取る。 */
+export function abilityGranting(
+  abilitiesGranted: (duel: DuelView) => readonly GrantModifier[],
+): AbilityGrantingAbility {
+  return { kind: '常在型能力', abilitiesGranted }
 }
 
 /**

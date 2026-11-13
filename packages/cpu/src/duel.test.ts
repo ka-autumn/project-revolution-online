@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { defineUnit, indexOfSquare, movePreventing, squaresAdjacent } from '@revolution/engine'
+import {
+  abilityGranting,
+  defineUnit,
+  dream,
+  granting,
+  indexOfSquare,
+  movePreventing,
+  squaresAdjacent,
+  triggeredAbility,
+} from '@revolution/engine'
 import type { Card, Deck } from '@revolution/engine'
 import { playCpuDuel } from './duel.js'
 import type { CpuPlayer } from './player.js'
@@ -142,5 +151,88 @@ describe('移動を妨げる常在型能力を持つユニットを含むデッ�
     // 上の対戦が通っても、能力が一度も効かないまま決着しただけかもしれない。効いたことを確かめる。
     expect(engineRefusals.guard).toBeGreaterThan(0)
     expect(engineRefusals.tired).toBeGreaterThan(0)
+  })
+})
+
+// 総合ルール 第4部 第12章 5-2 の(2)（ADR-0070）。プランゾーンのカードへ「夢」を与える常在型能力を持つユニットが
+// 混ざったデッキでも、CPU は止まらず打ち切り、与えられた「夢」でプランゾーンからのプレイが実際に起きる。
+describe('プランゾーンのカードへ「夢」を与える常在型能力を持つユニットを含むデッキ', () => {
+  // 与えられた「夢」でプランゾーンからプレイされた回数。CPU の先読み（pickAction の中）は数えない。
+  const playedFromPlan = { count: 0 }
+  let inCpuPick = false
+
+  const observedCpu: CpuPlayer = {
+    ...scoredCpu,
+    pickAction: (view, random) => {
+      inCpuPick = true
+      try {
+        return scoredCpu.pickAction(view, random)
+      } finally {
+        inCpuPick = false
+      }
+    },
+  }
+
+  /** 「あなたのプランゾーンにある『テスト属性』のユニットに『夢』を与える」。 */
+  const granter = defineUnit({
+    name: 'テスト・デュエルのプランへ夢を与える',
+    level: 0,
+    bp: 3000,
+    sp: 1000,
+    moveIcon: ['上'],
+    abilities: [
+      abilityGranting((duel) =>
+        duel
+          .planZone()
+          .filter((each) => each.card.type === 'ユニット' && each.card.attributes.includes('テスト属性'))
+          .map((each) => granting(each, dream)),
+      ),
+    ],
+  })
+
+  /** 書かれた「夢」を持たない「テスト属性」のユニット。ＢＰを高くして、CPU がプレイしたくなるようにする。プランゾーンからプレイされたら回数に加える。 */
+  const grantee = defineUnit({
+    name: 'テスト・デュエルの夢を与えられる',
+    level: 0,
+    bp: 9000,
+    sp: 1000,
+    moveIcon: ['上'],
+    attributes: ['テスト属性'],
+    abilities: [
+      triggeredAbility(
+        '登場した時',
+        function* () {},
+        (occasion) => {
+          if (occasion.from === 'プランゾーン' && !inCpuPick) playedFromPlan.count += 1
+          return false
+        },
+      ),
+    ],
+  })
+
+  const mixed = (label: string): Deck => [
+    ...[granter, grantee].flatMap((card) => Array.from({ length: 4 }, () => card)),
+    ...deckOf(label, 2000).slice(8),
+  ]
+
+  // CPU が与えられた「夢」を参照して動くことは、`scored-cpu.test.ts` の単体テストが確認する。ここで確認するのは、
+  // 能力を与える常在型能力を含むデッキでも、CPU 同士が止まらずに決着し、与えられた「夢」でのプレイが起きることである。
+  it('点数で選ぶ CPU 同士が、4 つのシードすべてで最後まで打て、与えられた「夢」でプランゾーンからプレイされる', () => {
+    playedFromPlan.count = 0
+
+    for (const seed of [1, 2, 3, 4]) {
+      const result = playCpuDuel({
+        seats: [
+          { cpu: observedCpu, deck: mixed('A') },
+          { cpu: observedCpu, deck: mixed('B') },
+        ],
+        seed,
+        maxActions: 5000,
+      })
+
+      expect(result.kind).toBe('決着')
+    }
+
+    expect(playedFromPlan.count).toBeGreaterThan(0)
   })
 })

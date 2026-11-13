@@ -2,6 +2,7 @@ export {
   ACTIVATION_TIMINGS,
   CREATED_TRIGGERS,
   TRIGGER_EVENTS,
+  abilityGranting,
   activatedAbility,
   attributeAdding,
   courage,
@@ -21,6 +22,7 @@ export {
 } from './ability.js'
 export type {
   Ability,
+  AbilityGrantingAbility,
   ActivatedAbility,
   ActivationCost,
   ActivationTiming,
@@ -90,6 +92,7 @@ export type { Area, Line, MoveDirection, Square, SquareIndex } from './board.js'
 export {
   CARD_TYPES,
   COLORS,
+  abilityGrantingAbilitiesOf,
   activatedAbilitiesOf,
   attributeAddingAbilitiesOf,
   courageOf,

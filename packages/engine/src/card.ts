@@ -1,5 +1,6 @@
 import type {
   Ability,
+  AbilityGrantingAbility,
   ActivatedAbility,
   AttributeAddingAbility,
   CourageAbility,
@@ -531,6 +532,17 @@ export function modifyingAbilitiesOf(card: Card): readonly ModifyingAbility[] {
 export function attributeAddingAbilitiesOf(card: Card): readonly AttributeAddingAbility[] {
   return card.abilities.filter(
     (ability): ability is AttributeAddingAbility => ability.kind === '常在型能力' && 'attributesAdded' in ability,
+  )
+}
+
+/**
+ * そのカードが持つ、能力を与える常在型能力（総合ルール 第4部 第12章 5-2 の(2)）。
+ *
+ * `modifyingAbilitiesOf` と同じ理由で、見つかったものをすべて返す。
+ */
+export function abilityGrantingAbilitiesOf(card: Card): readonly AbilityGrantingAbility[] {
+  return card.abilities.filter(
+    (ability): ability is AbilityGrantingAbility => ability.kind === '常在型能力' && 'abilitiesGranted' in ability,
   )
 }
 

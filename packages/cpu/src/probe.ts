@@ -127,6 +127,10 @@ export function viewFrom(setting: ProbeSetting): DuelView {
           }),
         ),
       ),
+    // スクエアのユニットに継続効果や常在型能力が与えた能力は参照できない。視点が持つ、継続効果を適用した
+    // 後のデータ（`DuelPerspective.effective`）はＢＰ・ＳＰ・属性だけで、能力を含まないため。含めると
+    // 通信のデータの形式が変更される（ADR-0070）。いま、スクエアのユニットに能力を与える実カードは無い。
+    // 与える実カードを実装する時に、視点のデータと一緒に直す。
     hasKeyword: (unit, keyword) => hasKeyword(unit.card, keyword),
   }
 }
