@@ -25,6 +25,7 @@ import {
   boardView,
   cutInViews,
   DECKS_PER_PAGE,
+  grantedKeywordText,
   lobbyView,
   logLines,
   opponentLine,
@@ -3236,6 +3237,53 @@ describe('継続効果を適用した後のキーワード能力', () => {
     const { effectiveKeywords: _, ...old } = onPlanZone()
 
     expect(planKeywords(old as unknown as WirePerspective)).toEqual(['希望'])
+  })
+
+  // 書かれたものと見分けるため、適用した後の並びから、書かれた分を引いた残りを「与えられた」とする。
+  // 通信のデータの形式は変更しない（ADR-0070）。画面は、書かれたキーワード能力を面から取得する。
+  describe('与えられた分', () => {
+    const grantedKeywords = (board: WirePerspective) => {
+      const [card] = zoneOf(boardView(board), '自分', 'プランゾーン').cards
+      return card?.kind === '表' ? card.grantedKeywords : undefined
+    }
+
+    it('適用した後の並びのうち、書かれていないものが与えられた分になる', () => {
+      const board = onPlanZone({ effectiveKeywords: [{ card: 'プラン', keywords: ['夢', '希望'] }] })
+
+      expect(grantedKeywords(board)).toEqual(['夢'])
+    })
+
+    it('書かれたキーワード能力だけなら、与えられた分は無い', () => {
+      expect(grantedKeywords(onPlanZone())).toEqual([])
+    })
+
+    // 書かれた「夢」に「夢」が重なっても、アイコンは 1 つのままで、強調も付かない（ADR-0070）。
+    it('書かれたものと同じキーワード能力が与えられても、与えられた分にはならない', () => {
+      const dreaming = instance('プラン', '先攻', { card: unitFace('テスト・夢のプラン', { keywords: ['夢'] }) })
+      const board: WirePerspective = {
+        ...withZone(emptyBoard('先攻'), '先攻', 'プランゾーン', [{ kind: '見えている', instance: dreaming }]),
+        effectiveKeywords: [{ card: 'プラン', keywords: ['夢'] }],
+      }
+
+      expect(grantedKeywords(board)).toEqual([])
+    })
+
+    it('別のカードの分は、効かない', () => {
+      const board = onPlanZone({ effectiveKeywords: [{ card: '別のカード', keywords: ['夢'] }] })
+
+      expect(grantedKeywords(board)).toEqual([])
+    })
+
+    it('古いサーバでこの項目が届かなくても、落ちずに空になる', () => {
+      const { effectiveKeywords: _, ...old } = onPlanZone()
+
+      expect(grantedKeywords(old as unknown as WirePerspective)).toEqual([])
+    })
+  })
+
+  // 詳細に追加する行の文。与えられるのは「夢」だけ（エンジンの `GrantableAbility`）。
+  it('与えられた「夢」の文は、書かれた「夢」と同じ文になる', () => {
+    expect(grantedKeywordText('夢')).toBe('夢（プランゾーンからプレイできる）')
   })
 })
 
