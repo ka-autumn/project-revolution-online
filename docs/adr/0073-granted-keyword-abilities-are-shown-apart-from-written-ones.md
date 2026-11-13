@@ -51,4 +51,4 @@
 - 詳細に追加する行の文: `grantedKeywordText`（`view-model.ts`）。与えられる種類は「夢」だけで、ほかの種類は、キーワードの名前だけを返す。
 - 描画: アイコンと、詳細に追加する行の組み立ては、`granted-keyword.ts`（`keywordElement`・`keywordsElement`・`grantedParagraphs`）に切り出した。読み上げの文を、DOM を組み立てて確認するため（`granted-keyword.test.ts`）。
 - アイコン: `keyword--与えられた`。右下の「＋」の宝石は、`style.css` の `::after` で描く。読み上げの `aria-label` は、「夢（与えられた能力）」。
-- 詳細の行: `card__granted`（`render.ts` の `grantedParagraphs`）。行頭の十字は `card__granted-mark`（SVG）、読み上げにだけ伝える「与えられた能力」の注記は `card__granted-reading`。
+- 詳細の行: `card__granted`（`granted-keyword.ts` の `grantedParagraphs`）。行頭の十字は `card__granted-mark`（SVG）、読み上げにだけ伝える「与えられた能力」の注記は `card__granted-reading`。
