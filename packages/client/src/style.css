@@ -287,7 +287,7 @@ body {
   outline-offset: 1px;
 }
 
-/* 目には出さず、読み上げにだけ伝える。 */
+/* 目には表示せず、読み上げにだけ伝える。 */
 .lobby .lobby__hidden {
   position: absolute;
   width: 1px;
@@ -3444,7 +3444,7 @@ body {
 
 /*
  * 与えられたキーワード能力は、書かれたものと見分けるため、アイコンの右下に、同じ質感の小さな「＋」の宝石を
- * はめ込む。宝石の色は、アイコンと同じ（`docs/screens/duel/spec.md`、ADR-0070）。
+ * はめ込む。宝石の色は、アイコンと同じ（`docs/screens/duel/spec.md`、ADR-0073）。
  */
 .keyword--与えられた {
   position: relative;
@@ -3491,7 +3491,7 @@ body {
   paint-order: stroke;
 }
 
-/* 目には出さず、読み上げにだけ「与えられた能力」と伝える。 */
+/* 目には表示せず、読み上げにだけ「与えられた能力」と伝える。 */
 .card__granted-reading {
   position: absolute;
   width: 1px;

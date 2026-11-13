@@ -335,7 +335,7 @@ function starElement(count: number, reverse: boolean): HTMLElement | undefined {
 
 /**
  * キーワード能力のアイコン 1 つ。与えられた能力は、書かれたものと見分けるため、右下に「＋」の宝石を付ける
- * （スタイルは `style.css`。ADR-0070）。読み上げでは「（与えられた能力）」を添える。
+ * （スタイルは `style.css`。ADR-0073）。読み上げでは「（与えられた能力）」を添える。
  */
 function keywordElement(keyword: PlanKeyword, granted = false): HTMLElement {
   const node = element('span', `keyword keyword--${keyword}${granted ? ' keyword--与えられた' : ''}`)
@@ -358,7 +358,7 @@ function keywordsElement(keywords: readonly PlanKeyword[], granted: readonly Pla
 
 /**
  * 与えられたキーワード能力の、カードの詳細に追加する行（1 つにつき 1 行）。行頭は「●」ではなく太い十字の「＋」で、
- * 書かれたテキストと見分ける。「与えられた能力」の注記は目には出さず、読み上げにだけ伝える。
+ * 書かれたテキストと見分ける。「与えられた能力」の注記は目には表示せず、読み上げにだけ伝える。
  */
 function grantedParagraphs(granted: readonly PlanKeyword[]): HTMLParagraphElement[] {
   return granted.map((keyword) => {

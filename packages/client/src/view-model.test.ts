@@ -3257,7 +3257,7 @@ describe('継続効果を適用した後のキーワード能力', () => {
       expect(grantedKeywords(onPlanZone())).toEqual([])
     })
 
-    // 書かれた「夢」に「夢」が重なっても、アイコンは 1 つのままで、強調も付かない（ADR-0070）。
+    // 書かれた「夢」に「夢」が重なっても、アイコンは 1 つのままで、強調も付かない（ADR-0073）。
     it('書かれたものと同じキーワード能力が与えられても、与えられた分にはならない', () => {
       const dreaming = instance('プラン', '先攻', { card: unitFace('テスト・夢のプラン', { keywords: ['夢'] }) })
       const board: WirePerspective = {

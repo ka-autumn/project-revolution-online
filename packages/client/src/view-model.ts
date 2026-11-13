@@ -142,7 +142,7 @@ export type CardView =
       /** プランゾーンに関わるキーワード能力（対戦画面のカードの面のアイコン、ADR-0027）。 */
       readonly keywords: readonly PlanKeyword[]
       /**
-       * `keywords` のうち、カードに書かれておらず、継続効果や常在型能力が与えたもの（ADR-0070）。
+       * `keywords` のうち、カードに書かれておらず、継続効果や常在型能力が与えたもの（見分けて表示する決定は ADR-0073）。
        * 書かれたものと見分けて表示するための項目で、無ければ空。通信のデータの形式は変更せず、
        * 適用した後の並びから、カードに書かれた並びを引いて取得する。
        */
@@ -991,7 +991,7 @@ function faceUpView(
 ): CardView {
   const modified = modifiedDataOf(instance, effective)
   const face = instance.card
-  // 与えられた能力を含めた並びで、書かれたキーワード能力と同じアイコンを出す（ADR-0027）。
+  // 与えられた能力を含めた並びで、書かれたキーワード能力と同じアイコンを表示する（ADR-0027）。与えられた分には宝石を付けて見分ける（ADR-0073）。
   const applied = effectiveKeywords.find((each) => each.card === instance.id)
   const written = face.keywords ?? []
 

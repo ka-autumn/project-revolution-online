@@ -1047,6 +1047,15 @@ body {
   vertical-align: -0.15em;
   filter: drop-shadow(0 0 0.5px rgb(0 0 0 / 0.75));
 }
+/* 目には表示せず、読み上げにだけ「与えられた能力」と伝える。 */
+.card__granted-reading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .card__granted-mark path {
   fill: #2f5fd0;
   stroke: #fff;
@@ -2544,7 +2553,7 @@ function cardTextParagraph(line) {
 // 与えられた能力の行（カードの詳細）。書かれたテキストの末尾に追加する。先頭の「＋」の色は、アイコンの宝石の色と合わせる
 const GRANTED_TEXT = { 夢: '夢（プランゾーンからプレイできる）' }
 function grantedLine(keyword) {
-  return `<p class="card__granted"><svg class="card__granted-mark" viewBox="-0.7 -0.7 11.4 11.4" aria-hidden="true"><path d="M3.6 0.6h2.8v3h3v2.8h-3v3H3.6v-3h-3V3.6h3z"/></svg>${GRANTED_TEXT[keyword] ?? keyword}</p>`
+  return `<p class="card__granted"><svg class="card__granted-mark" viewBox="-0.7 -0.7 11.4 11.4" aria-hidden="true"><path d="M3.6 0.6h2.8v3h3v2.8h-3v3H3.6v-3h-3V3.6h3z"/></svg><span class="card__granted-reading">与えられた能力: </span>${GRANTED_TEXT[keyword] ?? keyword}</p>`
 }
 // ---- 見本のデータ（本番の view-model が出すものに相当。カードの中身は仮） ----
 // move: ムーブアイコンの向き（上・下・左・右）。trigger: トリガーアイコンの赤いスクエア（行・列、支配者の手前が下）
