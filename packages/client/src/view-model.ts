@@ -141,6 +141,12 @@ export type CardView =
       readonly triggerIcon: TriggerIcon | undefined
       /** プランゾーンに関わるキーワード能力（対戦画面のカードの面のアイコン、ADR-0027）。 */
       readonly keywords: readonly PlanKeyword[]
+      /**
+       * `keywords` のうち、カードに書かれておらず、継続効果や常在型能力が与えたもの（見分けて表示する決定は ADR-0073）。
+       * 書かれたものと見分けて表示するための項目で、無ければ空。通信のデータの形式は変更せず、
+       * 適用した後の並びから、カードに書かれた並びを引いて取得する。
+       */
+      readonly grantedKeywords: readonly PlanKeyword[]
       /** カードに書かれている属性（総合ルール 第2部 第13章）。持たなければ空。 */
       readonly attributes: readonly Attribute[]
       /**
@@ -966,6 +972,16 @@ function pendingAbilitiesIn(
   return grouped
 }
 
+/**
+ * 与えられたキーワード能力の、カードの詳細に追加する行の文（書かれたテキストと同じ文）。
+ *
+ * 与えられるのは「夢」だけ（エンジンの `GrantableAbility`）で、与えられる種類が増えたら、ここに文を追加する。
+ * 知らない種類は、キーワードの名前だけを返す。
+ */
+export function grantedKeywordText(keyword: PlanKeyword): string {
+  return keyword === '夢' ? '夢（プランゾーンからプレイできる）' : keyword
+}
+
 function faceUpView(
   instance: WireCardInstance,
   viewer: Player,
@@ -975,8 +991,9 @@ function faceUpView(
 ): CardView {
   const modified = modifiedDataOf(instance, effective)
   const face = instance.card
-  // 与えられた能力を含めた並びで、書かれたキーワード能力と同じアイコンを出す（ADR-0027）。
+  // 与えられた能力を含めた並びで、書かれたキーワード能力と同じアイコンを表示する（ADR-0027）。与えられた分には宝石を付けて見分ける（ADR-0073）。
   const applied = effectiveKeywords.find((each) => each.card === instance.id)
+  const written = face.keywords ?? []
 
   return {
     kind: '表',
@@ -987,6 +1004,9 @@ function faceUpView(
     modified,
     ...faceFieldsOf(face),
     ...(applied === undefined ? {} : { keywords: applied.keywords }),
+    // 与えられた分は、適用した後の並びのうち、書かれていないもの。何が与えられるかは盤面が決定していて、
+    // ここでするのは、書かれた並びと見比べることだけである（ADR-0010）。
+    grantedKeywords: applied === undefined ? [] : applied.keywords.filter((keyword) => !written.includes(keyword)),
     pending: pending.get(instance.id) ?? [],
     orientation: instance.orientation,
     damage: instance.damage,
