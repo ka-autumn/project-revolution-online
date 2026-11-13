@@ -364,8 +364,9 @@ function grantedParagraphs(granted: readonly PlanKeyword[]): HTMLParagraphElemen
   return granted.map((keyword) => {
     const paragraph = document.createElement('p')
     paragraph.className = 'card__granted'
-    const mark = element('span', 'card__granted-mark')
-    mark.setAttribute('aria-hidden', 'true')
+    // 太い十字。白い縁取りは、暗い地（黒いカードなど）でも読めるようにするためで、CSS で付ける。
+    const mark = svgElement('svg', { class: 'card__granted-mark', viewBox: '-0.7 -0.7 11.4 11.4', 'aria-hidden': 'true' })
+    mark.append(svgElement('path', { d: 'M3.6 0.6h2.8v3h3v2.8h-3v3H3.6v-3h-3V3.6h3z' }))
     paragraph.append(mark, element('span', 'card__granted-reading', '与えられた能力: '), document.createTextNode(grantedKeywordText(keyword)))
     return paragraph
   })
