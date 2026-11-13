@@ -1011,21 +1011,28 @@ body {
  * 与えられた能力（継続効果や常在型能力が与えた能力）は、書かれた能力と見分けるため、アイコンの右下に、
  * 同じ質感の小さな「＋」の宝石をはめ込む。宝石の色は、与えられた能力のアイコンと同じ。
  */
-.keyword--与えられた { position: relative; margin-right: 0.2em; }
+.keyword--与えられた {
+  position: relative;
+  margin-right: 0.4em;
+}
+
 .keyword--与えられた::after {
   content: "";
   position: absolute;
-  right: -0.32em;
-  bottom: -0.28em;
-  width: 0.95em;
-  height: 0.95em;
-  border: 1px solid rgb(255 255 255 / 0.85);
+  right: -0.4em;
+  bottom: -0.35em;
+  width: max(1em, 13px);
+  height: max(1em, 13px);
+  border: max(0.1em, 1.5px) solid #fff;
   border-radius: 50%;
   background:
-    linear-gradient(#fff, #fff) center / 56% 0.2em no-repeat,
-    linear-gradient(#fff, #fff) center / 0.2em 56% no-repeat,
+    linear-gradient(#fff, #fff) center / 64% max(0.26em, 2.5px) no-repeat,
+    linear-gradient(#fff, #fff) center / max(0.26em, 2.5px) 64% no-repeat,
     radial-gradient(circle at 50% 55%, var(--gem-light) 0%, var(--gem) 55%, var(--gem-deep) 100%);
-  box-shadow: inset 0 -0.12em 0.2em rgb(0 0 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.5);
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.55),
+    inset 0 -0.12em 0.2em rgb(0 0 0 / 0.35),
+    0 1px 3px rgb(0 0 0 / 0.5);
 }
 
 /* カードの詳細に追加する、与えられた能力の行。先頭の「＋」は太い十字で、アイコンと同じ宝石の色にする */
