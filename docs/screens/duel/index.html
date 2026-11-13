@@ -1007,6 +1007,40 @@ body {
 .keyword--幸運 span,
 .keyword--苦労 span { font-size: 0.62em; }
 
+/*
+ * 与えられた能力（継続効果や常在型能力が与えた能力）は、書かれた能力と見分けるため、アイコンの右下に、
+ * 同じ質感の小さな「＋」の宝石をはめ込む。宝石の色は、与えられた能力のアイコンと同じ。
+ */
+.keyword--与えられた { position: relative; margin-right: 0.2em; }
+.keyword--与えられた::after {
+  content: "";
+  position: absolute;
+  right: -0.32em;
+  bottom: -0.28em;
+  width: 0.95em;
+  height: 0.95em;
+  border: 1px solid rgb(255 255 255 / 0.85);
+  border-radius: 50%;
+  background:
+    linear-gradient(#fff, #fff) center / 56% 0.2em no-repeat,
+    linear-gradient(#fff, #fff) center / 0.2em 56% no-repeat,
+    radial-gradient(circle at 50% 55%, var(--gem-light) 0%, var(--gem) 55%, var(--gem-deep) 100%);
+  box-shadow: inset 0 -0.12em 0.2em rgb(0 0 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.5);
+}
+
+/* カードの詳細に追加する、与えられた能力の行。先頭の「＋」は太い十字で、アイコンと同じ宝石の色にする */
+.card__granted-mark {
+  display: inline-block;
+  width: 0.95em;
+  height: 0.95em;
+  margin-right: 0.3em;
+  vertical-align: -0.1em;
+  color: #1a3d9c;
+  background:
+    linear-gradient(currentcolor, currentcolor) center / 100% 0.3em no-repeat,
+    linear-gradient(currentcolor, currentcolor) center / 0.3em 100% no-repeat;
+}
+
 /* プランのカードのキーワード能力（夢・希望…）。カードの下端にまたがって、大きめに並べる（最大 3 個） */
 .pile__keywords {
   position: absolute;
@@ -2493,6 +2527,11 @@ function cardTextParagraph(line) {
   }
   return paragraph
 }
+// 与えられた能力の行（カードの詳細）。書かれたテキストの末尾に追加する。先頭の「＋」の色は、アイコンの宝石の色と合わせる
+const GRANTED_TEXT = { 夢: '夢（プランゾーンからプレイできる）' }
+function grantedLine(keyword) {
+  return `<p class="card__granted"><span class="card__granted-mark" aria-hidden="true"></span>${GRANTED_TEXT[keyword] ?? keyword}</p>`
+}
 // ---- 見本のデータ（本番の view-model が出すものに相当。カードの中身は仮） ----
 // move: ムーブアイコンの向き（上・下・左・右）。trigger: トリガーアイコンの赤いスクエア（行・列、支配者の手前が下）
 const cards = {
@@ -2516,6 +2555,8 @@ const cards = {
   見本・ココア・M: { lv: 3, color: '緑', kind: 'パートナー', text: ['【起動】このターン、ユニット 1 体の BP を +1000 する。'] },
   見本・ノエル・カンパネラ: { lv: 3, color: '赤', kind: 'パートナー', text: ['【自】自分のユニットがバトルに勝った時、相手に 500 ダメージを与える。'] },
   見本・ガルド・ベルンシュタイン: { lv: 6, color: '赤', kind: 'ユニット', bp: 1500, sp: 1000, stars: 1, keywords: ['夢', '希望'], traits: '焔の国・♂', move: ['上', '下'], text: ['夢（キーワード能力）', '希望（キーワード能力）相手のトラップを 1 枚まで選び、手札に戻す。', '根性（キーワード能力）'] },
+  // 書かれた「夢」は持たず、常在型能力で「夢」を与えられているプランのカード（keywords は与えられた後の並び、granted がそのうち与えられた分）
+  見本・機械の少女: { lv: 4, color: '白', kind: 'ユニット', bp: 3500, sp: 1000, stars: 0, keywords: ['夢'], granted: ['夢'], traits: '機械・♀', move: ['上', '右'], text: ['このユニットが登場した時、カードを 1 枚引く。'] },
   見本・紅葉: { lv: 5, color: '白', kind: 'ユニット', bp: 7500, sp: 1500, stars: 2, keywords: ['夢'], traits: 'あやかし・けもの・♀', move: ['上'], text: ['このユニットが登場した時、自分の捨札にあるストラテジーを 1 枚まで選び、山札の一番下に置く。', '夢（キーワード能力）', '元気（キーワード能力）'] },
   見本・大狸: { lv: 7, color: '赤', kind: 'ユニット', bp: 4000, sp: 2500, stars: 0, keywords: ['幸運'], traits: 'あやかし・けもの・呪符・♂', move: ['上'], text: ['このユニットがバトルしている間、隣の味方の SP を +500。', '幸運 6（キーワード能力）味方を 1 枚まで選び、手札に戻す。そうしたら、カードを 1 枚引く。'] },
 }
@@ -2548,9 +2589,15 @@ function stat(kind, base, value) {
   return `<span class="card__${kind}${dir ? ` card__${kind}--${dir}` : ''}" aria-label="${label}">${v}</span>`
 }
 
-function keywordIcons(list) {
+// granted：そのうち、継続効果や常在型能力に与えられた分（書かれた能力と見分けて、強調する）
+function keywordIcons(list, granted = []) {
   if (!list?.length) return ''
-  return `<span class="keywords">${list.map((k) => `<span class="keyword keyword--${k}" role="img" aria-label="${k}"><span>${k}</span></span>`).join('')}</span>`
+  return `<span class="keywords">${list
+    .map((k) => {
+      const given = granted.includes(k)
+      return `<span class="keyword keyword--${k}${given ? ' keyword--与えられた' : ''}" role="img" aria-label="${k}${given ? '（与えられた能力）' : ''}"><span>${k}</span></span>`
+    })
+    .join('')}</span>`
 }
 
 // ムーブアイコン：菱形の中に 4 方向の矢印。動ける向きだけ白く、ほかは暗くする
@@ -2626,8 +2673,8 @@ function faceHtml(name, opts = {}) {
     return `
     <div class="card__face">${top}
       <div class="card__bottom">
-        <div class="card__title">${stars}<span class="card__name">${name}</span>${keywordIcons(c.keywords)}</div>
-        <div class="card__text"><div class="card__lines">${c.text.map((l) => cardTextParagraph(l).outerHTML).join('')}</div>${icons}</div>
+        <div class="card__title">${stars}<span class="card__name">${name}</span>${keywordIcons(c.keywords, c.granted)}</div>
+        <div class="card__text"><div class="card__lines">${c.text.map((l) => cardTextParagraph(l).outerHTML).join('')}${(c.granted ?? []).map(grantedLine).join('')}</div>${icons}</div>
         ${c.traits ? `<span class="card__traits">${c.traits}</span>` : ''}
         ${unit ? `<div class="card__stats">${stat('bp', c.bp, opts.bp)}${stat('sp', c.sp, opts.sp)}</div>` : ''}
       </div>
@@ -2789,7 +2836,7 @@ function deck(count, plan, whose) {
     if (keywords.length) {
       const row = document.createElement('div')
       row.className = 'keywords pile__keywords mock-deck-plan'
-      row.innerHTML = keywordIcons(keywords)
+      row.innerHTML = keywordIcons(keywords, cards[plan].granted)
       wrap.append(row)
     }
   }
@@ -2842,7 +2889,7 @@ board.append(ownStrip)
 board.append(place(deck(48, '見本・紅葉', '相手'), '2 / 1'))
 board.append(place(zone('トラップ', 1, [back()]), '2 / 6'))
 board.append(place(zone('トラップ', 1, [card('見本・底の抜けたバケツ', '自分')]), '4 / 1'))
-const ownDeck = deck(50, '見本・ガルド・ベルンシュタイン', '自分')
+const ownDeck = deck(50, '見本・機械の少女', '自分')
 board.append(place(ownDeck, '4 / 6'))
 
 // 提案：中央エリアの両脇に、バンク（左）と誘発した能力（右）。どちらも両者で共有の、解決を待つ能力
@@ -3126,10 +3173,11 @@ function phoneDetailParts(node) {
   if (c.move) add('移動方向', c.move.join('・'))
   if (c.traits) add('属性', c.traits.split('・').join(' | '))
   info.append(rows)
-  if (c.text.length > 0) {
+  if (c.text.length > 0 || c.granted?.length) {
     const text = document.createElement('div')
     text.className = 'detail__text'
     for (const line of c.text) text.append(cardTextParagraph(line))
+    for (const keyword of c.granted ?? []) text.insertAdjacentHTML('beforeend', grantedLine(keyword))
     info.append(text)
   }
   if (c.note) info.append(operationalNote(c.note))
