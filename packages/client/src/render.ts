@@ -129,6 +129,7 @@ import type {
 import {
   DECKS_PER_PAGE,
   appliedMoveIconOf,
+  lostMoveIconOf,
   answersOnlyByDeclining,
   cardInfoRowsOf,
   dimsUnselectable,
@@ -334,21 +335,28 @@ function starElement(count: number, reverse: boolean): HTMLElement | undefined {
   return node
 }
 
-/** ムーブアイコン。動ける向きだけ白く、ほかは暗くする（総合ルール 第2部 第11章）。 */
-function moveIconElement(directions: readonly MoveDirection[]): SVGElement {
+/**
+ * ムーブアイコン。動ける向きだけ白く、ほかは暗くする（総合ルール 第2部 第11章）。継続効果が移動方向を置き換えて
+ * 失った向き（`lost`、ADR-0071）は、薄い赤の破線で縁取った矢印で残す。
+ */
+function moveIconElement(directions: readonly MoveDirection[], lost: readonly MoveDirection[] = []): SVGElement {
   const on = (direction: MoveDirection): string => (directions.includes(direction) ? '#fff' : '#4a4a4a')
+  const lostStyle = (direction: MoveDirection): Record<string, string> =>
+    lost.includes(direction)
+      ? { stroke: '#ffb3b3', 'stroke-width': '0.55', 'stroke-dasharray': '0.9 0.7', 'stroke-linejoin': 'round' }
+      : {}
   const svg = svgElement('svg', {
     class: 'move-icon',
     viewBox: '0 0 20 20',
     role: 'img',
-    'aria-label': `ムーブアイコン：${directions.join('・')}`,
+    'aria-label': `ムーブアイコン：${directions.join('・')}${lost.length > 0 ? `（失った向き：${lost.join('・')}）` : ''}`,
   })
   svg.append(
     svgElement('path', { d: 'M10 0.6 19.4 10 10 19.4 0.6 10Z', fill: '#2a2a2a', stroke: '#fff', 'stroke-width': '0.8' }),
-    svgElement('path', { d: 'M10 2.6 12.4 6H7.6Z', fill: on('上') }),
-    svgElement('path', { d: 'M10 17.4 12.4 14H7.6Z', fill: on('下') }),
-    svgElement('path', { d: 'M2.6 10 6 7.6V12.4Z', fill: on('左') }),
-    svgElement('path', { d: 'M17.4 10 14 7.6V12.4Z', fill: on('右') }),
+    svgElement('path', { d: 'M10 2.6 12.4 6H7.6Z', fill: on('上'), ...lostStyle('上') }),
+    svgElement('path', { d: 'M10 17.4 12.4 14H7.6Z', fill: on('下'), ...lostStyle('下') }),
+    svgElement('path', { d: 'M2.6 10 6 7.6V12.4Z', fill: on('左'), ...lostStyle('左') }),
+    svgElement('path', { d: 'M17.4 10 14 7.6V12.4Z', fill: on('右'), ...lostStyle('右') }),
     svgElement('circle', { cx: '10', cy: '10', r: '2.6', fill: '#c81c1c', stroke: '#fff', 'stroke-width': '0.6' }),
   )
 
@@ -502,10 +510,12 @@ function triggerIconElement(icon: TriggerIcon): SVGElement {
  * `undefined`。ムーブアイコンは右、トリガーアイコンは印刷と同じくテキストの側の左に置く
  * （`card__icons--trigger`、ADR-0027）。
  */
-function iconsElement(card: Pick<FaceFields, 'moveIcon' | 'triggerIcon'>): HTMLElement | undefined {
+function iconsElement(
+  card: Pick<FaceFields, 'moveIcon' | 'triggerIcon'> & { readonly lostMoveIcon?: readonly MoveDirection[] },
+): HTMLElement | undefined {
   const icon =
     card.moveIcon.length > 0
-      ? moveIconElement(card.moveIcon)
+      ? moveIconElement(card.moveIcon, card.lostMoveIcon)
       : card.triggerIcon !== undefined
         ? triggerIconElement(card.triggerIcon)
         : undefined
@@ -595,7 +605,7 @@ function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptio
   )
   const keywords = keywordsElement(card.keywords, card.grantedKeywords)
   // 継続効果が移動方向を変更していれば、変更後の向きで描く（ADR-0071）。
-  const icons = iconsElement({ ...card, moveIcon: appliedMoveIconOf(card) })
+  const icons = iconsElement({ ...card, moveIcon: appliedMoveIconOf(card), lostMoveIcon: lostMoveIconOf(card) })
 
   const title = element('div', 'card__title')
   title.append(...stars, element('span', 'card__name', card.name))

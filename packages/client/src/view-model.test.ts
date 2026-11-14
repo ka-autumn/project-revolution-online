@@ -25,6 +25,7 @@ import {
   appliedMoveIconOf,
   boardView,
   cardInfoRowsOf,
+  lostMoveIconOf,
   cutInViews,
   DECKS_PER_PAGE,
   grantedKeywordText,
@@ -503,6 +504,14 @@ describe('継続効果を適用した後のデータ', () => {
 
       expect(view.kind === '表' && view.modified?.moveIcon).toEqual(['下'])
       expect(view.kind === '表' && view.moveIcon).not.toEqual(['下'])
+    })
+
+    it('失った向きは、書かれた向きのうち、変更後に無いものである。変更が無ければ空', () => {
+      const written = unitView(withEffective([base]))
+      const changed = unitView(withEffective([{ ...base, moveIcon: ['下'] }]))
+
+      expect(written.kind === '表' && lostMoveIconOf(written)).toEqual([])
+      expect(changed.kind === '表' && lostMoveIconOf(changed)).toEqual(changed.kind === '表' ? changed.moveIcon.filter((each) => each !== '下') : undefined)
     })
 
     it('書かれた向きと同じ向きへの置き換えは、変更として表示しない', () => {

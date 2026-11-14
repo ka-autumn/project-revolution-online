@@ -106,6 +106,18 @@ export interface GrantedAbilityView {
 }
 
 /**
+ * 継続効果が移動方向を置き換えて、書かれていたのに失った向き（ADR-0071）。変更が無ければ空。
+ * ムーブアイコンに、破線の矢印として残して示す。
+ */
+export function lostMoveIconOf(card: {
+  readonly moveIcon: readonly MoveDirection[]
+  readonly modified?: ModifiedData | undefined
+}): readonly MoveDirection[] {
+  const applied = card.modified?.moveIcon
+  return applied === undefined ? [] : card.moveIcon.filter((direction) => !applied.includes(direction))
+}
+
+/**
  * 表示する移動方向。継続効果が変更していれば変更後、そうでなければカードに書かれた向きである。
  * 画面に移動方向を表示する所（ムーブアイコン、「移動方向」の行）は、すべてここを通る。
  */

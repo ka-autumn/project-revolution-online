@@ -2653,14 +2653,17 @@ function keywordIcons(list, granted = []) {
 }
 
 // ムーブアイコン：菱形の中に 4 方向の矢印。動ける向きだけ白く、ほかは暗くする
-function moveIcon(dirs) {
+// lost：継続効果が移動方向を変更して、書かれていたのに失った向き（ADR-0071）。破線の矢印で残して示す
+function moveIcon(dirs, lost = []) {
   const on = (d) => (dirs.includes(d) ? '#fff' : '#4a4a4a')
-  return `<svg class="move-icon" viewBox="0 0 20 20" role="img" aria-label="ムーブアイコン：${dirs.join('・')}">
+  const lostAttrs = (d) => (lost.includes(d) ? ' stroke="#ffb3b3" stroke-width="0.55" stroke-dasharray="0.9 0.7" stroke-linejoin="round"' : '')
+  const label = `ムーブアイコン：${dirs.join('・')}${lost.length ? `（失った向き：${lost.join('・')}）` : ''}`
+  return `<svg class="move-icon" viewBox="0 0 20 20" role="img" aria-label="${label}">
     <path d="M10 0.6 19.4 10 10 19.4 0.6 10Z" fill="url(#lg-move-bg)" stroke="#fff" stroke-width="0.8"/>
-    <path d="M10 2.6 12.4 6H7.6Z" fill="${on('上')}"/>
-    <path d="M10 17.4 12.4 14H7.6Z" fill="${on('下')}"/>
-    <path d="M2.6 10 6 7.6V12.4Z" fill="${on('左')}"/>
-    <path d="M17.4 10 14 7.6V12.4Z" fill="${on('右')}"/>
+    <path d="M10 2.6 12.4 6H7.6Z" fill="${on('上')}"${lostAttrs('上')}/>
+    <path d="M10 17.4 12.4 14H7.6Z" fill="${on('下')}"${lostAttrs('下')}/>
+    <path d="M2.6 10 6 7.6V12.4Z" fill="${on('左')}"${lostAttrs('左')}/>
+    <path d="M17.4 10 14 7.6V12.4Z" fill="${on('右')}"${lostAttrs('右')}/>
     <circle cx="10" cy="10" r="2.6" fill="url(#rg-move-core)" stroke="#fff" stroke-width="0.6"/>
   </svg>`
 }
@@ -2714,7 +2717,7 @@ function faceHtml(name, opts = {}) {
   // 継続効果が移動方向を変更していれば、変更後の向きで描く（ADR-0071）
   const move = opts.move ?? c.move
   const icons = move || c.trigger
-    ? `<div class="card__icons${move ? '' : ' card__icons--trigger'}">${move ? moveIcon(move) : ''}${c.trigger ? triggerIcon(c.trigger) : ''}</div>`
+    ? `<div class="card__icons${move ? '' : ' card__icons--trigger'}">${move ? moveIcon(move, (c.move ?? []).filter((d) => !move.includes(d))) : ''}${c.trigger ? triggerIcon(c.trigger) : ''}</div>`
     : ''
   const top = `
       <div class="card__top">
