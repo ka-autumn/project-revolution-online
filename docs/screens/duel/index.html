@@ -3194,13 +3194,13 @@ function detailParts(node) {
   if (node.dataset.freeze) notes.push('フリーズ')
   if (node.dataset.bp && Number(node.dataset.bp) !== c.bp) notes.push(`BP ${c.bp}→${node.dataset.bp}`)
   if (node.dataset.sp && Number(node.dataset.sp) !== c.sp) notes.push(`SP ${c.sp}→${node.dataset.sp}`)
+  moveNote(node, notes)
   if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
   const annotations = document.createElement('div')
   annotations.className = 'detail__annotations'
   if (c.note) annotations.append(operationalNote(c.note))
   if (pending.length) annotations.append(pendingBox(pending, name))
   if (givenOf(node).length) annotations.append(givenBox(givenOf(node)))
-  moveNote(node, notes)
   return [big, annotations, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
 }
 // スマートフォンのカードの詳細：左にカードの面、右に文字で情報を全部書く（デッキを組む画面の詳細と同じ並べ方）。
@@ -3245,8 +3245,8 @@ function phoneDetailParts(node) {
   if (givenOf(node).length) info.append(givenBox(givenOf(node)))
   const notes = [`${node.dataset.whose}のカード`]
   if (node.dataset.freeze) notes.push('フリーズ')
-  if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
   moveNote(node, notes)
+  if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
   info.append(Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') }))
   return [big, info]
 }
