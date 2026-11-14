@@ -2,7 +2,7 @@ import { COLORS, DUEL_FORMATS } from '@revolution/engine'
 import { FOCUS_KEY_ATTRIBUTE, REGION_ATTRIBUTE, type Region, wireBoardKeyboard } from './board-keyboard.js'
 import { highlightedSquares } from './area-highlight.js'
 import { cardTextParagraphs } from './card-text.js'
-import { grantedParagraphs, keywordsElement } from './granted-keyword.js'
+import { grantedAbilitiesBox, grantedParagraphs, keywordsElement } from './granted-keyword.js'
 import { applyCardArtwork } from './card-art.js'
 import type { AreaPointerStore } from './area-highlight.js'
 import { INITIAL_FOCUS_ATTRIBUTE, ignoreKeyRepeat, onLayerEscape } from './dialog-focus.js'
@@ -128,6 +128,8 @@ import type {
 } from './view-model.js'
 import {
   DECKS_PER_PAGE,
+  appliedMoveIconOf,
+  lostMoveIconOf,
   answersOnlyByDeclining,
   cardInfoRowsOf,
   dimsUnselectable,
@@ -333,21 +335,28 @@ function starElement(count: number, reverse: boolean): HTMLElement | undefined {
   return node
 }
 
-/** ムーブアイコン。動ける向きだけ白く、ほかは暗くする（総合ルール 第2部 第11章）。 */
-function moveIconElement(directions: readonly MoveDirection[]): SVGElement {
+/**
+ * ムーブアイコン。動ける向きだけ白く、ほかは暗くする（総合ルール 第2部 第11章）。継続効果が移動方向を置き換えて
+ * 失った向き（`lost`、ADR-0071）は、薄い赤の破線で縁取った矢印で残す。
+ */
+function moveIconElement(directions: readonly MoveDirection[], lost: readonly MoveDirection[] = []): SVGElement {
   const on = (direction: MoveDirection): string => (directions.includes(direction) ? '#fff' : '#4a4a4a')
+  const lostStyle = (direction: MoveDirection): Record<string, string> =>
+    lost.includes(direction)
+      ? { stroke: '#ffb3b3', 'stroke-width': '0.55', 'stroke-dasharray': '0.9 0.7', 'stroke-linejoin': 'round' }
+      : {}
   const svg = svgElement('svg', {
     class: 'move-icon',
     viewBox: '0 0 20 20',
     role: 'img',
-    'aria-label': `ムーブアイコン：${directions.join('・')}`,
+    'aria-label': `ムーブアイコン：${directions.join('・')}${lost.length > 0 ? `（失った向き：${lost.join('・')}）` : ''}`,
   })
   svg.append(
     svgElement('path', { d: 'M10 0.6 19.4 10 10 19.4 0.6 10Z', fill: '#2a2a2a', stroke: '#fff', 'stroke-width': '0.8' }),
-    svgElement('path', { d: 'M10 2.6 12.4 6H7.6Z', fill: on('上') }),
-    svgElement('path', { d: 'M10 17.4 12.4 14H7.6Z', fill: on('下') }),
-    svgElement('path', { d: 'M2.6 10 6 7.6V12.4Z', fill: on('左') }),
-    svgElement('path', { d: 'M17.4 10 14 7.6V12.4Z', fill: on('右') }),
+    svgElement('path', { d: 'M10 2.6 12.4 6H7.6Z', fill: on('上'), ...lostStyle('上') }),
+    svgElement('path', { d: 'M10 17.4 12.4 14H7.6Z', fill: on('下'), ...lostStyle('下') }),
+    svgElement('path', { d: 'M2.6 10 6 7.6V12.4Z', fill: on('左'), ...lostStyle('左') }),
+    svgElement('path', { d: 'M17.4 10 14 7.6V12.4Z', fill: on('右'), ...lostStyle('右') }),
     svgElement('circle', { cx: '10', cy: '10', r: '2.6', fill: '#c81c1c', stroke: '#fff', 'stroke-width': '0.6' }),
   )
 
@@ -501,10 +510,12 @@ function triggerIconElement(icon: TriggerIcon): SVGElement {
  * `undefined`。ムーブアイコンは右、トリガーアイコンは印刷と同じくテキストの側の左に置く
  * （`card__icons--trigger`、ADR-0027）。
  */
-function iconsElement(card: Pick<FaceFields, 'moveIcon' | 'triggerIcon'>): HTMLElement | undefined {
+function iconsElement(
+  card: Pick<FaceFields, 'moveIcon' | 'triggerIcon'> & { readonly lostMoveIcon?: readonly MoveDirection[] },
+): HTMLElement | undefined {
   const icon =
     card.moveIcon.length > 0
-      ? moveIconElement(card.moveIcon)
+      ? moveIconElement(card.moveIcon, card.lostMoveIcon)
       : card.triggerIcon !== undefined
         ? triggerIconElement(card.triggerIcon)
         : undefined
@@ -593,7 +604,8 @@ function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptio
     (each): each is HTMLElement => each !== undefined,
   )
   const keywords = keywordsElement(card.keywords, card.grantedKeywords)
-  const icons = iconsElement(card)
+  // 継続効果が移動方向を変更していれば、変更後の向きで描く（ADR-0071）。
+  const icons = iconsElement({ ...card, moveIcon: appliedMoveIconOf(card), lostMoveIcon: lostMoveIconOf(card) })
 
   const title = element('div', 'card__title')
   title.append(...stars, element('span', 'card__name', card.name))
@@ -5177,6 +5189,11 @@ function detailGuideElement(): HTMLElement {
   return element('p', 'detail__none', 'カードにマウスを乗せるか、フォーカスすると、ここに詳細が出ます。')
 }
 
+/** 移動方向の表示。ムーブアイコンを持たなければ「なし」。 */
+function moveIconLabel(directions: readonly MoveDirection[]): string {
+  return directions.length === 0 ? 'なし' : directions.join('・')
+}
+
 /** カードの詳細の、拡大した面の下に添える補足の 1 行。 */
 function detailNoteOf(card: CardView & { readonly kind: '表' }): string {
   const notes = [`${card.controlledBy}のカード`]
@@ -5184,6 +5201,7 @@ function detailNoteOf(card: CardView & { readonly kind: '表' }): string {
   if (card.orientation === 'フリーズ') notes.push('フリーズ')
   if (card.modified?.bp !== undefined) notes.push(`BP ${card.bp}→${card.modified.bp}`)
   if (card.modified?.sp !== undefined) notes.push(`SP ${card.sp}→${card.modified.sp}`)
+  if (card.modified?.moveIcon !== undefined) notes.push(`移動方向 ${moveIconLabel(card.moveIcon)}→${moveIconLabel(card.modified.moveIcon)}`)
   if (card.damage > 0) notes.push(`ダメージ ${card.damage}`)
 
   return notes.join('／')
@@ -5236,6 +5254,7 @@ function pendingAbilitiesElement(pending: readonly PendingAbilityView[]): HTMLEl
 function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   const noted = card.operationalNote.length > 0
   const waiting = card.pending.length > 0
+  const granted = card.modified?.grantedAbilities ?? []
   const big = element(
     'div',
     `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大${noted ? ' card--注記つき' : ''}${waiting ? ' card--誘発待ちつき' : ''}`,
@@ -5245,6 +5264,7 @@ function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   const annotations = element('div', 'detail__annotations')
   if (noted) annotations.append(operationalNoteElement(card.operationalNote))
   if (waiting) annotations.append(pendingAbilitiesElement(card.pending))
+  if (granted.length > 0) annotations.append(grantedAbilitiesBox(granted))
 
   return [big, annotations, element('p', 'detail__note', detailNoteOf(card))]
 }
@@ -5283,6 +5303,8 @@ function phoneDetailParts(card: CardView & { readonly kind: '表' }): HTMLElemen
   }
   if (noted) info.append(operationalNoteElement(card.operationalNote))
   if (card.pending.length > 0) info.append(pendingAbilitiesElement(card.pending))
+  const granted = card.modified?.grantedAbilities ?? []
+  if (granted.length > 0) info.append(grantedAbilitiesBox(granted))
   info.append(element('p', 'detail__note', detailNoteOf(card)))
 
   return [face, info]
@@ -5295,7 +5317,7 @@ function fillDetailPanel(node: HTMLElement, card: (CardView & { readonly kind: '
   }
 
   node.replaceChildren(...detailParts(card), element('p', 'detail__read-guide', 'Dキーで詳細へ・Escキーでカードへ'))
-  for (const [selector, label] of [['.card__lines', 'カードの本文'], ['.detail__annotations', '注記と誘発待ち']] as const) {
+  for (const [selector, label] of [['.card__lines', 'カードの本文'], ['.detail__annotations', '注記・誘発待ち・与えられた能力']] as const) {
     const region = node.querySelector<HTMLElement>(selector)
     if (region === null || region.childElementCount === 0) continue
     region.tabIndex = 0

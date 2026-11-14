@@ -127,3 +127,13 @@ EB1.0 の 085 は、ターンの終わりまで、味方全員に誘発型能力
 - ムーブアイコンを参照する所（engine・CPU・画面）が、継続効果を適用した後の値を参照するようになる。
 - 通信のデータ、ログ、画面の仕様書とモックが変更される。
 - この決定で実装できるようになるカード（EB1.0 の番号）: 085。
+
+## 実装
+
+- 与える誘発型能力: `GrantedTriggeredAbility`（`ability.ts`。`TriggeredAbility` に表示のための文 `description` を追加したもの）と、実装する関数 `grantedTriggeredAbility(description, event, effect, options?)`。`GrantableAbility` は `DreamAbility | GrantedTriggeredAbility`。`GrantableKeyword` は、引き続きキーワード能力の名前（「夢」）だけである。
+- 誘発の取得: `triggeredBy`（`trigger.ts`）が、カードに書かれた能力に続けて、`grantedAbilitiesOn` が返す与えられた能力を取得する。誘発した能力の `self`（`TriggeredInstance.self`）は、書かれたカードのままである（`when` の `self` は書かれたまま、という既存の決定に従う）。
+- 移動方向の変更: `ContinuousChange` の種類 `移動方向の変更`（方法 `置き換える`、向きの並び）。カードの側が渡す値は `MoveDirectionModifier` で、`replacingMoveDirection(target, directions)` が作成する。適用は `continuousData`（`continuous.ts`）の `moveDirectionsOn` で、作成された順に適用する。`moveUnit`（`move.ts`）は、適用した後のムーブアイコンで移動先を判定する。
+- ログ: `LoggedContinuousChange` に、`誘発型能力の付与`（表示のための文）と `移動方向の変更`（方法と向き）を追加した。
+- 視点のデータ: `EffectiveUnitData`（`perspective.ts`）に、変更を受けたユニットの分だけ、`moveIcon`・`grantedAbilities`（`GrantedAbilityText`、文と期限。常在型能力が与えた分は期限を持たない）・`grantedKeywords` を含める。期限を持つため、与えられた能力の集計は `grantedEntriesOn`（`continuous.ts`）が期限と一緒に返す。`grantedKeywords`（与えられたキーワード能力の名前）は、画面は使わず、CPU の空回しのビューが「その能力を持つか」を尋ねられるようにするためで、ADR-0070 が積み残した件を、この実装で直した。
+- 画面: `ModifiedData`（`view-model.ts`）に `moveIcon` と `grantedAbilities` を追加し、表示する移動方向は `appliedMoveIconOf` を通す。ログの行は `continuousLineGroups` が、同じ解決・同じカード・同じ期限・同じ支配者の、能力の付与と移動方向の変更を 1 行にまとめる。「与えられた能力」の枠は `grantedAbilitiesBox`（`granted-keyword.ts`）。補足の 1 行には、ＢＰ・ＳＰと同じ書き方で、移動方向の変化（「移動方向 上・左・右→上」）を追加した。
+- CPU: `SeenUnit`（`sight.ts`）に、適用した後の `moveIcon` と `grantedKeywords` を追加し、移動を見積もる 4 か所と空回しのビューがこれを参照する。`probe.ts` の `scoreInstructions` は、移動方向の変更を 0 点とする。

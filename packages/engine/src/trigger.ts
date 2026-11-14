@@ -1,9 +1,10 @@
 import { phaseBeginning } from './ability.js'
-import type { OwnDiscardCondition, OwnDiscardOccasion, TriggerCondition, TriggerEvent, TriggerOccasion, TriggeredAbility } from './ability.js'
+import type { Ability, OwnDiscardCondition, OwnDiscardOccasion, TriggerCondition, TriggerEvent, TriggerOccasion, TriggeredAbility } from './ability.js'
 import { BATTLE_SPACE } from './board.js'
 import type { Square } from './board.js'
 import type { Card } from './card.js'
-import { continuousData } from './continuous.js'
+import { continuousData, grantedAbilitiesOn } from './continuous.js'
+import type { GrantedAbilities } from './continuous.js'
 import { findInZone, locateOnSquares } from './duel.js'
 import type {
   BankedAbility,
@@ -203,6 +204,8 @@ export function triggeredBy(
   located: { readonly instance: CardInstance; readonly square: Square },
   event: TriggerEvent,
   occasion?: TriggerOccasion,
+  /** 与えられた能力の集計。何枚ものカードを続けて探す呼び出し側は、盤面ごとに 1 度だけ集計して渡す。 */
+  granted?: GrantedAbilities,
 ): readonly TriggeredInstance[] {
   const { instance, square } = located
   const { card } = instance
@@ -212,7 +215,8 @@ export function triggeredBy(
   // （`duel.ts` の `TriggeredInstance.self`）。
   const self: UnitOnSquare = { id: instance.id, square, card, controller: instance.controller }
 
-  return card.abilities.flatMap((ability) =>
+  // 与えられた誘発型能力は、与えられたユニットの能力として、書かれたものと同じ経路で誘発する（ADR-0071）。
+  return abilitiesOf(state, instance, granted).flatMap((ability) =>
     ability.kind === '誘発型能力' && ability.event === event && triggers(state, ability, occasion, self)
       ? [{ ability, source: instance.id, controller: instance.controller, self }]
       : [],
@@ -266,9 +270,26 @@ function requirementHolds(
   return ability.condition(duel)
 }
 
-/** そのカードが「このカードが捨札に置かれた時」の能力を持つか。持たないカードは、きっかけを作成せずに済ませる。 */
-export function hasOwnDiscardAbility(card: Card): boolean {
-  return card.abilities.some((ability) => ability.kind === '誘発型能力' && ability.event === 'このカードが捨札に置かれた時')
+/**
+ * そのカードが持つ能力。カードに書かれた能力に続けて、継続効果や常在型能力が与えた能力を並べる（ADR-0071）。
+ * 誘発の取得は、どの経路もここを通る。
+ */
+function abilitiesOf(
+  state: DuelState,
+  instance: CardInstance,
+  granted: GrantedAbilities = grantedAbilitiesOn(state),
+): readonly Ability[] {
+  return [...instance.card.abilities, ...granted(instance.id)]
+}
+
+/**
+ * そのカードが「このカードが捨札に置かれた時」の能力を持つか。与えられた能力も含める。持たないカードは、
+ * きっかけを作成せずに済ませる。
+ */
+export function hasOwnDiscardAbility(state: DuelState, instance: CardInstance): boolean {
+  return abilitiesOf(state, instance).some(
+    (ability) => ability.kind === '誘発型能力' && ability.event === 'このカードが捨札に置かれた時',
+  )
 }
 
 /**
@@ -291,7 +312,7 @@ export function triggeredByOwnDiscard(
       ? { id: occasion.id, square: occasion.square, card: occasion.card, controller: occasion.controller }
       : undefined
 
-  return instance.card.abilities.flatMap((ability) =>
+  return abilitiesOf(state, instance).flatMap((ability) =>
     ability.kind === '誘発型能力' &&
     ability.event === 'このカードが捨札に置かれた時' &&
     (ability.when === undefined || (ability.when as OwnDiscardCondition)(occasion, occasion.controller)) &&
@@ -312,11 +333,13 @@ export function triggeredOnSquares(
   matches: (instance: CardInstance) => boolean = () => true,
   occasion?: TriggerOccasion,
 ): readonly TriggeredInstance[] {
+  // 与えられた能力の集計は、盤面のカードすべてに共通なので、1 度だけ行う。
+  const granted = grantedAbilitiesOn(state)
   return state.squares.flatMap((cards, index) => {
     const square = BATTLE_SPACE[index]
     if (square === undefined) return []
     return cards.flatMap((instance) =>
-      matches(instance) ? triggeredBy(state, { instance, square }, event, occasion) : [],
+      matches(instance) ? triggeredBy(state, { instance, square }, event, occasion, granted) : [],
     )
   })
 }

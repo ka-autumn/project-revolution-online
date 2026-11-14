@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { grantedParagraphs, keywordElement, keywordsElement } from './granted-keyword.js'
+import { grantedAbilitiesBox, grantedParagraphs, keywordElement, keywordsElement } from './granted-keyword.js'
 
 class FakeNode {
   readonly childNodes: FakeNode[] = []
@@ -110,5 +110,31 @@ describe('カードの詳細に追加する、与えられたキーワード能�
     const [paragraph] = grantedParagraphs(['夢'])
 
     expect(paragraph?.textContent.includes('●')).toBe(false)
+  })
+})
+
+// ADR-0071。継続効果が与えた誘発型能力は、「与えられた能力」の枠に、能力 1 つにつき 1 行で表示する。
+describe('カードの詳細の、与えられた誘発型能力の枠', () => {
+  it('見出しと、与えられた能力 1 つにつき 1 行を並べる', () => {
+    const box = grantedAbilitiesBox([
+      { text: '1 つ目の文', until: 'ターンの終わりまで' },
+      { text: '2 つ目の文', until: undefined },
+    ])
+    const [title, ...lines] = box.children
+
+    expect(box.className).toBe('detail__granted')
+    expect(title?.className).toBe('detail__granted-title')
+    expect(title?.textContent).toBe('与えられた能力')
+    expect(lines.map((line) => line.textContent)).toEqual(['1 つ目の文（ターンの終わりまで）', '2 つ目の文'])
+  })
+
+  it('行頭に十字を付け、読み上げの対象から外す。「●」は付けない', () => {
+    const box = grantedAbilitiesBox([{ text: '文', until: 'ターンの終わりまで' }])
+    const [, line] = box.children
+    const [mark] = line?.children ?? []
+
+    expect(mark?.getAttribute('class')).toBe('card__granted-mark')
+    expect(mark?.getAttribute('aria-hidden')).toBe('true')
+    expect(line?.textContent.includes('●')).toBe(false)
   })
 })

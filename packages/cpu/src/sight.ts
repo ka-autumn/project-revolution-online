@@ -1,6 +1,8 @@
 import { BATTLE_SPACE, areaOf, hasPep, hasTrust } from '@revolution/engine'
 import type {
   Area,
+  GrantableKeyword,
+  MoveDirection,
   Card,
   CardId,
   CardInstance,
@@ -30,6 +32,10 @@ export interface SeenUnit {
   readonly controller: Player
   readonly bp: number
   readonly sp: number
+  /** 継続効果を適用した後の移動方向。移動できるかの見積もりはこちらを参照する（ADR-0071）。 */
+  readonly moveIcon: readonly MoveDirection[]
+  /** 継続効果や常在型能力が与えたキーワード能力。書かれた能力は `card.abilities` にある。 */
+  readonly grantedKeywords: readonly GrantableKeyword[]
   readonly damage: number
   readonly released: boolean
 }
@@ -49,6 +55,8 @@ export function unitsOf(perspective: DuelPerspective): readonly SeenUnit[] {
           controller: instance.controller,
           bp: effective?.bp ?? instance.card.bp,
           sp: effective?.sp ?? instance.card.sp,
+          moveIcon: effective?.moveIcon ?? instance.card.moveIcon,
+          grantedKeywords: effective?.grantedKeywords ?? [],
           damage: instance.damage,
           released: instance.orientation === 'リリース',
         },

@@ -230,7 +230,7 @@ function canFinish(
       unit.controller === me &&
       unit.released &&
       unit.id !== exclude.unit &&
-      unit.card.moveIcon.some((direction) => {
+      unit.moveIcon.some((direction) => {
         const reached = squareInDirection(me, unit.square, direction)
         return reached !== undefined && sameSquare(reached, enemy.square)
       }) &&
@@ -304,6 +304,8 @@ function appearanceScore(context: Context, card: UnitCard, square: Square, id: C
     controller: context.me,
     bp: card.bp,
     sp: card.sp,
+    moveIcon: card.moveIcon,
+    grantedKeywords: [],
     damage: 0,
     released: true,
   }
@@ -507,7 +509,7 @@ const WINNING_MARGIN = 4000
 
 /** そのユニットが、前（ムーブアイコンの上）へ進めるか。移動を妨げる常在型能力で動けなければ進めない（ADR-0068）。 */
 function mayAdvance(perspective: DuelPerspective, controller: Player, unit: SeenUnit): boolean {
-  if (!unit.card.moveIcon.includes('上')) return false
+  if (!unit.moveIcon.includes('上')) return false
   const forward = squareInDirection(controller, unit.square, '上')
   return forward === undefined || !movePrevented(perspective, unit, forward, false)
 }

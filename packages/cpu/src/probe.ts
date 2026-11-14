@@ -49,7 +49,7 @@ function hiddenId(player: Player, zone: PlayerZone, index: number): CardId {
 function onSquareOf(unit: SeenUnit): UnitOnSquare {
   // 継続効果を適用した後の BP を見せる。効果が書かれた BP を参照して判定するテキストもあるが、
   // 損得の見積もりにはこちらが近い。
-  return { id: unit.id, square: unit.square, card: { ...unit.card, bp: unit.bp, sp: unit.sp }, controller: unit.controller }
+  return { id: unit.id, square: unit.square, card: { ...unit.card, bp: unit.bp, sp: unit.sp, moveIcon: unit.moveIcon }, controller: unit.controller }
 }
 
 /**
@@ -84,7 +84,8 @@ export function movePrevented(
 export function viewFrom(setting: ProbeSetting): DuelView {
   const { perspective, controller } = setting
   const opponent = opponentOf(controller)
-  const units = [...unitsOf(perspective), ...(setting.arriving === undefined ? [] : [setting.arriving])].map(onSquareOf)
+  const seen = [...unitsOf(perspective), ...(setting.arriving === undefined ? [] : [setting.arriving])]
+  const units = seen.map(onSquareOf)
   const own = (zone: PlayerZone): readonly CardInZone[] =>
     visibleIn(perspective, controller, zone).map((instance) => ({ id: instance.id, zone, card: instance.card }))
 
@@ -127,11 +128,11 @@ export function viewFrom(setting: ProbeSetting): DuelView {
           }),
         ),
       ),
-    // スクエアのユニットに継続効果や常在型能力が与えた能力は参照できない。視点が持つ、継続効果を適用した
-    // 後のデータ（`DuelPerspective.effective`）はＢＰ・ＳＰ・属性だけで、能力を含まないため。含めると
-    // 通信のデータの形式が変更される（ADR-0070）。いま、スクエアのユニットに能力を与える実カードは無い。
-    // 与える実カードを実装する時に、視点のデータと一緒に直す。
-    hasKeyword: (unit, keyword) => hasKeyword(unit.card, keyword),
+    // 書かれた能力に、継続効果や常在型能力が与えたキーワード能力を追加して尋ねる。与えられた分は、視点が持つ、
+    // 継続効果を適用した後のデータ（`DuelPerspective.effective`）にある。
+    hasKeyword: (unit, keyword) =>
+      hasKeyword(unit.card, keyword) ||
+      seen.some((each) => each.id === unit.id && each.grantedKeywords.some((granted) => granted === keyword)),
   }
 }
 
@@ -470,6 +471,8 @@ export function scoreInstructions(
           else total += side * change.amount * BP_CHANGE_WEIGHT
         } else if (change.kind === 'ＳＰの変更') {
           total += side * change.amount * 0.5
+        } else if (change.kind === '移動方向の変更') {
+          // 移動方向の置き換えは 0 点にする。能力の付与と合わせて 1 枚につき固定の点数に収める（ADR-0071）。
         } else {
           total += side * 200
         }

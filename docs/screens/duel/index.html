@@ -1386,6 +1386,31 @@ body {
 
 .detail__pending p { margin: 0; }
 
+/*
+ * 継続効果が与えた誘発型能力（ADR-0071）。注記・誘発待ちの枠と同じ置き方で、面の外に、枠で表示する。
+ * 色は、与えられたキーワード能力の「＋」の宝石と同じ青にそろえる。能力 1 つにつき 1 行で、先頭に太い十字の
+ * 「＋」を付ける（カードの詳細の、与えられたキーワード能力の行と同じマーク）。
+ */
+.detail__granted {
+  align-self: stretch;
+  margin: 0.4rem 0 0;
+  padding: 0.3rem 0.5rem;
+  border-left: 3px solid #2f5fd0;
+  border-radius: 0 6px 6px 0;
+  color: var(--ink);
+  background: rgb(47 95 208 / 0.12);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.detail__granted p { margin: 0; }
+
+.detail__granted-title {
+  color: #2449a3;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
 .detail__pending-title {
   color: #2e6661;
   font-size: 0.68rem;
@@ -2300,7 +2325,8 @@ body {
   .detail__text { margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid rgb(220 166 64 / 0.5); line-height: 1.5; }
   .detail__text p { margin: 0 0 0.2rem; }
   .detail__info .detail__operational,
-  .detail__info .detail__pending { font-size: inherit; }
+  .detail__info .detail__pending,
+  .detail__info .detail__granted { font-size: inherit; }
   .picker__detail .detail__none,
   .duel .dialog__detail .detail__none { grid-column: 1 / -1; align-self: center; text-align: center; }
   .picker__box { max-height: 100%; overflow-y: auto; }
@@ -2448,6 +2474,7 @@ body {
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・森の守護者を相手の捨札へ</span></li>
         <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>見本・森の守護者を選択した</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>選択しなかった</span></li>
+        <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・突撃兵はターンの終わりまで「このカードがバトルに勝った時、カードを1枚引く。」を得て、移動方向が↑になった</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・霧島透はターンの終わりまでSP+1000</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・パルフェ・若葉はターンの終わりまでBP+2000</span></li>
         <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>見本・メカナイトをフリーズし、見本・竜の飛翔をプレイした</span></li>
@@ -2583,6 +2610,8 @@ const cards = {
   見本・紅葉: { lv: 5, color: '白', kind: 'ユニット', bp: 7500, sp: 1500, stars: 2, keywords: ['夢'], traits: 'あやかし・けもの・♀', move: ['上'], text: ['このユニットが登場した時、自分の捨札にあるストラテジーを 1 枚まで選び、山札の一番下に置く。', '夢（キーワード能力）', '元気（キーワード能力）'] },
   見本・大狸: { lv: 7, color: '赤', kind: 'ユニット', bp: 4000, sp: 2500, stars: 0, keywords: ['幸運'], traits: 'あやかし・けもの・呪符・♂', move: ['上'], text: ['このユニットがバトルしている間、隣の味方の SP を +500。', '幸運 6（キーワード能力）味方を 1 枚まで選び、手札に戻す。そうしたら、カードを 1 枚引く。'] },
 }
+// 継続効果が誘発型能力と移動方向を与えたユニットの見本（ADR-0071）。written の move は書かれたムーブアイコン、盤面のノードが変更後の向きを持つ
+cards['見本・突撃兵'] = { lv: 3, color: '赤', kind: 'ユニット', bp: 3000, sp: 1000, traits: '兵士', move: ['上', '左', '右'], text: [] }
 cards['見本・苦労人の騎士'] = { lv: 3, color: '緑', kind: 'ユニット', bp: 3000, sp: 1000, reverseStars: 1, keywords: ['苦労'], traits: '騎士・♂', move: ['上', '左'], text: ['元気（キーワード能力）'] }
 cards['見本・霧島透'].stars = 2
 // 運用の注記を持つカード（ADR-0043）。自分のカードと相手のカードに 1 枚ずつ
@@ -2624,14 +2653,17 @@ function keywordIcons(list, granted = []) {
 }
 
 // ムーブアイコン：菱形の中に 4 方向の矢印。動ける向きだけ白く、ほかは暗くする
-function moveIcon(dirs) {
+// lost：継続効果が移動方向を変更して、書かれていたのに失った向き（ADR-0071）。破線の矢印で残して示す
+function moveIcon(dirs, lost = []) {
   const on = (d) => (dirs.includes(d) ? '#fff' : '#4a4a4a')
-  return `<svg class="move-icon" viewBox="0 0 20 20" role="img" aria-label="ムーブアイコン：${dirs.join('・')}">
+  const lostAttrs = (d) => (lost.includes(d) ? ' stroke="#ffb3b3" stroke-width="0.55" stroke-dasharray="0.9 0.7" stroke-linejoin="round"' : '')
+  const label = `ムーブアイコン：${dirs.join('・')}${lost.length ? `（失った向き：${lost.join('・')}）` : ''}`
+  return `<svg class="move-icon" viewBox="0 0 20 20" role="img" aria-label="${label}">
     <path d="M10 0.6 19.4 10 10 19.4 0.6 10Z" fill="url(#lg-move-bg)" stroke="#fff" stroke-width="0.8"/>
-    <path d="M10 2.6 12.4 6H7.6Z" fill="${on('上')}"/>
-    <path d="M10 17.4 12.4 14H7.6Z" fill="${on('下')}"/>
-    <path d="M2.6 10 6 7.6V12.4Z" fill="${on('左')}"/>
-    <path d="M17.4 10 14 7.6V12.4Z" fill="${on('右')}"/>
+    <path d="M10 2.6 12.4 6H7.6Z" fill="${on('上')}"${lostAttrs('上')}/>
+    <path d="M10 17.4 12.4 14H7.6Z" fill="${on('下')}"${lostAttrs('下')}/>
+    <path d="M2.6 10 6 7.6V12.4Z" fill="${on('左')}"${lostAttrs('左')}/>
+    <path d="M17.4 10 14 7.6V12.4Z" fill="${on('右')}"${lostAttrs('右')}/>
     <circle cx="10" cy="10" r="2.6" fill="url(#rg-move-core)" stroke="#fff" stroke-width="0.6"/>
   </svg>`
 }
@@ -2682,8 +2714,10 @@ function triggerIcon(trigger) {
 function faceHtml(name, opts = {}) {
   const c = cards[name]
   const unit = c.bp !== undefined
-  const icons = c.move || c.trigger
-    ? `<div class="card__icons${c.move ? '' : ' card__icons--trigger'}">${c.move ? moveIcon(c.move) : ''}${c.trigger ? triggerIcon(c.trigger) : ''}</div>`
+  // 継続効果が移動方向を変更していれば、変更後の向きで描く（ADR-0071）
+  const move = opts.move ?? c.move
+  const icons = move || c.trigger
+    ? `<div class="card__icons${move ? '' : ' card__icons--trigger'}">${move ? moveIcon(move, (c.move ?? []).filter((d) => !move.includes(d))) : ''}${c.trigger ? triggerIcon(c.trigger) : ''}</div>`
     : ''
   const top = `
       <div class="card__top">
@@ -2726,6 +2760,8 @@ function card(name, whose, opts = {}) {
   if (opts.bp !== undefined) node.dataset.bp = opts.bp
   if (opts.sp !== undefined) node.dataset.sp = opts.sp
   if (opts.damage) node.dataset.damage = opts.damage
+  if (opts.move) node.dataset.move = opts.move.join(',')
+  if (opts.givenTriggers) node.dataset.givenTriggers = JSON.stringify(opts.givenTriggers)
   if (opts.pickable) node.classList.add('mock-pickable')
   node.tabIndex = 0
   node.setAttribute('aria-label', `${whose}の${name}`)
@@ -2930,7 +2966,7 @@ board.append(place(waiting('誘発した能力', [['自分', '見本・パルフ
 const rows = [
   { area: '敵エリア', squares: [[card('見本・メカナイト', '相手')], [], [card('見本・森の守護者', '相手', { freeze: true })]] },
   { area: '中央エリア', squares: [[], [card('見本・メカナイト', '相手', { damage: 1000 }), card('見本・霧島透', '自分', { sp: 1500 })], []] },
-  { area: '味方エリア', squares: [[card('見本・パルフェ・若葉', '自分', { bp: 4000, sp: 1000, pickable: true })], [], [card('見本・もちぬい', '自分', { pickable: true, freeze: true })]] },
+  { area: '味方エリア', squares: [[card('見本・パルフェ・若葉', '自分', { bp: 4000, sp: 1000, pickable: true })], [card('見本・突撃兵', '自分', { move: ['上'], givenTriggers: [{ text: 'このカードがバトルに勝った時、カードを1枚引く。', until: 'ターンの終わりまで' }] })], [card('見本・もちぬい', '自分', { pickable: true, freeze: true })]] },
 ]
 
 rows.forEach((row, r) => {
@@ -3140,7 +3176,7 @@ function renderDetail(node) {
   node.classList.add('card--詳細中')
   if (!matchMedia('(max-width: 768px)').matches) {
     detail.append(Object.assign(document.createElement('p'), { className: 'detail__read-guide', textContent: 'Dキーで詳細へ・Escキーでカードへ' }))
-    for (const [selector, label] of [['.card__lines', 'カードの本文'], ['.detail__annotations', '注記と誘発待ち']]) {
+    for (const [selector, label] of [['.card__lines', 'カードの本文'], ['.detail__annotations', '注記・誘発待ち・与えられた能力']]) {
       const region = detail.querySelector(selector)
       if (!region || !region.childElementCount) continue
       region.tabIndex = 0
@@ -3156,16 +3192,18 @@ function detailParts(node) {
   const big = document.createElement('div')
   const pending = pendingOf(node)
   big.className = `card card--拡大 card--${node.dataset.whose} card--色-${c.color}${c.note ? ' card--注記つき' : ''}${pending.length ? ' card--誘発待ちつき' : ''}`
-  big.innerHTML = faceHtml(name, { text: true, bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage })
+  big.innerHTML = faceHtml(name, { text: true, bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage, move: node.dataset.move ? node.dataset.move.split(',') : undefined })
   const notes = [`${node.dataset.whose}のカード`]
   if (node.dataset.freeze) notes.push('フリーズ')
   if (node.dataset.bp && Number(node.dataset.bp) !== c.bp) notes.push(`BP ${c.bp}→${node.dataset.bp}`)
   if (node.dataset.sp && Number(node.dataset.sp) !== c.sp) notes.push(`SP ${c.sp}→${node.dataset.sp}`)
+  moveNote(node, notes)
   if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
   const annotations = document.createElement('div')
   annotations.className = 'detail__annotations'
   if (c.note) annotations.append(operationalNote(c.note))
   if (pending.length) annotations.append(pendingBox(pending, name))
+  if (givenOf(node).length) annotations.append(givenBox(givenOf(node)))
   return [big, annotations, Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') })]
 }
 // スマートフォンのカードの詳細：左にカードの面、右に文字で情報を全部書く（デッキを組む画面の詳細と同じ並べ方）。
@@ -3176,7 +3214,7 @@ function phoneDetailParts(node) {
   const c = cards[name]
   const big = document.createElement('div')
   big.className = `card card--${node.dataset.whose} card--色-${c.color}`
-  big.innerHTML = faceHtml(name, { bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage })
+  big.innerHTML = faceHtml(name, { bp: node.dataset.bp, sp: node.dataset.sp, damage: node.dataset.damage, move: node.dataset.move ? node.dataset.move.split(',') : undefined })
   const info = document.createElement('div')
   info.className = 'detail__info'
   // スターは名前の前に出す（デッキを組む画面の詳細と同じ。行を増やさない）
@@ -3193,7 +3231,8 @@ function phoneDetailParts(node) {
     const shown = (written, modified) => (written === undefined ? '－' : modified && Number(modified) !== written ? `${written}→${modified}` : String(written))
     add('ＢＰ／ＳＰ', `${shown(c.bp, node.dataset.bp)}／${shown(c.sp, node.dataset.sp)}`)
   }
-  if (c.move) add('移動方向', c.move.join('・'))
+  const shownMove = node.dataset.move ? node.dataset.move.split(',') : c.move
+  if (shownMove) add('移動方向', shownMove.join('・'))
   if (c.traits) add('属性', c.traits.split('・').join(' | '))
   info.append(rows)
   if (c.text.length > 0 || c.granted?.length) {
@@ -3206,11 +3245,34 @@ function phoneDetailParts(node) {
   if (c.note) info.append(operationalNote(c.note))
   const pending = pendingOf(node)
   if (pending.length) info.append(pendingBox(pending, name))
+  if (givenOf(node).length) info.append(givenBox(givenOf(node)))
   const notes = [`${node.dataset.whose}のカード`]
   if (node.dataset.freeze) notes.push('フリーズ')
+  moveNote(node, notes)
   if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
   info.append(Object.assign(document.createElement('p'), { className: 'detail__note', textContent: notes.join('／') }))
   return [big, info]
+}
+// 継続効果が与えた誘発型能力の枠（ADR-0071）。能力 1 つにつき 1 行で、文と期限を並べる。常在型能力が与えた分は期限を持たない
+function givenOf(node) {
+  return node.dataset.givenTriggers ? JSON.parse(node.dataset.givenTriggers) : []
+}
+function givenBox(entries) {
+  const box = Object.assign(document.createElement('div'), { className: 'detail__granted' })
+  box.append(Object.assign(document.createElement('p'), { className: 'detail__granted-title', textContent: '与えられた能力' }))
+  for (const each of entries) {
+    const line = document.createElement('p')
+    line.innerHTML = `<svg class="card__granted-mark" viewBox="-0.7 -0.7 11.4 11.4" aria-hidden="true"><path d="M3.6 0.6h2.8v3h3v2.8h-3v3H3.6v-3h-3V3.6h3z"/></svg>${each.text}${each.until ? `（${each.until}）` : ''}`
+    box.append(line)
+  }
+  return box
+}
+// 補足の 1 行に、移動方向の変化を添える（BP・SP の変化と同じ書き方）
+function moveNote(node, notes) {
+  const written = cards[node.dataset.name].move
+  if (node.dataset.move && written?.join(',') !== node.dataset.move) {
+    notes.push(`移動方向 ${written ? written.join('・') : 'なし'}→${node.dataset.move.split(',').join('・')}`)
+  }
 }
 // 運用の注記の枠。見出しと、注記の行
 function operationalNote(lines) {

@@ -22,7 +22,10 @@ import type {
 import type { Opponent } from '@revolution/engine'
 import { emptyBoard, instance, logged, unitFace, withZone } from './test-support.js'
 import {
+  appliedMoveIconOf,
   boardView,
+  cardInfoRowsOf,
+  lostMoveIconOf,
   cutInViews,
   DECKS_PER_PAGE,
   grantedKeywordText,
@@ -490,6 +493,64 @@ describe('継続効果を適用した後のデータ', () => {
     const view = unitView(withEffective([oldWire]))
 
     expect(view.kind === '表' && view.modified).toMatchObject({ bp: 3000, sp: undefined, spDirection: undefined })
+  })
+
+  // ADR-0071。移動方向と、与えられた誘発型能力は、変更を受けたユニットの分だけ届く。
+  describe('移動方向と与えられた誘発型能力', () => {
+    const base = { card: unit.id, bp: 1000, sp: 1000, attributes: [] }
+
+    it('移動方向が変更されていれば、変更後の向きが表示される。書かれたムーブアイコンも残る', () => {
+      const view = unitView(withEffective([{ ...base, moveIcon: ['下'] }]))
+
+      expect(view.kind === '表' && view.modified?.moveIcon).toEqual(['下'])
+      expect(view.kind === '表' && view.moveIcon).not.toEqual(['下'])
+    })
+
+    it('失った向きは、書かれた向きのうち、変更後に無いものである。変更が無ければ空', () => {
+      const written = unitView(withEffective([base]))
+      const changed = unitView(withEffective([{ ...base, moveIcon: ['下'] }]))
+
+      expect(written.kind === '表' && lostMoveIconOf(written)).toEqual([])
+      expect(changed.kind === '表' && lostMoveIconOf(changed)).toEqual(changed.kind === '表' ? changed.moveIcon.filter((each) => each !== '下') : undefined)
+    })
+
+    it('書かれた向きと同じ向きへの置き換えは、変更として表示しない', () => {
+      const written = unitView(withEffective([base]))
+      const same = unitView(withEffective([{ ...base, moveIcon: written.kind === '表' ? [...written.moveIcon].reverse() : [] }]))
+
+      expect(same.kind === '表' && same.modified).toBeUndefined()
+    })
+
+    it('表示する移動方向は、変更後があればそれ、無ければ書かれた向きである', () => {
+      const changed = unitView(withEffective([{ ...base, moveIcon: ['下'] }]))
+      const unchanged = unitView(withEffective([base]))
+
+      expect(changed.kind === '表' && appliedMoveIconOf(changed)).toEqual(['下'])
+      expect(unchanged.kind === '表' && appliedMoveIconOf(unchanged)).toEqual(unchanged.kind === '表' ? unchanged.moveIcon : undefined)
+    })
+
+    it('「移動方向」の行は、変更後の値になる', () => {
+      const view = unitView(withEffective([{ ...base, moveIcon: ['上', '右'] }]))
+
+      expect(view.kind === '表' && cardInfoRowsOf(view).find((row) => row.label === '移動方向')?.value).toBe('上・右')
+    })
+
+    it('与えられた誘発型能力の文と期限が含まれる。ほかが変更されていなくても、修整ありになる', () => {
+      const view = unitView(
+        withEffective([{ ...base, grantedAbilities: [{ text: '与えられた文', until: 'ターンの終わりまで' }, { text: '期限のない文' }] }]),
+      )
+
+      expect(view.kind === '表' && view.modified?.grantedAbilities).toEqual([
+        { text: '与えられた文', until: 'ターンの終わりまで' },
+        { text: '期限のない文', until: undefined },
+      ])
+    })
+
+    it('何も与えられておらず、移動方向も変更されていなければ、修整は含まれない', () => {
+      const view = unitView(withEffective([base]))
+
+      expect(view.kind === '表' && view.modified).toBeUndefined()
+    })
   })
 
   /** 加わった属性はカードに書かれていない（総合ルール 第4部 第12章 5-2 の(3)）ので、分けて出す。 */
@@ -1589,6 +1650,28 @@ describe('操作ログ', () => {
         expect(texts(withLog(granted))).toEqual(['テスト・置いてあるはターンの終わりまで「夢」を得た'])
       })
 
+      // ADR-0071。誘発型能力は、表示のための文を「」で囲んで言う。
+      const change = (card: string, kind: LoggedContinuousChange, duration: 'ターンの終わりまで' | '次の相手のターンの終わりまで' = 'ターンの終わりまで'): DuelEvent => ({
+        kind: '命令を実行した',
+        controller: '先攻',
+        instruction: { kind: '継続効果を作成する', card, duration, change: kind },
+      })
+      const wins: LoggedContinuousChange = { kind: '誘発型能力の付与', description: 'このカードがバトルに勝った時、カードを1枚引く。' }
+      const onlyUp: LoggedContinuousChange = { kind: '移動方向の変更', method: '置き換える', directions: ['上'] }
+
+      it('誘発型能力の付与は、与えられた能力の文を「」で囲んで言う', () => {
+        expect(texts(withLog(change('置いてある', wins)))).toEqual([
+          'テスト・置いてあるはターンの終わりまで「このカードがバトルに勝った時、カードを1枚引く。」を得た',
+        ])
+      })
+
+      it('移動方向の変更は、矢印で言う', () => {
+        expect(texts(withLog(change('置いてある', onlyUp)))).toEqual(['テスト・置いてあるはターンの終わりまで移動方向が↑になった'])
+        expect(
+          texts(withLog(change('置いてある', { kind: '移動方向の変更', method: '置き換える', directions: ['上', '右', '左', '下'] }))),
+        ).toEqual(['テスト・置いてあるはターンの終わりまで移動方向が↑→←↓になった'])
+      })
+
       // 変更の種類を足したのに画面が古いと、BP の文として出てしまう（#285）。読めなかったことを出す。
       it('この画面が知らない種類の変更は、誤った文を出さず、表示できないログにする', () => {
         const unknown = {
@@ -2276,6 +2359,14 @@ describe('操作ログのまとめ', () => {
 
   const RESOLVED: DuelEvent = { kind: '能力を解決した', controller: '先攻', via: '誘発', source: 'A' }
   const instruct = (instruction: LoggedInstruction): DuelEvent => ({ kind: '命令を実行した', controller: '先攻', instruction })
+  /** 継続効果の変更 1 件のできごと（ADR-0071）。 */
+  const change = (card: string, kind: LoggedContinuousChange, duration: 'ターンの終わりまで' | '次の相手のターンの終わりまで' = 'ターンの終わりまで'): DuelEvent => ({
+    kind: '命令を実行した',
+    controller: '先攻',
+    instruction: { kind: '継続効果を作成する', card, duration, change: kind },
+  })
+  const wins: LoggedContinuousChange = { kind: '誘発型能力の付与', description: 'このカードがバトルに勝った時、カードを1枚引く。' }
+  const onlyUp: LoggedContinuousChange = { kind: '移動方向の変更', method: '置き換える', directions: ['上'] }
   const choose = (card: string): DuelEvent => instruct({ kind: '選ぶ', card, square: undefined })
   const mayAsk = (answer: 'はい' | 'いいえ', action: '手札に加える', card = 'A'): DuelEvent =>
     instruct({ kind: 'してもよいか聞く', action, count: 1, cards: [card], answer })
@@ -2477,6 +2568,91 @@ describe('操作ログのまとめ', () => {
       expect(texts(board)).toEqual(['誘発：テスト・A', '自分の手札へ'])
     })
   })
+
+    it('同じ解決の中で、同じ対象・同じ期限の、能力の付与と移動方向の変更は、1 行にまとめる', () => {
+      const board = withLog(
+        RESOLVED,
+        change('A', wins),
+        change('B', wins),
+        change('A', onlyUp),
+        change('B', onlyUp),
+      )
+
+      expect(texts(board)).toEqual([
+        '誘発：テスト・A',
+        'テスト・Aはターンの終わりまで「このカードがバトルに勝った時、カードを1枚引く。」を得て、移動方向が↑になった',
+        'テスト・Bはターンの終わりまで「このカードがバトルに勝った時、カードを1枚引く。」を得て、移動方向が↑になった',
+      ])
+    })
+
+    it('カットインでも、同じ解決の中の能力の付与と移動方向の変更を、1 行にまとめる', () => {
+    const views = cutInViews(base, logged([RESOLVED, change('A', wins), change('A', onlyUp)]))
+
+    expect(views.map((view) => view.lines)).toEqual([
+      ['テスト・Aはターンの終わりまで「このカードがバトルに勝った時、カードを1枚引く。」を得て、移動方向が↑になった'],
+    ])
+  })
+
+  it('後攻から見ても、先攻から見たのと同じ文になる', () => {
+    const events = [RESOLVED, change('A', wins), change('A', onlyUp)]
+    const fromFirst = texts({ ...base, viewer: '先攻', log: logged(events) })
+    const fromSecond = texts({ ...base, viewer: '後攻', log: logged(events) })
+
+    expect(fromSecond).toEqual(fromFirst)
+    expect(fromSecond).toContain(
+      'テスト・Aはターンの終わりまで「このカードがバトルに勝った時、カードを1枚引く。」を得て、移動方向が↑になった',
+    )
+  })
+
+  it('名前の見えないカードあての変更は、別のカードどうしをまとめない', () => {
+    const hidden = (card: string): DuelEvent => ({
+      kind: '命令を実行した',
+      controller: '先攻',
+      instruction: { kind: '継続効果を作成する', card: undefined, duration: 'ターンの終わりまで', change: { kind: '能力の付与', keyword: '夢' } },
+    })
+
+    expect(texts(withLog(RESOLVED, hidden('X'), hidden('Y'))).filter((text) => text.includes('を得た'))).toHaveLength(2)
+  })
+
+  it('期限が違えば、まとめない', () => {
+      const board = withLog(RESOLVED, change('A', wins), change('A', onlyUp, '次の相手のターンの終わりまで'))
+
+      expect(texts(board)).toEqual([
+        '誘発：テスト・A',
+        'テスト・Aはターンの終わりまで「このカードがバトルに勝った時、カードを1枚引く。」を得た',
+        'テスト・Aは次の相手のターンの終わりまで移動方向が↑になった',
+      ])
+    })
+
+    it('解決が別なら、同じ対象でもまとめない', () => {
+      const board = withLog(RESOLVED, change('A', wins), RESOLVED, change('A', onlyUp))
+
+      expect(texts(board).filter((text) => text.startsWith('テスト・A'))).toEqual([
+        'テスト・Aはターンの終わりまで「このカードがバトルに勝った時、カードを1枚引く。」を得た',
+        'テスト・Aはターンの終わりまで移動方向が↑になった',
+      ])
+    })
+
+    it('移動方向の置き換えが重なれば、あとのものだけを言う', () => {
+      const board = withLog(
+        RESOLVED,
+        change('A', onlyUp),
+        change('A', { kind: '移動方向の変更', method: '置き換える', directions: ['右'] }),
+      )
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aはターンの終わりまで移動方向が→になった'])
+    })
+
+    it('数値の変更は、同じ対象・同じ期限でも、まとめない', () => {
+      const board = withLog(
+        RESOLVED,
+        change('A', { kind: 'ＢＰの変更', amount: 1000 }),
+        change('A', { kind: 'ＳＰの変更', amount: 500 }),
+      )
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aはターンの終わりまでBP+1000', 'テスト・Aはターンの終わりまでSP+500'])
+    })
+
 })
 
 /**

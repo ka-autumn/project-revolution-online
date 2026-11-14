@@ -1,7 +1,8 @@
 import { abilityGrantingAbilitiesOf, attributeAddingAbilitiesOf, modifyingAbilitiesOf, bpOf, spOf } from './card.js'
+import type { MoveDirection } from './board.js'
 import type { Attribute, Card } from './card.js'
 import type { CardId, DuelState } from './duel.js'
-import type { ContinuousChange, DuelView, GrantableAbility } from './effect.js'
+import type { ContinuousChange, DuelView, Duration, GrantableAbility } from './effect.js'
 import { duelView, unitsOnSquares } from './view.js'
 import type { UnitData } from './view.js'
 
@@ -31,8 +32,8 @@ export type SpModification = (id: CardId) => number
  * 出ない。総合ルールの「データ」には属性もＢＰも含まれる（同 第2部 第2章 2）。
  *
  * 適用の順番は種類ごとに決まっている（同 第4部 第12章 5-2）。ここで扱うのは(2)テキストを
- * 変更する継続効果（能力を与える効果）・(3)属性を変更する継続効果・(5)ＢＰ・ＳＰを変更する
- * 継続効果で、この順に適用する。ＢＰの変更とＳＰの変更は同じ種類（同 5-2 の(5)）だが、互いの値は
+ * 変更する継続効果（能力を与える効果）・(3)属性を変更する継続効果・(4)一般的な継続効果（移動方向を
+ * 変更する効果、ADR-0071）・(5)ＢＰ・ＳＰを変更する継続効果で、この順に適用する。ＢＰの変更とＳＰの変更は同じ種類（同 5-2 の(5)）だが、互いの値は
  * 見ないので、適用の順で結果は変わらない。
  */
 export function continuousData(state: DuelState): UnitData {
@@ -40,6 +41,7 @@ export function continuousData(state: DuelState): UnitData {
   const text = textApplied(granted)
   const added = attributesAddedOn(state, text)
   const modified = modifiedBy(state, applying(added, text))
+  const directionsOf = moveDirectionsOn(state)
   const bpModifier = modified.bp
   const spModifier = modified.sp
 
@@ -48,15 +50,56 @@ export function continuousData(state: DuelState): UnitData {
     const attributes = added(id)
     const bpChange = bpModifier(id)
     const spChange = spModifier(id)
-    if (abilities.length === 0 && attributes.length === 0 && bpChange === 0 && spChange === 0) return written
+    const directions = directionsOf(id, written.moveIcon)
+    if (
+      abilities.length === 0 &&
+      attributes.length === 0 &&
+      directions === written.moveIcon &&
+      bpChange === 0 &&
+      spChange === 0
+    ) {
+      return written
+    }
     return {
       ...written,
+      moveIcon: directions,
       abilities: [...written.abilities, ...abilities],
       attributes: [...written.attributes, ...attributes],
       bp: bpOf(written, bpChange),
       sp: spOf(written, spChange),
     }
   }
+}
+
+/**
+ * 作成された継続効果が変更した後の移動方向を取得するもの。渡された書かれた移動方向から始めて、
+ * 発生した順に適用する（総合ルール 第4部 第12章 5-4）。変更を受けていなければ、渡された値
+ * そのものを返す。
+ *
+ * 移動方向の変更は支配者・テキスト・種別・属性のどの変更でもないので、一般的な継続効果として、
+ * 属性の変更より後、ＢＰ・ＳＰの変更より前に適用する（同 5-2 の(4)）。常在型能力が移動方向を
+ * 変更する形は、そのテキストを実装する時に追加する（ADR-0071）。
+ */
+function moveDirectionsOn(
+  state: DuelState,
+): (id: CardId, written: readonly MoveDirection[]) => readonly MoveDirection[] {
+  const changes = new Map<CardId, Extract<ContinuousChange, { readonly kind: '移動方向の変更' }>[]>()
+  for (const created of state.createdContinuousEffects) {
+    if (created.change.kind !== '移動方向の変更') continue
+    if (!onSquare(state, created.target)) continue
+    changes.set(created.target, [...(changes.get(created.target) ?? []), created.change])
+  }
+  if (changes.size === 0) return (_id, written) => written
+
+  return (id, written) =>
+    (changes.get(id) ?? []).reduce<readonly MoveDirection[]>((current, change) => {
+      switch (change.method) {
+        case '置き換える':
+          return change.directions
+        default:
+          return change.method satisfies never
+      }
+    }, written)
 }
 
 /**
@@ -80,21 +123,36 @@ export type GrantedAbilities = (id: CardId) => readonly GrantableAbility[]
  * 第4部 第12章 5-2 の(2)）ので、属性もまだ追加されていない。
  */
 export function grantedAbilitiesOn(state: DuelState): GrantedAbilities {
-  const granted = new Map<CardId, GrantableAbility[]>()
-  const add = (target: CardId, ability: GrantableAbility): void => {
-    granted.set(target, [...(granted.get(target) ?? []), ability])
+  const entries = grantedEntriesOn(state)
+  return (id) => entries(id).map((entry) => entry.ability)
+}
+
+/** 与えられた能力 1 つと、その期限。常在型能力が与えた分は、発生源がいる間続くので期限を持たない。 */
+export interface GrantedEntry {
+  readonly ability: GrantableAbility
+  readonly until?: Duration
+}
+
+/**
+ * 与えられた能力を、期限と一緒に集計する。並びと集計元は `grantedAbilitiesOn` と同じである。
+ * 期限は、画面が与えられた能力に添えるために使う（ADR-0071）。
+ */
+export function grantedEntriesOn(state: DuelState): (id: CardId) => readonly GrantedEntry[] {
+  const granted = new Map<CardId, GrantedEntry[]>()
+  const add = (target: CardId, entry: GrantedEntry): void => {
+    granted.set(target, [...(granted.get(target) ?? []), entry])
   }
 
   for (const created of state.createdContinuousEffects) {
     if (created.change.kind !== '能力の付与') continue
-    add(created.target, created.change.ability)
+    add(created.target, { ability: created.change.ability, until: created.until })
   }
 
   const written: UnitData = (_id, card) => card
   for (const grant of gather(state, written, abilityGrantingAbilitiesOf, (ability, duel) =>
     ability.abilitiesGranted(duel),
   )) {
-    add(grant.target, grant.ability)
+    add(grant.target, { ability: grant.ability })
   }
 
   return (id) => granted.get(id) ?? []
@@ -165,6 +223,7 @@ function amountOf(change: ContinuousChange): number | undefined {
     case 'ＳＰの変更':
       return change.amount
     case '能力の付与':
+    case '移動方向の変更':
       return undefined
     default:
       return change satisfies never
@@ -269,10 +328,12 @@ function applying(added: AddedAttributes, text: UnitData): UnitData {
  * 働く常在型能力を持つようになった時に、そのゾーンを見に来る。
  *
  * 能力そのものはカードに書かれているものから取得する（`abilitiesOf`）。能力を与える効果（同 第12章
- * 5-2 の(2)）が与えるのは「夢」だけで、これはＢＰの変更も誘発も起動も生まない。与えられた能力は
- * ビューの `card.abilities` に含まれる形で表し（`effect.ts` の `DuelView.hasKeyword`）、尋ねる側はビューから
- * 読む。誘発型・起動型・ＢＰを変更する常在型の能力を与える時は、ここも写しから引くように
- * 切り替えてから、渡せる種類（`GrantableAbility`）に足す。
+ * 5-2 の(2)）が与えるのは「夢」と誘発型能力（ADR-0071）である。「夢」はＢＰの変更も誘発も起動も生まず、
+ * 誘発型能力は `triggeredBy`（`trigger.ts`）が、与えられた分を含めて取得する。このため、常在型能力の
+ * 集計は、書かれた能力のままでよい。与えられた能力はビューの `card.abilities` に含まれる形で表し
+ * （`effect.ts` の `DuelView.hasKeyword`）、尋ねる側はビューから取得する。起動型・ＢＰを変更する常在型の
+ * 能力を与える時は、ここも与えられた分から取得するように切り替えてから、渡せる種類
+ * （`GrantableAbility`）に追加する。
  *
  * 該当する能力を持たないユニットには、盤面を表すビューを作成しない。この集計は、カードを 1 枚
  * 参照するたびに呼ばれる（`appliedCard`）ので、ユニットごとにビューを作成すると呼ぶ回数に比例して重くなる。
