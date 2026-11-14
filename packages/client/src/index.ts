@@ -1790,6 +1790,17 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    *
    * 使えないカードが入っている間は送らない。サーバは断るだけで、何が足りないかは分からない。
    */
+  /**
+   * 押している最中なら、手を離すまで描き直しを待つ。人の操作によらずに描き直す所（確認の送信と、
+   * 届いた返事）で使う。押しているうちに描き直すと、押したボタンが click の前に作成し直され、押下が
+   * 消える。デッキ構築で＋・−を続けて押すと、2 回目の押下が、1 回目から `CHECK_DELAY_MS` 後の
+   * 送信とその返事に重なりやすい（#402）。
+   */
+  const redrawAfterRelease = (): void => {
+    if (pointerHeld) redrawOnRelease = true
+    else redraw()
+  }
+
   const scheduleCheck = (): void => {
     if (checkTimer !== undefined) clearTimeout(checkTimer)
     checkTimer = undefined
@@ -1810,7 +1821,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         restriction: builder.rules.restriction,
       })
       updateBuilder({ ...builder, checking: builder.checking + 1 })
-      redraw()
+      redrawAfterRelease()
     }, CHECK_DELAY_MS)
   }
 
@@ -2672,7 +2683,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       // 人の操作なしに送る手も、返事を待つ（#253）。描く前に待ちに入る。描いた画面には放棄のボタンが
       // 出ており、そのまま押せると、自動で送った放棄に 2 通目が続く。
       if (autoMoves.length > 0) replyWait = WAITING
-      redraw()
+      // デッキ構築を開いている間は、押下を消さないよう手を離すまで待つ。対戦では待たない。描いてから
+      // 自動の手を送る順番を崩さないため。
+      if (session.stage.kind === 'ロビー' && builder.screen !== '閉じている') redrawAfterRelease()
+      else redraw()
       for (const move of autoMoves) connection.send(move)
     },
     onLinkChanged: (value) => {

@@ -19,8 +19,29 @@ const failed = new Set<string>()
 const resized = new Map<string, string>()
 const resizing = new Map<string, Promise<string>>()
 let resizedBytes = 0
+
+/**
+ * 一度カードの面に付けた元画像を、画像の URL ごとに覚えておく。
+ *
+ * 画面は描き直すたびにカードの面を作成し直す（#242）。作成し直した面に絵を付けるのを読み込みの後まで
+ * 待つと、その間は絵の無い背景が見え、デッキ構築で枚数を変更するたびに絵がちらつく。覚えた元画像は
+ * 面を作成した時点で付ける。画像の要素を握っておくのは、ブラウザに読み込んだ画像を手放させないため。
+ *
+ * 縮小した画像は、作成した時点では付けない。面の大きさが決まるまでどの縮小を使うか分からず、大きな
+ * data URL を全部の面に付けると描き直しが重くなる。縮小済みなら、描く直前のフレームで付く（`paint`）。
+ */
+const shown = new Map<string, HTMLImageElement>()
+const SHOWN_LIMIT = 128
+function rememberShown(url: string, image: HTMLImageElement): void {
+  shown.delete(url); shown.set(url, image)
+  if (shown.size > SHOWN_LIMIT) shown.delete(shown.keys().next().value!)
+}
+const cssUrl = (url: string): string => 'url(' + JSON.stringify(url) + ')'
+
 function loadImage(url: string): Promise<HTMLImageElement | undefined> {
   if (failed.has(url)) return Promise.resolve(undefined)
+  const remembered = shown.get(url)
+  if (remembered !== undefined) return Promise.resolve(remembered)
   const cached = images.get(url)
   if (cached !== undefined) { images.delete(url); images.set(url, cached); return cached }
   const pending = new Promise<HTMLImageElement | undefined>((resolve) => {
@@ -85,7 +106,8 @@ async function paint(node: HTMLElement, target: ArtworkTarget): Promise<void> {
   if (rect.width === 0 || rect.height === 0) return
   const image = await loadImage(target.url)
   if (image === undefined || !node.isConnected || pendingTargets.get(node) !== target) return
-  node.style.setProperty('--card-art-image', 'url(' + JSON.stringify(target.url) + ')')
+  node.style.setProperty('--card-art-image', cssUrl(target.url))
+  rememberShown(target.url, image)
   const scale = Math.min(1, Math.max(rect.width * devicePixelRatio / image.naturalWidth, rect.height * devicePixelRatio / image.naturalHeight))
   const width = Math.max(1, Math.ceil(image.naturalWidth * scale)), height = Math.max(1, Math.ceil(image.naturalHeight * scale))
   const key = target.url + ':' + width + 'x' + height
@@ -94,7 +116,7 @@ async function paint(node: HTMLElement, target: ArtworkTarget): Promise<void> {
   const cached = resized.get(key)
   if (cached !== undefined) {
     resized.delete(key); resized.set(key, cached)
-    node.style.setProperty('--card-art-smoothed', 'url(' + JSON.stringify(cached) + ')'); return
+    node.style.setProperty('--card-art-smoothed', cssUrl(cached)); return
   }
   let pending = resizing.get(key)
   if (pending === undefined) {
@@ -114,7 +136,7 @@ async function paint(node: HTMLElement, target: ArtworkTarget): Promise<void> {
       }
     }
     if (node.isConnected && pendingTargets.get(node) === target && target.request === key) {
-      node.style.setProperty('--card-art-smoothed', 'url(' + JSON.stringify(encoded) + ')')
+      node.style.setProperty('--card-art-smoothed', cssUrl(encoded))
     }
   } catch { /* 元画像を維持し、同じ寸法での失敗を繰り返さない。 */ }
   finally {
@@ -141,6 +163,8 @@ export function applyCardArtwork(node: HTMLElement, card: FaceFields, big: boole
   requestAnimationFrame(() => fitCardText(node))
   const url = card.artwork?.url === undefined ? undefined : artworkUrl(card.artwork.url)
   pendingTargets.set(node, { url, request: undefined })
+  // 前に付けた元画像があれば今すぐ付ける。縮小した画像は `paint` が付ける。
+  if (url !== undefined && shown.has(url)) node.style.setProperty('--card-art-image', cssUrl(url))
   if (!observing) {
     observing = true
     if (typeof ResizeObserver === 'function') observer = new ResizeObserver((entries) => {
