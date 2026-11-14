@@ -81,7 +81,7 @@ afterEach(() => vi.unstubAllGlobals())
 // デッキ構築で枚数を変更するたびに、画面はカードの面を作成し直す。作成し直した面に絵が付くのを次の
 // フレームまで待つと、その間は絵の無い背景が見えてちらつく。
 describe('描き直したカードの面の絵', () => {
-  it('前に付けた絵は、作成し直した面にも作成した時点で付く', async () => {
+  it('前に付けた元画像は、作成し直した面にも作成した時点で付く', async () => {
     configureArtworkOrigin('wss://example.test/duel')
     const screen = fakeScreen()
     const first = new FakeFace()
@@ -96,8 +96,8 @@ describe('描き直したカードの面の絵', () => {
     screen.faces.push(redrawn)
     applyCardArtwork(redrawn as unknown as HTMLElement, artworkFace('/card-art/redrawn'), false)
 
-    expect(redrawn.properties).toEqual(first.properties)
-    // 次のフレームで描き直しても、同じ絵のまま。
+    expect(redrawn.properties.get('--card-art-image')).toBe('url("https://example.test/card-art/redrawn")')
+    // 縮小した画像は、描く直前のフレームで付く。
     await screen.nextFrame()
     expect(redrawn.properties).toEqual(first.properties)
   })
