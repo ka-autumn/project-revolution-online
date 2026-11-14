@@ -3906,6 +3906,32 @@ body {
   font-weight: 800;
 }
 
+/*
+ * 継続効果が与えた誘発型能力（ADR-0071）。注記・誘発待ちの枠と同じ置き方で、面の外に枠で表示する。色は、
+ * 与えられたキーワード能力の「＋」の宝石と同じ青にそろえる。
+ */
+.detail__granted {
+  align-self: stretch;
+  margin: 0.4rem 0 0;
+  padding: 0.3rem 0.5rem;
+  border-left: 3px solid #2f5fd0;
+  border-radius: 0 6px 6px 0;
+  color: var(--ink);
+  background: rgb(47 95 208 / 0.12);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.detail__granted p {
+  margin: 0;
+}
+
+.detail__granted .detail__granted-title {
+  color: #2449a3;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
 .card--拡大 {
   --card-width: 14.5rem;
   font-size: 0.8rem;
@@ -7524,7 +7550,9 @@ body {
   .duel .dialog__detail .detail__operational,
   .duel .picker__detail .detail__operational,
   .duel .dialog__detail .detail__pending,
-  .duel .picker__detail .detail__pending {
+  .duel .picker__detail .detail__pending,
+  .duel .dialog__detail .detail__granted,
+  .duel .picker__detail .detail__granted {
     font-size: inherit;
   }
 

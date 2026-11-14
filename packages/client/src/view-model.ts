@@ -89,6 +89,31 @@ export interface ModifiedData {
   readonly spDirection: '上' | '下' | undefined
   /** 継続効果によって加わった属性だけ。加わっていなければ空。 */
   readonly addedAttributes: readonly Attribute[]
+  /**
+   * 継続効果を適用した後の移動方向（ADR-0071）。書かれたムーブアイコンと同じなら `undefined`。
+   * 画面は、書かれた `moveIcon` ではなくこちらを優先して表示する（`appliedMoveIconOf`）。
+   */
+  readonly moveIcon: readonly MoveDirection[] | undefined
+  /** 継続効果が与えた誘発型能力の、表示のための文と期限（ADR-0071）。与えられていなければ空。 */
+  readonly grantedAbilities: readonly GrantedAbilityView[]
+}
+
+/** 与えられた誘発型能力 1 つ。カードの詳細の「与えられた能力」の枠の 1 行になる。 */
+export interface GrantedAbilityView {
+  readonly text: string
+  /** 「ターンの終わりまで」など。常在型能力が与えた分は期限を持たない。 */
+  readonly until: Duration | undefined
+}
+
+/**
+ * 表示する移動方向。継続効果が変更していれば変更後、そうでなければカードに書かれた向きである。
+ * 画面に移動方向を表示する所（ムーブアイコン、「移動方向」の行）は、すべてここを通る。
+ */
+export function appliedMoveIconOf(card: {
+  readonly moveIcon: readonly MoveDirection[]
+  readonly modified?: ModifiedData | undefined
+}): readonly MoveDirection[] {
+  return card.modified?.moveIcon ?? card.moveIcon
 }
 
 /** 画面に出す 1 枚。 */
@@ -783,7 +808,8 @@ export function cardInfoRowsOf(card: CardView & { readonly kind: '表' }): reado
       written === undefined ? '－' : modified === undefined ? String(written) : `${written}→${modified}`
     rows.push({ label: 'ＢＰ／ＳＰ', value: `${after(card.bp, card.modified?.bp)}／${after(card.sp, card.modified?.sp)}` })
   }
-  if (card.moveIcon.length > 0) rows.push({ label: '移動方向', value: card.moveIcon.join('・') })
+  const moveIcon = appliedMoveIconOf(card)
+  if (moveIcon.length > 0) rows.push({ label: '移動方向', value: moveIcon.join('・') })
   const attributes = [...card.attributes, ...(card.modified?.addedAttributes ?? [])]
   if (attributes.length > 0) rows.push({ label: '属性', value: attributes.join(' | ') })
 
@@ -876,9 +902,26 @@ function modifiedDataOf(
   const addedAttributes = [...new Set(applied.attributes)].filter(
     (attribute) => !face.attributes.includes(attribute),
   )
-  if (bp === undefined && sp === undefined && addedAttributes.length === 0) return undefined
+  // 移動方向と与えられた誘発型能力は、後から追加した項目なので、古いサーバのデータには無い。無ければ変更が無いものとして扱う。
+  // 書かれたムーブアイコンと同じ向きへの置き換えは、変更が無いものとして扱う（ＢＰ・ＳＰと同じく、値で比較する）。
+  const moveIcon =
+    face.type === 'ユニット' &&
+    applied.moveIcon !== undefined &&
+    (applied.moveIcon.length !== face.moveIcon.length || applied.moveIcon.some((direction) => !face.moveIcon.includes(direction)))
+      ? applied.moveIcon
+      : undefined
+  const grantedAbilities = (applied.grantedAbilities ?? []).map((each) => ({ text: each.text, until: each.until }))
+  if (
+    bp === undefined &&
+    sp === undefined &&
+    addedAttributes.length === 0 &&
+    moveIcon === undefined &&
+    grantedAbilities.length === 0
+  ) {
+    return undefined
+  }
 
-  return { bp, bpDirection, sp, spDirection, addedAttributes }
+  return { bp, bpDirection, sp, spDirection, addedAttributes, moveIcon, grantedAbilities }
 }
 
 /**
@@ -1318,6 +1361,7 @@ export function logLines(board: WirePerspective, choosing = false): readonly Log
     board.viewer,
     choosing,
   )
+  const grouped = continuousLineGroups(board.log.map(({ event }) => event))
 
   return withCostsJoined(board.log)
     .flatMap((entry) => {
@@ -1401,7 +1445,7 @@ export function logLines(board: WirePerspective, choosing = false): readonly Log
         if (folded.has(event)) return undefined
         // 知らない種類の命令は、知らない種類のできごとと同じ行にする。支配者は届いているが、
         // 同じ文が 2 通りの見た目で出ないよう、誰のものかは言わない。
-        const text = instructionLine(event.instruction, board, named, whose, event.controller)
+        const text = instructionLine(event.instruction, board, named, whose, event.controller, grouped.first.get(event))
         if (text === OMITTED) return undefined
         return text === undefined
           ? { whose: undefined, text: UNREADABLE_LOG }
@@ -1708,11 +1752,22 @@ function continuousChangeLabel(change: LoggedContinuousChange): string | undefin
       return `SP${signed(change.amount)}`
     case '能力の付与':
       return `「${change.keyword}」を得た`
+    case '誘発型能力の付与':
+      return `「${change.description}」を得た`
+    case '移動方向の変更':
+      return `移動方向が${arrowsOf(change.directions)}になった`
     default:
       change satisfies never
       return undefined
   }
 }
+
+/** 移動方向を矢印で言う。上は↑、下は↓、左は←、右は→である。 */
+function arrowsOf(directions: readonly MoveDirection[]): string {
+  return directions.map((direction) => MOVE_ARROW[direction]).join('')
+}
+
+const MOVE_ARROW: Readonly<Record<MoveDirection, string>> = { 上: '↑', 下: '↓', 左: '←', 右: '→' }
 
 /** 符号を常に付けた絶対値。 */
 function signed(amount: number): string {
@@ -1843,7 +1898,78 @@ function foldedInstructions(
     }
   })
 
+  for (const later of continuousLineGroups(events).later) folded.add(later)
+
   return folded
+}
+
+/**
+ * 能力の付与と移動方向の変更は、同じ解決の中で、同じカード・同じ期限・同じ支配者にかかったものを、対象のユニット
+ * ごとに 1 行にまとめる（ADR-0071）。数値の変更（ＢＰ・ＳＰ）はまとめず、1 件ごとの行のままにする。
+ *
+ * まとめる行の先頭は、最初のできごとである。その行が全部の変更を言い、残りのできごとの行は落とす
+ * （`foldedInstructions`）。解決のまとまりは、「能力を解決した」から、次の「能力を解決した」・手・進行の切り替わりまでである。
+ */
+function continuousLineGroups(events: readonly DuelEvent[]): {
+  readonly first: ReadonlyMap<DuelEvent, readonly LoggedContinuousChange[]>
+  readonly later: ReadonlySet<DuelEvent>
+} {
+  const first = new Map<DuelEvent, LoggedContinuousChange[]>()
+  const later = new Set<DuelEvent>()
+  let open = new Map<string, DuelEvent>()
+
+  for (const event of events) {
+    if (event.kind === '能力を解決した' || event.kind === '行動した' || event.kind === '進行が変わった') {
+      open = new Map()
+      continue
+    }
+    if (event.kind !== '命令を実行した' || event.instruction.kind !== '継続効果を作成する') continue
+
+    const { instruction } = event
+    if (!MERGED_CHANGE_KINDS.has(instruction.change.kind)) continue
+    // 名前の見えないカードは、別のカードどうしが同じ値になるので、まとめない。
+    if (instruction.card === undefined) continue
+
+    const key = `${instruction.card}／${instruction.duration}／${event.controller}`
+    const head = open.get(key)
+    if (head === undefined) {
+      open.set(key, event)
+      first.set(event, [instruction.change])
+      continue
+    }
+
+    first.get(head)?.push(instruction.change)
+    later.add(event)
+  }
+
+  return { first, later }
+}
+
+/** 1 行にまとめる継続効果の変更の種類（`continuousLineGroups`）。 */
+const MERGED_CHANGE_KINDS: ReadonlySet<LoggedContinuousChange['kind']> = new Set([
+  '能力の付与',
+  '誘発型能力の付与',
+  '移動方向の変更',
+])
+
+/**
+ * まとめた継続効果の変更を、1 行の文にする。与えられた能力は「」で囲み、続けて移動方向を言う。
+ * 移動方向の置き換えが重なれば、あとに発生したものだけが残る（総合ルール 第4部 第12章 5-4）。
+ */
+function mergedContinuousLabel(changes: readonly LoggedContinuousChange[]): string {
+  const granted = changes.flatMap((change) =>
+    change.kind === '能力の付与'
+      ? [`「${change.keyword}」`]
+      : change.kind === '誘発型能力の付与'
+        ? [`「${change.description}」`]
+        : [],
+  )
+  const moves = changes.flatMap((change) => (change.kind === '移動方向の変更' ? [change.directions] : []))
+  const move = moves.at(-1)
+  const moved = move === undefined ? undefined : `移動方向が${arrowsOf(move)}になった`
+
+  if (granted.length === 0) return moved ?? ''
+  return moved === undefined ? `${granted.join('、')}を得た` : `${granted.join('、')}を得て、${moved}`
 }
 
 /** 命令 1 つを 1 行にする。 */
@@ -1853,6 +1979,8 @@ function instructionLine(
   named: (card: CardId | undefined) => string | undefined,
   whose: (player: Player) => '自分' | '相手',
   controller: Player,
+  /** この行が言う、まとめた継続効果の変更（`continuousLineGroups`）。まとめない行は渡さない。 */
+  merged?: readonly LoggedContinuousChange[],
 ): string | undefined | typeof OMITTED {
   switch (instruction.kind) {
     case '選ぶ': {
@@ -1915,7 +2043,7 @@ function instructionLine(
     // 期限は、いつ戻るかが行から読めるように出す。ＢＰの数字は、画面のほかの所と同じく半角の
     // `BP` で書く（符号を添える。負の時は `-`）。
     case '継続効果を作成する': {
-      const change = continuousChangeLabel(instruction.change)
+      const change = merged === undefined ? continuousChangeLabel(instruction.change) : mergedContinuousLabel(merged)
       return change === undefined ? undefined : about(named(instruction.card), 'は', `${instruction.duration}${change}`)
     }
     case 'プランを裏返す':
@@ -2053,6 +2181,7 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
     board.viewer,
     choosing,
   )
+  const grouped = continuousLineGroups(fresh.map(({ event }) => event))
 
   for (const { event } of fresh) {
     if (event.kind === '能力を解決した') {
@@ -2064,7 +2193,7 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
       if (folded.has(event)) continue
       // 知らない種類の命令（#285）は並べない。カットインは読める分を見せる演出で、読めなかった
       // ことはログの欄が言う（`UNREADABLE_LOG`）。全部が読めなければ、見出しだけになる。
-      const line = instructionLine(event.instruction, board, named, whose, event.controller)
+      const line = instructionLine(event.instruction, board, named, whose, event.controller, grouped.first.get(event))
       if (line === OMITTED) open.omitted = true
       else if (line === undefined) open.unreadable = true
       else open.lines.push(line)

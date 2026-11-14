@@ -1,5 +1,6 @@
 import type { PlanKeyword } from '@revolution/engine'
 import { grantedKeywordText } from './view-model.js'
+import type { GrantedAbilityView } from './view-model.js'
 
 /**
  * 与えられたキーワード能力の表示（ADR-0073）。アイコンと、カードの詳細に追加する行を組み立てる。
@@ -17,6 +18,22 @@ function spanOf(className: string, text?: string): HTMLElement {
   if (text !== undefined) node.textContent = text
 
   return node
+}
+
+/**
+ * 太い十字の「＋」。与えられた能力の行頭に付ける。白い縁取りは、暗い地（黒いカードなど）でも読めるようにするためで、
+ * CSS で付ける。
+ */
+function crossMark(): SVGElement {
+  const mark = document.createElementNS(SVG_NS, 'svg')
+  mark.setAttribute('class', 'card__granted-mark')
+  mark.setAttribute('viewBox', '-0.7 -0.7 11.4 11.4')
+  mark.setAttribute('aria-hidden', 'true')
+  const cross = document.createElementNS(SVG_NS, 'path')
+  cross.setAttribute('d', CROSS_PATH)
+  mark.append(cross)
+
+  return mark
 }
 
 /**
@@ -53,16 +70,29 @@ export function grantedParagraphs(granted: readonly PlanKeyword[]): HTMLParagrap
   return granted.map((keyword) => {
     const paragraph = document.createElement('p')
     paragraph.className = 'card__granted'
-    // 太い十字。白い縁取りは、暗い地（黒いカードなど）でも読めるようにするためで、CSS で付ける。
-    const mark = document.createElementNS(SVG_NS, 'svg')
-    mark.setAttribute('class', 'card__granted-mark')
-    mark.setAttribute('viewBox', '-0.7 -0.7 11.4 11.4')
-    mark.setAttribute('aria-hidden', 'true')
-    const cross = document.createElementNS(SVG_NS, 'path')
-    cross.setAttribute('d', CROSS_PATH)
-    mark.append(cross)
-    paragraph.append(mark, spanOf('card__granted-reading', '与えられた能力: '), document.createTextNode(grantedKeywordText(keyword)))
+    paragraph.append(crossMark(), spanOf('card__granted-reading', '与えられた能力: '), document.createTextNode(grantedKeywordText(keyword)))
 
     return paragraph
   })
+}
+
+/**
+ * 継続効果が与えた誘発型能力の枠（ADR-0071）。面の外に、注記・誘発待ちの枠と同じ置き方で表示する。
+ * 能力 1 つにつき 1 行で、行頭に太い十字の「＋」、続けて能力の文、末尾に期限を「（ターンの終わりまで）」の形で添える。
+ * 常在型能力が与えた分は期限を持たないので、添えない。
+ */
+export function grantedAbilitiesBox(abilities: readonly GrantedAbilityView[]): HTMLElement {
+  const box = document.createElement('div')
+  box.className = 'detail__granted'
+  const title = document.createElement('p')
+  title.className = 'detail__granted-title'
+  title.textContent = '与えられた能力'
+  box.append(title)
+  for (const ability of abilities) {
+    const line = document.createElement('p')
+    line.append(crossMark(), document.createTextNode(ability.until === undefined ? ability.text : `${ability.text}（${ability.until}）`))
+    box.append(line)
+  }
+
+  return box
 }

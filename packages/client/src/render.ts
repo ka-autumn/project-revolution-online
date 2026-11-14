@@ -2,7 +2,7 @@ import { COLORS, DUEL_FORMATS } from '@revolution/engine'
 import { FOCUS_KEY_ATTRIBUTE, REGION_ATTRIBUTE, type Region, wireBoardKeyboard } from './board-keyboard.js'
 import { highlightedSquares } from './area-highlight.js'
 import { cardTextParagraphs } from './card-text.js'
-import { grantedParagraphs, keywordsElement } from './granted-keyword.js'
+import { grantedAbilitiesBox, grantedParagraphs, keywordsElement } from './granted-keyword.js'
 import { applyCardArtwork } from './card-art.js'
 import type { AreaPointerStore } from './area-highlight.js'
 import { INITIAL_FOCUS_ATTRIBUTE, ignoreKeyRepeat, onLayerEscape } from './dialog-focus.js'
@@ -128,6 +128,7 @@ import type {
 } from './view-model.js'
 import {
   DECKS_PER_PAGE,
+  appliedMoveIconOf,
   answersOnlyByDeclining,
   cardInfoRowsOf,
   dimsUnselectable,
@@ -593,7 +594,8 @@ function appendFaceContent(node: HTMLElement, card: FaceCard, options: FaceOptio
     (each): each is HTMLElement => each !== undefined,
   )
   const keywords = keywordsElement(card.keywords, card.grantedKeywords)
-  const icons = iconsElement(card)
+  // 継続効果が移動方向を変更していれば、変更後の向きで描く（ADR-0071）。
+  const icons = iconsElement({ ...card, moveIcon: appliedMoveIconOf(card) })
 
   const title = element('div', 'card__title')
   title.append(...stars, element('span', 'card__name', card.name))
@@ -5177,6 +5179,11 @@ function detailGuideElement(): HTMLElement {
   return element('p', 'detail__none', 'カードにマウスを乗せるか、フォーカスすると、ここに詳細が出ます。')
 }
 
+/** 移動方向の表示。ムーブアイコンを持たなければ「なし」。 */
+function moveIconLabel(directions: readonly MoveDirection[]): string {
+  return directions.length === 0 ? 'なし' : directions.join('・')
+}
+
 /** カードの詳細の、拡大した面の下に添える補足の 1 行。 */
 function detailNoteOf(card: CardView & { readonly kind: '表' }): string {
   const notes = [`${card.controlledBy}のカード`]
@@ -5184,6 +5191,7 @@ function detailNoteOf(card: CardView & { readonly kind: '表' }): string {
   if (card.orientation === 'フリーズ') notes.push('フリーズ')
   if (card.modified?.bp !== undefined) notes.push(`BP ${card.bp}→${card.modified.bp}`)
   if (card.modified?.sp !== undefined) notes.push(`SP ${card.sp}→${card.modified.sp}`)
+  if (card.modified?.moveIcon !== undefined) notes.push(`移動方向 ${moveIconLabel(card.moveIcon)}→${moveIconLabel(card.modified.moveIcon)}`)
   if (card.damage > 0) notes.push(`ダメージ ${card.damage}`)
 
   return notes.join('／')
@@ -5236,6 +5244,7 @@ function pendingAbilitiesElement(pending: readonly PendingAbilityView[]): HTMLEl
 function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   const noted = card.operationalNote.length > 0
   const waiting = card.pending.length > 0
+  const granted = card.modified?.grantedAbilities ?? []
   const big = element(
     'div',
     `card card--${card.controlledBy} card--色-${primaryColorOf(card.colors)} card--拡大${noted ? ' card--注記つき' : ''}${waiting ? ' card--誘発待ちつき' : ''}`,
@@ -5245,6 +5254,7 @@ function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   const annotations = element('div', 'detail__annotations')
   if (noted) annotations.append(operationalNoteElement(card.operationalNote))
   if (waiting) annotations.append(pendingAbilitiesElement(card.pending))
+  if (granted.length > 0) annotations.append(grantedAbilitiesBox(granted))
 
   return [big, annotations, element('p', 'detail__note', detailNoteOf(card))]
 }
@@ -5283,6 +5293,8 @@ function phoneDetailParts(card: CardView & { readonly kind: '表' }): HTMLElemen
   }
   if (noted) info.append(operationalNoteElement(card.operationalNote))
   if (card.pending.length > 0) info.append(pendingAbilitiesElement(card.pending))
+  const granted = card.modified?.grantedAbilities ?? []
+  if (granted.length > 0) info.append(grantedAbilitiesBox(granted))
   info.append(element('p', 'detail__note', detailNoteOf(card)))
 
   return [face, info]
@@ -5295,7 +5307,7 @@ function fillDetailPanel(node: HTMLElement, card: (CardView & { readonly kind: '
   }
 
   node.replaceChildren(...detailParts(card), element('p', 'detail__read-guide', 'Dキーで詳細へ・Escキーでカードへ'))
-  for (const [selector, label] of [['.card__lines', 'カードの本文'], ['.detail__annotations', '注記と誘発待ち']] as const) {
+  for (const [selector, label] of [['.card__lines', 'カードの本文'], ['.detail__annotations', '注記・誘発待ち・与えられた能力']] as const) {
     const region = node.querySelector<HTMLElement>(selector)
     if (region === null || region.childElementCount === 0) continue
     region.tabIndex = 0
