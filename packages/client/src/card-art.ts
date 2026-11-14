@@ -19,8 +19,38 @@ const failed = new Set<string>()
 const resized = new Map<string, string>()
 const resizing = new Map<string, Promise<string>>()
 let resizedBytes = 0
+
+/**
+ * 一度カードの面に付けた絵（元画像と縮小した画像）を、画像の URL ごとに覚えておく。
+ *
+ * 画面は描き直すたびにカードの面を作成し直す（#242）。作成し直した面に絵を付けるのを読み込みと縮小の
+ * 後まで待つと、その間は絵の無い背景が見え、デッキ構築で枚数を変更するたびに絵がちらつく。覚えた絵は
+ * 面を作成した時点で付ける。画像の要素を握っておくのは、ブラウザに読み込んだ画像を手放させないため。
+ */
+interface ShownArtwork {
+  readonly image: HTMLImageElement
+  smoothed: HTMLImageElement | undefined
+}
+const shown = new Map<string, ShownArtwork>()
+const SHOWN_LIMIT = 128
+function rememberShown(url: string, image: HTMLImageElement): ShownArtwork {
+  const remembered = shown.get(url) ?? { image, smoothed: undefined }
+  shown.delete(url); shown.set(url, remembered)
+  if (shown.size > SHOWN_LIMIT) shown.delete(shown.keys().next().value!)
+  return remembered
+}
+function rememberSmoothed(url: string, image: HTMLImageElement, encoded: string): void {
+  const remembered = rememberShown(url, image)
+  if (remembered.smoothed?.src === encoded) return
+  const holder = new Image(); holder.src = encoded
+  remembered.smoothed = holder
+}
+const cssUrl = (url: string): string => 'url(' + JSON.stringify(url) + ')'
+
 function loadImage(url: string): Promise<HTMLImageElement | undefined> {
   if (failed.has(url)) return Promise.resolve(undefined)
+  const remembered = shown.get(url)
+  if (remembered !== undefined) return Promise.resolve(remembered.image)
   const cached = images.get(url)
   if (cached !== undefined) { images.delete(url); images.set(url, cached); return cached }
   const pending = new Promise<HTMLImageElement | undefined>((resolve) => {
@@ -85,7 +115,8 @@ async function paint(node: HTMLElement, target: ArtworkTarget): Promise<void> {
   if (rect.width === 0 || rect.height === 0) return
   const image = await loadImage(target.url)
   if (image === undefined || !node.isConnected || pendingTargets.get(node) !== target) return
-  node.style.setProperty('--card-art-image', 'url(' + JSON.stringify(target.url) + ')')
+  node.style.setProperty('--card-art-image', cssUrl(target.url))
+  rememberShown(target.url, image)
   const scale = Math.min(1, Math.max(rect.width * devicePixelRatio / image.naturalWidth, rect.height * devicePixelRatio / image.naturalHeight))
   const width = Math.max(1, Math.ceil(image.naturalWidth * scale)), height = Math.max(1, Math.ceil(image.naturalHeight * scale))
   const key = target.url + ':' + width + 'x' + height
@@ -94,7 +125,7 @@ async function paint(node: HTMLElement, target: ArtworkTarget): Promise<void> {
   const cached = resized.get(key)
   if (cached !== undefined) {
     resized.delete(key); resized.set(key, cached)
-    node.style.setProperty('--card-art-smoothed', 'url(' + JSON.stringify(cached) + ')'); return
+    node.style.setProperty('--card-art-smoothed', cssUrl(cached)); rememberSmoothed(target.url, image, cached); return
   }
   let pending = resizing.get(key)
   if (pending === undefined) {
@@ -114,7 +145,7 @@ async function paint(node: HTMLElement, target: ArtworkTarget): Promise<void> {
       }
     }
     if (node.isConnected && pendingTargets.get(node) === target && target.request === key) {
-      node.style.setProperty('--card-art-smoothed', 'url(' + JSON.stringify(encoded) + ')')
+      node.style.setProperty('--card-art-smoothed', cssUrl(encoded)); rememberSmoothed(target.url, image, encoded)
     }
   } catch { /* 元画像を維持し、同じ寸法での失敗を繰り返さない。 */ }
   finally {
@@ -141,6 +172,12 @@ export function applyCardArtwork(node: HTMLElement, card: FaceFields, big: boole
   requestAnimationFrame(() => fitCardText(node))
   const url = card.artwork?.url === undefined ? undefined : artworkUrl(card.artwork.url)
   pendingTargets.set(node, { url, request: undefined })
+  // 前に付けた絵があれば今すぐ付ける。寸法が違っても、縮小し直した絵は描いた後に差し替わる。
+  const remembered = url === undefined ? undefined : shown.get(url)
+  if (url !== undefined && remembered !== undefined) {
+    node.style.setProperty('--card-art-image', cssUrl(url))
+    if (remembered.smoothed !== undefined) node.style.setProperty('--card-art-smoothed', cssUrl(remembered.smoothed.src))
+  }
   if (!observing) {
     observing = true
     if (typeof ResizeObserver === 'function') observer = new ResizeObserver((entries) => {
