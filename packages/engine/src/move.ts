@@ -49,7 +49,9 @@ export function moveUnit(
   const moving = movableUnit(state, player, unit)
   if (moving === undefined) return cannot('移動できるユニットではない')
 
-  if (!isMoveDestination(state, player, moving.square, destination, moving.card.moveIcon)) {
+  // 移動できる方向は、継続効果を適用した後のムーブアイコンで決まる（ADR-0071）。
+  const { moveIcon } = continuousData(state)(unit, moving.card)
+  if (!isMoveDestination(state, player, moving.square, destination, moveIcon)) {
     return cannot('移動先として指定できないスクエア')
   }
 

@@ -153,7 +153,7 @@ export function survivalAt(
     units.some(
       (unit) =>
         unit.controller === opponent &&
-        unit.card.moveIcon.some((direction) => {
+        unit.moveIcon.some((direction) => {
           const reached = squareInDirection(opponent, unit.square, direction)
           // 移動を妨げる常在型能力で動けない敵は、攻め込んでこない（ADR-0068）。
           return reached !== undefined && sameSquare(reached, square) && !movePrevented(perspective, unit, reached, false)
@@ -197,7 +197,7 @@ function guardBasePoints(perspective: DuelPerspective, me: Player, square: Squar
     .filter(
       (unit) =>
         unit.controller === opponent &&
-        unit.card.moveIcon.some((direction) => {
+        unit.moveIcon.some((direction) => {
           const reached = squareInDirection(opponent, unit.square, direction)
           return reached !== undefined && sameSquare(reached, square) && !movePrevented(perspective, unit, reached, false)
         }),

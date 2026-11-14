@@ -1,8 +1,9 @@
 import type { CreatedTrigger } from './ability.js'
 import type { Battle } from './battle.js'
+import type { MoveDirection } from './board.js'
 import { planKeywordsOf } from './card.js'
 import type { Attribute, PlanKeyword } from './card.js'
-import { appliedCard, continuousData } from './continuous.js'
+import { appliedCard, continuousData, grantedEntriesOn } from './continuous.js'
 import { cardsIn, findAnywhere } from './duel.js'
 import type {
   BankedAbility,
@@ -14,6 +15,7 @@ import type {
   TrapConditionMet,
 } from './duel.js'
 import type { DuelEvent, LoggedEvent, LoggedInstruction, RecordedEvent, SeenBy } from './log.js'
+import type { Duration, GrantableKeyword } from './effect.js'
 import type { Orientation } from './orientation.js'
 import { PLAYERS } from './player.js'
 import type { Player } from './player.js'
@@ -22,6 +24,12 @@ import type { Turn } from './turn.js'
 import { unitsOnSquares } from './view.js'
 import { PLAYER_ZONES } from './zone.js'
 import type { PlayerZone } from './zone.js'
+
+/** 与えられた誘発型能力の、画面に見せる文と期限（`EffectiveUnitData.grantedAbilities`）。 */
+export interface GrantedAbilityText {
+  readonly text: string
+  readonly until?: Duration
+}
 
 /**
  * 継続効果を適用した後の、スクエアにいるユニット 1 体のデータ（総合ルール 第4部 第12章 2）。#91
@@ -45,6 +53,21 @@ export interface EffectiveUnitData {
   readonly sp: number
   /** 加わったものを含む属性（同 5-2 の(3)）。 */
   readonly attributes: readonly Attribute[]
+  /**
+   * 継続効果を適用した後の移動方向（同 5-2 の(4)、ADR-0071）。変更を受けているユニットの分だけ含まれる。
+   * 無ければ、カードに書かれたムーブアイコンのままである。
+   */
+  readonly moveIcon?: readonly MoveDirection[]
+  /**
+   * 継続効果が与えた誘発型能力の文と期限（ADR-0071）。与えられたユニットの分だけ含まれる。能力そのものは
+   * 関数で、通信に含まれないため、画面に見せる文だけを送る。常在型能力が与えた分は期限を持たない。
+   */
+  readonly grantedAbilities?: readonly GrantedAbilityText[]
+  /**
+   * 継続効果や常在型能力が与えたキーワード能力の名前（ADR-0070）。与えられたユニットの分だけ含まれる。
+   * CPU が空回しで「その能力を持つか」を尋ねられるようにするためで、画面はこれを使わない。
+   */
+  readonly grantedKeywords?: readonly GrantableKeyword[]
 }
 
 /**
@@ -602,10 +625,25 @@ function namedInLogOf(
  */
 function effectiveUnitData(state: DuelState): readonly EffectiveUnitData[] {
   const data = continuousData(state)
+  const granted = grantedEntriesOn(state)
 
   return unitsOnSquares(state).map((unit) => {
     const applied = data(unit.id, unit.card)
-    return { card: unit.id, bp: applied.bp, sp: applied.sp, attributes: applied.attributes }
+    const entries = granted(unit.id)
+    const texts = entries.flatMap(({ ability, until }): GrantedAbilityText[] =>
+      ability.kind === '誘発型能力' ? [{ text: ability.description, ...(until === undefined ? {} : { until }) }] : [],
+    )
+    const keywords = entries.flatMap(({ ability }) => (ability.kind === '誘発型能力' ? [] : [ability.keyword]))
+    return {
+      card: unit.id,
+      bp: applied.bp,
+      sp: applied.sp,
+      attributes: applied.attributes,
+      // 変更を受けていない分は含めない。受ける側は、無ければ書かれた値として扱う。
+      ...(applied.moveIcon === unit.card.moveIcon ? {} : { moveIcon: applied.moveIcon }),
+      ...(texts.length === 0 ? {} : { grantedAbilities: texts }),
+      ...(keywords.length === 0 ? {} : { grantedKeywords: keywords }),
+    }
   })
 }
 

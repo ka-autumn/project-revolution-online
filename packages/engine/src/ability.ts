@@ -617,7 +617,7 @@ export interface AttributeAddingAbility {
  * 第12章 2）。テキストを変更する継続効果 (2) は最初に適用されるので（同 5-2）、渡される
  * `DuelView` が表すのは、能力も属性もまだ追加されていない、書かれたとおりの盤面である。
  *
- * 能力を与える能力どうしの順番（同 5-3〜5-5）は扱わない。与えられるのは「夢」だけで、「夢」を
+ * 能力を与える能力どうしの順番（同 5-3〜5-5）は扱わない。与えられるのは「夢」と誘発型能力で、それらを
  * 持つかを与える条件にするテキストが無いので、どの順に適用しても結果は変化しない。
  */
 export interface AbilityGrantingAbility {
@@ -972,6 +972,29 @@ export function triggeredAbility<Event extends TriggerEvent>(
     ...(when === undefined ? {} : { when: when as unknown as TriggerCondition }),
     ...(condition === undefined ? {} : { condition }),
   }
+}
+
+/**
+ * 継続効果が与える誘発型能力（総合ルール 第4部 第12章 5-2 の(2)、ADR-0071）。
+ *
+ * 書かれた誘発型能力に、画面に表示するための文を追加したものである。効果は関数で、画面に見せられる
+ * 情報を持たない。作成された誘発型能力（ADR-0063）と同じく、能力のテキストを文としてカードの側が
+ * 渡す。engine は文の中身を参照しない。
+ */
+export interface GrantedTriggeredAbility extends TriggeredAbility {
+  readonly description: string
+}
+
+/**
+ * 与える誘発型能力を 1 つ実装する。引数は `triggeredAbility` と同じで、先頭に表示のための文を取る。
+ */
+export function grantedTriggeredAbility<Event extends TriggerEvent>(
+  description: string,
+  event: Event,
+  effect: EffectFor<Event>,
+  options?: WhenFor<Event> | TriggeredAbilityOptions<Event>,
+): GrantedTriggeredAbility {
+  return { ...triggeredAbility(event, effect, options), description }
 }
 
 /**

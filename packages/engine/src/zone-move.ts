@@ -120,7 +120,7 @@ function triggeredOnSquaresByDiscard(state: DuelState, ids: readonly CardId[]): 
  */
 function triggeredByOwnDiscardOf(state: DuelState, id: CardId): readonly TriggeredInstance[] {
   const instance = findAnywhere(state, id)
-  if (instance === undefined || !hasOwnDiscardAbility(instance.card)) return []
+  if (instance === undefined || !hasOwnDiscardAbility(state, instance)) return []
 
   const located = locateOnSquares(state, id)
   if (located !== undefined) {

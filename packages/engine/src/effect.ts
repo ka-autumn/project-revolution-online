@@ -6,11 +6,12 @@ import type {
   CreatedTriggeredAbility,
   CreatedUntargetedAbility,
   DreamAbility,
+  GrantedTriggeredAbility,
   IntrusionOccasion,
   NamedKeyword,
   SmashOccasion,
 } from './ability.js'
-import type { Square } from './board.js'
+import type { MoveDirection, Square } from './board.js'
 import type { Attribute, Card, CardType, UnitCard } from './card.js'
 import type { CardId, LibraryPosition } from './duel.js'
 import type { Orientation } from './orientation.js'
@@ -556,15 +557,16 @@ export interface SpModifier {
  * 継続効果が与えられる能力（総合ルール 第4部 第12章 5-2 の(2)）。
  *
  * 型で絞っているのは、engine が「与えられた分」まで読むようにした種類だけである。いまは
- * 「夢」だけで、それ以外を渡すとコンパイルの時点で弾かれる。与えたのに働かない能力を、
- * 書けないようにするためである。種類を足す時は、その種類を読む所（`continuous.ts` の
- * `gather` など、書かれた能力から引いている所）を、適用した後のデータから読むように切り替えてから、
- * ここに足す。
+ * 「夢」と誘発型能力（ADR-0071）で、それ以外を渡すとコンパイルの時点で弾かれる。与えたのに
+ * 働かない能力を、実装できないようにするためである。種類を追加する時は、その種類を取得する所
+ * （`continuous.ts` の `gather` など、書かれた能力から取得している所）を、適用した後のデータから
+ * 取得するように切り替えてから、ここに追加する。誘発型能力は、誘発の取得（`trigger.ts` の
+ * `triggeredBy`）が与えられた分を含めて取得する。
  */
-export type GrantableAbility = DreamAbility
+export type GrantableAbility = DreamAbility | GrantedTriggeredAbility
 
-/** 与えられる能力のキーワードの名前。ログが持つのはこちらである（`LoggedContinuousChange`）。 */
-export type GrantableKeyword = GrantableAbility['keyword']
+/** 与えられるキーワード能力の名前。ログが持つのはこちらである（`LoggedContinuousChange`）。 */
+export type GrantableKeyword = DreamAbility['keyword']
 
 /**
  * 継続効果が 1 枚のカードに与える能力（総合ルール 第4部 第12章 5-2 の(2)、第1章 1）。
@@ -580,8 +582,22 @@ export interface GrantModifier {
   readonly ability: GrantableAbility
 }
 
+/**
+ * 継続効果が 1 枚のユニットの移動方向に与える変更（総合ルール 第2部 第2章 2、ADR-0071）。
+ *
+ * 変更の方法は種類で持つ。いまは「置き換える」だけで、対象のユニットは、変更されている間、
+ * 指定された方向にだけ移動できる。ムーブアイコンを持たないユニットも、指定された方向に移動できる
+ * ようになる。「与える・得る」（追加）は、そのテキストを実装する時に方法を追加する。
+ */
+export interface MoveDirectionModifier {
+  readonly kind: '移動方向の変更'
+  readonly method: '置き換える'
+  readonly target: CardId
+  readonly directions: readonly MoveDirection[]
+}
+
 /** `createContinuousEffect` に渡せる変更。種類の札（`kind`）で、何を変えるかが決まる。 */
-export type ContinuousModifier = BpModifier | SpModifier | GrantModifier
+export type ContinuousModifier = BpModifier | SpModifier | GrantModifier | MoveDirectionModifier
 
 /**
  * 作成された継続効果が続く期限（総合ルール 第4部 第12章 3-1）。
@@ -621,15 +637,27 @@ export type ContinuousChange =
   | { readonly kind: 'ＢＰの変更'; readonly amount: number }
   | { readonly kind: 'ＳＰの変更'; readonly amount: number }
   | { readonly kind: '能力の付与'; readonly ability: GrantableAbility }
+  | {
+      readonly kind: '移動方向の変更'
+      readonly method: '置き換える'
+      readonly directions: readonly MoveDirection[]
+    }
 
 /**
- * ログに残す形にした `ContinuousChange`。数値の変更はそのまま、能力の付与は能力の
- * キーワードの名前だけを持つ。
+ * ログに残す形にした `ContinuousChange`。数値の変更と移動方向の変更はそのまま、能力の付与は
+ * キーワード能力なら名前だけ、誘発型能力なら表示のための文だけを持つ（能力そのものは関数を含み、
+ * 通信に含まれない）。
  */
 export type LoggedContinuousChange =
   | { readonly kind: 'ＢＰの変更'; readonly amount: number }
   | { readonly kind: 'ＳＰの変更'; readonly amount: number }
   | { readonly kind: '能力の付与'; readonly keyword: GrantableKeyword }
+  | { readonly kind: '誘発型能力の付与'; readonly description: string }
+  | {
+      readonly kind: '移動方向の変更'
+      readonly method: '置き換える'
+      readonly directions: readonly MoveDirection[]
+    }
 
 /** 継続効果の変更を、ログに残す形にする。 */
 export function loggedChangeOf(change: ContinuousChange): LoggedContinuousChange {
@@ -638,7 +666,11 @@ export function loggedChangeOf(change: ContinuousChange): LoggedContinuousChange
     case 'ＳＰの変更':
       return change
     case '能力の付与':
-      return { kind: '能力の付与', keyword: change.ability.keyword }
+      return change.ability.kind === '誘発型能力'
+        ? { kind: '誘発型能力の付与', description: change.ability.description }
+        : { kind: '能力の付与', keyword: change.ability.keyword }
+    case '移動方向の変更':
+      return change
     default:
       return change satisfies never
   }
@@ -659,6 +691,13 @@ export function bpPlus(target: UnitOnSquare, amount: number): BpModifier {
  */
 export function spPlus(target: UnitOnSquare, amount: number): SpModifier {
   return { kind: 'ＳＰの変更', target: target.id, amount }
+}
+
+/**
+ * 「そのユニットの移動方向を、指定した向きにする」（置き換え。ADR-0071）。対象の取り方は `bpPlus` と同じ。
+ */
+export function replacingMoveDirection(target: UnitOnSquare, directions: readonly MoveDirection[]): MoveDirectionModifier {
+  return { kind: '移動方向の変更', method: '置き換える', target: target.id, directions }
 }
 
 /**
@@ -1235,6 +1274,8 @@ function changeOf(modifier: ContinuousModifier): ContinuousChange {
       return { kind: modifier.kind, amount: modifier.amount }
     case '能力の付与':
       return { kind: '能力の付与', ability: modifier.ability }
+    case '移動方向の変更':
+      return { kind: '移動方向の変更', method: modifier.method, directions: modifier.directions }
     default:
       return modifier satisfies never
   }

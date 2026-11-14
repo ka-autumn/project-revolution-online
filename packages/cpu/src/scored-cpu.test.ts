@@ -410,6 +410,84 @@ describe('移動を妨げる常在型能力', () => {
   })
 })
 
+// 総合ルール 第2部 第2章 2、第4部 第12章 5-2 の(4)（ADR-0071）。移動方向を変更する継続効果を受けたユニットは、見積もりにも変更後の向きで入る。
+describe('移動方向を変更する継続効果', () => {
+  /** そのユニットの移動方向を、ターンの終わりまで、その向きだけにする作成された継続効果。 */
+  function replaced(state: DuelState, target: string, directions: readonly ('上' | '下' | '左' | '右')[]): DuelState {
+    return {
+      ...state,
+      createdContinuousEffects: [
+        ...state.createdContinuousEffects,
+        {
+          target,
+          change: { kind: '移動方向の変更', method: '置き換える', directions },
+          until: 'ターンの終わりまで',
+          controller: '先攻',
+          createdIn: 3,
+        },
+      ],
+    }
+  }
+
+  /** 下がって守る場面（「ユニットの移動」と同じ）。味方は下に、敵は左に移動できる。 */
+  function retreatScene(): DuelState {
+    const retreating = defineUnit({ name: 'テスト・下がれる', level: 0, bp: 5000, sp: 0, moveIcon: ['下'] })
+    const invading = defineUnit({ name: 'テスト・横に動ける敵', level: 0, bp: 2000, sp: 1000, moveIcon: ['左'] })
+    let state = onSquare(sceneAt('メインフェイズ'), at(CENTER, 2), 'a', retreating, '先攻')
+    state = onSquare(state, at(OWN_AREA, 1), 'e', invading, '後攻')
+    return state
+  }
+
+  const retreat = { kind: 'ユニットを移動する', unit: 'a', destination: at(OWN_AREA, 2) }
+
+  it('敵が前にしか動けなくなれば、味方エリアへ入って来ないので、下がって守らない', () => {
+    expect(picked(retreatScene())).toEqual(retreat)
+    expect(picked(replaced(retreatScene(), 'e', ['上']))).not.toEqual(retreat)
+  })
+
+  // 追い打ちできる味方か（`canFinish`）は、変更後の向きで参照する。
+  it('追い打ちできるのは、変更後の向きで参照する。書かれた向きに下が無くても、追い打ちできる', () => {
+    const follower = defineUnit({ name: 'テスト・前にしか動けない味方', level: 0, bp: 2500, sp: 0, moveIcon: ['上'] })
+    let state = withZone(sceneAt('メインフェイズ'), '先攻', '手札', [
+      instantiate({ id: 'first', card: unit('先に攻める', 2000, 0), owner: '先攻' }),
+    ])
+    state = onSquare(state, at(OWN_AREA, 0), 'e', unit('強い敵', 4000, 1000), '後攻')
+    state = onSquare(state, at(CENTER, 0), 'f', follower, '先攻')
+    const attack = { kind: 'カードをプレイする', declaration: { card: 'first', square: at(OWN_AREA, 0) } }
+
+    expect(picked(state)).not.toEqual(attack)
+    expect(picked(replaced(state, 'f', ['下']))).toEqual(attack)
+  })
+
+  // 相手のユニットが前へ進めるか（`mayAdvance`）は、変更後の向きで参照する。前へ進めれば、スマッシュされうる。
+  it('相手のユニットが前へ進めるかは、変更後の向きで参照する。進めれば、発動できる希望を持つプランを残す', () => {
+    const hoping = defineUnit({ name: 'テスト・希望', level: 1, colors: ['赤'], bp: 1000, sp: 0, abilities: [hope(function* () {})] })
+    const energy = defineUnit({ name: 'テスト・赤のエネルギー', level: 0, colors: ['赤'], bp: 0, sp: 0 })
+    const sideways = defineUnit({ name: 'テスト・横にしか動けない敵', level: 0, bp: 9000, sp: 1000, moveIcon: ['左'] })
+    let state = withZone(sceneAt('メインフェイズ'), '先攻', 'スマッシュゾーン', [
+      instantiate({ id: 'smash', card: unit('スマッシュ', 0, 0), owner: '先攻' }),
+    ])
+    state = withZone(state, '先攻', 'プランゾーン', [instantiate({ id: 'plan', card: hoping, owner: '先攻' })])
+    state = withZone(state, '先攻', 'エネルギーゾーン', [
+      instantiate({ id: 'e', card: energy, owner: '先攻', orientation: 'フリーズ' }),
+    ])
+    // 敵エリアにいる敵は、前へ進めなければ、次の相手のターンにスマッシュされる場所には来ない。
+    state = onSquare(state, at(ENEMY_AREA, 1), 'enemy', sideways, '後攻')
+
+    expect(picked(state)).toEqual({ kind: 'プランする' })
+    expect(picked(replaced(state, 'enemy', ['上']))).not.toEqual({ kind: 'プランする' })
+  })
+
+  it('下がれるのは、変更後の向きで参照する。書かれた向きに下が無くても、下がれる', () => {
+    const stuck = defineUnit({ name: 'テスト・前にしか動けない', level: 0, bp: 5000, sp: 0, moveIcon: ['上'] })
+    let board = onSquare(sceneAt('メインフェイズ'), at(CENTER, 2), 'a', stuck, '先攻')
+    board = onSquare(board, at(OWN_AREA, 1), 'e', defineUnit({ name: 'テスト・横に動ける敵', level: 0, bp: 2000, sp: 1000, moveIcon: ['左'] }), '後攻')
+
+    expect(picked(board)).not.toEqual(retreat)
+    expect(picked(replaced(board, 'a', ['下']))).toEqual(retreat)
+  })
+})
+
 describe('プラン', () => {
   /** リリース状態のスマッシュ 1 枚。プランのコストに使える（総合ルール 第2部 第21章 7-5）。 */
   const smash = instantiate({ id: 'smash', card: unit('スマッシュ', 0, 0), owner: '先攻' })
