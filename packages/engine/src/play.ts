@@ -145,7 +145,7 @@ export function playAsTrap(state: DuelState, card: CardId): ActionOutcome {
  * ただし書き）。権利が発生しているきっかけが複数あれば、どれに対して発動するかを選ぶ
  * （ADR-0039）。発動条件を持たないトラップ以外のカードは、トラップゾーンにあっても発動できない
  * （同 3-6）。発動条件は、トリガーアイコンの種類ごとに判定する（`trap.ts` の `checkIntrusion`・
- * `checkAttack`・`checkSmash`）。
+ * `checkAttack`・`checkSmash`・`checkPlan`・`checkDiscard`）。
  *
  * レベルを満たし（同 3-9）、コストを支払って（同 3-10）、リゾルブゾーンで解決される
  * （同 3-11）。
@@ -177,7 +177,7 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
   if (typeof paid === 'string') return cannot(paid)
 
   // 発動条件を満たしたできごとを効果に渡す（`effect.ts` の `TrapEffect`・`AttackTrapEffect`・
-  // `SmashTrapEffect`）。ここで束ねるのは、きっかけを知っているのが発動する経路だけだからで
+  // `SmashTrapEffect`・`PlanTrapEffect`・`DiscardTrapEffect`）。ここで束ねるのは、きっかけを知っているのが発動する経路だけだからで
   // ある。解決する側（`resolveEffect`）はどの経路から来た効果かを知らないままでよい。
   //
   // 型の上では、効果の第 2 引数が種類ごとに違うので、ここで広げて呼ぶ。種類が同じであることは、
@@ -192,6 +192,7 @@ export function activateTrap(state: DuelState, card: CardId, chooser: Chooser): 
     'トラップを発動する',
     chooser,
     [...unitsOfOccasion(occasion)],
+    met,
   )
   return done(grantPriorityToInactive(resolved))
 }
@@ -300,8 +301,14 @@ function resolveInResolveZone(
   action: 'カードをプレイする' | 'トラップを発動する',
   chooser: Chooser,
   handed?: readonly UnitOnSquare[],
+  occasion?: TrapConditionMet,
 ): DuelState {
-  const placed = recordAction(moveToResolveZone(state, id), state, action, id)
+  const moved = moveToResolveZone(state, id)
+  // 発動したトラップは、トラップゾーンを離れる時に、満たされた発動条件をすべて失う（`duel.ts` の
+  // `detach`）。解決している間、選んだきっかけだけを盤面に残す。CPU が効果の途中の選択を見積もる時に、
+  // 効果へ渡すためである。残した発動条件は、トラップがリゾルブゾーンを離れる時に取り除かれる。
+  const withOccasion = occasion === undefined ? moved : { ...moved, trapConditionsMet: [...moved.trapConditionsMet, occasion] }
+  const placed = recordAction(withOccasion, state, action, id)
   const resolved = resolveEffect(placed, effect, { controller, via, source: id, chooser, handed })
 
   const stillResolving = cardsInResolveZone(resolved).some((each) => each.id === id)

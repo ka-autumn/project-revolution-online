@@ -31,6 +31,7 @@ import type {
   CardInstance,
   ChoiceAnswer,
   DuelState,
+  DuelView,
   HandCondition,
   LegalAction,
   Phase,
@@ -862,6 +863,11 @@ describe('相手の手札を見て選ぶ選択への答え', () => {
 describe('プランと捨札のトラップのきっかけの選択', () => {
   const planTrap = defineTrap({ name: 'テスト・プランの罠', level: 1, triggerIcon: { kind: 'プラン' } })
   const discardTrap = defineTrap({ name: 'テスト・捨札の罠', level: 1, triggerIcon: { kind: '捨札' } })
+  const destroyingEffect = function* (duel: DuelView) {
+    for (const enemy of duel.enemies()) yield* destroy(enemy)
+  }
+  const planTrapDestroying = defineTrap({ name: 'テスト・敵を破壊するプランの罠', level: 1, triggerIcon: { kind: 'プラン' }, effect: destroyingEffect })
+  const discardTrapDestroying = defineTrap({ name: 'テスト・敵を破壊する捨札の罠', level: 1, triggerIcon: { kind: '捨札' }, effect: destroyingEffect })
   const low = defineUnit({ name: 'テスト・低いレベル', level: 1, bp: 3000, sp: 1000 })
   const high = defineUnit({ name: 'テスト・高いレベル', level: 4, bp: 3000, sp: 1000 })
 
@@ -886,6 +892,52 @@ describe('プランと捨札のトラップのきっかけの選択', () => {
       Array.from({ length: 20 }, (_, seed) => scoredCpu.answer(choiceViewOf(progress.board, progress.choice), randomFromSeed(seed)).answer),
     )
 
+  // 発動したトラップは、トラップゾーンを離れるので、満たされた発動条件が盤面から消える。効果の途中の選択でも、
+  // 発動に使ったきっかけを効果に渡せることを、きっかけのレベルで結果が変わる効果で確認する。
+  it('効果の途中の選択でも、発動に使ったきっかけを使って見積もり、捨札に置ける敵を選ぶ', () => {
+    const levelCheckingTrap = defineTrap({
+      name: 'テスト・きっかけのレベルで決まる罠',
+      level: 1,
+      triggerIcon: { kind: 'プラン' },
+      effect: function* (duel, occasion) {
+        const target = yield* choose(duel.enemies())
+        if (target !== undefined && target.card.level <= occasion.card.level) yield* destroy(target)
+      },
+    })
+    const turnedUp = defineUnit({ name: 'テスト・めくれたユニット', level: 3, bp: 3000, sp: 1000 })
+    const state0 = onSquare(onSquare(sceneAt('メインフェイズ'), { row: ENEMY_AREA, column: 0 }, 'high', unit('高い敵', 3000, 1000, 5), '後攻'), { row: ENEMY_AREA, column: 2 }, 'low', unit('低い敵', 3000, 1000, 2), '後攻')
+    const armed = withZone(withZone(state0, '先攻', 'トラップゾーン', [instantiate({ id: 'トラップ', card: levelCheckingTrap, owner: '先攻' })]), '先攻', 'エネルギーゾーン', [
+      instantiate({ id: 'エネ', card: unit('エネ', 0, 0), owner: '先攻' }),
+    ])
+    const state: DuelState = { ...armed, trapConditionsMet: [{ trap: 'トラップ', occasion: { kind: 'プラン', id: 'めくれた', card: turnedUp }, metAt: 0 }] }
+    const activate = legalActions(state).find((action) => action.kind === 'トラップを発動する')
+    if (activate === undefined) throw new Error('トラップを発動できるはずだった')
+    const progress = applyWithAnswers(state, activate, [])
+    if (progress.kind !== '選んでほしい') throw new Error('効果の途中の選択が発生するはずだった')
+
+    const picked = Array.from({ length: 20 }, (_, seed) => {
+      const { answer } = scoredCpu.answer(choiceViewOf(progress.board, progress.choice), randomFromSeed(seed))
+      const candidate = typeof answer === 'number' ? progress.choice.candidates[answer] : undefined
+      return candidate?.kind === '見えている' ? candidate.card : undefined
+    })
+
+    expect(new Set(picked)).toEqual(new Set(['low']))
+  })
+
+  // 満たされた発動条件があり、効果が得になる時は、パスせずに発動する。きっかけを効果に渡して見積もる。
+  it.each([
+    ['プラン', { kind: 'プラン', id: 'めくれた', card: high } as const, planTrapDestroying],
+    ['捨札', { kind: '捨札', id: '置かれた', square: { row: OWN_AREA, column: 0 }, card: high, controller: '先攻' } as const, discardTrapDestroying],
+  ])('%sのトラップは、敵を捨札に置ける効果なら、発動する手を選ぶ', (_kind, occasion, trap) => {
+    const withEnemy = onSquare(sceneAt('メインフェイズ'), { row: ENEMY_AREA, column: 1 }, 'enemy', unit('敵', 3000, 1000, 1), '後攻')
+    const armed = withZone(withZone(withEnemy, '先攻', 'トラップゾーン', [instantiate({ id: 'トラップ', card: trap, owner: '先攻' })]), '先攻', 'エネルギーゾーン', [
+      instantiate({ id: 'エネ', card: unit('エネ', 0, 0), owner: '先攻' }),
+    ])
+    const state: DuelState = { ...armed, trapConditionsMet: [{ trap: 'トラップ', occasion, metAt: 0 }] }
+
+    expect(picked(state)?.kind).toBe('トラップを発動する')
+  })
+
   it('プランでめくれた 2 枚のうち、レベルの高いほうをどの seed でも選ぶ', () => {
     // 低いほうを先に並べ、先頭を選ぶだけの実装と見分ける。
     const progress = askedWith(
@@ -894,10 +946,8 @@ describe('プランと捨札のトラップのきっかけの選択', () => {
         { trap: 'トラップ', occasion: { kind: 'プラン', id: 'めくれた低', card: low }, metAt: 0 },
         { trap: 'トラップ', occasion: { kind: 'プラン', id: 'めくれた高', card: high }, metAt: 1 },
       ],
-      (state) =>
-        withZone(withZone(state, '後攻', '捨札', [instantiate({ id: 'めくれた低', card: low, owner: '後攻' })]), '後攻', 'プランゾーン', [
-          instantiate({ id: 'めくれた高', card: high, owner: '後攻' }),
-        ]),
+      // きっかけのカードは、盤面のどこにもいない（発動するまでに別の場所へ動いた）。レベルは候補が持つ。
+      (state) => state,
     )
 
     expect(progress.choice.candidates.map((candidate) => candidate.kind)).toEqual(['きっかけ', 'きっかけ'])
@@ -918,11 +968,7 @@ describe('プランと捨札のトラップのきっかけの選択', () => {
         { trap: 'トラップ', occasion: placed('置かれた低', low), metAt: 0 },
         { trap: 'トラップ', occasion: placed('置かれた高', high), metAt: 1 },
       ],
-      (state) =>
-        withZone(state, '先攻', '捨札', [
-          instantiate({ id: '置かれた低', card: low, owner: '先攻' }),
-          instantiate({ id: '置かれた高', card: high, owner: '先攻' }),
-        ]),
+      (state) => state,
     )
 
     expect(answersOf(progress)).toEqual(new Set([1]))

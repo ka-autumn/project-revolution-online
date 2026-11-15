@@ -20,8 +20,8 @@ import { deferringRights } from './priority.js'
 /**
  * 相手のユニットがそのスクエアに置かれたことで、トリガーアイコンにそのスクエアが描かれた
  * トラップが「侵入される」（総合ルール 第2部 第20章 3-6）。これによってそのトラップの
- * 発動条件が満たされ、支配者はそのトラップを発動する権利を得る（同 3-8・3-8-a）。攻撃・
- * スマッシュの発動条件（同 3-8-b）は `checkAttack`・`checkSmash` が確かめる。
+ * 発動条件が満たされ、支配者はそのトラップを発動する権利を得る（同 3-8・3-8-a）。攻撃・スマッシュ・
+ * プラン・捨札の発動条件（同 3-8-b、ADR-0072）は、それぞれ `checkAttack`・`checkSmash`・`checkPlan`・`checkDiscard` が確認する。
  *
  * `invader` から見た相手のトラップゾーンだけを見る。「相手のユニットが」なので、置いた
  * 本人が支配するトラップは対象にならない。トラップゾーンには 1 プレイヤーにつき 1 枚しか
@@ -31,7 +31,7 @@ import { deferringRights } from './priority.js'
  * トラップ以外のカードがトラップゾーンにあっても対象にならない。
  *
  * 判定するのは、侵入のトリガーアイコンを持つトラップだけである。攻撃・スマッシュのトラップ
- * の発動条件は、ここでは満たされない（`checkAttack`・`checkSmash`。ADR-0039）。
+ * の発動条件は、ここでは満たされない（`checkAttack`・`checkSmash`・`checkPlan`・`checkDiscard`。ADR-0039、ADR-0072）。
  *
  * トリガーアイコンに印刷されたスクエアは、そのトラップの支配者（＝相手のトラップゾーンの
  * 持ち主）から見た向きで持っている（`IntrusionIcon` 参照）ため、`squareFromView`
@@ -233,7 +233,7 @@ export function unitsOfOccasion(occasion: TrapOccasion): readonly UnitOnSquare[]
  * `activateTrap`）ためである。権利が無いことと、渡せるきっかけが無いことは同じである。
  * 件が複数あれば、発動する時に支配者が 1 つ選ぶ。
  *
- * 発動条件が満たされていること（`checkIntrusion`・`checkAttack`・`checkSmash`）に加えて、
+ * 発動条件が満たされていること（`checkIntrusion`・`checkAttack`・`checkSmash`・`checkPlan`・`checkDiscard`）に加えて、
  * その条件が満たされた後に発生したバトルもスマッシュ判定も進行中でないことが要る。発動条件が満たされた後、優先権を得る
  * 時にバトルまたはスマッシュ判定が発生した場合、それが終了するまで権利は発生しない（同 3-8
  * ただし書き、第3部 第11章 5・第17章 4）。その判定は「勇気」を起動する権利と共通なので、

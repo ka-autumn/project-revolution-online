@@ -1355,8 +1355,8 @@ describe('発動するきっかけを選ぶ', () => {
 
       expectChoice(progress)
       expect(progress.choice.candidates).toEqual([
-        { kind: 'きっかけ', occasion: { kind: 'プラン', card: '1 枚目' } },
-        { kind: 'きっかけ', occasion: { kind: 'プラン', card: '2 枚目' } },
+        { kind: 'きっかけ', occasion: { kind: 'プラン', card: '1 枚目', name: testCard.name, level: testCard.level } },
+        { kind: 'きっかけ', occasion: { kind: 'プラン', card: '2 枚目', name: high.name, level: 4 } },
       ])
       expectAdvanced(applyWithAnswers(state, ACTIVATE, [1]))
       expect(turnedUpLevels).toEqual([4])
@@ -1379,8 +1379,8 @@ describe('発動するきっかけを選ぶ', () => {
 
       expectChoice(progress)
       expect(progress.choice.candidates).toEqual([
-        { kind: 'きっかけ', occasion: { kind: '捨札', unit: { card: '1 体目', square: here } } },
-        { kind: 'きっかけ', occasion: { kind: '捨札', unit: { card: '2 体目', square: there } } },
+        { kind: 'きっかけ', occasion: { kind: '捨札', unit: { card: '1 体目', square: here }, name: testCard.name, level: testCard.level } },
+        { kind: 'きっかけ', occasion: { kind: '捨札', unit: { card: '2 体目', square: there }, name: testCard.name, level: testCard.level } },
       ])
       expectAdvanced(applyWithAnswers(state, ACTIVATE, [0]))
     })

@@ -280,7 +280,7 @@ function candidateLabel(
 }
 
 /**
- * きっかけの候補の出し方。トラップは「侵入」「攻撃」「スマッシュ」、「勇気」は「置かれた」と
+ * きっかけの候補の出し方。トラップは「侵入」「攻撃」「スマッシュ」「プラン」「捨札」、「勇気」は「置かれた」と
  * 呼び分ける（ADR-0039）。
  *
  * この画面が知らない種類のきっかけ（サーバが先に新しくなった時）は、番号だけを出す。
@@ -301,9 +301,9 @@ function occasionLabel(
       return `${position}: スマッシュ ${nameOf(names, occasion.smasher.card)}（${squareLabel(viewer, occasion.smasher.square)}）`
     // めくれたカードはスクエアにいない。プランゾーンか、次のめくりで置かれた捨札にある（ADR-0072）。
     case 'プラン':
-      return `${position}: プラン ${nameOf(names, occasion.card)}`
+      return `${position}: プラン ${occasion.name}`
     case '捨札':
-      return `${position}: 捨札 ${nameOf(names, occasion.unit.card)}（${squareLabel(viewer, occasion.unit.square)}）`
+      return `${position}: 捨札 ${occasion.name}（${squareLabel(viewer, occasion.unit.square)}）`
     case '置かれた':
       return `${position}: 置かれた ${nameOf(names, occasion.unit.card)}（${squareLabel(viewer, occasion.unit.square)}）`
     default:

@@ -805,10 +805,8 @@ function occasionScore(perspective: DuelPerspective, candidate: WireCandidate): 
   if (candidate.kind !== 'きっかけ') return 0
 
   const occasion = candidate.occasion
-  if (occasion.kind === 'プラン' || occasion.kind === '捨札') {
-    const seen = cardOf(perspective, occasion.kind === 'プラン' ? occasion.card : occasion.unit.card)
-    return seen === undefined ? 0 : seen.level
-  }
+  // できごとの時点のレベルを、候補が持っている。盤面のカードは、発動するまでに別の場所へ動くことがある。
+  if (occasion.kind === 'プラン' || occasion.kind === '捨札') return occasion.level
 
   const id =
     occasion.kind === '侵入'

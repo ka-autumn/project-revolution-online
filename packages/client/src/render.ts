@@ -480,7 +480,7 @@ function planIconParts(): readonly SVGElement[] {
 
 /**
  * 捨札のトリガーアイコン。印刷をなぞる（ADR-0072）。青い枠の上に「Opponent's turn」（2 行）。左に
- * 白い縦向きのカード、橙の矢印が右へ伸びて、白いドクロの印（クロスボーン）につながる。
+ * 白い縦向きのカード、橙の矢印が右へ伸びて、白いドクロのマーク（クロスボーン）につながる。
  */
 function discardIconParts(): readonly SVGElement[] {
   const eye = (cx: string) => svgElement('circle', { cx, cy: '12', r: '.6', fill: '#244a8c' })

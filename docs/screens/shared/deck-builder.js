@@ -148,7 +148,7 @@ function moveIcon(dirs) {
   s.append(svg('path', { d: 'M10 0.6 19.4 10 10 19.4 0.6 10Z', fill: '#2a2a2a', stroke: '#fff', 'stroke-width': '0.8' }), svg('path', { d: 'M10 2.6 12.4 6H7.6Z', fill: on('上') }), svg('path', { d: 'M10 17.4 12.4 14H7.6Z', fill: on('下') }), svg('path', { d: 'M2.6 10 6 7.6V12.4Z', fill: on('左') }), svg('path', { d: 'M17.4 10 14 7.6V12.4Z', fill: on('右') }), svg('circle', { cx: '10', cy: '10', r: '2.6', fill: '#c81c1c', stroke: '#fff', 'stroke-width': '0.6' }))
   return s
 }
-// トリガーアイコン（ADR-0039）。種類つきの値 { kind: '侵入', squares } / { kind: '攻撃', filter? } / { kind: 'スマッシュ' }。
+// トリガーアイコン（ADR-0039）。種類つきの値 { kind: '侵入', squares } / { kind: '攻撃', filter? } / { kind: 'スマッシュ' } / { kind: 'プラン' } / { kind: '捨札' }。
 // 攻撃・スマッシュは印刷をなぞる。暗い枠の左上に Attack / Smash。相手のカードは上下を逆にして描く。
 // 攻撃の絞り込みは左下に文字で書く（メーカーシンボル・属性は値のまま、色は英語）
 const COLOR_ENGLISH = { 赤: 'Red', 黒: 'Black', 青: 'Blue', 白: 'White', 緑: 'Green' }

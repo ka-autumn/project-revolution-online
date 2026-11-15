@@ -7,6 +7,7 @@ import {
   PLAYERS,
   activateTrap,
   cardsIn,
+  choose,
   damagePlayer,
   defineStrategy,
   defineTrap,
@@ -17,7 +18,9 @@ import {
   instantiate,
   legalActions,
   passPriority,
+  perspectiveOf,
   plan,
+  placeTopOfLibrary,
   planReplacing,
   playCard,
   putOnSquare,
@@ -258,18 +261,46 @@ describe('プランのトラップ', () => {
     expect(kindsOf(state)).not.toContain('トラップを発動する')
   })
 
-  it('プランのトラップが無ければ、プランで発動条件は何も足されない', () => {
+  it('プランのトラップが無ければ、プランで発動条件は何も追加されない', () => {
     const base = withLibrary(withPlanCost(mainPhase()), [unitOf('めくれた', level4, '先攻')])
     const without = stateOf(plan(base, chooseFirst))
 
     expect(aMet(without)).toEqual([])
   })
 
-  it('攻撃・スマッシュ・侵入のトラップを持っていても、プランでは満たされない', () => {
-    const attackTrap = defineTrap({ name: 'テスト・攻撃', level: 1, colors: ['赤'], triggerIcon: { kind: '攻撃' } })
-    const state = planned([unitOf('めくれた', level4, '先攻')], attackTrap)
+  it.each([
+    ['攻撃', defineTrap({ name: 'テスト・攻撃', level: 1, colors: ['赤'], triggerIcon: { kind: '攻撃' } })],
+    ['スマッシュ', defineTrap({ name: 'テスト・スマッシュ', level: 1, colors: ['赤'], triggerIcon: { kind: 'スマッシュ' } })],
+    ['侵入', defineTrap({ name: 'テスト・侵入', level: 1, colors: ['赤'], triggerIcon: { kind: '侵入', squares: [{ row: 0, column: 1 }] } })],
+    ['捨札', defineTrap({ name: 'テスト・捨札', level: 1, colors: ['赤'], triggerIcon: { kind: '捨札' } })],
+  ])('%sのトラップを持っていても、プランでは満たされない', (_kind, trap) => {
+    const state = planned([unitOf('めくれた', level4, '先攻')], trap)
 
     expect(aMet(state)).toEqual([])
+  })
+
+  // 完了条件: 効果で山札の 1 番上が表向きになっても満たされない。プランの行動を通らないため。
+  it('効果で山札の 1 番上が表向きになっても、発動条件は満たされない', () => {
+    const revealing = defineUnit({
+      name: 'テスト・山札の上を表向きにする',
+      level: 1,
+      colors: ['赤'],
+      bp: 3000,
+      sp: 1000,
+      abilities: [
+        triggeredAbility('登場した時', function* () {
+          yield* placeTopOfLibrary('プランゾーン', 'リリース')
+        }),
+      ],
+    })
+    const board = putInZone(withPlanCost(armed(mainPhase(), damagingByLevelTrap)), '先攻', '手札', [unitOf('表向きにする役', revealing, '先攻')])
+    let state = stateOf(playCard(board, { card: '表向きにする役', square: battleSquare }, chooseFirst))
+    for (let i = 0; i < 10; i += 1) state = pass(state)
+
+    // 前提: 山札の 1 番上が、プランゾーンに表向きで置かれている。
+    expect(cardsIn(state, '先攻', 'プランゾーン')).toHaveLength(1)
+    expect(aMet(state)).toEqual([])
+    expect(kindsOf(state)).not.toContain('トラップを発動する')
   })
 
   describe('置換で複数のユニットがめくれた時', () => {
@@ -310,6 +341,56 @@ describe('プランのトラップ', () => {
       expect(asked).toContainEqual({ purpose: 'トラップのきっかけ', count: 3 })
       expect(after.damage.先攻).toBe(400)
     })
+  })
+})
+
+// 効果の途中の選択で、CPU が発動に使ったきっかけを効果に渡せるようにする（`play.ts` の `resolveInResolveZone`）。
+describe('発動したトラップの解決中', () => {
+  /** 効果の途中で敵を 1 体選ばせる、後攻のプランのトラップ。 */
+  const choosingTrap = defineTrap({
+    name: 'テスト・途中で選ばせる',
+    level: 1,
+    colors: ['赤'],
+    triggerIcon: { kind: 'プラン' },
+    effect: function* (duel, occasion) {
+      void occasion
+      yield* choose(duel.enemies())
+    },
+  })
+
+  it('選んだきっかけだけが盤面に残り、後攻の視点からも見え、先攻の視点には届かない。解決が終わると取り除かれる', () => {
+    const base = putOnSquare(armed(mainPhase(), choosingTrap), battleSquare, unitOf('先攻のユニット', vanilla, '先攻'))
+    const planned = stateOf(plan(withLibrary(withPlanCost(base), [unitOf('めくれた', level4, '先攻')]), chooseFirst))
+    // 満たされた発動条件をもう 1 件（別のめくれたカード）持たせる。
+    const two: DuelState = {
+      ...planned,
+      trapConditionsMet: [
+        ...planned.trapConditionsMet,
+        { trap: 'トラップ', occasion: { kind: 'プラン', id: '別のめくれた', card: vanilla }, metAt: planned.log.length },
+      ],
+    }
+    const seen: { readonly own: readonly string[]; readonly opponent: readonly string[]; readonly raw: readonly string[] }[] = []
+    const choosing: Chooser = (candidates, _player, purpose, board) => {
+      if (purpose === 'トラップのきっかけ') {
+        return (candidates as readonly TrapConditionMet[]).find(({ occasion }) => occasion.kind === 'プラン' && occasion.id === 'めくれた')
+      }
+      // コストの支払いは、トラップがトラップゾーンにある間に聞かれる。効果の途中の選択だけを確認する。
+      if (purpose !== '効果の対象') return candidates[0]
+      const ids = (state: DuelState) => state.trapConditionsMet.map(({ occasion }) => (occasion.kind === 'プラン' ? occasion.id : occasion.kind))
+      seen.push({
+        own: ids({ ...board, trapConditionsMet: perspectiveOf(board, '後攻').trapConditionsMet }),
+        opponent: ids({ ...board, trapConditionsMet: perspectiveOf(board, '先攻').trapConditionsMet }),
+        raw: ids(board),
+      })
+      return candidates[0]
+    }
+
+    const after = stateOf(activateTrap(two, 'トラップ', choosing))
+
+    expect(seen).toEqual([{ own: ['めくれた'], opponent: [], raw: ['めくれた'] }])
+    // 解決が終わってトラップが捨札に置かれると、残した発動条件も取り除かれる。
+    expect(cardsIn(after, '後攻', '捨札').map((each) => each.id)).toContain('トラップ')
+    expect(after.trapConditionsMet.filter(({ trap }) => trap === 'トラップ')).toEqual([])
   })
 })
 
@@ -381,6 +462,8 @@ describe('捨札のトラップ', () => {
     for (let i = 0; i < 40 && aMet(state).length === 0; i += 1) state = pass(state)
 
     expect(aMet(state).map(({ occasion }) => occasion.kind)).toEqual(['捨札'])
+    // 前提: 条件が満たされた時点で、そのバトルは進行中である。
+    expect(state.battles.length).toBeGreaterThan(0)
     // バトルは条件より前から進行中だったので、権利は止まらない。
     expect(trapRightsOf(state, 'トラップ')).toHaveLength(1)
   })
@@ -447,7 +530,7 @@ describe('捨札のトラップ', () => {
     expect(aMet(passed)).toEqual([])
   })
 
-  it('捨札のトラップが無ければ、ユニットが捨札に置かれても発動条件は何も足されない', () => {
+  it('捨札のトラップが無ければ、ユニットが捨札に置かれても発動条件は何も追加されない', () => {
     const noTrap = putOnSquare(mainPhase(), enemySquare, unitOf('後攻のユニット', weak, '後攻'))
     const board = putInZone(withPlanCost(noTrap), '先攻', '手札', [unitOf('破壊役', destroyingEnemies, '先攻')])
     let state = stateOf(playCard(board, { card: '破壊役', square: battleSquare }, chooseFirst))
