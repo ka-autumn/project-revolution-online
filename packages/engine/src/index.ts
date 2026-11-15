@@ -47,6 +47,7 @@ export type {
   HopeAbility,
   AttackOccasion,
   IntrusionOccasion,
+  PlanOccasion,
   SmashOccasion,
   TrapOccasion,
   MoveCost,
@@ -130,7 +131,11 @@ export type {
   IntrusionIcon,
   IntrusionTrapCard,
   MakerSymbol,
+  PlanIcon,
   PlanKeyword,
+  PlanTrapCard,
+  DiscardIcon,
+  DiscardTrapCard,
   SmashIcon,
   SmashTrapCard,
   StrategyCard,
@@ -251,6 +256,8 @@ export type {
   TrapEffect,
   AttackTrapEffect,
   SmashTrapEffect,
+  PlanTrapEffect,
+  DiscardTrapEffect,
   UnitOnSquare,
 } from './effect.js'
 export { cardIdsOf, checkBoardInvariants } from './invariant.js'

@@ -160,6 +160,8 @@ describe('通信に載せる形', () => {
       }),
     ],
     ['スマッシュ', defineTrap({ name: 'テスト・スマッシュトラップ', level: 1, triggerIcon: { kind: 'スマッシュ' } })],
+    ['プラン', defineTrap({ name: 'テスト・プラントラップ', level: 1, triggerIcon: { kind: 'プラン' } })],
+    ['捨札', defineTrap({ name: 'テスト・捨札トラップ', level: 1, triggerIcon: { kind: '捨札' } })],
   ])('%sのトリガーアイコンは、値のまま通信に載る', (_kind, card) => {
     const face = JSON.parse(JSON.stringify(faceOf(card))) as { triggerIcon: unknown }
 
@@ -176,6 +178,8 @@ describe('通信に載せる形', () => {
     ['侵入', CARDS.トラップ],
     ['攻撃', defineTrap({ name: 'テスト・攻撃トラップ', level: 1, triggerIcon: { kind: '攻撃' } })],
     ['スマッシュ', defineTrap({ name: 'テスト・スマッシュトラップ', level: 1, triggerIcon: { kind: 'スマッシュ' } })],
+    ['プラン', defineTrap({ name: 'テスト・プラントラップ', level: 1, triggerIcon: { kind: 'プラン' } })],
+    ['捨札', defineTrap({ name: 'テスト・捨札トラップ', level: 1, triggerIcon: { kind: '捨札' } })],
   ])('古い画面の読み方でも、%sのトリガーアイコンで例外にならない', (_kind, card) => {
     const face = JSON.parse(JSON.stringify(faceOf(card))) as { type: string; triggerIcon: { length: number } }
     const oldClientDrawsIcon = (): boolean => face.type === 'トラップ' && face.triggerIcon.length > 0
@@ -300,6 +304,38 @@ describe('通信に載せる形', () => {
       ['occasion', 'trap'],
       ['occasion', 'trap'],
     ])
+  })
+
+  // ADR-0072。プランのきっかけはめくれた時点のカード、捨札のきっかけは置かれたユニットを書き出して通信に含める。
+  // 捨札では、きっかけの種類を表す `kind` が、ユニットの写しに混ざらない。
+  it('プラン・捨札のきっかけは、カードとユニットを書き出して通信に含める', () => {
+    const discarded: UnitOnSquare = {
+      id: '置かれたユニット',
+      square: { row: 0, column: 1 },
+      card: CARDS.見えているカード,
+      controller: '先攻',
+    }
+    const state: DuelState = {
+      ...filledState(),
+      trapConditionsMet: [
+        { trap: '先攻-トラップ', occasion: { kind: 'プラン', id: 'めくれた', card: CARDS.見えているカード }, metAt: 3 },
+        { trap: '先攻-トラップ', occasion: { kind: '捨札', ...discarded }, metAt: 7 },
+      ],
+    }
+
+    const sent = JSON.parse(JSON.stringify(toWire(perspectiveOf(state, '先攻')))) as {
+      trapConditionsMet: readonly { occasion: Record<string, unknown> }[]
+    }
+
+    const [planned, discardedMet] = sent.trapConditionsMet
+    expect(planned?.occasion.kind).toBe('プラン')
+    expect(planned?.occasion.id).toBe('めくれた')
+    expect((planned?.occasion.card as { name: string }).name).toBe(CARDS.見えているカード.name)
+    expect(discardedMet?.occasion.kind).toBe('捨札')
+    const wireDiscarded = discardedMet?.occasion.discarded as Record<string, unknown>
+    expect(wireDiscarded.id).toBe('置かれたユニット')
+    expect(wireDiscarded.square).toEqual({ row: 0, column: 1 })
+    expect(wireDiscarded).not.toHaveProperty('kind')
   })
 
   /**

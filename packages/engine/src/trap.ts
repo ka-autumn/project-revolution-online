@@ -1,7 +1,14 @@
-import type { AttackOccasion, IntrusionOccasion, SmashOccasion, TrapOccasion } from './ability.js'
+import type {
+  AttackOccasion,
+  DiscardOccasion,
+  IntrusionOccasion,
+  PlanOccasion,
+  SmashOccasion,
+  TrapOccasion,
+} from './ability.js'
 import { indexOfSquare, squareFromView } from './board.js'
 import { hasMakerSymbol } from './card.js'
-import type { TriggerFilter, UnitCard } from './card.js'
+import type { Card, TriggerFilter, UnitCard } from './card.js'
 import { continuousData } from './continuous.js'
 import { cardsIn } from './duel.js'
 import type { CardId, DuelState, TrapConditionMet } from './duel.js'
@@ -132,6 +139,56 @@ export function checkSmash(state: DuelState, smasher: UnitOnSquare): DuelState {
 }
 
 /**
+ * 相手がプランの行動を行い、山札の 1 番上のユニットが表向きになったことで、プランのトラップの
+ * 発動条件が満たされる（ADR-0072）。条文にこの発動条件がいつ満たされるかを定めたものは無く、
+ * 開発者と決定した読みである。
+ *
+ * 呼ぶのは、プランの処理が山札の 1 番上を表向きにする所（`action.ts` の `turnUpTopOfLibrary`）
+ * だけである。置換で複数めくれた時は、めくれるたびに呼ばれ、ユニット 1 枚ごとに満たされる。
+ * ユニット以外がめくれた時は満たされない。効果で山札の 1 番上を表向きにする経路は、ここを
+ * 通らない。
+ *
+ * 参照するのは、プランしたプレイヤーの相手のトラップゾーンだけである。プランの行動は、直後に
+ * プランしていない側が優先権を得る（総合ルール 第4部 第6章 1-4・1-5）ので、バトルが進行中でなければ、
+ * そこで権利が発生する。
+ */
+export function checkPlan(state: DuelState, planner: Player, turnedUp: { readonly id: CardId; readonly card: Card }): DuelState {
+  const { card } = turnedUp
+  if (card.type !== 'ユニット') return state
+
+  const planned = cardsIn(state, opponentOf(planner), 'トラップゾーン')
+    .filter((trap) => trap.card.type === 'トラップ' && trap.card.triggerIcon.kind === 'プラン')
+    .map((trap) => trap.id)
+
+  const occasion: PlanOccasion = { kind: 'プラン', id: turnedUp.id, card }
+  return withConditionsMet(state, planned, occasion)
+}
+
+/**
+ * トラップの支配者のユニットが、支配者でないプレイヤーのターンにスクエアから捨札に置かれたことで、
+ * 捨札のトラップの発動条件が満たされる（ADR-0072）。条文にこの発動条件がいつ満たされるかを定めた
+ * ものは無く、開発者と決定した読みである。
+ *
+ * 呼ぶのは、スクエアから捨札へ動かす所（`zone-move.ts` の `moveToZone`）だけである。バトルダメージ・
+ * 効果・ルールエフェクト・起動コストのどれで置かれても通り、理由は問わない。「あなたのユニットが
+ * スクエアから捨札に置かれた時」の誘発型能力と同じきっかけ（`DiscardOccasion`）を、1 枚ずつ判定する。
+ *
+ * ターンは、置かれた時点のアクティブプレイヤーで判定する。参照するのは、置かれたユニットの支配者の
+ * トラップゾーンだけである。
+ */
+export function checkDiscard(state: DuelState, occasions: readonly DiscardOccasion[]): DuelState {
+  return occasions.reduce((current, occasion) => {
+    // 支配者のターンに置かれたものは満たさない。
+    if (current.turn.active === occasion.controller) return current
+
+    const discarded = cardsIn(current, occasion.controller, 'トラップゾーン')
+      .filter((trap) => trap.card.type === 'トラップ' && trap.card.triggerIcon.kind === '捨札')
+      .map((trap) => trap.id)
+    return withConditionsMet(current, discarded, occasion)
+  }, state)
+}
+
+/**
  * 発動条件が満たされたトラップに、満たされたできごとを 1 件ずつ足す。対象が無ければ盤面は
  * そのまま（ログにも何も足さない）。
  *
@@ -161,6 +218,10 @@ export function unitsOfOccasion(occasion: TrapOccasion): readonly UnitOnSquare[]
       return [occasion.attacker, occasion.attacked]
     case 'スマッシュ':
       return [occasion.smasher]
+    // めくれたユニットも、捨札に置かれたユニットも、スクエアにはいない。効果が対象にできるものが無い。
+    case 'プラン':
+    case '捨札':
+      return []
   }
 }
 

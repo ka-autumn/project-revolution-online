@@ -5,10 +5,12 @@ import type {
   CreatedOnSquareAbility,
   CreatedTriggeredAbility,
   CreatedUntargetedAbility,
+  DiscardOccasion,
   DreamAbility,
   GrantedTriggeredAbility,
   IntrusionOccasion,
   NamedKeyword,
+  PlanOccasion,
   SmashOccasion,
 } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
@@ -468,6 +470,20 @@ export type AttackTrapEffect = (duel: DuelView, occasion: AttackOccasion) => Eff
  * （`ability.ts` の `SmashOccasion`、ADR-0039）。
  */
 export type SmashTrapEffect = (duel: DuelView, occasion: SmashOccasion) => EffectStep<void>
+
+/**
+ * プランのトラップの効果。プランでめくれたユニットを、きっかけから受け取る
+ * （`ability.ts` の `PlanOccasion`、ADR-0072）。めくれたユニットはスクエアにいないので、
+ * 効果が対象にできるものではない。参照できるのは、めくれた時点のデータ（レベルなど）である。
+ */
+export type PlanTrapEffect = (duel: DuelView, occasion: PlanOccasion) => EffectStep<void>
+
+/**
+ * 捨札のトラップの効果。スクエアから捨札に置かれたユニットを、きっかけから受け取る
+ * （`ability.ts` の `DiscardOccasion`、ADR-0072）。ユニットは置かれる直前の、継続効果を適用した後の
+ * データと、いたスクエアを持つ。もうスクエアにはいないので、効果が対象にできるものではない。
+ */
+export type DiscardTrapEffect = (duel: DuelView, occasion: DiscardOccasion) => EffectStep<void>
 
 /**
  * 「このカードが捨札に置かれた時」に誘発する能力の効果。第 2 引数で、捨札に置かれたそのカードを

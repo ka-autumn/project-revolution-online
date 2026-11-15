@@ -4,6 +4,7 @@ import { findAnywhere, findInZone, findOnSquares, locateOnSquares, moveToZoneWit
 import type { CardId, CardInstance, DuelState, LibraryPosition, TriggeredInstance } from './duel.js'
 import type { Orientation } from './orientation.js'
 import { PLAYERS } from './player.js'
+import { checkDiscard } from './trap.js'
 import { addTriggered, hasOwnDiscardAbility, triggerOnSmashZone, triggeredByOwnDiscard, triggeredOnSquares } from './trigger.js'
 import { PLAYER_ZONES } from './zone.js'
 import type { PlayerZone } from './zone.js'
@@ -60,14 +61,18 @@ export function moveToZone(
   options: ZoneMoveOptions = {},
 ): DuelState {
   const unique = [...new Set(ids)]
-  const withTriggered = zone === '捨札' ? addTriggered(state, triggeredByDiscard(state, unique)) : state
+  // スクエアから捨札に置かれるユニットのきっかけは、置かれる前の盤面から 1 度だけ作成し、誘発型能力と
+  // 捨札のトラップの発動条件（ADR-0072）の両方が使う。同じ所で、同じデータから判定する。
+  const occasions = zone === '捨札' ? discardOccasions(state, unique) : []
+  const withTriggered = zone === '捨札' ? addTriggered(state, triggeredByDiscard(state, unique, occasions)) : state
+  const withConditions = checkDiscard(withTriggered, occasions)
   return unique.reduce((current, id) => {
     // 希望ステップで置かれる時も、効果で置かれる時も、ここを通る。実際に動いたカードだけが、持ち主の
     // スマッシュゾーンに置かれたことで、作成された誘発型能力を誘発させる（ADR-0065）。
     const owner = zone === 'スマッシュゾーン' ? findAnywhere(current, id)?.owner : undefined
     const moved = moveToZoneWithoutTriggers(current, id, zone, options.orientation, options.position)
     return owner === undefined || moved === current ? moved : triggerOnSmashZone(moved, owner)
-  }, withTriggered)
+  }, withConditions)
 }
 
 /**
@@ -78,37 +83,58 @@ export function moveToZone(
  * 並びに意味が無く（`bank.ts`）、解決する順は支配者が選ぶので、この順は既存の能力の並びを
  * 変更しないためのものである。
  */
-function triggeredByDiscard(state: DuelState, ids: readonly CardId[]): readonly TriggeredInstance[] {
-  return [...triggeredOnSquaresByDiscard(state, ids), ...ids.flatMap((id) => triggeredByOwnDiscardOf(state, id))]
+function triggeredByDiscard(
+  state: DuelState,
+  ids: readonly CardId[],
+  occasions: readonly DiscardOccasion[],
+): readonly TriggeredInstance[] {
+  return [...triggeredOnSquaresByDiscard(state, occasions), ...ids.flatMap((id) => triggeredByOwnDiscardOf(state, id))]
 }
 
 /**
- * スクエアにいるユニットごとに、その支配者の「あなたのユニットがスクエアから捨札に置かれた
- * 時」の能力を探す。置かれたユニットごとに、そのユニットをきっかけ（`DiscardOccasion`）として
- * 判定する。能力の側は、置かれたのが自分自身かどうかをきっかけから確認できる。きっかけの
- * ユニットは、継続効果を適用した後のデータ（置かれる直前の属性とＢＰ）で渡す。
+ * スクエアから捨札に置かれるユニットごとの、きっかけ（`DiscardOccasion`）。置かれる前の盤面から作成する。
+ * きっかけのユニットは、継続効果を適用した後のデータ（置かれる直前の属性とＢＰ）と、いたスクエアを
+ * 持つ。スクエアにいるユニット以外のカードからは作成しない。
+ *
+ * 誘発型能力（`triggeredOnSquaresByDiscard`）と捨札のトラップの発動条件（`trap.ts` の `checkDiscard`）が、
+ * 同じものを使う。
  */
-function triggeredOnSquaresByDiscard(state: DuelState, ids: readonly CardId[]): readonly TriggeredInstance[] {
-  const event = 'あなたのユニットがスクエアから捨札に置かれた時'
+function discardOccasions(state: DuelState, ids: readonly CardId[]): readonly DiscardOccasion[] {
   const discarded = onSquares(state, ids)
   // 継続効果を集計するのは重いので、スクエアから置かれるカードが無い時は求めない。
   if (discarded.length === 0) return []
 
   const dataBefore = continuousData(state)
-  return discarded.flatMap((instance) => {
+  return discarded.flatMap((instance): readonly DiscardOccasion[] => {
     const { card } = instance
     const located = locateOnSquares(state, instance.id)
     if (card.type !== 'ユニット' || located === undefined) return []
 
-    const occasion: DiscardOccasion = {
-      kind: '捨札',
-      id: instance.id,
-      square: located.square,
-      card: dataBefore(instance.id, card),
-      controller: instance.controller,
-    }
-    return triggeredOnSquares(state, event, (each) => each.controller === instance.controller, occasion)
+    return [
+      {
+        kind: '捨札',
+        id: instance.id,
+        square: located.square,
+        card: dataBefore(instance.id, card),
+        controller: instance.controller,
+      },
+    ]
   })
+}
+
+/**
+ * スクエアにいるユニットごとに、その支配者の「あなたのユニットがスクエアから捨札に置かれた
+ * 時」の能力を探す。置かれたユニットごとに、そのユニットをきっかけ（`DiscardOccasion`）として
+ * 判定する。能力の側は、置かれたのが自分自身かどうかをきっかけから確認できる。
+ */
+function triggeredOnSquaresByDiscard(
+  state: DuelState,
+  occasions: readonly DiscardOccasion[],
+): readonly TriggeredInstance[] {
+  const event = 'あなたのユニットがスクエアから捨札に置かれた時'
+  return occasions.flatMap((occasion) =>
+    triggeredOnSquares(state, event, (each) => each.controller === occasion.controller, occasion),
+  )
 }
 
 /**

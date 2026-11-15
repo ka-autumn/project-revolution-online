@@ -6,6 +6,7 @@ import {
   createTriggeredAbilityForDiscardedCard,
   damageUnit,
   defineStrategy,
+  defineTrap,
   defineUnit,
   destroy,
   dream,
@@ -854,5 +855,76 @@ describe('相手の手札を見て選ぶ選択への答え', () => {
     const next = applyWithAnswers(state, play, [answer as number])
 
     expect(next.kind).toBe('進んだ')
+  })
+})
+
+// ADR-0072。プランと捨札のトラップのきっかけは、ユニットがスクエアにいない。レベルが高いほうを選ぶ。
+describe('プランと捨札のトラップのきっかけの選択', () => {
+  const planTrap = defineTrap({ name: 'テスト・プランの罠', level: 1, triggerIcon: { kind: 'プラン' } })
+  const discardTrap = defineTrap({ name: 'テスト・捨札の罠', level: 1, triggerIcon: { kind: '捨札' } })
+  const low = defineUnit({ name: 'テスト・低いレベル', level: 1, bp: 3000, sp: 1000 })
+  const high = defineUnit({ name: 'テスト・高いレベル', level: 4, bp: 3000, sp: 1000 })
+
+  /** 先攻が自分のトラップと、満たされた発動条件 2 件を持ち、優先権を持つ盤面で、きっかけを選ばせる。 */
+  function askedWith(trap: Card, occasions: DuelState['trapConditionsMet'], zones: (state: DuelState) => DuelState) {
+    const base = zones(sceneAt('メインフェイズ'))
+    const armed = withZone(withZone(base, '先攻', 'トラップゾーン', [instantiate({ id: 'トラップ', card: trap, owner: '先攻' })]), '先攻', 'エネルギーゾーン', [
+      instantiate({ id: 'エネ', card: unit('エネ', 0, 0), owner: '先攻' }),
+    ])
+    const state: DuelState = { ...armed, trapConditionsMet: occasions }
+    const activate = legalActions(state).find((action) => action.kind === 'トラップを発動する')
+    if (activate === undefined) throw new Error('トラップを発動できるはずだった')
+    const progress = applyWithAnswers(state, activate, [])
+    if (progress.kind !== '選んでほしい') throw new Error('きっかけを選ばせるはずだった')
+
+    return progress
+  }
+
+  /** 候補のうち、CPU が選んだものの番号を、いくつかの seed で取得する。 */
+  const answersOf = (progress: ReturnType<typeof askedWith>) =>
+    new Set(
+      Array.from({ length: 20 }, (_, seed) => scoredCpu.answer(choiceViewOf(progress.board, progress.choice), randomFromSeed(seed)).answer),
+    )
+
+  it('プランでめくれた 2 枚のうち、レベルの高いほうをどの seed でも選ぶ', () => {
+    // 低いほうを先に並べ、先頭を選ぶだけの実装と見分ける。
+    const progress = askedWith(
+      planTrap,
+      [
+        { trap: 'トラップ', occasion: { kind: 'プラン', id: 'めくれた低', card: low }, metAt: 0 },
+        { trap: 'トラップ', occasion: { kind: 'プラン', id: 'めくれた高', card: high }, metAt: 1 },
+      ],
+      (state) =>
+        withZone(withZone(state, '後攻', '捨札', [instantiate({ id: 'めくれた低', card: low, owner: '後攻' })]), '後攻', 'プランゾーン', [
+          instantiate({ id: 'めくれた高', card: high, owner: '後攻' }),
+        ]),
+    )
+
+    expect(progress.choice.candidates.map((candidate) => candidate.kind)).toEqual(['きっかけ', 'きっかけ'])
+    expect(answersOf(progress)).toEqual(new Set([1]))
+  })
+
+  it('捨札に置かれた 2 枚のうち、レベルの高いほうをどの seed でも選ぶ', () => {
+    const placed = (id: string, card: Card): DuelState['trapConditionsMet'][number]['occasion'] => ({
+      kind: '捨札',
+      id,
+      square: { row: OWN_AREA, column: 0 },
+      card: card as ReturnType<typeof defineUnit>,
+      controller: '先攻',
+    })
+    const progress = askedWith(
+      discardTrap,
+      [
+        { trap: 'トラップ', occasion: placed('置かれた低', low), metAt: 0 },
+        { trap: 'トラップ', occasion: placed('置かれた高', high), metAt: 1 },
+      ],
+      (state) =>
+        withZone(state, '先攻', '捨札', [
+          instantiate({ id: '置かれた低', card: low, owner: '先攻' }),
+          instantiate({ id: '置かれた高', card: high, owner: '先攻' }),
+        ]),
+    )
+
+    expect(answersOf(progress)).toEqual(new Set([1]))
   })
 })
