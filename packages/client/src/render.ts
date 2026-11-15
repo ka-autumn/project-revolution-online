@@ -462,19 +462,20 @@ function iconFrame(fill: string): SVGElement {
 
 /**
  * プランのトリガーアイコン。印刷をなぞる（ADR-0072）。紫がかった暗い枠の右上に「Plan」、左下に
- * 「Unit」。中央に、橙の光を背にした、重なったカードの山（いちばん上は表向きの白いカード）。
+ * 「Unit」。右寄りに、橙の光を背にした、縦向きの重なったカードの山（相手のカードと分かるように、帯が上）。
  */
 function planIconParts(): readonly SVGElement[] {
   return [
     iconFrame('#4a3f58'),
     iconText('Plan', 13.6, 4, 2.7, 6),
     iconText('Unit', 1, 19.4, 2.7, 6),
-    svgElement('circle', { cx: '10.4', cy: '10.4', r: '6.6', fill: '#f08a1c', opacity: '.55' }),
-    svgElement('circle', { cx: '10.4', cy: '10.4', r: '4.8', fill: '#f6b04a', opacity: '.8' }),
-    iconCard(4.6, 8.4, 11.4, 6.4),
-    iconCard(4.6, 7, 11.4, 6.4),
-    iconCard(4.6, 5.6, 11.4, 6.8),
-    iconBand(5.2, 10.6, 10.2, 1.4),
+    svgElement('circle', { cx: '12.1', cy: '11.2', r: '7', fill: '#f08a1c', opacity: '.55' }),
+    svgElement('circle', { cx: '12.1', cy: '11.2', r: '5', fill: '#f6b04a', opacity: '.8' }),
+    iconCard(8, 8.4, 8.2, 10.6),
+    iconCard(8, 7, 8.2, 10.6),
+    iconCard(8, 5.6, 8.2, 10.6),
+    iconBand(8.6, 6.2, 7, 1.4),
+    iconBand(8.6, 7.9, 7, 1.2),
   ]
 }
 

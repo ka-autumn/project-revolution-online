@@ -2675,7 +2675,7 @@ function moveIcon(dirs, lost = []) {
 // 対象は赤、ほかは濃い灰色）、オブジェクトなら { kind: '攻撃' | 'スマッシュ' | 'プラン' | '捨札' }。
 // 攻撃・スマッシュは印刷をなぞる。暗い枠の左上に Attack / Smash。相手のカードは上下を逆にして描く。
 // プラン・捨札も印刷をなぞる（ADR-0072）。プランは紫がかった暗い枠で、右上に Plan、左下に Unit、
-// 橙の光を背に重なったカードの山。捨札は青い枠で、上に Opponent's turn、左に白いカード、橙の矢印が右へ伸びて白いドクロのマークにつながる
+// 橙の光を背に、縦向きに重なったカードの山（相手のカードと分かるように、帯が上）。捨札は青い枠で、上に Opponent's turn、左に白いカード、橙の矢印が右へ伸びて白いドクロのマークにつながる
 // 攻撃の絞り込みは左下に文字で書く（メーカーシンボル・属性は値のまま、色は英語）
 const COLOR_ENGLISH = { 赤: 'Red', 黒: 'Black', 青: 'Blue', 白: 'White', 緑: 'Green' }
 function iconText(text, x, y, size, maxWidth) {
@@ -2705,8 +2705,8 @@ function triggerIcon(trigger) {
   if (icon.kind === 'プラン') {
     return `<svg class="trigger-icon" viewBox="0 0 20.6 20.6" role="img" aria-label="トリガーアイコン：プラン">
       <rect x="0" y="0" width="20.6" height="20.6" rx="1.4" fill="#4a3f58"/>${iconText('Plan', 13.6, 4, 2.7, 6)}${iconText('Unit', 1, 19.4, 2.7, 6)}
-      <circle cx="10.4" cy="10.4" r="6.6" fill="#f08a1c" opacity=".55"/><circle cx="10.4" cy="10.4" r="4.8" fill="#f6b04a" opacity=".8"/>
-      ${iconCard(4.6, 8.4, 11.4, 6.4)}${iconCard(4.6, 7, 11.4, 6.4)}${iconCard(4.6, 5.6, 11.4, 6.8)}${iconBand(5.2, 10.6, 10.2, 1.4)}</svg>`
+      <circle cx="12.1" cy="11.2" r="7" fill="#f08a1c" opacity=".55"/><circle cx="12.1" cy="11.2" r="5" fill="#f6b04a" opacity=".8"/>
+      ${iconCard(8, 8.4, 8.2, 10.6)}${iconCard(8, 7, 8.2, 10.6)}${iconCard(8, 5.6, 8.2, 10.6)}${iconBand(8.6, 6.2, 7, 1.4)}${iconBand(8.6, 7.9, 7, 1.2)}</svg>`
   }
   if (icon.kind === '捨札') {
     return `<svg class="trigger-icon" viewBox="0 0 20.6 20.6" role="img" aria-label="トリガーアイコン：捨札">
