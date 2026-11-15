@@ -348,6 +348,8 @@ describe('カードの構造化した値', () => {
     [{ kind: '攻撃' }],
     [{ kind: '攻撃', filter: { axis: 'メーカーシンボル', value: 'XY' } }],
     [{ kind: 'スマッシュ' }],
+    [{ kind: 'プラン' }],
+    [{ kind: '捨札' }],
   ] as const)('トラップの種類つきのトリガーアイコンは、値のまま出る', (icon) => {
     const trap: WireCardInstance = {
       ...instance('とらっぷ', '先攻'),
@@ -3486,6 +3488,12 @@ describe('トリガーアイコンの呼び方', () => {
 
   it('スマッシュは、追加の値を持たない', () => {
     expect(triggerIconLabel({ kind: 'スマッシュ' }, squareName)).toBe('スマッシュ')
+  })
+
+  // ADR-0072
+  it('プランと捨札は、追加の値を持たない', () => {
+    expect(triggerIconLabel({ kind: 'プラン' }, squareName)).toBe('プラン')
+    expect(triggerIconLabel({ kind: '捨札' }, squareName)).toBe('捨札')
   })
 
   // ADR-0038。古いサーバが送るスクエアの並びは種類を持たない。落とさず、読めないと言う。

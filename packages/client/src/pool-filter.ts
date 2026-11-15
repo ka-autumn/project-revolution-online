@@ -57,13 +57,24 @@ export const MOVE_SHAPES: readonly MoveShape[] = [
 /**
  * トラップの発動条件で絞り込む時の値（ADR-0028）。プールの中身に関わらず固定で並べる。
  *
- * いまカードの表記から見分けられるのは、トリガーアイコンの種類で表せる 3 つである
- * （ADR-0039）。絞り込みつきの攻撃も「攻撃された時」に入る。《 》のテキストが表す発動条件は、
+ * いまカードの表記から見分けられるのは、トリガーアイコンの種類で表せる 5 つである
+ * （ADR-0039、ADR-0072）。絞り込みつきの攻撃も「攻撃された時」に入る。《 》のテキストが表す発動条件は、
  * カードの表記に載せてから足す（#232）。
  */
-export type TriggerCondition = '侵入された時' | '攻撃された時' | 'スマッシュされた時'
+export type TriggerCondition =
+  | '侵入された時'
+  | '攻撃された時'
+  | 'スマッシュされた時'
+  | 'プランでめくれた時'
+  | '捨札に置かれた時'
 
-export const TRIGGER_CONDITIONS: readonly TriggerCondition[] = ['侵入された時', '攻撃された時', 'スマッシュされた時']
+export const TRIGGER_CONDITIONS: readonly TriggerCondition[] = [
+  '侵入された時',
+  '攻撃された時',
+  'スマッシュされた時',
+  'プランでめくれた時',
+  '捨札に置かれた時',
+]
 
 /**
  * 種別を画面に出す時の短い呼び方（ADR-0028）。超必殺ストラテジー！は「超必殺」と出す。読み上げと
@@ -170,6 +181,10 @@ function triggerConditionsOf(face: WireCardFace): readonly TriggerCondition[] {
       return ['攻撃された時']
     case 'スマッシュ':
       return ['スマッシュされた時']
+    case 'プラン':
+      return ['プランでめくれた時']
+    case '捨札':
+      return ['捨札に置かれた時']
     default:
       face.triggerIcon satisfies never
       return []

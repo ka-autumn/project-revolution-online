@@ -185,7 +185,9 @@ describe('発動条件の当たり方（ADR-0028）', () => {
     name: 'テスト・スマッシュの罠',
     triggerIcon: { kind: 'スマッシュ' },
   } as WireCardFace)
-  const pool = [...POOL, attackTrap, filteredAttackTrap, smashTrap]
+  const planTrap = card('る', { ...TRAP.face, name: 'テスト・プランの罠', triggerIcon: { kind: 'プラン' } } as WireCardFace)
+  const discardTrap = card('を', { ...TRAP.face, name: 'テスト・捨札の罠', triggerIcon: { kind: '捨札' } } as WireCardFace)
+  const pool = [...POOL, attackTrap, filteredAttackTrap, smashTrap, planTrap, discardTrap]
 
   function keysOf(triggerConditions: PoolFilter['triggerConditions']): readonly string[] {
     return filterPool(pool, { ...emptyFilter(), triggerConditions }).map((each) => each.key)
@@ -201,6 +203,15 @@ describe('発動条件の当たり方（ADR-0028）', () => {
 
   it('「スマッシュされた時」には、スマッシュのトリガーアイコンを持つトラップだけが残る', () => {
     expect(keysOf(['スマッシュされた時'])).toEqual(['ち'])
+  })
+
+  // ADR-0072
+  it('「プランでめくれた時」には、プランのトリガーアイコンを持つトラップだけが残る', () => {
+    expect(keysOf(['プランでめくれた時'])).toEqual(['る'])
+  })
+
+  it('「捨札に置かれた時」には、捨札のトリガーアイコンを持つトラップだけが残る', () => {
+    expect(keysOf(['捨札に置かれた時'])).toEqual(['を'])
   })
 
   // ADR-0038。古いサーバが送るスクエアの並びは、種類を持たない。どの発動条件にも当たらない。

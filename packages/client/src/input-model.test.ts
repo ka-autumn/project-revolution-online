@@ -674,6 +674,22 @@ describe('選ぶ候補', () => {
       ])
     })
 
+    // ADR-0072。プランはめくれたカードの名前、捨札は置かれたユニットの名前といたスクエアで指す。
+    it('プランと捨札の候補は、カードの名前で指し、捨札はいたスクエアも表示する', () => {
+      const asked = {
+        ...choice([
+          { kind: 'きっかけ', occasion: { kind: 'プラン', card: 'てふだの1枚' } },
+          { kind: 'きっかけ', occasion: { kind: '捨札', unit: { card: 'スクエアの1枚', square: { row: 0, column: 1 } } } },
+        ]),
+        purpose: 'トラップのきっかけ' as const,
+      }
+
+      expect(choiceView(board(), asked).candidates.map((candidate) => candidate.label)).toEqual([
+        '1 番目: プラン テスト・手札の戦士',
+        '2 番目: 捨札 テスト・盤上の戦士（味方エリアの中央ライン）',
+      ])
+    })
+
     it('「勇気」の起動では、ダメージを与えるユニットを選ばせる', () => {
       const view = choiceView(board(), {
         ...choice([occasion('てふだの1枚', { row: 1, column: 1 })]),

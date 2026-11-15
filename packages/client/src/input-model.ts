@@ -299,6 +299,11 @@ function occasionLabel(
       return `${position}: 攻撃 ${nameOf(names, occasion.attacker.card)} → ${nameOf(names, occasion.attacked.card)}（${squareLabel(viewer, occasion.attacked.square)}）`
     case 'スマッシュ':
       return `${position}: スマッシュ ${nameOf(names, occasion.smasher.card)}（${squareLabel(viewer, occasion.smasher.square)}）`
+    // めくれたカードはスクエアにいない。プランゾーンか、次のめくりで置かれた捨札にある（ADR-0072）。
+    case 'プラン':
+      return `${position}: プラン ${nameOf(names, occasion.card)}`
+    case '捨札':
+      return `${position}: 捨札 ${nameOf(names, occasion.unit.card)}（${squareLabel(viewer, occasion.unit.square)}）`
     case '置かれた':
       return `${position}: 置かれた ${nameOf(names, occasion.unit.card)}（${squareLabel(viewer, occasion.unit.square)}）`
     default:
