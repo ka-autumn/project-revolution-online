@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   abilityGranting,
+  defineTrap,
   defineUnit,
+  destroy,
   dream,
   granting,
   indexOfSquare,
@@ -234,5 +236,46 @@ describe('プランゾーンのカードへ「夢」を与える常在型能力�
     }
 
     expect(playedFromPlan.count).toBeGreaterThan(0)
+  })
+})
+
+// ADR-0072。プランと捨札のトラップを含むデッキでも、CPU 同士の対戦は止まらず決着する。
+describe('プランと捨札のトラップを含むデッキ', () => {
+  const planTrap = defineTrap({
+    name: 'テスト・プランの罠',
+    level: 1,
+    colors: ['赤'],
+    triggerIcon: { kind: 'プラン' },
+    effect: function* (duel) {
+      for (const enemy of duel.enemies()) yield* destroy(enemy)
+    },
+  })
+  const discardTrap = defineTrap({
+    name: 'テスト・捨札の罠',
+    level: 1,
+    colors: ['赤'],
+    triggerIcon: { kind: '捨札' },
+    effect: function* (duel, occasion) {
+      for (const enemy of duel.enemies()) if (enemy.card.level <= occasion.card.level) yield* destroy(enemy)
+    },
+  })
+  const units: readonly Card[] = Array.from({ length: 13 }, (_, index) =>
+    defineUnit({ name: `テスト・罠のデッキのユニット${index}`, level: index % 2, colors: ['赤'], bp: 1000 + index * 500, sp: 1000, moveIcon: ['上'] }),
+  )
+  const DECK: Deck = [...units, planTrap, discardTrap].flatMap((card) => Array.from({ length: 4 }, () => card))
+
+  it('scoredCpu 同士の対戦が、どのシードでも決着する', () => {
+    const results = Array.from({ length: 12 }, (_, seed) =>
+      playCpuDuel({
+        seats: [
+          { cpu: scoredCpu, deck: DECK },
+          { cpu: scoredCpu, deck: DECK },
+        ],
+        seed,
+        maxActions: 5000,
+      }).kind,
+    )
+
+    expect(results).toEqual(Array.from({ length: 12 }, () => '決着'))
   })
 })

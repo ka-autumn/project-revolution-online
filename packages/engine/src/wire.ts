@@ -137,13 +137,16 @@ export interface WireUnitOnSquare {
 }
 
 /**
- * 通信に載せる形にした `TrapOccasion`。種類は、トリガーアイコンの種類と同じ 3 つである
- * （ADR-0039）。ユニットは、できごとが起きた時点の、カードに書かれているデータの写しを持つ。
+ * 通信用の形式にした `TrapOccasion`。種類は、トリガーアイコンの種類と同じ 5 つである
+ * （ADR-0039、ADR-0072）。ユニットは、できごとが起きた時点の、カードに書かれているデータの写しを持つ。
+ * 捨札の `discarded` は、置かれる直前の、継続効果を適用した後のデータと、いたスクエアを持つ。
  */
 export type WireTrapOccasion =
   | { readonly kind: '侵入'; readonly invader: WireUnitOnSquare }
   | { readonly kind: '攻撃'; readonly attacker: WireUnitOnSquare; readonly attacked: WireUnitOnSquare }
   | { readonly kind: 'スマッシュ'; readonly smasher: WireUnitOnSquare }
+  | { readonly kind: 'プラン'; readonly id: CardId; readonly card: WireUnitFace }
+  | { readonly kind: '捨札'; readonly discarded: WireUnitOnSquare }
 
 /** 通信に載せる形にした `TrapConditionMet`。 */
 export interface WireTrapConditionMet {
@@ -284,6 +287,13 @@ function occasionToWire(occasion: TrapOccasion, presentationOf: CardPresentation
       return { kind: '攻撃', attacker: unitToWire(occasion.attacker, presentationOf), attacked: unitToWire(occasion.attacked, presentationOf) }
     case 'スマッシュ':
       return { kind: 'スマッシュ', smasher: unitToWire(occasion.smasher, presentationOf) }
+    case 'プラン':
+      return { kind: 'プラン', id: occasion.id, card: { ...unitFaceOf(occasion.card), ...presentationOf(occasion.card) } }
+    case '捨札': {
+      // きっかけの種類を表す `kind` は、ユニットの写しに混ぜない。
+      const { id, square, card, controller } = occasion
+      return { kind: '捨札', discarded: unitToWire({ id, square, card, controller }, presentationOf) }
+    }
   }
 }
 

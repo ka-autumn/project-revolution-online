@@ -566,9 +566,16 @@ function mapInstructionCard(instruction: LoggedInstruction, map: CardMapping): L
   return 'card' in instruction ? { ...instruction, card: map(instruction.card) } : instruction
 }
 
-/** そのトラップが視点のプレイヤーのトラップゾーンにあるか。 */
+/**
+ * そのトラップが視点のプレイヤーのものか。トラップゾーンにあるか、視点のプレイヤーが発動して
+ * リゾルブゾーンで解決している最中である（`play.ts` の `activateTrap`）。後者は、効果の途中の
+ * 選択で、CPU が発動に使ったきっかけを効果に渡せるようにするために残している。
+ */
 function ownsTrap(state: DuelState, viewer: Player, met: TrapConditionMet): boolean {
-  return cardsIn(state, viewer, 'トラップゾーン').some((card) => card.id === met.trap)
+  return (
+    cardsIn(state, viewer, 'トラップゾーン').some((card) => card.id === met.trap) ||
+    state.resolveZone.some((card) => card.id === met.trap && card.controller === viewer)
+  )
 }
 
 /**

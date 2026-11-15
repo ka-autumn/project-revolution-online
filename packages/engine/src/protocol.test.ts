@@ -1332,6 +1332,58 @@ describe('発動するきっかけを選ぶ', () => {
 
       expect(smashedBy).toEqual(['1 体目'])
     })
+
+    // ADR-0072。プランでめくれたカードはスクエアにいないので、識別子だけで指す。
+    it('プランのきっかけは、めくれたカードを識別子で指し、選んだきっかけのレベルで効果が解決される', () => {
+      const turnedUpLevels: number[] = []
+      const planTrapCard = defineTrap({
+        name: 'テスト・プランのトラップ',
+        level: 1,
+        colors: ['赤'],
+        triggerIcon: { kind: 'プラン' },
+        effect: function* (_duel, occasion) {
+          turnedUpLevels.push(occasion.card.level)
+        },
+      })
+      const high = defineUnit({ name: 'テスト・高いレベル', level: 4, colors: ['赤'], bp: 1000, sp: 1000 })
+      const state = armedWith(planTrapCard, [
+        { kind: 'プラン', id: '1 枚目', card: testCard },
+        { kind: 'プラン', id: '2 枚目', card: high },
+      ])
+
+      const progress = applyWithAnswers(state, ACTIVATE, [])
+
+      expectChoice(progress)
+      expect(progress.choice.candidates).toEqual([
+        { kind: 'きっかけ', occasion: { kind: 'プラン', card: '1 枚目', name: testCard.name, level: testCard.level } },
+        { kind: 'きっかけ', occasion: { kind: 'プラン', card: '2 枚目', name: high.name, level: 4 } },
+      ])
+      expectAdvanced(applyWithAnswers(state, ACTIVATE, [1]))
+      expect(turnedUpLevels).toEqual([4])
+    })
+
+    // ADR-0072。捨札のきっかけは、置かれたユニットの識別子と、いたスクエアで指す。
+    it('捨札のきっかけは、置かれたユニットを識別子といたスクエアで指す', () => {
+      const discardTrapCard = defineTrap({
+        name: 'テスト・捨札のトラップ',
+        level: 1,
+        colors: ['赤'],
+        triggerIcon: { kind: '捨札' },
+      })
+      const state = armedWith(discardTrapCard, [
+        { kind: '捨札', ...unitAt('1 体目', here, '後攻') },
+        { kind: '捨札', ...unitAt('2 体目', there, '後攻') },
+      ])
+
+      const progress = applyWithAnswers(state, ACTIVATE, [])
+
+      expectChoice(progress)
+      expect(progress.choice.candidates).toEqual([
+        { kind: 'きっかけ', occasion: { kind: '捨札', unit: { card: '1 体目', square: here }, name: testCard.name, level: testCard.level } },
+        { kind: 'きっかけ', occasion: { kind: '捨札', unit: { card: '2 体目', square: there }, name: testCard.name, level: testCard.level } },
+      ])
+      expectAdvanced(applyWithAnswers(state, ACTIVATE, [0]))
+    })
   })
 })
 

@@ -455,6 +455,59 @@ function smashIconParts(): readonly SVGElement[] {
   ]
 }
 
+/** 色つきの地。プラン・捨札のトリガーアイコンの枠である（印刷では枠の色がそれぞれ違う）。 */
+function iconFrame(fill: string): SVGElement {
+  return svgElement('rect', { x: '0', y: '0', width: '20.6', height: '20.6', rx: '1.4', fill })
+}
+
+/**
+ * プランのトリガーアイコン。印刷をなぞる（ADR-0072）。紫がかった暗い枠の右上に「Plan」、左下に
+ * 「Unit」。右寄りに、橙の光を背にした、縦向きの重なったカードの山（相手のカードと分かるように、帯が上）。
+ */
+function planIconParts(): readonly SVGElement[] {
+  return [
+    iconFrame('#4a3f58'),
+    iconText('Plan', 13.6, 4, 2.7, 6),
+    iconText('Unit', 1, 19.4, 2.7, 6),
+    svgElement('circle', { cx: '12.1', cy: '11.2', r: '7', fill: '#f08a1c', opacity: '.55' }),
+    svgElement('circle', { cx: '12.1', cy: '11.2', r: '5', fill: '#f6b04a', opacity: '.8' }),
+    iconCard(8, 8.4, 8.2, 10.6),
+    iconCard(8, 7, 8.2, 10.6),
+    iconCard(8, 5.6, 8.2, 10.6),
+    iconBand(8.6, 6.2, 7, 1.4),
+    iconBand(8.6, 7.9, 7, 1.2),
+  ]
+}
+
+/**
+ * 捨札のトリガーアイコン。印刷をなぞる（ADR-0072）。青い枠の上に「Opponent's turn」（2 行）。左に
+ * 白い縦向きのカード、橙の矢印が右へ伸びて、白いドクロのマーク（クロスボーン）につながる。
+ */
+function discardIconParts(): readonly SVGElement[] {
+  const eye = (cx: string) => svgElement('circle', { cx, cy: '12', r: '.6', fill: '#244a8c' })
+  return [
+    iconFrame('#244a8c'),
+    iconText("Opponent's", 1, 3.9, 2.4, 18.6),
+    iconText('turn', 1, 6.7, 2.4, 5.2),
+    iconCard(1.6, 8.6, 6.8, 10.2),
+    iconBand(2.2, 14.8, 5.6, 1.4),
+    iconBand(2.2, 16.7, 5.6, 1.2),
+    svgElement('path', { d: 'M8.8 13.8H12', stroke: '#f08a1c', 'stroke-width': '1.3', fill: 'none' }),
+    svgElement('path', { d: 'M11.4 11.6V16L14 13.8Z', fill: '#e8501a' }),
+    svgElement('circle', { cx: '16.6', cy: '12', r: '2.4', fill: '#fff' }),
+    eye('15.7'),
+    eye('17.5'),
+    svgElement('rect', { x: '15.6', y: '13.9', width: '2', height: '1.1', fill: '#fff' }),
+    svgElement('path', {
+      d: 'M14.2 16.4L19 19.2M19 16.4L14.2 19.2',
+      stroke: '#fff',
+      'stroke-width': '1.1',
+      'stroke-linecap': 'round',
+      fill: 'none',
+    }),
+  ]
+}
+
 /**
  * 侵入のトリガーアイコン。侵入の対象のスクエアは赤、ほかは濃い灰色にする（総合ルール 第2部
  * 第12章）。図は印刷された向き（支配者の手前を基準にした向き、`printedSquareLabel`）のまま。
@@ -497,6 +550,12 @@ function triggerIconElement(icon: TriggerIcon): SVGElement {
       break
     case 'スマッシュ':
       svg.append(...smashIconParts())
+      break
+    case 'プラン':
+      svg.append(...planIconParts())
+      break
+    case '捨札':
+      svg.append(...discardIconParts())
       break
     default:
       icon satisfies never

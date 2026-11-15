@@ -785,6 +785,10 @@ export function triggerIconLabel(icon: TriggerIcon, squareName: (square: Square)
       return icon.filter === undefined ? '攻撃' : `攻撃（${triggerFilterLabel(icon.filter)}）`
     case 'スマッシュ':
       return 'スマッシュ'
+    case 'プラン':
+      return 'プラン'
+    case '捨札':
+      return '捨札'
     default:
       icon satisfies never
       return '（表示できないトリガーアイコン）'

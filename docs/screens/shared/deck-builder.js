@@ -148,7 +148,7 @@ function moveIcon(dirs) {
   s.append(svg('path', { d: 'M10 0.6 19.4 10 10 19.4 0.6 10Z', fill: '#2a2a2a', stroke: '#fff', 'stroke-width': '0.8' }), svg('path', { d: 'M10 2.6 12.4 6H7.6Z', fill: on('上') }), svg('path', { d: 'M10 17.4 12.4 14H7.6Z', fill: on('下') }), svg('path', { d: 'M2.6 10 6 7.6V12.4Z', fill: on('左') }), svg('path', { d: 'M17.4 10 14 7.6V12.4Z', fill: on('右') }), svg('circle', { cx: '10', cy: '10', r: '2.6', fill: '#c81c1c', stroke: '#fff', 'stroke-width': '0.6' }))
   return s
 }
-// トリガーアイコン（ADR-0039）。種類つきの値 { kind: '侵入', squares } / { kind: '攻撃', filter? } / { kind: 'スマッシュ' }。
+// トリガーアイコン（ADR-0039）。種類つきの値 { kind: '侵入', squares } / { kind: '攻撃', filter? } / { kind: 'スマッシュ' } / { kind: 'プラン' } / { kind: '捨札' }。
 // 攻撃・スマッシュは印刷をなぞる。暗い枠の左上に Attack / Smash。相手のカードは上下を逆にして描く。
 // 攻撃の絞り込みは左下に文字で書く（メーカーシンボル・属性は値のまま、色は英語）
 const COLOR_ENGLISH = { 赤: 'Red', 黒: 'Black', 青: 'Blue', 白: 'White', 緑: 'Green' }
@@ -174,6 +174,23 @@ function triggerIcon(icon) {
     s.innerHTML = `${dark}${iconText('Smash', 1, 4, 2.7, 8.6)}${iconCard(10.6, 6.4, 8.8, 12.8)}${iconBand(11.2, 7, 7.6, 1.2)}${iconBand(11.2, 8.6, 7.6, 1.4)}
       ${iconCard(1.2, 5.2, 12.4, 8.6)}${iconBand(10, 5.8, 1.4, 7.4)}${iconBand(11.8, 5.8, 1.2, 7.4)}
       <path d="M14.6 17.6C10.6 17.6 7.6 16.6 7.2 13.6" stroke="#f08a1c" stroke-width="1.3" fill="none"/><path d="M5 14.4H9.4L7.2 11.2Z" fill="#e8501a"/>`
+    return s
+  }
+  // プラン・捨札（ADR-0072）。印刷をなぞる。
+  if (icon.kind === 'プラン') {
+    const s = svg('svg', { class: 'trigger-icon', viewBox: '0 0 20.6 20.6', role: 'img', 'aria-label': 'トリガーアイコン：プラン' })
+    s.innerHTML = `<rect x="0" y="0" width="20.6" height="20.6" rx="1.4" fill="#4a3f58"/>${iconText('Plan', 13.6, 4, 2.7, 6)}${iconText('Unit', 1, 19.4, 2.7, 6)}
+      <circle cx="12.1" cy="11.2" r="7" fill="#f08a1c" opacity=".55"/><circle cx="12.1" cy="11.2" r="5" fill="#f6b04a" opacity=".8"/>
+      ${iconCard(8, 8.4, 8.2, 10.6)}${iconCard(8, 7, 8.2, 10.6)}${iconCard(8, 5.6, 8.2, 10.6)}${iconBand(8.6, 6.2, 7, 1.4)}${iconBand(8.6, 7.9, 7, 1.2)}`
+    return s
+  }
+  if (icon.kind === '捨札') {
+    const s = svg('svg', { class: 'trigger-icon', viewBox: '0 0 20.6 20.6', role: 'img', 'aria-label': 'トリガーアイコン：捨札' })
+    s.innerHTML = `<rect x="0" y="0" width="20.6" height="20.6" rx="1.4" fill="#244a8c"/>${iconText("Opponent's", 1, 3.9, 2.4, 18.6)}${iconText('turn', 1, 6.7, 2.4, 5.2)}
+      ${iconCard(1.6, 8.6, 6.8, 10.2)}${iconBand(2.2, 14.8, 5.6, 1.4)}${iconBand(2.2, 16.7, 5.6, 1.2)}
+      <path d="M8.8 13.8H12" stroke="#f08a1c" stroke-width="1.3" fill="none"/><path d="M11.4 11.6V16L14 13.8Z" fill="#e8501a"/>
+      <circle cx="16.6" cy="12" r="2.4" fill="#fff"/><circle cx="15.7" cy="12" r=".6" fill="#244a8c"/><circle cx="17.5" cy="12" r=".6" fill="#244a8c"/><rect x="15.6" y="13.9" width="2" height="1.1" fill="#fff"/>
+      <path d="M14.2 16.4L19 19.2M19 16.4L14.2 19.2" stroke="#fff" stroke-width="1.1" stroke-linecap="round"/>`
     return s
   }
   const cells = icon.squares

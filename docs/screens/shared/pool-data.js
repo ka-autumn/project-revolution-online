@@ -45,4 +45,6 @@ window.POOL = [
   {"key":"MHB-23","face":{"type":"トラップ","name":"見本・色を絞る罠","level":2,"colors":["黒"],"stars":0,"reverseStars":0,"attributes":[],"keywords":[],"text":["《攻撃された時》（見本）"],"triggerIcon":{"kind":"攻撃","filter":{"axis":"色","value":"赤"}}},"expansions":["見本デッキ B"]},
   {"key":"MHB-24","face":{"type":"トラップ","name":"見本・属性を絞る罠","level":2,"colors":["白"],"stars":0,"reverseStars":0,"attributes":[],"keywords":[],"text":["《攻撃された時》（見本）"],"triggerIcon":{"kind":"攻撃","filter":{"axis":"属性","value":"見本"}}},"expansions":["見本デッキ B"]},
   {"key":"MHB-25","face":{"type":"トラップ","name":"見本・スマッシュの罠","level":3,"colors":["緑"],"stars":0,"reverseStars":0,"attributes":[],"keywords":[],"text":["《スマッシュされた時》（見本）"],"triggerIcon":{"kind":"スマッシュ"}},"expansions":["見本デッキ B"]},
+  {"key":"MHB-26","face":{"type":"トラップ","name":"見本・プランの罠","level":5,"colors":["黒"],"stars":0,"reverseStars":0,"attributes":[],"keywords":[],"text":["《プランでユニットがめくれた時》（見本）"],"triggerIcon":{"kind":"プラン"}},"expansions":["見本デッキ B"]},
+  {"key":"MHB-27","face":{"type":"トラップ","name":"見本・捨札の罠","level":3,"colors":["黒"],"stars":0,"reverseStars":0,"attributes":[],"keywords":[],"text":["《味方が捨札に置かれた時》（見本）"],"triggerIcon":{"kind":"捨札"}},"expansions":["見本デッキ B"]},
 ]

@@ -12,7 +12,7 @@
  * URL に ?trap-icons を付けて開くと、自分の手札が、攻撃・絞り込みつきの攻撃 3 種（記号・色・属性）・
  * スマッシュのトリガーアイコンの見本 5 枚に替わる（ADR-0039）。対戦の大きさのカードに載せた時の、
  * 絞り込みの小さな文字の読みやすさと、アイコンが左に寄る様子を見るためのもの。
- * URL に ?trap-occasions を付けて開くと、トラップ（侵入・攻撃・スマッシュ）を発動する時と「勇気」を起動する時に、
+ * URL に ?trap-occasions を付けて開くと、トラップ（侵入・攻撃・スマッシュ・プラン・捨札）を発動する時と「勇気」を起動する時に、
  * 権利が発生しているきっかけが複数ある場面の選択（問いの行と、番号つきの候補）の見本が、行える手の欄に出る
  * （ADR-0039）。
  */
@@ -1418,7 +1418,6 @@ body {
 }
 
 
-}
 
 .card--拡大 {
   --card-width: 14.5rem;
@@ -2597,6 +2596,9 @@ const cards = {
   見本・色を絞る罠: { lv: 2, color: '黒', kind: 'トラップ', trigger: { kind: '攻撃', filter: { axis: '色', value: '赤' } }, text: ['《攻撃された時》（見本）'] },
   見本・属性を絞る罠: { lv: 2, color: '白', kind: 'トラップ', trigger: { kind: '攻撃', filter: { axis: '属性', value: '見本' } }, text: ['《攻撃された時》（見本）'] },
   見本・スマッシュの罠: { lv: 3, color: '緑', kind: 'トラップ', trigger: { kind: 'スマッシュ' }, text: ['《スマッシュされた時》スマッシュしてきた敵をフリーズする。'] },
+  // プラン・捨札のトリガーアイコン（ADR-0072）。どちらも架空の見本で、実在のカードの文ではない。
+  見本・プランの罠: { lv: 5, color: '黒', kind: 'トラップ', trigger: { kind: 'プラン' }, text: ['《プランでユニットがめくれた時》（見本）'] },
+  見本・捨札の罠: { lv: 3, color: '黒', kind: 'トラップ', trigger: { kind: '捨札' }, text: ['《味方が捨札に置かれた時》（見本）'] },
   見本・メカナイト: { lv: 4, color: '青', kind: 'ユニット', bp: 5000, sp: 1000, traits: 'ロボット', move: ['上'], text: [] },
   見本・森の守護者: { lv: 3, color: '緑', kind: 'ユニット', bp: 3500, sp: 1500, traits: '木霊', move: ['左', '右'], text: [] },
   見本・竜の飛翔: { lv: 2, color: '赤', kind: 'ストラテジー', text: ['ユニット 1 体に 2000 ダメージを与える。'] },
@@ -2669,8 +2671,10 @@ function moveIcon(dirs, lost = []) {
 }
 
 // トリガーアイコン（ADR-0039）。種類ごとに描き分ける。trigger は、配列なら侵入（3×3 のスクエア。
-// 対象は赤、ほかは濃い灰色）、オブジェクトなら { kind: '攻撃' | 'スマッシュ' }。
+// 対象は赤、ほかは濃い灰色）、オブジェクトなら { kind: '攻撃' | 'スマッシュ' | 'プラン' | '捨札' }。
 // 攻撃・スマッシュは印刷をなぞる。暗い枠の左上に Attack / Smash。相手のカードは上下を逆にして描く。
+// プラン・捨札も印刷をなぞる（ADR-0072）。プランは紫がかった暗い枠で、右上に Plan、左下に Unit、
+// 橙の光を背に、縦向きに重なったカードの山（相手のカードと分かるように、帯が上）。捨札は青い枠で、上に Opponent's turn、左に白いカード、橙の矢印が右へ伸びて白いドクロのマークにつながる
 // 攻撃の絞り込みは左下に文字で書く（メーカーシンボル・属性は値のまま、色は英語）
 const COLOR_ENGLISH = { 赤: 'Red', 黒: 'Black', 青: 'Blue', 白: 'White', 緑: 'Green' }
 function iconText(text, x, y, size, maxWidth) {
@@ -2696,6 +2700,20 @@ function triggerIcon(trigger) {
       ${dark}${iconText('Smash', 1, 4, 2.7, 8.6)}${iconCard(10.6, 6.4, 8.8, 12.8)}${iconBand(11.2, 7, 7.6, 1.2)}${iconBand(11.2, 8.6, 7.6, 1.4)}
       ${iconCard(1.2, 5.2, 12.4, 8.6)}${iconBand(10, 5.8, 1.4, 7.4)}${iconBand(11.8, 5.8, 1.2, 7.4)}
       <path d="M14.6 17.6C10.6 17.6 7.6 16.6 7.2 13.6" stroke="#f08a1c" stroke-width="1.3" fill="none"/><path d="M5 14.4H9.4L7.2 11.2Z" fill="#e8501a"/></svg>`
+  }
+  if (icon.kind === 'プラン') {
+    return `<svg class="trigger-icon" viewBox="0 0 20.6 20.6" role="img" aria-label="トリガーアイコン：プラン">
+      <rect x="0" y="0" width="20.6" height="20.6" rx="1.4" fill="#4a3f58"/>${iconText('Plan', 13.6, 4, 2.7, 6)}${iconText('Unit', 1, 19.4, 2.7, 6)}
+      <circle cx="12.1" cy="11.2" r="7" fill="#f08a1c" opacity=".55"/><circle cx="12.1" cy="11.2" r="5" fill="#f6b04a" opacity=".8"/>
+      ${iconCard(8, 8.4, 8.2, 10.6)}${iconCard(8, 7, 8.2, 10.6)}${iconCard(8, 5.6, 8.2, 10.6)}${iconBand(8.6, 6.2, 7, 1.4)}${iconBand(8.6, 7.9, 7, 1.2)}</svg>`
+  }
+  if (icon.kind === '捨札') {
+    return `<svg class="trigger-icon" viewBox="0 0 20.6 20.6" role="img" aria-label="トリガーアイコン：捨札">
+      <rect x="0" y="0" width="20.6" height="20.6" rx="1.4" fill="#244a8c"/>${iconText("Opponent's", 1, 3.9, 2.4, 18.6)}${iconText('turn', 1, 6.7, 2.4, 5.2)}
+      ${iconCard(1.6, 8.6, 6.8, 10.2)}${iconBand(2.2, 14.8, 5.6, 1.4)}${iconBand(2.2, 16.7, 5.6, 1.2)}
+      <path d="M8.8 13.8H12" stroke="#f08a1c" stroke-width="1.3" fill="none"/><path d="M11.4 11.6V16L14 13.8Z" fill="#e8501a"/>
+      <circle cx="16.6" cy="12" r="2.4" fill="#fff"/><circle cx="15.7" cy="12" r=".6" fill="#244a8c"/><circle cx="17.5" cy="12" r=".6" fill="#244a8c"/><rect x="15.6" y="13.9" width="2" height="1.1" fill="#fff"/>
+      <path d="M14.2 16.4L19 19.2M19 16.4L14.2 19.2" stroke="#fff" stroke-width="1.1" stroke-linecap="round"/></svg>`
   }
   const cells = icon.cells
   const rects = []
@@ -3012,6 +3030,8 @@ fan(document.getElementById('hand-own'), trapIconSamples
       card('見本・色を絞る罠', '自分'),
       card('見本・属性を絞る罠', '自分'),
       card('見本・スマッシュの罠', '自分'),
+      card('見本・プランの罠', '自分'),
+      card('見本・捨札の罠', '自分'),
     ]
   : [
       card('見本・霧島透', '自分', { pickable: true }),
@@ -3907,9 +3927,10 @@ for (const box of document.querySelectorAll('.mock-switch input')) {
 apply()
 
 // ?trap-occasions を付けて開くと、きっかけを選ぶ場面の見本が、行える手の欄に出る（ADR-0039）。
-// トラップを発動する時（侵入・攻撃・スマッシュ）と、「勇気」を起動する時を並べる。候補は、トラップなら
+// トラップを発動する時（侵入・攻撃・スマッシュ・プラン・捨札）と、「勇気」を起動する時を並べる。候補は、トラップなら
 // 「侵入 〈ユニット名〉（〈スクエアの呼び名〉）」「攻撃 〈攻撃したユニット〉 → 〈攻撃されたユニット〉（〈スクエアの
-// 呼び名〉）」「スマッシュ 〈スマッシュしたユニット〉（〈スクエアの呼び名〉）」、「勇気」なら
+// 呼び名〉）」「スマッシュ 〈スマッシュしたユニット〉（〈スクエアの呼び名〉）」「プラン 〈めくれたカード〉」
+// 「捨札 〈置かれたユニット〉（〈いたスクエアの呼び名〉）」、「勇気」なら
 // 「置かれた 〈ユニット名〉（〈スクエアの呼び名〉）」（「勇気」の起動条件はトリガーアイコンと関係が無いので、
 // 侵入とは呼ばない）。番号のボタンだけで、盤面のカードを押す形にはしない。
 if (new URLSearchParams(location.search).has('trap-occasions')) {
@@ -3927,6 +3948,12 @@ if (new URLSearchParams(location.search).has('trap-occasions')) {
     heading('見本・ふわふわ砲 を発動するきっかけを選んでください'),
     button('1 番目: スマッシュ 見本・霧島透（中央エリアの左ライン）'),
     button('2 番目: スマッシュ 見本・もちぬい（味方エリアの右ライン）'),
+    heading('見本・プランの罠 を発動するきっかけを選んでください'),
+    button('1 番目: プラン 見本・霧島透'),
+    button('2 番目: プラン 見本・もちぬい'),
+    heading('見本・捨札の罠 を発動するきっかけを選んでください'),
+    button('1 番目: 捨札 見本・霧島透（味方エリアの左ライン）'),
+    button('2 番目: 捨札 見本・もちぬい（味方エリアの右ライン）'),
     heading('見本・パルフェ・若葉 でダメージを与えるユニットを選んでください'),
     button('1 番目: 置かれた 見本・霧島透（味方エリアの左ライン）'),
     button('2 番目: 置かれた 見本・もちぬい（味方エリアの右ライン）'),

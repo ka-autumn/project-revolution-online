@@ -19,7 +19,7 @@ import type { Player } from './player.js'
 import { activePlayerMayAct, grantPriorityToInactive } from './priority.js'
 import type { Chooser } from './resolve.js'
 import type { UnitOnSquare } from './effect.js'
-import { checkSmash } from './trap.js'
+import { checkPlan, checkSmash } from './trap.js'
 import { duelView, unitsOnSquares } from './view.js'
 import { moveToZone } from './zone-move.js'
 
@@ -344,5 +344,8 @@ function turnUpTopOfLibrary(state: DuelState, player: Player): DuelState {
   if (top === undefined && current === undefined) return cleared
 
   const placed = top === undefined ? cleared : moveToZone(cleared, [top.id], 'プランゾーン')
-  return record(placed, { kind: 'プランをめくった', player, card: top?.id, discarded: current?.id })
+  const turnedUp = record(placed, { kind: 'プランをめくった', player, card: top?.id, discarded: current?.id })
+  // 「プランでカードがめくれた」できごと。プランのトラップの発動条件（ADR-0072）は、ここでめくれた
+  // ユニット 1 枚ごとに判定する。めくれたカードが無ければ判定しない。
+  return top === undefined ? turnedUp : checkPlan(turnedUp, player, top)
 }

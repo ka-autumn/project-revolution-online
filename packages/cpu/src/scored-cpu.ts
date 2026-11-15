@@ -795,11 +795,19 @@ function fallbackTargets(perspective: DuelPerspective, choice: WireChoice): read
   return mixed || alliesOnly ? sides : sides.map(() => 0)
 }
 
-/** きっかけの候補の点数。きっかけになった相手のユニットの基礎点が高いほうを選ぶ。 */
+/**
+ * きっかけの候補の点数。きっかけになった相手のユニットの基礎点が高いほうを選ぶ。
+ *
+ * プランと捨札のきっかけ（ADR-0072）は、ユニットがスクエアにいない。効果の範囲が、めくれた・置かれた
+ * カードのレベルで決まるので、レベルが高いほうを選ぶ。
+ */
 function occasionScore(perspective: DuelPerspective, candidate: WireCandidate): number {
   if (candidate.kind !== 'きっかけ') return 0
 
   const occasion = candidate.occasion
+  // できごとの時点のレベルを、候補が持っている。盤面のカードは、発動するまでに別の場所へ動くことがある。
+  if (occasion.kind === 'プラン' || occasion.kind === '捨札') return occasion.level
+
   const id =
     occasion.kind === '侵入'
       ? occasion.invader.card

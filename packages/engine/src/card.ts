@@ -12,7 +12,14 @@ import type {
   PlanReplacingAbility,
 } from './ability.js'
 import type { MoveDirection, Square } from './board.js'
-import type { AttackTrapEffect, Effect, SmashTrapEffect, TrapEffect } from './effect.js'
+import type {
+  AttackTrapEffect,
+  DiscardTrapEffect,
+  Effect,
+  PlanTrapEffect,
+  SmashTrapEffect,
+  TrapEffect,
+} from './effect.js'
 
 /**
  * カードの色。レベルに含まれるエネルギー・シンボルの色と同じであり、カードの背景や枠の色
@@ -230,12 +237,33 @@ export interface SmashIcon {
 }
 
 /**
- * トラップの発動条件を表すトリガーアイコン。種類で分けた値で、1 枚のトラップが持つのは
- * どれか 1 つである（ADR-0039）。
+ * プランのトリガーアイコン。追加の値を持たない（ADR-0072）。
  *
- * 発動条件は種類ごとに判定する（`trap.ts` の `checkIntrusion`・`checkAttack`・`checkSmash`）。
+ * 相手がプランの行動を行い、山札の 1 番上のユニットが表向きになった時に満たされる
+ * （`trap.ts` の `checkPlan`）。絞り込みは持たない。
  */
-export type TriggerIcon = IntrusionIcon | AttackIcon | SmashIcon
+export interface PlanIcon {
+  readonly kind: 'プラン'
+}
+
+/**
+ * 捨札のトリガーアイコン。追加の値を持たない（ADR-0072）。
+ *
+ * 支配者でないプレイヤーのターンに、支配者のユニットがスクエアから捨札に置かれた時に満たされる
+ * （`trap.ts` の `checkDiscard`）。絞り込みは持たない。
+ */
+export interface DiscardIcon {
+  readonly kind: '捨札'
+}
+
+/**
+ * トラップの発動条件を表すトリガーアイコン。種類で分けた値で、1 枚のトラップが持つのは
+ * どれか 1 つである（ADR-0039、ADR-0072）。
+ *
+ * 発動条件は種類ごとに判定する（`trap.ts` の `checkIntrusion`・`checkAttack`・`checkSmash`・
+ * `checkPlan`・`checkDiscard`）。
+ */
+export type TriggerIcon = IntrusionIcon | AttackIcon | SmashIcon | PlanIcon | DiscardIcon
 
 /** トラップゾーンに裏向きで置き、後から発動するカードの、種類によらない部分（総合ルール 第2部 第20章 3）。 */
 interface TrapCardOf<Icon extends TriggerIcon, Effect> extends WrittenCard {
@@ -270,8 +298,14 @@ export type AttackTrapCard = TrapCardOf<AttackIcon, AttackTrapEffect>
 /** スマッシュのトラップ。効果は、スマッシュしたユニットをきっかけから受け取る。 */
 export type SmashTrapCard = TrapCardOf<SmashIcon, SmashTrapEffect>
 
+/** プランのトラップ。効果は、プランでめくれたユニットをきっかけから受け取る（ADR-0072）。 */
+export type PlanTrapCard = TrapCardOf<PlanIcon, PlanTrapEffect>
+
+/** 捨札のトラップ。効果は、捨札に置かれたユニットをきっかけから受け取る（ADR-0072）。 */
+export type DiscardTrapCard = TrapCardOf<DiscardIcon, DiscardTrapEffect>
+
 /** トラップゾーンに裏向きで置き、後から発動するカード（総合ルール 第2部 第20章 3）。 */
-export type TrapCard = IntrusionTrapCard | AttackTrapCard | SmashTrapCard
+export type TrapCard = IntrusionTrapCard | AttackTrapCard | SmashTrapCard | PlanTrapCard | DiscardTrapCard
 
 /**
  * 侵入のトラップか。入れ子の `triggerIcon.kind` を見ても、カードそのものの型は絞れない
@@ -378,7 +412,11 @@ export function defineStrategy(spec: StrategySpec): StrategyCard {
 export function defineTrap(spec: TrapSpecOf<IntrusionIcon, TrapEffect>): IntrusionTrapCard
 export function defineTrap(spec: TrapSpecOf<AttackIcon, AttackTrapEffect>): AttackTrapCard
 export function defineTrap(spec: TrapSpecOf<SmashIcon, SmashTrapEffect>): SmashTrapCard
-export function defineTrap(spec: TrapSpecOf<TriggerIcon, TrapEffect | AttackTrapEffect | SmashTrapEffect>): TrapCard {
+export function defineTrap(spec: TrapSpecOf<PlanIcon, PlanTrapEffect>): PlanTrapCard
+export function defineTrap(spec: TrapSpecOf<DiscardIcon, DiscardTrapEffect>): DiscardTrapCard
+export function defineTrap(
+  spec: TrapSpecOf<TriggerIcon, TrapEffect | AttackTrapEffect | SmashTrapEffect | PlanTrapEffect | DiscardTrapEffect>,
+): TrapCard {
   return { ...written('トラップ', spec), triggerIcon: spec.triggerIcon, effect: spec.effect ?? noEffect } as TrapCard
 }
 

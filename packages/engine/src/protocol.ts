@@ -495,6 +495,8 @@ export type WireCandidate =
         | { readonly kind: '侵入'; readonly invader: WireCandidateUnit }
         | { readonly kind: '攻撃'; readonly attacker: WireCandidateUnit; readonly attacked: WireCandidateUnit }
         | { readonly kind: 'スマッシュ'; readonly smasher: WireCandidateUnit }
+        | { readonly kind: 'プラン'; readonly card: CardId; readonly name: string; readonly level: number }
+        | { readonly kind: '捨札'; readonly unit: WireCandidateUnit; readonly name: string; readonly level: number }
         | { readonly kind: '置かれた'; readonly unit: WireCandidateUnit }
     }
 
@@ -1103,6 +1105,16 @@ function describeCandidate(
         }
       case 'スマッシュ':
         return { kind: 'きっかけ', occasion: { kind: 'スマッシュ', smasher: unit(occasion.smasher) } }
+      case 'プラン':
+        // めくれたカードは、プランゾーンか、次のめくりで置かれた捨札にある。どちらも公開されている。
+        // 名前とレベルは、できごとの時点のデータから取得して含める。発動するまでにカードが別の場所へ動いても、
+        // 画面と CPU が盤面から取得し直さずに済むようにするためである（ADR-0072）。
+        return { kind: 'きっかけ', occasion: { kind: 'プラン', card: occasion.id, name: occasion.card.name, level: occasion.card.level } }
+      case '捨札':
+        return {
+          kind: 'きっかけ',
+          occasion: { kind: '捨札', unit: unit(occasion), name: occasion.card.name, level: occasion.card.level },
+        }
     }
   }
   if (purpose === '勇気のきっかけ') {

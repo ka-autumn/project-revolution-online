@@ -1,6 +1,6 @@
 import { indexOfSquare, squaresAdjacent } from './board.js'
 import type { Square } from './board.js'
-import type { Card } from './card.js'
+import type { Card, UnitCard } from './card.js'
 import type { CardId } from './duel.js'
 import { bpPlus, damagePlayer, discardOpponentHand } from './effect.js'
 import type {
@@ -424,8 +424,31 @@ export interface SmashOccasion {
   readonly smasher: UnitOnSquare
 }
 
-/** トラップの発動条件を満たしたできごと。トリガーアイコンの種類と同じ 3 種類である（ADR-0039）。 */
-export type TrapOccasion = IntrusionOccasion | AttackOccasion | SmashOccasion
+/**
+ * トラップの発動条件「相手がプランしてユニットがめくれた」のきっかけ（ADR-0072）。
+ *
+ * 「プランでカードがめくれた」できごとを写したもので、プランの処理が 1 か所で作成する
+ * （`action.ts` の `turnUpTopOfLibrary`）。めくれたカードがユニットの時だけ作成される。
+ * 置換で複数めくれた時は、めくれたユニット 1 枚ごとに作成される。
+ *
+ * めくれた時点の、カードに書かれているデータを写して持つ。プランゾーンのカードは継続効果を
+ * 受けない。次のめくりで捨札に置かれても、効果はここからレベルを取得できる。スクエアには
+ * いないので、`UnitOnSquare` ではない。
+ */
+export interface PlanOccasion {
+  readonly kind: 'プラン'
+  /** めくれたカード。 */
+  readonly id: CardId
+  /** めくれた時点のデータ。 */
+  readonly card: UnitCard
+}
+
+/**
+ * トラップの発動条件を満たしたできごと。トリガーアイコンの種類と同じ 5 種類である
+ * （ADR-0039、ADR-0072）。捨札のきっかけは、「あなたのユニットがスクエアから捨札に置かれた時」の
+ * 誘発型能力のきっかけ（`DiscardOccasion`）と同じ内容である。
+ */
+export type TrapOccasion = IntrusionOccasion | AttackOccasion | SmashOccasion | PlanOccasion | DiscardOccasion
 
 /**
  * キーワード能力「夢」（総合ルール 第5部 第1章）。
