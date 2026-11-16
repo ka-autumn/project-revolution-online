@@ -83,6 +83,15 @@ export interface WireOwnedDeck {
   readonly cards: readonly string[]
 }
 
+export interface MakerEntry {
+  readonly name: string
+  readonly reading: string
+  readonly logo?: string
+}
+
+/** 記号から表示名・読み仮名・ロゴを参照する表。実在する値は実行時に供給する。 */
+export type MakerCatalog = Readonly<Record<string, MakerEntry>>
+
 /**
  * カードプールのカード 1 種（ADR-0021）。識別子と、そのカードに書かれていることの組である。
  *
@@ -96,15 +105,6 @@ export interface WireOwnedDeck {
  * 識別子で引ける表（`Record`）にせず、組の並びで持つ。 識別子は渡す側が決める任意の文字列で、
  * オブジェクトのキーにすると `__proto__` のようなものがそのまま鍵になる。
  */
-export interface MakerEntry {
-  readonly name: string
-  readonly reading: string
-  readonly logo?: string
-}
-
-/** 記号から表示名・読み仮名・ロゴを参照する表。実在する値は実行時に供給する。 */
-export type MakerCatalog = Readonly<Record<string, MakerEntry>>
-
 export interface WirePoolCard {
   readonly key: string
   readonly face: WireCardFace

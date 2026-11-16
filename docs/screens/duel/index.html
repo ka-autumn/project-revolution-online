@@ -2337,6 +2337,9 @@ body {
   .mock-switch { top: auto; bottom: 0; left: 0; transform: none; max-height: 1.6rem; overflow: hidden; }
   .mock-switch:hover, .mock-switch:focus-within { max-height: 60vh; overflow-y: auto; }
 }
+.block-logos { display: inline-flex; align-items: center; justify-content: center; gap: 0.1em; flex: 1; }
+.detail__metadata { margin: 0.35rem 0; font-size: 0.8rem; }
+.detail__metadata dd { margin: 0; overflow-wrap: anywhere; }
 .block-logo { display: inline-grid; place-items: center; flex: none; border: 1px solid #fff; border-radius: 50%; width: 2.2em; height: 2.2em; font-size: 0.65em; color: white; background: #28364d; }
 </style>
 <link rel="stylesheet" href="../shared/card-art.css">
@@ -2753,7 +2756,7 @@ function faceHtml(name, opts = {}) {
         <div class="card__title">${stars}<span class="card__name">${name}</span>${keywordIcons(c.keywords, c.granted)}</div>
         <div class="card__text"><div class="card__lines">${c.text.map((l) => cardTextParagraph(l).outerHTML).join('')}${(c.granted ?? []).map(grantedLine).join('')}</div>${icons}</div>
         ${c.traits ? `<span class="card__traits">${c.traits}</span>` : ''}
-        <div class="card__stats">${unit ? stat('bp', c.bp, opts.bp) : ''}${logo}${unit ? stat('sp', c.sp, opts.sp) : ''}</div>
+        <div class="card__stats">${unit ? stat('bp', c.bp, opts.bp) : ''}<span class="block-logos">${logo}</span>${unit ? stat('sp', c.sp, opts.sp) : ''}</div>
       </div>
       ${opts.damage ? `<span class="card__damage">ダメージ ${opts.damage}</span>` : ''}
     </div>`
@@ -2764,7 +2767,7 @@ function faceHtml(name, opts = {}) {
       <div class="card__bottom">
         ${icons}
         ${c.traits ? `<span class="card__traits">${c.traits}</span>` : ''}
-        <div class="card__stats">${unit ? stat('bp', c.bp, opts.bp) : ''}${logo}${unit ? stat('sp', c.sp, opts.sp) : ''}</div>
+        <div class="card__stats">${unit ? stat('bp', c.bp, opts.bp) : ''}<span class="block-logos">${logo}</span>${unit ? stat('sp', c.sp, opts.sp) : ''}</div>
       </div>
       ${opts.damage ? `<span class="card__damage">ダメージ ${opts.damage}</span>` : ''}
     </div>`
@@ -3223,6 +3226,9 @@ function detailParts(node) {
   if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
   const annotations = document.createElement('div')
   annotations.className = 'detail__annotations'
+  const metadata = Object.assign(document.createElement('dl'), { className: 'detail__metadata' })
+  for (const [label, value] of [['作品名', '見本作品Ａ'], ['ブロック', '旧見本書房']]) metadata.append(Object.assign(document.createElement('dt'), { textContent: label }), Object.assign(document.createElement('dd'), { textContent: value }))
+  annotations.append(metadata)
   if (c.note) annotations.append(operationalNote(c.note))
   if (pending.length) annotations.append(pendingBox(pending, name))
   if (givenOf(node).length) annotations.append(givenBox(givenOf(node)))

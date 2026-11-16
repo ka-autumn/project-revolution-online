@@ -301,16 +301,16 @@ function rangeRow(label, minKey, maxKey) {
   return row
 }
 /** 折りたためる項目。閉じている間は、項目名の横に選んでいる値を並べる（収まらなければ省略）。 */
-function fold(label, values, chosen, key, shownAs = (v) => v) {
+function fold(label, values, chosen, key, shownAs = (value) => value, collapsedAs = shownAs) {
   const d = el('details', 'fold'); d.open = !!state.folds[key]
   d.addEventListener('toggle', () => { state.folds[key] = d.open })
   const s = el('summary')
   s.append(el('span', 'filter__label', label))
-  const picked = el('span', `fold__picked${chosen.length ? '' : ' fold__picked--すべて'}`, chosen.length ? chosen.map(shownAs).join(' | ') : 'すべて')
-  picked.title = chosen.join('・')
+  const picked = el('span', `fold__picked${chosen.length ? '' : ' fold__picked--すべて'}`, chosen.length ? chosen.map(collapsedAs).join(' | ') : 'すべて')
+  picked.title = chosen.map(shownAs).join('・')
   s.append(picked)
   d.append(s)
-  const b = el('div', 'fold__body'); b.append(chips(values, chosen, key)); d.append(b)
+  const b = el('div', 'fold__body'); b.append(chips(values, chosen, key, shownAs)); d.append(b)
   return d
 }
 
@@ -492,7 +492,7 @@ function leftColumn() {
   search.addEventListener('change', () => setFilter({ text: search.value }))
   body.append(search)
   const exps = [...new Set(pool.flatMap((c) => c.expansions))]
-  body.append(fold('エキスパンション', exps, f.expansions, 'expansions', (e) => EXPANSION_CODE[e] ?? e))
+  body.append(fold('エキスパンション', exps, f.expansions, 'expansions', undefined, (name) => EXPANSION_CODE[name] ?? name))
   body.append(chipRow('色', COLORS, f.colors, 'colors', (c) => [colorIcon(c), c]))
   body.append(chipRow('種別', TYPES, f.types, 'types', (t) => (t === '超必殺ストラテジー！' ? '超必殺' : t), (t) => t))
   body.append(chipRow('レベル', LEVELS, f.levels, 'levels', (v) => String(v), (v) => `レベル ${v}`))
@@ -961,7 +961,7 @@ if (params.get('ng') === '1') state.cards = state.cards.filter((k) => known.has(
 if (params.get('modal')) state.modal = params.get('modal')
 if (params.get('detail') === '0') state.detailOpen = false
 if (params.get('tagedit') === '1') { const d = state.listDecks[1]; state.view = 'list'; state.tagEdit = { index: 1, name: d.name, cards: d.cards, userType: d.userType, userUses: d.userUses }; state.modal = 'ラベル' }
-if (params.get('pick') === '1') Object.assign(state.filter, { expansions: ['見本デッキ B'], blocks: ['例文社', '見本書房'], works: ['見本作品Ｐ', '見本作品Ｎ', '見本作品Ｅ', '見本作品Ｏ'], keywords: ['夢'] })
+if (params.get('pick') === '1') Object.assign(state.filter, { expansions: ['見本デッキ B'], blocks: ['CC', 'AA'], works: ['見本作品Ｐ', '見本作品Ｎ', '見本作品Ｅ', '見本作品Ｏ'], keywords: ['夢'] })
 if (params.get('folds')) for (const k of params.get('folds').split(',')) state.folds[k] = true
 draw()
 if (params.get('fscroll')) { const b = document.querySelector('.panel--filter .panel__body'); if (b) b.scrollTop = params.get('fscroll') === 'end' ? b.scrollHeight : Number(params.get('fscroll')) }
