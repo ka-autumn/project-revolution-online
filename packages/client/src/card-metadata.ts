@@ -1,4 +1,13 @@
-import type { MakerCatalog, WireCardFace } from '@revolution/engine'
+import type { Color, MakerCatalog, WireCardFace } from '@revolution/engine'
+
+export function makerLogoUrl(path: string, color: Color, origin: string): string | undefined {
+  try {
+    const url = new URL(path, origin)
+    if (url.origin !== origin || !url.pathname.startsWith('/maker-logos/')) return undefined
+    url.searchParams.set('color', color)
+    return url.href
+  } catch { return undefined }
+}
 
 export function printedSymbolsOf(face: Pick<WireCardFace, 'makerSymbols' | 'printedMakerSymbols'>): readonly string[] {
   return face.printedMakerSymbols ?? face.makerSymbols ?? []

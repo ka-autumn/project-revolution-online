@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defineUnit, faceOf } from '@revolution/engine'
-import { metadataRowsOf } from './card-metadata.js'
+import { makerLogoUrl, metadataRowsOf } from './card-metadata.js'
 import { emptyFilter, filterChoicesOf, filterPool } from './pool-filter.js'
 import { cardDetailOf } from './deck-builder.js'
 import { applyMessage, connecting } from './session.js'
@@ -15,6 +15,13 @@ const other = faceOf(defineUnit({ name: 'テスト・別作品', level: 3, bp: 3
 const pool = [{ key: 'test-a', face, expansions: ['見本商品'] }, { key: 'test-b', face: other, expansions: ['見本商品'] }]
 
 describe('作品名とブロックの表示・分類', () => {
+  it('シンボルのURLにカード色を指定し、供給元以外の画像を受け付けない', () => {
+    const url = makerLogoUrl('/maker-logos/AA', '青', 'https://example.test')
+    expect(url && new URL(url).searchParams.get('color')).toBe('青')
+    expect(makerLogoUrl('https://outside.test/maker-logos/AA', '赤', 'https://example.test')).toBeUndefined()
+    expect(makerLogoUrl('/card-art/AA', '赤', 'https://example.test')).toBeUndefined()
+    expect(makerLogoUrl('http://[', '赤', 'https://example.test')).toBeUndefined()
+  })
   it('分類の対応表はロビーから対戦待ちへ移っても保持する', () => {
     const classified = applyMessage(connecting(), { kind: 'カード分類', makers, workReadings: { 作品甲: 'さくひんこう' }, expansionCodes: { 見本商品: 'TEST' } })
     const waiting = applyMessage(classified, { kind: '相手を待っている', room: 'test-room' })

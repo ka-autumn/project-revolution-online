@@ -221,16 +221,27 @@ function face(f, big, symbols) {
   // BP・SP の間にブロックのロゴ。ユニット以外は BP・SP が無いので、ロゴだけを真ん中に置く。
   const stats = el('div', `card__stats${f.type === 'ユニット' ? '' : ' card__stats--ロゴだけ'}`)
   if (f.type === 'ユニット') stats.append(el('span', 'card__bp', String(f.bp)))
-  const logos = el('span', 'block-logos'); for (const symbol of symbols) logos.append(blockLogo(symbol)); stats.append(logos)
+  const logos = el('span', 'block-logos'); for (const symbol of symbols) logos.append(blockLogo(symbol, f.colors[0])); stats.append(logos)
   if (f.type === 'ユニット') stats.append(el('span', 'card__sp', String(f.sp)))
   bottom.append(stats)
   node.append(bottom)
   return node
 }
-function blockLogo(symbol) {
+function blockLogo(symbol, color) {
   const name = MAKERS[symbol].name
-  const n = el('span', 'block-logo', symbol)
+  const n = el('span', 'block-logo block-logo--image')
   n.setAttribute('role', 'img'); n.setAttribute('aria-label', `ブロック：${name}`); n.title = name
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', `0 0 ${symbol.length * 14 + 4} 26`)
+  svg.setAttribute('aria-hidden', 'true')
+  const letters = document.createElementNS(svg.namespaceURI, 'text')
+  letters.setAttribute('x', '2'); letters.setAttribute('y', '21')
+  letters.setAttribute('font-family', 'sans-serif'); letters.setAttribute('font-size', '22')
+  letters.setAttribute('font-weight', '700'); letters.setAttribute('fill', '#fff')
+  letters.setAttribute('stroke', ({ 赤: '#c7232b', 黒: '#292929', 青: '#2c94c8', 白: '#919191', 緑: '#359253' })[color] ?? '#292929')
+  letters.setAttribute('stroke-width', '3'); letters.setAttribute('paint-order', 'stroke fill')
+  letters.textContent = symbol; svg.append(letters); n.append(svg)
+  n.style.width = `${2.2 * (symbol.length * 14 + 4) / 26}em`
   return n
 }
 function cardEl(c, big, extra = '') {

@@ -1,5 +1,5 @@
 import { artworkOrigin } from './card-art.js'
-import { makerNameOf, metadataRowsOf, printedSymbolsOf } from './card-metadata.js'
+import { makerLogoUrl, makerNameOf, metadataRowsOf, printedSymbolsOf } from './card-metadata.js'
 import type { MakerCatalog } from '@revolution/engine'
 
 import { COLORS, DUEL_FORMATS } from '@revolution/engine'
@@ -622,7 +622,7 @@ function statElement(
 /** 属性（継続効果で加わった分は `+` を付ける、#91）とＢＰ・ＳＰを面の下段に足す。 */
 function appendTraitsAndStats(
   bottom: HTMLElement,
-  card: Pick<FaceFields, 'attributes' | 'type' | 'bp' | 'sp' | 'makerSymbols' | 'printedMakerSymbols'> & { readonly modified: ModifiedData | undefined },
+  card: Pick<FaceFields, 'attributes' | 'type' | 'bp' | 'sp' | 'colors' | 'makerSymbols' | 'printedMakerSymbols'> & { readonly modified: ModifiedData | undefined },
 ): void {
   const added = (card.modified?.addedAttributes ?? []).map((attribute) => `+${attribute}`)
   const traits = [...card.attributes, ...added]
@@ -640,11 +640,17 @@ function appendTraitsAndStats(
     const path = Object.hasOwn(makerCatalog, symbol) ? makerCatalog[symbol]?.logo : undefined
     if (path !== undefined) {
       const image = document.createElement('img')
-      const url = new URL(path, artworkOrigin())
-      if (url.origin === artworkOrigin() && url.pathname.startsWith('/maker-logos/')) {
-        image.src = url.href
+      const url = makerLogoUrl(path, primaryColorOf(card.colors), artworkOrigin())
+      if (url !== undefined) {
         image.alt = ''
-        image.addEventListener('load', () => { logo.textContent = ''; logo.append(image) }, { once: true })
+        image.addEventListener('load', () => {
+          if (image.naturalHeight === 0) return
+          logo.classList.add('block-logo--image')
+          logo.style.width = `${2.2 * image.naturalWidth / image.naturalHeight}em`
+          logo.textContent = ''
+          logo.append(image)
+        }, { once: true })
+        image.src = url
       }
     }
     logos.append(logo)
