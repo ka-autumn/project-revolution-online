@@ -1,3 +1,7 @@
+import { artworkOrigin } from './card-art.js'
+import { makerNameOf, metadataRowsOf, printedSymbolsOf } from './card-metadata.js'
+import type { MakerCatalog } from '@revolution/engine'
+
 import { COLORS, DUEL_FORMATS } from '@revolution/engine'
 import { FOCUS_KEY_ATTRIBUTE, REGION_ATTRIBUTE, type Region, wireBoardKeyboard } from './board-keyboard.js'
 import { highlightedSquares } from './area-highlight.js'
@@ -155,6 +159,15 @@ import {
  * 覚えておくという状態を持つ（ADR-0027）。盤面の外枠を組み立てるたびに作り直すので、
  * ビューモデルに状態を持たせる必要は無い。
  */
+
+let makerCatalog: MakerCatalog = {}
+let expansionCodes: Readonly<Record<string, string>> = {}
+
+export function configureCardMetadata(makers: MakerCatalog, codes: Readonly<Record<string, string>>): void {
+  makerCatalog = makers
+  expansionCodes = codes
+}
+
 
 function element(tag: string, className: string, text?: string): HTMLElement {
   const node = document.createElement(tag)
@@ -609,20 +622,36 @@ function statElement(
 /** 属性（継続効果で加わった分は `+` を付ける、#91）とＢＰ・ＳＰを面の下段に足す。 */
 function appendTraitsAndStats(
   bottom: HTMLElement,
-  card: Pick<FaceFields, 'attributes' | 'type' | 'bp' | 'sp'> & { readonly modified: ModifiedData | undefined },
+  card: Pick<FaceFields, 'attributes' | 'type' | 'bp' | 'sp' | 'makerSymbols' | 'printedMakerSymbols'> & { readonly modified: ModifiedData | undefined },
 ): void {
   const added = (card.modified?.addedAttributes ?? []).map((attribute) => `+${attribute}`)
   const traits = [...card.attributes, ...added]
   if (traits.length > 0) bottom.append(element('span', 'card__traits', traits.join(' | ')))
 
-  if (card.type === 'ユニット' && card.bp !== undefined && card.sp !== undefined) {
-    const stats = element('div', 'card__stats')
-    stats.append(
-      statElement('bp', 'BP', card.bp, card.modified?.bp, card.modified?.bpDirection),
-      statElement('sp', 'SP', card.sp, card.modified?.sp, card.modified?.spDirection),
-    )
-    bottom.append(stats)
+  const stats = element('div', 'card__stats')
+  if (card.type === 'ユニット' && card.bp !== undefined) stats.append(statElement('bp', 'BP', card.bp, card.modified?.bp, card.modified?.bpDirection))
+  const logos = element('span', 'block-logos')
+  for (const symbol of printedSymbolsOf(card)) {
+    const name = makerNameOf(symbol, makerCatalog)
+    const logo = element('span', 'block-logo', symbol)
+    logo.setAttribute('role', 'img')
+    logo.setAttribute('aria-label', `ブロック：${name}`)
+    logo.title = name
+    const path = Object.hasOwn(makerCatalog, symbol) ? makerCatalog[symbol]?.logo : undefined
+    if (path !== undefined) {
+      const image = document.createElement('img')
+      const url = new URL(path, artworkOrigin())
+      if (url.origin === artworkOrigin() && url.pathname.startsWith('/maker-logos/')) {
+        image.src = url.href
+        image.alt = ''
+        image.addEventListener('load', () => { logo.textContent = ''; logo.append(image) }, { once: true })
+      }
+    }
+    logos.append(logo)
   }
+  stats.append(logos)
+  if (card.type === 'ユニット' && card.sp !== undefined) stats.append(statElement('sp', 'SP', card.sp, card.modified?.sp, card.modified?.spDirection))
+  if (card.type === 'ユニット' || logos.childElementCount > 0) bottom.append(stats)
 }
 
 /** 面を組み立てるときのオプション。 */
@@ -3261,6 +3290,7 @@ function foldElement(
   onToggleFold: (key: string, open: boolean) => void,
   onChoose: (next: readonly string[]) => void,
   shownAs: (value: string) => string = (value) => value,
+  collapsedAs: (value: string) => string = shownAs,
 ): HTMLElement | undefined {
   if (values.length === 0) return undefined
 
@@ -3275,7 +3305,7 @@ function foldElement(
   const picked = element(
     'span',
     `fold__picked${chosen.length === 0 ? ' fold__picked--すべて' : ''}`,
-    chosen.length === 0 ? 'すべて' : chosen.map(shownAs).join(' | '),
+    chosen.length === 0 ? 'すべて' : chosen.map(collapsedAs).join(' | '),
   )
   picked.title = chosen.join('・')
   summary.append(picked)
@@ -3372,7 +3402,7 @@ function rangeRow(label: string, range: NumberRange, focusKey: string, onRange: 
  * プールを絞り込むところ（#193、ADR-0028）。並びは ADR どおり：名前・テキスト → エキスパンション
  * → 色 → 種別 → レベル →（詳しく絞り込む）ＢＰ → ＳＰ → スター → 移動方向 → 属性。
  *
- * キーワード能力・ブロック・作品名の軸は、画面だけでは作れないので出さない（#227・#230）。
+ * キーワード能力の軸は、表記に含まれる能力が限られるため表示しない（#227）。
  */
 function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
   const { filter, filterChoices: choices } = view
@@ -3401,6 +3431,8 @@ function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers):
   const rows: (HTMLElement | undefined)[] = [
     foldElement('エキスパンション', 'エキスパンション', choices.expansions, filter.expansions, view.openFolds, handlers.onToggleFold, (next) =>
       change({ expansions: next }),
+      (value) => value,
+      (value) => Object.hasOwn(expansionCodes, value) ? expansionCodes[value]! : value,
     ),
     filterRow('色', choices.colors, filter.colors, (next) => change({ colors: next }), (color) => colorChipContent(color as DeckColor)),
     filterRow('種別', choices.types, filter.types, (next) => change({ types: next }), (type) => [typeShownAs(type)], (type) => type),
@@ -3434,6 +3466,8 @@ function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers):
         (label) => `移動方向：${label}`,
       ),
       filterRow('発動条件', choices.triggerConditions, filter.triggerConditions, (next) => change({ triggerConditions: next })),
+      foldElement('ブロック', 'ブロック', choices.blocks, filter.blocks, view.openFolds, handlers.onToggleFold, (next) => change({ blocks: next }), (symbol) => makerNameOf(symbol, makerCatalog)),
+      foldElement('作品名', '作品名', choices.works, filter.works, view.openFolds, handlers.onToggleFold, (next) => change({ works: next })),
       foldElement('属性', '属性', choices.attributes, filter.attributes, view.openFolds, handlers.onToggleFold, (next) =>
         change({ attributes: next }),
       ),
@@ -4462,7 +4496,7 @@ function publicShareCardElement(card: PublicShareCard): HTMLElement {
     // 作り直さない。
     const detail = element('div', 'public-share__detail')
     const rows = element('dl', 'card__panel-rows')
-    for (const row of printedDetailsOf(card.detail)) {
+    for (const row of printedDetailsOf(card.detail, [], makerCatalog)) {
       rows.append(element('dt', 'card__panel-label', row.label), element('dd', 'card__panel-value', row.value))
     }
     detail.append(rows)
@@ -5321,6 +5355,9 @@ function detailParts(card: CardView & { readonly kind: '表' }): HTMLElement[] {
   big.append(faceElement(card, { big: true }))
 
   const annotations = element('div', 'detail__annotations')
+  const metadata = element('dl', 'detail__metadata')
+  for (const row of metadataRowsOf(card, makerCatalog)) metadata.append(element('dt', '', row.label), element('dd', '', row.value))
+  if (metadata.childElementCount > 0) annotations.append(metadata)
   if (noted) annotations.append(operationalNoteElement(card.operationalNote))
   if (waiting) annotations.append(pendingAbilitiesElement(card.pending))
   if (granted.length > 0) annotations.append(grantedAbilitiesBox(granted))
@@ -5352,7 +5389,7 @@ function phoneDetailParts(card: CardView & { readonly kind: '表' }): HTMLElemen
   )
   info.append(name)
   const rows = element('dl', 'detail__rows')
-  for (const row of cardInfoRowsOf(card)) rows.append(element('dt', '', row.label), element('dd', '', row.value))
+  for (const row of [...cardInfoRowsOf(card), ...metadataRowsOf(card, makerCatalog)]) rows.append(element('dt', '', row.label), element('dd', '', row.value))
   info.append(rows)
   if (card.artwork?.flavor) info.append(flavorElement(card.artwork.flavor, card.colors, card.type))
   if (card.text.length > 0 || card.grantedKeywords.length > 0) {

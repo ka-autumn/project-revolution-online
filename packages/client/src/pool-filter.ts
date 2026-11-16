@@ -4,11 +4,11 @@ import type { CardType, MoveDirection, WireCardFace, WirePoolCard } from '@revol
 /**
  * デッキを組むところで、プールを絞り込む（#193）。
  *
- * **絞り込む軸は、カードに印刷されている項目そのものである**（ADR-0021）。それにエキスパンションを
- * 足している。**識別子では絞り込まない。**
+ * 絞り込む軸は、カードに印刷されている項目そのものである（ADR-0021）。それにエキスパンションを
+ * 足している。識別子では絞り込まない。
  *
- * **同じ軸の中で選んだものは「どれか」、軸どうしは「どれも」で合わせる。** 赤と青を選べば赤か青の
- * カードが残り、そこでユニットを選べば、赤か青のユニットが残る。**何も選んでいない軸は絞り込まない。**
+ * 同じ軸の中で選んだものは「どれか」、軸どうしは「どれも」で合わせる。 赤と青を選べば赤か青の
+ * カードが残り、そこでユニットを選べば、赤か青のユニットが残る。何も選んでいない軸は絞り込まない。
  */
 
 /** 色を持たないカードを選ぶ時の値。`COLORS` には無い。 */
@@ -92,7 +92,7 @@ export interface PoolFilter {
   /** 色。`COLORLESS` は色を持たないカード。 */
   readonly colors: readonly string[]
   readonly levels: readonly number[]
-  /** ＢＰの範囲。**区切ると、ＢＰを持たないカード（ユニット以外）は残らない。** */
+  /** ＢＰの範囲。区切ると、ＢＰを持たないカード（ユニット以外）は残らない。 */
   readonly bp: NumberRange
   /** ＳＰの範囲。ＢＰと同じく、ユニットだけが持つ。 */
   readonly sp: NumberRange
@@ -101,6 +101,8 @@ export interface PoolFilter {
   readonly moveIcons: readonly string[]
   /** トラップの発動条件。トラップ以外のカードはどれにも当たらない。 */
   readonly triggerConditions: readonly TriggerCondition[]
+  readonly works: readonly string[]
+  readonly blocks: readonly string[]
   readonly expansions: readonly string[]
 }
 
@@ -116,6 +118,8 @@ export function emptyFilter(): PoolFilter {
     stars: [],
     moveIcons: [],
     triggerConditions: [],
+    works: [],
+    blocks: [],
     expansions: [],
   }
 }
@@ -208,7 +212,9 @@ export function matchesFilter(card: WirePoolCard, filter: PoolFilter): boolean {
     anyOf(filter.stars, starChoicesOf(face)) &&
     anyOf(filter.moveIcons, moveShapeLabelsOf(face)) &&
     anyOf(filter.triggerConditions, triggerConditionsOf(face)) &&
-    // 古いサーバはエキスパンションを添えてこない。**届かなかったものを、在るものとして扱わない。**
+    // 古いサーバはエキスパンションを添えてこない。届かなかったものを、在るものとして扱わない。
+    anyOf(filter.works, face.works ?? []) &&
+    anyOf(filter.blocks, face.makerSymbols ?? []) &&
     anyOf(filter.expansions, (card.expansions as readonly string[] | undefined) ?? [])
   )
 }
@@ -219,7 +225,7 @@ export function filterPool(pool: readonly WirePoolCard[], filter: PoolFilter): r
 }
 
 /**
- * 絞り込みで選べるもの。**プールに実際にあるものだけを並べる。** 選んでも 1 枚も残らない値は出さない。
+ * 絞り込みで選べるもの。プールに実際にあるものだけを並べる。 選んでも 1 枚も残らない値は出さない。
  * ただし種別・レベル・スター・移動方向・発動条件は、プールの中身に関わらず全部並べる（ADR-0028）。
  *
  * 数え上げている順があるもの（種別・色・ムーブアイコン）はその順、数は小さい順、名前は五十音順に並べる。
@@ -232,6 +238,8 @@ export interface FilterChoices {
   readonly stars: readonly StarChoice[]
   readonly moveIcons: readonly string[]
   readonly triggerConditions: readonly TriggerCondition[]
+  readonly works: readonly string[]
+  readonly blocks: readonly string[]
   readonly expansions: readonly string[]
 }
 
@@ -239,7 +247,7 @@ function byName(values: Iterable<string>): readonly string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right, 'ja'))
 }
 
-export function filterChoicesOf(pool: readonly WirePoolCard[]): FilterChoices {
+export function filterChoicesOf(pool: readonly WirePoolCard[], makers: import('@revolution/engine').MakerCatalog = {}, workReadings: Readonly<Record<string, string>> = {}): FilterChoices {
   const faces = pool.map((card) => card.face)
   const colors = new Set(faces.flatMap((face): readonly string[] => (face.colors.length === 0 ? [COLORLESS] : face.colors)))
 
@@ -254,6 +262,8 @@ export function filterChoicesOf(pool: readonly WirePoolCard[]): FilterChoices {
     stars: STAR_CHOICES,
     moveIcons: MOVE_SHAPES.map((shape) => shape.label),
     triggerConditions: TRIGGER_CONDITIONS,
+    works: [...byName(faces.flatMap((face) => face.works ?? []))].sort((left, right) => (Object.hasOwn(workReadings, left) ? workReadings[left]! : left).localeCompare(Object.hasOwn(workReadings, right) ? workReadings[right]! : right, 'ja')),
+    blocks: [...byName(faces.flatMap((face) => face.makerSymbols ?? []))].sort((a, b) => (Object.hasOwn(makers, a) ? makers[a]!.reading : a).localeCompare(Object.hasOwn(makers, b) ? makers[b]!.reading : b, 'ja')),
     expansions: byName(pool.flatMap((card) => (card.expansions as readonly string[] | undefined) ?? [])),
   }
 }

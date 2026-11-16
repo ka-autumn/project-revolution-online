@@ -2337,6 +2337,7 @@ body {
   .mock-switch { top: auto; bottom: 0; left: 0; transform: none; max-height: 1.6rem; overflow: hidden; }
   .mock-switch:hover, .mock-switch:focus-within { max-height: 60vh; overflow-y: auto; }
 }
+.block-logo { display: inline-grid; place-items: center; flex: none; border: 1px solid #fff; border-radius: 50%; width: 2.2em; height: 2.2em; font-size: 0.65em; color: white; background: #28364d; }
 </style>
 <link rel="stylesheet" href="../shared/card-art.css">
 <link rel="stylesheet" href="../shared/detail-layout.css">
@@ -2732,6 +2733,7 @@ function triggerIcon(trigger) {
 function faceHtml(name, opts = {}) {
   const c = cards[name]
   const unit = c.bp !== undefined
+  const logo = '<span class="block-logo" role="img" aria-label="ブロック：旧見本書房" title="旧見本書房">AX</span>'
   // 継続効果が移動方向を変更していれば、変更後の向きで描く（ADR-0071）
   const move = opts.move ?? c.move
   const icons = move || c.trigger
@@ -2751,7 +2753,7 @@ function faceHtml(name, opts = {}) {
         <div class="card__title">${stars}<span class="card__name">${name}</span>${keywordIcons(c.keywords, c.granted)}</div>
         <div class="card__text"><div class="card__lines">${c.text.map((l) => cardTextParagraph(l).outerHTML).join('')}${(c.granted ?? []).map(grantedLine).join('')}</div>${icons}</div>
         ${c.traits ? `<span class="card__traits">${c.traits}</span>` : ''}
-        ${unit ? `<div class="card__stats">${stat('bp', c.bp, opts.bp)}${stat('sp', c.sp, opts.sp)}</div>` : ''}
+        <div class="card__stats">${unit ? stat('bp', c.bp, opts.bp) : ''}${logo}${unit ? stat('sp', c.sp, opts.sp) : ''}</div>
       </div>
       ${opts.damage ? `<span class="card__damage">ダメージ ${opts.damage}</span>` : ''}
     </div>`
@@ -2762,7 +2764,7 @@ function faceHtml(name, opts = {}) {
       <div class="card__bottom">
         ${icons}
         ${c.traits ? `<span class="card__traits">${c.traits}</span>` : ''}
-        ${unit ? `<div class="card__stats">${stat('bp', c.bp, opts.bp)}${stat('sp', c.sp, opts.sp)}</div>` : ''}
+        <div class="card__stats">${unit ? stat('bp', c.bp, opts.bp) : ''}${logo}${unit ? stat('sp', c.sp, opts.sp) : ''}</div>
       </div>
       ${opts.damage ? `<span class="card__damage">ダメージ ${opts.damage}</span>` : ''}
     </div>`
@@ -3254,6 +3256,8 @@ function phoneDetailParts(node) {
   const shownMove = node.dataset.move ? node.dataset.move.split(',') : c.move
   if (shownMove) add('移動方向', shownMove.join('・'))
   if (c.traits) add('属性', c.traits.split('・').join(' | '))
+  add('作品名', '見本作品Ａ')
+  add('ブロック', '旧見本書房')
   info.append(rows)
   if (c.text.length > 0 || c.granted?.length) {
     const text = document.createElement('div')

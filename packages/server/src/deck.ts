@@ -1,3 +1,4 @@
+import { readMakerCatalog } from './maker-catalog.js'
 import { presentationOfPool, readArtwork } from './card-art.js'
 import type { CardArtwork } from './card-art.js'
 import { checkConstructedDeck, deckCoverKeyOf, faceOf } from '@revolution/engine'
@@ -82,6 +83,8 @@ export interface RestrictionList {
  * エキスパンション（`expansions`）は渡さなくてもよい。
  */
 export interface CardSupply {
+  readonly workReadings?: Readonly<Record<string, string>>
+  readonly makers?: import('@revolution/engine').MakerCatalog
   readonly artwork?: CardArtwork
   readonly pool: CardPool
   /** 誰でも使える既製デッキ。少なくとも 1 つ要る——デッキを組む場所がまだ無い（ADR-0021）。 */
@@ -111,6 +114,7 @@ export interface CardSupply {
  * プールに無いカードを含んでよい。 収録されていることと実装済みであることは別に決まる。
  */
 export interface Expansion {
+  readonly code?: string
   /** 画面に出す名前。エキスパンションはこれで指すので、重ならない。 */
   readonly name: string
   readonly cards: readonly CardKey[]
@@ -199,7 +203,8 @@ function readExpansions(value: unknown): readonly Expansion[] | string {
   const seen = new Set<string>()
   for (const expansion of value as readonly unknown[]) {
     if (!isObject(expansion)) return 'expansions にエキスパンションでないものが入っています'
-    const { name, cards } = expansion
+    const { name, cards, code } = expansion
+    if (code !== undefined && (typeof code !== 'string' || code.trim() === '')) return 'エキスパンションのコードが不正です'
     if (typeof name !== 'string' || name === '') return 'expansions に名前の無いエキスパンションが入っています'
     // 画面は名前で絞り込む。重なると、どちらのことか決められない。
     if (seen.has(name)) return `エキスパンションの名前が重なっています: ${name}`
@@ -207,7 +212,7 @@ function readExpansions(value: unknown): readonly Expansion[] | string {
       return `エキスパンション ${name} の cards が識別子の並びではありません`
     }
     seen.add(name)
-    expansions.push({ name, cards: cards as readonly CardKey[] })
+    expansions.push({ name, cards: cards as readonly CardKey[], ...(code === undefined ? {} : { code: code as string }) })
   }
 
   return expansions
@@ -237,7 +242,11 @@ export function readSupply(module: unknown): SupplyReading {
 
   const artwork = readArtwork(module['artwork'])
   if (typeof artwork === 'string') return { kind: '断る', reason: artwork }
-  return { kind: '通す', supply: { pool, presets, restrictions, expansions, ...(artwork === undefined ? {} : { artwork }) } }
+  const makers = readMakerCatalog(module['makers'], pool)
+  if (typeof makers === 'string') return { kind: '断る', reason: makers }
+  const workReadings = module['workReadings']
+  if (workReadings !== undefined && (!isObject(workReadings) || Object.values(workReadings).some((reading) => typeof reading !== 'string' || reading.trim() === ''))) return { kind: '断る', reason: '作品名の読み仮名が不正です' }
+  return { kind: '通す', supply: { pool, presets, restrictions, expansions, ...(workReadings === undefined ? {} : { workReadings: workReadings as Readonly<Record<string, string>> }), ...(makers === undefined ? {} : { makers }), ...(artwork === undefined ? {} : { artwork }) } }
 }
 
 /** 既製デッキ 1 つ分の不備。どのデッキかが分かるように、識別子を添える。 */

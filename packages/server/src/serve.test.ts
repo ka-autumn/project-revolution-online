@@ -77,7 +77,7 @@ const CODE = 'あいことば'
 class Client {
   readonly received: ToClient[] = []
   private readonly socket: WebSocket
-  /** 届いたものの生バイト数の合計（ADR-0026、#200）。**中身は数えず、通信量だけを測る。** */
+  /** 届いたものの生バイト数の合計（ADR-0026、#200）。中身は数えず、通信量だけを測る。 */
   private totalBytes = 0
 
   constructor(port: number, participant: string, cookie?: string) {
@@ -803,9 +803,9 @@ describe('ログインの設定があるとき', () => {
   let signedIn: string
   /** 繋ぎに行く側の身元。名前が置き場に入ったかを見るのに使う（ADR-0020）。 */
   let me: string
-  /** もう 1 人ぶんの身元。**同じ身元で 2 本繋ぐと入り直しになる**ので、別の人が要る場面で使う。 */
+  /** もう 1 人ぶんの身元。同じ身元で 2 本繋ぐと入り直しになるので、別の人が要る場面で使う。 */
   let signedInOther: string
-  /** 立てた時に渡したもの。**渡すものを変えて立て直す**場面で使う。 */
+  /** 立てた時に渡したもの。渡すものを変えて立て直す場面で使う。 */
   let options: ServeOptions
 
   beforeEach(async () => {
@@ -1008,7 +1008,7 @@ describe('ログインの設定があるとき', () => {
     await client.close()
   })
 
-  /** ADR-0020。名前は変えられる。**記録には焼き付けない**ので、過去の対戦もいまの名前で出る。 */
+  /** ADR-0020。名前は変えられる。記録には焼き付けないので、過去の対戦もいまの名前で出る。 */
   it('決めた名前は変えられる', async () => {
     const client = new Client(server.port, 'なのっても無駄', signedIn)
     await client.waitFor('名前を決めてほしい')
@@ -1021,7 +1021,7 @@ describe('ログインの設定があるとき', () => {
     await client.close()
   })
 
-  /** ADR-0020。**ロビーの中身は、部屋の様子だけでなく人の名前でも変わる。** */
+  /** ADR-0020。ロビーの中身は、部屋の様子だけでなく人の名前でも変わる。 */
   it('名前を変えると、ロビーにいる人にも届き直す', async () => {
     const client = new Client(server.port, 'なのっても無駄', signedIn)
     await client.waitFor('名前を決めてほしい')
@@ -1088,7 +1088,7 @@ describe('ログインの設定があるとき', () => {
     await client.close()
   })
 
-  /** ADR-0021。**組む前に**カードの表記が要る。席に着いた後に流れるだけでは組めない。 */
+  /** ADR-0021。組む前にカードの表記が要る。席に着いた後に流れるだけでは組めない。 */
   it('名前を決めると、席に着く前にカードプールが届く', async () => {
     const client = new Client(server.port, 'なのっても無駄', signedIn)
     await client.waitFor('名前を決めてほしい')
@@ -1106,6 +1106,8 @@ describe('ログインの設定があるとき', () => {
       stars: 0,
       reverseStars: 0,
       attributes: [],
+      works: [],
+      makerSymbols: [],
       keywords: [],
       text: [],
     })
@@ -1130,7 +1132,7 @@ describe('ログインの設定があるとき', () => {
     await client.close()
   })
 
-  /** 名前を決めてロビーまで進んだ接続。**自分のデッキが届くのを待ってから返す。** */
+  /** 名前を決めてロビーまで進んだ接続。自分のデッキが届くのを待ってから返す。 */
   async function enteredAsMe(): Promise<Client> {
     const client = new Client(server.port, 'なのっても無駄', signedIn)
     await client.waitFor('名前を決めてほしい')
@@ -1535,7 +1537,7 @@ describe('ログインの設定があるとき', () => {
       await client.close()
     })
 
-    /** デッキは持ち主のものである（ADR-0021）。**識別子を送っただけでは持ち込めない。** */
+    /** デッキは持ち主のものである（ADR-0021）。識別子を送っただけでは持ち込めない。 */
     it('他人のデッキの識別子を送っても座れない', async () => {
       myDeck('じぶんの')
       const other = store.identify('google', '10002')

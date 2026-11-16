@@ -1,3 +1,4 @@
+import { configureCardMetadata } from './render.js'
 import { SHARE_PATH_PREFIX } from '@revolution/engine'
 import type { PublicShare, ShareKey } from '@revolution/engine'
 import { connect } from './connection.js'
@@ -69,6 +70,7 @@ export async function mountPublicShare(root: HTMLElement, options: PublicShareMo
   let copyState: CopyState = { kind: '未着手' }
 
   function render(): void {
+    configureCardMetadata(share.makers ?? {}, {})
     const onLogin = (): void => rememberPendingShare(sessionStorage, options.key)
     root.replaceChildren(publicShareElement(share, publicCardSections(share.cards), options.signInUrl, onLogin, copyState, startCopy))
   }

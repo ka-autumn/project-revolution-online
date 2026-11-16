@@ -1,16 +1,16 @@
 import type { FaceFields } from './view-model.js'
 
-let artworkOrigin = typeof location === 'undefined' ? 'http://localhost:8787' : location.origin
+let configuredArtworkOrigin = typeof location === 'undefined' ? 'http://localhost:8787' : location.origin
 export function configureArtworkOrigin(server: string): void {
   const url = new URL(server)
   url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
-  artworkOrigin = url.origin
+  configuredArtworkOrigin = url.origin
 }
 
 export function artworkUrl(path: string): string | undefined {
   try {
-    const url = new URL(path, artworkOrigin)
-    return url.origin === artworkOrigin && url.pathname.startsWith('/card-art/') ? url.href : undefined
+    const url = new URL(path, configuredArtworkOrigin)
+    return url.origin === configuredArtworkOrigin && url.pathname.startsWith('/card-art/') ? url.href : undefined
   } catch { return undefined }
 }
 
@@ -175,3 +175,5 @@ export function applyCardArtwork(node: HTMLElement, card: FaceFields, big: boole
   }
   schedule()
 }
+
+export function artworkOrigin(): string { return configuredArtworkOrigin }

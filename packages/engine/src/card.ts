@@ -128,6 +128,9 @@ interface WrittenCard {
    * 同 第13章 3・4）。そうした効果が出てきた時は、属性と同じ形にする。
    */
   readonly makerSymbols: readonly MakerSymbol[]
+  readonly works: readonly string[]
+  /** ルール上の記号と異なるカードだけ、印刷された記号を指定する。 */
+  readonly printedMakerSymbols?: readonly MakerSymbol[]
   /** テキストが定義する能力（総合ルール 第2部 第10章 1）。改行ごとに別の能力になる（同 第4部 第1章 3）。 */
   readonly abilities: readonly Ability[]
   /**
@@ -344,6 +347,8 @@ interface CardSpec {
   readonly attributes?: readonly Attribute[]
   /** 省略した場合はメーカーシンボルを持たない。 */
   readonly makerSymbols?: readonly MakerSymbol[]
+  readonly works?: readonly string[]
+  readonly printedMakerSymbols?: readonly MakerSymbol[]
   /**
    * 省略した場合はテキストを持たない（#93）。
    *
@@ -389,6 +394,8 @@ function written<T extends CardType>(type: T, spec: CardSpec) {
     reverseStars: spec.reverseStars ?? 0,
     attributes: spec.attributes ?? [],
     makerSymbols: spec.makerSymbols ?? [],
+    works: spec.works ?? [],
+    ...(spec.printedMakerSymbols === undefined ? {} : { printedMakerSymbols: spec.printedMakerSymbols }),
     text: spec.text ?? [],
     // 空の並びは、持たないものとして扱う。欄の有無だけで、通信の表記に載せるかが決まるためである。
     ...(spec.operationalNote === undefined || spec.operationalNote.length === 0

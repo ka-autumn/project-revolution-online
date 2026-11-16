@@ -37,11 +37,6 @@ function autoTagsOf(cards, userType) {
   }
   const colors = COLORS.filter((c) => usable.some((x) => (x.face.colors[0] ?? '黒') === c))
   tags.push({ label: colors.length === 1 ? `${colors[0]}単` : colors.length === 2 ? colors.join('') : '多色', group: '色の構成' })
-  const majority = (of) => { const m = {}; for (const c of usable) m[of(c)] = (m[of(c)] ?? 0) + 1; const [top, n] = Object.entries(m).sort((a, b) => b[1] - a[1])[0]; return n / usable.length >= 0.5 ? top : undefined }
-  const work = majority((c) => WORK_OF_KEY[c.key] ?? FALLBACK_WORKS[Number(c.key.slice(-2)) % FALLBACK_WORKS.length])
-  if (work) tags.push({ label: work, group: '作品名' })
-  const block = majority((c) => BLOCK_OF_WORK[WORK_OF_KEY[c.key] ?? FALLBACK_WORKS[Number(c.key.slice(-2)) % FALLBACK_WORKS.length]])
-  if (block) tags.push({ label: block, group: 'ブロック' })
   return tags.map((t) => ({ ...t, kind: '自動' }))
 }
 function tagsOf(cards, userType, userUses) {
@@ -59,30 +54,21 @@ function tagIcon(t) {
   return emoji ? el('span', 'tag__emoji', emoji) : undefined
 }
 const KEYWORDS = ['夢', '希望', '元気', '信頼', '根性', '勇気']
-// ブロックの選択肢（開発者の指定）。作品名・ブロック・エキスパンションコードは、まだカードのデータに無い（別 Issue）。
-const BLOCKS = ['見本書房', '架空出版', '例文社', '仮置文庫', 'サンプル堂']
-const BLOCK_LOGO = { 見本書房: 'Ａ', 架空出版: 'Ｂ', 例文社: 'Ｃ', 仮置文庫: 'Ｄ', サンプル堂: 'Ｅ' }
+// 記号と名前はカードとは別の対応表で供給する。AX は印刷された表記の見本。
+const MAKERS = {
+  AA: { name: '見本書房', reading: 'みほんしょぼう' },
+  AX: { name: '旧見本書房', reading: 'きゅうみほんしょぼう' },
+  BB: { name: '架空出版', reading: 'かくうしゅっぱん' },
+  CC: { name: '例文社', reading: 'れいぶんしゃ' },
+  DD: { name: '仮置文庫', reading: 'かりおきぶんこ' },
+  EE: { name: 'サンプル堂', reading: 'さんぷるどう' },
+}
+const BLOCKS = [...new Set(window.POOL.flatMap((c) => c.face.makerSymbols))]
+  .sort((a, b) => MAKERS[a].reading.localeCompare(MAKERS[b].reading, 'ja'))
 const EXPANSION_CODE = { '見本デッキ A': 'MHA', '見本デッキ B': 'MHB' }
-// 以下はモックだけの仮の割り当て（推測を含む）。本番はカードのデータが持つ。
-const WORK_OF_KEY = {
-  'MHA-01': '見本作品Ａ', 'MHA-13': '見本作品Ａ', 'MHA-02': '見本作品Ｊ', 'MHA-03': '見本作品Ｂ',
-  'MHA-04': '見本作品Ｋ', 'MHA-18': '見本作品Ｋ', 'MHA-05': '見本作品Ｌ', 'MHA-06': '見本作品Ｃ',
-  'MHA-07': '見本作品Ｃ', 'MHB-09': '見本作品Ｃ', 'MHA-10': '見本作品Ｃ２',
-  'MHA-09': '見本作品Ｄ', 'MHA-14': '見本作品Ｍ', 'MHB-01': '見本作品Ｎ', 'MHB-02': '見本作品Ｏ',
-  'MHB-03': '見本作品Ｐ', 'MHB-04': '見本作品Ｇ', 'MHB-08': '見本作品Ｇ', 'MHB-07': '見本作品Ｆ',
-  'MHB-12': '見本作品Ｉ', 'MHB-13': '見本作品Ｈ', 'MHB-14': '見本作品Ｅ', 'MHB-18': '見本作品Ｅ',
-}
-const BLOCK_OF_WORK = {
-  '見本作品Ａ': '見本書房', '見本作品Ｊ': '架空出版', '見本作品Ｂ': '仮置文庫',
-  '見本作品Ｋ': '架空出版', '見本作品Ｌ': '架空出版', '見本作品Ｃ': 'サンプル堂', '見本作品Ｃ２': 'サンプル堂',
-  '見本作品Ｄ': '見本書房', '見本作品Ｍ': '架空出版', '見本作品Ｎ': '例文社',
-  '見本作品Ｏ': '見本書房', '見本作品Ｐ': '例文社', '見本作品Ｇ': 'サンプル堂',
-  '見本作品Ｆ': '見本書房', '見本作品Ｉ': '例文社', '見本作品Ｈ': '例文社',
-  '見本作品Ｅ': '例文社',
-}
-const FALLBACK_WORKS = ['見本作品Ｊ', '見本作品Ｋ', '見本作品Ｐ', '見本作品Ｎ', '見本作品Ｂ']
-const workOf = (c) => WORK_OF_KEY[c.key] ?? FALLBACK_WORKS[Number(c.key.slice(-2)) % FALLBACK_WORKS.length]
-const blockOf = (c) => BLOCK_OF_WORK[workOf(c)]
+const worksOf = (c) => c.face.works
+const printedSymbolsOf = (c) => c.face.printedMakerSymbols ?? c.face.makerSymbols
+const printedBlocksOf = (c) => printedSymbolsOf(c).map((symbol) => MAKERS[symbol].name)
 const codesOf = (c) => c.expansions.map((e) => EXPANSION_CODE[e] ?? e)
 const BATCH = { カード: 24, 一覧: 60 }
 
@@ -217,7 +203,7 @@ function levelBadge(face) {
   n.setAttribute('role', 'img'); n.setAttribute('aria-label', `レベル ${face.level}`)
   return n
 }
-function face(f, big, block) {
+function face(f, big, symbols) {
   const node = el('div', 'card__face')
   const top = el('div', 'card__top'); top.append(levelBadge(f), el('span', 'card__kind', f.type)); node.append(top)
   const title = el('div', 'card__title')
@@ -235,20 +221,21 @@ function face(f, big, block) {
   // BP・SP の間にブロックのロゴ。ユニット以外は BP・SP が無いので、ロゴだけを真ん中に置く。
   const stats = el('div', `card__stats${f.type === 'ユニット' ? '' : ' card__stats--ロゴだけ'}`)
   if (f.type === 'ユニット') stats.append(el('span', 'card__bp', String(f.bp)))
-  if (block) stats.append(blockLogo(block))
+  const logos = el('span', 'block-logos'); for (const symbol of symbols) logos.append(blockLogo(symbol)); stats.append(logos)
   if (f.type === 'ユニット') stats.append(el('span', 'card__sp', String(f.sp)))
   bottom.append(stats)
   node.append(bottom)
   return node
 }
-function blockLogo(block) {
-  const n = el('span', `block-logo block-logo--${BLOCK_LOGO[block]}`, BLOCK_LOGO[block])
-  n.setAttribute('role', 'img'); n.setAttribute('aria-label', `ブロック：${block}`); n.title = block
+function blockLogo(symbol) {
+  const name = MAKERS[symbol].name
+  const n = el('span', 'block-logo', symbol)
+  n.setAttribute('role', 'img'); n.setAttribute('aria-label', `ブロック：${name}`); n.title = name
   return n
 }
 function cardEl(c, big, extra = '') {
   const n = el('div', `card card--色-${colorOf(c)}${big ? ' card--拡大' : ''}${!big && state.pinned === c.key ? ' card--詳細中' : ''} ${extra}`)
-  n.append(face(c.face, big, blockOf(c)))
+  n.append(face(c.face, big, printedSymbolsOf(c)))
   return n
 }
 function colorIcon(color) { const i = el('img', 'chip__color'); i.src = LEVEL_ICON[color]; i.alt = ''; return i }
@@ -265,8 +252,8 @@ function filtered() {
     (!f.colors.length || c.face.colors.some((x) => f.colors.includes(x))) &&
     (!f.levels.length || f.levels.includes(c.face.level)) &&
     (!f.attributes.length || c.face.attributes.some((x) => f.attributes.includes(x))) &&
-    (!f.works.length || f.works.includes(workOf(c))) &&
-    (!f.blocks.length || f.blocks.includes(blockOf(c))) &&
+    (!f.works.length || worksOf(c).some((work) => f.works.includes(work))) &&
+    (!f.blocks.length || c.face.makerSymbols.some((symbol) => f.blocks.includes(symbol))) &&
     (!f.stars.length || starOf(c).some((s) => f.stars.includes(s))) &&
     (!f.moves.length || f.moves.includes(movePatternOf(c))) &&
     (!f.keywords.length || keywordsOf(c).some((k) => f.keywords.includes(k))) &&
@@ -521,8 +508,8 @@ function leftColumn() {
       (name) => { const icon = moveIcon(MOVE_PATTERNS.find(([n]) => n === name)[1]); icon.removeAttribute('role'); icon.removeAttribute('aria-label'); icon.classList.add('chip__move'); return icon },
       (name) => `移動方向：${name}`))
     body.append(fold('キーワード能力', KEYWORDS, f.keywords, 'keywords'))
-    body.append(fold('ブロック', BLOCKS, f.blocks, 'blocks'))
-    const works = [...new Set(pool.map(workOf))].sort((a, b) => a.localeCompare(b, 'ja'))
+    body.append(fold('ブロック', BLOCKS, f.blocks, 'blocks', (symbol) => MAKERS[symbol].name))
+    const works = [...new Set(pool.flatMap(worksOf))].sort((a, b) => a.localeCompare(b, 'ja'))
     body.append(fold('作品名', works, f.works, 'works'))
     const attrs = [...new Set(pool.flatMap((c) => c.face.attributes))].sort((a, b) => a.localeCompare(b, 'ja'))
     body.append(fold('属性', attrs, f.attributes, 'attributes'))
@@ -764,9 +751,8 @@ function detailNodes(c) {
   const metadata = el('dl', 'detail__rows detail__metadata')
   const metadataRows = [
     ...(c.face.attributes.length ? [['属性', c.face.attributes.join(ATTR_SEP)]] : []),
-    // 作品名・ブロックは将来の表示項目。本番は未対応だが、情報量の見本として残す。
-    ['作品名', `${workOf(c)}（未実装）`],
-    ['ブロック', `${blockOf(c)}（未実装）`],
+    ['作品名', worksOf(c).join(' | ')],
+    ['ブロック', printedBlocksOf(c).join(' | ')],
     ...(c.expansions.length ? [['収録', c.expansions.join('・')]] : []),
   ]
   for (const [label, value] of metadataRows) metadata.append(el('dt', '', label), el('dd', '', value))
