@@ -1,4 +1,5 @@
 import { CARD_TYPES, COLORS, checkCardLimits, checkDeckForFormat, deckCoverKeyOf } from '@revolution/engine'
+import { metadataRowsOf } from './card-metadata.js'
 import type {
   CardLimits,
   Color,
@@ -34,12 +35,12 @@ import type { DetailRow, HandRefusal } from './view-model.js'
  * 押す前に示す判定だけは、画面が当てる（`lobbyDecks`、ADR-0029）。数えるのは「いま何枚入れているか」だけで、それは
  * 画面が自分で組んでいるものだからである。
  *
- * **識別子から何も読み取らない**（ADR-0021）。引く鍵としてだけ使い、並べる順はカードに印刷されて
+ * 識別子から何も読み取らない（ADR-0021）。引く鍵としてだけ使い、並べる順はカードに印刷されて
  * いる項目で決める。
  */
 
 /**
- * 組みかけのデッキ。**保存するまで、サーバの自分のデッキは変わらない。**
+ * 組みかけのデッキ。保存するまで、サーバの自分のデッキは変わらない。
  *
  * 画面が持ち、読み込み直しても消えないようにブラウザにも置く（`index.ts`）。
  */
@@ -48,7 +49,7 @@ export interface DeckDraft {
   readonly deck: DeckId | undefined
   readonly name: string
   readonly description: string
-  /** カードを指す識別子の並び。**同じ識別子を並べた数がその枚数**になる（`WireOwnedDeck` と同じ）。 */
+  /** カードを指す識別子の並び。同じ識別子を並べた数がその枚数になる（`WireOwnedDeck` と同じ）。 */
   readonly cards: readonly string[]
 }
 
@@ -71,7 +72,7 @@ export type BuilderScreen = '閉じている' | 'デッキを選ぶ' | 'デッ�
 /**
  * 送ってまだ返事の来ていないもの。
  *
- * **数え上げられるので、列挙で持つ。** 保存とコピーを同時に待つことは無い（待っている間は押す口を
+ * 数え上げられるので、列挙で持つ。 保存とコピーを同時に待つことは無い（待っている間は押す口を
  * 出さない）。
  */
 export type BuilderWaiting =
@@ -82,7 +83,7 @@ export type BuilderWaiting =
   | { readonly kind: 'コピー' }
 
 /**
- * 押す前に尋ねていること。**戻せないことだけを尋ねる。**
+ * 押す前に尋ねていること。戻せないことだけを尋ねる。
  *
  * 画面の中に出す（`render.ts` の `confirmElement`）。ブラウザの確認ダイアログは使わない。画面は丸ごと
  * 描き直されるので、尋ねていることは状態として持つ。
@@ -98,7 +99,7 @@ export type BuilderConfirm =
 /**
  * 尋ねる文と、2 つのボタンの見出し。
  *
- * **見出しは、押すと何が起きるかをそのまま書く。** 「はい」「いいえ」では、文を読み返さないと
+ * 見出しは、押すと何が起きるかをそのまま書く。 「はい」「いいえ」では、文を読み返さないと
  * どちらを押せばよいかが分からない。
  */
 export interface ConfirmView {
@@ -132,13 +133,13 @@ export function confirmView(confirm: BuilderConfirm): ConfirmView {
   }
 }
 
-/** デッキを組むところの状態。**サーバから届いたものは持たない**——それは `Session` にある。 */
+/** デッキを組むところの状態。サーバから届いたものは持たない——それは `Session` にある。 */
 export interface Builder {
   readonly screen: BuilderScreen
   /** 組みかけ。組んでいなければ `undefined`。 */
   readonly draft: DeckDraft | undefined
   /**
-   * 確かめる時に当てるルール（ADR-0021）。**ロビーで部屋を作る時に選ぶものとは別に持つ。**
+   * 確かめる時に当てるルール（ADR-0021）。ロビーで部屋を作る時に選ぶものとは別に持つ。
    *
    * 選ばなければサーバが既定を当てる。部屋を作る時と同じ既定である（`server` の `room.ts` の
    * `rulesFor`）。
@@ -148,7 +149,7 @@ export interface Builder {
   readonly pinned: string | undefined
   readonly waiting: BuilderWaiting
   /**
-   * 確かめてほしいと送って、まだ返事の来ていない数。**0 なら、出ている結果がいまの組みかけのもの**
+   * 確かめてほしいと送って、まだ返事の来ていない数。0 なら、出ている結果がいまの組みかけのもの
    * である。返事は送った順に届く（`protocol.ts` の `デッキを確かめた`）。
    */
   readonly checking: number
@@ -157,7 +158,7 @@ export interface Builder {
   /** 尋ねていること。尋ねていなければ `undefined`。 */
   readonly confirming: BuilderConfirm | undefined
   /**
-   * プールの絞り込み（`pool-filter.ts`）。**別のデッキを開いても外さない**——同じ条件で探し続ける
+   * プールの絞り込み（`pool-filter.ts`）。別のデッキを開いても外さない——同じ条件で探し続ける
    * ことが多い。
    */
   readonly filter: PoolFilter
@@ -177,7 +178,7 @@ export interface Builder {
   /**
    * `viewingRecipe` を尋ねて、まだ返事が届いていないか（ADR-0022）。
    *
-   * **`デッキを確かめる` の `checking` と同じ理由でここに持つ。** `レシピ` の返事はどの鍵を尋ねたかを
+   * `デッキを確かめる` の `checking` と同じ理由でここに持つ。 `レシピ` の返事はどの鍵を尋ねたかを
    * 添えない（送った順に届く前提、`protocol.ts`）ので、違う鍵を続けて開いた時に前の答えを出さない
    * ためにここで待っているかを覚える。
    */
@@ -324,7 +325,7 @@ export function withoutCard(draft: DeckDraft, key: string): DeckDraft {
   return { ...draft, cards: draft.cards.filter((_, at) => at !== index) }
 }
 
-/** 同じ識別子を同じ枚数ずつ持っているか。**並びは比べない**——サーバは揃えて残す。 */
+/** 同じ識別子を同じ枚数ずつ持っているか。並びは比べない——サーバは揃えて残す。 */
 function sameCards(left: readonly string[], right: readonly string[]): boolean {
   if (left.length !== right.length) return false
 
@@ -345,7 +346,7 @@ function sameDraft(left: DeckDraft, right: DeckDraft): boolean {
 /**
  * 保存していない変更があるか。
  *
- * 見比べる先は、届いている自分のデッキである。**上書きする先がもう無い**（ほかの画面で消した）
+ * 見比べる先は、届いている自分のデッキである。上書きする先がもう無い（ほかの画面で消した）
  * なら、残っているのは組みかけだけなので、変更があるものとして扱う。
  */
 export function hasUnsavedChanges(draft: DeckDraft, owned: readonly WireOwnedDeck[]): boolean {
@@ -356,7 +357,7 @@ export function hasUnsavedChanges(draft: DeckDraft, owned: readonly WireOwnedDec
 }
 
 /**
- * 送る前の組みかけ。**上書きする先がもう無ければ、新しいデッキとして保存する。**
+ * 送る前の組みかけ。上書きする先がもう無ければ、新しいデッキとして保存する。
  *
  * 置いておくと、サーバが「そのデッキはありません」と断り続けて、組みかけを残す手立てが無くなる。
  */
@@ -369,11 +370,11 @@ export function draftToSave(draft: DeckDraft, owned: readonly WireOwnedDeck[]): 
 /**
  * 届いたものを、組むところの状態に畳む。
  *
- * **返事は送った順に届く**ので、何を待っているか（`waiting`・`checking`）を覚えておけば、届いた
+ * 返事は送った順に届くので、何を待っているか（`waiting`・`checking`）を覚えておけば、届いた
  * ものがどれへの返事かが分かる。断られた（`行えなかった`）ら、待っていたものは全部やめる——どれを
  * 断られたかは添えられていないが、どれも、もう返事は来ない。
  *
- * **`デッキを保存した` は中身をまるごと添えて届く**（ADR-0026）ので、`自分のデッキ` を待たずに
+ * `デッキを保存した` は中身をまるごと添えて届く（ADR-0026）ので、`自分のデッキ` を待たずに
  * ここで組みかけへ反映できる。
  *
  * `inLobby` は、届いた時にロビーにいるか。コピー・複製の返事は、ロビーにいる時だけ組み始める
@@ -388,7 +389,7 @@ export function applyToBuilder(builder: Builder, message: ToClient, inLobby = tr
       if (waiting.kind === '保存') {
         const idAssigned =
           builder.draft === undefined ? undefined : { ...builder.draft, deck: message.deck.id }
-        // **送った後に手を加えていなければ、残ったものに合わせる。** サーバは名前の前後の空白を
+        // 送った後に手を加えていなければ、残ったものに合わせる。 サーバは名前の前後の空白を
         // 落とすので、合わせないと保存した直後から変更があるように見える。手を加えていれば、
         // 新しく作ったデッキの識別子だけ受け取り、組みかけはそのまま残す——次からは上書きになる。
         const synced =
@@ -414,7 +415,7 @@ export function applyToBuilder(builder: Builder, message: ToClient, inLobby = tr
       // どの鍵への返事かは添えられていない（送った順に届く前提）ので、待っていたことだけを覚える。
       return { ...builder, viewingRecipeLoading: false }
     case '行えなかった': {
-      // **尋ねている最中の共有があれば、そこにも理由を出す。** 下に出る `refusal`（画面の外）とは
+      // 尋ねている最中の共有があれば、そこにも理由を出す。 下に出る `refusal`（画面の外）とは
       // 別に、ダイアログの中に出す必要がある——重なった画面の裏に断られた理由が隠れてしまう。
       const sharing =
         builder.sharing?.kind === '打ち込み中' && builder.sharing.sending
@@ -439,13 +440,13 @@ export interface PoolRow {
 export type DeckRow =
   | ({ readonly kind: '使える' } & PoolRow)
   /**
-   * プールに無いカード（取り下げられたもの）。**消さずに並べる**（ADR-0021）——抜くまで、確かめる
+   * プールに無いカード（取り下げられたもの）。消さずに並べる（ADR-0021）——抜くまで、確かめる
    * ことも保存することもできない（`server` の `owned-deck.ts`）。
    */
   | { readonly kind: '使えない'; readonly key: string; readonly count: number }
 
 /**
- * 並べる順（#193）。**種別 → 色 → レベル → 名前。**
+ * 並べる順（#193）。種別 → 色 → レベル → 名前。
  *
  * どれもカードに印刷されている項目で、識別子は使わない（ADR-0021）。種別と色の順は engine が
  * 数え上げている順（`CARD_TYPES`・`COLORS`）で、無色は色のあるカードの後に置く。色を 2 つ以上
@@ -476,7 +477,7 @@ function sortedPool(pool: readonly WirePoolCard[]): readonly WirePoolCard[] {
   return [...pool].sort((left, right) => comparePrinted(left.face, right.face))
 }
 
-/** プールの一覧。**並ぶのはプールにあるものだけ**（ADR-0021）。 */
+/** プールの一覧。並ぶのはプールにあるものだけ（ADR-0021）。 */
 export function poolRows(pool: readonly WirePoolCard[], draft: DeckDraft): readonly PoolRow[] {
   const counts = countsOf(draft.cards)
 
@@ -671,7 +672,7 @@ export interface CardDetail {
 }
 
 /** プールに無ければ `undefined`。`isCompact` はスマートフォン用に複数項目を同じ行へまとめる指定。 */
-export function cardDetailOf(pool: readonly WirePoolCard[], key: string, isCompact = false): CardDetail | undefined {
+export function cardDetailOf(pool: readonly WirePoolCard[], key: string, isCompact = false, makers: import('@revolution/engine').MakerCatalog = {}): CardDetail | undefined {
   const card = pool.find((each) => each.key === key)
   if (card === undefined) return undefined
 
@@ -679,7 +680,7 @@ export function cardDetailOf(pool: readonly WirePoolCard[], key: string, isCompa
     name: card.face.name,
     face: card.face,
     rows: composeDeckDetailRows(card.face, isCompact),
-    metadataRows: composeDeckMetadataRows(card.face, card.expansions),
+    metadataRows: composeDeckMetadataRows(card.face, card.expansions, makers),
     text: card.face.text,
     // 持たないカードには項目ごと載らない。古いサーバも送らない。どちらも注記なしとして扱う。
     operationalNote: card.face.operationalNote ?? [],
@@ -703,9 +704,10 @@ function composeDeckDetailRows(face: WireCardFace, isCompact: boolean): readonly
   return rows
 }
 
-function composeDeckMetadataRows(face: WireCardFace, expansions: readonly string[]): readonly DetailRow[] {
+function composeDeckMetadataRows(face: WireCardFace, expansions: readonly string[], makers: import('@revolution/engine').MakerCatalog): readonly DetailRow[] {
   const rows: DetailRow[] = []
   if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join(' | ') })
+  rows.push(...metadataRowsOf(face, makers))
   if (expansions.length > 0) rows.push({ label: '収録', value: expansions.join('・') })
   return rows
 }
@@ -719,7 +721,7 @@ function composeDeckMetadataRows(face: WireCardFace, expansions: readonly string
  * `expansions` は収録（ADR-0028）。エキスパンションは名前で出す——コードは #230 が済むまで無い。
  * 呼ぶ側がエキスパンションを持たない場合（公開ページなど）は省いてよい。
  */
-export function printedDetailsOf(face: WireCardFace, expansions: readonly string[] = []): readonly DetailRow[] {
+export function printedDetailsOf(face: WireCardFace, expansions: readonly string[] = [], makers: import('@revolution/engine').MakerCatalog = {}): readonly DetailRow[] {
   const rows: DetailRow[] = [
     { label: '種別', value: face.type },
     { label: 'レベル', value: String(face.level) },
@@ -738,6 +740,7 @@ export function printedDetailsOf(face: WireCardFace, expansions: readonly string
   const keywords = (face.keywords as WireCardFace['keywords'] | undefined) ?? []
   if (keywords.length > 0) rows.push({ label: 'キーワード', value: keywords.join('・') })
   if (face.attributes.length > 0) rows.push({ label: '属性', value: face.attributes.join(' | ') })
+  rows.push(...metadataRowsOf(face, makers))
   if (expansions.length > 0) rows.push({ label: '収録', value: expansions.join('・') })
 
   return rows
@@ -746,7 +749,7 @@ export function printedDetailsOf(face: WireCardFace, expansions: readonly string
 /**
  * 確かめた結果の出し方。
  *
- * **数え上げられるので、列挙で持つ。** 「まだ分からない」と「満たしている」を空の並びで兼ねると、
+ * 数え上げられるので、列挙で持つ。 「まだ分からない」と「満たしている」を空の並びで兼ねると、
  * 返事を待っている間に満たしているように見える。
  */
 export type CheckView =
@@ -759,7 +762,7 @@ export type CheckView =
  * 確かめた結果を、組むところに出す形にする。
  *
  * `checking` は、いまの組みかけへの返事をまだ待っているか。送った数（`Builder.checking`）だけで
- * なく、**送る前に間を置いている間も待っている**（`index.ts`）。
+ * なく、送る前に間を置いている間も待っている（`index.ts`）。
  */
 export function checkView(
   draft: DeckDraft,
@@ -780,7 +783,7 @@ export function checkView(
   return { kind: '満たしていない', lines: checked.map(violationLine) }
 }
 
-/** 不備 1 つを読める文にする。**「あと何枚」をそのまま出す**（ADR-0021）。 */
+/** 不備 1 つを読める文にする。「あと何枚」をそのまま出す（ADR-0021）。 */
 export function violationLine(violation: DeckViolation): string {
   switch (violation.kind) {
     case '枚数不足':
@@ -868,7 +871,7 @@ export interface OwnedDeckRow {
   readonly hasUnusable: boolean
 }
 
-/** 自分のデッキの一覧。**届いた順のまま並べる。** */
+/** 自分のデッキの一覧。届いた順のまま並べる。 */
 export function ownedDeckRows(pool: readonly WirePoolCard[], decks: readonly WireOwnedDeck[]): readonly OwnedDeckRow[] {
   return decks.map((deck) => ({
     id: deck.id,
@@ -919,13 +922,13 @@ export function filterOwnedDeckRows(
 }
 
 /**
- * 席に着く時に選べるデッキ（ADR-0021、#194）。**並ぶのは自分のデッキである。**
+ * 席に着く時に選べるデッキ（ADR-0021、#194）。並ぶのは自分のデッキである。
  *
  * 既製デッキは並ばない。コピーして自分のデッキにしてから使う（ADR-0022）。
  *
- * **自分のデッキが届いていなければ、既製デッキを並べる。** 届かないのは、デッキを持てない
+ * 自分のデッキが届いていなければ、既製デッキを並べる。 届かないのは、デッキを持てない
  * 立て方だからである（ログインが無い、ADR-0021）。そこで何も並べないと、手元で 2 人ぶん試す時に
- * 両方の席が同じデッキに固定される。**サーバもその人には既製デッキを引かせる**ので、出るものと
+ * 両方の席が同じデッキに固定される。サーバもその人には既製デッキを引かせるので、出るものと
  * 座れるものがずれない。
  */
 export function seatableDecks(
@@ -936,10 +939,10 @@ export function seatableDecks(
 }
 
 /**
- * ロビーで選んだ状態にするデッキ（#194）。**もう無いデッキは選ばない。**
+ * ロビーで選んだ状態にするデッキ（#194）。もう無いデッキは選ばない。
  *
  * 自分で選んだものを優先し、選んでいなければサーバが決めた既定（`ロビー` の `chosen`）を使う。
- * どちらも、**いま並んでいるもの**（`seatableDecks`）の中にある時だけ選ぶ——消したデッキを
+ * どちらも、いま並んでいるもの（`seatableDecks`）の中にある時だけ選ぶ——消したデッキを
  * 選んだ状態のままにすると、座れないものが選ばれて見える。デッキを消した後にロビーが届き直すまでの
  * 間がそれにあたる。
  */

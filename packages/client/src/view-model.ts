@@ -133,6 +133,9 @@ export type CardView =
   | {
       /** 表側が見えている。 */
       readonly kind: '表'
+      readonly works?: readonly string[]
+      readonly makerSymbols?: readonly string[]
+      readonly printedMakerSymbols?: readonly string[]
       readonly key?: string
       readonly artwork?: WireCardFace['artwork']
       readonly id: CardId
@@ -849,6 +852,9 @@ export function primaryColorOf(colors: readonly Color[]): Color {
  * では空・`undefined` にする。
  */
 export interface FaceFields {
+  readonly works?: readonly string[]
+  readonly makerSymbols?: readonly string[]
+  readonly printedMakerSymbols?: readonly string[]
   readonly key?: string
   readonly artwork?: WireCardFace['artwork']
   readonly name: string
@@ -869,6 +875,9 @@ export interface FaceFields {
 
 export function faceFieldsOf(face: WireCardFace): FaceFields {
   return {
+    works: face.works ?? [],
+    makerSymbols: face.makerSymbols ?? [],
+    ...(face.printedMakerSymbols === undefined ? {} : { printedMakerSymbols: face.printedMakerSymbols }),
     ...(face.key === undefined ? {} : { key: face.key }),
     ...(face.artwork === undefined ? {} : { artwork: face.artwork }),
     name: face.name,

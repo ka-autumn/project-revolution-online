@@ -1,6 +1,6 @@
 // 対戦サーバを 1 ファイルに束ねる。
 //
-// **立てるとき（`serve.mjs`）と持ち出すとき（`build-server.mjs`）で、同じものが要る。**
+// 立てるとき（`serve.mjs`）と持ち出すとき（`build-server.mjs`）で、同じものが要る。
 // 手元で走らせたものと置き場へ運ぶものが別物にならないよう、束ね方はここにしか置かない。
 //
 // 束ねてから走らせるのは、node が `.js` で終わる import を `.ts` に読み替えないためである
@@ -16,7 +16,7 @@ export const DEFAULT_PORT = 8787
 /**
  * 書いたものを置く先の既定（ADR-0018）。
  *
- * **束ねたものと同じところには置かない。** 束ねたものは置き直すたびに差し替わる（ADR-0015）
+ * 束ねたものと同じところには置かない。 束ねたものは置き直すたびに差し替わる（ADR-0015）
  * ので、そこに置くと消える。立てる側が `--store` か `STORE` で決める。
  */
 export const DEFAULT_STORE = 'revolution.sqlite'
@@ -26,7 +26,7 @@ const repoRoot = fileURLToPath(new URL('../', import.meta.url))
 /**
  * import に書ける形にしたパス。
  *
- * **パッケージ名では指せない。** pnpm のワークスペースのリンクは各パッケージの
+ * パッケージ名では指せない。 pnpm のワークスペースのリンクは各パッケージの
  * `node_modules` にしかなく、リポジトリのルートから `@revolution/server` は解決できない。
  * ソースを絶対パスで指せば、その中の import はそのパッケージから解決される。
  *
@@ -47,19 +47,19 @@ export function readFlag(argv, name) {
 /**
  * 束ねる対象になる入口。
  *
- * ここに置くのは**繋ぐところだけ**で、デッキの組み方も不備の見方もサーバの側にある
+ * ここに置くのは繋ぐところだけで、デッキの組み方も不備の見方もサーバの側にある
  * （`packages/server/src/deck.ts`）。この文字列は型検査を通らないので、判断を持たせない。
  *
  * ポートは焼き付けた値を既定にしつつ、`PORT` で上書きできるようにしてある。
- * **置き場では、待つポートを常駐の設定の側で決めたい。** 束ね直さずに変えられる余地を残す。
+ * 置き場では、待つポートを常駐の設定の側で決めたい。 束ね直さずに変えられる余地を残す。
  */
 function entryPoint(decksModule, port, store) {
   return `
 import { checkPresets, createSignIn, deckChoicesOf, deckSourceFrom, newSetup, openStore, readSupply, serve, signInConfigFrom } from ${JSON.stringify(serverEntry)}
 import * as supplied from ${JSON.stringify(specifier(decksModule))}
 
-// 渡されたものを読むのはサーバの側である（\`packages/server/src/deck.ts\`）。**この文字列は型検査を
-// 通らないので、判断を持たせない。**
+// 渡されたものを読むのはサーバの側である（\`packages/server/src/deck.ts\`）。この文字列は型検査を
+// 通らないので、判断を持たせない。
 const reading = readSupply(supplied)
 if (reading.kind === '断る') {
   console.error(reading.reason)
@@ -76,15 +76,15 @@ if (violations.length > 0) {
 const decks = deckSourceFrom(supply)
 const deckChoices = deckChoicesOf(supply)
 
-// 書いたものが残る置き場（ADR-0018）。**置き場は束ね直さずに変えられるようにする**——
+// 書いたものが残る置き場（ADR-0018）。置き場は束ね直さずに変えられるようにする——
 // 待つポートと同じ理由で、置く先を決めるのは常駐の設定の側である（ADR-0015）。
 // 渡さなければ何も残らず、立て直せば対戦は消える（ADR-0018 より前と同じ）。
 const storePath = process.env.STORE ?? ${JSON.stringify(store)}
 const store = storePath === '' ? undefined : openStore(storePath)
 
-// ログイン（ADR-0019）。**秘密は束ねたものに焼き込まず、環境変数で受け取る**（ADR-0015 が
+// ログイン（ADR-0019）。秘密は束ねたものに焼き込まず、環境変数で受け取る（ADR-0015 が
 // 宛先について決めたのと同じ形）。設定が揃っていれば Cookie のセッションで席が決まり、
-// 無ければ今までどおり \`?participant=\` で名乗る。**半分だけ揃っていれば立ち上がらない。**
+// 無ければ今までどおり \`?participant=\` で名乗る。半分だけ揃っていれば立ち上がらない。
 let signInConfig
 try {
   signInConfig = signInConfigFrom(process.env)
@@ -114,7 +114,7 @@ serve({ port: Number(process.env.PORT ?? ${port}), setup: newSetup, decks, deckC
 /**
  * `outfile` に束ねたものを書き出す。
  *
- * 失敗したときは `false` を返す。**呼ぶ側で言い直さない。** esbuild がすでに読める形で
+ * 失敗したときは `false` を返す。呼ぶ側で言い直さない。 esbuild がすでに読める形で
  * 書いているので、同じことを二度言わないため。
  */
 export async function bundleServer({ decks, port = DEFAULT_PORT, store = DEFAULT_STORE, outfile }) {
@@ -124,6 +124,7 @@ export async function bundleServer({ decks, port = DEFAULT_PORT, store = DEFAULT
       outfile,
       absWorkingDir: repoRoot,
       bundle: true,
+      loader: { '.svg': 'text' },
       platform: 'node',
       format: 'cjs',
       target: 'node22',

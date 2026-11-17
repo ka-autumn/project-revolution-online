@@ -38,6 +38,9 @@ export type CardPresentationOf = (card: Card) => WireCardPresentation
 const withoutPresentation: CardPresentationOf = () => ({})
 
 interface WireWrittenCard extends WireCardPresentation {
+  readonly works?: readonly string[]
+  readonly makerSymbols?: readonly string[]
+  readonly printedMakerSymbols?: readonly string[]
   readonly name: string
   readonly level: number
   readonly colors: readonly Color[]
@@ -238,6 +241,9 @@ function written(card: Card): WireWrittenCard & { readonly type: CardType } {
     stars: card.stars,
     reverseStars: card.reverseStars,
     attributes: card.attributes,
+    works: card.works,
+    makerSymbols: card.makerSymbols,
+    ...(card.printedMakerSymbols === undefined ? {} : { printedMakerSymbols: card.printedMakerSymbols }),
     keywords: planKeywordsOf(card),
     text: card.text,
     ...(card.operationalNote === undefined ? {} : { operationalNote: card.operationalNote }),

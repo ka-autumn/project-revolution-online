@@ -1,3 +1,4 @@
+import { handleMakerLogo, makerCatalogForWire } from './maker-catalog.js'
 import { handleArtwork } from './card-art.js'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -276,6 +277,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
   const http = createServer((request, response) => {
     if (options.signIn?.handle(request, response) === true) return
     if (handlePublicShare(request, response)) return
+    if (handleMakerLogo(request, response, options.supply.makers)) return
     if (handleArtwork(request, response, options.supply.artwork)) return
 
     response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
@@ -489,9 +491,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
 
     const authenticated = options.signIn?.holderOf(request.headers.cookie) !== undefined
     const body = publicShareOf(share, cards, poolFaces, names, options.decks.restrictions, authenticated)
+    const presented = authenticated ? { ...body, makers: makerCatalogForWire(options.supply.makers) } : body
 
     response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-    response.end(method === 'HEAD' ? undefined : JSON.stringify(body))
+    response.end(method === 'HEAD' ? undefined : JSON.stringify(presented))
     return true
   }
 
@@ -703,6 +706,7 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
 
       // カードプールはデッキより先に送る。 デッキは識別子の並びで、引く先がプールである。
       // `admit` は接続ごとに 1 度だけ通る（名前を初めて決めた時か、決め終えた人が繋いだ時）。
+      send(socket, { kind: 'カード分類', workReadings: options.supply.workReadings ?? {}, makers: makerCatalogForWire(options.supply.makers), expansionCodes: Object.fromEntries((options.supply.expansions ?? []).filter((entry) => entry.code !== undefined).map((entry) => [entry.name, entry.code!])) })
       sendPool(socket)
       sendOwnDecks(socket, participant)
       sendMyShares()

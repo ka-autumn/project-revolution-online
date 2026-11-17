@@ -227,6 +227,8 @@ describe('配るカードプール', () => {
           stars: 0,
           reverseStars: 0,
           attributes: [],
+          works: [],
+          makerSymbols: [],
           keywords: [],
           text: ['カードを1枚引く。'],
         },
@@ -243,6 +245,8 @@ describe('配るカードプール', () => {
           stars: 0,
           reverseStars: 0,
           attributes: [],
+          works: [],
+          makerSymbols: [],
           keywords: [],
           text: [],
           triggerIcon: { kind: '侵入', squares: [{ row: 0, column: 1 }] },
@@ -335,7 +339,7 @@ describe('席に持ち込めるデッキ', () => {
     expect(deckSourceFrom(supply).of('だれか', '知らないデッキ')).toEqual({ kind: '無い' })
   })
 
-  /** 選ばずに座った人も席に着ける。**60 枚を選び切るまで対戦できない入口にしない**（ADR-0021）。 */
+  /** 選ばずに座った人も席に着ける。60 枚を選び切るまで対戦できない入口にしない（ADR-0021）。 */
   it('既定は最初の既製デッキである', () => {
     expect(deckSourceFrom(supply).fallbackFor('だれか')).toBe('既製1')
   })
@@ -352,7 +356,7 @@ describe('席に持ち込めるデッキ', () => {
     expect(deckSourceFrom(supply).from([...ALL_KEYS, '知らない番号'])).toBeUndefined()
   })
 
-  /** 画面に出るのは名前で、指すのは識別子である。**渡された順のまま並べる。** */
+  /** 画面に出るのは名前で、指すのは識別子である。渡された順のまま並べる。 */
   it('選べるデッキは、渡された順に名前付きで並ぶ', () => {
     expect(deckChoicesOf(supply).map(({ id, name }) => ({ id, name }))).toEqual([
       { id: '既製1', name: 'ひとつめ' },
@@ -415,7 +419,7 @@ describe('自分のデッキを足した引き方', () => {
     expect(reading.deck.keys).toEqual(ALL_KEYS)
   })
 
-  /** **他人のデッキの識別子を送っても引けない。** 持ち主を見るのはここである。 */
+  /** 他人のデッキの識別子を送っても引けない。 持ち主を見るのはここである。 */
   it('他人のデッキは引けない', () => {
     expect(sourceOf({ あ: [ownedDeck('1')] }).of('い', '1')).toEqual({ kind: '無い' })
   })
@@ -490,7 +494,7 @@ describe('自分のデッキを足した引き方', () => {
     expect(sourceOf({}).fallbackFor('あ')).toBe('既製1')
   })
 
-  /** **画面の決まりで終わらせない**（ADR-0010）。識別子を直に送っても引けない。 */
+  /** 画面の決まりで終わらせない（ADR-0010）。識別子を直に送っても引けない。 */
   it('デッキを持っている人は、既製デッキでは座れない', () => {
     expect(sourceOf({ あ: [ownedDeck('1')] }).of('あ', '既製1')).toEqual({ kind: '無い' })
   })

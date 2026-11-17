@@ -1,3 +1,4 @@
+import { configureCardMetadata } from './render.js'
 import { areaPointerStore } from './area-highlight.js'
 import type { AreaPointerStore } from './area-highlight.js'
 import { MAX_ATTEMPTS, connect, connectingLink } from './connection.js'
@@ -193,20 +194,20 @@ export interface MountOptions {
    * 直に入る部屋の合言葉。指していなければロビーから始める（#175）。
    *
    * 合言葉を知っている相手と待ち合わせる時だけ要る。ふだんはロビーで部屋を作るか選ぶので、
-   * **打つ前に決めておくものは何も無い。**
+   * 打つ前に決めておくものは何も無い。
    */
   readonly room?: RoomCode
   /**
    * 直に開くレシピの鍵（ADR-0022）。`/recipe/<鍵>` を開いた時に、`main.ts` がここへ渡す。
    *
-   * 指していなければ、ふだんどおりロビーから始める。**ログインしている人にしか開けない**
+   * 指していなければ、ふだんどおりロビーから始める。ログインしている人にしか開けない
    * ——ログインを持たない立て方や、まだ名前を決めていない間は、開けない理由を出す。
    */
   readonly recipe?: RecipeKey
   /**
    * ログインを始める先（ADR-0019、`server` の `sign-in.ts`）。
    *
-   * **ログインしているかどうかを画面は判断しない。** 繋ぎに行き、サーバが「ログインしていない」
+   * ログインしているかどうかを画面は判断しない。 繋ぎに行き、サーバが「ログインしていない」
    * と返したらここへ送るだけである。何を行えるかを決めるのはサーバである（ADR-0010）。
    */
   readonly signInUrl: string
@@ -216,15 +217,15 @@ export interface MountOptions {
 const SIGN_IN_TRIED = 'revolution.signInTried'
 
 /**
- * ログインへ送る。**同じタブでは一度だけ。** 送ったなら `true`。
+ * ログインへ送る。同じタブでは一度だけ。 送ったなら `true`。
  *
  * 繰り返しを止めるためにある。ログインは通ったのに Cookie が握手に付いてこない場合
  * （同じ登録可能ドメインの下に無い、`SameSite` に弾かれる、ADR-0019）、送り続けると画面と
- * Google の間を往復し続け、**何が悪いのかが読めないまま止まる。** 一度で止めれば、断られた
+ * Google の間を往復し続け、何が悪いのかが読めないまま止まる。 一度で止めれば、断られた
  * 理由がそのまま画面に出る。
  *
- * 覚えられないブラウザでは繰り返しを防げないが、それでも送る。**送らなければログインできない
- * のに対し、繰り返しはタブを閉じれば止まる。**
+ * 覚えられないブラウザでは繰り返しを防げないが、それでも送る。送らなければログインできない
+ * のに対し、繰り返しはタブを閉じれば止まる。
  */
 function goToSignIn(url: string): boolean {
   try {
@@ -251,7 +252,7 @@ function forgetSignIn(): void {
 /**
  * 盤面より前の様子を 1 行で。
  *
- * 繋がっていない間は、サーバから届いたものより先にそれを出す。**何回目かまで出す**のは、
+ * 繋がっていない間は、サーバから届いたものより先にそれを出す。何回目かまで出すのは、
  * 止まって見える時間に、待てば戻るのか戻らないのかが分かるようにするためである（ADR-0016）。
  */
 function statusOf(session: Session, link: Link): string | undefined {
@@ -287,7 +288,7 @@ function statusOf(session: Session, link: Link): string | undefined {
  * 操作のしかた（#94）。
  *
  * ボタンの並びは一覧性があり、それはそれで分かりやすい。クリックは盤面と手を目で往復せずに
- * 済む。**どちらがよいかは場面によるので、切り替えられるようにしている。**
+ * 済む。どちらがよいかは場面によるので、切り替えられるようにしている。
  */
 type PickMode = 'クリック' | 'ボタン'
 
@@ -403,7 +404,7 @@ function line(className: string, text: string): HTMLElement {
 /**
  * ロビーで押せるものと、打ち込みかけている部屋の名前（#175）。
  *
- * 名前をここに持つのは、**画面が丸ごと描き直される**（`draw`）ためである。ほかの人が部屋を
+ * 名前をここに持つのは、画面が丸ごと描き直される（`draw`）ためである。ほかの人が部屋を
  * 作ればロビーが届いて描き直しが起きるので、入力欄に置いたままにすると打ち込みかけが消える。
  */
 interface Lobby {
@@ -411,7 +412,7 @@ interface Lobby {
   /**
    * 選んでいるデッキ（ADR-0021）。まだ選んでいなければ `undefined`。
    *
-   * 名前と同じ理由でここに持つ。**画面は丸ごと描き直される**ので、選んだものを `select` に
+   * 名前と同じ理由でここに持つ。画面は丸ごと描き直されるので、選んだものを `select` に
    * 置いたままにすると、ほかの人が部屋を作るたびに選び直しになる。
    */
   readonly deck: DeckId | undefined
@@ -450,8 +451,8 @@ interface Lobby {
 /**
  * 表示名を決めるところで押せるものと、打ち込みかけている名前（ADR-0020）。
  *
- * 打ち込みかけをここに持つのは、部屋の名前と同じ理由である（`Lobby`）。**画面は丸ごと描き直され
- * る**ので、入力欄に置いたままにすると、繋ぎ直しなどで描き直しが起きた時に消える。
+ * 打ち込みかけをここに持つのは、部屋の名前と同じ理由である（`Lobby`）。画面は丸ごと描き直され
+ * るので、入力欄に置いたままにすると、繋ぎ直しなどで描き直しが起きた時に消える。
  */
 interface Naming {
   readonly draft: string
@@ -551,7 +552,7 @@ interface ScrollPosition {
 /**
  * 印（`render.ts` の `KEEP_SCROLL`）の付いた一覧の、スクロールした位置。描き直した後に戻す。
  *
- * **一覧を丸ごと作り直す**ので、位置は要素と一緒に消える。印の値で、作り直した後の要素と結び付ける。
+ * 一覧を丸ごと作り直すので、位置は要素と一緒に消える。印の値で、作り直した後の要素と結び付ける。
  * 縦（`scrollTop`）だけでなく横（`scrollLeft`）も戻す——1 行表示を狭い幅で横にスクロールした状態で
  * ＋・−を押すと描き直しが起きるが、横の位置まで戻さないと、そのたびに左端へ戻ってしまう（#207）。
  */
@@ -654,6 +655,7 @@ function draw(
   phonePending: PhonePending | undefined,
 ): void {
   // 打ち込みかけの場所は描き直すと消える。打っていた人には返す（`lobbyElement`）。
+  configureCardMetadata(session.makers ?? {}, session.expansionCodes ?? {})
   const typing = document.activeElement?.classList.contains('lobby__name') === true
   // 「これにする」をマウスで押すと手はボタンにあるので、断りの返事による描き直しでは押した経路によらず返す。
   const refusalArrived = naming.takeRefusalArrived()
@@ -670,7 +672,7 @@ function draw(
   if (status !== undefined) root.append(line('status', status))
 
   // 繋がっていない間は打てない。送っても捨てられる（`connection.ts`）ので、押せる形で出さない。
-  // **盤面は出したままにする。** 見えているものは切れる前にサーバから届いたもので、読むぶんには
+  // 盤面は出したままにする。 見えているものは切れる前にサーバから届いたもので、読むぶんには
   // 正しい。繋ぎ直せばいまの盤面が届いて置き換わる（ADR-0016）。
   const connected = link.kind === '繋がっている'
 
@@ -687,15 +689,15 @@ function draw(
     }
   }
 
-  // デッキを組むところはロビーから開く（#193）。**ロビーの代わりに出す。** 部屋に入ったり名前を
+  // デッキを組むところはロビーから開く（#193）。ロビーの代わりに出す。 部屋に入ったり名前を
   // 尋ねられたりしてロビーを離れたら出さないが、組みかけは覚えたままにする。
   const { builder } = building
   const pool = session.pool
   const owned = session.ownedDecks
   const builderOpen =
     stage.kind === 'ロビー' && connected && builder.screen !== '閉じている' && pool !== undefined && owned !== undefined
-  // `/recipe/<鍵>` を直に開いたが、ログインを持たない立て方だった（ADR-0022）。**プールが届か
-  // ないので、識別子から名前を出す手立てが無い。** `builderOpen` には乗せず、ここだけ別に出す。
+  // `/recipe/<鍵>` を直に開いたが、ログインを持たない立て方だった（ADR-0022）。プールが届か
+  // ないので、識別子から名前を出す手立てが無い。 `builderOpen` には乗せず、ここだけ別に出す。
   const viewingRecipeWithoutLogin =
     stage.kind === 'ロビー' && connected && builder.screen === 'レシピ' && pool === undefined
 
@@ -740,12 +742,12 @@ function draw(
           poolView: builder.poolView,
           poolShown: builder.poolShown,
           filter: builder.filter,
-          filterChoices: filterChoicesOf(pool),
+          filterChoices: filterChoicesOf(pool, session.makers, session.workReadings),
           filterOpen: builder.filterOpen,
           openFolds: builder.openFilterFolds,
           detailOpen: builder.detailOpen,
           deck: deckRows(pool, draft),
-          detail: (key) => cardDetailOf(pool, key, phone !== undefined),
+          detail: (key) => cardDetailOf(pool, key, phone !== undefined, session.makers),
           pinned: builder.pinned,
           restrictions: stage.restrictions,
           rules: builder.rules,
@@ -801,7 +803,7 @@ function draw(
   // 開いていなくても、ロビーにいて組める立て方なら出す。
   const buildingDialogs = stage.kind === 'ロビー' && connected && pool !== undefined && owned !== undefined
 
-  // 尋ねている間は、組むところの上に重ねる。**ブラウザの確認ダイアログは使わない**（`confirmElement`）。
+  // 尋ねている間は、組むところの上に重ねる。ブラウザの確認ダイアログは使わない（`confirmElement`）。
   if (buildingDialogs && builder.confirming !== undefined) {
     root.append(confirmElement(confirmView(builder.confirming), building.confirm.onConfirm, building.confirm.onCancel))
   }
@@ -821,8 +823,8 @@ function draw(
 
   // ロビーは繋がっている間だけ出す。作る・入るは送らないと何も起きないので、押せる形で出さない。
   if (stage.kind === 'ロビー' && lobbyIsShown(session, link, builder)) {
-    // **席に着くのに選ぶのは自分のデッキである**（ADR-0021、#194）。既製デッキはデッキを組む
-    // ところでコピーしてから使う。**デッキを持てない立て方でだけ、既製デッキがここに並ぶ。**
+    // 席に着くのに選ぶのは自分のデッキである（ADR-0021、#194）。既製デッキはデッキを組む
+    // ところでコピーしてから使う。デッキを持てない立て方でだけ、既製デッキがここに並ぶ。
     const seatable = seatableDecks(session.ownedDecks, stage.presets)
     // 選んでいるルールに合わないかは、CPU のデッキの選べる・選べないにだけ効く（ADR-0029、#243）。
     const judged = judgedRulesOf(lobby.rules, stage.restrictions)
@@ -995,8 +997,8 @@ function draw(
 
     const controlsChildren: HTMLElement[] = []
 
-    // 相手が閉じたまま戻らないと、画面は相手の優先権のまま動かなくなる（#175）。**止まって
-    // いる理由を読めるようにする。** 回線が切れただけなら戻ってくる（ADR-0016）ので、待つか
+    // 相手が閉じたまま戻らないと、画面は相手の優先権のまま動かなくなる（#175）。止まって
+    // いる理由を読めるようにする。 回線が切れただけなら戻ってくる（ADR-0016）ので、待つか
     // やめるかは人が決める。
     if (connected && !stage.opponentConnected) {
       controlsChildren.push(line('controls__offline', '相手の繋がりが切れています。戻るのを待つか、やめてロビーに戻れます'))
@@ -1004,7 +1006,7 @@ function draw(
 
     // 相手が何をして優先権が回ってきたのかを、打つところに 1 行で出す（#147）。
     //
-    // **出すのは、人が打つかどうかを決める場面だけである。** 放棄しか行えない場面は自動で送る
+    // 出すのは、人が打つかどうかを決める場面だけである。 放棄しか行えない場面は自動で送る
     // （`automaticAction`）ので、出しても読む間が無い。演出中と選択中も、打つ手を決める場面
     // ではない。
     const reason =
@@ -1045,7 +1047,7 @@ function draw(
 
     // 選んでいる間は行える手が無い（`session.ts`）。どちらか一方だけが出る。
     if (!connected) {
-      // 繋がっていない間は手を出さない。**押せなくするだけでは足りない。** 出ている手は切れる
+      // 繋がっていない間は手を出さない。押せなくするだけでは足りない。 出ている手は切れる
       // 前の盤面のもので、繋ぎ直した先でまだ行えるとは限らない（ADR-0016）。何が起きているかは
       // 一番上の 1 行に出ている（`statusOf`）。
       controlsChildren.push(line('controls__offline', '繋がるまで打てません'))
@@ -1064,7 +1066,7 @@ function draw(
       )
       controlsChildren.push(awaiting ? lockForReply(node) : node)
     } else if (stage.choice === undefined && showsOverlay(overlay)) {
-      // 演出が出ている間は行える手を出さない（#115）。**待ち行列は実際の盤面より遅れている**
+      // 演出が出ている間は行える手を出さない（#115）。待ち行列は実際の盤面より遅れている
       // ので、出ている演出のフェイズと、行える手が指すフェイズが食い違う。押せなくするだけ
       // では食い違いが画面に残るので、手そのものを出さない。
       //
@@ -1099,7 +1101,7 @@ function draw(
 
     // ロビーに戻る口を出すのは、投げ出せる対戦の間だけである（`server` の `room.ts` の
     // `canLeave`）。決着した後はどちらの対戦でも戻れて、CPU との対戦と、相手が繋がっていない
-    // 対戦は途中でも戻れる。**断るのはサーバである。** ここで決めているのは、押す口を出すか
+    // 対戦は途中でも戻れる。断るのはサーバである。 ここで決めているのは、押す口を出すか
     // どうかだけである。
     //
     // 決着した後の口は、左の列ではなく決着の帯の下（画面の中央下部）に出す（`overlayElement`、
@@ -1434,7 +1436,7 @@ const DRAFT_KEY = 'revolution.deckDraft'
 /**
  * 覚えておいた組みかけ。無ければ `undefined`。
  *
- * **保存するまでサーバには無い**ので、読み込み直しで消えないようにブラウザに置く。読めないもの
+ * 保存するまでサーバには無いので、読み込み直しで消えないようにブラウザに置く。読めないもの
  * （書き換えられた、形が変わった）は無かったものとして扱う——組みかけが消えるだけで、画面は開く。
  */
 function rememberedDraft(): DeckDraft | undefined {
@@ -1468,7 +1470,7 @@ function rememberDraft(draft: DeckDraft | undefined): void {
 /**
  * 組み替えてから確かめに行くまでの間（ミリ秒）。
  *
- * **続けて押している間は送らない。** 1 枚ごとに送ると、60 枚入れる間に 60 回確かめることになる。
+ * 続けて押している間は送らない。 1 枚ごとに送ると、60 枚入れる間に 60 回確かめることになる。
  * 手が止まったと読める程度に短くする。
  */
 const CHECK_DELAY_MS = 300
@@ -1488,11 +1490,11 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   /**
    * ロビーで選んでいるデッキ（ADR-0021）。まだ選んでいなければ `undefined`。
    *
-   * **選ばないまま作っても入っても構わない。** 選ばれなかった席は、サーバが決めた既定のデッキに
+   * 選ばないまま作っても入っても構わない。 選ばれなかった席は、サーバが決めた既定のデッキに
    * 座る（`server` の `room.ts` の `start`）。画面はどれが既定かを決めない（ADR-0010）。
    *
-   * **既定が決まらないこともある**（#194）。前に選んでいたデッキを消した人がそれで、選ぶまで
-   * 断られる。画面はそれを先回りして止めない——**何が起きるかを決めるのはサーバである。**
+   * 既定が決まらないこともある（#194）。前に選んでいたデッキを消した人がそれで、選ぶまで
+   * 断られる。画面はそれを先回りして止めない——何が起きるかを決めるのはサーバである。
    */
   let chosenDeck: DeckId | undefined
   /** ロビーで選んでいる、CPU の席に座らせるデッキ（#195）。`chosenDeck` と同じ扱い。 */
@@ -1500,7 +1502,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   /**
    * ロビーで選んでいる、作る部屋のルール（ADR-0021）。まだ選んでいなければ `undefined`。
    *
-   * デッキと同じく、**選ばないまま作っても構わない。** 選ばなかったものはサーバが既定を当てる
+   * デッキと同じく、選ばないまま作っても構わない。 選ばなかったものはサーバが既定を当てる
    * （`server` の `room.ts` の `rulesFor`）。
    */
   let chosenFormat: DuelFormat | undefined
@@ -1550,7 +1552,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   /**
    * `/recipe/<鍵>` を直に開いて始まった時の、開こうとしているレシピ（ADR-0022）。
    *
-   * **ロビーに着いたところで開く。** 名前を決める必要があるかもしれず（ADR-0020）、決まって
+   * ロビーに着いたところで開く。 名前を決める必要があるかもしれず（ADR-0020）、決まって
    * いなければそちらが先である。開いたら忘れる——`builder.viewingRecipe` が続きを持つ。
    */
   let pendingRecipe: RecipeKey | undefined = options.recipe
@@ -1601,10 +1603,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   // 覚えておけば「前回と同じ盤面」を区別できる——`選んでほしい` の到着で `draw` をやり直しても、
   // 待ち行列を作り直さずに済む。
   //
-  // **すぐに置き換えない。** 行える手が「優先権を放棄する」だけの場面はクライアントが自動で
+  // すぐに置き換えない。 行える手が「優先権を放棄する」だけの場面はクライアントが自動で
   // 送る（`automaticAction`）ので、盤面がほぼ間を置かず届き続けることがある。届くたびに
   // 消して作り直すと、画面が描き直される前に次の盤面が届いて、一度も見えないまま消える。
-  // **出し切ってから次へ進める**ことで、続けて起きても積み上がらず、かつ 1 つずつは必ず
+  // 出し切ってから次へ進めることで、続けて起きても積み上がらず、かつ 1 つずつは必ず
   // 見える時間を確保する。
   const EMPTY_OVERLAY: Overlay = { transitions: [], cutIns: [] }
   let overlay: Overlay = EMPTY_OVERLAY
@@ -1771,7 +1773,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   })
 
   /**
-   * デッキを組むところ（#193）。**組みかけは、読み込み直す前のものから始める。**
+   * デッキを組むところ（#193）。組みかけは、読み込み直す前のものから始める。
    *
    * 開くまでは出さない。開いた時に組みかけがあれば、一覧を挟まずにその続きから組む。
    */
@@ -1786,7 +1788,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   }
 
   /**
-   * 少し間を置いて、いまの組みかけを確かめに行く。**間を置いている間に組み替えたら、置き直す。**
+   * 少し間を置いて、いまの組みかけを確かめに行く。間を置いている間に組み替えたら、置き直す。
    *
    * 使えないカードが入っている間は送らない。サーバは断るだけで、何が足りないかは分からない。
    */
@@ -1832,7 +1834,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     redraw()
   }
 
-  /** 組みかけを変える。**描き直して、確かめに行く。** */
+  /** 組みかけを変える。描き直して、確かめに行く。 */
   const editCards = (change: (draft: DeckDraft) => DeckDraft): void => {
     if (builder.draft === undefined) return
 
@@ -1909,7 +1911,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         redraw()
       },
       onDelete: (deck, name) => {
-        // **消したデッキは戻らない。** 押し間違いで消えないように尋ねる。消すのは答えてから。
+        // 消したデッキは戻らない。 押し間違いで消えないように尋ねる。消すのは答えてから。
         updateBuilder({ ...builder, confirming: { kind: 'デッキを消す', deck, name }, refusal: undefined })
         redraw()
       },
@@ -2004,7 +2006,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         redraw()
       },
       onFilter: (filter) => {
-        // 一覧が変わるので、先頭から見せる。**打ち込んでいる手は `draw` が戻す。**
+        // 一覧が変わるので、先頭から見せる。打ち込んでいる手は `draw` が戻す。
         updateBuilder({ ...builder, filter, poolShown: POOL_BATCH[builder.poolView] })
         redraw()
         const list = root.querySelector<HTMLElement>(`[data-keep-scroll="プール"]`)
@@ -2045,7 +2047,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         const owned = session.ownedDecks ?? []
         if (draft === undefined || !hasUnsavedChanges(draft, owned)) return backToList()
 
-        // **保存していない変更は、ここで捨てると戻らない。** 捨てるかどうかは人が決める。
+        // 保存していない変更は、ここで捨てると戻らない。 捨てるかどうかは人が決める。
         updateBuilder({ ...builder, confirming: { kind: '変更を捨てる' } })
         redraw()
       },
@@ -2121,7 +2123,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     myShares: {
       onVisibility: (share, visibility) => connection.send({ kind: '共有の公開範囲を変える', share, visibility }),
       onRevoke: (share, name) => {
-        // **取り消すと元に戻らない。** 押し間違いで消えないように尋ねる。
+        // 取り消すと元に戻らない。 押し間違いで消えないように尋ねる。
         updateBuilder({ ...builder, confirming: { kind: '共有を取り消す', share, name } })
         redraw()
       },
@@ -2193,7 +2195,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     connection.send({ kind: 'レシピを見る', recipe: key })
     if (pushUrl) {
       try {
-        // **問い合わせ文字列（`location.search`）は残す。** `?server=`・`?participant=` は README
+        // 問い合わせ文字列（`location.search`）は残す。 `?server=`・`?participant=` は README
         // が現役の手段として案内している値で、落とすと開いて閉じた後の読み込み直しで消える。
         history.pushState(null, '', recipeUrlOf(key, location.search))
       } catch {
@@ -2206,7 +2208,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   /** レシピにまつわる画面を出て、デッキの一覧に戻る。開いていた URL も戻す。 */
   function closeRecipeScreens(): void {
     updateBuilder({ ...builder, screen: 'デッキを選ぶ', viewingRecipe: undefined, refusal: undefined })
-    // **`/recipe/<鍵>` を直に開いていた時だけ戻す。** ほかの場所から来ていれば、URL は元から
+    // `/recipe/<鍵>` を直に開いていた時だけ戻す。 ほかの場所から来ていれば、URL は元から
     // 触っていない。
     if (location.pathname.startsWith('/recipe/')) {
       try {
@@ -2221,9 +2223,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   /**
    * ブラウザの「戻る」に応じて、いま出す画面を URL に合わせ直す（ADR-0022）。
    *
-   * **一覧からレシピを開いた時にだけ URL を積む**（`recipeList.onOpen` の `openRecipe(key, true)`）
-   * ので、戻る先が `/recipe/<鍵>` でなくなったら、開いた元の画面（一覧）へ戻す。**戻る操作その
-   * ものに URL は積み直さない**——ブラウザがすでに動かしている。
+   * 一覧からレシピを開いた時にだけ URL を積む（`recipeList.onOpen` の `openRecipe(key, true)`）
+   * ので、戻る先が `/recipe/<鍵>` でなくなったら、開いた元の画面（一覧）へ戻す。戻る操作その
+   * ものに URL は積み直さない——ブラウザがすでに動かしている。
    */
   function onPopState(): void {
     const key = recipeKeyFromPath(location.pathname)
@@ -2427,10 +2429,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   })
 
   /**
-   * 描き直す。**組み立てられなくても、白い画面にしない。**
+   * 描き直す。組み立てられなくても、白い画面にしない。
    *
    * `draw` は組み立てる前に中身を捨てる（`replaceChildren`）ので、途中で投げると何も無い画面が
-   * 残る。**何が起きたか読めないまま止まるのが一番重い**（#175 が繋がりについて書いたのと同じ
+   * 残る。何が起きたか読めないまま止まるのが一番重い（#175 が繋がりについて書いたのと同じ
    * ことである）。届いたものが思っていた形と違うことは起こりうる——画面とサーバは別々に配られ、
    * 同時には入れ替わらない（ADR-0013、ADR-0015）。
    */
@@ -2545,18 +2547,18 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     onMessage: (message) => {
       // ログインが要るなら、ログインへ送る（ADR-0019）。
       //
-      // **送る前に繋ぎ直しを止める。** サーバは断ったあと接続を閉じるので、止めずにおくと
-      // `connection.ts` がそれを切れたものとして扱い、**Google へ移るまでの間に「繋がりが
-      // 切れました。繋ぎ直しています」を出す。** 断られたのは繋がったうえでのことなので、
+      // 送る前に繋ぎ直しを止める。 サーバは断ったあと接続を閉じるので、止めずにおくと
+      // `connection.ts` がそれを切れたものとして扱い、Google へ移るまでの間に「繋がりが
+      // 切れました。繋ぎ直しています」を出す。 断られたのは繋がったうえでのことなので、
       // 繋ぎ直しても同じ理由で断られる。送らなかった場合も止めるのは同じ理由である。
       if (message.kind === '行えなかった' && message.reason === NOT_SIGNED_IN) {
         connection.close()
-        // **開こうとしていたレシピがあれば、ログインへ送る前に預ける**（ADR-0022）。ログインは
+        // 開こうとしていたレシピがあれば、ログインへ送る前に預ける（ADR-0022）。ログインは
         // 別ページ（Google の画面）を経由するので、この画面の JS のメモリ（`pendingRecipe`）は
         // 戻ってきた時には残っていない。`main.ts` が戻ってきたところで拾う。
         if (pendingRecipe !== undefined) rememberPendingRecipe(sessionStorage, pendingRecipe)
         if (goToSignIn(options.signInUrl)) {
-          // **移るまでの間、この画面は生きている。** 断られたことは出さない——人がすることは
+          // 移るまでの間、この画面は生きている。 断られたことは出さない——人がすることは
           // 何も無く、次に起きることだけが読めればよい。
           root.replaceChildren(line('status', 'ログインへ移動しています'))
           return
@@ -2598,7 +2600,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         if (loading) connection.send({ kind: 'レシピを見る', recipe: key })
       }
       // 名前を尋ねられたら、いま付いているものから打ち始められるようにする（ADR-0020）。
-      // **打ち込みかけがあれば消さない。** 断られて尋ね直された時に、直そうとしていたものが
+      // 打ち込みかけがあれば消さない。 断られて尋ね直された時に、直そうとしていたものが
       // 消えてしまう。
       if (message.kind === '名前を決めてほしい' && nameDraft === '') nameDraft = message.current ?? ''
       if (message.kind === '名前を決めてほしい' && message.reason !== undefined) nameRefusalArrived = true
@@ -2669,10 +2671,10 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       }
       enqueueOverlays()
 
-      // 放棄しか行えない場面は押させずに送る。**描いてから送る**ので、進む前の盤面が一度は
+      // 放棄しか行えない場面は押させずに送る。描いてから送るので、進む前の盤面が一度は
       // 画面に出る。送った結果は次の盤面として届き、そこでまた同じ判断をする。
       //
-      // **見るのは盤面が届いた時だけである。** 行える手が変わるのは盤面が届いた時だけ
+      // 見るのは盤面が届いた時だけである。 行える手が変わるのは盤面が届いた時だけ
       // （`session.ts`）で、ほかのものが届くたびに見ると、送った手が断られた（`行えなかった`）
       // 後にもう一度同じ手を送ることになり、断られ続ける。
       const automatic = message.kind === '盤面' ? automaticAction(session) : undefined
@@ -2703,7 +2705,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         // 繋ぎ直した先で、払っていた選択が続いているとは限らない。開き直す予定も残さない。
         dropPayList()
       }
-      // **切れている間に送ったものは届いていない**（`connection.ts`）ので、返事も来ない。待つのを
+      // 切れている間に送ったものは届いていない（`connection.ts`）ので、返事も来ない。待つのを
       // やめて、繋がり直したら確かめ直す。組みかけは画面が持っているので消えない。
       if (value.kind !== '繋がっている') updateBuilder({ ...builder, waiting: { kind: '無し' }, checking: 0 })
       else scheduleCheck()

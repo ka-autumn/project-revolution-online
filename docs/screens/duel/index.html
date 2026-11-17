@@ -2337,6 +2337,12 @@ body {
   .mock-switch { top: auto; bottom: 0; left: 0; transform: none; max-height: 1.6rem; overflow: hidden; }
   .mock-switch:hover, .mock-switch:focus-within { max-height: 60vh; overflow-y: auto; }
 }
+.block-logos { display: inline-flex; align-items: center; justify-content: center; gap: 0.1em; flex: 1; }
+.detail__metadata { margin: 0.35rem 0; font-size: 0.8rem; }
+.detail__metadata dd { margin: 0; overflow-wrap: anywhere; }
+.block-logo--image { border: 0 !important; border-radius: 0 !important; background: none !important; width: 2.7em !important; }
+.block-logo svg { width: 100%; height: 100%; }
+.block-logo { display: inline-grid; place-items: center; flex: none; border: 1px solid #fff; border-radius: 50%; width: 2.2em; height: 2.2em; font-size: 0.65em; color: white; background: #28364d; }
 </style>
 <link rel="stylesheet" href="../shared/card-art.css">
 <link rel="stylesheet" href="../shared/detail-layout.css">
@@ -2732,6 +2738,8 @@ function triggerIcon(trigger) {
 function faceHtml(name, opts = {}) {
   const c = cards[name]
   const unit = c.bp !== undefined
+  const accent = ({ 赤: '#c7232b', 黒: '#292929', 青: '#2c94c8', 白: '#919191', 緑: '#359253' })[c.color] ?? '#292929'
+  const logo = `<span class="block-logo block-logo--image" role="img" aria-label="ブロック：旧見本書房" title="旧見本書房"><svg viewBox="0 0 32 26" aria-hidden="true"><text x="2" y="21" fill="#fff" stroke="${accent}" stroke-width="3" paint-order="stroke fill" font-family="sans-serif" font-size="22" font-weight="700">AX</text></svg></span>`
   // 継続効果が移動方向を変更していれば、変更後の向きで描く（ADR-0071）
   const move = opts.move ?? c.move
   const icons = move || c.trigger
@@ -2751,7 +2759,7 @@ function faceHtml(name, opts = {}) {
         <div class="card__title">${stars}<span class="card__name">${name}</span>${keywordIcons(c.keywords, c.granted)}</div>
         <div class="card__text"><div class="card__lines">${c.text.map((l) => cardTextParagraph(l).outerHTML).join('')}${(c.granted ?? []).map(grantedLine).join('')}</div>${icons}</div>
         ${c.traits ? `<span class="card__traits">${c.traits}</span>` : ''}
-        ${unit ? `<div class="card__stats">${stat('bp', c.bp, opts.bp)}${stat('sp', c.sp, opts.sp)}</div>` : ''}
+        <div class="card__stats">${unit ? stat('bp', c.bp, opts.bp) : ''}<span class="block-logos">${logo}</span>${unit ? stat('sp', c.sp, opts.sp) : ''}</div>
       </div>
       ${opts.damage ? `<span class="card__damage">ダメージ ${opts.damage}</span>` : ''}
     </div>`
@@ -2762,7 +2770,7 @@ function faceHtml(name, opts = {}) {
       <div class="card__bottom">
         ${icons}
         ${c.traits ? `<span class="card__traits">${c.traits}</span>` : ''}
-        ${unit ? `<div class="card__stats">${stat('bp', c.bp, opts.bp)}${stat('sp', c.sp, opts.sp)}</div>` : ''}
+        <div class="card__stats">${unit ? stat('bp', c.bp, opts.bp) : ''}<span class="block-logos">${logo}</span>${unit ? stat('sp', c.sp, opts.sp) : ''}</div>
       </div>
       ${opts.damage ? `<span class="card__damage">ダメージ ${opts.damage}</span>` : ''}
     </div>`
@@ -3221,6 +3229,9 @@ function detailParts(node) {
   if (node.dataset.damage) notes.push(`ダメージ ${node.dataset.damage}`)
   const annotations = document.createElement('div')
   annotations.className = 'detail__annotations'
+  const metadata = Object.assign(document.createElement('dl'), { className: 'detail__metadata' })
+  for (const [label, value] of [['作品名', '見本作品Ａ'], ['ブロック', '旧見本書房']]) metadata.append(Object.assign(document.createElement('dt'), { textContent: label }), Object.assign(document.createElement('dd'), { textContent: value }))
+  annotations.append(metadata)
   if (c.note) annotations.append(operationalNote(c.note))
   if (pending.length) annotations.append(pendingBox(pending, name))
   if (givenOf(node).length) annotations.append(givenBox(givenOf(node)))
@@ -3254,6 +3265,8 @@ function phoneDetailParts(node) {
   const shownMove = node.dataset.move ? node.dataset.move.split(',') : c.move
   if (shownMove) add('移動方向', shownMove.join('・'))
   if (c.traits) add('属性', c.traits.split('・').join(' | '))
+  add('作品名', '見本作品Ａ')
+  add('ブロック', '旧見本書房')
   info.append(rows)
   if (c.text.length > 0 || c.granted?.length) {
     const text = document.createElement('div')

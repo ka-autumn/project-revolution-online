@@ -118,6 +118,8 @@ describe('通信に載せる形', () => {
       stars: 1,
       reverseStars: 0,
       attributes: ['テスト属性'],
+      works: [],
+      makerSymbols: [],
       // 「夢」を持つので、キーワードにも載る（対戦画面のカードの面のアイコン、ADR-0027）。
       keywords: ['夢'],
       // テキストは engine が読まないデータだが、印刷されている表記として載る（#93）。
@@ -140,6 +142,8 @@ describe('通信に載せる形', () => {
       stars: 0,
       reverseStars: 0,
       attributes: [],
+      works: [],
+      makerSymbols: [],
       keywords: [],
       // テキストを書いていないカードは、空のまま載る。
       text: [],
@@ -210,9 +214,9 @@ describe('通信に載せる形', () => {
     expect(square?.card).not.toHaveProperty('abilities')
   })
 
-  // 項目を 1 つずつ書き写しているので、カードに項目が増えても勝手には載らない（ADR-0035）。
+  // 表記と能力の実装を分離し、実行可能な能力は通信に含めない。
   // 架空の略号 QXWIREMARK は、通信に載るほかの文字列に偶然含まれないよう、長く特徴のある綴りにした。
-  it('メーカーシンボルと「友情」を持つユニットでも、通信の形は変わらない', () => {
+  it('メーカーシンボルは通信に含まれ、能力の実装は含まれない', () => {
     const annotated = defineUnit({
       name: 'テスト・メーカーシンボルと友情',
       level: 1,
@@ -231,9 +235,8 @@ describe('通信に載せる形', () => {
     const sent = toWire(perspectiveOf(state, '先攻'))
     const face = sent.squares.flat()[0]?.card
 
-    expect(face).not.toHaveProperty('makerSymbols')
-    expect(JSON.stringify(sent)).not.toContain('makerSymbols')
-    expect(JSON.stringify(sent)).not.toContain('QXWIREMARK')
+    expect(face?.makerSymbols).toEqual(['QXWIREMARK'])
+    expect(face).not.toHaveProperty('abilities')
     expect(face?.keywords).toEqual([])
     expect(face?.keywords).not.toContain('友情')
   })
