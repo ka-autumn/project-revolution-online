@@ -42,10 +42,10 @@ export interface GrantedAbilityText {
  */
 export interface EffectiveUnitData {
   readonly card: CardId
-  /** 修整を適用した後のＢＰ（総合ルール 第4部 第12章 5-2 の(5)）。 */
+  /** 変更を適用した後のＢＰ（総合ルール 第4部 第12章 5-2 の(5)）。 */
   readonly bp: number
   /**
-   * 修整を適用した後のＳＰ（同 5-2 の(5)）。
+   * 変更を適用した後のＳＰ（同 5-2 の(5)）。
    *
    * 後から足した項目なので、これを知らないサーバの送ったデータには無い。受ける側は、無ければ
    * 変わっていないものとして扱う。
@@ -197,8 +197,8 @@ export interface DuelPerspective {
    * 継続効果を適用した後の、スクエアにいるユニットのデータ（#91）。
    *
    * `squares` に載っている `CardInstance.card` はカードに書かれているデータを持つ
-   * （総合ルール 第2部 第2章 2）。継続効果による修整（同 第4部 第12章）は盤面に書き込まれて
-   * いないので、そのまま写すと画面に出るのは印刷された数字になる。修整を集められるのは完全な
+   * （総合ルール 第2部 第2章 2）。継続効果による変更（同 第4部 第12章）は盤面に書き込まれて
+   * いないので、そのまま写すと画面に出るのは印刷された数字になる。変更を集められるのは完全な
    * 盤面を持つここだけなので、書かれている値とは別のものとして添える。
    */
   readonly effective: readonly EffectiveUnitData[]
@@ -628,7 +628,7 @@ function namedInLogOf(
  * 継続効果を適用した後の、スクエアにいるユニットのデータ（#91）。
  *
  * 適用するのは `continuous.ts` である。ここでするのは、それをスクエアにいるユニットの分だけ
- * 呼んで並べることだけで、修整の集め方をここに書き直さない。
+ * 呼んで並べることだけで、変更の集め方をここに書き直さない。
  */
 function effectiveUnitData(state: DuelState): readonly EffectiveUnitData[] {
   const data = continuousData(state)
