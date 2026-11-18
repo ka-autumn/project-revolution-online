@@ -445,7 +445,7 @@ export function hasMakerSymbol(card: Card, symbol: MakerSymbol): boolean {
  * 常在型のキーワード能力と、名前を持つ誘発型能力（「気合」「才気」。`TriggeredAbility.keyword`）を
  * 参照する。テキストに書かれた能力のうち、名前だけで参照できて内容を持たないのは常在型の定義のものである
  * （`ability.ts` の `DreamAbility`・`PepAbility`）。常在型能力には内容を持つもの（`ModifyingAbility`）
- * もあるので、名前を取得する前に名前を持つ側であることを確認する。「友情」はその例で、ＢＰを修整する
+ * もあるので、名前を取得する前に名前を持つ側であることを確認する。「友情」はその例で、ＢＰを変更する
  * 常在型能力に名前を追加した形（`FriendshipAbility`）で持つ。
  *
  * 見るのは、渡されたカードの `abilities` だけである。盤面から来た写し（`DuelView` の
@@ -558,10 +558,10 @@ export function courageOf(card: Card): CourageAbility | undefined {
 }
 
 /**
- * そのカードが持つ、ＢＰ・ＳＰを修整する常在型能力（総合ルール 第4部 第12章 5-2 の(5)）。
+ * そのカードが持つ、ＢＰ・ＳＰを変更する常在型能力（総合ルール 第4部 第12章 5-2 の(5)）。
  *
  * 「希望」と違って、同じカードが 2 つ以上持つことがあり得る（キーワード能力と、テキストに
- * 書かれた修整とを同時に持てる）ので、見つかったものをすべて返す。
+ * 書かれた変更とを同時に持てる）ので、見つかったものをすべて返す。
  */
 export function modifyingAbilitiesOf(card: Card): readonly ModifyingAbility[] {
   return card.abilities.filter(

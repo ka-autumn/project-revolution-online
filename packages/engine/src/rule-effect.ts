@@ -52,7 +52,7 @@ export function checkRuleEffects(state: DuelState): DuelState {
   const result = resultOf(state)
   if (result !== undefined) return record({ ...state, result }, { kind: '決着した', result })
 
-  // ＢＰの修整は 1 度だけ集める。ルールエフェクトはすべて同時に発生する（総合ルール
+  // ＢＰの変更は 1 度だけ集める。ルールエフェクトはすべて同時に発生する（総合ルール
   // 第4部 第14章 2）ので、どのユニットを捨札に置くかは 1 つの盤面から決まらなければ
   // ならない。1 枚の写しを全ユニットで使い回すことが、それを構造として保証する。
   const modification = bpModification(state)

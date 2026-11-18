@@ -39,7 +39,7 @@ import type { Attribute, Chooser, DuelState, Player, ResolutionVia, Square, Unit
 // 検証したいルールだけを持つ架空のテストカード（ADR-0002）。
 const vanilla = defineUnit({ name: 'テスト・バニラ', level: 1, colors: ['赤'], bp: 1000, sp: 1000 })
 
-/** ＢＰが大きいユニット。修整の前後でバトルの結果が変わる相手として使う。 */
+/** ＢＰが大きいユニット。変更の前後でバトルの結果が変わる相手として使う。 */
 const tough = defineUnit({ name: 'テスト・大ＢＰ', level: 1, colors: ['赤'], bp: 2000, sp: 1000 })
 
 /** 「友情－1000」を持つユニット（総合ルール 第5部 第5章）。 */
@@ -92,7 +92,7 @@ const granting = defineUnit({
   abilities: [attributeAdding((duel) => duel.allies().map((ally) => alsoTreatedAs(ally, 'テスト属性')))],
 })
 
-/** 「『テスト属性』の味方のＢＰを＋2000」。属性で対象を絞る修整。 */
+/** 「『テスト属性』の味方のＢＰを＋2000」。属性で対象を絞る変更。 */
 const boostingAttributed = defineUnit({
   name: 'テスト・属性で強化',
   level: 1,
@@ -172,7 +172,7 @@ function boardOf(...placements: readonly Placement[]): DuelState {
   )
 }
 
-/** そのユニットのＢＰ。継続効果による修整を集めてから読む。 */
+/** そのユニットのＢＰ。継続効果による変更を集めてから読む。 */
 function bpOn(state: DuelState, id: string, card: UnitCard): number {
   return bpOf(card, bpModification(state)(id))
 }
@@ -187,19 +187,19 @@ const idsOf = (cards: readonly { readonly id: string }[]) => cards.map((card) =>
 // 総合ルール 第4部 第12章 4-1（ADR-0006）
 describe('常在型能力が生み出した継続効果', () => {
   // 同 4-1 の【例】: 「他の味方のＢＰを＋1000」の効果は、スクエアにある間ずっと継続する。
-  it('能力を持つカードがスクエアにある間、ＢＰを修整する', () => {
+  it('能力を持つカードがスクエアにある間、ＢＰを変更する', () => {
     const board = boardOf([homeLeft, '強化するユニット', boosting], [homeRight, '味方', vanilla])
 
     expect(bpOn(board, '味方', vanilla)).toBe(3000)
   })
 
-  it('能力を持つカードがスクエアに無ければ、修整しない', () => {
+  it('能力を持つカードがスクエアに無ければ、変更しない', () => {
     const board = boardOf([homeRight, '味方', vanilla])
 
     expect(bpOn(board, '味方', vanilla)).toBe(1000)
   })
 
-  it('修整を受けていないユニットのＢＰは、カードに書かれている数字のままである', () => {
+  it('変更を受けていないユニットのＢＰは、カードに書かれている数字のままである', () => {
     const board = boardOf([homeLeft, '強化するユニット', boosting], [homeRight, '敵', vanilla, '後攻'])
 
     expect(bpOn(board, '敵', vanilla)).toBe(1000)
@@ -233,8 +233,8 @@ describe('常在型能力が生み出した継続効果と、後から置かれ�
 // 総合ルール 第4部 第12章 2 の【例】（ADR-0006）
 describe('データを変える継続効果がある時にプレイされたユニット', () => {
   // 同 2 の【例】: 「他の味方のＢＰを＋1000」を持つカードがスクエアにある状況でユニットを
-  // プレイすると、そのユニットは修整された後のＢＰのユニットとしてスクエアに置かれる。
-  it('修整された後のＢＰで置かれる', () => {
+  // プレイすると、そのユニットは変更された後のＢＰのユニットとしてスクエアに置かれる。
+  it('変更された後のＢＰで置かれる', () => {
     const boosted = putOnSquare(
       mainPhase(),
       homeLeft,
@@ -374,7 +374,7 @@ describe('メーカーシンボル', () => {
     expect(madeByQxa.attributes).toEqual([])
   })
 
-  it('メーカーシンボルを持つ味方のＢＰを、他の味方に限って修整できる', () => {
+  it('メーカーシンボルを持つ味方のＢＰを、他の味方に限って変更できる', () => {
     const board = boardOf(
       [homeLeft, '強化するユニット', boostingMadeByQxa],
       [homeCenter, '対象の味方', madeByQxa],
@@ -389,7 +389,7 @@ describe('メーカーシンボル', () => {
     expect(bpOn(board, '対象の敵', madeByQxa)).toBe(1000)
   })
 
-  it('強化するユニット自身がメーカーシンボルを持っていても、他の味方に限るなら自分は修整されない', () => {
+  it('強化するユニット自身がメーカーシンボルを持っていても、他の味方に限るなら自分は変更されない', () => {
     const selfMade = defineUnit({
       name: 'テスト・QXA製の強化役',
       level: 1,
@@ -418,8 +418,8 @@ describe('メーカーシンボル', () => {
 describe('別の種類に属する継続効果の適用の順序', () => {
   // 同 5-2 の【例】: 「他の〈属性〉の味方のＢＰを＋1000」と「あなたのユニットの属性に
   // 〈属性〉を加える」の 2 つがスクエアに置かれた順番に関係なく、両方の影響を受ける
-  // ユニットは、まず属性を加えられ、次にＢＰを修整される。
-  it('置かれた順番に関係なく、属性を加える継続効果がＢＰを修整する継続効果より先に適用される', () => {
+  // ユニットは、まず属性を加えられ、次にＢＰを変更される。
+  it('置かれた順番に関係なく、属性を加える継続効果がＢＰを変更する継続効果より先に適用される', () => {
     const 属性が先 = boardOf(
       [homeLeft, '属性を加えるユニット', granting],
       [homeCenter, '属性で強化するユニット', boostingAttributed],
@@ -431,18 +431,18 @@ describe('別の種類に属する継続効果の適用の順序', () => {
       [homeRight, '味方', vanilla],
     )
 
-    // 味方はカードに「テスト属性」を持たないが、先に加わるので修整の対象になる。
+    // 味方はカードに「テスト属性」を持たないが、先に加わるので変更の対象になる。
     expect(bpOn(属性が先, '味方', vanilla)).toBe(3000)
     expect(bpOn(ＢＰが先, '味方', vanilla)).toBe(3000)
   })
 
-  it('属性で絞る修整は、カードに書かれている属性を持つユニットにも効く', () => {
+  it('属性で絞る変更は、カードに書かれている属性を持つユニットにも効く', () => {
     const board = boardOf([homeCenter, '属性で強化するユニット', boostingAttributed], [homeRight, '味方', attributed])
 
     expect(bpOn(board, '味方', attributed)).toBe(3000)
   })
 
-  it('属性を持たないユニットは、修整の対象にならない', () => {
+  it('属性を持たないユニットは、変更の対象にならない', () => {
     const board = boardOf([homeCenter, '属性で強化するユニット', boostingAttributed], [homeRight, '味方', vanilla])
 
     expect(bpOn(board, '味方', vanilla)).toBe(1000)
@@ -551,8 +551,8 @@ const boostingFriendly = defineUnit({
 })
 
 // 総合ルール 第5部 第5章 2、第4部 第12章 5-2 の(5)（ADR-0006）
-describe('友情を持つユニットで対象を絞るＢＰの修整', () => {
-  it('友情を持つ味方のＢＰを修整する。隣かどうかも、数値がいくつかも問わない', () => {
+describe('友情を持つユニットで対象を絞るＢＰの変更', () => {
+  it('友情を持つ味方のＢＰを変更する。隣かどうかも、数値がいくつかも問わない', () => {
     const board = boardOf(
       [homeLeft, '強化するユニット', boostingFriendly],
       [centerCenter, '遠くの友情', friendly],
@@ -563,7 +563,7 @@ describe('友情を持つユニットで対象を絞るＢＰの修整', () => {
     expect(bpOn(board, '数値の違う友情', mildlyFriendly)).toBe(3000)
   })
 
-  it('友情を持たない味方は修整されない。ほかのキーワード能力を持っていても同じ', () => {
+  it('友情を持たない味方は変更されない。ほかのキーワード能力を持っていても同じ', () => {
     const board = boardOf(
       [homeLeft, '強化するユニット', boostingFriendly],
       [homeCenter, '何も持たない味方', vanilla],
@@ -574,13 +574,13 @@ describe('友情を持つユニットで対象を絞るＢＰの修整', () => {
     expect(bpOn(board, '夢を持つ味方', dreamer)).toBe(1000)
   })
 
-  it('友情を持つ敵は修整されない', () => {
+  it('友情を持つ敵は変更されない', () => {
     const board = boardOf([homeLeft, '強化するユニット', boostingFriendly], [centerCenter, '敵の友情', friendly, '後攻'])
 
     expect(bpOn(board, '敵の友情', friendly)).toBe(1000)
   })
 
-  it('強化するユニット自身が友情を持っていても、「他の」と書けば自分は修整されない', () => {
+  it('強化するユニット自身が友情を持っていても、「他の」と書けば自分は変更されない', () => {
     const friendlyBooster = defineUnit({
       name: 'テスト・友情持ちの強化役',
       level: 1,
@@ -594,8 +594,8 @@ describe('友情を持つユニットで対象を絞るＢＰの修整', () => {
     expect(bpOn(board, '強化するユニット', friendlyBooster)).toBe(1000)
   })
 
-  // 友情を持つ味方は、この修整と、隣の友情からの修整の両方を受ける。
-  it('隣の友情からの修整と、重なる', () => {
+  // 友情を持つ味方は、この変更と、隣の友情からの変更の両方を受ける。
+  it('隣の友情からの変更と、重なる', () => {
     const board = boardOf(
       [homeLeft, '強化するユニット', boostingFriendly],
       [homeCenter, '友情を持つ味方', friendly],
@@ -646,7 +646,7 @@ describe('友情を持つユニットで対象を絞るＢＰの修整', () => {
 })
 
 // 総合ルール 第4部 第14章 4-5（ADR-0006）
-describe('修整によってＢＰが 0 以下になったユニット', () => {
+describe('変更によってＢＰが 0 以下になったユニット', () => {
   it('持ち主の捨札に置かれる', () => {
     const board = boardOf(
       [homeLeft, '弱体化するユニット', weakening],
@@ -658,19 +658,19 @@ describe('修整によってＢＰが 0 以下になったユニット', () => {
 })
 
 // 総合ルール 第4部 第14章 4-6（ADR-0006）
-describe('修整の後のＢＰと、受けているダメージ', () => {
+describe('変更の後のＢＰと、受けているダメージ', () => {
   /** 味方が 1000 のダメージを受けている盤面。書かれているＢＰは 1000 で、ちょうど届く。 */
   function damaged(...placements: readonly Placement[]): DuelState {
     return dealDamage(boardOf([homeRight, '傷ついた味方', vanilla], ...placements), '傷ついた味方', 1000)
   }
 
-  it('修整でＢＰが上がってダメージに届かなくなれば、スクエアに残る', () => {
+  it('変更でＢＰが上がってダメージに届かなくなれば、スクエアに残る', () => {
     const board = damaged([homeLeft, '強化するユニット', boosting])
 
     expect(idsOf(cardsOn(pass(board), homeRight))).toEqual(['傷ついた味方'])
   })
 
-  it('修整が無ければ、同じダメージで持ち主の捨札に置かれる', () => {
+  it('変更が無ければ、同じダメージで持ち主の捨札に置かれる', () => {
     expect(idsOf(cardsIn(pass(damaged()), '先攻', '捨札'))).toEqual(['傷ついた味方'])
   })
 })
@@ -683,7 +683,7 @@ describe('バトルダメージ', () => {
    * （総合ルール 第3部 第11章 4）。
    *
    * 攻撃されたユニットのＢＰは 2000 で、攻撃したユニットに書かれているＢＰ 1000 より
-   * 大きい。修整の後のＢＰでダメージを与えるのでなければ、捨札に置かれるのは攻撃した
+   * 大きい。変更の後のＢＰでダメージを与えるのでなければ、捨札に置かれるのは攻撃した
    * ほうになる。
    */
   function throughBattle(...placements: readonly Placement[]): DuelState {
@@ -701,7 +701,7 @@ describe('バトルダメージ', () => {
     return current
   }
 
-  it('修整の後のＢＰと同じ数字のダメージを与える', () => {
+  it('変更の後のＢＰと同じ数字のダメージを与える', () => {
     // 攻撃したユニットが与えるのは 1000＋2000 で、攻撃されたユニットの 2000 に届く。
     const after = throughBattle([homeLeft, '強化するユニット', boosting])
 
@@ -709,7 +709,7 @@ describe('バトルダメージ', () => {
     expect(idsOf(cardsOn(after, homeCenter))).toEqual(['攻撃した'])
   })
 
-  it('修整が無ければ、同じ組み合わせで逆の結果になる', () => {
+  it('変更が無ければ、同じ組み合わせで逆の結果になる', () => {
     const after = throughBattle()
 
     expect(idsOf(cardsIn(after, '先攻', '捨札'))).toEqual(['攻撃した'])
@@ -717,7 +717,7 @@ describe('バトルダメージ', () => {
   })
 })
 
-/** そのユニットのＳＰ。継続効果による修整を集めてから読む。 */
+/** そのユニットのＳＰ。継続効果による変更を集めてから読む。 */
 function spOn(state: DuelState, id: string, card: UnitCard): number {
   return continuousData(state)(id, card).sp
 }
@@ -752,7 +752,7 @@ const raisingOwnBpAndSp = defineUnit({
   ],
 })
 
-/** 「『テスト属性』の味方のＳＰを＋500」。属性で対象を絞る修整。 */
+/** 「『テスト属性』の味方のＳＰを＋500」。属性で対象を絞る変更。 */
 const raisingAttributedSp = defineUnit({
   name: 'テスト・属性でＳＰ強化',
   level: 1,
@@ -801,20 +801,20 @@ const sharpWhenOpponentHandEmpty = defineUnit({
 
 // ADR-0056。総合ルール 第4部 第12章 4-1、5-2 の(5)
 describe('ＳＰを変更する常在型能力', () => {
-  it('能力を持つカードがスクエアにある間、ＳＰを修整する', () => {
+  it('能力を持つカードがスクエアにある間、ＳＰを変更する', () => {
     const board = boardOf([homeLeft, '強化するユニット', raisingOwnSp])
 
     expect(spOn(board, '強化するユニット', raisingOwnSp)).toBe(2000)
     expect(spModification(board)('強化するユニット')).toBe(1000)
   })
 
-  it('修整を受けていないユニットのＳＰは、カードに書かれている数字のままである', () => {
+  it('変更を受けていないユニットのＳＰは、カードに書かれている数字のままである', () => {
     const board = boardOf([homeLeft, '強化するユニット', raisingOwnSp], [homeRight, '味方', vanilla])
 
     expect(spOn(board, '味方', vanilla)).toBe(1000)
   })
 
-  it('能力を持つカードがスクエアに無ければ、修整しない', () => {
+  it('能力を持つカードがスクエアに無ければ、変更しない', () => {
     const board = boardOf([homeRight, '味方', vanilla])
 
     expect(spModification(board)('強化するユニット')).toBe(0)
@@ -851,7 +851,7 @@ describe('ＳＰを変更する常在型能力', () => {
   })
 
   // 総合ルール 第4部 第12章 5-2: 属性を変更する継続効果 (3) は、ＢＰ・ＳＰを変更する継続効果 (5) より先に適用される。
-  it('継続効果によって属性が加わったユニットも、属性で絞った修整の対象にする', () => {
+  it('継続効果によって属性が加わったユニットも、属性で絞った変更の対象にする', () => {
     const board = boardOf(
       [homeLeft, '属性を加えるユニット', granting],
       [homeCenter, '強化するユニット', raisingAttributedSp],
@@ -862,7 +862,7 @@ describe('ＳＰを変更する常在型能力', () => {
     expect(spOn(board, '味方', vanilla)).toBe(1500)
   })
 
-  it('属性が加わっていなければ、属性で絞った修整の対象にしない', () => {
+  it('属性が加わっていなければ、属性で絞った変更の対象にしない', () => {
     const board = boardOf([homeCenter, '強化するユニット', raisingAttributedSp], [homeRight, '味方', vanilla])
 
     expect(spOn(board, '味方', vanilla)).toBe(1000)
@@ -873,7 +873,7 @@ describe('ＳＰを変更する常在型能力', () => {
 describe('相手の手札の枚数を参照する常在型能力', () => {
   const handCard = (id: string, owner: Player) => instantiate({ id, card: vanilla, owner })
 
-  it('相手の手札が 0 枚の間だけ、ＢＰを修整する', () => {
+  it('相手の手札が 0 枚の間だけ、ＢＰを変更する', () => {
     const empty = boardOf([homeLeft, '強化するユニット', strongWhenOpponentHandEmpty])
     const one = putInZone(empty, '後攻', '手札', [handCard('相手の手札', '後攻')])
 
@@ -881,7 +881,7 @@ describe('相手の手札の枚数を参照する常在型能力', () => {
     expect(bpOn(one, '強化するユニット', strongWhenOpponentHandEmpty)).toBe(1000)
   })
 
-  it('相手の手札が 0 枚の間だけ、ＳＰを修整する', () => {
+  it('相手の手札が 0 枚の間だけ、ＳＰを変更する', () => {
     const empty = boardOf([homeLeft, '強化するユニット', sharpWhenOpponentHandEmpty])
     const one = putInZone(empty, '後攻', '手札', [handCard('相手の手札', '後攻')])
 
@@ -944,7 +944,7 @@ const boostingSpirited = defineUnit({
 })
 
 // 総合ルール 第5部 第9章 2、第4部 第12章 5-2 の(5)（ADR-0006）
-describe('気合を持つユニットで対象を絞るＢＰの修整', () => {
+describe('気合を持つユニットで対象を絞るＢＰの変更', () => {
   it('気合という名前を持つ', () => {
     expect(spirit.keyword).toBe('気合')
     expect(hasSpirit(spirited)).toBe(true)
@@ -956,7 +956,7 @@ describe('気合を持つユニットで対象を絞るＢＰの修整', () => {
     expect(hasSpirit(witty)).toBe(false)
   })
 
-  it('気合を持つ味方のＢＰを修整する。隣かどうかは問わない', () => {
+  it('気合を持つ味方のＢＰを変更する。隣かどうかは問わない', () => {
     const board = boardOf(
       [homeLeft, '強化するユニット', boostingSpirited],
       [centerCenter, '遠くの気合', spirited],
@@ -965,7 +965,7 @@ describe('気合を持つユニットで対象を絞るＢＰの修整', () => {
     expect(bpOn(board, '遠くの気合', spirited)).toBe(2000)
   })
 
-  it('気合を持たない味方は修整されない。才気を持っていても同じ', () => {
+  it('気合を持たない味方は変更されない。才気を持っていても同じ', () => {
     const board = boardOf(
       [homeLeft, '強化するユニット', boostingSpirited],
       [homeCenter, '何も持たない味方', vanilla],
@@ -976,7 +976,7 @@ describe('気合を持つユニットで対象を絞るＢＰの修整', () => {
     expect(bpOn(board, '才気を持つ味方', witty)).toBe(1000)
   })
 
-  it('自分自身のＢＰは修整されない。気合を持つ敵も修整されない', () => {
+  it('自分自身のＢＰは変更されない。気合を持つ敵も変更されない', () => {
     const board = boardOf(
       [homeLeft, '強化するユニット', boostingSpirited],
       [centerCenter, '敵の気合', spirited, '後攻'],

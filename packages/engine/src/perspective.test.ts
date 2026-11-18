@@ -332,8 +332,8 @@ describe('射影が渡さないもの', () => {
 /**
  * #91。継続効果を適用した後のデータ（総合ルール 第4部 第12章 2）を、盤面と一緒に送る。
  *
- * 盤面（`DuelState`）が持つのはカードに書かれているデータ（同 第2部 第2章 2）で、修整は
- * 書き込まれていない。修整を集められるのは完全な盤面を持つ射影の側だけである。
+ * 盤面（`DuelState`）が持つのはカードに書かれているデータ（同 第2部 第2章 2）で、変更は
+ * 書き込まれていない。変更を集められるのは完全な盤面を持つ射影の側だけである。
  */
 describe('継続効果を適用した後のデータ', () => {
   /** 「すべての味方のＢＰを＋2000」を持つユニット。自分自身も味方に含まれる。 */
@@ -356,7 +356,7 @@ describe('継続効果を適用した後のデータ', () => {
     abilities: [attributeAdding((duel) => duel.allies().map((ally) => alsoTreatedAs(ally, 'テスト属性')))],
   })
 
-  /** 修整を生む側と、受ける側が、どちらもスクエアにいる盤面。 */
+  /** 変更を生む側と、受ける側が、どちらもスクエアにいる盤面。 */
   function withModifier(source: ReturnType<typeof defineUnit>): DuelState {
     const placed = putOnSquare(
       emptyDuelState(),
@@ -370,7 +370,7 @@ describe('継続効果を適用した後のデータ', () => {
     return perspective.effective.find((each) => each.card === card)
   }
 
-  it('修整を適用した後のＢＰが載る', () => {
+  it('変更を適用した後のＢＰが載る', () => {
     const perspective = perspectiveOf(withModifier(boosting), '先攻')
 
     expect(effectiveOf(perspective, '受ける側')?.bp).toBe(3000)
@@ -397,8 +397,8 @@ describe('継続効果を適用した後のデータ', () => {
     expect(perspective.effective.map((each) => each.card)).toEqual([INVADER.id])
   })
 
-  /** 修整を受けていないユニットも、書かれているとおりの値で載る。読む側で場合分けが要らない。 */
-  it('修整を受けていなくても、そのユニットの分は載る', () => {
+  /** 変更を受けていないユニットも、書かれているとおりの値で載る。読む側で場合分けが要らない。 */
+  it('変更を受けていなくても、そのユニットの分は載る', () => {
     const perspective = perspectiveOf(filledState(), '先攻')
 
     expect(perspective.effective[0]).toEqual({ card: INVADER.id, bp: 1000, sp: INVADER.card.sp, attributes: [] })

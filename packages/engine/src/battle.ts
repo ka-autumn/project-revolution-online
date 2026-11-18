@@ -262,7 +262,7 @@ function exchangeBattleDamage(state: DuelState, battle: Battle): DuelState {
   const dealers = [attacker, attacked].filter((unit) => dealsDamageIn(battle, unit))
   if (dealers.length === 0) return state
 
-  // 継続効果による修整も「この時点でのＢＰ」に含まれる。与える量を決める前に 1 度だけ
+  // 継続効果による変更も「この時点でのＢＰ」に含まれる。与える量を決める前に 1 度だけ
   // 集めることで、両方が与える場合の 2 つの量が同じ盤面から決まる。
   const modification = bpModification(state)
   const damages = dealers.map((unit) => ({
