@@ -405,14 +405,14 @@ describe('カードの構造化した値', () => {
 /**
  * #91。継続効果を適用した後のＢＰと属性（総合ルール 第4部 第12章 2）を画面に出す。
  *
- * 修整を集めるのは盤面の側（`perspective.ts` の `EffectiveUnitData`）で、ここでするのは
+ * 変更を集めるのは盤面の側（`perspective.ts` の `EffectiveUnitData`）で、ここでするのは
  * 書かれている値と見比べてどこが変わったかを取り出すことだけである（ADR-0010）。
  */
 describe('継続効果を適用した後のデータ', () => {
   const SQUARE: Square = { row: 0, column: 0 }
-  const unit = instance('修整を受ける1枚', '先攻', { card: unitFace('テスト・修整を受ける', { bp: 1000 }) })
+  const unit = instance('変更を受ける1枚', '先攻', { card: unitFace('テスト・変更を受ける', { bp: 1000 }) })
 
-  /** そのユニットが、修整を適用した後のデータと一緒に届いた盤面。 */
+  /** そのユニットが、変更を適用した後のデータと一緒に届いた盤面。 */
   function withEffective(effective: WirePerspective['effective']): WirePerspective {
     return { ...withSquare(emptyBoard('先攻'), SQUARE, [unit]), effective }
   }
@@ -427,21 +427,21 @@ describe('継続効果を適用した後のデータ', () => {
     return found
   }
 
-  it('修整を受けていれば、修整後のＢＰが出る', () => {
+  it('変更を受けていれば、変更後のＢＰが出る', () => {
     const view = unitView(withEffective([{ card: unit.id, bp: 3000, sp: 1000, attributes: [] }]))
 
     expect(view.kind === '表' && view.modified?.bp).toBe(3000)
   })
 
   /** 印刷された数字を消さない。どちらがカードに書かれている値かも要る（別の項目として持つ）。 */
-  it('印刷された数字と、修整後の数字が、どちらも出る', () => {
+  it('印刷された数字と、変更後の数字が、どちらも出る', () => {
     const view = unitView(withEffective([{ card: unit.id, bp: 3000, sp: 1000, attributes: [] }]))
 
     expect(view.kind === '表' && view.bp).toBe(1000)
     expect(view.kind === '表' && view.modified?.bp).toBe(3000)
   })
 
-  it('修整を受けていなければ、修整後のＢＰを出さない', () => {
+  it('変更を受けていなければ、変更後のＢＰを出さない', () => {
     const view = unitView(withEffective([{ card: unit.id, bp: 1000, sp: 1000, attributes: [] }]))
 
     expect(view.kind === '表' && view.modified).toBeUndefined()
@@ -537,7 +537,7 @@ describe('継続効果を適用した後のデータ', () => {
       expect(view.kind === '表' && cardInfoRowsOf(view).find((row) => row.label === '移動方向')?.value).toBe('上・右')
     })
 
-    it('与えられた誘発型能力の文と期限が含まれる。ほかが変更されていなくても、修整ありになる', () => {
+    it('与えられた誘発型能力の文と期限が含まれる。ほかの項目が書かれたとおりのままでも、変更後のデータが付く', () => {
       const view = unitView(
         withEffective([{ ...base, grantedAbilities: [{ text: '与えられた文', until: 'ターンの終わりまで' }, { text: '期限のない文' }] }]),
       )
@@ -548,7 +548,7 @@ describe('継続効果を適用した後のデータ', () => {
       ])
     })
 
-    it('何も与えられておらず、移動方向も変更されていなければ、修整は含まれない', () => {
+    it('何も与えられておらず、移動方向も変更されていなければ、変更後のデータは含まれない', () => {
       const view = unitView(withEffective([base]))
 
       expect(view.kind === '表' && view.modified).toBeUndefined()
@@ -583,8 +583,8 @@ describe('継続効果を適用した後のデータ', () => {
     expect(view.kind === '表' && view.modified?.bp).toBe(2000)
   })
 
-  /** スクエアの外にいるカードは、修整後のデータを持たない。 */
-  it('ゾーンにあるカードは、修整後のデータを持たない', () => {
+  /** スクエアの外にいるカードは、変更後のデータを持たない。 */
+  it('ゾーンにあるカードは、変更後のデータを持たない', () => {
     const board = withZone(emptyBoard('先攻'), '先攻', '手札', [{ kind: '見えている', instance: unit }])
     const card = zoneOf(boardView(board), '自分', '手札').cards[0]
 

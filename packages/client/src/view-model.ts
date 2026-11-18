@@ -71,11 +71,11 @@ export interface DetailRow {
  * 継続効果によって、カードに書かれているのとは違うデータになっているところ（#91）。
  *
  * 書かれている値を置き換えない。 画面には印刷された数字も残す。バトルで比べられるのは
- * 修整後の数字（総合ルール 第4部 第12章、`card.ts` の `bpOf`）なので、打つ人が見る数字が
+ * 変更後の数字（総合ルール 第4部 第12章、`card.ts` の `bpOf`）なので、打つ人が見る数字が
  * 印刷のままだと判断材料が嘘をつくが、どちらがカードに書かれている値かも要る。
  */
 export interface ModifiedData {
-  /** 修整後のＢＰ。書かれている数字と同じなら `undefined`。 */
+  /** 変更後のＢＰ。書かれている数字と同じなら `undefined`。 */
   readonly bp: number | undefined
   /**
    * `bp` が書かれている数字から上がったか、下がったか。`bp` が `undefined` なら、これも
@@ -83,7 +83,7 @@ export interface ModifiedData {
    * （render.ts に判断を持たせない）。
    */
   readonly bpDirection: '上' | '下' | undefined
-  /** 修整後のＳＰ。書かれている数字と同じなら `undefined`。 */
+  /** 変更後のＳＰ。書かれている数字と同じなら `undefined`。 */
   readonly sp: number | undefined
   /** `sp` が書かれている数字から上がったか、下がったか。`bpDirection` と同じ決まり。 */
   readonly spDirection: '上' | '下' | undefined
@@ -166,7 +166,7 @@ export type CardView =
       /** ユニットだけが持つ（総合ルール 第2部 第15章 1）。ユニットでなければ `undefined`。 */
       readonly sp: number | undefined
       /**
-       * 継続効果を適用した後のＢＰ・ＳＰと属性（#91）。修整を受けていなければ `undefined`。
+       * 継続効果を適用した後のＢＰ・ＳＰと属性（#91）。変更を受けていなければ `undefined`。
        *
        * 持つのはスクエアにいるユニットだけである。継続効果がデータを変えるのはそこに
        * いるユニットで（総合ルール 第4部 第12章）、盤面もその分だけを送ってくる
@@ -906,7 +906,7 @@ export function faceFieldsOf(face: WireCardFace): FaceFields {
  *
  * 適用した後の値を送ってくるのは盤面の側（`perspective.ts` の `EffectiveUnitData`）である。
  * ここでするのは、書かれている値と見比べてどこが変わったかを取り出すことだけで、
- * 修整を計算しない（ADR-0010）。
+ * 変更を計算しない（ADR-0010）。
  */
 function modifiedDataOf(
   instance: WireCardInstance,

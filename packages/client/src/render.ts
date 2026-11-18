@@ -753,7 +753,7 @@ function faceElement(card: CardView, options: FaceOptions = {}): HTMLElement {
  * デッキ構築のプール・デッキの一覧で使う、盤面に関わらないカードの面（ADR-0028）。
  *
  * 盤面のカードと規則を共有する（`appendFaceContent`）。継続効果・ダメージは盤面でしか
- * 起きないので、修整なし・ダメージ 0 として渡す。
+ * 起きないので、変更なし・ダメージ 0 として渡す。
  */
 function poolFaceElement(face: WireCardFace, options: FaceOptions = {}): HTMLElement {
   const node = element('div', 'card__face')
@@ -787,7 +787,7 @@ function cardElement(card: CardView, picking?: BoardPicking, options: FaceOption
 
   // 継続効果でデータが変わっていることは、文字（`BP1000→2000`）で分かる。色は添えるだけで、
   // それだけに頼らない（#91）。
-  const modified = card.modified === undefined ? '' : ' card--修整あり'
+  const modified = card.modified === undefined ? '' : ' card--変更あり'
   // 押せるかどうかも色だけで区別させない。押せるカードは `aria-label` にもそう出す（#94）。
   const pickable = isPickable(card, picking)
   const picked = picking?.picked === card.id
