@@ -1830,7 +1830,8 @@ function unnamedCard(
   controller: Player,
   whose: (player: Player) => '自分' | '相手',
 ): string {
-  if (from === undefined) return 'カード1枚'
+  // スクエアのユニットは、見る人に名前が見える。見えない時は、場所を言っても分かることが増えないので言わない。
+  if (from === undefined || from.zone === 'スクエア') return 'カード1枚'
 
   const owner = from.player === controller ? '' : zoneOwnerLabel(from.player, controller, whose)
   return from.zone === 'スマッシュゾーン' ? `${owner}スマッシュ1枚` : `${owner}${from.zone}のカード1枚`
