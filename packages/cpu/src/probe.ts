@@ -231,12 +231,8 @@ function runScripted(start: () => EffectStep<void>, script: readonly ScriptStep[
           if (instruction.action === '1枚引く') {
             instructions.push({ kind: 'カードを引く', player: controller, count: 1 })
           } else if (instruction.action === '山札の1番上のカードをエネルギーゾーンにフリーズして置く') {
-            instructions.push({
-              kind: '山札の1番上をゾーンへ置く',
-              action: 'エネルギーゾーンにフリーズして置く',
-              to: 'エネルギーゾーン',
-              orientation: 'フリーズ',
-            })
+            const { to, orientation } = ZONE_PLACE_SPECS['エネルギーゾーンにフリーズして置く']
+            instructions.push({ kind: '山札の1番上をゾーンへ置く', action: 'エネルギーゾーンにフリーズして置く', to, orientation })
           }
           for (const target of untargeted ? [] : instruction.targets) {
             instructions.push({ kind: 'ゾーンへ置く', card: target, action: '手札に加える', ...ZONE_PLACE_SPECS['手札に加える'] })

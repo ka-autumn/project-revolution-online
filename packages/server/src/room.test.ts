@@ -187,7 +187,7 @@ const WATCHING: Card = defineStrategy({
       },
       '次の相手のターンの終わりまで',
     )
-    yield* placeTopOfLibrary('スマッシュゾーンに置く')
+    yield* placeTopOfLibrary('スマッシュゾーンにリリースして置く')
   },
 })
 

@@ -342,8 +342,8 @@ describe('効果の記録', () => {
     const resolved = resolveEffect(board, discardBoth.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(instructions(resolved)).toEqual([
-      { kind: 'ゾーンへ置く', action: '捨札に置く', card: '味方', to: '捨札', player: '先攻' },
-      { kind: 'ゾーンへ置く', action: '捨札に置く', card: '敵', to: '捨札', player: '後攻' },
+      { kind: 'ゾーンへ置く', action: '捨札に置く', card: '味方', to: '捨札', player: '先攻', from: { zone: 'スクエア', player: '先攻' } },
+      { kind: 'ゾーンへ置く', action: '捨札に置く', card: '敵', to: '捨札', player: '後攻', from: { zone: 'スクエア', player: '後攻' } },
     ])
   })
 
@@ -1134,7 +1134,7 @@ describe('その時の見え方で落とす', () => {
     expect(cardsIn(resolved, '後攻', '山札').map((card) => card.id)).toContain(target.id)
     expect(perspectiveOf(resolved, '先攻').log.flatMap(({ event }) => (event.kind === '命令を実行した' ? [event.instruction] : []))).toEqual([
       { kind: '選ぶ', card: target.id, square: undefined },
-      { kind: 'ゾーンへ置く', action: '山札の1番上に裏向きで置く', card: target.id, to: '山札', player: '後攻' },
+      { kind: 'ゾーンへ置く', action: '山札の1番上に裏向きで置く', card: target.id, to: '山札', player: '後攻', from: { zone: 'スクエア', player: '後攻' } },
     ])
   })
 
@@ -1411,6 +1411,22 @@ describe('やり直しても二重にならない', () => {
       { kind: '選ぶ', card: '敵', square: undefined },
       { kind: '破壊する', card: '敵' },
     ])
+  })
+})
+
+describe('山札の 1 番上を動かす命令が受け取る動きの値（ADR-0076）', () => {
+  it('行き先が山札の動きの値は、型検査で弾かれる。命令が山札の上下を持たないため', () => {
+    // 実行はしない。型検査（pnpm typecheck）が、下の 2 行の弾きを確認する。
+    const typeOnly = () => {
+      // @ts-expect-error 山札の中で動かす値は、山札の 1 番上を動かす命令では受け取れない。
+      placeTopOfLibrary('山札の1番下に戻す')
+      // @ts-expect-error 同上。
+      placeTopOfLibrary('山札の1番上に裏向きで置く')
+      // 行き先がプランゾーンの値は山札の中の動きではないので、受け取れる。
+      placeTopOfLibrary('山札の1番上に表向きで置く')
+    }
+
+    expect(typeof typeOnly).toBe('function')
   })
 })
 

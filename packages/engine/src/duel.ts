@@ -729,6 +729,30 @@ export function findAnywhere(state: DuelState, id: CardId): CardInstance | undef
   return undefined
 }
 
+/** ゾーンへ置く前にカードがあった場所（ログに残す。ADR-0076）。 */
+export interface MovedFrom {
+  /** スクエアにいたなら「スクエア」。どのスクエアかは言わない。 */
+  readonly zone: PlayerZone | 'スクエア'
+  /** そのゾーンのプレイヤー。スクエアなら、カードの持ち主。 */
+  readonly player: Player
+}
+
+/**
+ * そのカードが今ある場所。リゾルブゾーンや、どこにも無ければ `undefined`。
+ * 動かす前に呼んで、ログに「どこから動かしたか」を残すために使う。
+ */
+export function locateAnywhere(state: DuelState, id: CardId): MovedFrom | undefined {
+  const onSquare = findOnSquares(state, id)
+  if (onSquare !== undefined) return { zone: 'スクエア', player: onSquare.owner }
+
+  for (const player of PLAYERS) {
+    for (const zone of PLAYER_ZONES) {
+      if (findInZone(state, player, zone, id) !== undefined) return { zone, player }
+    }
+  }
+  return undefined
+}
+
 /**
  * カードをいまある場所から取り除いて、持ち主のゾーンの 1 番上に置く。どこにもなければ
  * 盤面はそのまま。

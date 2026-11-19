@@ -30,7 +30,7 @@ import {
   showsChoicePicker,
   shownTitleOf,
 } from './input-model.js'
-import { mayDoneLine, maySkippedLine, mayQuestion } from './may-wording.js'
+import { isKnownMayAction, mayDoneLine, maySkippedLine, mayQuestion } from './may-wording.js'
 import { applyMessage, connecting } from './session.js'
 import { answersOnlyByDeclining, cardInfoRowsOf, dimsUnselectable, shownCardViewsIn, squareLabel } from './view-model.js'
 import type { Session } from './session.js'
@@ -2604,6 +2604,17 @@ describe('「してもよい」の言い方の表', () => {
     expect(mayQuestion('山札の1番上のカードをエネルギーゾーンにフリーズして置く', [])).toBe(
       '山札の1番上のカードをエネルギーゾーンにフリーズして置きますか？',
     )
+  })
+
+  // ADR-0038。新しいサーバが追加した動きの値は、この画面の表に無い。例外にせず、「はい／いいえ」で聞かない
+  // （一般の選択として聞く）。
+  it('知らない動きの値の「してもよい」は、「はい／いいえ」の選択として扱わない', () => {
+    const unknown = { purpose: 'してもよい', may: { action: '知らない値', targets: [] } } as unknown as Parameters<typeof isMayChoice>[0]
+
+    expect(isMayChoice(unknown)).toBe(false)
+    expect(isKnownMayAction('知らない値')).toBe(false)
+    expect(isKnownMayAction(undefined)).toBe(false)
+    for (const action of MAY_ACTIONS) expect(isKnownMayAction(action)).toBe(true)
   })
 
   it('テキストの動詞（加える）で、聞く・した・しなかったの言い方になる', () => {

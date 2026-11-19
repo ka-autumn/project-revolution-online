@@ -300,7 +300,14 @@ describe('実行できない行動', () => {
         recorded.event.kind === '命令を実行した' ? [recorded.event.instruction] : [],
       )
       expect(executed).toEqual([
-        { kind: 'ゾーンへ置く', action: 'エネルギーゾーンにフリーズして置く', card: '手札のカード', to: 'エネルギーゾーン', player: '先攻' },
+        {
+          kind: 'ゾーンへ置く',
+          action: 'エネルギーゾーンにフリーズして置く',
+          card: '手札のカード',
+          to: 'エネルギーゾーン',
+          player: '先攻',
+          from: { zone: '手札', player: '先攻' },
+        },
         { kind: 'プレイヤーにダメージを与える', player: '先攻', amount: 500 },
       ])
       expect(resolved.damage['先攻']).toBe(500)
@@ -1931,7 +1938,9 @@ describe('トラップゾーンのカードを捨札に置き、置いた後の�
     const placed = state.log.flatMap(({ event }) =>
       event.kind === '命令を実行した' && event.instruction.kind === 'ゾーンへ置く' ? [event.instruction] : [],
     )
-    expect(placed).toEqual([{ kind: 'ゾーンへ置く', action: '捨札に置く', card: '後攻の本物', to: '捨札', player: '後攻' }])
+    expect(placed).toEqual([
+      { kind: 'ゾーンへ置く', action: '捨札に置く', card: '後攻の本物', to: '捨札', player: '後攻', from: { zone: 'トラップゾーン', player: '後攻' } },
+    ])
   })
 
   it('見せていないトラップゾーンのカードは対象にできない', () => {

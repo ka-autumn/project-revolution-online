@@ -45,6 +45,14 @@ function namesOf(names: readonly string[]): string | undefined {
   return names.length === 0 ? undefined : names.join('と')
 }
 
+/**
+ * この画面が知っている動きの値か。知らない値（新しいサーバが追加した値。ADR-0038）は、聞く文もログの行も
+ * 作り出さない。表を直接参照すると、知らない値で例外になる。
+ */
+export function isKnownMayAction(action: string | undefined): action is MayAction {
+  return action !== undefined && Object.hasOwn(MAY_WORDING, action)
+}
+
 /** 聞く文。「見張りの猫を手札に加えますか？」。対象の名前が無ければ、述語だけ。 */
 export function mayQuestion(action: MayAction, names: readonly string[]): string {
   const subject = namesOf(names)

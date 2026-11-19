@@ -1240,7 +1240,7 @@ describe('操作ログ', () => {
 
     it('動きの値ごとに、テキストの動詞とゾーンの言い方になる', () => {
       expect(texts(withLog(placed('先攻', '先攻', '手札に加える')))).toEqual(['テスト・置いてあるを自分の手札に加えた'])
-      expect(texts(withLog(placed('先攻', '先攻', 'スマッシュゾーンに置く')))).toEqual(['テスト・置いてあるを自分のスマッシュゾーンに置いた'])
+      expect(texts(withLog(placed('先攻', '先攻', 'スマッシュゾーンにリリースして置く')))).toEqual(['テスト・置いてあるを自分のスマッシュゾーンにリリースして置いた'])
       expect(texts(withLog(placed('先攻', '先攻', '山札の1番上に表向きで置く')))).toEqual([
         'テスト・置いてあるを自分の山札の1番上に表向きで置いた',
       ])
@@ -1295,8 +1295,47 @@ describe('操作ログ', () => {
         instruction: { kind: 'ゾーンへ置く', card: undefined, action: '手札に加える', to: '手札', player: '後攻' },
       })
 
-      expect(texts(board)).toEqual(['相手の手札に加えた'])
-      expect(texts({ ...board, viewer: '後攻' })).toEqual(['相手は、こちらの手札に加えた'])
+      expect(texts(board)).toEqual(['カード1枚を相手の手札に加えた'])
+      expect(texts({ ...board, viewer: '後攻' })).toEqual(['相手は、カード1枚をこちらの手札に加えた'])
+    })
+
+    // 名前の見えないカードは、動かす前にあった場所で言う（ADR-0076）。持ち主は、支配者以外のゾーンの時だけ言う。
+    describe('名前が見えないカードは、動かす前の場所で言う', () => {
+      const placing = (from: { zone: PlayerZone | 'スクエア'; player: Player } | undefined, player: Player = '先攻') =>
+        withLog({
+          kind: '命令を実行した',
+          controller: '先攻',
+          instruction: { kind: 'ゾーンへ置く', card: undefined, action: '捨札に置く', to: '捨札', player, from },
+        })
+
+      it('スマッシュは「スマッシュ1枚」と言う', () => {
+        expect(texts(placing({ zone: 'スマッシュゾーン', player: '先攻' }))).toEqual(['スマッシュ1枚を自分の捨札に置いた'])
+        expect(texts({ ...placing({ zone: 'スマッシュゾーン', player: '先攻' }), viewer: '後攻' })).toEqual(['相手は、スマッシュ1枚を自身の捨札に置いた'])
+      })
+
+      it('トラップゾーンのカードは、支配者以外のゾーンなら持ち主も言う', () => {
+        expect(texts(placing({ zone: 'トラップゾーン', player: '先攻' }))).toEqual(['トラップゾーンのカード1枚を自分の捨札に置いた'])
+        expect(texts(placing({ zone: 'トラップゾーン', player: '後攻' }, '後攻'))).toEqual(['相手のトラップゾーンのカード1枚を相手の捨札に置いた'])
+        expect(texts({ ...placing({ zone: 'トラップゾーン', player: '後攻' }, '後攻'), viewer: '後攻' })).toEqual([
+          '相手は、こちらのトラップゾーンのカード1枚をこちらの捨札に置いた',
+        ])
+      })
+
+      it('場所が分からなければ「カード1枚」と言う', () => {
+        expect(texts(placing(undefined))).toEqual(['カード1枚を自分の捨札に置いた'])
+      })
+
+      it('山札の1番上を動かす行は、「山札の1番上のカード」と言い、名前が見える時は末尾で位置を言う', () => {
+        const top = (card: string | undefined) =>
+          withLog({
+            kind: '命令を実行した',
+            controller: '先攻',
+            instruction: { kind: '山札の1番上をゾーンへ置く', card, action: 'エネルギーゾーンにフリーズして置く', to: 'エネルギーゾーン', player: '先攻' },
+          })
+
+        expect(texts(top(undefined))).toEqual(['山札の1番上のカードを自分のエネルギーゾーンにフリーズして置いた'])
+        expect(texts({ ...top(undefined), viewer: '後攻' })).toEqual(['相手は、山札の1番上のカードを自身のエネルギーゾーンにフリーズして置いた'])
+      })
     })
   })
 
@@ -2131,6 +2170,26 @@ describe('操作ログ', () => {
       ])
     })
 
+    // ADR-0076・ADR-0038。新しいサーバが動きの値を追加した時や、値が届かなかった時に、表を引いて例外になると、
+    // 盤面ごと描けなくなる。読めなかった行として扱う。
+    it('置く行・「してもよい」の行で、動きの値を知らない、または値が無い時は、例外にせず表示できないログにする', () => {
+      const unreadable = [{ kind: 'できごと', whose: undefined, text: '（表示できないログ）', depth: 0 }]
+      const unknown = '知らない値'
+      const instructions = [
+        { kind: 'ゾーンへ置く', card: '置いてある', action: unknown, to: '手札', player: '先攻' },
+        { kind: 'ゾーンへ置く', card: '置いてある', to: '手札', player: '先攻' },
+        { kind: '山札の1番上をゾーンへ置く', card: '置いてある', action: unknown, to: '手札', player: '先攻' },
+        { kind: 'スクエアへ置く', card: '置いてある', action: unknown, square: { row: 1, column: 1 } },
+        { kind: 'スクエアへ置く', card: '置いてある', square: { row: 1, column: 1 } },
+        { kind: 'してもよいか聞く', action: unknown, count: 1, cards: ['置いてある'], player: '先攻', answer: 'はい' },
+        { kind: 'してもよいか聞く', action: unknown, count: 1, cards: ['置いてある'], player: '先攻', answer: 'いいえ' },
+      ] as unknown as readonly LoggedInstruction[]
+
+      for (const instruction of instructions) {
+        expect(logLines(withLog({ kind: '命令を実行した', controller: '先攻', instruction }))).toEqual(unreadable)
+      }
+    })
+
     it('続けて届いても、まとめずに 1 件ずつ出る', () => {
       expect(texts(withLog(UNKNOWN, UNKNOWN))).toEqual(['（表示できないログ）', '（表示できないログ）'])
     })
@@ -2638,7 +2697,7 @@ describe('操作ログのまとめ', () => {
       const dropped = instruct({ kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: [], player: '先攻', answer: 'はい' })
       const board = withLog(RESOLVED, dropped, instruct({ kind: 'ゾーンへ置く', card: undefined, action: '手札に加える', to: '手札', player: '先攻' }))
 
-      expect(texts(board)).toEqual(['誘発：テスト・A', '自分の手札に加えた'])
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'カード1枚を自分の手札に加えた'])
     })
   })
 
@@ -2863,6 +2922,23 @@ describe('カットイン', () => {
       const fresh: readonly DuelEvent[] = [
         RESOLVED,
         { kind: '命令を実行した', controller: '先攻', instruction: UNKNOWN },
+        { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
+      ]
+
+      expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を破壊した`])
+    })
+
+    it('動きの値を知らない置く行も、その行だけが省かれる', () => {
+      const unknownAction = {
+        kind: 'ゾーンへ置く',
+        card: '置いてある',
+        action: '知らない値',
+        to: '手札',
+        player: '先攻',
+      } as unknown as LoggedInstruction
+      const fresh: readonly DuelEvent[] = [
+        RESOLVED,
+        { kind: '命令を実行した', controller: '先攻', instruction: unknownAction },
         { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
       ]
 

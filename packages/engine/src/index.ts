@@ -254,6 +254,7 @@ export type {
   LoggedContinuousChange,
   MayAction,
   ZonePlaceAction,
+  TopOfLibraryPlaceAction,
   ZonePlaceSpec,
   SquarePlaceAction,
   SmashCard,

@@ -13,7 +13,7 @@ import type {
   WirePerspective,
 } from '@revolution/engine'
 import { indexOfSquare } from '@revolution/engine'
-import { mayQuestion } from './may-wording.js'
+import { isKnownMayAction, mayQuestion } from './may-wording.js'
 import type { Session } from './session.js'
 import { areaLabel, drawnOnBoard, keyOfPosition, nameOf, namesIn, squareLabel } from './view-model.js'
 
@@ -547,7 +547,7 @@ export type MayChoice = WireChoice & { readonly may: NonNullable<WireChoice['may
  * ダイアログ（`render.ts` の `mayElement`）で聞く。候補は「確認」の 1 つで、番号のボタンで並べる意味が無い。
  */
 export function isMayChoice(choice: WireChoice): choice is MayChoice {
-  return choice.purpose === 'してもよい' && choice.may !== undefined
+  return choice.purpose === 'してもよい' && choice.may !== undefined && isKnownMayAction(choice.may.action)
 }
 
 /**

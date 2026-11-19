@@ -2,7 +2,7 @@ import type { CreatedTrigger } from './ability.js'
 import type { BattleStep } from './battle.js'
 import { BATTLE_SPACE, isArea, rowOfArea } from './board.js'
 import type { Square, SquareIndex } from './board.js'
-import type { CardId, DuelResult, DuelState } from './duel.js'
+import type { CardId, DuelResult, DuelState, MovedFrom } from './duel.js'
 import { loggedChangeOf } from './effect.js'
 import type {
   Duration,
@@ -436,6 +436,8 @@ export type LoggedInstruction =
       readonly action: ZonePlaceAction
       readonly to: PlayerZone
       readonly player: Player
+      /** 動かす前にカードがあった場所。画面が、名前の見えないカードを「スマッシュ1枚」のように言うために持つ。分からなければ無い。 */
+      readonly from?: MovedFrom
     }
   | {
       readonly kind: '山札の1番上をゾーンへ置く'
@@ -750,7 +752,7 @@ export function loggedInstruction(
   subject: unknown,
   controller: Player,
   /** 実行してみないと分からない、命令そのものには書かれていないもの（`subject` 以外）。 */
-  outcome: { readonly declined?: true; readonly owner?: Player } = {},
+  outcome: { readonly declined?: true; readonly owner?: Player; readonly from?: MovedFrom } = {},
 ): LoggedInstruction {
   switch (instruction.kind) {
     case '選ぶ': {
@@ -787,11 +789,11 @@ export function loggedInstruction(
       // 戻る（`resolve.ts` の `recorded`）。それでもここへ来たなら不具合である。支配者で埋めると、
       // 相手のカードを相手のゾーンへ置いたのに「自分の」と出る気づきにくい誤りになるので、例外にする（#349）。
       if (outcome.owner === undefined) throw new Error('持ち主の分からないカードをゾーンへ置いた行を作ろうとした')
-      return { kind: 'ゾーンへ置く', card: instruction.card.id, action: instruction.action, to: instruction.to, player: outcome.owner }
+      return { kind: 'ゾーンへ置く', card: instruction.card.id, action: instruction.action, to: instruction.to, player: outcome.owner, from: outcome.from }
     case 'トラップゾーンのカードを捨札に置く':
       // ログの上では、トラップゾーンのカードをゾーンへ置いた行と同じに積む。
       if (outcome.owner === undefined) throw new Error('持ち主の分からないカードをゾーンへ置いた行を作ろうとした')
-      return { kind: 'ゾーンへ置く', card: instruction.card.id, action: '捨札に置く', to: '捨札', player: outcome.owner }
+      return { kind: 'ゾーンへ置く', card: instruction.card.id, action: '捨札に置く', to: '捨札', player: outcome.owner, from: outcome.from }
     case '山札の1番上をゾーンへ置く':
       // どのカードが動いたかは命令に書かれていない（位置で指定されている）。
       return {

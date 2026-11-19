@@ -287,7 +287,7 @@ export type MayAction = (typeof MAY_ACTIONS)[number]
 export const ZONE_PLACE_ACTIONS = [
   '手札に加える',
   '捨札に置く',
-  'スマッシュゾーンに置く',
+  'スマッシュゾーンにリリースして置く',
   '山札の1番上に表向きで置く',
   '山札の1番上に裏向きで置く',
   '山札の1番下に戻す',
@@ -296,6 +296,13 @@ export const ZONE_PLACE_ACTIONS = [
 ] as const
 
 export type ZonePlaceAction = (typeof ZONE_PLACE_ACTIONS)[number]
+
+/**
+ * 山札の 1 番上のカードを動かす命令（`placeTopOfLibrary`）が受け取れる動きの値。
+ * 行き先が山札の値（裏向きで置く・1番下に戻す）は除く。この命令は山札の上下を持たず、
+ * 実行時も行き先と向きしか見ないので、受け取ると、ログの文と実際の動きがずれる。
+ */
+export type TopOfLibraryPlaceAction = Exclude<ZonePlaceAction, '山札の1番上に裏向きで置く' | '山札の1番下に戻す'>
 
 /** ゾーンへ置く動きの値が決定する、行き先・向き・山札の上下。 */
 export interface ZonePlaceSpec {
@@ -311,7 +318,7 @@ export interface ZonePlaceSpec {
 export const ZONE_PLACE_SPECS = {
   手札に加える: { to: '手札', orientation: 'リリース', position: '1番上' },
   捨札に置く: { to: '捨札', orientation: 'リリース', position: '1番上' },
-  スマッシュゾーンに置く: { to: 'スマッシュゾーン', orientation: 'リリース', position: '1番上' },
+  スマッシュゾーンにリリースして置く: { to: 'スマッシュゾーン', orientation: 'リリース', position: '1番上' },
   山札の1番上に表向きで置く: { to: 'プランゾーン', orientation: 'リリース', position: '1番上' },
   山札の1番上に裏向きで置く: { to: '山札', orientation: 'リリース', position: '1番上' },
   山札の1番下に戻す: { to: '山札', orientation: 'リリース', position: '1番下' },
@@ -1233,7 +1240,7 @@ export function* discardTrapZoneCard(card: CardInTrapZone): EffectStep<Card | un
  *
  * 山札が空なら、この行動は実行されない（同 第1部 第1章 3）。効果はそのまま続く。
  */
-export function* placeTopOfLibrary(action: ZonePlaceAction): EffectStep<void> {
+export function* placeTopOfLibrary(action: TopOfLibraryPlaceAction): EffectStep<void> {
   const { to, orientation } = ZONE_PLACE_SPECS[action]
   yield { kind: '山札の1番上をゾーンへ置く', action, to, orientation }
 }

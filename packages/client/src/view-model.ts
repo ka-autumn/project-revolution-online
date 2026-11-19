@@ -1,6 +1,6 @@
 import { areaOf, indexOfSquare, lineOf, PHASES, PLAYERS, squareFromView } from '@revolution/engine'
-import { mayDoneLine, maySkippedLine } from './may-wording.js'
-import { SQUARE_PLACE_PREDICATE, ZONE_PLACE_WORDING } from './place-wording.js'
+import { isKnownMayAction, mayDoneLine, maySkippedLine } from './may-wording.js'
+import { squarePlacePredicateOf, zonePlaceWordingOf } from './place-wording.js'
 import type {
   Area,
   Attribute,
@@ -1820,6 +1820,22 @@ function zoneOwnerLabel(
   return zonePlayer === controller ? '自身の' : 'こちらの'
 }
 
+/**
+ * 名前の見えないカードを、動かす前にあった場所で指す（ADR-0076）。山札の 1 番上のカード・スマッシュ・トラップゾーンの
+ * カードのように、中身が見えないカードがここに来る。場所が分からなければ「カード1枚」と言う。
+ * 持ち主は、支配者以外のプレイヤーのゾーンの時だけ言う（支配者自身のゾーンは、行の主語が言っている）。
+ */
+function unnamedCard(
+  from: { readonly zone: string; readonly player: Player } | undefined,
+  controller: Player,
+  whose: (player: Player) => '自分' | '相手',
+): string {
+  if (from === undefined) return 'カード1枚'
+
+  const owner = from.player === controller ? '' : zoneOwnerLabel(from.player, controller, whose)
+  return from.zone === 'スマッシュゾーン' ? `${owner}スマッシュ1枚` : `${owner}${from.zone}のカード1枚`
+}
+
 /** 支配者が見る人の相手の行には、行頭に主語「相手は、」を付ける（ADR-0065・ADR-0076）。 */
 function withSubject(line: string, controller: Player, whose: (player: Player) => '自分' | '相手'): string {
   return whose(controller) === '自分' ? line : `相手は、${line}`
@@ -1915,7 +1931,7 @@ function foldedInstructions(
       }
     }
 
-    if (instruction.kind === 'してもよいか聞く' && instruction.answer === 'はい') {
+    if (instruction.kind === 'してもよいか聞く' && instruction.answer === 'はい' && isKnownMayAction(instruction.action)) {
       // 行を言えない（名前を取得できない）時は、手札へ置いた行を残す。
       if (mayDoneLine(instruction.action, instruction.cards.flatMap((card) => named(card) ?? []), '') === undefined) return
 
@@ -2039,6 +2055,8 @@ function instructionLine(
     // カードなので、名前を取得できないことは無いはずだが、取得できなければ行を出力しない。「はい」の後の、手札へ置いた
     // 行は、この行が言っているので落とす（`foldedInstructions`）。
     case 'してもよいか聞く': {
+      if (!isKnownMayAction(instruction.action)) return undefined
+
       const targets = instruction.cards.flatMap((card) => named(card) ?? [])
       const owner = instruction.player === undefined ? '' : zoneOwnerLabel(instruction.player, controller, whose)
       const line =
@@ -2054,18 +2072,32 @@ function instructionLine(
     case '向きを変える':
       return about(named(instruction.card), 'を', instruction.orientation)
     // カードのテキストと同じ、支配者の行動として言う（ADR-0076）。置いた先のゾーンのプレイヤーを、いつも言う。
+    // 動きの値をこの画面が知らない時（新しいサーバが値を追加した時など）は、読めなかったことを返す（ADR-0038）。
     case 'ゾーンへ置く': {
-      const { zone, predicate } = ZONE_PLACE_WORDING[instruction.action]
+      const wording = zonePlaceWordingOf(instruction.action)
+      if (wording === undefined) return undefined
+
+      const { zone, predicate } = wording
       const where = `${zoneOwnerLabel(instruction.player, controller, whose)}${zone}${predicate}`
-      return withSubject(about(named(instruction.card), 'を', where), controller, whose)
+      const card = named(instruction.card)
+      return withSubject(`${card ?? unnamedCard(instruction.from, controller, whose)}を${where}`, controller, whose)
     }
     case '山札の1番上をゾーンへ置く': {
-      const { zone, predicate } = ZONE_PLACE_WORDING[instruction.action]
-      const where = `${zoneOwnerLabel(instruction.player, controller, whose)}${zone}${predicate}（山札の1番上）`
-      return withSubject(about(named(instruction.card), 'を', where), controller, whose)
+      const wording = zonePlaceWordingOf(instruction.action)
+      if (wording === undefined) return undefined
+
+      const { zone, predicate } = wording
+      const where = `${zoneOwnerLabel(instruction.player, controller, whose)}${zone}${predicate}`
+      const card = named(instruction.card)
+      // 名前が見えない時は、動かしたカードを位置で言う。見える時は、名前に加えて位置を末尾で言う。
+      const line = card === undefined ? `山札の1番上のカードを${where}` : `${card}を${where}（山札の1番上）`
+      return withSubject(line, controller, whose)
     }
     case 'スクエアへ置く': {
-      const where = `${squareLabel(board.viewer, instruction.square)}${SQUARE_PLACE_PREDICATE[instruction.action]}`
+      const predicate = squarePlacePredicateOf(instruction.action)
+      if (predicate === undefined) return undefined
+
+      const where = `${squareLabel(board.viewer, instruction.square)}${predicate}`
       return withSubject(about(named(instruction.card), 'を', where), controller, whose)
     }
     // カードのテキストと同じ、支配者の行動として言う（ADR-0063）。対象のカードは「〜を」で行の途中に入れ、
