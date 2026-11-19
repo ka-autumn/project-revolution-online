@@ -55,7 +55,7 @@ const placer = defineUnit({
   abilities: [
     triggeredAbility('第１バトルステップの始め', function* (duel) {
       const [card] = duel.discardPile()
-      if (card !== undefined) yield* placeOnSquare(card, invadedSquare, 'リリース')
+      if (card !== undefined) yield* placeOnSquare(card, invadedSquare, 'リリースして置く')
     }),
   ],
 })

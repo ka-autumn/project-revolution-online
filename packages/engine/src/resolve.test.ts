@@ -32,7 +32,6 @@ import {
   indexOfSquare,
   putOnSquare,
   release,
-  placeOnSquareKeepingOrientation,
   resolveEffect,
   squaresBeside,
   triggeredAbility,
@@ -263,9 +262,9 @@ describe('実行できない行動', () => {
       const ability = triggeredAbility('登場した時', function* (duel) {
         const enemy = yield* choose(duel.enemies())
         if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
-        yield* placeInZone(enemy, '手札', 'リリース')
+        yield* placeInZone(enemy, '手札に加える')
         // 手元の写しはスクエアのユニットのまま。そのカードはもうスクエアにいない。
-        yield* placeInZone(enemy, '捨札', 'リリース')
+        yield* placeInZone(enemy, '捨札に置く')
         yield* damagePlayer(duel.controller, 500)
       })
       const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
@@ -281,9 +280,9 @@ describe('実行できない行動', () => {
       const ability = triggeredAbility('登場した時', function* (duel) {
         const [card] = duel.hand()
         if (card === undefined) throw new Error('手札があるうえで試すこと')
-        yield* placeInZone(card, 'エネルギーゾーン', 'フリーズ')
+        yield* placeInZone(card, 'エネルギーゾーンにフリーズして置く')
         // 手元の写しは手札のカードのまま。そのカードはもう手札にない。
-        yield* placeInZone(card, '捨札', 'リリース')
+        yield* placeInZone(card, '捨札に置く')
         yield* damagePlayer(duel.controller, 500)
       })
       const state = putInZone(boardOf([mySquare, mine()]), '先攻', '手札', [
@@ -301,7 +300,7 @@ describe('実行できない行動', () => {
         recorded.event.kind === '命令を実行した' ? [recorded.event.instruction] : [],
       )
       expect(executed).toEqual([
-        { kind: 'ゾーンへ置く', card: '手札のカード', to: 'エネルギーゾーン', player: '先攻' },
+        { kind: 'ゾーンへ置く', action: 'エネルギーゾーンにフリーズして置く', card: '手札のカード', to: 'エネルギーゾーン', player: '先攻' },
         { kind: 'プレイヤーにダメージを与える', player: '先攻', amount: 500 },
       ])
       expect(resolved.damage['先攻']).toBe(500)
@@ -314,7 +313,7 @@ describe('実行できない行動', () => {
       const ability = triggeredAbility('登場した時', function* (duel) {
         const enemy = yield* choose(duel.enemies())
         if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
-        yield* placeInZone(enemy, '山札', 'リリース')
+        yield* placeInZone(enemy, '山札の1番上に裏向きで置く')
       })
       const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
@@ -328,7 +327,7 @@ describe('実行できない行動', () => {
       const ability = triggeredAbility('登場した時', function* (duel) {
         const [card] = duel.hand()
         if (card === undefined) throw new Error('手札があるうえで試すこと')
-        yield* placeInZone(card, '捨札', 'リリース')
+        yield* placeInZone(card, '捨札に置く')
       })
       const state = putInZone(boardOf([mySquare, mine()]), '先攻', '手札', [
         instantiate({ id: '手札のカード', card: vanilla, owner: '先攻' }),
@@ -800,7 +799,7 @@ describe('効果によるゾーン間の移動', () => {
   /** 自分の手札を 1 枚まで選び、エネルギーゾーンにフリーズして置く能力。 */
   const stashing = triggeredAbility('登場した時', function* (duel) {
     const card = yield* chooseAtMostOne(duel.hand())
-    if (card !== undefined) yield* placeInZone(card, 'エネルギーゾーン', 'フリーズ')
+    if (card !== undefined) yield* placeInZone(card, 'エネルギーゾーンにフリーズして置く')
   })
 
   /** 先攻と後攻それぞれの手札を整えた、味方が 1 枚いる盤面。 */
@@ -842,7 +841,7 @@ describe('効果によるゾーン間の移動', () => {
     const forge = triggeredAbility('登場した時', function* (duel) {
       const [card] = duel.hand()
       if (card === undefined) throw new Error('手札があるうえで試すこと')
-      yield* placeInZone({ ...card, id: '相手の手札' }, 'エネルギーゾーン', 'フリーズ')
+      yield* placeInZone({ ...card, id: '相手の手札' }, 'エネルギーゾーンにフリーズして置く')
     })
 
     expect(() =>
@@ -855,7 +854,7 @@ describe('効果によるゾーン間の移動', () => {
     const takeBack = triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
       if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
-      yield* placeInZone(enemy, '手札', 'リリース')
+      yield* placeInZone(enemy, '手札に加える')
     })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
 
@@ -878,7 +877,7 @@ describe('効果によるゾーン間の移動', () => {
     const toDiscard = triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
       if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
-      yield* placeInZone(enemy, '捨札', 'リリース')
+      yield* placeInZone(enemy, '捨札に置く')
     })
     const watching = instantiate({ id: '見届け役', card: discardWatcher, owner: '後攻' })
     const state = boardOf([mySquare, mine()], [enemySquare, theirs('敵')], [nextEnemySquare, watching])
@@ -894,7 +893,7 @@ describe('効果によるゾーン間の移動', () => {
     const toBottom = triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
       if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
-      yield* placeInZone(enemy, '山札', 'リリース', '1番下')
+      yield* placeInZone(enemy, '山札の1番下に戻す')
     })
     const board = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
     const state = putInZone(board, '後攻', '山札', [instantiate({ id: '山札の上', card: vanilla, owner: '後攻' })])
@@ -914,7 +913,7 @@ describe('効果によるゾーン間の移動', () => {
     const toTop = triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
       if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
-      yield* placeInZone(enemy, '山札', 'リリース')
+      yield* placeInZone(enemy, '山札の1番上に裏向きで置く')
     })
     const board = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
     const state = putInZone(board, '後攻', 'プランゾーン', [
@@ -932,7 +931,7 @@ describe('効果によるゾーン間の移動', () => {
     const toBottom = triggeredAbility('登場した時', function* (duel) {
       const enemy = yield* choose(duel.enemies())
       if (enemy === undefined) throw new Error('敵がいる盤面で試すこと')
-      yield* placeInZone(enemy, '山札', 'リリース', '1番下')
+      yield* placeInZone(enemy, '山札の1番下に戻す')
     })
     const board = boardOf([mySquare, mine()], [enemySquare, theirs('敵')])
     const state = putInZone(board, '後攻', 'プランゾーン', [
@@ -993,7 +992,7 @@ describe('効果によるゾーン間の移動', () => {
 
   /** 自分の山札の 1 番上のカードを、エネルギーゾーンにフリーズして置く能力。 */
   const stacking = triggeredAbility('登場した時', function* () {
-    yield* placeTopOfLibrary('エネルギーゾーン', 'フリーズ')
+    yield* placeTopOfLibrary('エネルギーゾーンにフリーズして置く')
   })
 
   it('山札の 1 番上のカードを、選ばずに指定した向きで置ける', () => {
@@ -1029,7 +1028,7 @@ describe('効果によるゾーン間の移動', () => {
   it('山札が空なら、要求された行動は実行されない', () => {
     const steps: string[] = []
     const ability = triggeredAbility('登場した時', function* () {
-      yield* placeTopOfLibrary('エネルギーゾーン', 'フリーズ')
+      yield* placeTopOfLibrary('エネルギーゾーンにフリーズして置く')
       steps.push('後ろの指示')
     })
     const state = boardOf([mySquare, mine()])
@@ -1115,7 +1114,7 @@ describe('効果によってスクエアに置くことは「登場」ではな�
   const reviving = triggeredAbility('登場した時', function* (duel) {
     const card = yield* choose(duel.discardPile())
     if (card === undefined) throw new Error('捨札にカードがある盤面で試すこと')
-    yield* placeOnSquare(card, enemySquare, 'フリーズ')
+    yield* placeOnSquare(card, enemySquare, 'フリーズして置く')
   })
 
   /** 先攻の捨札にそのカードを 1 枚置いた盤面。 */
@@ -1281,7 +1280,7 @@ describe('効果から見えるエネルギーゾーン', () => {
       function* (duel) {
         const energy = yield* choose(duel.energyZone())
         if (energy === undefined) throw new Error('エネルギーがある盤面で試すこと')
-        yield* placeOnSquare(energy, mySquare, 'リリース')
+        yield* placeOnSquare(energy, mySquare, 'リリースして置く')
       },
       { controller: '先攻', via: VIA, chooser: chooseFirst },
     )
@@ -1445,7 +1444,7 @@ describe('効果によるエネルギーの向きの変更', () => {
     const resolved = resolve(state, function* (duel) {
       const [energy] = duel.energyZone()
       if (energy === undefined) throw new Error('エネルギーがある盤面で試すこと')
-      yield* placeInZone(energy, '捨札', 'リリース')
+      yield* placeInZone(energy, '捨札に置く')
       yield* freeze(energy)
       yield* damagePlayer(duel.controller, 500)
     })
@@ -1473,7 +1472,7 @@ describe('効果によるエネルギーの向きの変更', () => {
     const resolved = resolve(state, function* (duel) {
       const enemy = yield* choose(duel.enemies())
       if (enemy === undefined) throw new Error('相手のユニットがいる盤面で試すこと')
-      yield* placeInZone(enemy, 'エネルギーゾーン', 'リリース')
+      yield* placeInZone(enemy, 'エネルギーゾーンにリリースして置く')
       yield* freeze({ id: enemy.id, zone: 'エネルギーゾーン', card: enemy.card, orientation: 'リリース' })
     })
 
@@ -1492,7 +1491,7 @@ describe('効果によるエネルギーの向きの変更', () => {
     const resolved = resolve(state, function* (duel) {
       const ally = yield* choose(duel.allies())
       if (ally === undefined) throw new Error('味方のユニットがいる盤面で試すこと')
-      yield* placeInZone(ally, 'エネルギーゾーン', 'リリース')
+      yield* placeInZone(ally, 'エネルギーゾーンにリリースして置く')
       yield* freeze(ally)
     })
 
@@ -1543,7 +1542,7 @@ describe('効果から見えるスマッシュ', () => {
       function* (duel) {
         const smash = yield* chooseAtMostOne(duel.smashZone())
         seen = smash
-        if (smash !== undefined) yield* placeInZone(smash, '捨札', 'リリース')
+        if (smash !== undefined) yield* placeInZone(smash, '捨札に置く')
       },
       { controller: '先攻', via: VIA, chooser },
     )
@@ -1611,7 +1610,7 @@ describe('効果から見えるスマッシュ', () => {
       function* (duel) {
         const smash = yield* choose(duel.smashZone())
         if (smash === undefined) throw new Error('スマッシュがある盤面で試すこと')
-        yield* placeInZone(smash, '捨札', 'リリース')
+        yield* placeInZone(smash, '捨札に置く')
         counts.push(duel.smashCount(duel.controller))
       },
       { controller: '先攻', via: VIA, chooser: chooseFirst },
@@ -1668,7 +1667,7 @@ describe('効果から見えるスマッシュ', () => {
       resolveEffect(
         state,
         function* () {
-          yield* placeInZone({ id: '先攻のスマッシュ0', zone: 'スマッシュゾーン' }, '捨札', 'リリース')
+          yield* placeInZone({ id: '先攻のスマッシュ0', zone: 'スマッシュゾーン' }, '捨札に置く')
         },
         { controller: '先攻', via: VIA, chooser: chooseFirst },
       ),
@@ -1705,7 +1704,7 @@ describe('効果から見えるトラップゾーンのカード', () => {
       function* (duel) {
         const trap = yield* chooseAtMostOne(duel.trapZone())
         seen = trap
-        if (trap !== undefined) yield* placeInZone(trap, '捨札', 'リリース')
+        if (trap !== undefined) yield* placeInZone(trap, '捨札に置く')
       },
       {
         controller: '先攻',
@@ -1828,7 +1827,7 @@ describe('効果から見えるトラップゾーンのカード', () => {
       resolveEffect(
         withTraps('後攻'),
         function* () {
-          yield* placeInZone({ id: '後攻のトラップ', zone: 'トラップゾーン', player: '後攻' }, '捨札', 'リリース')
+          yield* placeInZone({ id: '後攻のトラップ', zone: 'トラップゾーン', player: '後攻' }, '捨札に置く')
         },
         { controller: '先攻', via: VIA, chooser: chooseFirst },
       ),
@@ -1932,7 +1931,7 @@ describe('トラップゾーンのカードを捨札に置き、置いた後の�
     const placed = state.log.flatMap(({ event }) =>
       event.kind === '命令を実行した' && event.instruction.kind === 'ゾーンへ置く' ? [event.instruction] : [],
     )
-    expect(placed).toEqual([{ kind: 'ゾーンへ置く', card: '後攻の本物', to: '捨札', player: '後攻' }])
+    expect(placed).toEqual([{ kind: 'ゾーンへ置く', action: '捨札に置く', card: '後攻の本物', to: '捨札', player: '後攻' }])
   })
 
   it('見せていないトラップゾーンのカードは対象にできない', () => {
@@ -1955,7 +1954,7 @@ describe('効果が誘発型能力を作る', () => {
     const ally = yield* choose(duel.allies())
     if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
     yield* createTriggeredAbility(ally, 'あなたのターンの終わり', 'テストの説明', function* (_duel, affected) {
-      yield* placeInZone(affected, 'エネルギーゾーン', 'フリーズ')
+      yield* placeInZone(affected, 'エネルギーゾーンにフリーズして置く')
     })
   })
 
@@ -2040,7 +2039,7 @@ describe('効果が、捨札のカードを対象にする誘発型能力を作�
     const [card] = duel.discardPile()
     if (card === undefined) throw new Error('捨札にカードがある盤面で試すこと')
     yield* createTriggeredAbilityForDiscardedCard(card, 'ターンの終わり', 'テストの説明', function* (_duel, affected) {
-      yield* placeInZone(affected, '手札', 'リリース')
+      yield* placeInZone(affected, '手札に加える')
     })
   })
 
@@ -2255,14 +2254,14 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
   const placeFromDiscard: Effect = function* (duel) {
     const card = yield* choose(duel.discardPile())
     if (card === undefined) throw new Error('捨札にカードがある盤面で試すこと')
-    yield* placeOnSquare(card, invadedSquare, 'リリース')
+    yield* placeOnSquare(card, invadedSquare, 'リリースして置く')
   }
 
   /** 先攻のスクエアにいるユニットを 1 体選び、`invadedSquare` に置き直す効果。 */
   const placeFromSquare: Effect = function* (duel) {
     const ally = yield* choose(duel.allies())
     if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
-    yield* placeOnSquare(ally, invadedSquare, 'リリース')
+    yield* placeOnSquare(ally, invadedSquare, 'リリースして置く')
   }
 
   const resolve = (state: DuelState, effect: Effect) =>
@@ -2384,8 +2383,8 @@ describe('効果によってスクエアに置かれた時の侵入と「勇気�
     const placeTwo: Effect = function* (duel) {
       const [first, second] = duel.discardPile()
       if (first === undefined || second === undefined) throw new Error('捨札に 2 枚ある盤面で試すこと')
-      yield* placeOnSquare(first, invadedSquare, 'リリース')
-      yield* placeOnSquare(second, nextInvadedSquare, 'リリース')
+      yield* placeOnSquare(first, invadedSquare, 'リリースして置く')
+      yield* placeOnSquare(second, nextInvadedSquare, 'リリースして置く')
     }
 
     function twoInDiscard(): DuelState {
@@ -2444,7 +2443,7 @@ describe('向きを変えずにスクエアに置く', () => {
   const replacingUnchanged = triggeredAbility('登場した時', function* (duel) {
     const ally = yield* choose(duel.allies())
     if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
-    yield* placeOnSquareKeepingOrientation(ally, enemySquare)
+    yield* placeOnSquare(ally, enemySquare, '向きを変えずに置く')
   })
 
   const unit = (orientation: 'リリース' | 'フリーズ') =>
@@ -2473,7 +2472,7 @@ describe('向きを変えずにスクエアに置く', () => {
       const ally = yield* choose(duel.allies())
       if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
       yield* release(ally)
-      yield* placeOnSquareKeepingOrientation(ally, enemySquare)
+      yield* placeOnSquare(ally, enemySquare, '向きを変えずに置く')
     })
 
     const resolved = run(boardOf([mySquare, unit('フリーズ')]), releasedBeforePlacing.effect)
@@ -2487,7 +2486,7 @@ describe('向きを変えずにスクエアに置く', () => {
       const ally = yield* choose(duel.allies())
       if (ally === undefined) throw new Error('味方がいる盤面で試すこと')
       yield* destroy(ally)
-      yield* placeOnSquareKeepingOrientation(ally, enemySquare)
+      yield* placeOnSquare(ally, enemySquare, '向きを変えずに置く')
     })
 
     const resolved = run(boardOf([mySquare, unit('フリーズ')]), destroyedBeforePlacing.effect)

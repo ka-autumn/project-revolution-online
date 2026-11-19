@@ -739,7 +739,7 @@ describe('スマッシュ判定中のバトル', () => {
     abilities: [
       hope(function* (duel) {
         const [card] = duel.discardPile()
-        if (card !== undefined) yield* placeOnSquare(card, anotherCenterSquare, 'リリース')
+        if (card !== undefined) yield* placeOnSquare(card, anotherCenterSquare, 'リリースして置く')
       }),
     ],
   })
@@ -963,7 +963,7 @@ describe('スマッシュ判定の途中に効果で置かれた時の権利', (
     abilities: [
       hope(function* (duel) {
         const [card] = duel.discardPile()
-        if (card !== undefined) yield* placeOnSquare(card, anotherCenterSquare, 'リリース')
+        if (card !== undefined) yield* placeOnSquare(card, anotherCenterSquare, 'リリースして置く')
       }),
     ],
   })

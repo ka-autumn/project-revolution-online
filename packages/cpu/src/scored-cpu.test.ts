@@ -178,7 +178,7 @@ describe('スマッシュフェイズ', () => {
     let state = onSquare(sceneAt('スマッシュフェイズ'), at(CENTER, 0), 'a', unit('中央', 1000, 1000), '先攻')
     state = withOpponentHope(state, 3, function* (duel) {
       const [smash] = duel.smashZone()
-      if (smash !== undefined) yield* placeInZone(smash, '捨札', 'リリース')
+      if (smash !== undefined) yield* placeInZone(smash, '捨札に置く')
     })
 
     expect(picked(state)).toEqual({ kind: 'スマッシュする', unit: 'a' })
@@ -679,7 +679,7 @@ describe('同じターンの終わりに手札へ戻る「してもよい」', (
           if (!added) return
 
           const discarded = yield* choose(duel.hand())
-          if (discarded !== undefined) yield* placeInZone(discarded, '捨札', 'リリース')
+          if (discarded !== undefined) yield* placeInZone(discarded, '捨札に置く')
         })
       }),
     ],
@@ -689,7 +689,7 @@ describe('同じターンの終わりに手札へ戻る「してもよい」', (
     name: 'テスト・山札の上を捨札に置く',
     level: 0,
     effect: function* () {
-      yield* placeTopOfLibrary('捨札', 'リリース')
+      yield* placeTopOfLibrary('捨札に置く')
     },
   })
 
@@ -771,7 +771,7 @@ describe('同じターンの終わりに手札へ戻る「してもよい」', (
       event: {
         kind: '命令を実行した',
         controller,
-        instruction: { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: [RETURNING], answer },
+        instruction: { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: [RETURNING], player: controller, answer },
       },
       during: [],
       seenBy,

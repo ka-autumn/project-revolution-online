@@ -1,4 +1,4 @@
-import { UNTARGETED_MAY_ACTIONS, hasKeyword, movePreventingAbilitiesOf } from '@revolution/engine'
+import { UNTARGETED_MAY_ACTIONS, ZONE_PLACE_SPECS, hasKeyword, movePreventingAbilitiesOf } from '@revolution/engine'
 import type {
   CardId,
   CardInDiscardPile,
@@ -231,10 +231,15 @@ function runScripted(start: () => EffectStep<void>, script: readonly ScriptStep[
           if (instruction.action === '1枚引く') {
             instructions.push({ kind: 'カードを引く', player: controller, count: 1 })
           } else if (instruction.action === '山札の1番上のカードをエネルギーゾーンにフリーズして置く') {
-            instructions.push({ kind: '山札の1番上をゾーンへ置く', to: 'エネルギーゾーン', orientation: 'フリーズ' })
+            instructions.push({
+              kind: '山札の1番上をゾーンへ置く',
+              action: 'エネルギーゾーンにフリーズして置く',
+              to: 'エネルギーゾーン',
+              orientation: 'フリーズ',
+            })
           }
           for (const target of untargeted ? [] : instruction.targets) {
-            instructions.push({ kind: 'ゾーンへ置く', card: target, to: '手札', orientation: 'リリース', position: '1番上' })
+            instructions.push({ kind: 'ゾーンへ置く', card: target, action: '手札に加える', ...ZONE_PLACE_SPECS['手札に加える'] })
           }
           reply = true
           break

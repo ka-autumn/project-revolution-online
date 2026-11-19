@@ -430,6 +430,8 @@ function apply(
           action: instruction.action,
           count: targets.length,
           cards: targets.map(({ id }) => id),
+          // 置く先のゾーンのプレイヤーは、対象のカードの持ち主である（総合ルール 第2部 第21章 1-2）。
+          player: targets[0] === undefined ? undefined : findAnywhere(state, targets[0].id)?.owner,
           answer: yes ? 'はい' : 'いいえ',
         },
       })
@@ -441,7 +443,12 @@ function apply(
         return { state: runInstruction(current, drawing, context, shown), value: true, logged: true }
       }
       if (instruction.action === '山札の1番上のカードをエネルギーゾーンにフリーズして置く') {
-        const placing: Instruction = { kind: '山札の1番上をゾーンへ置く', to: 'エネルギーゾーン', orientation: 'フリーズ' }
+        const placing: Instruction = {
+          kind: '山札の1番上をゾーンへ置く',
+          action: 'エネルギーゾーンにフリーズして置く',
+          to: 'エネルギーゾーン',
+          orientation: 'フリーズ',
+        }
         return { state: runInstruction(current, placing, context, shown), value: true, logged: true }
       }
 
@@ -457,7 +464,7 @@ function apply(
                 {
                   kind: '命令を実行した',
                   controller: context.controller,
-                  instruction: { kind: 'ゾーンへ置く', card: target.id, to: '手札', player: owner },
+                  instruction: { kind: 'ゾーンへ置く', card: target.id, action: '手札に加える', to: '手札', player: owner },
                 },
                 current,
               )
@@ -602,7 +609,7 @@ function apply(
           {
             kind: '命令を実行した',
             controller: context.controller,
-            instruction: { kind: 'ゾーンへ置く', card: target.id, to: '捨札', player: opponent },
+            instruction: { kind: 'ゾーンへ置く', card: target.id, action: '捨札に置く', to: '捨札', player: opponent },
           },
           afterLook,
         ),

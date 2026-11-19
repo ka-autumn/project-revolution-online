@@ -142,7 +142,7 @@ describe('期限を持つ、対象を持たない作成された誘発型能力'
         level: 0,
         effect: function* (duel) {
           const [card] = duel.hand().filter((each) => each.id === '置かれるカード')
-          if (card !== undefined) yield* placeInZone(card, 'スマッシュゾーン', 'リリース')
+          if (card !== undefined) yield* placeInZone(card, 'スマッシュゾーンに置く')
         },
       })
       let current = stocked()

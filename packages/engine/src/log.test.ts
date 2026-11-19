@@ -93,7 +93,7 @@ const discardBoth = defineStrategy({
   level: 0,
   colors: ['赤'],
   effect: function* (duel) {
-    for (const unit of [...duel.allies(), ...duel.enemies()]) yield* placeInZone(unit, '捨札', 'リリース')
+    for (const unit of [...duel.allies(), ...duel.enemies()]) yield* placeInZone(unit, '捨札に置く')
   },
 })
 
@@ -103,7 +103,7 @@ const topToEnergy = defineStrategy({
   level: 0,
   colors: ['赤'],
   effect: function* () {
-    yield* placeTopOfLibrary('エネルギーゾーン', 'フリーズ')
+    yield* placeTopOfLibrary('エネルギーゾーンにフリーズして置く')
   },
 })
 
@@ -114,7 +114,7 @@ const chooseAndReturn = defineStrategy({
   colors: ['赤'],
   effect: function* (duel) {
     const enemy = yield* choose(duel.enemies())
-    if (enemy !== undefined) yield* placeInZone(enemy, '山札', 'リリース')
+    if (enemy !== undefined) yield* placeInZone(enemy, '山札の1番上に裏向きで置く')
   },
 })
 
@@ -342,8 +342,8 @@ describe('効果の記録', () => {
     const resolved = resolveEffect(board, discardBoth.effect, { controller: '先攻', via: VIA, chooser: chooseFirst })
 
     expect(instructions(resolved)).toEqual([
-      { kind: 'ゾーンへ置く', card: '味方', to: '捨札', player: '先攻' },
-      { kind: 'ゾーンへ置く', card: '敵', to: '捨札', player: '後攻' },
+      { kind: 'ゾーンへ置く', action: '捨札に置く', card: '味方', to: '捨札', player: '先攻' },
+      { kind: 'ゾーンへ置く', action: '捨札に置く', card: '敵', to: '捨札', player: '後攻' },
     ])
   })
 
@@ -355,9 +355,25 @@ describe('効果の記録', () => {
 
     for (const controller of PLAYERS) {
       expect(() =>
-        loggedInstruction({ kind: 'ゾーンへ置く', card, to: '捨札', orientation: 'リリース', position: '1番上' }, undefined, controller),
+        loggedInstruction({ kind: 'ゾーンへ置く', card, action: '捨札に置く', to: '捨札', orientation: 'リリース', position: '1番上' }, undefined, controller),
       ).toThrow('持ち主の分からないカード')
     }
+  })
+
+  // ADR-0076。置く行のログのデータは、動きの値を持つ。画面が、テキストの動詞に合わせた文を値ごとの表から取得する。
+  it('スクエアへ置く行と山札の 1 番上を置く行も、動きの値を持つ', () => {
+    const card = { id: '敵', zone: '手札', card: vanilla } as const
+
+    expect(
+      loggedInstruction({ kind: 'スクエアへ置く', card, action: 'フリーズして置く', square: centerSquare, orientation: 'フリーズ' }, undefined, '先攻'),
+    ).toEqual({ kind: 'スクエアへ置く', card: '敵', action: 'フリーズして置く', square: centerSquare })
+    expect(
+      loggedInstruction(
+        { kind: '山札の1番上をゾーンへ置く', action: 'エネルギーゾーンにフリーズして置く', to: 'エネルギーゾーン', orientation: 'フリーズ' },
+        card,
+        '後攻',
+      ),
+    ).toEqual({ kind: '山札の1番上をゾーンへ置く', card: '敵', action: 'エネルギーゾーンにフリーズして置く', to: 'エネルギーゾーン', player: '後攻' })
   })
 
   // 総合ルール 第2部 第21章 1-2。置き先のゾーンのプレイヤーは持ち主で決まる。上の「ゾーンへ置いた記録に、
@@ -366,10 +382,10 @@ describe('効果の記録', () => {
     const card = { id: '敵', zone: '手札', card: vanilla } as const
 
     expect(
-      loggedInstruction({ kind: 'ゾーンへ置く', card, to: '捨札', orientation: 'リリース', position: '1番上' }, undefined, '先攻', {
+      loggedInstruction({ kind: 'ゾーンへ置く', card, action: '捨札に置く', to: '捨札', orientation: 'リリース', position: '1番上' }, undefined, '先攻', {
         owner: '後攻',
       }),
-    ).toEqual({ kind: 'ゾーンへ置く', card: '敵', to: '捨札', player: '後攻' })
+    ).toEqual({ kind: 'ゾーンへ置く', card: '敵', action: '捨札に置く', to: '捨札', player: '後攻' })
   })
 
   it('山札の 1 番上を置いた記録に、置き先のゾーンのプレイヤーが残る', () => {
@@ -377,7 +393,7 @@ describe('効果の記録', () => {
       const resolved = resolveEffect(stocked(), topToEnergy.effect, { controller, via: VIA, chooser: chooseFirst })
 
       expect(instructions(resolved)).toEqual([
-        expect.objectContaining({ kind: '山札の1番上をゾーンへ置く', to: 'エネルギーゾーン', player: controller }),
+        expect.objectContaining({ kind: '山札の1番上をゾーンへ置く', action: 'エネルギーゾーンにフリーズして置く', to: 'エネルギーゾーン', player: controller }),
       ])
     }
   })
@@ -955,13 +971,13 @@ describe('視点ごとの落とし方', () => {
     const event: DuelEvent = {
       kind: '命令を実行した',
       controller: '後攻',
-      instruction: { kind: 'ゾーンへ置く', card: hidden.id, to: '手札', player: '後攻' },
+      instruction: { kind: 'ゾーンへ置く', card: hidden.id, action: '手札に加える', to: '手札', player: '後攻' },
     }
 
     const state = logged(event)
 
     expect(seen(state, '先攻')).toEqual([
-      { ...event, instruction: { kind: 'ゾーンへ置く', card: undefined, to: '手札', player: '後攻' } },
+      { ...event, instruction: { kind: 'ゾーンへ置く', action: '手札に加える', card: undefined, to: '手札', player: '後攻' } },
     ])
   })
 
@@ -1118,7 +1134,7 @@ describe('その時の見え方で落とす', () => {
     expect(cardsIn(resolved, '後攻', '山札').map((card) => card.id)).toContain(target.id)
     expect(perspectiveOf(resolved, '先攻').log.flatMap(({ event }) => (event.kind === '命令を実行した' ? [event.instruction] : []))).toEqual([
       { kind: '選ぶ', card: target.id, square: undefined },
-      { kind: 'ゾーンへ置く', card: target.id, to: '山札', player: '後攻' },
+      { kind: 'ゾーンへ置く', action: '山札の1番上に裏向きで置く', card: target.id, to: '山札', player: '後攻' },
     ])
   })
 

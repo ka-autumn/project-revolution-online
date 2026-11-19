@@ -30,7 +30,7 @@ const takingTwo = defineStrategy({
   level: 0,
   effect: function* (duel) {
     const chosen = yield* chooseSeveral(duel.discardPile().filter((each) => each.card.type === 'ユニット'), 2)
-    for (const each of chosen) yield* placeInZone(each, '手札', 'リリース')
+    for (const each of chosen) yield* placeInZone(each, '手札に加える')
   },
 })
 
@@ -41,7 +41,7 @@ const choosingAfterAnAnswer = defineStrategy({
   effect: function* (duel) {
     yield* chooseAtMostOne(duel.allies())
     const chosen = yield* chooseSeveral(duel.discardPile().filter((each) => each.card.type === 'ユニット'), 2)
-    for (const each of chosen) yield* placeInZone(each, '手札', 'リリース')
+    for (const each of chosen) yield* placeInZone(each, '手札に加える')
   },
 })
 

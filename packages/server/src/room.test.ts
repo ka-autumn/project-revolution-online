@@ -125,7 +125,7 @@ const REVEALING: Card = defineStrategy({
   name: REVEALING_NAME,
   level: 0,
   effect: function* () {
-    yield* placeTopOfLibrary('捨札', 'リリース')
+    yield* placeTopOfLibrary('捨札に置く')
     yield* choose(['ア', 'イ'])
   },
 })
@@ -187,7 +187,7 @@ const WATCHING: Card = defineStrategy({
       },
       '次の相手のターンの終わりまで',
     )
-    yield* placeTopOfLibrary('スマッシュゾーン', 'リリース')
+    yield* placeTopOfLibrary('スマッシュゾーンに置く')
   },
 })
 

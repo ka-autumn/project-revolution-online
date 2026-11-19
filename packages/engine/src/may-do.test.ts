@@ -34,7 +34,7 @@ const mayTakeThenDiscard = defineStrategy({
     if (!yes) return
 
     const [first] = duel.hand()
-    if (first !== undefined) yield* placeInZone(first, '捨札', 'リリース')
+    if (first !== undefined) yield* placeInZone(first, '捨札に置く')
   },
 })
 
@@ -108,7 +108,7 @@ describe('してもよいか聞く命令', () => {
 
     expectAdvanced(done)
     expect(maySteps(done.state)).toEqual([
-      { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: ['見張り'], answer: 'はい' },
+      { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: ['見張り'], player: '先攻', answer: 'はい' },
     ])
     // 手札に加えた後に、続きの「手札を 1 枚捨てる」を実行している。
     const placed = done.state.log.flatMap(({ event }) =>
@@ -137,7 +137,7 @@ describe('してもよいか聞く命令', () => {
 
     expectAdvanced(done)
     expect(maySteps(done.state)).toEqual([
-      { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: ['見張り'], answer: 'いいえ' },
+      { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: ['見張り'], player: '先攻', answer: 'いいえ' },
     ])
     expect(handIds(done.state)).not.toContain('見張り')
     expect(cardsIn(done.state, '先攻', '捨札').map((card) => card.id)).toContain('見張り')
@@ -168,7 +168,7 @@ describe('してもよいか聞く命令', () => {
           const [first, second] = duel.discardPile()
           if (first === undefined || second === undefined) return
 
-          yield* placeInZone(first, '手札', 'リリース')
+          yield* placeInZone(first, '手札に加える')
           yield* mayDo(askAbout === 'どちらも' ? [first, second] : [first], '手札に加える')
         },
       })
@@ -208,7 +208,7 @@ describe('してもよいか聞く命令', () => {
         event.kind === '命令を実行した' && event.instruction.kind === 'してもよいか聞く' ? [event.instruction] : [],
       )
       expect(asked).toEqual([
-        { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: ['見張り'], answer: 'はい' },
+        { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: ['見張り'], player: '先攻', answer: 'はい' },
       ])
     }
   })

@@ -289,7 +289,7 @@ describe('プランのトラップ', () => {
       sp: 1000,
       abilities: [
         triggeredAbility('登場した時', function* () {
-          yield* placeTopOfLibrary('プランゾーン', 'リリース')
+          yield* placeTopOfLibrary('山札の1番上に表向きで置く')
         }),
       ],
     })

@@ -487,7 +487,7 @@ describe('リカバリーフェイズと作成された継続効果', () => {
         const ally = duel.allies().find((each) => each.id === '対象')
         if (ally === undefined) return
         yield* createTriggeredAbility(ally, 'あなたのターンの終わり', 'テストの説明', function* (_duel, affected) {
-          yield* placeInZone(affected, 'エネルギーゾーン', 'フリーズ')
+          yield* placeInZone(affected, 'エネルギーゾーンにフリーズして置く')
         })
       }),
     ],
@@ -887,7 +887,7 @@ describe('作成された誘発型能力', () => {
       trigger: 'あなたのターンの終わり',
       description: 'テストの説明',
       effect: function* (_duel, affected) {
-        yield* placeInZone(affected, 'エネルギーゾーン', 'フリーズ')
+        yield* placeInZone(affected, 'エネルギーゾーンにフリーズして置く')
       },
     },
     controller,
@@ -1045,7 +1045,7 @@ describe('作成された誘発型能力', () => {
         trigger: 'ターンの終わり',
         description: 'テストの説明',
         effect: function* (_duel, affected) {
-          yield* placeInZone(affected, '手札', 'リリース')
+          yield* placeInZone(affected, '手札に加える')
         },
       },
       controller,
@@ -1123,7 +1123,7 @@ describe('作成された誘発型能力', () => {
             const [card] = duel.discardPile()
             if (card === undefined) return
             yield* createTriggeredAbilityForDiscardedCard(card, 'ターンの終わり', 'テストの説明', function* (_duel, affected) {
-              yield* placeInZone(affected, '手札', 'リリース')
+              yield* placeInZone(affected, '手札に加える')
             })
           }),
         ],

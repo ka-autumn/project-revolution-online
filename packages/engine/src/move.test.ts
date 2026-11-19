@@ -485,7 +485,7 @@ describe('移動を妨げる常在型能力', () => {
     const placeAlly = (square: Square): Effect =>
       function* (duel) {
         const ally = yield* choose(duel.allies())
-        if (ally !== undefined) yield* placeOnSquare(ally, square, 'リリース')
+        if (ally !== undefined) yield* placeOnSquare(ally, square, 'リリースして置く')
       }
     const resolve = (state: DuelState, effect: Effect) =>
       resolveEffect(state, effect, { controller: '先攻', via: 'プレイ', chooser: chooseFirst })
