@@ -55,7 +55,7 @@ const revealing = defineStrategy({
   level: 0,
   effect: function* (duel) {
     const chosen = yield* letOpponentChooseFromMyHand(duel)
-    if (chosen !== undefined) yield* placeInZone(chosen, '捨札', 'リリース')
+    if (chosen !== undefined) yield* placeInZone(chosen, '捨札に置く')
   },
 })
 

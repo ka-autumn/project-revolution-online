@@ -30,7 +30,7 @@ import {
   showsChoicePicker,
   shownTitleOf,
 } from './input-model.js'
-import { mayDoneLine, maySkippedLine, mayQuestion } from './may-wording.js'
+import { isKnownMayAction, mayDoneLine, maySkippedLine, mayQuestion } from './may-wording.js'
 import { applyMessage, connecting } from './session.js'
 import { answersOnlyByDeclining, cardInfoRowsOf, dimsUnselectable, shownCardViewsIn, squareLabel } from './view-model.js'
 import type { Session } from './session.js'
@@ -2590,8 +2590,8 @@ describe('「してもよい」の言い方の表', () => {
       if (UNTARGETED_MAY_ACTIONS.includes(action)) continue
 
       expect(mayQuestion(action, ['名前'])).toMatch(/^名前を.+ますか？$/)
-      expect(mayDoneLine(action, ['名前'])).toMatch(/^名前を.+た$/)
-      expect(maySkippedLine(action, ['名前'])).toMatch(/^名前を.+なかった$/)
+      expect(mayDoneLine(action, ['名前'], '自分の')).toMatch(/^名前を自分の.+た$/)
+      expect(maySkippedLine(action, ['名前'], '自分の')).toMatch(/^名前を自分の.+なかった$/)
     }
   })
 
@@ -2599,17 +2599,28 @@ describe('「してもよい」の言い方の表', () => {
   // 自分の行を積むので、言わない。
   it('対象を持たない動きは、「〜を」を入れずに聞き、「はい」の行を言わない', () => {
     expect(mayQuestion('1枚引く', [])).toBe('1枚引きますか？')
-    expect(maySkippedLine('1枚引く', [])).toBe('1枚引かなかった')
-    expect(mayDoneLine('1枚引く', [])).toBeUndefined()
+    expect(maySkippedLine('1枚引く', [], '')).toBe('1枚引かなかった')
+    expect(mayDoneLine('1枚引く', [], '')).toBeUndefined()
     expect(mayQuestion('山札の1番上のカードをエネルギーゾーンにフリーズして置く', [])).toBe(
       '山札の1番上のカードをエネルギーゾーンにフリーズして置きますか？',
     )
   })
 
+  // ADR-0038。新しいサーバが追加した動きの値は、この画面の表に無い。例外にせず、「はい／いいえ」で聞かない
+  // （一般の選択として聞く）。
+  it('知らない動きの値の「してもよい」は、「はい／いいえ」の選択として扱わない', () => {
+    const unknown = { purpose: 'してもよい', may: { action: '知らない値', targets: [] } } as unknown as Parameters<typeof isMayChoice>[0]
+
+    expect(isMayChoice(unknown)).toBe(false)
+    expect(isKnownMayAction('知らない値')).toBe(false)
+    expect(isKnownMayAction(undefined)).toBe(false)
+    for (const action of MAY_ACTIONS) expect(isKnownMayAction(action)).toBe(true)
+  })
+
   it('テキストの動詞（加える）で、聞く・した・しなかったの言い方になる', () => {
     expect(mayQuestion('手札に加える', ['A'])).toBe('Aを手札に加えますか？')
-    expect(mayDoneLine('手札に加える', ['A'])).toBe('Aを手札に加えた')
-    expect(maySkippedLine('手札に加える', ['A'])).toBe('Aを手札に加えなかった')
+    expect(mayDoneLine('手札に加える', ['A'], '自分の')).toBe('Aを自分の手札に加えた')
+    expect(maySkippedLine('手札に加える', ['A'], '自分の')).toBe('Aを自分の手札に加えなかった')
   })
 
   it('対象が 2 枚なら「と」でつなぐ（名前の「・」と区別するため）', () => {
@@ -2618,7 +2629,7 @@ describe('「してもよい」の言い方の表', () => {
 
   it('対象の名前が 1 つも無ければ、聞く文は述語だけ、ログの行は出さない', () => {
     expect(mayQuestion('手札に加える', [])).toBe('手札に加えますか？')
-    expect(mayDoneLine('手札に加える', [])).toBeUndefined()
-    expect(maySkippedLine('手札に加える', [])).toBeUndefined()
+    expect(mayDoneLine('手札に加える', [], '自分の')).toBeUndefined()
+    expect(maySkippedLine('手札に加える', [], '自分の')).toBeUndefined()
   })
 })

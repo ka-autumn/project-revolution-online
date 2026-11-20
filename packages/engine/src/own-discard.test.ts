@@ -340,7 +340,7 @@ describe('捨札に置く経路', () => {
 
     const after = effect(state, function* (duel) {
       const chosen = yield* choose(duel.hand())
-      if (chosen !== undefined) yield* placeInZone(chosen, '捨札', 'リリース')
+      if (chosen !== undefined) yield* placeInZone(chosen, '捨札に置く')
     })
 
     expect(triggeredSources(after)).toEqual(['自分'])
@@ -350,7 +350,7 @@ describe('捨札に置く経路', () => {
   it('効果で山札の 1 番上を捨札に置く', () => {
     const state = putInZone(emptyDuelState(), '先攻', '山札', [instance('自分')])
 
-    expect(triggeredSources(effect(state, function* () { yield* placeTopOfLibrary('捨札', 'リリース') }))).toEqual(['自分'])
+    expect(triggeredSources(effect(state, function* () { yield* placeTopOfLibrary('捨札に置く') }))).toEqual(['自分'])
   })
 
   // 総合ルール 第2部 第20章 3-12（ADR-0059）

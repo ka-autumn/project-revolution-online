@@ -1248,7 +1248,7 @@ describe('効果によってスクエアに置かれた時の権利', () => {
     colors: ['赤'],
     effect: function* (duel) {
       const card = yield* choose(duel.discardPile())
-      if (card !== undefined) yield* placeOnSquare(card, centerSquare, 'リリース')
+      if (card !== undefined) yield* placeOnSquare(card, centerSquare, 'リリースして置く')
     },
   })
 

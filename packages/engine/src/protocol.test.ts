@@ -390,7 +390,7 @@ describe('効果が選ぶスマッシュの候補', () => {
     abilities: [
       triggeredAbility('登場した時', function* (duel) {
         const smash = yield* chooseAtMostOne(duel.smashZone())
-        if (smash !== undefined) yield* placeInZone(smash, '捨札', 'リリース')
+        if (smash !== undefined) yield* placeInZone(smash, '捨札に置く')
       }),
     ],
   })
@@ -405,7 +405,7 @@ describe('効果が選ぶスマッシュの候補', () => {
     abilities: [
       triggeredAbility('登場した時', function* (duel) {
         const smash = yield* chooseAtMostOne(duel.smashZone())
-        if (smash !== undefined) yield* placeInZone(smash, '手札', 'リリース')
+        if (smash !== undefined) yield* placeInZone(smash, '手札に加える')
       }),
     ],
   })
@@ -518,9 +518,9 @@ describe('効果が選ぶスマッシュの候補', () => {
         triggeredAbility('登場した時', function* (duel) {
           const first = yield* chooseAtMostOne(duel.smashZone())
           if (first === undefined) return
-          yield* placeInZone(first, '捨札', 'リリース')
+          yield* placeInZone(first, '捨札に置く')
           const second = yield* chooseAtMostOne(duel.smashZone())
-          if (second !== undefined) yield* placeInZone(second, '捨札', 'リリース')
+          if (second !== undefined) yield* placeInZone(second, '捨札に置く')
         }),
       ],
     })
@@ -550,7 +550,7 @@ describe('効果が選ぶトラップゾーンのカードの候補', () => {
     abilities: [
       triggeredAbility('登場した時', function* (duel) {
         const trap = yield* chooseAtMostOne(duel.trapZone())
-        if (trap !== undefined) yield* placeInZone(trap, '捨札', 'リリース')
+        if (trap !== undefined) yield* placeInZone(trap, '捨札に置く')
       }),
     ],
   })
@@ -565,7 +565,7 @@ describe('効果が選ぶトラップゾーンのカードの候補', () => {
     abilities: [
       triggeredAbility('登場した時', function* (duel) {
         const trap = yield* chooseAtMostOne(duel.trapZone())
-        if (trap !== undefined) yield* placeInZone(trap, '手札', 'リリース')
+        if (trap !== undefined) yield* placeInZone(trap, '手札に加える')
       }),
     ],
   })
@@ -1562,7 +1562,7 @@ describe('戻れるかどうか', () => {
     sp: 1000,
     abilities: [
       triggeredAbility('登場した時', function* (duel) {
-        yield* placeTopOfLibrary('捨札', 'リリース')
+        yield* placeTopOfLibrary('捨札に置く')
         yield* choose(duel.enemies())
       }),
     ],

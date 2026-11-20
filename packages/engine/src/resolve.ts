@@ -9,6 +9,7 @@ import {
   faceDownPlan,
   findAnywhere,
   findInZone,
+  locateAnywhere,
   locateOnSquares,
   moveToSquare,
   putInZone,
@@ -16,7 +17,7 @@ import {
   setOrientationOnSquare,
   topOfLibrary,
 } from './duel.js'
-import type { CardId, CardInstance, DuelState, TriggeredInstance } from './duel.js'
+import type { CardId, CardInstance, DuelState, MovedFrom, TriggeredInstance } from './duel.js'
 import type {
   CardInDiscardPile,
   CardInTrapZone,
@@ -29,7 +30,7 @@ import type {
   SmashCard,
   UnitOnSquare,
 } from './effect.js'
-import { UNTARGETED_MAY_ACTIONS } from './effect.js'
+import { UNTARGETED_MAY_ACTIONS, ZONE_PLACE_SPECS } from './effect.js'
 import { loggedInstruction, record } from './log.js'
 import type { LoggedInstruction, ResolutionVia } from './log.js'
 import { opponentOf, PLAYERS } from './player.js'
@@ -293,6 +294,8 @@ interface Outcome {
   readonly declined?: true
   /** 動かしたカードの持ち主。置き先のゾーンのプレイヤーにあたる（`log.ts` の `ゾーンへ置く`）。 */
   readonly owner?: Player
+  /** 動かす前にカードがあった場所（`log.ts` の `ゾーンへ置く`・`山札の1番上をゾーンへ置く`）。 */
+  readonly from?: MovedFrom
   /**
    * 命令が自分でログを積んだ。`recorded` はこの命令の行を足さない。聞かずに済んだ、見せただけの
    * 選択（`選ぶ` の相手に手札を見せる形で手札が 0 枚）で、選んだ行を残さないためと、`複数を選ぶ` が
@@ -430,6 +433,8 @@ function apply(
           action: instruction.action,
           count: targets.length,
           cards: targets.map(({ id }) => id),
+          // 置く先のゾーンのプレイヤーは、対象のカードの持ち主である（総合ルール 第2部 第21章 1-2）。
+          player: targets[0] === undefined ? undefined : findAnywhere(state, targets[0].id)?.owner,
           answer: yes ? 'はい' : 'いいえ',
         },
       })
@@ -441,13 +446,15 @@ function apply(
         return { state: runInstruction(current, drawing, context, shown), value: true, logged: true }
       }
       if (instruction.action === '山札の1番上のカードをエネルギーゾーンにフリーズして置く') {
-        const placing: Instruction = { kind: '山札の1番上をゾーンへ置く', to: 'エネルギーゾーン', orientation: 'フリーズ' }
+        const { to, orientation } = ZONE_PLACE_SPECS['エネルギーゾーンにフリーズして置く']
+        const placing: Instruction = { kind: '山札の1番上をゾーンへ置く', action: 'エネルギーゾーンにフリーズして置く', to, orientation }
         return { state: runInstruction(current, placing, context, shown), value: true, logged: true }
       }
 
       // 動きは、手札へ置く（「加える」も「戻す」も同じ）。動かしたカードの名指しを残せるよう、動かす前の盤面を渡す。
       for (const target of targets) {
         const owner = findAnywhere(current, target.id)?.owner
+        const from = locateAnywhere(current, target.id)
         const moved = moveToZone(current, [target.id], '手札', { orientation: 'リリース' })
         current =
           moved === current || owner === undefined
@@ -457,7 +464,7 @@ function apply(
                 {
                   kind: '命令を実行した',
                   controller: context.controller,
-                  instruction: { kind: 'ゾーンへ置く', card: target.id, to: '手札', player: owner },
+                  instruction: { kind: 'ゾーンへ置く', card: target.id, action: '手札に加える', to: '手札', player: owner, from },
                 },
                 current,
               )
@@ -602,7 +609,7 @@ function apply(
           {
             kind: '命令を実行した',
             controller: context.controller,
-            instruction: { kind: 'ゾーンへ置く', card: target.id, to: '捨札', player: opponent },
+            instruction: { kind: 'ゾーンへ置く', card: target.id, action: '捨札に置く', to: '捨札', player: opponent, from: { zone: '手札', player: opponent } },
           },
           afterLook,
         ),
@@ -691,10 +698,12 @@ function apply(
       if (!isWhereRead(state, instruction.card)) return { state, value: undefined }
 
       const owner = findAnywhere(state, instruction.card.id)?.owner
+      const from = locateAnywhere(state, instruction.card.id)
       // スクエアから捨札へ置くことは「破壊する」にあたり（総合ルール 第2部 第21章 1-5）、
       // それを見て誘発する能力がある（同 第4部 第7章 6）。誘発は `moveToZone` が探す。
       return {
         owner,
+        from,
         state: moveToZone(state, [instruction.card.id], instruction.to, {
           orientation: instruction.orientation,
           position: instruction.position,
@@ -713,6 +722,7 @@ function apply(
       // 置いた後は捨札で公開されるので、その表記を効果に返す（ADR-0067）。
       return {
         owner: instruction.card.player,
+        from: { zone: 'トラップゾーン', player: instruction.card.player },
         state: moveToZone(state, [instruction.card.id], '捨札', { orientation: 'リリース' }),
         value: found.card,
       }

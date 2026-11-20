@@ -60,7 +60,7 @@ const searchAndShuffle = defineStrategy({
   level: 0,
   effect: function* () {
     const found = yield* chooseAtMostOneFromLibrary((card) => card.card.name === 'テスト・目当て')
-    if (found !== undefined) yield* placeInZone(found, '手札', 'リリース')
+    if (found !== undefined) yield* placeInZone(found, '手札に加える')
     yield* shuffleLibrary()
   },
 })
@@ -282,7 +282,7 @@ describe('山札を読んで選ぶ選択', () => {
       level: 0,
       effect: function* () {
         const cards = yield* readLibrary()
-        for (const card of cards) yield* placeInZone(card, '手札', 'リリース')
+        for (const card of cards) yield* placeInZone(card, '手札に加える')
         // 山札を離れた後に、同じカードを一覧として聞こうとする（カードの側からは出せない形を直に出す）。
         yield { kind: '選ぶ', candidates: [], mayDecline: true, shown: cards }
       },
@@ -547,7 +547,7 @@ describe('自動で手を選ぶ側が、山札を読む・シャッフルする�
         level: 0,
         effect: function* () {
           const found = yield* chooseAtMostOneFromLibrary((card) => card.card.name.startsWith('テスト・自己対戦ユニット'))
-          if (found !== undefined) yield* placeInZone(found, '手札', 'リリース')
+          if (found !== undefined) yield* placeInZone(found, '手札に加える')
           yield* shuffleLibrary()
         },
       }),

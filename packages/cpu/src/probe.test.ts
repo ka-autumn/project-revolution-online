@@ -47,7 +47,7 @@ describe('してもよいか聞く命令の空回し', () => {
     })
 
     expect(run?.instructions).toEqual([
-      { kind: 'ゾーンへ置く', card: expect.objectContaining({ id: '捨札の1枚' }), to: '手札', orientation: 'リリース', position: '1番上' },
+      { kind: 'ゾーンへ置く', action: '手札に加える', card: expect.objectContaining({ id: '捨札の1枚' }), to: '手札', orientation: 'リリース', position: '1番上' },
     ])
   })
 
@@ -103,7 +103,7 @@ describe('対象を持たない「してもよい」の空回し', () => {
       yield* mayDo([], '山札の1番上のカードをエネルギーゾーンにフリーズして置く')
     })
 
-    expect(run?.instructions).toEqual([{ kind: '山札の1番上をゾーンへ置く', to: 'エネルギーゾーン', orientation: 'フリーズ' }])
+    expect(run?.instructions).toEqual([{ kind: '山札の1番上をゾーンへ置く', action: 'エネルギーゾーンにフリーズして置く', to: 'エネルギーゾーン', orientation: 'フリーズ' }])
   })
 
   it('CPU は、対象を持たない「してもよい」にも、「はい」（候補の 0 番）と答える', () => {

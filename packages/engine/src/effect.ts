@@ -276,6 +276,65 @@ export const MAY_ACTIONS = ['手札に加える', '1枚引く', '山札の1番�
 export type MayAction = (typeof MAY_ACTIONS)[number]
 
 /**
+ * 効果がカードをゾーンへ置く動き（ADR-0076）。
+ *
+ * テキストの動詞・行き先・向き・山札の上下まで含めた 1 つの値にする。エンジンは、値から行き先・向き・
+ * 山札の上下を決定する（`ZONE_PLACE_SPECS`）。ログの文と実際の動きが、ずれないようにするためである。
+ * 値は、それを使うテキストを実装する時に追加する。画面は、値ごとの言い方の表を持つ（この配列を網羅する）。
+ *
+ * 「手札に加える」は、「してもよい」の動き（`MAY_ACTIONS`）と同じ値で、同じ文になる。
+ */
+export const ZONE_PLACE_ACTIONS = [
+  '手札に加える',
+  '捨札に置く',
+  'スマッシュゾーンにリリースして置く',
+  '山札の1番上に表向きで置く',
+  '山札の1番上に裏向きで置く',
+  '山札の1番下に戻す',
+  'エネルギーゾーンにフリーズして置く',
+  'エネルギーゾーンにリリースして置く',
+] as const
+
+export type ZonePlaceAction = (typeof ZONE_PLACE_ACTIONS)[number]
+
+/**
+ * 山札の 1 番上のカードを動かす命令（`placeTopOfLibrary`）が受け取れる動きの値。
+ * 行き先が山札の値（裏向きで置く・1番下に戻す）は除く。この命令は山札の上下を持たず、
+ * 実行時も行き先と向きしか見ないので、受け取ると、ログの文と実際の動きがずれる。
+ */
+export type TopOfLibraryPlaceAction = Exclude<ZonePlaceAction, '山札の1番上に裏向きで置く' | '山札の1番下に戻す'>
+
+/** ゾーンへ置く動きの値が決定する、行き先・向き・山札の上下。 */
+export interface ZonePlaceSpec {
+  readonly to: PlayerZone
+  readonly orientation: Orientation
+  readonly position: LibraryPosition
+}
+
+/**
+ * 動きの値ごとの、行き先・向き・山札の上下。「山札の1番上に表向きで置く」の行き先がプランゾーンなのは、
+ * プランゾーンのカードが同時に山札の 1 番上のカードだからである（総合ルール 第2部 第21章 3-1）。
+ */
+export const ZONE_PLACE_SPECS = {
+  手札に加える: { to: '手札', orientation: 'リリース', position: '1番上' },
+  捨札に置く: { to: '捨札', orientation: 'リリース', position: '1番上' },
+  スマッシュゾーンにリリースして置く: { to: 'スマッシュゾーン', orientation: 'リリース', position: '1番上' },
+  山札の1番上に表向きで置く: { to: 'プランゾーン', orientation: 'リリース', position: '1番上' },
+  山札の1番上に裏向きで置く: { to: '山札', orientation: 'リリース', position: '1番上' },
+  山札の1番下に戻す: { to: '山札', orientation: 'リリース', position: '1番下' },
+  エネルギーゾーンにフリーズして置く: { to: 'エネルギーゾーン', orientation: 'フリーズ', position: '1番上' },
+  エネルギーゾーンにリリースして置く: { to: 'エネルギーゾーン', orientation: 'リリース', position: '1番上' },
+} as const satisfies Record<ZonePlaceAction, ZonePlaceSpec>
+
+/**
+ * 効果がユニットなどをスクエアへ置く動き（ADR-0076）。動詞と向きを決定する。どのスクエアかは、
+ * 命令の引数で渡す。「向きを変えずに置く」は、置く瞬間にスクエアにいるユニットの向きをそのまま使う。
+ */
+export const SQUARE_PLACE_ACTIONS = ['リリースして置く', 'フリーズして置く', '向きを変えずに置く'] as const
+
+export type SquarePlaceAction = (typeof SQUARE_PLACE_ACTIONS)[number]
+
+/**
  * 対象を持たない動き（ADR-0065）。対象のカードが無いので、「対象が場所を離れていたら聞かない」ことが起こらず、
  * いつも聞く。聞く文とログの行は、対象の「〜を」を入れない。
  */
@@ -330,12 +389,19 @@ export type Instruction =
   | {
       readonly kind: 'ゾーンへ置く'
       readonly card: CardInZone | UnitOnSquare | SmashCard | CardInTrapZone
+      /** 動きの値。`to`・`orientation`・`position` は、値から `ZONE_PLACE_SPECS` で決定した内容である。 */
+      readonly action: ZonePlaceAction
       readonly to: PlayerZone
       readonly orientation: Orientation
       readonly position: LibraryPosition
     }
   | { readonly kind: 'トラップゾーンのカードを捨札に置く'; readonly card: CardInTrapZone }
-  | { readonly kind: '山札の1番上をゾーンへ置く'; readonly to: PlayerZone; readonly orientation: Orientation }
+  | {
+      readonly kind: '山札の1番上をゾーンへ置く'
+      readonly action: ZonePlaceAction
+      readonly to: PlayerZone
+      readonly orientation: Orientation
+    }
   | { readonly kind: 'カードを引く'; readonly player: Player; readonly count: number }
   /**
    * 支配者が、相手の手札を見る（ADR-0041）。見たカードは効果に返さない。
@@ -392,14 +458,16 @@ export type Instruction =
   | {
       readonly kind: 'スクエアへ置く'
       readonly card: CardInZone | UnitOnSquare
+      readonly action: Exclude<SquarePlaceAction, '向きを変えずに置く'>
       readonly square: Square
       readonly orientation: Orientation
     }
   | {
-      // 置く瞬間にスクエアにいるユニットの向きをそのまま使う（`placeOnSquareKeepingOrientation`）。
+      // 置く瞬間にスクエアにいるユニットの向きをそのまま使う（`placeOnSquare` の「向きを変えずに置く」）。
       // スクエアにいるユニットを置き直す時だけ指定できるので、`card` はユニットに限る。
       readonly kind: 'スクエアへ置く'
       readonly card: UnitOnSquare
+      readonly action: '向きを変えずに置く'
       readonly square: Square
       readonly orientation: '変えない'
     }
@@ -924,11 +992,9 @@ export function* freeze(target: UnitOnSquare | EnergyInZone): EffectStep<void> {
  */
 export function* placeInZone(
   card: CardInZone | UnitOnSquare | SmashCard | CardInTrapZone,
-  to: PlayerZone,
-  orientation: Orientation,
-  position: LibraryPosition = '1番上',
+  action: ZonePlaceAction,
 ): EffectStep<void> {
-  yield { kind: 'ゾーンへ置く', card, to, orientation, position }
+  yield { kind: 'ゾーンへ置く', card, action, ...ZONE_PLACE_SPECS[action] }
 }
 
 /**
@@ -1097,31 +1163,31 @@ export function* letOpponentChooseFromMyHand(duel: DuelView): EffectStep<CardInZ
  * （同 第5部 第2章 2）は、登場と同じく満たしうる。どちらも置き方を限っていないためである。
  * 別のスクエアにいるユニットを置き直した場合も同じである。
  *
+ * 動きの値のうち「向きを変えずに置く」は、スクエアにいるユニットを別のスクエアに置き直す時だけ指定できる。
+ * 向きは、置く瞬間にそのユニットがスクエアで持っている向きをそのまま使う。効果に見せたユニットの向きを
+ * 取得して渡す形にしないのは、誘発した時に見せたユニットが、置くまでの間に向きを変更していることが
+ * あるためである。見せたユニットが置く時にもうスクエアにいなければ、この行動は実行されない
+ * （総合ルール 第1部 第1章 3）。
+ *
  * どのスクエアに置くかはカードのテキストが決める。「味方エリアに置く」であれば、エリアの
  * 中のどのスクエアかを支配者が選ぶ。エリアとスクエアの対応は `areaOf`、置けるスクエアの
  * 一覧は `BATTLE_SPACE` で、いずれもカードの側から使える。自分のユニットがすでにいる
  * スクエアを避けるかどうかも、テキストの読み方としてカードの側が決める。
  */
-export function* placeOnSquare(
+export function placeOnSquare(
   card: CardInZone | UnitOnSquare,
   square: Square,
-  orientation: Orientation,
-): EffectStep<void> {
-  yield { kind: 'スクエアへ置く', card, square, orientation }
-}
+  action: Exclude<SquarePlaceAction, '向きを変えずに置く'>,
+): EffectStep<void>
+export function placeOnSquare(card: UnitOnSquare, square: Square, action: '向きを変えずに置く'): EffectStep<void>
+export function* placeOnSquare(card: CardInZone | UnitOnSquare, square: Square, action: SquarePlaceAction): EffectStep<void> {
+  if (action === '向きを変えずに置く') {
+    // スクエアにいるユニットを置き直す時だけ指定できる（上の 2 つ目のシグネチャが `UnitOnSquare` に限る）。
+    yield { kind: 'スクエアへ置く', card: card as UnitOnSquare, action, square, orientation: '変えない' }
+    return
+  }
 
-/**
- * スクエアにいるユニットを、向きを変えずに別のスクエアに置く（「向きを変えずに置く」）。
- *
- * 向きは、置く瞬間にそのユニットがスクエアで持っている向きをそのまま使う。効果に見せたユニットの
- * 向きを取得して渡す形にしないのは、誘発した時に見せたユニットが、置くまでの間に向きを変更している
- * ことがあるためである。見せたユニットが置く時にもうスクエアにいなければ、この行動は実行されない
- * （総合ルール 第1部 第1章 3）。
- *
- * 登場ではない点、敵のいるスクエアにも置ける点は `placeOnSquare` と同じである。
- */
-export function* placeOnSquareKeepingOrientation(unit: UnitOnSquare, square: Square): EffectStep<void> {
-  yield { kind: 'スクエアへ置く', card: unit, square, orientation: '変えない' }
+  yield { kind: 'スクエアへ置く', card, action, square, orientation: action === 'フリーズして置く' ? 'フリーズ' : 'リリース' }
 }
 
 /**
@@ -1174,8 +1240,9 @@ export function* discardTrapZoneCard(card: CardInTrapZone): EffectStep<Card | un
  *
  * 山札が空なら、この行動は実行されない（同 第1部 第1章 3）。効果はそのまま続く。
  */
-export function* placeTopOfLibrary(to: PlayerZone, orientation: Orientation): EffectStep<void> {
-  yield { kind: '山札の1番上をゾーンへ置く', to, orientation }
+export function* placeTopOfLibrary(action: TopOfLibraryPlaceAction): EffectStep<void> {
+  const { to, orientation } = ZONE_PLACE_SPECS[action]
+  yield { kind: '山札の1番上をゾーンへ置く', action, to, orientation }
 }
 
 /**

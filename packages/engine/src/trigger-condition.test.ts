@@ -663,7 +663,7 @@ describe('条件付誘発型能力', () => {
           triggeredAbility(
             'エネルギーフェイズの始め',
             function* () {
-              if (leaked !== undefined) yield* placeInZone(leaked, '捨札', 'リリース')
+              if (leaked !== undefined) yield* placeInZone(leaked, '捨札に置く')
             },
             {
               condition: (duel) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { indexOfSquare } from '@revolution/engine'
+import { ZONE_PLACE_ACTIONS, ZONE_PLACE_SPECS, indexOfSquare } from '@revolution/engine'
 import type {
   DuelEvent,
   LoggedEvent,
@@ -11,6 +11,7 @@ import type {
   Progress,
   ResolutionVia,
   Square,
+  SquarePlaceAction,
   TriggerFilter,
   Turn,
   WireCardInstance,
@@ -18,6 +19,7 @@ import type {
   WireRoom,
   WireRoomRules,
   WireUnitOnSquare,
+  ZonePlaceAction,
 } from '@revolution/engine'
 import type { Opponent } from '@revolution/engine'
 import { emptyBoard, instance, logged, unitFace, withZone } from './test-support.js'
@@ -40,6 +42,7 @@ import {
   showsOverlay,
   transitionViews,
   triggerFilterText,
+  squareLabel,
   triggerIconLabel,
   visibleCardViewsIn,
   zoneOf as sideZoneOf,
@@ -1204,50 +1207,136 @@ describe('操作ログ', () => {
     })
   })
 
-  /** 置き先のゾーンは、いつも「自分の／相手の」を付けて言う（ADR-0040）。見る人ごとに入れ替わる。 */
+  /**
+   * 効果がカードを置いた行は、支配者の行動の文で、置いた先のゾーンのプレイヤーをいつも言う（ADR-0076）。
+   * 支配者が見る人の相手の行は、主語「相手は、」を付け、「自身の／こちらの」と言う（ADR-0065）。
+   */
   describe('ゾーンへ置いた行', () => {
-    const placed = (player: '先攻' | '後攻'): DuelEvent => ({
+    const placed = (
+      controller: '先攻' | '後攻',
+      player: '先攻' | '後攻',
+      action: ZonePlaceAction = '捨札に置く',
+    ): DuelEvent => ({
       kind: '命令を実行した',
-      controller: '先攻',
-      instruction: { kind: 'ゾーンへ置く', card: '置いてある', to: '捨札', player },
+      controller,
+      instruction: { kind: 'ゾーンへ置く', card: '置いてある', action, to: ZONE_PLACE_SPECS[action].to, player },
     })
 
-    it('自分のゾーンへ置いたなら「自分の」、相手のゾーンへ置いたなら「相手の」が付く', () => {
-      expect(texts(withLog(placed('先攻')))).toEqual([`テスト・置いてあるを自分の捨札へ`])
-      expect(texts(withLog(placed('後攻')))).toEqual([`テスト・置いてあるを相手の捨札へ`])
+    it('自分が支配者なら、自分のゾーンは「自分の」、相手のゾーンは「相手の」で言う（主語は付けない）', () => {
+      expect(texts(withLog(placed('先攻', '先攻')))).toEqual(['テスト・置いてあるを自分の捨札に置いた'])
+      expect(texts(withLog(placed('先攻', '後攻')))).toEqual(['テスト・置いてあるを相手の捨札に置いた'])
     })
 
-    it('見る人が入れ替われば、「自分の／相手の」も入れ替わる', () => {
-      expect(texts({ ...withLog(placed('先攻')), viewer: '後攻' })).toEqual([`テスト・置いてあるを相手の捨札へ`])
-      expect(texts({ ...withLog(placed('後攻')), viewer: '後攻' })).toEqual([`テスト・置いてあるを自分の捨札へ`])
+    it('相手が支配者なら、行頭に「相手は、」を付け、相手のゾーンは「自身の」、見る人のゾーンは「こちらの」で言う', () => {
+      expect(texts(withLog(placed('後攻', '後攻')))).toEqual(['相手は、テスト・置いてあるを自身の捨札に置いた'])
+      expect(texts(withLog(placed('後攻', '先攻')))).toEqual(['相手は、テスト・置いてあるをこちらの捨札に置いた'])
     })
 
-    it('山札の 1 番上を置いた行にも付く', () => {
+    it('見る人が入れ替われば、主語と「自分の／相手の」も入れ替わる', () => {
+      expect(texts({ ...withLog(placed('先攻', '先攻')), viewer: '後攻' })).toEqual(['相手は、テスト・置いてあるを自身の捨札に置いた'])
+      expect(texts({ ...withLog(placed('先攻', '後攻')), viewer: '後攻' })).toEqual(['相手は、テスト・置いてあるをこちらの捨札に置いた'])
+      expect(texts({ ...withLog(placed('後攻', '後攻')), viewer: '後攻' })).toEqual(['テスト・置いてあるを自分の捨札に置いた'])
+    })
+
+    it('動きの値ごとに、テキストの動詞とゾーンの言い方になる', () => {
+      expect(texts(withLog(placed('先攻', '先攻', '手札に加える')))).toEqual(['テスト・置いてあるを自分の手札に加えた'])
+      expect(texts(withLog(placed('先攻', '先攻', 'スマッシュゾーンにリリースして置く')))).toEqual(['テスト・置いてあるを自分のスマッシュゾーンにリリースして置いた'])
+      expect(texts(withLog(placed('先攻', '先攻', '山札の1番上に表向きで置く')))).toEqual([
+        'テスト・置いてあるを自分の山札の1番上に表向きで置いた',
+      ])
+      expect(texts(withLog(placed('先攻', '先攻', '山札の1番上に裏向きで置く')))).toEqual([
+        'テスト・置いてあるを自分の山札の1番上に裏向きで置いた',
+      ])
+      expect(texts(withLog(placed('先攻', '後攻', '山札の1番下に戻す')))).toEqual(['テスト・置いてあるを相手の山札の1番下に戻した'])
+      expect(texts(withLog(placed('先攻', '先攻', 'エネルギーゾーンにフリーズして置く')))).toEqual([
+        'テスト・置いてあるを自分のエネルギーゾーンにフリーズして置いた',
+      ])
+      expect(texts(withLog(placed('先攻', '後攻', 'エネルギーゾーンにリリースして置く')))).toEqual([
+        'テスト・置いてあるを相手のエネルギーゾーンにリリースして置いた',
+      ])
+    })
+
+    it('動きの値の言い方は、ゾーンへ置く動きのすべてにある', () => {
+      for (const action of ZONE_PLACE_ACTIONS) {
+        expect(texts(withLog(placed('先攻', '先攻', action)))[0]).toMatch(/^テスト・置いてあるを自分の.+た$/)
+      }
+    })
+
+    it('山札の 1 番上を置いた行にも、同じ書き方で付く', () => {
       const board = withLog({
         kind: '命令を実行した',
         controller: '先攻',
-        instruction: { kind: '山札の1番上をゾーンへ置く', card: '置いてある', to: '手札', player: '先攻' },
+        instruction: { kind: '山札の1番上をゾーンへ置く', card: '置いてある', action: '手札に加える', to: '手札', player: '先攻' },
       })
 
-      expect(texts(board)).toEqual([`テスト・置いてあるを自分の手札へ（山札の1番上）`])
-      expect(texts({ ...board, viewer: '後攻' })).toEqual([`テスト・置いてあるを相手の手札へ（山札の1番上）`])
+      expect(texts(board)).toEqual(['テスト・置いてあるを自分の手札に加えた（山札の1番上）'])
+      expect(texts({ ...board, viewer: '後攻' })).toEqual(['相手は、テスト・置いてあるを自身の手札に加えた（山札の1番上）'])
+    })
+
+    it('スクエアへ置いた行は、誰のゾーンかを言わず、動きの値ごとに向きを言う。相手が支配者なら主語が付く', () => {
+      const square: Square = { row: 1, column: 1 }
+      const put = (controller: '先攻' | '後攻', action: SquarePlaceAction): DuelEvent => ({
+        kind: '命令を実行した',
+        controller,
+        instruction: { kind: 'スクエアへ置く', card: '置いてある', action, square },
+      })
+      const label = squareLabel('先攻', square)
+
+      expect(texts(withLog(put('先攻', 'フリーズして置く')))).toEqual([`テスト・置いてあるを${label}にフリーズして置いた`])
+      expect(texts(withLog(put('先攻', 'リリースして置く')))).toEqual([`テスト・置いてあるを${label}にリリースして置いた`])
+      expect(texts(withLog(put('先攻', '向きを変えずに置く')))).toEqual([`テスト・置いてあるを${label}に向きを変えずに置いた`])
+      expect(texts(withLog(put('後攻', 'リリースして置く')))).toEqual([`相手は、テスト・置いてあるを${label}にリリースして置いた`])
     })
 
     it('名前が落ちていても、置き先は言う', () => {
       const board = withLog({
         kind: '命令を実行した',
         controller: '先攻',
-        instruction: { kind: 'ゾーンへ置く', card: undefined, to: '手札', player: '後攻' },
+        instruction: { kind: 'ゾーンへ置く', card: undefined, action: '手札に加える', to: '手札', player: '後攻' },
       })
 
-      expect(texts(board)).toEqual(['相手の手札へ'])
+      expect(texts(board)).toEqual(['カード1枚を相手の手札に加えた'])
+      expect(texts({ ...board, viewer: '後攻' })).toEqual(['相手は、カード1枚をこちらの手札に加えた'])
     })
 
-    // 置き先のプレイヤーを持たない記録（古いサーバ）は、付けずに今までどおり出す。互換は軽く扱う。
-    it('置き先のプレイヤーが届かなければ、付けずに出す', () => {
-      const old = { kind: 'ゾーンへ置く', card: '置いてある', to: '捨札' } as unknown as LoggedInstruction
+    // 名前の見えないカードは、動かす前にあった場所で言う（ADR-0076）。持ち主は、支配者以外のゾーンの時だけ言う。
+    describe('名前が見えないカードは、動かす前の場所で言う', () => {
+      const placing = (from: { zone: PlayerZone | 'スクエア'; player: Player } | undefined, player: Player = '先攻') =>
+        withLog({
+          kind: '命令を実行した',
+          controller: '先攻',
+          instruction: { kind: 'ゾーンへ置く', card: undefined, action: '捨札に置く', to: '捨札', player, from },
+        })
 
-      expect(texts(withLog({ kind: '命令を実行した', controller: '先攻', instruction: old }))).toEqual([`テスト・置いてあるを捨札へ`])
+      it('スマッシュは「スマッシュ1枚」と言う', () => {
+        expect(texts(placing({ zone: 'スマッシュゾーン', player: '先攻' }))).toEqual(['スマッシュ1枚を自分の捨札に置いた'])
+        expect(texts({ ...placing({ zone: 'スマッシュゾーン', player: '先攻' }), viewer: '後攻' })).toEqual(['相手は、スマッシュ1枚を自身の捨札に置いた'])
+      })
+
+      it('トラップゾーンのカードは、支配者以外のゾーンなら持ち主も言う', () => {
+        expect(texts(placing({ zone: 'トラップゾーン', player: '先攻' }))).toEqual(['トラップゾーンのカード1枚を自分の捨札に置いた'])
+        expect(texts(placing({ zone: 'トラップゾーン', player: '後攻' }, '後攻'))).toEqual(['相手のトラップゾーンのカード1枚を相手の捨札に置いた'])
+        expect(texts({ ...placing({ zone: 'トラップゾーン', player: '後攻' }, '後攻'), viewer: '後攻' })).toEqual([
+          '相手は、こちらのトラップゾーンのカード1枚をこちらの捨札に置いた',
+        ])
+      })
+
+      it('場所が分からない時と、スクエアにいた時は「カード1枚」と言う', () => {
+        expect(texts(placing(undefined))).toEqual(['カード1枚を自分の捨札に置いた'])
+        expect(texts(placing({ zone: 'スクエア', player: '先攻' }))).toEqual(['カード1枚を自分の捨札に置いた'])
+      })
+
+      it('山札の1番上を動かす行は、「山札の1番上のカード」と言い、名前が見える時は末尾で位置を言う', () => {
+        const top = (card: string | undefined) =>
+          withLog({
+            kind: '命令を実行した',
+            controller: '先攻',
+            instruction: { kind: '山札の1番上をゾーンへ置く', card, action: 'エネルギーゾーンにフリーズして置く', to: 'エネルギーゾーン', player: '先攻' },
+          })
+
+        expect(texts(top(undefined))).toEqual(['山札の1番上のカードを自分のエネルギーゾーンにフリーズして置いた'])
+        expect(texts({ ...top(undefined), viewer: '後攻' })).toEqual(['相手は、山札の1番上のカードを自身のエネルギーゾーンにフリーズして置いた'])
+      })
     })
   })
 
@@ -2082,6 +2171,26 @@ describe('操作ログ', () => {
       ])
     })
 
+    // ADR-0076・ADR-0038。新しいサーバが動きの値を追加した時や、値が届かなかった時に、表を引いて例外になると、
+    // 盤面ごと描けなくなる。読めなかった行として扱う。
+    it('置く行・「してもよい」の行で、動きの値を知らない、または値が無い時は、例外にせず表示できないログにする', () => {
+      const unreadable = [{ kind: 'できごと', whose: undefined, text: '（表示できないログ）', depth: 0 }]
+      const unknown = '知らない値'
+      const instructions = [
+        { kind: 'ゾーンへ置く', card: '置いてある', action: unknown, to: '手札', player: '先攻' },
+        { kind: 'ゾーンへ置く', card: '置いてある', to: '手札', player: '先攻' },
+        { kind: '山札の1番上をゾーンへ置く', card: '置いてある', action: unknown, to: '手札', player: '先攻' },
+        { kind: 'スクエアへ置く', card: '置いてある', action: unknown, square: { row: 1, column: 1 } },
+        { kind: 'スクエアへ置く', card: '置いてある', square: { row: 1, column: 1 } },
+        { kind: 'してもよいか聞く', action: unknown, count: 1, cards: ['置いてある'], player: '先攻', answer: 'はい' },
+        { kind: 'してもよいか聞く', action: unknown, count: 1, cards: ['置いてある'], player: '先攻', answer: 'いいえ' },
+      ] as unknown as readonly LoggedInstruction[]
+
+      for (const instruction of instructions) {
+        expect(logLines(withLog({ kind: '命令を実行した', controller: '先攻', instruction }))).toEqual(unreadable)
+      }
+    })
+
     it('続けて届いても、まとめずに 1 件ずつ出る', () => {
       expect(texts(withLog(UNKNOWN, UNKNOWN))).toEqual(['（表示できないログ）', '（表示できないログ）'])
     })
@@ -2371,8 +2480,8 @@ describe('操作ログのまとめ', () => {
   const onlyUp: LoggedContinuousChange = { kind: '移動方向の変更', method: '置き換える', directions: ['上'] }
   const choose = (card: string): DuelEvent => instruct({ kind: '選ぶ', card, square: undefined })
   const mayAsk = (answer: 'はい' | 'いいえ', action: '手札に加える', card = 'A'): DuelEvent =>
-    instruct({ kind: 'してもよいか聞く', action, count: 1, cards: [card], answer })
-  const placeInHand = (card: string): DuelEvent => instruct({ kind: 'ゾーンへ置く', card, to: '手札', player: '先攻' })
+    instruct({ kind: 'してもよいか聞く', action, count: 1, cards: [card], player: '先攻', answer })
+  const placeInHand = (card: string): DuelEvent => instruct({ kind: 'ゾーンへ置く', card, action: '手札に加える', to: '手札', player: '先攻' })
 
   describe('選んだ行', () => {
     it('選んだカードを後の命令が名指しするなら、選んだ行は出ない', () => {
@@ -2390,7 +2499,7 @@ describe('操作ログのまとめ', () => {
         instruct({ kind: 'ユニットにダメージを与える', card: 'B', amount: 3000 }),
       )
 
-      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを自分の手札へ', 'テスト・Bにダメージ3000'])
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを自分の手札に加えた', 'テスト・Bにダメージ3000'])
     })
 
     it('カードとスクエアを選んで、そのカードをそのスクエアへ置くなら、置く行だけになる', () => {
@@ -2398,11 +2507,11 @@ describe('操作ログのまとめ', () => {
         RESOLVED,
         choose('A'),
         instruct({ kind: '選ぶ', card: undefined, square: OTHER_SQUARE }),
-        instruct({ kind: 'スクエアへ置く', card: 'A', square: OTHER_SQUARE }),
+        instruct({ kind: 'スクエアへ置く', card: 'A', action: 'リリースして置く', square: OTHER_SQUARE }),
       )
 
       expect(texts(board)).toHaveLength(2)
-      expect(texts(board)[1]).toMatch(/^テスト・Aを.+へ$/)
+      expect(texts(board)[1]).toMatch(/^テスト・Aを.+にリリースして置いた$/)
     })
 
     it('後の命令が名指ししないなら、選んだ行は残る', () => {
@@ -2461,13 +2570,13 @@ describe('操作ログのまとめ', () => {
       const board = withLog(
         RESOLVED,
         { kind: '命令を実行した', controller: '後攻', instruction: { kind: '選ぶ', card: 'A', square: undefined } },
-        instruct({ kind: 'ゾーンへ置く', card: 'A', to: '捨札', player: '先攻' }),
+        instruct({ kind: 'ゾーンへ置く', card: 'A', action: '捨札に置く', to: '捨札', player: '先攻' }),
       )
 
       expect(logLines(board).map((line) => [line.whose, line.text]).reverse()).toEqual([
         ['自分', '誘発：テスト・A'],
         ['相手', 'テスト・Aを選択した'],
-        ['自分', 'テスト・Aを自分の捨札へ'],
+        ['自分', 'テスト・Aを自分の捨札に置いた'],
       ])
     })
 
@@ -2513,7 +2622,7 @@ describe('操作ログのまとめ', () => {
     it('選んだ行以外は、答えを待っていても表示する', () => {
       const board = withLog(RESOLVED, mayAsk('はい', '手札に加える'), placeInHand('A'), choose('B'))
 
-      expect(textsWhileChoosing(board)).toEqual(['誘発：テスト・A', 'テスト・Aを手札に加えた'])
+      expect(textsWhileChoosing(board)).toEqual(['誘発：テスト・A', 'テスト・Aを自分の手札に加えた'])
     })
 
     it('カットインも、選んだ行は並べない（見出しは残る）', () => {
@@ -2528,26 +2637,48 @@ describe('操作ログのまとめ', () => {
     it('「はい」なら、「手札に加える」の行が 1 行で出力され、続く手札へ置いた行は出力されない', () => {
       const board = withLog(RESOLVED, mayAsk('はい', '手札に加える'), placeInHand('A'))
 
-      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを手札に加えた'])
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを自分の手札に加えた'])
     })
 
     it('「いいえ」なら、「手札に加える」をしなかったことが 1 行で出力される', () => {
       const board = withLog(RESOLVED, mayAsk('いいえ', '手札に加える'))
 
-      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを手札に加えなかった'])
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを自分の手札に加えなかった'])
     })
 
     it('2 人の視点で同じ文が出力される。行の持ち主は、能力の支配者である', () => {
       const board = withLog(RESOLVED, mayAsk('はい', '手札に加える'))
 
-      expect(logLines(board)[0]).toMatchObject({ whose: '自分', text: 'テスト・Aを手札に加えた' })
-      expect(logLines({ ...board, viewer: '後攻' })[0]).toMatchObject({ whose: '相手', text: 'テスト・Aを手札に加えた' })
+      expect(logLines(board)[0]).toMatchObject({ whose: '自分', text: 'テスト・Aを自分の手札に加えた' })
+      expect(logLines({ ...board, viewer: '後攻' })[0]).toMatchObject({ whose: '相手', text: '相手は、テスト・Aを自身の手札に加えた' })
+    })
+
+    // ADR-0076。置いた先のゾーンのプレイヤーは、対象のカードの持ち主で決まり、支配者とは限らない。
+    it('対象が相手のカードなら、置いた先は相手のゾーンとして言う', () => {
+      const board = withLog(
+        RESOLVED,
+        instruct({ kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: ['A'], player: '後攻', answer: 'はい' }),
+      )
+
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを相手の手札に加えた'])
+      expect(texts({ ...board, viewer: '後攻' })).toEqual(['誘発：テスト・A', '相手は、テスト・Aをこちらの手札に加えた'])
+    })
+
+    it('対象を持たない動きの「いいえ」は、ゾーンを言わず、相手が支配者の行にだけ主語が付く', () => {
+      const skipped: DuelEvent = {
+        kind: '命令を実行した',
+        controller: '後攻',
+        instruction: { kind: 'してもよいか聞く', action: '1枚引く', count: 0, cards: [], player: undefined, answer: 'いいえ' },
+      }
+
+      expect(texts(withLog(skipped))).toEqual(['相手は、1枚引かなかった'])
+      expect(texts({ ...withLog(skipped), viewer: '後攻' })).toEqual(['1枚引かなかった'])
     })
 
     it('相手の視点でも、「はい」の 1 行だけになる（手札へ置いた行は落ちる）', () => {
       const board = { ...withLog(RESOLVED, mayAsk('はい', '手札に加える'), placeInHand('A')), viewer: '後攻' as const }
 
-      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを手札に加えた'])
+      expect(texts(board)).toEqual(['誘発：テスト・A', '相手は、テスト・Aを自身の手札に加えた'])
     })
 
     it('続く別のカードの行は残る（手札に加えたあとに、手札のカードを選んで捨てる）', () => {
@@ -2556,18 +2687,18 @@ describe('操作ログのまとめ', () => {
         mayAsk('はい', '手札に加える'),
         placeInHand('A'),
         choose('B'),
-        instruct({ kind: 'ゾーンへ置く', card: 'B', to: '捨札', player: '先攻' }),
+        instruct({ kind: 'ゾーンへ置く', card: 'B', action: '捨札に置く', to: '捨札', player: '先攻' }),
       )
 
-      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを手札に加えた', 'テスト・Bを自分の捨札へ'])
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aを自分の手札に加えた', 'テスト・Bを自分の捨札に置いた'])
     })
 
     // 名指しが落ちたログ（見る人に見えていなかったカード）。枚数は残るが、名前が無いので行を言えない。
     it('名指しが落ちていたら、聞いた行は出さず、手札へ置いた行は落とさない', () => {
-      const dropped = instruct({ kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: [], answer: 'はい' })
-      const board = withLog(RESOLVED, dropped, instruct({ kind: 'ゾーンへ置く', card: undefined, to: '手札', player: '先攻' }))
+      const dropped = instruct({ kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: [], player: '先攻', answer: 'はい' })
+      const board = withLog(RESOLVED, dropped, instruct({ kind: 'ゾーンへ置く', card: undefined, action: '手札に加える', to: '手札', player: '先攻' }))
 
-      expect(texts(board)).toEqual(['誘発：テスト・A', '自分の手札へ'])
+      expect(texts(board)).toEqual(['誘発：テスト・A', 'カード1枚を自分の手札に加えた'])
     })
   })
 
@@ -2731,12 +2862,12 @@ describe('カットイン', () => {
       {
         kind: '命令を実行した',
         controller: '先攻',
-        instruction: { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: ['置いてある'], answer: 'はい' },
+        instruction: { kind: 'してもよいか聞く', action: '手札に加える', count: 1, cards: ['置いてある'], player: '先攻', answer: 'はい' },
       },
-      { kind: '命令を実行した', controller: '先攻', instruction: { kind: 'ゾーンへ置く', card: '置いてある', to: '手札', player: '先攻' } },
+      { kind: '命令を実行した', controller: '先攻', instruction: { kind: 'ゾーンへ置く', card: '置いてある', action: '手札に加える', to: '手札', player: '先攻' } },
     ]
 
-    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を手札に加えた`])
+    expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を自分の手札に加えた`])
   })
 
   // 見えないカードを選んだ行は、カットインにも並べない。その行だけで本文が空になる解決は、空のカットインを出さない。
@@ -2792,6 +2923,23 @@ describe('カットイン', () => {
       const fresh: readonly DuelEvent[] = [
         RESOLVED,
         { kind: '命令を実行した', controller: '先攻', instruction: UNKNOWN },
+        { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
+      ]
+
+      expect(cutInViews(board, logged(fresh))[0]?.lines).toEqual([`${NAME}を破壊した`])
+    })
+
+    it('動きの値を知らない置く行も、その行だけが省かれる', () => {
+      const unknownAction = {
+        kind: 'ゾーンへ置く',
+        card: '置いてある',
+        action: '知らない値',
+        to: '手札',
+        player: '先攻',
+      } as unknown as LoggedInstruction
+      const fresh: readonly DuelEvent[] = [
+        RESOLVED,
+        { kind: '命令を実行した', controller: '先攻', instruction: unknownAction },
         { kind: '命令を実行した', controller: '先攻', instruction: { kind: '破壊する', card: '置いてある' } },
       ]
 
