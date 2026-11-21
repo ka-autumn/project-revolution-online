@@ -1388,6 +1388,7 @@ export function logLines(board: WirePerspective, choosing = false): readonly Log
     choosing,
   )
   const grouped = continuousLineGroups(board.log.map(({ event }) => event))
+  const headed = resolutionsHeadedByActions(board.log.map(({ event }) => event))
 
   return withCostsJoined(board.log)
     .flatMap((entry) => {
@@ -1459,6 +1460,7 @@ export function logLines(board: WirePerspective, choosing = false): readonly Log
       case '行動した':
         return { whose: whose(event.player), text: actionText(event) }
       case '能力を解決した': {
+        if (headed.has(event)) return undefined
         const source = named(event.source)
         return { whose: whose(event.controller), text: source === undefined ? event.via : `${event.via}：${source}` }
       }
@@ -1647,6 +1649,47 @@ function withCostsJoined(log: readonly LoggedEvent[]): readonly JoinedEntry[] {
     }
   }
   return joined
+}
+
+/**
+ * 手の行に続けて、その手のカードの効果の解決を始める時の、手と経路の組み合わせ（ADR-0077）。
+ *
+ * 手の行の直後に解決を始めたできごとが並んでも、組み合わせが合わなければ、別の解決として
+ * 行を残す。手を追加した時に、ここへ書き忘れると型検査で失敗する。
+ */
+const RESOLUTION_VIA_OF_ACTION: Readonly<Record<ActionTaken['action'], ResolutionVia | undefined>> = {
+  エネルギーを置く: undefined,
+  カードをプレイする: 'プレイ',
+  ユニットを移動する: undefined,
+  スマッシュする: undefined,
+  プランする: undefined,
+  トラップとしてプレイする: undefined,
+  トラップを発動する: '発動',
+  トラップを廃棄する: undefined,
+  '「勇気」を起動する': '起動',
+  起動型能力を起動する: '起動',
+  優先権を放棄する: undefined,
+}
+
+/**
+ * 手の行が見出しを兼ねるので、行を出力しない、解決を始めたできごと（ADR-0077）。
+ *
+ * 手の行の直後に、同じプレイヤーが支配する、その手のカードの解決を始めたできごとが続いたものである。
+ * その手のカードかは識別子で比べる。名前は別のカードどうしで重なることがある。
+ *
+ * 落とすのは行だけで、解決のまとまりの区切り（`foldedInstructions`・`continuousLineGroups`）と
+ * カットイン（`cutInViews`）は、できごとをそのまま参照するので変化しない。
+ */
+function resolutionsHeadedByActions(events: readonly DuelEvent[]): ReadonlySet<DuelEvent> {
+  const headed = new Set<DuelEvent>()
+  events.forEach((event, at) => {
+    const action = events[at - 1]
+    if (event.kind !== '能力を解決した' || action?.kind !== '行動した') return
+    if (action.player !== event.controller || action.card !== event.source) return
+    if (RESOLUTION_VIA_OF_ACTION[action.action] !== event.via) return
+    headed.add(event)
+  })
+  return headed
 }
 
 /** そのプレイヤーの手の行か。 */
