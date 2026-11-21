@@ -2878,6 +2878,14 @@ describe('操作ログのまとめ', () => {
       ])
     })
 
+    // 型の上では起きない（エンジンはいつも経路を付けて積む）ので、型を外して組む。
+    it('続く解決が無い手の後に、経路の無い解決を始めたできごとが届いても、行を残す', () => {
+      const unrouted = resolve(undefined as unknown as ResolutionVia, undefined)
+      const board = seenBy('先攻', act('エネルギーを置く', undefined), unrouted)
+
+      expect(logLines(board)).toHaveLength(2)
+    })
+
     it('手の行と別のカードの解決は、行を残す', () => {
       const board = seenBy('先攻', act('カードをプレイする', 'S'), resolve('プレイ', 'T'))
 
@@ -2922,6 +2930,16 @@ describe('操作ログのまとめ', () => {
       expect(linesOf(board)).toEqual([
         ['自分', 'テスト・Sをプレイした'],
         ['自分', 'テスト・Bにダメージ4000'],
+      ])
+    })
+
+    // 解決のまとまりの区切りは「能力を解決した」のまま（ADR-0071）。
+    it('継続効果の行のまとめ方は変化しない', () => {
+      const board = seenBy('先攻', act('カードをプレイする', 'S'), resolve('プレイ', 'S'), change('B', wins), change('B', onlyUp))
+
+      expect(linesOf(board)).toEqual([
+        ['自分', 'テスト・Sをプレイした'],
+        ['自分', 'テスト・Bはターンの終わりまで「このカードがバトルに勝った時、カードを1枚引く。」を得て、移動方向が↑になった'],
       ])
     })
 

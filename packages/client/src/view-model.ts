@@ -1686,7 +1686,10 @@ function resolutionsHeadedByActions(events: readonly DuelEvent[]): ReadonlySet<D
     const action = events[at - 1]
     if (event.kind !== '能力を解決した' || action?.kind !== '行動した') return
     if (action.player !== event.controller || action.card !== event.source) return
-    if (RESOLUTION_VIA_OF_ACTION[action.action] !== event.via) return
+    // 続く解決が無い手（`undefined`）の後では、何も落とさない。経路の無いできごとが届いても、
+    // `undefined` どうしを一致とみなさない。
+    const via = RESOLUTION_VIA_OF_ACTION[action.action]
+    if (via === undefined || via !== event.via) return
     headed.add(event)
   })
   return headed
