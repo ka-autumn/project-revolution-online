@@ -2786,6 +2786,170 @@ describe('操作ログのまとめ', () => {
       expect(texts(board)).toEqual(['誘発：テスト・A', 'テスト・Aはターンの終わりまでBP+1000', 'テスト・Aはターンの終わりまでSP+500'])
     })
 
+  /**
+   * 手の行の直後に、その手のカードの解決を始めた行が続く時は、手の行が見出しを兼ね、解決を始めた行は出力しない
+   * （ADR-0077）。ストラテジーをプレイすると、エンジンは手の行を積んだ直後に、そのカードの効果の解決を始める
+   * （`play.ts` の `resolveInResolveZone`）。トラップの発動・起動型能力・「勇気」も同じ並びになる。
+   */
+  describe('手の行が見出しを兼ねる解決', () => {
+    /** 見る人ごとの盤面。S（ストラテジー）・T（トラップ）・C（「勇気」）・E（エネルギー）の名前が届いている。 */
+    const seenBy = (viewer: Player, ...events: readonly DuelEvent[]): WirePerspective => ({
+      ...withSquare(withSquare(emptyBoard(viewer), ON_SQUARE, [instance('A', '先攻')]), OTHER_SQUARE, [instance('B', '後攻')]),
+      namedInLog: [instance('S', '先攻'), instance('T', '先攻'), instance('C', '先攻'), instance('E', '先攻')],
+      log: logged(events),
+    })
+    /** 出力された行。古いものが先（読む順）。 */
+    const linesOf = (board: WirePerspective): readonly (readonly [string | undefined, string])[] =>
+      logLines(board)
+        .map((line) => [line.whose, line.text] as const)
+        .reverse()
+
+    const cost: DuelEvent = { kind: 'コストを支払った', player: '先攻', zone: 'エネルギーゾーン', card: 'E', purpose: 'プレイのコスト' }
+    const act = (action: Extract<DuelEvent, { kind: '行動した' }>['action'], card: string | undefined, player: Player = '先攻'): DuelEvent => ({
+      kind: '行動した',
+      player,
+      action,
+      card,
+      square: undefined,
+    })
+    const resolve = (via: ResolutionVia, source: string | undefined, controller: Player = '先攻'): DuelEvent => ({
+      kind: '能力を解決した',
+      controller,
+      via,
+      source,
+    })
+    const damage = instruct({ kind: 'ユニットにダメージを与える', card: 'B', amount: 4000 })
+
+    it('ストラテジーをプレイした手の行の後に、効果の行が続く', () => {
+      const board = seenBy('先攻', cost, act('カードをプレイする', 'S'), resolve('プレイ', 'S'), damage)
+
+      expect(linesOf(board)).toEqual([
+        ['自分', 'テスト・Eをフリーズし、テスト・Sをプレイした'],
+        ['自分', 'テスト・Bにダメージ4000'],
+      ])
+    })
+
+    it('相手から見ても、同じ形になる', () => {
+      const board = seenBy('後攻', cost, act('カードをプレイする', 'S'), resolve('プレイ', 'S'), damage)
+
+      expect(linesOf(board)).toEqual([
+        ['相手', 'テスト・Eをフリーズし、テスト・Sをプレイした'],
+        ['相手', 'テスト・Bにダメージ4000'],
+      ])
+    })
+
+    // 見る人に見えないカードは、射影で名指しごと落ちる（`perspective.ts`）。手の行と解決を始めた行の
+    // どちらも名指しが無く、並びと組み合わせは同じ手のものなので、同じく出力しない。
+    it('名前が見えないカードでも、解決を始めた行は出力しない', () => {
+      const board = seenBy('後攻', act('カードをプレイする', undefined), resolve('プレイ', undefined), damage)
+
+      expect(linesOf(board)).toEqual([
+        ['相手', 'カードをプレイした'],
+        ['相手', 'テスト・Bにダメージ4000'],
+      ])
+    })
+
+    // 効果を持たないカードでも、解決の入口（`resolveEffect`）は解決を始めたことを積む。
+    it('効果の行が無い時は、手の行だけが残る', () => {
+      const board = seenBy('先攻', cost, act('カードをプレイする', 'S'), resolve('プレイ', 'S'))
+
+      expect(linesOf(board)).toEqual([['自分', 'テスト・Eをフリーズし、テスト・Sをプレイした']])
+    })
+
+    it.each([
+      ['トラップを発動する', '発動', 'T', 'テスト・Tを発動した'],
+      ['「勇気」を起動する', '起動', 'C', 'テスト・Cを捨札にして「勇気」を起動した'],
+      ['起動型能力を起動する', '起動', 'A', 'テスト・Aの能力を起動した'],
+    ] as const)('%s手の後の、%sの解決を始めた行も出力しない', (action, via, card, line) => {
+      const board = seenBy('先攻', act(action, card), resolve(via, card), damage)
+
+      expect(linesOf(board)).toEqual([
+        ['自分', line],
+        ['自分', 'テスト・Bにダメージ4000'],
+      ])
+    })
+
+    it('手と経路の組み合わせが合わない解決（ユニットのプレイの後の誘発）は、行を残す', () => {
+      const board = seenBy('先攻', act('カードをプレイする', 'A'), resolve('誘発', 'A'))
+
+      expect(linesOf(board)).toEqual([
+        ['自分', 'テスト・Aをプレイした'],
+        ['自分', '誘発：テスト・A'],
+      ])
+    })
+
+    // 型の上では起きない（エンジンはいつも経路を付けて積む）ので、型を外して組む。
+    it('続く解決が無い手の後に、経路の無い解決を始めたできごとが届いても、行を残す', () => {
+      const unrouted = resolve(undefined as unknown as ResolutionVia, undefined)
+      const board = seenBy('先攻', act('エネルギーを置く', undefined), unrouted)
+
+      expect(logLines(board)).toHaveLength(2)
+    })
+
+    it('手の行と別のカードの解決は、行を残す', () => {
+      const board = seenBy('先攻', act('カードをプレイする', 'S'), resolve('プレイ', 'T'))
+
+      expect(linesOf(board)).toEqual([
+        ['自分', 'テスト・Sをプレイした'],
+        ['自分', 'プレイ：テスト・T'],
+      ])
+    })
+
+    it('手を行ったプレイヤーと解決の支配者が違えば、行を残す', () => {
+      const board = seenBy('先攻', act('カードをプレイする', 'S'), resolve('プレイ', 'S', '後攻'))
+
+      expect(linesOf(board)).toEqual([
+        ['自分', 'テスト・Sをプレイした'],
+        ['相手', 'プレイ：テスト・S'],
+      ])
+    })
+
+    it('手の行と解決を始めた行の間に、別のできごとがあれば、行を残す', () => {
+      const board = seenBy('先攻', act('カードをプレイする', 'S'), damage, resolve('プレイ', 'S'))
+
+      expect(linesOf(board)).toEqual([
+        ['自分', 'テスト・Sをプレイした'],
+        ['自分', 'テスト・Bにダメージ4000'],
+        ['自分', 'プレイ：テスト・S'],
+      ])
+    })
+
+    it.each(['誘発', '希望'] as const)('手の行を伴わない%sの解決を始めた行は、今のまま出力する', (via) => {
+      const board = seenBy('先攻', resolve(via, 'A'), damage)
+
+      expect(linesOf(board)).toEqual([
+        ['自分', `${via}：テスト・A`],
+        ['自分', 'テスト・Bにダメージ4000'],
+      ])
+    })
+
+    // 出力しないのは行だけで、解決のまとまりの区切りは「能力を解決した」のまま（ADR-0064）。
+    it('選んだ行の落とし方は変化しない', () => {
+      const board = seenBy('先攻', act('カードをプレイする', 'S'), resolve('プレイ', 'S'), choose('B'), damage)
+
+      expect(linesOf(board)).toEqual([
+        ['自分', 'テスト・Sをプレイした'],
+        ['自分', 'テスト・Bにダメージ4000'],
+      ])
+    })
+
+    // 解決のまとまりの区切りは「能力を解決した」のまま（ADR-0071）。
+    it('継続効果の行のまとめ方は変化しない', () => {
+      const board = seenBy('先攻', act('カードをプレイする', 'S'), resolve('プレイ', 'S'), change('B', wins), change('B', onlyUp))
+
+      expect(linesOf(board)).toEqual([
+        ['自分', 'テスト・Sをプレイした'],
+        ['自分', 'テスト・Bはターンの終わりまで「このカードがバトルに勝った時、カードを1枚引く。」を得て、移動方向が↑になった'],
+      ])
+    })
+
+    it('カットインの見出しは変化しない', () => {
+      const board = seenBy('先攻')
+      const fresh = logged([cost, act('カードをプレイする', 'S'), resolve('プレイ', 'S'), damage])
+
+      expect(cutInViews(board, fresh)).toEqual([{ whose: '自分', heading: 'テスト・Sをプレイ！', lines: ['テスト・Bにダメージ4000'] }])
+    })
+  })
 })
 
 /**

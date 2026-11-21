@@ -1186,6 +1186,21 @@ describe('行った手の、動かした後の見え方', () => {
     return { 先攻: rows('先攻'), 後攻: rows('後攻') }
   }
 
+  /**
+   * 先攻から見たときと後攻から見たときの、最後の行った手の行のすぐ次のできごと。
+   *
+   * 画面は、手の行のすぐ次が、その手のカードの解決を始めたできごとであることを前提に、解決を始めた行を
+   * 出力しない（ADR-0077）。間に別のできごとが積まれるようになると、画面では同じ名前の 2 行に戻る。
+   */
+  function nextToAction(state: DuelState): Record<Player, DuelEvent | undefined> {
+    const next = (viewer: Player) => {
+      const log = perspectiveOf(state, viewer).log.map(({ event }) => event)
+      const at = log.map((event) => event.kind).lastIndexOf('行動した')
+      return at < 0 ? undefined : log[at + 1]
+    }
+    return { 先攻: next('先攻'), 後攻: next('後攻') }
+  }
+
   /** 先攻の手札にそのカードを持たせて、そのフェイズで先攻が行動できる盤面。 */
   function holding(phase: Phase, card: CardInstance): DuelState {
     return readyToAct(phase, inZone(stocked(), '先攻', '手札', card))
@@ -1243,6 +1258,8 @@ describe('行った手の、動かした後の見え方', () => {
     const rows = actionRows(activated)
     expect(rows.後攻).toEqual([{ kind: '行動した', player: '先攻', action: 'トラップを発動する', card: '伏せたトラップ', square: undefined }])
     expect(rows.後攻).toEqual(rows.先攻)
+    const resolved = { kind: '能力を解決した', controller: '先攻', via: '発動', source: '伏せたトラップ' } as const
+    expect(nextToAction(activated)).toEqual({ 先攻: resolved, 後攻: resolved })
   })
 
   // 廃棄したカードは捨札に置かれ（総合ルール 第2部 第20章 3-12）、捨札はいつでも見られる（同 第21章 5-2）。
@@ -1274,6 +1291,8 @@ describe('行った手の、動かした後の見え方', () => {
     const rows = actionRows(activated)
     expect(rows.先攻).toEqual([{ kind: '行動した', player: '後攻', action: '「勇気」を起動する', card: '勇気のカード', square: undefined }])
     expect(rows.先攻).toEqual(rows.後攻)
+    const resolved = { kind: '能力を解決した', controller: '後攻', via: '起動', source: '勇気のカード' } as const
+    expect(nextToAction(activated)).toEqual({ 先攻: resolved, 後攻: resolved })
   })
 
   // 総合ルール 第3部 第8章 2-1: 使用コストを支払って、カードをプレイする。同 第2部 第20章 2-3:
@@ -1297,6 +1316,8 @@ describe('行った手の、動かした後の見え方', () => {
     const rows = actionRows(played)
     expect(rows.後攻).toEqual([{ kind: '行動した', player: '先攻', action: 'カードをプレイする', card: 'ストラテジー', square: undefined }])
     expect(rows.後攻).toEqual(rows.先攻)
+    const resolved = { kind: '能力を解決した', controller: '先攻', via: 'プレイ', source: 'ストラテジー' } as const
+    expect(nextToAction(played)).toEqual({ 先攻: resolved, 後攻: resolved })
   })
 
   /**
@@ -1353,6 +1374,8 @@ describe('行った手の、動かした後の見え方', () => {
       const row = { kind: '行動した', player: '先攻', action: '起動型能力を起動する', card: '起動役', square: undefined } as const
       expect(actionRows(activated)).toEqual({ 先攻: [row], 後攻: [row] })
       expect(events(activated).slice(before, before + 2).map((event) => event.kind)).toEqual(['コストを支払った', '行動した'])
+      const resolved = { kind: '能力を解決した', controller: '先攻', via: '起動', source: '起動役' } as const
+      expect(nextToAction(activated)).toEqual({ 先攻: resolved, 後攻: resolved })
     })
   })
 

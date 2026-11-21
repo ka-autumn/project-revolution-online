@@ -2488,6 +2488,7 @@ body {
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・突撃兵はターンの終わりまで「このカードがバトルに勝った時、カードを1枚引く。」を得て、移動方向が↑になった</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・霧島透はターンの終わりまでSP+1000</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・パルフェ・若葉はターンの終わりまでBP+2000</span></li>
+        <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>見本・パルフェ・若葉にダメージ2000</span></li>
         <li class="log__item log__item--相手"><span class="log__whose">相手</span><span>見本・メカナイトをフリーズし、見本・竜の飛翔をプレイした</span></li>
         <li class="log__item log__item--自分"><span class="log__whose">自分</span><span>見本・底の抜けたバケツ、見本・光の祈り手をフリーズし、見本・パルフェ・若葉を味方エリアの左ラインにプレイした</span></li>
         <li class="log__item log__item--区切り">自分のエネルギーフェイズ終了／メインフェイズ開始</li>
@@ -2504,16 +2505,16 @@ body {
     <p class="transition-banner">メインフェイズ</p>
     <div class="cut-in cut-in--相手">
       <span class="cut-in__whose">相手</span>
-      <p class="cut-in__heading">見本・竜の飛翔</p>
+      <p class="cut-in__heading">見本・竜の飛翔をプレイ！</p>
       <div class="cut-in__lines">
-        <p class="cut-in__line">ユニット 1 体に 2000 ダメージを与える</p>
+        <p class="cut-in__line">見本・パルフェ・若葉にダメージ2000</p>
       </div>
     </div>
     <div class="cut-in cut-in--自分">
       <span class="cut-in__whose">自分</span>
-      <p class="cut-in__heading">見本・アクアシールド</p>
+      <p class="cut-in__heading">見本・アクアシールドをプレイ！</p>
       <div class="cut-in__lines">
-        <p class="cut-in__line">味方のユニット 1 体の BP を +2000 する</p>
+        <p class="cut-in__line">見本・パルフェ・若葉はターンの終わりまでBP+2000</p>
       </div>
     </div>
     <div class="result result--勝利">
@@ -2615,7 +2616,7 @@ const cards = {
   見本・森の守護者: { lv: 3, color: '緑', kind: 'ユニット', bp: 3500, sp: 1500, traits: '木霊', move: ['左', '右'], text: [] },
   見本・竜の飛翔: { lv: 2, color: '赤', kind: 'ストラテジー', text: ['ユニット 1 体に 2000 ダメージを与える。'] },
   見本・光の祈り手: { lv: 2, color: '白', kind: 'ユニット', bp: 2500, sp: 2000, traits: '羽人', move: ['上', '下'], text: [] },
-  見本・アクアシールド: { lv: 1, color: '青', kind: 'ストラテジー', text: ['このターン、ユニット 1 体は破壊されない。'] },
+  見本・アクアシールド: { lv: 1, color: '青', kind: 'ストラテジー', text: ['味方のユニット 1 体のＢＰを、ターンの終わりまで +2000 する。'] },
   見本・ココア・M: { lv: 3, color: '緑', kind: 'パートナー', text: ['【起動】このターン、ユニット 1 体の BP を +1000 する。'] },
   見本・ノエル・カンパネラ: { lv: 3, color: '赤', kind: 'パートナー', text: ['【自】自分のユニットがバトルに勝った時、相手に 500 ダメージを与える。'] },
   見本・ガルド・ベルンシュタイン: { lv: 6, color: '赤', kind: 'ユニット', bp: 1500, sp: 1000, stars: 1, keywords: ['夢', '希望'], traits: '焔の国・♂', move: ['上', '下'], text: ['夢（キーワード能力）', '希望（キーワード能力）相手のトラップを 1 枚まで選び、手札に戻す。', '根性（キーワード能力）'] },
