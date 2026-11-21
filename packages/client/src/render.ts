@@ -619,6 +619,35 @@ function statElement(
   return node
 }
 
+// 複数のカードが同じロゴを同時に表示する。読み込み済みの画像を保持して、
+// 描き直した面でも load を待たずに同じ URL を背景に指定する（#409）。
+const loadedBlockLogos = new Map<string, HTMLImageElement>()
+const BLOCK_LOGO_LIMIT = 128
+
+function showBlockLogo(logo: HTMLElement, image: HTMLImageElement): void {
+  logo.textContent = ''
+  logo.classList.add('block-logo--image')
+  logo.style.width = `${2.2 * image.naturalWidth / image.naturalHeight}em`
+  logo.style.backgroundImage = 'url(' + JSON.stringify(image.src) + ')'
+}
+
+function applyBlockLogo(logo: HTMLElement, url: string): void {
+  const loaded = loadedBlockLogos.get(url)
+  if (loaded !== undefined) {
+    showBlockLogo(logo, loaded)
+    return
+  }
+
+  const image = document.createElement('img')
+  image.addEventListener('load', () => {
+    if (image.naturalWidth === 0 || image.naturalHeight === 0) return
+    loadedBlockLogos.set(url, image)
+    if (loadedBlockLogos.size > BLOCK_LOGO_LIMIT) loadedBlockLogos.delete(loadedBlockLogos.keys().next().value!)
+    showBlockLogo(logo, image)
+  }, { once: true })
+  image.src = url
+}
+
 /** 属性（継続効果で加わった分は `+` を付ける、#91）とＢＰ・ＳＰを面の下段に足す。 */
 function appendTraitsAndStats(
   bottom: HTMLElement,
@@ -639,19 +668,8 @@ function appendTraitsAndStats(
     logo.title = name
     const path = Object.hasOwn(makerCatalog, symbol) ? makerCatalog[symbol]?.logo : undefined
     if (path !== undefined) {
-      const image = document.createElement('img')
       const url = makerLogoUrl(path, primaryColorOf(card.colors), artworkOrigin())
-      if (url !== undefined) {
-        image.alt = ''
-        image.addEventListener('load', () => {
-          if (image.naturalHeight === 0) return
-          logo.classList.add('block-logo--image')
-          logo.style.width = `${2.2 * image.naturalWidth / image.naturalHeight}em`
-          logo.textContent = ''
-          logo.append(image)
-        }, { once: true })
-        image.src = url
-      }
+      if (url !== undefined) applyBlockLogo(logo, url)
     }
     logos.append(logo)
   }
