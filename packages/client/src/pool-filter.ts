@@ -101,6 +101,7 @@ export interface PoolFilter {
   readonly moveIcons: readonly string[]
   /** トラップの発動条件。トラップ以外のカードはどれにも当たらない。 */
   readonly triggerConditions: readonly TriggerCondition[]
+  readonly keywords: readonly string[]
   readonly works: readonly string[]
   readonly blocks: readonly string[]
   readonly expansions: readonly string[]
@@ -118,6 +119,7 @@ export function emptyFilter(): PoolFilter {
     stars: [],
     moveIcons: [],
     triggerConditions: [],
+    keywords: [],
     works: [],
     blocks: [],
     expansions: [],
@@ -212,6 +214,7 @@ export function matchesFilter(card: WirePoolCard, filter: PoolFilter): boolean {
     anyOf(filter.stars, starChoicesOf(face)) &&
     anyOf(filter.moveIcons, moveShapeLabelsOf(face)) &&
     anyOf(filter.triggerConditions, triggerConditionsOf(face)) &&
+    anyOf(filter.keywords, card.filterKeywords ?? []) &&
     // 古いサーバはエキスパンションを添えてこない。届かなかったものを、在るものとして扱わない。
     anyOf(filter.works, face.works ?? []) &&
     anyOf(filter.blocks, face.makerSymbols ?? []) &&
@@ -238,6 +241,7 @@ export interface FilterChoices {
   readonly stars: readonly StarChoice[]
   readonly moveIcons: readonly string[]
   readonly triggerConditions: readonly TriggerCondition[]
+  readonly keywords: readonly string[]
   readonly works: readonly string[]
   readonly blocks: readonly string[]
   readonly expansions: readonly string[]
@@ -262,6 +266,7 @@ export function filterChoicesOf(pool: readonly WirePoolCard[], makers: import('@
     stars: STAR_CHOICES,
     moveIcons: MOVE_SHAPES.map((shape) => shape.label),
     triggerConditions: TRIGGER_CONDITIONS,
+    keywords: byName(pool.flatMap((card) => card.filterKeywords ?? [])),
     works: [...byName(faces.flatMap((face) => face.works ?? []))].sort((left, right) => (Object.hasOwn(workReadings, left) ? workReadings[left]! : left).localeCompare(Object.hasOwn(workReadings, right) ? workReadings[right]! : right, 'ja')),
     blocks: [...byName(faces.flatMap((face) => face.makerSymbols ?? []))].sort((a, b) => (Object.hasOwn(makers, a) ? makers[a]!.reading : a).localeCompare(Object.hasOwn(makers, b) ? makers[b]!.reading : b, 'ja')),
     expansions: byName(pool.flatMap((card) => (card.expansions as readonly string[] | undefined) ?? [])),

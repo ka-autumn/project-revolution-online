@@ -3276,14 +3276,16 @@ function chipsElement<T>(
   chosen: readonly T[],
   onChoose: (next: readonly T[]) => void,
   render: (value: T) => readonly (string | Node)[],
-  ariaLabelOf?: (value: T) => string,
+  { ariaLabelOf, focusKey }: { readonly ariaLabelOf?: (value: T) => string; readonly focusKey?: string } = {},
 ): HTMLElement {
   const box = element('div', 'filter__chips')
   const all = chip(['すべて'], chosen.length === 0, () => onChoose([]))
   all.classList.add('chip--すべて')
+  if (focusKey !== undefined) all.dataset[KEEP_FOCUS] = focusKey + '-すべて'
   box.append(all)
   for (const value of values) {
     const node = chip(render(value), chosen.includes(value), () => onChoose(toggled(chosen, value)))
+    if (focusKey !== undefined) node.dataset[KEEP_FOCUS] = focusKey + '-選択肢-' + String(value)
     if (ariaLabelOf !== undefined) {
       const label = ariaLabelOf(value)
       node.setAttribute('aria-label', label)
@@ -3307,7 +3309,7 @@ function filterRow<T>(
   if (values.length === 0) return undefined
 
   const row = element('div', 'filter__row')
-  row.append(element('span', 'filter__label', label), chipsElement(values, chosen, onChoose, render, ariaLabelOf))
+  row.append(element('span', 'filter__label', label), chipsElement(values, chosen, onChoose, render, { ariaLabelOf }))
 
   return row
 }
@@ -3335,7 +3337,9 @@ function foldElement(
   // 描き直しで `open` を入れたときにも `toggle` は出る。反転させず、いまの開閉をそのまま渡す。
   node.addEventListener('toggle', () => onToggleFold(key, node.open))
 
+  const focusKey = '絞り込み-' + key
   const summary = document.createElement('summary')
+  summary.dataset[KEEP_FOCUS] = focusKey
   summary.append(element('span', 'filter__label', label))
   const picked = element(
     'span',
@@ -3347,7 +3351,7 @@ function foldElement(
   node.append(summary)
 
   const body = element('div', 'fold__body')
-  body.append(chipsElement(values, chosen, onChoose, (value) => [shownAs(value)]))
+  body.append(chipsElement(values, chosen, onChoose, (value) => [shownAs(value)], { focusKey }))
   node.append(body)
 
   return node
@@ -3435,9 +3439,8 @@ function rangeRow(label: string, range: NumberRange, focusKey: string, onRange: 
 
 /**
  * プールを絞り込むところ（#193、ADR-0028）。並びは ADR どおり：名前・テキスト → エキスパンション
- * → 色 → 種別 → レベル →（詳しく絞り込む）ＢＰ → ＳＰ → スター → 移動方向 → 属性。
- *
- * キーワード能力の軸は、表記に含まれる能力が限られるため表示しない（#227）。
+ * → 色 → 種別 → レベル →（詳しく絞り込む）ＢＰ → ＳＰ → スター → 移動方向 → 発動条件
+ * → キーワード能力 → ブロック → 作品名 → 属性。
  */
 function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
   const { filter, filterChoices: choices } = view
@@ -3501,6 +3504,7 @@ function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers):
         (label) => `移動方向：${label}`,
       ),
       filterRow('発動条件', choices.triggerConditions, filter.triggerConditions, (next) => change({ triggerConditions: next })),
+      foldElement('キーワード能力', 'キーワード能力', choices.keywords, filter.keywords, view.openFolds, handlers.onToggleFold, (next) => change({ keywords: next })),
       foldElement('ブロック', 'ブロック', choices.blocks, filter.blocks, view.openFolds, handlers.onToggleFold, (next) => change({ blocks: next }), (symbol) => makerNameOf(symbol, makerCatalog)),
       foldElement('作品名', '作品名', choices.works, filter.works, view.openFolds, handlers.onToggleFold, (next) => change({ works: next })),
       foldElement('属性', '属性', choices.attributes, filter.attributes, view.openFolds, handlers.onToggleFold, (next) =>

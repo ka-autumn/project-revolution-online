@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defineStrategy, defineTrap, defineUnit } from '@revolution/engine'
+import { courage, defineStrategy, defineTrap, defineUnit, dream, friendship, hope, spirit, wit } from '@revolution/engine'
 import type { Card } from '@revolution/engine'
 import {
   checkPresets,
@@ -218,6 +218,7 @@ describe('配るカードプール', () => {
       {
         key: 'テスト-S',
         expansions: [],
+        filterKeywords: [],
         face: {
           key: 'テスト-S',
           type: 'ストラテジー',
@@ -236,6 +237,7 @@ describe('配るカードプール', () => {
       {
         key: 'テスト-T',
         expansions: [],
+        filterKeywords: [],
         face: {
           key: 'テスト-T',
           type: 'トラップ',
@@ -253,6 +255,19 @@ describe('配るカードプール', () => {
         },
       },
     ])
+  })
+
+  it('カードの定義から絞り込み用の能力名を重複なく渡し、アイコン用の能力名はプラン用だけになる（#227）', () => {
+    const card = defineUnit({
+      name: '見本・案内係', level: 2, bp: 3000, sp: 1000,
+      abilities: [dream, hope(function* () {}), courage(4000), courage(5000), friendship(1000), spirit, wit],
+      text: ['幸運・苦労・元気に言及する見本文。'],
+    })
+
+    expect(poolFacesOf({ pool: { sample: card } })[0]).toMatchObject({
+      filterKeywords: ['夢', '希望', '友情', '勇気', '気合', '才気'],
+      face: { keywords: ['夢', '希望'] },
+    })
   })
 
   /** #193。1 枚が複数のエキスパンションに入りうる。名前は渡された並びの順に添える。 */

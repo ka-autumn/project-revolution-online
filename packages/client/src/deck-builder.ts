@@ -385,6 +385,13 @@ export function draftToSave(draft: DeckDraft, owned: readonly WireOwnedDeck[]): 
 export function applyToBuilder(builder: Builder, message: ToClient, inLobby = true): Builder {
   const { waiting } = builder
   switch (message.kind) {
+    case 'カードプール': {
+      const { filter } = builder
+      if (filter.keywords.length === 0) return builder
+      const available = new Set<string>(message.cards.flatMap((card) => card.filterKeywords ?? []))
+      const keywords = filter.keywords.filter((keyword) => available.has(keyword))
+      return keywords.length === filter.keywords.length ? builder : { ...builder, filter: { ...filter, keywords } }
+    }
     case 'デッキを保存した':
       if (waiting.kind === '保存') {
         const idAssigned =

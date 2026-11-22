@@ -1,3 +1,4 @@
+import type { CourageAbility, HopeAbility, NamedKeyword } from './ability.js'
 import type { Square, SquareIndex } from './board.js'
 import type { CardType, Color } from './card.js'
 import type { DeckViolation, DuelFormat } from './deck.js'
@@ -92,15 +93,18 @@ export interface MakerEntry {
 /** 記号から表示名・読み仮名・ロゴを参照する表。実在する値は実行時に供給する。 */
 export type MakerCatalog = Readonly<Record<string, MakerEntry>>
 
+/** デッキ構築の絞り込みで、エンジンの判定を参照できるキーワード能力。 */
+export type CardFilterKeyword = NamedKeyword | HopeAbility['keyword'] | CourageAbility['keyword']
+
 /**
- * カードプールのカード 1 種（ADR-0021）。識別子と、そのカードに書かれていることの組である。
+ * カードプールのカード 1 種（ADR-0021）。識別子・表記・絞り込み用の情報をまとめる。
  *
  * 表記は盤面に載るものと同じ形（`WireCardFace`、ADR-0010）で、配るために新しい形を作らない。
  * デッキが持つのは識別子の並び（`WireOwnedDeck.cards`）なので、画面はこれを引いてカードの
  * データを出す。
  *
  * 識別子はただの文字列である。 何を指すかを読み取らず、引く鍵としてだけ使う——並べ替えにも
- * 絞り込みにも使わない。絞り込むなら、表記の項目で絞る。
+ * 絞り込みにも使わない。
  *
  * 識別子で引ける表（`Record`）にせず、組の並びで持つ。 識別子は渡す側が決める任意の文字列で、
  * オブジェクトのキーにすると `__proto__` のようなものがそのまま鍵になる。
@@ -108,6 +112,8 @@ export type MakerCatalog = Readonly<Record<string, MakerEntry>>
 export interface WirePoolCard {
   readonly key: string
   readonly face: WireCardFace
+  /** アイコン用の能力とは別に渡す、絞り込み用の能力名。旧サーバからは届かない（#227）。 */
+  readonly filterKeywords?: readonly CardFilterKeyword[]
   /**
    * 収録されているエキスパンションの名前（#193）。どこにも入っていなければ空。 1 枚が複数に
    * 入りうる。

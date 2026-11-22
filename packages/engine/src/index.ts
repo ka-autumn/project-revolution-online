@@ -329,6 +329,7 @@ export type {
   WireLobbyRestrictionList,
   WireOwnedDeck,
   WirePoolCard,
+  CardFilterKeyword,
   MakerCatalog,
   MakerEntry,
   WireRecipe,
