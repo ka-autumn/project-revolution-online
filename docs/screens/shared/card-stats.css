@@ -19,8 +19,18 @@
   box-sizing: content-box;
   inline-size: calc(4ch + 0.7em);
   font-variant-numeric: tabular-nums;
-  text-align: end;
+  position: relative;
+  text-align: center;
   white-space: nowrap;
+}
+
+.card__stats > :is(.card__sp--上, .card__sp--下)::after {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: 0.06em;
+  transform: translateY(-50%);
+  font-size: 0.5em;
+  line-height: 1;
 }
 
 .card__stats:has(> .card__sp) > .block-logos {
