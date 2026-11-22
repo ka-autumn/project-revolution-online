@@ -3435,9 +3435,8 @@ function rangeRow(label: string, range: NumberRange, focusKey: string, onRange: 
 
 /**
  * プールを絞り込むところ（#193、ADR-0028）。並びは ADR どおり：名前・テキスト → エキスパンション
- * → 色 → 種別 → レベル →（詳しく絞り込む）ＢＰ → ＳＰ → スター → 移動方向 → 属性。
- *
- * キーワード能力の軸は、表記に含まれる能力が限られるため表示しない（#227）。
+ * → 色 → 種別 → レベル →（詳しく絞り込む）ＢＰ → ＳＰ → スター → 移動方向 → 発動条件
+ * → キーワード能力 → ブロック → 作品名 → 属性。
  */
 function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers): HTMLElement {
   const { filter, filterChoices: choices } = view
@@ -3501,6 +3500,7 @@ function filterPanelElement(view: DeckEditorView, handlers: DeckEditorHandlers):
         (label) => `移動方向：${label}`,
       ),
       filterRow('発動条件', choices.triggerConditions, filter.triggerConditions, (next) => change({ triggerConditions: next })),
+      foldElement('キーワード能力', 'キーワード能力', choices.keywords, filter.keywords, view.openFolds, handlers.onToggleFold, (next) => change({ keywords: next })),
       foldElement('ブロック', 'ブロック', choices.blocks, filter.blocks, view.openFolds, handlers.onToggleFold, (next) => change({ blocks: next }), (symbol) => makerNameOf(symbol, makerCatalog)),
       foldElement('作品名', '作品名', choices.works, filter.works, view.openFolds, handlers.onToggleFold, (next) => change({ works: next })),
       foldElement('属性', '属性', choices.attributes, filter.attributes, view.openFolds, handlers.onToggleFold, (next) =>

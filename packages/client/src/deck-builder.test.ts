@@ -53,7 +53,7 @@ import { unitFace } from './test-support.js'
 /**
  * デッキを組むところ（#193）。
  *
- * **確かめるのはサーバである**（ADR-0021）。ここで見るのは、組みかけの持ち方と、届いたものを
+ * 確かめるのはサーバである（ADR-0021）。ここで見るのは、組みかけの持ち方と、届いたものを
  * どう出すかだけで、規定を満たしているかは見ない。
  */
 
@@ -72,7 +72,7 @@ function strategyFace(name: string, values: Partial<WireCardFace> = {}): WireCar
   } as WireCardFace
 }
 
-/** 識別子は意味の無い文字列にする。**並べる順が識別子に引きずられていないこと**を見るため。 */
+/** 識別子は意味の無い文字列にする。並べる順が識別子に引きずられていないことを見るため。 */
 const POOL: readonly WirePoolCard[] = [
   { key: 'き', face: strategyFace('テスト・無色のストラテジー'), expansions: [] },
   { key: 'え', face: unitFace('テスト・青のユニット', { colors: ['青'], level: 1 }), expansions: [] },
@@ -859,8 +859,8 @@ describe('席に着く時に選ぶデッキ', () => {
   })
 
   /**
-   * 届かないのは、デッキを持てない立て方だからである（ADR-0021）。**そこで何も並べないと、手元で
-   * 2 人ぶん試す時に両方の席が同じデッキに固定される。**
+   * 届かないのは、デッキを持てない立て方だからである（ADR-0021）。そこで何も並べないと、手元で
+   * 2 人ぶん試す時に両方の席が同じデッキに固定される。
    */
   it('自分のデッキが届かない立て方では、既製デッキが並ぶ', () => {
     expect(seatableDecks(undefined, PRESETS)).toEqual(PRESETS)
@@ -876,7 +876,7 @@ describe('席に着く時に選ぶデッキ', () => {
   })
 
   /**
-   * デッキを消してもロビーは届き直すが、**届くまでの間に消えたものを選んだ状態にしない。**
+   * デッキを消してもロビーは届き直すが、届くまでの間に消えたものを選んだ状態にしない。
    * 座れないものが選ばれて見える。
    */
   it('選んでいたデッキが消えていれば、何も選ばない', () => {
@@ -1332,5 +1332,19 @@ describe('既製デッキの表紙のカード', () => {
     expect(presetRows(POOL, presets)[0]?.cover).toBeUndefined()
     expect(presetRows(POOL, [{ ...presets[0]!, cover: '知らない番号' }])[0]?.cover).toBeUndefined()
     expect(presetRows(undefined, [{ ...presets[0]!, cover: 'う' }])[0]?.cover).toBeUndefined()
+  })
+})
+
+describe('カードプールを受け取り直したときのキーワード能力の絞り込み', () => {
+  const closed = closedBuilder()
+  const builder: Builder = { ...closed, filter: { ...closed.filter, keywords: ['夢', '信頼'], colors: ['赤'] } }
+
+  it('新しいプールにある選択を残す', () => {
+    const cards: readonly WirePoolCard[] = [{ key: 'い', face: unitFace('見本'), expansions: [], filterKeywords: ['夢'] }]
+    expect(applyToBuilder(builder, { kind: 'カードプール', cards }).filter).toEqual({ ...builder.filter, keywords: ['夢'] })
+  })
+
+  it('旧サーバに繋ぎ直したときは能力の選択を外し、ほかの絞り込みを保つ', () => {
+    expect(applyToBuilder(builder, { kind: 'カードプール', cards: POOL }).filter).toEqual({ ...builder.filter, keywords: [] })
   })
 })

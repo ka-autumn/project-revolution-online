@@ -53,7 +53,6 @@ function tagIcon(t) {
   const emoji = TAG_EMOJI[t.label] ?? (t.group === '作品名' ? '📖' : t.group === 'ブロック' ? '🏢' : undefined)
   return emoji ? el('span', 'tag__emoji', emoji) : undefined
 }
-const KEYWORDS = ['夢', '希望', '元気', '信頼', '根性', '勇気']
 // 記号と名前はカードとは別の対応表で供給する。AX は印刷された表記の見本。
 const MAKERS = {
   AA: { name: '見本書房', reading: 'みほんしょぼう' },
@@ -76,8 +75,8 @@ const pool = [...window.POOL].sort((a, b) =>
   TYPES.indexOf(a.face.type) - TYPES.indexOf(b.face.type) ||
   COLORS.indexOf(a.face.colors[0]) - COLORS.indexOf(b.face.colors[0]) ||
   a.face.level - b.face.level || a.face.name.localeCompare(b.face.name, 'ja'))
-// モックだけの近似：プランのもの以外のキーワード能力は、テキストの行頭から拾う（本番はエンジンが表記に載せる）
-const keywordsOf = (c) => [...new Set([...c.face.keywords, ...KEYWORDS.filter((k) => c.face.text.some((l) => l.startsWith(k)))])]
+const KEYWORD_CHOICES = [...new Set(pool.flatMap((card) => card.filterKeywords ?? []))]
+  .sort((a, b) => a.localeCompare(b, 'ja'))
 
 const startCards = []
 for (const c of pool) if (c.expansions.includes('見本デッキ A')) for (let i = 0; i < 3; i++) startCards.push(c.key)
@@ -267,7 +266,7 @@ function filtered() {
     (!f.blocks.length || c.face.makerSymbols.some((symbol) => f.blocks.includes(symbol))) &&
     (!f.stars.length || starOf(c).some((s) => f.stars.includes(s))) &&
     (!f.moves.length || f.moves.includes(movePatternOf(c))) &&
-    (!f.keywords.length || keywordsOf(c).some((k) => f.keywords.includes(k))) &&
+    (!f.keywords.length || (c.filterKeywords ?? []).some((k) => f.keywords.includes(k))) &&
     (!f.expansions.length || c.expansions.some((x) => f.expansions.includes(x))) &&
     ((f.bpMin === '' && f.bpMax === '') || (c.face.type === 'ユニット' && inRange(c.face.bp, f.bpMin, f.bpMax))) &&
     ((f.spMin === '' && f.spMax === '') || (c.face.type === 'ユニット' && inRange(c.face.sp, f.spMin, f.spMax))))
@@ -518,7 +517,7 @@ function leftColumn() {
     body.append(chipRow('移動方向', MOVE_PATTERNS.map(([name]) => name), f.moves, 'moves',
       (name) => { const icon = moveIcon(MOVE_PATTERNS.find(([n]) => n === name)[1]); icon.removeAttribute('role'); icon.removeAttribute('aria-label'); icon.classList.add('chip__move'); return icon },
       (name) => `移動方向：${name}`))
-    body.append(fold('キーワード能力', KEYWORDS, f.keywords, 'keywords'))
+    if (KEYWORD_CHOICES.length > 0) body.append(fold('キーワード能力', KEYWORD_CHOICES, f.keywords, 'keywords'))
     body.append(fold('ブロック', BLOCKS, f.blocks, 'blocks', (symbol) => MAKERS[symbol].name))
     const works = [...new Set(pool.flatMap(worksOf))].sort((a, b) => a.localeCompare(b, 'ja'))
     body.append(fold('作品名', works, f.works, 'works'))

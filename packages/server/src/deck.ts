@@ -1,9 +1,23 @@
 import { readMakerCatalog } from './maker-catalog.js'
 import { presentationOfPool, readArtwork } from './card-art.js'
 import type { CardArtwork } from './card-art.js'
-import { checkConstructedDeck, deckCoverKeyOf, faceOf } from '@revolution/engine'
+import {
+  checkConstructedDeck,
+  courageOf,
+  deckCoverKeyOf,
+  faceOf,
+  hasDream,
+  hasFriendship,
+  hasGuts,
+  hasKeyword,
+  hasPep,
+  hasSpirit,
+  hasTrust,
+  hopeOf,
+} from '@revolution/engine'
 import type {
   Card,
+  CardFilterKeyword,
   CardLimits,
   Deck,
   DeckId,
@@ -444,6 +458,20 @@ export function restrictionChoicesOf(supply: CardSupply): readonly WireLobbyRest
   }))
 }
 
+const keywordPredicates = {
+  夢: hasDream,
+  希望: (card) => hopeOf(card) !== undefined,
+  元気: hasPep,
+  信頼: hasTrust,
+  根性: hasGuts,
+  友情: hasFriendship,
+  勇気: (card) => courageOf(card) !== undefined,
+  気合: hasSpirit,
+  才気: (card) => hasKeyword(card, '才気'),
+} satisfies Record<CardFilterKeyword, (card: Card) => boolean>
+
+const filterableKeywords = Object.keys(keywordPredicates) as CardFilterKeyword[]
+
 /**
  * デッキを組む人に配るカードプール（`WirePoolCard`、ADR-0021）。
  *
@@ -462,6 +490,7 @@ export function poolFacesOf(supply: Pick<CardSupply, 'pool' | 'expansions' | 'ar
   return Object.entries(supply.pool).map(([key, card]) => ({
     key,
     face: { ...faceOf(card), ...presentationOf(card) },
+    filterKeywords: filterableKeywords.filter((keyword) => keywordPredicates[keyword](card)),
     expansions: expansions.filter((expansion) => expansion.cards.includes(key)).map((expansion) => expansion.name),
   }))
 }

@@ -21,7 +21,7 @@ import { strategyFace, unitFace } from './test-support.js'
  * プールを絞り込む（#193）。
  *
  * 軸はカードに印刷されている項目と、エキスパンションである（ADR-0021）。識別子は意味の無い文字列に
- * して、**識別子では絞り込んでいないこと**が分かるようにする。
+ * して、識別子では絞り込んでいないことが分かるようにする。
  */
 
 function card(key: string, face: WireCardFace, expansions: readonly string[] = []): WirePoolCard {
@@ -130,6 +130,38 @@ describe('絞り込む', () => {
 
     expect(filterPool([old], { ...emptyFilter(), expansions: ['テストの第1弾'] })).toEqual([])
     expect(filterChoicesOf([old]).expansions).toEqual([])
+  })
+})
+
+describe('キーワード能力の絞り込み', () => {
+  const cards: readonly WirePoolCard[] = [
+    { ...RED_UNIT, face: { ...RED_UNIT.face, works: ['見本作品甲'], makerSymbols: ['AA'] }, filterKeywords: ['信頼'] },
+    { ...BLUE_UNIT, face: { ...BLUE_UNIT.face, works: ['見本作品乙'], makerSymbols: ['BB'] }, filterKeywords: ['勇気', '信頼'] },
+    { ...TWO_COLORS, face: { ...TWO_COLORS.face, works: ['見本作品甲'], makerSymbols: ['BB'] }, filterKeywords: ['勇気'] },
+    { ...STRATEGY, face: { ...STRATEGY.face, keywords: ['夢'], text: ['勇気を参照する。'] } },
+  ]
+
+  function keysOf(filter: Partial<PoolFilter>): readonly string[] {
+    return filterPool(cards, { ...emptyFilter(), ...filter }).map((each) => each.key)
+  }
+
+  it('1 つ選ぶとその能力、複数選ぶといずれかの能力を持つカードが残る', () => {
+    expect(keysOf({ keywords: ['信頼'] })).toEqual(['い', 'ろ'])
+    expect(keysOf({ keywords: ['信頼', '勇気'] })).toEqual(['い', 'ろ', 'は'])
+  })
+
+  it('作品名・ブロック・キーワード能力をそれぞれ満たすカードが残る', () => {
+    const metadataFilter = { works: ['見本作品甲'], blocks: ['AA'] }
+    expect(keysOf({ ...metadataFilter, keywords: ['勇気'] })).toEqual([])
+    expect(keysOf({ ...metadataFilter, keywords: ['勇気', '信頼'] })).toEqual(['い'])
+    expect(keysOf({ ...metadataFilter, keywords: [] })).toEqual(keysOf(metadataFilter))
+  })
+
+  it('全カードの絞り込み用の能力名だけを重複なく選択肢にする', () => {
+    expect(filterChoicesOf(cards).keywords).toEqual(['信頼', '勇気'])
+    expect(filterChoicesOf([STRATEGY]).keywords).toEqual([])
+    expect(keysOf({ keywords: ['夢'] })).toEqual([])
+    expect(keysOf({})).toEqual(['い', 'ろ', 'は', 'に'])
   })
 })
 
