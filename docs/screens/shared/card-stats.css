@@ -1,0 +1,56 @@
+.card__stats:has(> .card__sp) {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: center;
+}
+
+.card:not(.card--拡大) .card__stats:has(> .card__sp) {
+  font-size: min(1em, calc(var(--card-width) * 0.09 - 0.25px));
+}
+
+.card__stats > .card__bp {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.card__stats > .card__sp {
+  grid-column: 3;
+  grid-row: 1;
+  box-sizing: content-box;
+  inline-size: calc(4ch + 0.7em);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  white-space: nowrap;
+}
+
+.card__stats:has(> .card__sp) > .block-logos {
+  grid-column: 2;
+  grid-row: 1;
+  min-inline-size: 0;
+  flex-wrap: nowrap;
+  overflow: clip;
+}
+
+.card__stats:has(> .card__sp) > .block-logos > .block-logo {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: clip;
+}
+
+.card__stats:has(> .card__sp) > .block-logos > .block-logo:not(.block-logo--image) {
+  container-type: inline-size;
+  border: 0;
+  background: none;
+}
+
+.card__stats:has(> .card__sp) > .block-logos > .block-logo > span {
+  display: grid;
+  place-items: center;
+  inline-size: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #28364d;
+  box-shadow: inset 0 0 0 min(1px, 8cqi) #fff;
+  font-size: min(1em, calc(82cqi / var(--block-logo-label-length)));
+  white-space: nowrap;
+}

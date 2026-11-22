@@ -2345,6 +2345,7 @@ body {
 .block-logo { display: inline-grid; place-items: center; flex: none; border: 1px solid #fff; border-radius: 50%; width: 2.2em; height: 2.2em; font-size: 0.65em; color: white; background: #28364d; }
 </style>
 <link rel="stylesheet" href="../shared/card-art.css">
+<link rel="stylesheet" href="../shared/card-stats.css">
 <link rel="stylesheet" href="../shared/detail-layout.css">
 <link rel="stylesheet" href="../shared/hand-layout.css">
 </head>
@@ -2626,7 +2627,7 @@ const cards = {
   見本・大狸: { lv: 7, color: '赤', kind: 'ユニット', bp: 4000, sp: 2500, stars: 0, keywords: ['幸運'], traits: 'あやかし・けもの・呪符・♂', move: ['上'], text: ['このユニットがバトルしている間、隣の味方の SP を +500。', '幸運 6（キーワード能力）味方を 1 枚まで選び、手札に戻す。そうしたら、カードを 1 枚引く。'] },
 }
 // 継続効果が誘発型能力と移動方向を与えたユニットの見本（ADR-0071）。written の move は書かれたムーブアイコン、盤面のノードが変更後の向きを持つ
-cards['見本・突撃兵'] = { lv: 3, color: '赤', kind: 'ユニット', bp: 3000, sp: 1000, traits: '兵士', move: ['上', '左', '右'], text: [] }
+cards['見本・突撃兵'] = { lv: 3, color: '赤', kind: 'ユニット', bp: 3000, sp: 1000, logoLabels: ['AX', 'BY'], traits: '兵士', move: ['上', '左', '右'], text: [] }
 cards['見本・苦労人の騎士'] = { lv: 3, color: '緑', kind: 'ユニット', bp: 3000, sp: 1000, reverseStars: 1, keywords: ['苦労'], traits: '騎士・♂', move: ['上', '左'], text: ['元気（キーワード能力）'] }
 cards['見本・霧島透'].stars = 2
 // 運用の注記を持つカード（ADR-0043）。自分のカードと相手のカードに 1 枚ずつ
@@ -2653,7 +2654,11 @@ function stat(kind, base, value) {
   const v = value === undefined ? base : Number(value)
   const dir = v > base ? '上' : v < base ? '下' : ''
   const label = `${kind.toUpperCase()} ${v}${dir ? `（元は ${base}）` : ''}`
-  return `<span class="card__${kind}${dir ? ` card__${kind}--${dir}` : ''}" aria-label="${label}">${v}</span>`
+  const valueText = String(v)
+  const display = kind === 'sp' && valueText.length > 4
+    ? `<span style="font-size:${400 / valueText.length}%">${valueText}</span>`
+    : valueText
+  return `<span class="card__${kind}${dir ? ` card__${kind}--${dir}` : ''}" aria-label="${label}">${display}</span>`
 }
 
 // granted：そのうち、継続効果や常在型能力に与えられた分（書かれた能力と見分けて、強調する）
@@ -2746,7 +2751,10 @@ function faceHtml(name, opts = {}) {
   const c = cards[name]
   const unit = c.bp !== undefined
   const accent = ({ 赤: '#c7232b', 黒: '#292929', 青: '#2c94c8', 白: '#919191', 緑: '#359253' })[c.color] ?? '#292929'
-  const logo = `<span class="block-logo block-logo--image" role="img" aria-label="ブロック：旧見本書房" title="旧見本書房"><svg viewBox="0 0 32 26" aria-hidden="true"><text x="2" y="21" fill="#fff" stroke="${accent}" stroke-width="3" paint-order="stroke fill" font-family="sans-serif" font-size="22" font-weight="700">AX</text></svg></span>`
+  const fallbackLogos = c.logoLabels?.map(label =>
+    `<span class="block-logo" role="img" aria-label="ブロック：見本 ${label}"><span style="--block-logo-label-length:${label.length}">${label}</span></span>`
+  ).join('')
+  const logo = fallbackLogos ?? `<span class="block-logo block-logo--image" role="img" aria-label="ブロック：旧見本書房" title="旧見本書房"><svg viewBox="0 0 32 26" aria-hidden="true"><text x="2" y="21" fill="#fff" stroke="${accent}" stroke-width="3" paint-order="stroke fill" font-family="sans-serif" font-size="22" font-weight="700">AX</text></svg></span>`
   // 継続効果が移動方向を変更していれば、変更後の向きで描く（ADR-0071）
   const move = opts.move ?? c.move
   const icons = move || c.trigger

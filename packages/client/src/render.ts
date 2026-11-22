@@ -613,7 +613,15 @@ function statElement(
   direction: '上' | '下' | undefined,
 ): HTMLElement {
   const value = modified ?? base
-  const node = element('span', `card__${kind}${direction === undefined ? '' : ` card__${kind}--${direction}`}`, String(value))
+  const valueText = String(value)
+  const node = element('span', `card__${kind}${direction === undefined ? '' : ` card__${kind}--${direction}`}`)
+  if (kind === 'sp' && valueText.length > 4) {
+    const number = element('span', '', valueText)
+    number.style.fontSize = `${400 / valueText.length}%`
+    node.append(number)
+  } else {
+    node.textContent = valueText
+  }
   node.setAttribute('aria-label', `${label} ${value}${direction === undefined ? '' : `（元は ${base}）`}`)
 
   return node
@@ -662,7 +670,10 @@ function appendTraitsAndStats(
   const logos = element('span', 'block-logos')
   for (const symbol of printedSymbolsOf(card)) {
     const name = makerNameOf(symbol, makerCatalog)
-    const logo = element('span', 'block-logo', symbol)
+    const logo = element('span', 'block-logo')
+    const abbreviation = element('span', '', symbol)
+    abbreviation.style.setProperty('--block-logo-label-length', String(symbol.length))
+    logo.append(abbreviation)
     logo.setAttribute('role', 'img')
     logo.setAttribute('aria-label', `ブロック：${name}`)
     logo.title = name
