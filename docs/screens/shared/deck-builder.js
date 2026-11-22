@@ -3,6 +3,13 @@ const TYPES = ['ユニット', 'ストラテジー', 'トラップ', '超必殺�
 const COLORS = ['赤', '黒', '青', '白', '緑']
 const LEVELS = [1, 2, 3, 4, 5, 6, 7, 8]
 const STAR_CHOICES = ['なし', '★1', '★2', 'リバーススター']
+const TRIGGER_CONDITION_BY_KIND = {
+  侵入: '侵入された時',
+  攻撃: '攻撃された時',
+  スマッシュ: 'スマッシュされた時',
+  プラン: 'プランでめくれた時',
+  捨札: '捨札に置かれた時',
+}
 // 移動方向は、ムーブアイコンの形そのもので選ぶ（開発者の指定の 4 種）
 const MOVE_PATTERNS = [['上のみ', ['上']], ['上下のみ', ['上', '下']], ['上・右・左', ['上', '右', '左']], ['上下左右', ['上', '下', '左', '右']]]
 const moveKey = (dirs) => [...dirs].sort().join('')
@@ -83,7 +90,7 @@ for (const c of pool) if (c.expansions.includes('見本デッキ A')) for (let i
 startCards.splice(0, 9)
 startCards.push('OLD-01', 'OLD-01')
 
-const emptyFilter = () => ({ text: '', types: [], colors: [], levels: [], bpMin: '', bpMax: '', spMin: '', spMax: '', stars: [], moves: [], keywords: [], attributes: [], works: [], blocks: [], expansions: [] })
+const emptyFilter = () => ({ text: '', types: [], colors: [], levels: [], bpMin: '', bpMax: '', spMin: '', spMax: '', stars: [], moves: [], triggerConditions: [], keywords: [], attributes: [], works: [], blocks: [], expansions: [] })
 const state = {
   // どちらの画面として開くか。画面ごとの index.html が決める（deck-list/・deck-builder/）
   view: window.MOCK_VIEW ?? 'build',
@@ -266,6 +273,7 @@ function filtered() {
     (!f.blocks.length || c.face.makerSymbols.some((symbol) => f.blocks.includes(symbol))) &&
     (!f.stars.length || starOf(c).some((s) => f.stars.includes(s))) &&
     (!f.moves.length || f.moves.includes(movePatternOf(c))) &&
+    (!f.triggerConditions.length || f.triggerConditions.includes(TRIGGER_CONDITION_BY_KIND[c.face.triggerIcon?.kind])) &&
     (!f.keywords.length || (c.filterKeywords ?? []).some((k) => f.keywords.includes(k))) &&
     (!f.expansions.length || c.expansions.some((x) => f.expansions.includes(x))) &&
     ((f.bpMin === '' && f.bpMax === '') || (c.face.type === 'ユニット' && inRange(c.face.bp, f.bpMin, f.bpMax))) &&
@@ -517,6 +525,7 @@ function leftColumn() {
     body.append(chipRow('移動方向', MOVE_PATTERNS.map(([name]) => name), f.moves, 'moves',
       (name) => { const icon = moveIcon(MOVE_PATTERNS.find(([n]) => n === name)[1]); icon.removeAttribute('role'); icon.removeAttribute('aria-label'); icon.classList.add('chip__move'); return icon },
       (name) => `移動方向：${name}`))
+    body.append(chipRow('発動条件', Object.values(TRIGGER_CONDITION_BY_KIND), f.triggerConditions, 'triggerConditions'))
     if (KEYWORD_CHOICES.length > 0) body.append(fold('キーワード能力', KEYWORD_CHOICES, f.keywords, 'keywords'))
     body.append(fold('ブロック', BLOCKS, f.blocks, 'blocks', (symbol) => MAKERS[symbol].name))
     const works = [...new Set(pool.flatMap(worksOf))].sort((a, b) => a.localeCompare(b, 'ja'))

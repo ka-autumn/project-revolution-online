@@ -3276,14 +3276,16 @@ function chipsElement<T>(
   chosen: readonly T[],
   onChoose: (next: readonly T[]) => void,
   render: (value: T) => readonly (string | Node)[],
-  ariaLabelOf?: (value: T) => string,
+  { ariaLabelOf, focusKey }: { readonly ariaLabelOf?: (value: T) => string; readonly focusKey?: string } = {},
 ): HTMLElement {
   const box = element('div', 'filter__chips')
   const all = chip(['すべて'], chosen.length === 0, () => onChoose([]))
   all.classList.add('chip--すべて')
+  if (focusKey !== undefined) all.dataset[KEEP_FOCUS] = focusKey + '-すべて'
   box.append(all)
   for (const value of values) {
     const node = chip(render(value), chosen.includes(value), () => onChoose(toggled(chosen, value)))
+    if (focusKey !== undefined) node.dataset[KEEP_FOCUS] = focusKey + '-選択肢-' + String(value)
     if (ariaLabelOf !== undefined) {
       const label = ariaLabelOf(value)
       node.setAttribute('aria-label', label)
@@ -3307,7 +3309,7 @@ function filterRow<T>(
   if (values.length === 0) return undefined
 
   const row = element('div', 'filter__row')
-  row.append(element('span', 'filter__label', label), chipsElement(values, chosen, onChoose, render, ariaLabelOf))
+  row.append(element('span', 'filter__label', label), chipsElement(values, chosen, onChoose, render, { ariaLabelOf }))
 
   return row
 }
@@ -3335,7 +3337,9 @@ function foldElement(
   // 描き直しで `open` を入れたときにも `toggle` は出る。反転させず、いまの開閉をそのまま渡す。
   node.addEventListener('toggle', () => onToggleFold(key, node.open))
 
+  const focusKey = '絞り込み-' + key
   const summary = document.createElement('summary')
+  summary.dataset[KEEP_FOCUS] = focusKey
   summary.append(element('span', 'filter__label', label))
   const picked = element(
     'span',
@@ -3347,7 +3351,7 @@ function foldElement(
   node.append(summary)
 
   const body = element('div', 'fold__body')
-  body.append(chipsElement(values, chosen, onChoose, (value) => [shownAs(value)]))
+  body.append(chipsElement(values, chosen, onChoose, (value) => [shownAs(value)], { focusKey }))
   node.append(body)
 
   return node
