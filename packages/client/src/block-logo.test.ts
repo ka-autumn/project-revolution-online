@@ -10,9 +10,18 @@ vi.mock('./card-art.js', () => ({
 
 class TestElement extends EventTarget {
   className = ''
-  textContent = ''
+  private ownText = ''
   readonly children: TestElement[] = []
-  readonly style = { backgroundImage: '' }
+  readonly style = { backgroundImage: '', setProperty: () => {} }
+
+  get textContent(): string {
+    return this.ownText + this.children.map(child => child.textContent).join('')
+  }
+
+  set textContent(value: string) {
+    this.ownText = value
+    this.children.length = 0
+  }
   readonly classList = {
     add: (name: string) => { this.className += ' ' + name },
     toggle: () => {},
