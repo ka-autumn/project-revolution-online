@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { createRoom, join, seatWaitingPlayer, uniqueName, waitForMessage } from './players.js'
+import { createRoom, join, openDeckEditor, seatWaitingPlayer, uniqueName, waitForMessage } from './players.js'
+import { SCENARIO_SERVER } from './servers.js'
 
 /*
  * ほかの人の操作で画面が描き直されても、手元の操作が壊れないこと（#242、ADR-0078）。
@@ -11,9 +12,11 @@ const roomCount = (page: Page) => page.getByRole('button', { name: /^すべて/ 
 
 test('一覧を途中までスクロールしている時に、ほかの人が部屋を作っても、位置が戻らない', async ({ browser }) => {
   // 一覧は 1 ページ 6 部屋なので、画面を低くして、はみ出させる。
-  const a = await join(browser, uniqueName('A'), { viewport: { width: 1280, height: 600 } })
-  const leave = await Promise.all(Array.from({ length: 6 }, (_, at) => seatWaitingPlayer(`並ぶ部屋${at}`)))
-  const b = await join(browser, uniqueName('B'))
+  const a = await join(browser, SCENARIO_SERVER, uniqueName('A'), { viewport: { width: 1280, height: 600 } })
+  const leave = await Promise.all(
+    Array.from({ length: 6 }, (_, at) => seatWaitingPlayer(SCENARIO_SERVER, `並ぶ部屋${at}`)),
+  )
+  const b = await join(browser, SCENARIO_SERVER, uniqueName('B'))
   const list = a.locator('.lobby__rooms')
   await expect(list.locator('tbody tr')).toHaveCount(6)
   expect(await list.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(40)
@@ -32,9 +35,55 @@ test('一覧を途中までスクロールしている時に、ほかの人が�
   await b.context().close()
 })
 
+test('ボタンを押している最中に、ほかの人の操作で描き直されても、離すと押した操作が効く', async ({ browser }) => {
+  const a = await join(browser, SCENARIO_SERVER, uniqueName('A'))
+  const b = await join(browser, SCENARIO_SERVER, uniqueName('B'))
+  // 押下を待つ手当てがあるのはデッキ構築なので、そこで確認する。
+  await openDeckEditor(a)
+  const row = a.locator('.decklist .cardrow').first()
+  const count = row.locator('.counter__count')
+  await expect(count).toHaveText('×4')
+  // 組み始めると確認を送るので、その返事の描き直しが済んでから押す。
+  await waitForMessage(a, '"kind":"デッキを確かめた"')
+  await row.locator('.counter button').first().hover()
+  await a.mouse.down()
+
+  const roomName = uniqueName('押下中の部屋')
+  await createRoom(b, roomName)
+  await waitForMessage(a, roomName)
+  await a.mouse.up()
+
+  await expect(count).toHaveText('×3')
+
+  await a.context().close()
+  await b.context().close()
+})
+
+// 今のコードでは失敗する。ロビーでは、押している最中でも届いたメッセージですぐ描き直すので、
+// 押したボタンが作成し直されて click が届かない。ロビーを差分を当てる形へ移す時に有効にする（#242）。
+test.fixme('ロビーでボタンを押している最中に、ほかの人の操作で描き直されても、離すと押した操作が効く', async ({
+  browser,
+}) => {
+  const a = await join(browser, SCENARIO_SERVER, uniqueName('A'))
+  const b = await join(browser, SCENARIO_SERVER, uniqueName('B'))
+  const tab = a.getByRole('button', { name: /^待機中/ })
+  await tab.hover()
+  await a.mouse.down()
+
+  const roomName = uniqueName('押下中の部屋')
+  await createRoom(b, roomName)
+  await waitForMessage(a, roomName)
+  await a.mouse.up()
+
+  await expect(tab).toHaveAttribute('aria-pressed', 'true')
+
+  await a.context().close()
+  await b.context().close()
+})
+
 test('日本語入力の変換中に、ほかの人の操作で描き直されても、変換が切れない', async ({ browser }) => {
-  const a = await join(browser, uniqueName('A'))
-  const b = await join(browser, uniqueName('B'))
+  const a = await join(browser, SCENARIO_SERVER, uniqueName('A'))
+  const b = await join(browser, SCENARIO_SERVER, uniqueName('B'))
   const input = a.locator('.lobby__name')
   await input.click()
   await input.evaluate((node: HTMLInputElement) => {

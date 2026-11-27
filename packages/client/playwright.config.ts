@@ -1,5 +1,37 @@
 import { defineConfig, devices } from '@playwright/test'
-import { CLIENT_PORT, SERVER_PORT } from './browser-tests/ports.js'
+import {
+  CLIENT_PORT,
+  MEASURE_SERVER,
+  PRIVATE_DECKS,
+  SCENARIO_SERVER,
+  hasPrivateDecks,
+  storePathOf,
+} from './browser-tests/servers.js'
+import type { GameServer } from './browser-tests/servers.js'
+
+/**
+ * ログインを持つ対戦サーバを立てる。デッキ構築は、ログインの無い立て方では開けないためである。
+ * Google の設定は架空の値で、テストは Google へは行かず、置き場にセッションを作成して入る
+ * （`browser-tests/players.ts`）。
+ */
+function gameServer(server: GameServer, decks: string) {
+  return {
+    command: `node tools/serve.mjs --decks ${decks}`,
+    // 画像の置き場はリポジトリの根からの相対パスで渡されるので、根で立てる。
+    cwd: '../..',
+    port: server.port,
+    // すでに待っているものは使わない。別の置き場を持つサーバに繋ぐと、作成したセッションで入れない。
+    reuseExistingServer: false,
+    env: {
+      PORT: String(server.port),
+      STORE: storePathOf(server),
+      GOOGLE_CLIENT_ID: 'browser-test',
+      GOOGLE_CLIENT_SECRET: 'browser-test',
+      SIGN_IN_CALLBACK: `http://localhost:${server.port}/auth/google/callback`,
+      SIGN_IN_RETURN_TO: `http://localhost:${CLIENT_PORT}/`,
+    },
+  }
+}
 
 /**
  * 本物のブラウザで確認する少数の筋書き（#242）。`pnpm test:browser` で走らせる。`pnpm verify` には
@@ -10,28 +42,13 @@ import { CLIENT_PORT, SERVER_PORT } from './browser-tests/ports.js'
  */
 export default defineConfig({
   testDir: './browser-tests',
-  // 対戦サーバは 1 つで、ロビーを全部のテストが共有する。同時に走らせると部屋の数に互いに影響する。
+  // 対戦サーバはロビーを全部のテストが共有する。同時に走らせると部屋の数に互いに影響し、計測も揺れる。
   workers: 1,
-  reporter: 'list',
+  reporter: [['list'], ['./browser-tests/remove-stores.ts']],
   use: { ...devices['Desktop Chrome'], baseURL: `http://localhost:${CLIENT_PORT}` },
   webServer: [
-    {
-      command: 'node ../../tools/serve.mjs --decks browser-tests/supply.ts',
-      port: SERVER_PORT,
-      // すでに待っているものは使わない。ログインの設定を持つサーバや、前の回の部屋が残った
-      // サーバに繋ぐと、筋書きの前提が崩れる。
-      reuseExistingServer: false,
-      env: {
-        PORT: String(SERVER_PORT),
-        // 置き場を持たず、立てるたびに空のロビーから始める。
-        STORE: '',
-        // 手元の環境変数にログインの設定があっても使わず、名乗り（`?participant=`）で入る。
-        GOOGLE_CLIENT_ID: '',
-        GOOGLE_CLIENT_SECRET: '',
-        SIGN_IN_CALLBACK: '',
-        SIGN_IN_RETURN_TO: '',
-      },
-    },
+    gameServer(SCENARIO_SERVER, 'packages/client/browser-tests/supply.ts'),
+    ...(hasPrivateDecks ? [gameServer(MEASURE_SERVER, PRIVATE_DECKS)] : []),
     {
       command: `pnpm exec vite --port ${CLIENT_PORT} --strictPort`,
       port: CLIENT_PORT,
