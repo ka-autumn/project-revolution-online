@@ -424,6 +424,27 @@ pnpm test            # vitest
 pnpm verify:engine   # エンジンが依存ゼロで、ブラウザ／サーバ両方向けにビルドできることの確認
 ```
 
+画面のテストのうち DOM が要るものは、ファイルの先頭に `// @vitest-environment happy-dom` を書く。
+指定の無いファイルは Node の環境のまま走る。
+
+## 本物のブラウザのテスト
+
+スクロール位置や日本語入力の変換のように、本物のブラウザでしか起きないことは、少数の筋書きにして
+Chromium で確認する（`packages/client/browser-tests/`）。`pnpm verify` には含めない。
+
+初回だけ Chromium を取得する。
+
+```sh
+pnpm --filter @revolution/client exec playwright install chromium
+```
+
+```sh
+pnpm test:browser
+```
+
+対戦サーバ（8797 番）と画面（5197 番）はテストが立てて、終わると止める。サーバには架空のカードを渡し、
+ログインを持たずに名乗り（`?participant=`）で入るので、`private/` もログインの設定も要らない。
+
 ## この公開リポジトリだけを clone した場合
 
 `private/` が無いため、対戦を動かすことはできない。`pnpm verify` は通る。

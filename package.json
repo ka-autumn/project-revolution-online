@@ -17,6 +17,7 @@
     "publish:notices:verify": "node tools/publish-notices-verify.mjs",
     "typecheck": "pnpm -r --stream typecheck && tsc -p tsconfig.deploy.json",
     "test": "vitest run",
+    "test:browser": "pnpm --filter @revolution/client test:browser",
     "verify:engine": "node tools/verify-engine.mjs",
     "verify": "pnpm typecheck && pnpm test && pnpm verify:engine"
   },
