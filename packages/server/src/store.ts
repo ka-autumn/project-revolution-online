@@ -1,6 +1,15 @@
 import { randomBytes } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import type { DeckId, RecipeKey, RecipeListOrder, RoomCode, ShareId, ShareKey, ShareVisibility } from '@revolution/engine'
+import type {
+  DeckId,
+  RecipeKey,
+  RecipeListOrder,
+  RoomCode,
+  ShareId,
+  ShareKey,
+  ShareVisibility,
+  ToClient,
+} from '@revolution/engine'
 import type { DeckDraft, OwnedDeck } from './owned-deck.js'
 import type { StoredRecipeSummary, StoredShare } from './recipe.js'
 import type { DuelRecord, OpenDuel, ParticipantId, StoredDuel } from './room.js'
@@ -289,11 +298,8 @@ function addMissingColumn(db: DatabaseSync, table: string, column: string, defin
   db.exec(`alter table ${table} add column ${column} ${definition}`)
 }
 
-/** 画面の好み（ADR-0083）。ログインした人ごとに覚える。 */
-export interface ScreenPreferences {
-  /** CPU とのデュエルで、演出を表示しないか。 */
-  readonly skipAnimations: boolean
-}
+/** 画面の好み（ADR-0083）。ログインした人ごとに覚える。形式は通信のもの（`protocol.ts`）と同じ。 */
+export type ScreenPreferences = Extract<ToClient, { readonly kind: '画面の好み' }>['preferences']
 
 export interface Store {
   /**

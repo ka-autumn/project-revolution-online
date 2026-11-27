@@ -78,4 +78,12 @@
 
 ## 実装
 
-（実装した後で書き足す）
+表示しない設定の置き場と通信（演出の本体より先に実装した分）:
+
+- 置き場の表: `screen_preferences`。列は `identity`（ログインした人。`identities` の行番号で、主キー）と `skip_animations`（0 か 1）。行が無ければ、演出を表示する。
+- 置き場のメソッド: `store.ts` の `screenPreferencesOf` と `saveScreenPreferences`。
+- サーバから画面へのメッセージ: `{ kind: '画面の好み', preferences: { skipAnimations } }`。ログインした接続に、入った直後（名前を決定する必要があれば、決定した直後）にロビーや盤面より先に送り、保存への返事にも使う。
+- 画面からサーバへのメッセージ: `{ kind: '画面の好みを保存する', preferences: { skipAnimations } }`。ログインを持たない立て方では `行えなかった` で断り、形式が違うものは読めないメッセージとして断る。
+- 画面の状態: `session.ts` の `screenPreferences`（届いていなければ `undefined`）と、届いていない時に既定の値を返す `screenPreferencesOf`。
+
+「デプロイの順番」の節のとおり、サーバを先にデプロイする。設定を変更する画面は、まだ無い。

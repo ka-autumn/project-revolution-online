@@ -158,6 +158,7 @@ const ACCEPTED: Readonly<Record<FromClient['kind'], true>> = {
   共有の公開範囲を変える: true,
   レシピを見る: true,
   レシピの一覧を見る: true,
+  画面の好みを保存する: true,
 }
 
 /** 自分のデッキに手を加えるメッセージ（ADR-0021）。部屋の外のことなので、ここで受ける。 */
@@ -232,6 +233,13 @@ function copySourceOf(origin: unknown, presets: readonly PresetDeck[], store: St
   }
 }
 
+/** `画面の好みを保存する` の中身が、型のとおりか（ADR-0083）。 */
+function isScreenPreferences(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+
+  return typeof (value as { readonly skipAnimations?: unknown }).skipAnimations === 'boolean'
+}
+
 /** 受け取ったバイト列をメッセージとして読む。読めなければ `undefined`。 */
 function parse(data: unknown): FromClient | undefined {
   try {
@@ -240,7 +248,13 @@ function parse(data: unknown): FromClient | undefined {
 
     const { kind } = parsed as { readonly kind?: unknown }
     // `hasOwn` で引く。`in` だと `toString` のような受け継いだ名前まで通ってしまう。
-    return typeof kind === 'string' && Object.hasOwn(ACCEPTED, kind) ? (parsed as FromClient) : undefined
+    if (typeof kind !== 'string' || !Object.hasOwn(ACCEPTED, kind)) return undefined
+    // 画面の好みは中身をそのまま置き場に書くので、ここで形式まで確認する。
+    if (kind === '画面の好みを保存する' && !isScreenPreferences((parsed as { readonly preferences?: unknown }).preferences)) {
+      return undefined
+    }
+
+    return parsed as FromClient
   } catch {
     return undefined
   }
@@ -710,6 +724,8 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       sendPool(socket)
       sendOwnDecks(socket, participant)
       sendMyShares()
+      // 盤面より先に送る。演出を表示するかは、盤面を受け取った時に決まっている必要がある。
+      sendScreenPreferences()
       const current = roomOf(rooms, participant)
       if (current === undefined) pushLobby()
       else {
@@ -873,6 +889,27 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
         // 本人にだけ送る返事なので、公開の鍵も載せる（`wireShareOf` の `ownerFacing`）。
         shares: deckStore.sharesOf(participant).map((share) => wireShareOf(share, names, options.decks.restrictions, true)),
       })
+    }
+
+    /**
+     * その人の画面の好みを送る（ADR-0083）。ログインを持たない立て方では何も送らない
+     * （`sendMyShares` と同じ）。画面は届かなければ既定の値で動く。
+     */
+    function sendScreenPreferences(): void {
+      if (deckStore === undefined) return
+
+      send(socket, { kind: '画面の好み', preferences: deckStore.screenPreferencesOf(participant) })
+    }
+
+    /** 画面の好みを保存して、保存したものを送り返す（ADR-0083）。 */
+    function saveScreenPreferences(message: Extract<FromClient, { readonly kind: '画面の好みを保存する' }>): void {
+      if (deckStore === undefined) {
+        send(socket, { kind: '行えなかった', reason: 'ログインしていないと設定を保存できません' })
+        return
+      }
+
+      deckStore.saveScreenPreferences(participant, message.preferences)
+      sendScreenPreferences()
     }
 
     /**
@@ -1077,6 +1114,10 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       }
       if (isRecipeRequest(message)) {
         handleRecipe(message)
+        return
+      }
+      if (message.kind === '画面の好みを保存する') {
+        saveScreenPreferences(message)
         return
       }
 

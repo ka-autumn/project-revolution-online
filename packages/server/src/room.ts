@@ -714,6 +714,8 @@ function handle(
     case '共有の公開範囲を変える':
     case 'レシピを見る':
     case 'レシピの一覧を見る':
+    // 画面の好みも部屋の外のことである（ADR-0083）。預かるのは置き場で、受けるのは `serve.ts` である。
+    case '画面の好みを保存する':
       return { rooms, deliveries: [], records: [] }
     case 'ロビーに戻る':
       return leave(rooms, participant, connected)

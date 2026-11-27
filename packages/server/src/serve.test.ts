@@ -228,6 +228,34 @@ describe('WebSocket で繋ぐ', () => {
     await client.close()
   })
 
+  /** ADR-0083。名乗りは認証ではないので、置き場があっても画面の好みは覚えない。 */
+  it.each([
+    ['置き場が無くても', false],
+    ['置き場があっても', true],
+  ])('ログインを持たない立て方では、%s、画面の好みを送らず、保存も断る', async (_, stored) => {
+    const store = stored ? openStore(':memory:') : undefined
+    const named = await serve({ port: 0, setup, decks, deckChoices, supply: SUPPLY, ...(store === undefined ? {} : { store }) })
+    const saving = store === undefined ? undefined : vi.spyOn(store, 'saveScreenPreferences')
+
+    try {
+      const client = new Client(named.port, 'あ')
+      await client.waitFor('ロビー')
+
+      client.send({ kind: '画面の好みを保存する', preferences: { skipAnimations: true } })
+
+      expect(await client.waitFor('行えなかった')).toEqual({
+        kind: '行えなかった',
+        reason: 'ログインしていないと設定を保存できません',
+      })
+      expect(client.received.some((message) => message.kind === '画面の好み')).toBe(false)
+      expect(saving?.mock.calls ?? []).toEqual([])
+      await client.close()
+    } finally {
+      await named.close()
+      store?.close()
+    }
+  })
+
   it('ログインを持たない立て方では、組んでいるデッキを確かめられない', async () => {
     const client = new Client(server.port, 'あ')
     await client.waitFor('ロビー')
@@ -2763,6 +2791,85 @@ describe('ログインの設定があるとき', () => {
    * （ADR-0010）。サーバが落ちず、断りが返って、接続が保たれたままであることを確かめる。
    * 続けて別のメッセージを送って、接続がまだ生きていることを見る。
    */
+  /** 画面の好み（ADR-0083）。ログインした人ごとに覚え、サーバから押し出して届ける。 */
+  describe('画面の好み', () => {
+    /** 名前を決定し終えた人として繋ぎ、画面の好みが届くまで待つ。 */
+    async function enter(cookie: string): Promise<Client> {
+      const client = new Client(server.port, 'なのっても無駄', cookie)
+      await client.waitFor('画面の好み')
+      return client
+    }
+
+    /** 同じ人の 2 台目の端末。セッションは別に開く。 */
+    function anotherDevice(): string {
+      store.openSession(digest('second-device'), me)
+      return 'revolution_session=second-device'
+    }
+
+    beforeEach(() => store.rename(me, 'かずお'))
+
+    it('入った直後に、盤面やロビーより先に届く。保存していなければ演出を表示する', async () => {
+      const client = new Client(server.port, 'なのっても無駄', signedIn)
+      await client.waitFor('ロビー')
+
+      const kinds = client.received.map((message) => message.kind)
+      expect(kinds.indexOf('画面の好み')).toBeGreaterThanOrEqual(0)
+      expect(kinds.indexOf('画面の好み')).toBeLessThan(kinds.indexOf('ロビー'))
+      expect(client.latest('画面の好み')).toEqual({ kind: '画面の好み', preferences: { skipAnimations: false } })
+      await client.close()
+    })
+
+    it('名前を初めて決定した人にも、決定したところで届く', async () => {
+      const unnamed = store.identify('google', '10003')
+      store.openSession(digest('unnamed'), unnamed)
+      const client = new Client(server.port, 'なのっても無駄', 'revolution_session=unnamed')
+      await client.waitFor('名前を決めてほしい')
+      expect(client.latest('画面の好み')).toBeUndefined()
+
+      client.send({ kind: '名前を決める', name: 'はじめて' })
+
+      await client.waitFor('画面の好み')
+      await client.close()
+    })
+
+    it('保存すると送り返され、同じ人の別の端末にも同じ値が届く', async () => {
+      const first = await enter(signedIn)
+      first.received.length = 0
+
+      first.send({ kind: '画面の好みを保存する', preferences: { skipAnimations: true } })
+
+      const saved = { kind: '画面の好み', preferences: { skipAnimations: true } }
+      expect(await first.waitFor('画面の好み')).toEqual(saved)
+      const second = await enter(anotherDevice())
+      expect(second.latest('画面の好み')).toEqual(saved)
+      const other = await enter(signedInOther)
+      expect(other.latest('画面の好み')).toEqual({ kind: '画面の好み', preferences: { skipAnimations: false } })
+      await Promise.all([first.close(), second.close(), other.close()])
+    })
+
+    it.each([
+      ['中身が無い', undefined],
+      ['中身が null', null],
+      ['値が無い', {}],
+      ['値が真偽値でない', { skipAnimations: 'true' }],
+    ])('%s保存は、読めないメッセージとして断り、保存しない', async (_, preferences) => {
+      const client = await enter(signedIn)
+
+      client.send({ kind: '画面の好みを保存する', preferences } as unknown as FromClient)
+
+      expect(await client.waitFor('行えなかった')).toEqual({ kind: '行えなかった', reason: '読めないメッセージ' })
+      expect(store.screenPreferencesOf(me)).toEqual({ skipAnimations: false })
+      await client.close()
+    })
+
+    it('ログインしていない接続には送らずに断る', async () => {
+      const client = new Client(server.port, '10001')
+      await client.closed()
+
+      expect(client.received).toEqual([{ kind: '行えなかった', reason: NOT_SIGNED_IN }])
+    })
+  })
+
   describe('壊れたメッセージを送っても落ちない', () => {
     /** 構築戦の規定を満たす 60 枚（既製デッキと同じ中身）。 */
     const FULL = Object.keys(CARDS).flatMap((key) => Array.from({ length: 4 }, () => key))
