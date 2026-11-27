@@ -295,6 +295,20 @@ describe('デュエルの終了', () => {
     })
   })
 
+  // 総合ルール 第3部 第3章 1・2・4、第4部 第14章 4-1・4-2
+  it('引き分けで片方が 2 つの敗北の条件を同時に満たした場合、そのプレイヤーにはスマッシュ・山札の順で両方が残る', () => {
+    const bothLibrariesEmpty = withEmptyLibrary(withEmptyLibrary(stockedDuelState(), '先攻'), '後攻')
+    const state = withSmashes(bothLibrariesEmpty, '後攻', 7)
+
+    expect(pass(state).result).toEqual({
+      kind: '引き分け',
+      defeats: [
+        { player: '先攻', conditions: ['山札'] },
+        { player: '後攻', conditions: ['スマッシュ', '山札'] },
+      ],
+    })
+  })
+
   // 総合ルール 第3部 第3章 3: 勝敗が決まった場合、そのデュエルは即座に終了する。
   it('勝敗が決まったデュエルでは、それ以上進行しない', () => {
     const ended = pass(withSmashes(stockedDuelState(), '後攻', 7))
