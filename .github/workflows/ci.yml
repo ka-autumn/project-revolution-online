@@ -10,9 +10,15 @@ on:
 permissions:
   contents: read
 
+# プルリクエストは、新しい push が来たら古い実行を打ち切る。main への push は打ち切らない。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -32,16 +38,29 @@ jobs:
       - name: verify
         run: pnpm verify
 
-      # Chromium のビルドは Playwright のバージョンごとに決まるので、バージョンをキャッシュのキーに含める。
+      # Chromium のビルドは Playwright のバージョンに対応しているので、バージョンをキャッシュのキーに含める。
+      # runner の OS のバージョンが上がると別のビルドを使うので、ImageOS もキーに含める。ImageOS は式の
+      # env コンテキストから参照できないので、この step で output にする。
       - name: Playwright のバージョンを取得
         id: playwright
         working-directory: packages/client
-        run: echo "version=$(pnpm exec playwright --version | awk '{ print $2 }')" >> "$GITHUB_OUTPUT"
+        run: |
+          version="$(pnpm exec playwright --version | awk '{ print $2 }')"
+          if [ -z "$version" ]; then
+            echo "Playwright のバージョンを取得できませんでした" >&2
+            exit 1
+          fi
+          if [ -z "$ImageOS" ]; then
+            echo "ImageOS が空です" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageOS" >> "$GITHUB_OUTPUT"
 
       - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}
 
       # キャッシュに当たってもブラウザの取得を省くだけで、OS のパッケージ（--with-deps）は毎回インストールする。
       - name: Chromium を取得
@@ -50,3 +69,13 @@ jobs:
 
       - name: 本物のブラウザのテスト
         run: pnpm test:browser
+
+      # always() にしないのは、test.fail の筋書きが毎回失敗するので、成功した実行でもテスト結果が出力されるため。
+      - name: 失敗した時のテスト結果をアップロード
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-test-results
+          path: packages/client/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
