@@ -11,6 +11,9 @@ node_modules/
 # ビルド出力
 dist/
 
+# 本物のブラウザのテストが出力するもの
+test-results/
+
 # 手元で立てたときの置き場（ADR-0018）。打った対戦がそのまま入る
 *.sqlite
 *.sqlite-shm

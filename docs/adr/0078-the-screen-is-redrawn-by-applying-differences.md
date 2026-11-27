@@ -91,4 +91,12 @@
 
 ## 実装
 
-（実装した後で書き足す）
+移る段階の PR ごとに、その PR で決定したことを書き足す。
+
+### テストの土台の PR
+
+- テスト用の依存は、happy-dom 21.0.4 と @playwright/test 1.65.1（版を固定する）。本物のブラウザは Chromium だけを使う。
+- DOM が要るテストは、ファイルの先頭の `// @vitest-environment happy-dom` で環境を指定する。ほかのテストの環境は変更しない。
+- 本物のブラウザのテストは `pnpm verify` に含めず、`pnpm test:browser` で走らせる。CI で走らせるかは、まだ決定していない。
+- ログインは、対戦サーバを立てる前に、使い捨ての置き場へセッションを書き込んでおく形にする（`packages/client/browser-tests/seed.ts`）。サーバには架空の Google の設定を渡し、本物のログインの経路を通す。サーバが動いている間、テストは置き場に書き込まない（置き場は 1 つのプロセスだけが持つ、ADR-0014）。
+- 筋書きは `packages/client/browser-tests/redraw.spec.ts`、デッキ構築の計測は同じディレクトリの `deck-measure.spec.ts` に置く。計測は非公開側のカードがある時だけ走らせる。

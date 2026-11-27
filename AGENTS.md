@@ -10,6 +10,7 @@ pnpm ワークスペースのモノレポ。パッケージ構成は `README.md`
 - `pnpm typecheck` — 全パッケージの型検査
 - `pnpm test` — vitest（`pnpm test <パターン>` でファイルを絞れる）
 - `pnpm verify:engine` — エンジンが依存ゼロで、ブラウザ／サーバ両方向けにビルドできることの確認
+- `pnpm test:browser` — 本物のブラウザ（Chromium）で確認する筋書き。`pnpm verify` には含まれない（README）
 
 CI で install するときは `pnpm install --frozen-lockfile` を使う。`pnpm-lock.yaml` は
 `private/` 以下の importer を持っており、それが無い環境で素の `pnpm install` を
@@ -18,7 +19,9 @@ CI で install するときは `pnpm install --frozen-lockfile` を使う。`pnp
 ## 規約
 
 - ドメイン用語は型名を英語、値を日本語にする（ADR-0003）。用語の正は `CONTEXT.md`
-- テストは `packages/*/src/**/*.test.ts` に置き、実装と並べる（`private/` 以下も同じ）
+- テストは `packages/*/src/**/*.test.ts` に置き、実装と並べる（`private/` 以下も同じ）。DOM が要る
+  ファイルは先頭の `// @vitest-environment happy-dom` で指定する。本物のブラウザの筋書きだけは
+  `packages/client/browser-tests/*.spec.ts` に置く
 - ルールの挙動を検証するテストには、根拠となる総合ルールの条番号を付ける（ADR-0006）。
   総合ルールの本文は `docs/rules/`。引用は `docs/rules/index.json` の `citation` と同じ文字列で書く。
   総合ルールが外へ投げた判定はフロアルール第2部（`docs/floor-rules/`）を引く（ADR-0023 / ADR-0024）
