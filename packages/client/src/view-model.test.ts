@@ -804,9 +804,27 @@ describe('プレイヤーの様子', () => {
   })
 
   it.each([
-    ['勝った', { kind: '勝利', winner: '先攻' }, { label: '勝ち', kind: '勝利' }],
-    ['負けた', { kind: '勝利', winner: '後攻' }, { label: '負け', kind: '敗北' }],
-    ['引き分けた', { kind: '引き分け' }, { label: '引き分け', kind: '引き分け' }],
+    [
+      '勝った',
+      { kind: '勝利', winner: '先攻', defeats: [{ player: '後攻', conditions: ['スマッシュ'] }] },
+      { label: '勝ち', kind: '勝利' },
+    ],
+    [
+      '負けた',
+      { kind: '勝利', winner: '後攻', defeats: [{ player: '先攻', conditions: ['山札'] }] },
+      { label: '負け', kind: '敗北' },
+    ],
+    [
+      '引き分けた',
+      {
+        kind: '引き分け',
+        defeats: [
+          { player: '先攻', conditions: ['山札'] },
+          { player: '後攻', conditions: ['スマッシュ', '山札'] },
+        ],
+      },
+      { label: '引き分け', kind: '引き分け' },
+    ],
   ] as const)('%sことが出る', (_, result, expected) => {
     expect(boardView({ ...emptyBoard('先攻'), result }).result).toEqual(expected)
   })
@@ -1362,7 +1380,10 @@ describe('操作ログ', () => {
   })
 
   it('決着は、見る人から見た言い方で出る', () => {
-    const board = withLog({ kind: '決着した', result: { kind: '勝利', winner: '後攻' } })
+    const board = withLog({
+      kind: '決着した',
+      result: { kind: '勝利', winner: '後攻', defeats: [{ player: '先攻', conditions: ['山札'] }] },
+    })
 
     expect(texts(board)).toEqual(['決着：負け'])
   })

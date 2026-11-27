@@ -457,7 +457,11 @@ describe('希望ステップ', () => {
 
     const ended = endStep(smashed)
     expect(idsOf(cardsIn(ended, '後攻', 'スマッシュゾーン'))).toEqual(['最後の 1 枚'])
-    expect(ended.result).toEqual({ kind: '勝利', winner: '先攻' })
+    expect(ended.result).toEqual({
+      kind: '勝利',
+      winner: '先攻',
+      defeats: [{ player: '後攻', conditions: ['山札'] }],
+    })
   })
 
   it('「希望」を持たないカードでは何も起こらない', () => {
@@ -561,7 +565,11 @@ describe('確定ステップ', () => {
     expect(smashesOf(hopeStep, '後攻')).toHaveLength(6)
     expect(hopeStep.result).toBeUndefined()
 
-    expect(endStep(hopeStep).result).toEqual({ kind: '勝利', winner: '先攻' })
+    expect(endStep(hopeStep).result).toEqual({
+      kind: '勝利',
+      winner: '先攻',
+      defeats: [{ player: '後攻', conditions: ['スマッシュ'] }],
+    })
   })
 
   // 総合ルール 第3部 第20章 1 の【例】: 相手のスマッシュは 6。敵エリアのＳＰ0 のユニットで
@@ -581,7 +589,11 @@ describe('確定ステップ', () => {
     expect(judgment.smashJudgments[0]?.repeats).toBe(2)
     // 回復ステップ → 第１希望ステップ → 第１確定ステップ で終わる。
     expect(stepsOf(judgment)).toEqual(['回復ステップ', '第1希望ステップ', '第1確定ステップ'])
-    expect(endStep(endStep(judgment)).result).toEqual({ kind: '勝利', winner: '先攻' })
+    expect(endStep(endStep(judgment)).result).toEqual({
+      kind: '勝利',
+      winner: '先攻',
+      defeats: [{ player: '後攻', conditions: ['スマッシュ'] }],
+    })
   })
 
   /** 後攻のスマッシュゾーンにカードを `count` 枚置いた盤面。 */

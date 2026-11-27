@@ -699,7 +699,18 @@ describe('ルールエフェクトの記録', () => {
   it('決着したことが残る', () => {
     const settled = passPriority(emptyDuelState(), chooseFirst)
 
-    expect(only(settled, '決着した')).toEqual([{ kind: '決着した', result: { kind: '引き分け' } }])
+    expect(only(settled, '決着した')).toEqual([
+      {
+        kind: '決着した',
+        result: {
+          kind: '引き分け',
+          defeats: [
+            { player: '先攻', conditions: ['山札'] },
+            { player: '後攻', conditions: ['山札'] },
+          ],
+        },
+      },
+    ])
   })
 })
 

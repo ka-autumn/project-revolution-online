@@ -3,7 +3,7 @@ import { bpOf } from './card.js'
 import { bpModification } from './continuous.js'
 import type { BpModification } from './continuous.js'
 import { hasEnded, librarySize } from './duel.js'
-import type { CardId, CardInstance, DuelResult, DuelState } from './duel.js'
+import type { CardId, CardInstance, Defeat, DefeatCondition, DuelResult, DuelState } from './duel.js'
 import { record } from './log.js'
 import { PLAYERS, opponentOf } from './player.js'
 import type { Player } from './player.js'
@@ -79,25 +79,33 @@ export function checkRuleEffects(state: DuelState): DuelState {
  * しかないため、それは両方が敗北して引き分けになる場合と同じことになる。
  */
 function resultOf(state: DuelState): DuelResult | undefined {
-  const losers = PLAYERS.filter((player) => isDefeated(state, player))
-  const [loser] = losers
-  if (loser === undefined) return undefined
+  const defeats: readonly Defeat[] = PLAYERS.flatMap((player) => {
+    const conditions = defeatConditionsOf(state, player)
+    return conditions.length === 0 ? [] : [{ player, conditions }]
+  })
+  const [defeat] = defeats
+  if (defeat === undefined) return undefined
 
-  return losers.length === PLAYERS.length ? { kind: '引き分け' } : { kind: '勝利', winner: opponentOf(loser) }
+  return defeats.length === PLAYERS.length
+    ? { kind: '引き分け', defeats }
+    : { kind: '勝利', winner: opponentOf(defeat.player), defeats }
 }
 
 /** デュエルに敗北する枚数のスマッシュ（総合ルール 第3部 第3章 1、第4部 第14章 4-1）。 */
 const SMASHES_TO_LOSE = 7
 
 /**
- * そのプレイヤーが敗北の条件を満たしているか。
+ * そのプレイヤーが満たしている敗北の条件。1 つも無ければ敗北しない。
  *
  * スマッシュが 7 枚以上になったか（総合ルール 第3部 第3章 1、第4部 第14章 4-1）、山札に
- * あるカードが 0 枚以下になったか（同 第3章 2、第14章 4-2）のいずれか。投了（同 第3章 7）は
- * ルールエフェクトではないので、ここでは扱わない。
+ * あるカードが 0 枚以下になったか（同 第3章 2、第14章 4-2）を調べる。並びはこの順で固定する。
+ * 投了（同 第3章 7）はルールエフェクトではないので、ここでは扱わない。
  */
-function isDefeated(state: DuelState, player: Player): boolean {
-  return smashesOf(state, player).length >= SMASHES_TO_LOSE || librarySize(state, player) <= 0
+function defeatConditionsOf(state: DuelState, player: Player): readonly DefeatCondition[] {
+  const conditions: DefeatCondition[] = []
+  if (smashesOf(state, player).length >= SMASHES_TO_LOSE) conditions.push('スマッシュ')
+  if (librarySize(state, player) <= 0) conditions.push('山札')
+  return conditions
 }
 
 /**

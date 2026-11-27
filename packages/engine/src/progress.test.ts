@@ -1221,7 +1221,16 @@ describe('放棄したら何が起きるか', () => {
 
   /** 勝敗が決まったデュエルでは何も起こらない（総合ルール 第3部 第3章 3）。 */
   it('終わったデュエルでは、何も起きない', () => {
-    const ended: DuelState = { ...startedDuel(), result: { kind: '引き分け' } }
+    const ended: DuelState = {
+      ...startedDuel(),
+      result: {
+        kind: '引き分け',
+        defeats: [
+          { player: '先攻', conditions: ['山札'] },
+          { player: '後攻', conditions: ['山札'] },
+        ],
+      },
+    }
 
     expect(passOutcome(ended)).toBeUndefined()
   })

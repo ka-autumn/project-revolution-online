@@ -180,6 +180,8 @@ export type {
   CreatedAbility,
   CreatedAbilityInstance,
   CreatedContinuousEffect,
+  Defeat,
+  DefeatCondition,
   DuelResult,
   DuelState,
   LibraryPosition,

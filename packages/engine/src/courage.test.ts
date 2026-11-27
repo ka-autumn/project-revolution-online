@@ -586,7 +586,10 @@ describe('「勇気」の起動', () => {
   // 総合ルール 第3部 第3章 3。デュエルは即座に終了するので、そこから先に優先権は発生しない
   // （`activate.ts` の `mayActivate`）。
   it('勝敗が決まったデュエルでは起動できない', () => {
-    const ended: DuelState = { ...readyToActivate(), result: { kind: '勝利', winner: '先攻' } }
+    const ended: DuelState = {
+      ...readyToActivate(),
+      result: { kind: '勝利', winner: '先攻', defeats: [{ player: '後攻', conditions: ['山札'] }] },
+    }
 
     expect(violationOf(activateCourage(ended, 'テスト・勇気', chooseFirst))).toBe('行える時ではない')
   })

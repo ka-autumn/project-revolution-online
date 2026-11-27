@@ -50,4 +50,8 @@
 
 ## 実装
 
-（実装した後で書き足す）
+- 敗北の条件の型は `DefeatCondition`（`'スマッシュ' | '山札'`）。敗北したプレイヤー 1 人分は `Defeat`（`{ player, conditions }`）。どちらも `packages/engine/src/duel.ts` に定義し、エンジンから公開する。
+- `DuelResult` は、`勝利` と `引き分け` の両方に `defeats: readonly Defeat[]` を持つ。敗北したプレイヤーごとに 1 つで、引き分けでは 2 つになる。
+- `defeats` の並びは先攻・後攻の順、`conditions` の並びは `スマッシュ`・`山札` の順に固定する。
+- `rule-effect.ts` の `isDefeated` は `defeatConditionsOf` に置き換えた。満たしている条件の並びを返し、空なら敗北していない。条件の中身と判定の順番は変更していない。
+- 画面の表示は変更していない。
