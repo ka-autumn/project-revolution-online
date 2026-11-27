@@ -20,6 +20,7 @@ import type {
   WireRoom,
   WireShare,
 } from '@revolution/engine'
+import type { Link } from './connection.js'
 
 /**
  * クライアントがいまどこにいるか。
@@ -209,9 +210,10 @@ export interface Session {
    * サーバから届いた画面の好み（ADR-0083）。届いていなければ `undefined`。取得するときは
    * `screenPreferencesOf` を使う。
    *
-   * ログインを持たない立て方と、古いサーバからは届かない。
+   * ログインを持たない立て方と、古いサーバからは届かない。繋ぎ直すと `undefined` に戻る
+   * （`sessionAfterLinkChange`）。
    */
-  readonly screenPreferences?: ScreenPreferences | undefined
+  readonly screenPreferences: ScreenPreferences | undefined
 }
 
 export type ScreenPreferences = Extract<ToClient, { readonly kind: '画面の好み' }>['preferences']
@@ -237,7 +239,18 @@ export function connecting(): Session {
     sharedShare: undefined,
     recipeView: undefined,
     recipeList: undefined,
+    screenPreferences: undefined,
   }
+}
+
+/**
+ * 繋がりの様子が変化した時の状態。
+ *
+ * 繋がるたびに画面の好みを消し、その接続のサーバから届いた時だけ入れる（ADR-0083）。繋ぎ直した
+ * 先は、画面の好みを送らないサーバに戻されているかもしれず、残すと前の値が使われ続ける。
+ */
+export function sessionAfterLinkChange(session: Session, link: Link): Session {
+  return link.kind === '繋がっている' ? { ...session, screenPreferences: undefined } : session
 }
 
 /**

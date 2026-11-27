@@ -84,6 +84,8 @@
 - 置き場のメソッド: `store.ts` の `screenPreferencesOf` と `saveScreenPreferences`。
 - サーバから画面へのメッセージ: `{ kind: '画面の好み', preferences: { skipAnimations } }`。ログインした接続に、入った直後（名前を決定する必要があれば、決定した直後）にロビーや盤面より先に送り、保存への返事にも使う。
 - 画面からサーバへのメッセージ: `{ kind: '画面の好みを保存する', preferences: { skipAnimations } }`。ログインを持たない立て方では `行えなかった` で断り、形式が違うものは読めないメッセージとして断る。
-- 画面の状態: `session.ts` の `screenPreferences`（届いていなければ `undefined`）と、届いていない時に既定の値を返す `screenPreferencesOf`。
+- 保存した値は、同じ人がいま開いている他の接続へは送らない。次に繋いだ時に同じ値になる。デッキの保存と同じ方式で、今のサーバは 1 人につき 1 つの接続しか覚えていない。
+- 古い値を持ったタブで保存し直すと、他のタブでの変更を上書きする。この場面は、設定を変更する画面の PR で検討する。
+- 画面の状態: `session.ts` の `screenPreferences`（届いていなければ `undefined`）と、届いていない時に既定の値を返す `screenPreferencesOf`。繋がるたびに `sessionAfterLinkChange` が `screenPreferences` を `undefined` に戻し、その接続で届いた時だけ入れる。
 
 「デプロイの順番」の節のとおり、サーバを先にデプロイする。設定を変更する画面は、まだ無い。

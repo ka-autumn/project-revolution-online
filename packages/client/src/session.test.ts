@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DuelEvent, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
-import { applyMessage, connecting, roomOf, screenPreferencesOf } from './session.js'
+import { applyMessage, connecting, roomOf, screenPreferencesOf, sessionAfterLinkChange } from './session.js'
 import type { Session } from './session.js'
 import { emptyBoard, logged } from './test-support.js'
 
@@ -620,7 +620,18 @@ describe('共有とレシピ', () => {
     expect(session.refusal).toBeUndefined()
   })
 
-  it('届いた画面の好みは、場面を変えずに覚え、場面が移っても持ち越す', () => {
+  it('繋ぎ直すと、前の接続で届いた画面の好みは消える', () => {
+    const before = fold({ kind: '画面の好み', preferences: { skipAnimations: true } })
+
+    const cut = sessionAfterLinkChange(before, { kind: '繋ごうとしている', attempt: 1 })
+    const reopened = sessionAfterLinkChange(cut, { kind: '繋がっている' })
+
+    expect(reopened.screenPreferences).toBeUndefined()
+    expect(screenPreferencesOf(reopened)).toEqual({ skipAnimations: false })
+    expect(reopened.stage).toBe(before.stage)
+  })
+
+  it('届いた画面の好みは、場面を変更せずに覚え、場面が移っても持ち越す', () => {
     const before = fold({ kind: '相手を待っている', room: 'あいことば' })
 
     const received = applyMessage(before, { kind: '画面の好み', preferences: { skipAnimations: true } })

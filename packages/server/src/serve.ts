@@ -234,7 +234,7 @@ function copySourceOf(origin: unknown, presets: readonly PresetDeck[], store: St
 }
 
 /** `画面の好みを保存する` の中身が、型のとおりか（ADR-0083）。 */
-function isScreenPreferences(value: unknown): boolean {
+function isScreenPreferences(value: unknown): value is Extract<FromClient, { readonly kind: '画面の好みを保存する' }>['preferences'] {
   if (typeof value !== 'object' || value === null) return false
 
   return typeof (value as { readonly skipAnimations?: unknown }).skipAnimations === 'boolean'
@@ -248,13 +248,7 @@ function parse(data: unknown): FromClient | undefined {
 
     const { kind } = parsed as { readonly kind?: unknown }
     // `hasOwn` で引く。`in` だと `toString` のような受け継いだ名前まで通ってしまう。
-    if (typeof kind !== 'string' || !Object.hasOwn(ACCEPTED, kind)) return undefined
-    // 画面の好みは中身をそのまま置き場に書くので、ここで形式まで確認する。
-    if (kind === '画面の好みを保存する' && !isScreenPreferences((parsed as { readonly preferences?: unknown }).preferences)) {
-      return undefined
-    }
-
-    return parsed as FromClient
+    return typeof kind === 'string' && Object.hasOwn(ACCEPTED, kind) ? (parsed as FromClient) : undefined
   } catch {
     return undefined
   }
@@ -901,8 +895,18 @@ export function serve(options: ServeOptions): Promise<RunningServer> {
       send(socket, { kind: '画面の好み', preferences: deckStore.screenPreferencesOf(participant) })
     }
 
-    /** 画面の好みを保存して、保存したものを送り返す（ADR-0083）。 */
+    /**
+     * 画面の好みを保存して、保存したものをこの接続へ送り返す（ADR-0083）。
+     *
+     * 同じ人がいま開いている他の接続へは送らない。次に繋いだ時に同じ値になり、デッキの保存と
+     * 同じ方式である。サーバが覚えている接続も、1 人につき 1 つだけである（`sockets`）。
+     */
     function saveScreenPreferences(message: Extract<FromClient, { readonly kind: '画面の好みを保存する' }>): void {
+      // `parse` は中身を確認しないので、置き場に保存する前にここで確認する（ADR-0010）。
+      if (!isScreenPreferences(message.preferences)) {
+        send(socket, { kind: '行えなかった', reason: '読めないメッセージ' })
+        return
+      }
       if (deckStore === undefined) {
         send(socket, { kind: '行えなかった', reason: 'ログインしていないと設定を保存できません' })
         return

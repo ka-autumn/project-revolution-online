@@ -2786,11 +2786,6 @@ describe('ログインの設定があるとき', () => {
     })
   })
 
-  /**
-   * `parse` は `kind` しか見ないので、ここに来る値は型どおりとは限らない
-   * （ADR-0010）。サーバが落ちず、断りが返って、接続が保たれたままであることを確かめる。
-   * 続けて別のメッセージを送って、接続がまだ生きていることを見る。
-   */
   /** 画面の好み（ADR-0083）。ログインした人ごとに覚え、サーバから押し出して届ける。 */
   describe('画面の好み', () => {
     /** 名前を決定し終えた人として繋ぎ、画面の好みが届くまで待つ。 */
@@ -2832,6 +2827,21 @@ describe('ログインの設定があるとき', () => {
       await client.close()
     })
 
+    it('名前を決定する前の接続からの保存は、名前を尋ね直して、保存しない', async () => {
+      const unnamed = store.identify('google', '10004')
+      store.openSession(digest('still-unnamed'), unnamed)
+      const client = new Client(server.port, 'なのっても無駄', 'revolution_session=still-unnamed')
+      await client.waitFor('名前を決めてほしい')
+      client.received.length = 0
+
+      client.send({ kind: '画面の好みを保存する', preferences: { skipAnimations: true } })
+
+      await client.waitFor('名前を決めてほしい')
+      expect(client.latest('画面の好み')).toBeUndefined()
+      expect(store.screenPreferencesOf(unnamed)).toEqual({ skipAnimations: false })
+      await client.close()
+    })
+
     it('保存すると送り返され、同じ人の別の端末にも同じ値が届く', async () => {
       const first = await enter(signedIn)
       first.received.length = 0
@@ -2870,6 +2880,11 @@ describe('ログインの設定があるとき', () => {
     })
   })
 
+  /**
+   * `parse` は `kind` しか見ないので、ここに来る値は型どおりとは限らない
+   * （ADR-0010）。サーバが落ちず、断りが返って、接続が保たれたままであることを確かめる。
+   * 続けて別のメッセージを送って、接続がまだ生きていることを見る。
+   */
   describe('壊れたメッセージを送っても落ちない', () => {
     /** 構築戦の規定を満たす 60 枚（既製デッキと同じ中身）。 */
     const FULL = Object.keys(CARDS).flatMap((key) => Array.from({ length: 4 }, () => key))
