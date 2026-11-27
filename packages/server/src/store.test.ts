@@ -1212,3 +1212,62 @@ describe('接続の記録', () => {
     removeStore(path)
   })
 })
+
+/** 画面の好み（ADR-0083）。最初の項目は、CPU とのデュエルで演出を表示しないかである。 */
+describe('画面の好み', () => {
+  it('保存していなければ、演出を表示する', () => {
+    const store = openStore(':memory:')
+
+    expect(store.screenPreferencesOf(store.identify('google', '10001'))).toEqual({ skipAnimations: false })
+    store.close()
+  })
+
+  it('保存したものは人ごとに分かれ、保存し直すと置き換わる', () => {
+    const store = openStore(':memory:')
+    const me = store.identify('google', '10001')
+    const other = store.identify('google', '10002')
+
+    store.saveScreenPreferences(me, { skipAnimations: true })
+    expect(store.screenPreferencesOf(me)).toEqual({ skipAnimations: true })
+    expect(store.screenPreferencesOf(other)).toEqual({ skipAnimations: false })
+
+    store.saveScreenPreferences(me, { skipAnimations: false })
+    expect(store.screenPreferencesOf(me)).toEqual({ skipAnimations: false })
+    store.close()
+  })
+
+  /** 置き場は差し替えても消えない（ADR-0018）。好みの表を持たない置き場にも、そのまま通る。 */
+  it('好みの表が無い置き場を開くと、残っていたものはそのままで、好みを保存して開き直せる', () => {
+    const path = `${tmpdir()}/revolution-preferences-${randomUUID()}.sqlite`
+    const before = openStore(path)
+    const me = before.identify('google', '10001')
+    before.rename(me, 'かずお')
+    before.openSession('ようやく', me)
+    const draft = { name: 'わたしのデッキ', description: '', cards: ['TEST-0'] }
+    const deck = before.saveDeck(me, undefined, draft)
+    before.ensureRecipe('かぎ1', ['TEST-0'])
+    new Table(before).start().passes(4)
+    const duels = before.openDuels()
+    before.close()
+
+    // 画面の好みを追加する前の置き場にする。
+    const raw = new DatabaseSync(path)
+    raw.exec('drop table screen_preferences')
+    raw.close()
+
+    const opened = openStore(path)
+    expect(opened.nameOf(me)).toBe('かずお')
+    expect(opened.sessionHolder('ようやく', 0)).toBe(me)
+    expect(opened.decksOf(me)).toEqual([{ id: deck, ...draft }])
+    expect(opened.recipeCards('かぎ1')).toEqual(['TEST-0'])
+    expect(opened.openDuels()).toEqual(duels)
+    expect(opened.screenPreferencesOf(me)).toEqual({ skipAnimations: false })
+    opened.saveScreenPreferences(me, { skipAnimations: true })
+    opened.close()
+
+    const again = openStore(path)
+    expect(again.screenPreferencesOf(me)).toEqual({ skipAnimations: true })
+    again.close()
+    for (const suffix of ['', '-wal', '-shm']) rmSync(`${path}${suffix}`, { force: true })
+  })
+})

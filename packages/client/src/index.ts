@@ -140,7 +140,7 @@ import type {
   RecipeViewHandlers,
   ShareDialogHandlers,
 } from './render.js'
-import { applyMessage, connecting, roomOf } from './session.js'
+import { applyMessage, connecting, roomOf, sessionAfterLinkChange } from './session.js'
 import type { Session } from './session.js'
 import {
   DECKS_PER_PAGE,
@@ -2693,6 +2693,8 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     },
     onLinkChanged: (value) => {
       link = value
+      // 画面の好みは、繋がるたびに消して、届くのを待つ（ADR-0083）。
+      session = sessionAfterLinkChange(session, value)
       // 切れたら返事を待つのをやめ、繋ぎ直して入り直す部屋があれば、入り直しの返事が届くまで待つ
       // （#253、`reply-wait.ts` の `afterLinkChange`）。入り直す先は `connection.ts` が送るものと同じに決める。
       replyWait = afterLinkChange(value, rejoiningRoom() !== undefined)

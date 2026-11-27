@@ -1,6 +1,15 @@
 import { randomBytes } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import type { DeckId, RecipeKey, RecipeListOrder, RoomCode, ShareId, ShareKey, ShareVisibility } from '@revolution/engine'
+import type {
+  DeckId,
+  RecipeKey,
+  RecipeListOrder,
+  RoomCode,
+  ShareId,
+  ShareKey,
+  ShareVisibility,
+  ToClient,
+} from '@revolution/engine'
 import type { DeckDraft, OwnedDeck } from './owned-deck.js'
 import type { StoredRecipeSummary, StoredShare } from './recipe.js'
 import type { DuelRecord, OpenDuel, ParticipantId, StoredDuel } from './room.js'
@@ -135,6 +144,14 @@ const SCHEMA = `
     connected_at integer not null
   );
   create index if not exists connections_by_time on connections (connected_at);
+
+  -- 画面の好み（ADR-0083）。ログインした人 1 人につき 1 行。行が無ければ、まだ何も保存して
+  -- いないので、既定の値（演出を表示する）として扱う。表ごと新しく追加するので、すでにある
+  -- 表と中身には触れず、この表を知らない古いサーバに戻しても、表が残るだけで動く。
+  create table if not exists screen_preferences (
+    identity integer primary key references identities (id),
+    skip_animations integer not null
+  );
 `
 
 /**
@@ -281,6 +298,9 @@ function addMissingColumn(db: DatabaseSync, table: string, column: string, defin
   db.exec(`alter table ${table} add column ${column} ${definition}`)
 }
 
+/** 画面の好み（ADR-0083）。ログインした人ごとに覚える。形式は通信のもの（`protocol.ts`）と同じ。 */
+export type ScreenPreferences = Extract<ToClient, { readonly kind: '画面の好み' }>['preferences']
+
 export interface Store {
   /**
    * 書き足す。**渡された並びを 1 つのまとまりとして書く。**
@@ -426,6 +446,10 @@ export interface Store {
    * 書けなかったときに接続を止めるかは呼ぶ側が決める（`serve.ts`）。ここは投げるだけである。
    */
   recordConnection(participant: ParticipantId): void
+  /** その人の画面の好み（ADR-0083）。まだ保存していなければ、既定の値（演出を表示する）。 */
+  screenPreferencesOf(participant: ParticipantId): ScreenPreferences
+  /** 画面の好みを保存する。前に保存したものは置き換わる。 */
+  saveScreenPreferences(participant: ParticipantId, preferences: ScreenPreferences): void
   close(): void
 }
 
@@ -526,6 +550,11 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
   const copyCount = db.prepare('select count(*) as n from recipe_copies where recipe = ?')
   const insertCopy = db.prepare('insert into recipe_copies (recipe, copied_at) values (?, ?)')
   const insertConnection = db.prepare('insert into connections (identity, connected_at) values (?, ?)')
+  const preferencesRow = db.prepare('select skip_animations from screen_preferences where identity = ?')
+  const savePreferences = db.prepare(
+    `insert into screen_preferences (identity, skip_animations) values (?, ?)
+     on conflict (identity) do update set skip_animations = excluded.skip_animations`,
+  )
 
   /**
    * いま開いている対戦の、合言葉から行番号への引き当て。
@@ -822,6 +851,13 @@ export function openStore(path: string, options: OpenStoreOptions = {}): Store {
     },
     recordConnection: (participant) => {
       insertConnection.run(identityOf(participant), now())
+    },
+    screenPreferencesOf: (participant) => {
+      const row = preferencesRow.get(identityOf(participant))
+      return { skipAnimations: row !== undefined && int(row, 'skip_animations') !== 0 }
+    },
+    saveScreenPreferences: (participant, preferences) => {
+      savePreferences.run(identityOf(participant), preferences.skipAnimations ? 1 : 0)
     },
     close: () => {
       db.close()

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DuelEvent, ToClient, WireChoice, WirePerspective } from '@revolution/engine'
-import { applyMessage, connecting, roomOf } from './session.js'
+import { applyMessage, connecting, roomOf, screenPreferencesOf, sessionAfterLinkChange } from './session.js'
 import type { Session } from './session.js'
 import { emptyBoard, logged } from './test-support.js'
 
@@ -608,6 +608,37 @@ describe('共有とレシピ', () => {
     const after = applyMessage(before, { kind: 'この画面が知らないもの' } as unknown as ToClient)
 
     expect(after).toBe(before)
+  })
+
+  /** ADR-0083。ログインを持たない立て方と古いサーバからは、画面の好みは届かない。 */
+  it('画面の好みが届かなければ、演出を表示する', () => {
+    const lobby: ToClient = { kind: 'ロビー', rooms: [], presets: [], chosen: undefined, cpuChosen: undefined, restrictions: [], own: 'ぬし' }
+
+    const session = fold(lobby)
+
+    expect(screenPreferencesOf(session)).toEqual({ skipAnimations: false })
+    expect(session.refusal).toBeUndefined()
+  })
+
+  it('繋ぎ直すと、前の接続で届いた画面の好みは消える', () => {
+    const before = fold({ kind: '画面の好み', preferences: { skipAnimations: true } })
+
+    const cut = sessionAfterLinkChange(before, { kind: '繋ごうとしている', attempt: 1 })
+    const reopened = sessionAfterLinkChange(cut, { kind: '繋がっている' })
+
+    expect(reopened.screenPreferences).toBeUndefined()
+    expect(screenPreferencesOf(reopened)).toEqual({ skipAnimations: false })
+    expect(reopened.stage).toBe(before.stage)
+  })
+
+  it('届いた画面の好みは、場面を変更せずに覚え、場面が移っても持ち越す', () => {
+    const before = fold({ kind: '相手を待っている', room: 'あいことば' })
+
+    const received = applyMessage(before, { kind: '画面の好み', preferences: { skipAnimations: true } })
+    const moved = applyMessage(received, SEATED)
+
+    expect(received.stage).toBe(before.stage)
+    expect(screenPreferencesOf(moved)).toEqual({ skipAnimations: true })
   })
 
   it('共有にまつわるものが届いても、いる場面は変わらない', () => {

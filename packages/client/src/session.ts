@@ -20,6 +20,7 @@ import type {
   WireRoom,
   WireShare,
 } from '@revolution/engine'
+import type { Link } from './connection.js'
 
 /**
  * クライアントがいまどこにいるか。
@@ -205,6 +206,24 @@ export interface Session {
   readonly recipeView: { readonly recipe: WireRecipe | undefined } | undefined
   /** 最後に尋ねた一覧への返事（ADR-0022）。まだ届いていなければ `undefined`。 */
   readonly recipeList: { readonly order: RecipeListOrder; readonly recipes: readonly WireRecipeSummary[] } | undefined
+  /**
+   * サーバから届いた画面の好み（ADR-0083）。届いていなければ `undefined`。取得するときは
+   * `screenPreferencesOf` を使う。
+   *
+   * ログインを持たない立て方と、古いサーバからは届かない。繋ぎ直すと `undefined` に戻る
+   * （`sessionAfterLinkChange`）。
+   */
+  readonly screenPreferences: ScreenPreferences | undefined
+}
+
+export type ScreenPreferences = Extract<ToClient, { readonly kind: '画面の好み' }>['preferences']
+
+/** 画面の好みが届いていない間の値。演出は表示する。 */
+const DEFAULT_SCREEN_PREFERENCES: ScreenPreferences = { skipAnimations: false }
+
+/** いま使う画面の好み（ADR-0083）。届いていなければ既定の値。 */
+export function screenPreferencesOf(session: Session): ScreenPreferences {
+  return session.screenPreferences ?? DEFAULT_SCREEN_PREFERENCES
 }
 
 /** 繋いだ直後の状態。 */
@@ -220,7 +239,18 @@ export function connecting(): Session {
     sharedShare: undefined,
     recipeView: undefined,
     recipeList: undefined,
+    screenPreferences: undefined,
   }
+}
+
+/**
+ * 繋がりの様子が変化した時の状態。
+ *
+ * 繋がるたびに画面の好みを消し、その接続のサーバから届いた時だけ入れる（ADR-0083）。繋ぎ直した
+ * 先は、画面の好みを送らないサーバに戻されているかもしれず、残すと前の値が使われ続ける。
+ */
+export function sessionAfterLinkChange(session: Session, link: Link): Session {
+  return link.kind === '繋がっている' ? { ...session, screenPreferences: undefined } : session
 }
 
 /**
@@ -381,6 +411,8 @@ export function applyMessage(session: Session, message: ToClient, fallbackOwnNam
       return { ...session, recipeView: { recipe: message.recipe } }
     case 'レシピの一覧':
       return { ...session, recipeList: { order: message.order, recipes: message.recipes } }
+    case '画面の好み':
+      return { ...session, screenPreferences: message.preferences }
     // この画面が知らない種類（#285）。サーバが先に新しくなると、開いたままの画面に届く。
     // 何も返さないと、いまの状態ごと失って画面が描けなくなる。置く先が無いので捨てる。
     default:

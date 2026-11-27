@@ -774,6 +774,13 @@ export type FromClient =
    * 捨てれば、行動を始める前と同じ盤面がそこにある。
    */
   | { readonly kind: '取り消す' }
+  /**
+   * 画面の好みを保存する（ADR-0083）。受けたサーバは保存して、`画面の好み` を送り返す。
+   *
+   * ログインした人ごとに覚えるので、ログインを持たない立て方では断られる。この種類を知らない
+   * 古いサーバは「読めないメッセージ」として断り、何も保存されない。
+   */
+  | { readonly kind: '画面の好みを保存する'; readonly preferences: { readonly skipAnimations: boolean } }
 
 /** サーバからクライアントへ送るもの。 */
 export type ToClient =
@@ -979,6 +986,14 @@ export type ToClient =
   /** `レシピの一覧を見る` への返事（ADR-0022）。 */
   | { readonly kind: 'レシピの一覧'; readonly order: RecipeListOrder; readonly recipes: readonly WireRecipeSummary[] }
   | { readonly kind: '行えなかった'; readonly reason: string }
+  /**
+   * その人の画面の好み（ADR-0083）。ログインした人にだけ、入った直後と、`画面の好みを保存する`
+   * への返事として届く。`skipAnimations` は、CPU とのデュエルで演出を表示しないかである。
+   *
+   * 画面から尋ねる方式にしないのは、古いサーバに尋ねると断りの文が画面に表示されるためである。
+   * 届かなければ、画面は既定の値（演出を表示する）のまま動く。
+   */
+  | { readonly kind: '画面の好み'; readonly preferences: { readonly skipAnimations: boolean } }
 
 /**
  * ログインしていないので繋げない（ADR-0019）。`行えなかった` の `reason` に載る。
