@@ -8,13 +8,13 @@ import type {
   CardId,
   DeckId,
   DuelFormat,
-  LoggedEvent,
   OpponentKind,
   Player,
   RecipeKey,
   RecipeListOrder,
   RestrictionChoice,
   RoomCode,
+  WireLoggedEvent,
   WireRoomRules,
   WireShare,
 } from '@revolution/engine'
@@ -1612,7 +1612,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
   let overlay: Overlay = EMPTY_OVERLAY
   let queue: Overlay[] = []
   let overlayTimer: ReturnType<typeof setTimeout> | undefined
-  let lastFresh: readonly LoggedEvent[] | undefined
+  let lastFresh: readonly WireLoggedEvent[] | undefined
   /**
    * 手を送って、返事を待っている間か（#253、`reply-wait.ts`）。ダイアログや一覧の中ではなく、ここで
    * 描き直しをまたいで持つ。返事（盤面・選んでほしい・行えなかった）か、繋がりの様子が変わるまで解かない。

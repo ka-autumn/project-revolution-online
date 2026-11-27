@@ -11,12 +11,9 @@ import type {
   CreatedTrigger,
   EffectiveKeywords,
   EffectiveUnitData,
-  DuelEvent,
   Duration,
-  DuelResult,
   LegalAction,
   LoggedContinuousChange,
-  LoggedEvent,
   LoggedInstruction,
   MoveDirection,
   Opponent,
@@ -39,6 +36,9 @@ import type {
   WireCardInstance,
   WireCardPosition,
   WireChoice,
+  WireDuelEvent,
+  WireDuelResult,
+  WireLoggedEvent,
   WirePerspective,
   WireRoom,
   WireVisibleCard,
@@ -1273,7 +1273,7 @@ function resultLine(board: WirePerspective): ResultView | undefined {
 }
 
 /** 決着した勝敗の種類を、見る人から見た言い方にする。勝利は金、敗北は寒色、引き分けは灰色の配色になる（ADR-0027）。 */
-function resultKindOf(result: DuelResult, viewer: Player): ResultView['kind'] {
+function resultKindOf(result: WireDuelResult, viewer: Player): ResultView['kind'] {
   if (result.kind === '引き分け') return '引き分け'
 
   return result.winner === viewer ? '勝利' : '敗北'
@@ -1297,7 +1297,7 @@ function resultKindOf(result: DuelResult, viewer: Player): ResultView['kind'] {
  * 見えていないものの名前を作らない（#95）。名指しが落ちていれば（`perspective.ts`）、
  * 名前のところを省いた言い方になる。相手に伝わる情報は増えない（#97）。
  */
-export function priorityReason(board: WirePerspective, fresh: readonly LoggedEvent[]): string | undefined {
+export function priorityReason(board: WirePerspective, fresh: readonly WireLoggedEvent[]): string | undefined {
   const names = namesIn(board)
   const taken = fresh
     .map(({ event }) => event)
@@ -1438,7 +1438,7 @@ export function logLines(board: WirePerspective, choosing = false): readonly Log
    * 読ませたい。どちらも 1 件のできごとからまとめて作るので、行の前後が入れ替わることは
    * ない。何行で見せるかを決めるのはここである。
    */
-  function linesOf(event: DuelEvent): readonly LinePart[] {
+  function linesOf(event: WireDuelEvent): readonly LinePart[] {
     switch (event.kind) {
       case '進行が変わった':
         return progressLines(event.from, event.to, whose)
@@ -1455,7 +1455,7 @@ export function logLines(board: WirePerspective, choosing = false): readonly Log
   }
 
   /** 1 行にしかならないできごと 1 つを、字下げを別にした 1 行にする。 */
-  function logLineOf(event: Exclude<DuelEvent, { kind: '進行が変わった' | 'リリースした' }>): LinePart | undefined {
+  function logLineOf(event: Exclude<WireDuelEvent, { kind: '進行が変わった' | 'リリースした' }>): LinePart | undefined {
     switch (event.kind) {
       case '行動した':
         return { whose: whose(event.player), text: actionText(event) }
@@ -1602,8 +1602,8 @@ const UNREADABLE_LOG = '（表示できないログ）'
  */
 type LinePart = Omit<LogLine, 'kind' | 'depth'> & { readonly kind?: LogLine['kind'] }
 
-type CostPaid = Extract<DuelEvent, { kind: 'コストを支払った' }>
-type ActionTaken = Extract<DuelEvent, { kind: '行動した' }>
+type CostPaid = Extract<WireDuelEvent, { kind: 'コストを支払った' }>
+type ActionTaken = Extract<WireDuelEvent, { kind: '行動した' }>
 
 /**
  * ログの 1 件か、コストを支払って行った手 1 つ（ADR-0051）。
@@ -1612,11 +1612,11 @@ type ActionTaken = Extract<DuelEvent, { kind: '行動した' }>
  * 同じプレイヤーのコストの行をまとめたものである。
  */
 type JoinedEntry =
-  | { readonly kind: 'できごと'; readonly entry: LoggedEvent }
+  | { readonly kind: 'できごと'; readonly entry: WireLoggedEvent }
   | {
       readonly kind: '手'
       readonly costs: readonly CostPaid[]
-      readonly action: LoggedEvent & { readonly event: ActionTaken }
+      readonly action: WireLoggedEvent & { readonly event: ActionTaken }
     }
 
 /**
@@ -1626,7 +1626,7 @@ type JoinedEntry =
  * 手の行が続かないコストの行は、そのまま残す。コストを選んでいる間は、手の行がまだ積まれていない
  * （ADR-0050）ので、コストの行だけが出て、手が終わるとまとめた形に変わる。
  */
-function withCostsJoined(log: readonly LoggedEvent[]): readonly JoinedEntry[] {
+function withCostsJoined(log: readonly WireLoggedEvent[]): readonly JoinedEntry[] {
   const joined: JoinedEntry[] = []
   let index = 0
   while (index < log.length) {
@@ -1680,8 +1680,8 @@ const RESOLUTION_VIA_OF_ACTION: Readonly<Record<ActionTaken['action'], Resolutio
  * 落とすのは行だけで、解決のまとまりの区切り（`foldedInstructions`・`continuousLineGroups`）と
  * カットイン（`cutInViews`）は、できごとをそのまま参照するので変化しない。
  */
-function resolutionsHeadedByActions(events: readonly DuelEvent[]): ReadonlySet<DuelEvent> {
-  const headed = new Set<DuelEvent>()
+function resolutionsHeadedByActions(events: readonly WireDuelEvent[]): ReadonlySet<WireDuelEvent> {
+  const headed = new Set<WireDuelEvent>()
   events.forEach((event, at) => {
     const action = events[at - 1]
     if (event.kind !== '能力を解決した' || action?.kind !== '行動した') return
@@ -1696,7 +1696,7 @@ function resolutionsHeadedByActions(events: readonly DuelEvent[]): ReadonlySet<D
 }
 
 /** そのプレイヤーの手の行か。 */
-function isActionBy(entry: LoggedEvent, player: Player | undefined): entry is LoggedEvent & { readonly event: ActionTaken } {
+function isActionBy(entry: WireLoggedEvent, player: Player | undefined): entry is WireLoggedEvent & { readonly event: ActionTaken } {
   return entry.event.kind === '行動した' && entry.event.player === player
 }
 
@@ -1711,7 +1711,7 @@ const PROCEDURE_EDGES = [
   'バトルが終わった',
   'スマッシュ判定が始まった',
   'スマッシュ判定が終わった',
-] as const satisfies readonly DuelEvent['kind'][]
+] as const satisfies readonly WireDuelEvent['kind'][]
 
 /**
  * その行を字下げする深さ（#133）。
@@ -1724,7 +1724,7 @@ const PROCEDURE_EDGES = [
  * 手順の始まりと終わりの行は、囲んでいる手順の中ではなくその手順自身の深さに立つ
  * （`PROCEDURE_EDGES`）。それ以外の行は自分を囲む手順の中にいるので、1 つ引く。
  */
-function depthOf(event: DuelEvent, during: readonly Procedure[]): number {
+function depthOf(event: WireDuelEvent, during: readonly Procedure[]): number {
   const edge: readonly string[] = PROCEDURE_EDGES
   return edge.includes(event.kind) ? during.length : Math.max(0, during.length - 1)
 }
@@ -1903,12 +1903,12 @@ function withSubject(line: string, controller: Player, whose: (player: Player) =
  * ログの行にもカットインにも、同じ集合を使う。
  */
 function foldedInstructions(
-  events: readonly DuelEvent[],
+  events: readonly WireDuelEvent[],
   named: (card: CardId | undefined) => string | undefined,
   viewer: Player,
   choosing: boolean,
-): ReadonlySet<DuelEvent> {
-  const folded = new Set<DuelEvent>()
+): ReadonlySet<WireDuelEvent> {
+  const folded = new Set<WireDuelEvent>()
 
   /** 名前を取得できるカードだけ。行が名前を出力するものである。 */
   const nameable = (cards: readonly (CardId | undefined)[]): readonly CardId[] =>
@@ -1944,7 +1944,7 @@ function foldedInstructions(
     }
   }
 
-  const endsResolution = (event: DuelEvent): boolean =>
+  const endsResolution = (event: WireDuelEvent): boolean =>
     event.kind === '能力を解決した' || event.kind === '行動した' || event.kind === '進行が変わった'
 
   if (choosing) {
@@ -2006,13 +2006,13 @@ function foldedInstructions(
  * まとめる行の先頭は、最初のできごとである。その行が全部の変更を言い、残りのできごとの行は落とす
  * （`foldedInstructions`）。解決のまとまりは、「能力を解決した」から、次の「能力を解決した」・手・進行の切り替わりまでである。
  */
-function continuousLineGroups(events: readonly DuelEvent[]): {
-  readonly first: ReadonlyMap<DuelEvent, readonly LoggedContinuousChange[]>
-  readonly later: ReadonlySet<DuelEvent>
+function continuousLineGroups(events: readonly WireDuelEvent[]): {
+  readonly first: ReadonlyMap<WireDuelEvent, readonly LoggedContinuousChange[]>
+  readonly later: ReadonlySet<WireDuelEvent>
 } {
-  const first = new Map<DuelEvent, LoggedContinuousChange[]>()
-  const later = new Set<DuelEvent>()
-  let open = new Map<string, DuelEvent>()
+  const first = new Map<WireDuelEvent, LoggedContinuousChange[]>()
+  const later = new Set<WireDuelEvent>()
+  let open = new Map<string, WireDuelEvent>()
 
   for (const event of events) {
     if (event.kind === '能力を解決した' || event.kind === '行動した' || event.kind === '進行が変わった') {
@@ -2284,7 +2284,7 @@ function headingOf(via: ResolutionVia, name: string | undefined): string {
  *
  * 本文は既存の `instructionLine` をそのまま使い回す。新しい言い換えを二度書かない。
  */
-export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[], choosing = false): readonly CutInView[] {
+export function cutInViews(board: WirePerspective, fresh: readonly WireLoggedEvent[], choosing = false): readonly CutInView[] {
   const names = namesIn(board)
   const whose = (player: Player): '自分' | '相手' => whoseOf(board, player)
   const named = (card: CardId | undefined): string | undefined =>
@@ -2350,7 +2350,7 @@ export function cutInViews(board: WirePerspective, fresh: readonly LoggedEvent[]
  * 「前」が無いので何も出さない。もっとも、最初の盤面と入り直しでは `fresh` が空になる
  * （`session.ts`、ADR-0009）ので、そこへ届くことは普通は無い。
  */
-export function transitionViews(fresh: readonly LoggedEvent[], board: WirePerspective): readonly TransitionView[] {
+export function transitionViews(fresh: readonly WireLoggedEvent[], board: WirePerspective): readonly TransitionView[] {
   const views: TransitionView[] = []
 
   for (const { event } of fresh) {
@@ -2371,7 +2371,7 @@ export function transitionViews(fresh: readonly LoggedEvent[], board: WirePerspe
 }
 
 /** 決着した勝敗を、見る人から見た言い方にする。 */
-function resultLabel(result: DuelResult, viewer: Player): string {
+function resultLabel(result: WireDuelResult, viewer: Player): string {
   if (result.kind === '引き分け') return '引き分け'
 
   return result.winner === viewer ? '勝ち' : '負け'

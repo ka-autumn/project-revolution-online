@@ -1,10 +1,10 @@
 import type { MoveDirection, Square } from './board.js'
 import type { Attribute, Card, CardType, Color, PlanKeyword, TriggerIcon, UnitCard } from './card.js'
 import { planKeywordsOf } from './card.js'
-import type { CardId, CardInstance, DuelResult } from './duel.js'
+import type { CardId, CardInstance, Defeat, DuelResult } from './duel.js'
 import type { TrapOccasion } from './ability.js'
 import type { UnitOnSquare } from './effect.js'
-import type { LoggedEvent } from './log.js'
+import type { DuelEvent, LoggedEvent } from './log.js'
 import type { Orientation } from './orientation.js'
 import type {
   DuelPerspective,
@@ -208,7 +208,7 @@ export interface WirePerspective {
   readonly courageConditionsMet: readonly WireCourageConditionMet[]
   readonly battles: readonly VisibleBattle[]
   readonly smashJudgments: readonly VisibleSmashJudgment[]
-  readonly result: DuelResult | undefined
+  readonly result: WireDuelResult | undefined
   /**
    * ここまでに起きたできごと（#95）。射影が落とした後のものがそのまま載る。
    *
@@ -220,7 +220,7 @@ export interface WirePerspective {
    * どの手順の中で起きたかも組にして載る（`log.ts` の `LoggedEvent`、#133）。字下げに
    * 直すのは受け取った側（`view-model.ts` の `logLines`）である。
    */
-  readonly log: readonly LoggedEvent[]
+  readonly log: readonly WireLoggedEvent[]
   /**
    * `log` が名指ししているカードのうち、盤面に載っていないもの（#139）。
    *
@@ -230,6 +230,34 @@ export interface WirePerspective {
    */
   readonly namedInLog: readonly WireCardInstance[]
 }
+
+/**
+ * 受け取る側から見た決着のデータ（ADR-0082）。エンジンの `DuelResult` との違いは、`defeats` を
+ * 省略できることだけである。画面とサーバは別々にデプロイされ、`defeats` は古いサーバからは
+ * 届かない。受ける側は、無ければ敗北の理由が分からないものとして扱う。
+ */
+export type WireDuelResult = WithOptionalDefeats<DuelResult>
+
+/** 勝敗の種類ごとに分けたまま、`defeats` だけを省略できるようにする。 */
+type WithOptionalDefeats<R extends DuelResult> = R extends DuelResult
+  ? Omit<R, 'defeats'> & { readonly defeats?: readonly Defeat[] }
+  : never
+
+/** 受け取る側から見たできごと。`決着した` の決着のデータは、盤面の `result` と同じく `WireDuelResult` である。 */
+export type WireDuelEvent =
+  | Exclude<DuelEvent, { readonly kind: '決着した' }>
+  | { readonly kind: '決着した'; readonly result: WireDuelResult }
+
+/** 受け取る側から見たログの 1 件（`log.ts` の `LoggedEvent`）。 */
+export interface WireLoggedEvent extends Omit<LoggedEvent, 'event'> {
+  readonly event: WireDuelEvent
+}
+
+/**
+ * `toWire` が作成する盤面。決着のデータは、受け取る側の型（`WirePerspective`）と違って `defeats` を
+ * 省略できない。送る側で `defeats` を落としたら、型の検査で止まる。
+ */
+type SentPerspective = Omit<WirePerspective, 'result' | 'log'> & Pick<DuelPerspective, 'result' | 'log'>
 
 /** 種別によらず書かれていることを写す。能力と効果は写さない。 */
 function written(card: Card): WireWrittenCard & { readonly type: CardType } {
@@ -319,7 +347,7 @@ function visibleToWire(visible: VisibleCard, presentationOf: CardPresentationOf)
  * 盤面を描いて選んだものを送るだけで、デュエルを進めるのは完全な盤面を持つサーバだけである
  * （ADR-0010）。
  */
-export function toWire(perspective: DuelPerspective, presentationOf: CardPresentationOf = withoutPresentation): WirePerspective {
+export function toWire(perspective: DuelPerspective, presentationOf: CardPresentationOf = withoutPresentation): SentPerspective {
   const zonesOf = (owner: Player): Readonly<Record<PlayerZone, readonly WireVisibleCard[]>> =>
     Object.fromEntries(
       PLAYER_ZONES.map((zone): readonly [PlayerZone, readonly WireVisibleCard[]] => [

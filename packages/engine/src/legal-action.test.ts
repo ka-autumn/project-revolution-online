@@ -72,7 +72,10 @@ describe('合法手の列挙', () => {
   })
 
   it('デュエルが終了していれば何も無い', () => {
-    const ended: DuelState = { ...mainPhase(), result: { kind: '勝利', winner: '先攻' } }
+    const ended: DuelState = {
+      ...mainPhase(),
+      result: { kind: '勝利', winner: '先攻', defeats: [{ player: '後攻', conditions: ['山札'] }] },
+    }
 
     expect(legalActions(ended)).toEqual([])
   })
@@ -185,7 +188,10 @@ describe('合法手の適用', () => {
   })
 
   it('優先権を放棄する手はデュエルが終了していても例外にならない', () => {
-    const ended: DuelState = { ...mainPhase(), result: { kind: '勝利', winner: '先攻' } }
+    const ended: DuelState = {
+      ...mainPhase(),
+      result: { kind: '勝利', winner: '先攻', defeats: [{ player: '後攻', conditions: ['山札'] }] },
+    }
 
     const after = applyLegalAction(ended, { kind: '優先権を放棄する' }, chooseFirst)
 

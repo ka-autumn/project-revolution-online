@@ -281,13 +281,33 @@ export interface DuelState {
 /**
  * デュエルの勝敗（総合ルール 第3部 第3章）。
  *
- * 敗北したプレイヤーではなく勝利したプレイヤーを持つ。敗北の条件を満たしたプレイヤーが
+ * 勝敗は、敗北したプレイヤーではなく勝利したプレイヤーで表す。敗北の条件を満たしたプレイヤーが
  * 敗北し、相手が勝利する（同 1・2）という形しかなく、両方が同時に敗北した場合は引き分けに
  * なる（同 4）ためである。
+ *
+ * `defeats` は、敗北の理由である（ADR-0082）。敗北したプレイヤーごとに 1 つあり、引き分けでは
+ * 2 人分になる。並びは先攻・後攻の順。
  */
 export type DuelResult =
-  | { readonly kind: '勝利'; readonly winner: Player }
-  | { readonly kind: '引き分け' }
+  | { readonly kind: '勝利'; readonly winner: Player; readonly defeats: readonly Defeat[] }
+  | { readonly kind: '引き分け'; readonly defeats: readonly Defeat[] }
+
+/**
+ * 敗北の条件。`スマッシュ` はスマッシュが 7 枚以上になったこと（総合ルール 第3部 第3章 1、
+ * 第4部 第14章 4-1）、`山札` は山札にあるカードが 0 枚以下になったこと（同 第3部 第3章 2、
+ * 第4部 第14章 4-2）を指す。
+ */
+export type DefeatCondition = 'スマッシュ' | '山札'
+
+/**
+ * 敗北したプレイヤー 1 人と、そのプレイヤーが敗北した時に満たしていた条件。
+ *
+ * `conditions` は 1 つ以上あり、2 つとも満たした場合は `スマッシュ`・`山札` の順に並ぶ。
+ */
+export type Defeat = {
+  readonly player: Player
+  readonly conditions: readonly DefeatCondition[]
+}
 
 /**
  * そのデュエルが終了しているか（総合ルール 第3部 第3章 3）。
