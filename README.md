@@ -456,6 +456,19 @@ pnpm test:browser
 テストが終わると Playwright がサーバのプロセスを止めるため、`tools/serve.mjs` の片付けが走らず、
 一時フォルダに `revolution-serve-*` が残る。
 
+## CI
+
+GitHub Actions（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）が、プルリクエストと `main` への
+push のたびに次を順に実行する。
+
+1. `pnpm install --frozen-lockfile`
+2. `pnpm verify`
+3. Chromium の取得
+4. `pnpm test:browser`
+
+CI は公開リポジトリだけを取得するので、`private/` が無い。非公開側のテストとデッキ構築の計測は、CI では
+走らない。CI が通っていても、マージの前には手元で `private/` を置いた状態の `pnpm verify` を実行する。
+
 ## この公開リポジトリだけを clone した場合
 
 `private/` が無いため、対戦を動かすことはできない。`pnpm verify` は通る。
