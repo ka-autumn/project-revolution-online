@@ -2,7 +2,6 @@ import type {
   DeckId,
   DeckViolation,
   LegalAction,
-  LoggedEvent,
   Opponent,
   PassOutcome,
   Player,
@@ -10,6 +9,7 @@ import type {
   RoomCode,
   ToClient,
   WireChoice,
+  WireLoggedEvent,
   WirePresetDeck,
   WireLobbyRestrictionList,
   WireOwnedDeck,
@@ -132,7 +132,7 @@ export type Stage =
        * なる。行き先が見えなくなったできごとは後から名指しが落ちる（`perspective.ts`）ので、
        * 中身を見比べてはならない。長さで切る。
        */
-      readonly fresh: readonly LoggedEvent[]
+      readonly fresh: readonly WireLoggedEvent[]
     }
 
 /**
