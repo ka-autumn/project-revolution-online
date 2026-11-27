@@ -5,14 +5,20 @@ import {
   PRIVATE_DECKS,
   SCENARIO_SERVER,
   hasPrivateDecks,
+  hasStoreDirectory,
   storePathOf,
 } from './browser-tests/servers.js'
 import type { GameServer } from './browser-tests/servers.js'
+import { seedStores } from './browser-tests/seed.js'
+
+// 設定ファイルは対戦サーバを立てる前に読まれる（`globalSetup` はサーバを立てた後に呼ばれる）。
+// テストを走らせるプロセスもこのファイルを読み直すので、書き込むのは最初の 1 回だけにする。
+if (!hasStoreDirectory()) seedStores()
 
 /**
  * ログインを持つ対戦サーバを立てる。デッキ構築は、ログインの無い立て方では開けないためである。
- * Google の設定は架空の値で、テストは Google へは行かず、置き場にセッションを作成して入る
- * （`browser-tests/players.ts`）。
+ * Google の設定は架空の値で、テストは Google へは行かず、起動の前に置き場へ書き込んでおいた
+ * セッションで入る（`browser-tests/seed.ts`）。
  */
 function gameServer(server: GameServer, decks: string) {
   return {
