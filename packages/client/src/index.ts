@@ -172,6 +172,7 @@ import { wireFingerOnHand } from './phone-touch.js'
 import { settlePhoneFocus } from './phone-focus.js'
 import { openPayList, settlePayState } from './pay-list.js'
 import type { PayEvent, PayState } from './pay-list.js'
+import { BUILD_FAILED, showScreen } from './screen-root.js'
 
 /**
  * クライアントの起動点。
@@ -635,6 +636,9 @@ function ownShareLinkOf(share: WireShare): string {
  *
  * 差分を当てずに毎回作り直している。盤面も差分ではなくまるごと届く（`wire.ts`）ので、
  * 追いつかせるものが無い。
+ *
+ * `root` は `#board` そのものではなく、根の部品が持つかたまりの要素（`screen-root.tsx`、ADR-0078）。
+ * 根の部品の組み立てとして呼ぶので、投げると根の部品が受け止める。
  *
  * `overlay` は盤面の一部ではなく、いま出す分だけを呼ぶ側（`mount` のタイマー）が渡す。
  * ここで毎回作り直しても、CSS の `animation` を使っていないのでちらつかない
@@ -2435,6 +2439,9 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
    * 残る。何が起きたか読めないまま止まるのが一番重い（#175 が繋がりについて書いたのと同じ
    * ことである）。届いたものが思っていた形と違うことは起こりうる——画面とサーバは別々に配られ、
    * 同時には入れ替わらない（ADR-0013、ADR-0015）。
+   *
+   * `draw` で投げたものは根の部品が受け止める。その外（状態を整える、描いた後に寸法を測る）で
+   * 投げたものは根の部品には届かないので、ここで受け止める。
    */
   const redraw = (): void => {
     // 変換中は描き直さない（すべての入力欄が対象）。作り直した欄は、変換中の文字を持たない。
@@ -2463,7 +2470,16 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         scroll = scrolled.scroll
       }
       const phone: PhoneControl | undefined = isPhoneWidth() ? phoneControl() : undefined
-      draw(root, session, link, connection, overlay, picking(), lobby(), naming(), building(), duelInteraction(), phone, pending)
+      let drawn = false
+      showScreen(root, {
+        kind: 'かたまり',
+        build: (chunk) => {
+          draw(chunk, session, link, connection, overlay, picking(), lobby(), naming(), building(), duelInteraction(), phone, pending)
+          drawn = true
+        },
+      })
+      // 組み立てで投げた時は、根の部品が断りの表示に替える。寸法は測らない。
+      if (!drawn) return
       // デッキ構築のタブを替えたあとのページのスクロール。描いて高さが決まってから置く。
       settlePhoneScroll(root, scroll)
       // 対戦画面の盤面を画面に合わせて縮め、捨札・リムーブのつまみの縦の位置を合わせる。描いて高さが決まってから測る。
@@ -2495,7 +2511,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
       }
     } catch (error) {
       console.error('画面を組み立てられませんでした:', error)
-      root.replaceChildren(line('status', '画面を組み立てられませんでした。ページを再読み込みしてください'))
+      showScreen(root, { kind: '一行', text: BUILD_FAILED })
     }
   }
 
@@ -2560,7 +2576,7 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
         if (goToSignIn(options.signInUrl)) {
           // 移るまでの間、この画面は生きている。 断られたことは出さない——人がすることは
           // 何も無く、次に起きることだけが読めればよい。
-          root.replaceChildren(line('status', 'ログインへ移動しています'))
+          showScreen(root, { kind: '一行', text: 'ログインへ移動しています' })
           return
         }
       } else if (!signedIn) {

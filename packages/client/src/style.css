@@ -68,6 +68,14 @@ body {
   min-height: 0;
 }
 
+/*
+ * 根の部品（`screen-root.tsx`）が画面の組み立てを入れる要素。箱を持たず、中身を `#board` の縦の箱の
+ * 子として並べる。
+ */
+.screen-chunk {
+  display: contents;
+}
+
 .status,
 .refusal {
   margin: var(--gap) 0;
