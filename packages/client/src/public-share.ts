@@ -5,6 +5,7 @@ import { connect } from './connection.js'
 import { copyOutcomeOf, publicCardSections, rememberPendingShare } from './recipe.js'
 import type { CopyState } from './recipe.js'
 import { publicShareElement, publicShareLoadingElement, publicShareNotFoundElement } from './render.js'
+import { showScreen } from './screen-root.js'
 
 export interface PublicShareMountOptions {
   /** 対戦サーバの HTTP の置き場（`main.ts` の `httpOrigin`）。 */
@@ -58,11 +59,16 @@ export async function loadPublicShare(serverOrigin: string, key: ShareKey): Prom
  * 人全員にこれを引き受けさせないため、繋ぐのはコピーする意思がある人だけにする。
  */
 export async function mountPublicShare(root: HTMLElement, options: PublicShareMountOptions): Promise<void> {
-  root.replaceChildren(publicShareLoadingElement())
+  // ふだんの画面と同じく根の部品を通して表示する（ADR-0078）。要素は組み立ての中で作成する。
+  // 外で作成すると、投げても根の部品が受け止められない。
+  const show = (build: () => HTMLElement): void =>
+    showScreen(root, { kind: 'かたまり', build: (chunk) => chunk.replaceChildren(build()) })
+
+  show(publicShareLoadingElement)
 
   const loaded = await loadPublicShare(options.serverOrigin, options.key)
   if (loaded.kind === '開けなかった') {
-    root.replaceChildren(publicShareNotFoundElement())
+    show(publicShareNotFoundElement)
     return
   }
 
@@ -70,9 +76,11 @@ export async function mountPublicShare(root: HTMLElement, options: PublicShareMo
   let copyState: CopyState = { kind: '未着手' }
 
   function render(): void {
-    configureCardMetadata(share.makers ?? {}, {})
-    const onLogin = (): void => rememberPendingShare(sessionStorage, options.key)
-    root.replaceChildren(publicShareElement(share, publicCardSections(share.cards), options.signInUrl, onLogin, copyState, startCopy))
+    show(() => {
+      configureCardMetadata(share.makers ?? {}, {})
+      const onLogin = (): void => rememberPendingShare(sessionStorage, options.key)
+      return publicShareElement(share, publicCardSections(share.cards), options.signInUrl, onLogin, copyState, startCopy)
+    })
   }
 
   /**
