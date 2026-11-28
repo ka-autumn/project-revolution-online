@@ -48,6 +48,8 @@ function gameServer(server: GameServer, decks: string) {
  */
 export default defineConfig({
   testDir: './browser-tests',
+  // CI では `test.only` の残りを失敗にする。`CI` は GitHub Actions が自動で設定するので、手元の動きは同じ。
+  forbidOnly: !!process.env['CI'],
   // 対戦サーバはロビーを全部のテストが共有する。同時に走らせると部屋の数に互いに影響し、計測も揺れる。
   workers: 1,
   reporter: [['list'], ['./browser-tests/remove-stores.ts']],

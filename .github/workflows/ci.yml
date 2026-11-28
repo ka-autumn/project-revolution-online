@@ -1,0 +1,81 @@
+# プルリクエストと main への push で走る検査（#242）。公開リポジトリだけを取得するので private/ は無く、
+# 非公開側のテストとデッキ構築の計測は走らない。秘密は使わない。
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# プルリクエストは、新しい push が来たら古い実行を打ち切る。main への push は打ち切らない。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      # pnpm のバージョンは package.json の packageManager から取得される。
+      - uses: pnpm/action-setup@v6
+
+      # cache: pnpm は pnpm の store の場所を pnpm に問い合わせるので、pnpm をインストールした後に置く。
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # 素の pnpm install は、private/ が無いとロックファイルから非公開側の importer を消す。
+      - name: install
+        run: pnpm install --frozen-lockfile
+
+      - name: verify
+        run: pnpm verify
+
+      # Chromium のビルドは Playwright のバージョンに対応しているので、バージョンをキャッシュのキーに含める。
+      # runner の OS のバージョンが上がると別のビルドを使うので、ImageOS もキーに含める。ImageOS は式の
+      # env コンテキストから参照できないので、この step で output にする。
+      - name: Playwright のバージョンを取得
+        id: playwright
+        working-directory: packages/client
+        run: |
+          version="$(pnpm exec playwright --version | awk '{ print $2 }')"
+          if [ -z "$version" ]; then
+            echo "Playwright のバージョンを取得できませんでした" >&2
+            exit 1
+          fi
+          if [ -z "$ImageOS" ]; then
+            echo "ImageOS が空です" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageOS" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}
+
+      # キャッシュに当たってもブラウザの取得を省くだけで、OS のパッケージ（--with-deps）は毎回インストールする。
+      - name: Chromium を取得
+        working-directory: packages/client
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: 本物のブラウザのテスト
+        run: pnpm test:browser
+
+      # always() にしないのは、test.fail の筋書きが毎回失敗するので、成功した実行でもテスト結果が出力されるため。
+      - name: 失敗した時のテスト結果をアップロード
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-test-results
+          path: packages/client/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
