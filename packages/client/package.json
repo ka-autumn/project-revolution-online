@@ -15,10 +15,12 @@
   },
   "dependencies": {
     "@revolution/engine": "workspace:*",
-    "@revolution/notices": "workspace:*"
+    "@revolution/notices": "workspace:*",
+    "preact": "11.2.0"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",
+    "@testing-library/preact": "3.2.6",
     "happy-dom": "21.0.4",
     "vite": "^7.3.1",
     "vitest": "catalog:"
