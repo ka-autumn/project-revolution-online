@@ -1093,8 +1093,11 @@ function rejoin(
   if (seat === undefined) return refuse(rooms, participant, '席に着いていない')
 
   const facing = duel.seats[seat === '先攻' ? '後攻' : '先攻']
-  // 選ぶのを待っているなら、行動を始める前の盤面ではなく、その選択が起きている盤面を
-  // 送り直す（#142）。入り直す前に見えていたものと同じものが届く。
+  // 選ぶのを待っているなら、選ぶ人にはその選択が起きている盤面（#142）を、選ばないほうには
+  // 戻れる最も前の盤面（ADR-0081）を送り直す。入り直す前に届いたものと同じになる。
+  const progress = pendingProgress(duel)
+  const sent = progress === undefined ? boards(duel) : boardsWhileChoosing(duel, progress)
+
   return {
     rooms,
     deliveries: [
@@ -1108,7 +1111,7 @@ function rejoin(
           own: names(participant),
         },
       },
-      ...boards(duel, pendingProgress(duel)?.board).filter((delivery) => delivery.to === participant),
+      ...sent.filter((delivery) => delivery.to === participant),
       ...pendingChoice(duel, seat),
     ],
     // 入り直しは、その人に送り直しているだけである。新しく起きたことは何も無い。
@@ -1275,25 +1278,75 @@ function seats(duel: DuelInRoom): readonly (readonly [Player, ParticipantId])[] 
  * （`act` が `選ぶのを待っている` として断る）。打てない手を並べさせないために、断る側と
  * 送る側で同じ判断をしている。
  *
- * `showing` は、送る盤面を差し替えるためにある。選ぶのを待っている間はその選択が起きている
- * 盤面を送る（#142）。行動が終わるまで `duel.state` は動かない（ADR-0008）ので、そのまま
- * 送ると、選ぶ人が見るのは行動を始める前の盤面になってしまう。差し替えるのは送るものだけで、
- * `duel.state` は動かさない。やり直しの起点がそこにある。
+ * `showing` は、送る盤面をプレイヤーごとに差し替えるためにある。選ぶのを待っている間の指定は
+ * `boardsWhileChoosing` が持つ。差し替えるのは送るものだけで、`duel.state` は動かさない。
+ * やり直しの起点がそこにある。
  */
-function boards(duel: DuelInRoom, showing: DuelState = duel.state): readonly Delivery[] {
+function boards(duel: DuelInRoom, showing: (player: Player) => DuelState = () => duel.state): readonly Delivery[] {
   const actions = duel.pending === undefined ? legalActions(duel.state) : []
 
   return seats(duel).map(([player, to]) => ({
     to,
     message: {
       kind: '盤面',
-      perspective: toWire(perspectiveOf(showing, player), duel.presentationOf),
+      perspective: toWire(perspectiveOf(showing(player), player), duel.presentationOf),
       actions: player === duel.state.turn.priority ? actions : [],
       // 放棄したら何が起きるかは、進行中の盤面ではなく確定した盤面から決まる。押すのは
       // これから（`duel.state` に対して）だからである（#130）。
       passOutcome: passOutcome(duel.state),
     },
   }))
+}
+
+/** 行動の途中で、選んでほしいと言っているところ（`applyWithAnswers`）。 */
+type Choosing = Extract<ActionProgress, { kind: '選んでほしい' }>
+
+/**
+ * 選ぶのを待っている間の盤面を、それぞれに送る。
+ *
+ * 選ぶ人には、その選択が起きている盤面を送る（#142）。行動が終わるまで `duel.state` は動かない
+ * （ADR-0008）ので、そのまま送ると、選ぶ人が見るのは行動を始める前の盤面になる。
+ *
+ * 選ばないほうには、選ぶ人が戻れる最も前の盤面を送る（ADR-0081）。途中の盤面を送ると、選ぶ人が
+ * 戻した時に、進んで見えた盤面が前へ戻る。
+ *
+ * 誰が選んでいるかは参照しない。CPU が選ぶ時も同じに止める。CPU が答えを戻さないのは今の CPU の
+ * 実装によるもので、仕組みとして決定してはいないためである（ADR-0081）。
+ */
+function boardsWhileChoosing(duel: DuelInRoom, progress: Choosing): readonly Delivery[] {
+  const held = earliestReturnableBoard(duel, progress)
+  return boards(duel, (player) => (player === progress.choice.player ? progress.board : held))
+}
+
+/**
+ * 選ぶ人が戻れる、最も前の盤面（ADR-0081）。
+ *
+ * いまの選択から、戻れる（`mayGoBack`）間は、直前の答えを 1 つずつ外してさかのぼる。戻れない
+ * 選択に着いたら、その盤面である。続けて答え始めた選択（`answered` が 0）まで着いたら、取り消せる
+ * 人（`mayCancel`）は行動を始める前の盤面、取り消せない人は、その選択の盤面である（ADR-0052）。
+ *
+ * 見えたカードが山札へ戻ると、戻れない選択の後でも、エンジンがまた戻れると判定する。これは
+ * エンジンの既知の穴で、別の PR でエンジン側を直す。それまでは、最後に戻れなかった選択で
+ * さかのぼるのをやめる。そこの盤面は、選ばないほうにすでに送っているためである。ただし、その状態で
+ * 取り消す（`rewind`）と、選ばないほうの盤面はまだ巻き戻る。
+ *
+ * 選択の盤面は、答えの並びを前から当て直せば再現できる（ADR-0008）ので、送った盤面は覚えて
+ * おかない。入り直しにも同じものを送れる。
+ */
+function earliestReturnableBoard(duel: DuelInRoom, current: Choosing): DuelState {
+  const pending = duel.pending
+  if (pending === undefined) throw new Error('選ぶのを待っていない')
+
+  let reached = current
+  let answers = pending.answers
+  while (reached.choice.mayGoBack && reached.choice.answered > 0) {
+    answers = answers.slice(0, -1)
+    const earlier = applyWithAnswers(duel.state, pending.action, answers)
+    if (earlier.kind !== '選んでほしい') throw new Error('答えを外したのに、選択が無い')
+    reached = earlier
+  }
+
+  return reached.choice.mayGoBack && reached.choice.mayCancel ? duel.state : reached.board
 }
 
 /** その参加者が着いている席。着いていなければ `undefined`。 */
@@ -1401,7 +1454,8 @@ function rewind(rooms: Rooms, participant: ParticipantId, how: Rewind): RoomOutc
  *
  * 止まった時は、両方に盤面も送り直す（#141）。選んでいる間は誰も何も行えない（`act` が
  * 断り、`boards` が `actions` を空にする）ので、選ばないほうのプレイヤーに 1 つ前の盤面と
- * 一緒に届いた手が並んだままになってはならない。
+ * 一緒に届いた手が並んだままになってはならない。どの盤面を送るかは、選ぶ人かどうかで違う
+ * （`boardsWhileChoosing`）。
  */
 function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAction): RoomOutcome {
   const progress = applyWithAnswers(duel.state, pending.action, pending.answers)
@@ -1411,10 +1465,8 @@ function advance(rooms: Rooms, room: Room, duel: DuelInRoom, pending: PendingAct
     return {
       rooms: withRoom(rooms, { ...room, duel: waiting }),
       deliveries: [
-        // 送るのはその選択が起きている盤面である（#142）。答えを受け取っている間
-        // `duel.state` は動かない（ADR-0008）ので、そのままだと選ぶ人が見るのは行動を
-        // 始める前の盤面になる。答えが増えれば進む先も変わるので、毎回送り直す
-        ...boards(waiting, progress.board),
+        // 答えが増えれば進む先も戻れる盤面も変化するので、毎回送り直す。
+        ...boardsWhileChoosing(waiting, progress),
         // 盤面より後に送る。 受け取った側は盤面が届くと選択を畳む（`session.ts`）ので、
         // 先に送ると選んでほしいことが消える。`rejoin` も同じ順で送っている。
         { to: waiting.seats[choice.player], message: { kind: '選んでほしい', choice } },
