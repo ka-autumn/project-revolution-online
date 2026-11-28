@@ -11,6 +11,7 @@ import {
   drawCards,
   legalActions,
   mayDo,
+  placeInZone,
   placeTopOfLibrary,
   prepareDuel,
   shuffleLibrary,
@@ -44,7 +45,7 @@ import type { DeckSource, Delivery, OpenDuel, ParticipantId, RoomOutcome, RoomSe
 /**
  * 1 つの行動で 2 度選ばせるカード。
  *
- * **`ひとつ戻る` が意味を持つのは、答えが 2 つ以上要る行動だけである。** レベル 0 のユニットは
+ * `ひとつ戻る` が意味を持つのは、答えが 2 つ以上要る行動だけである。 レベル 0 のユニットは
  * コストを払わないので何も選ばせず、プランは 1 度で終わる。2 度聞かれる場面をここで作る。
  * 何を選んだかは使わない。聞かれる回数だけが要る。
  */
@@ -76,7 +77,7 @@ function deckKeys(pool: Readonly<Record<string, Card>>): readonly string[] {
 /**
  * そのカードのまとまりから、席に持ち込めるデッキを引くところを作る（ADR-0021）。
  *
- * 既製デッキを 2 つ渡すのは、**選べることを確かめるため**である。中身は同じでよい——どちらを
+ * 既製デッキを 2 つ渡すのは、選べることを確かめるためである。中身は同じでよい——どちらを
  * 選んだかは記録に残る識別子で分かる。
  */
 function deckSource(pool: Readonly<Record<string, Card>>): DeckSource {
@@ -95,7 +96,7 @@ const DECKS = deckSource(CARDS)
 const SETUP: RoomSetup = { seed: 20260816, code: 'あたらしいへや' }
 
 /**
- * 引くだけで山札を空にするストラテジー。**支配者が自分で負ける**（総合ルール 第3部 第3章 2）。
+ * 引くだけで山札を空にするストラテジー。支配者が自分で負ける（総合ルール 第3部 第3章 2）。
  *
  * 決着した部屋を作るために要る。部屋はメッセージだけで動かすので、終わった盤面を外から差し込む
  * 手立てが無い。誰が勝つかはここで確かめたいことではなく、部屋が終わっていることだけが要る。
@@ -117,7 +118,7 @@ const ENDING_DECKS = deckSource({ ...CARDS, 'TEST-S': DECKOUT })
  * 山札の 1 番上を捨札へ置いてから選ばせるストラテジー（#142）。
  *
  * 捨札はいつでも見られる（総合ルール 第2部 第21章 5-2）ので、選ばせる前に、それまで誰にも
- * 見えていなかったカードが 1 枚見えるようになる。**見てから取り消せてはならない**場面を作る。
+ * 見えていなかったカードが 1 枚見えるようになる。見てから取り消せてはならない場面を作る。
  */
 const REVEALING_NAME = 'テスト・部屋のめくるストラテジー'
 
@@ -234,6 +235,26 @@ const WITTY: Card = defineUnit({
 /** 2 度選ばせるストラテジーを、登場した時に捨てさせるユニットに差し替えたまとまり。ほかは同じ。 */
 const WITTY_DECKS = deckSource({ ...CARDS, 'TEST-S': WITTY })
 
+/**
+ * 山札の 1 番上を捨札へ置いて選ばせ、そのカードを山札の 1 番下に戻してから、また選ばせるストラテジー。
+ * 1 度戻れなくなった後で、見えていたカードが隠れ、続く選択がまた戻れるようになる場面を作成する。
+ */
+const HIDING_NAME = 'テスト・部屋の戻して隠す'
+
+const HIDING: Card = defineStrategy({
+  name: HIDING_NAME,
+  level: 0,
+  effect: function* (duel) {
+    yield* placeTopOfLibrary('捨札に置く')
+    yield* choose(['ア', 'イ'])
+    const [top] = duel.discardPile()
+    if (top !== undefined) yield* placeInZone(top, '山札の1番下に戻す')
+    yield* choose(['ウ', 'エ'])
+  },
+})
+
+const HIDING_DECKS = deckSource({ ...CARDS, 'TEST-S': HIDING })
+
 const CODE = 'あいことば'
 
 /** 優先権を放棄する。部屋を進めるのに何度も送る。 */
@@ -242,8 +263,8 @@ const PASS: FromClient = { kind: '行動する', action: { kind: '優先権を�
 /**
  * ここに出てくる人が全員繋がっている状態（#175）。
  *
- * 繋がりで変わるのは、打っている途中に抜けられるかだけ（`canLeave`）である。**それ以外の
- * テストは、全員が繋がっているものとして書く。** 相手が消えた場合を見るテストだけが、別の
+ * 繋がりで変わるのは、打っている途中に抜けられるかだけ（`canLeave`）である。それ以外の
+ * テストは、全員が繋がっているものとして書く。 相手が消えた場合を見るテストだけが、別の
  * ものを渡す。
  */
 const ALL_LINKED: ReadonlySet<ParticipantId> = new Set(['あ', 'い', 'う', 'え'])
@@ -287,7 +308,7 @@ function boardOf(deliveries: readonly Delivery[], participant: ParticipantId): W
 }
 
 /**
- * その参加者に**最後に**届いた盤面。
+ * その参加者に最後に届いた盤面。
  *
  * 1 度のやりとりで盤面が何度も届くことがある（CPU が続けて打つ、#175）。いまの盤面が要る時は
  * こちらを使う。
@@ -470,8 +491,8 @@ describe('盤面と一緒に届く、行える手', () => {
    * 届いた手はどれも、そのまま送り返せば通る。
    *
    * UI は届いた手だけを並べる（ADR-0010）ので、ここに断られるものが混ざっていれば、押しても
-   * 何も起こらないボタンが画面に出ることになる。**送る側と断る側が同じ `legalActions` を
-   * 見ている**ことを、部屋の外側から確かめる。
+   * 何も起こらないボタンが画面に出ることになる。送る側と断る側が同じ `legalActions` を
+   * 見ていることを、部屋の外側から確かめる。
    */
   it('届いた手はどれも断られない', () => {
     // メインフェイズまで進める。始まった直後は放棄しか行えず、断られる手が混ざる余地が無い。
@@ -535,7 +556,7 @@ describe('行動する', () => {
  * メインフェイズまで進めて、アクティブプレイヤーにプランさせたところ。
  *
  * プランするコストはエネルギーかスマッシュを 1 枚フリーズすることである（総合ルール 第3部
- * 第8章 2-3）。**フリーズできるカードが 2 枚以上ないと選択にならない**（候補が 1 つで選ばない
+ * 第8章 2-3）。フリーズできるカードが 2 枚以上ないと選択にならない（候補が 1 つで選ばない
  * ことも選べないなら聞かれない、`protocol.ts` の `applyWithAnswers`）ので、エネルギーが 2 枚
  * 貯まるまでターンを進める。エネルギーは 1 ターンに 1 枚しか置けない（同 第7章 1）ため、同じ
  * プレイヤーのエネルギーフェイズを 2 度通すことになる。
@@ -597,13 +618,15 @@ function revealingThenChoosing(): { readonly outcome: RoomOutcome; readonly acti
 function playingStrategy(
   decks: DeckSource,
   name: string,
-): { readonly outcome: RoomOutcome; readonly acting: ParticipantId } {
+): { readonly outcome: RoomOutcome; readonly acting: ParticipantId; readonly before: RoomOutcome } {
   let current = readyToAct(passUntil(started(decks), 'メインフェイズ'))
   for (let steps = 0; steps < 300; steps += 1) {
     const board = boardOf(current.deliveries, 'あ')
     const acting = participantAt(board.turn.priority, board.viewer)
     const play = playFromHand(current, acting, name)
-    if (play !== undefined) return { outcome: send(current.rooms, acting, { kind: '行動する', action: play }), acting }
+    if (play !== undefined) {
+      return { outcome: send(current.rooms, acting, { kind: '行動する', action: play }), acting, before: current }
+    }
 
     current = readyToAct(answerAll(send(current.rooms, acting, PASS)))
   }
@@ -666,7 +689,7 @@ describe('選ぶ', () => {
   /**
    * #141。選んでいる間は誰も何も行えない（`act` が `選ぶのを待っている` として断る）。
    *
-   * **選ばないほうにも盤面を送る。** そちらには「選んでほしい」が届かないので、送らないと
+   * 選ばないほうにも盤面を送る。 そちらには「選んでほしい」が届かないので、送らないと
    * 1 つ前の盤面と一緒に届いた手が並んだままになり、押しても断られるボタンが残る。
    */
   it('選び始めると、両方の行える手が空になる', () => {
@@ -730,7 +753,7 @@ describe('選ぶ', () => {
 })
 
 /**
- * ADR-0008。**盤面をまだ進めていないので、選びかけたものは捨てれば元に戻る。**
+ * ADR-0008。盤面をまだ進めていないので、選びかけたものは捨てれば元に戻る。
  *
  * 答えが足りているところまで進めてはやり直す形なので、行動が終わるまで盤面は動かない。
  * 巻き戻す仕組みを別に持つ必要が無い。
@@ -807,8 +830,8 @@ describe('選ぶのをやめる', () => {
   /**
    * 2 度聞かれる行動で、1 つ答えてから戻す。
    *
-   * 貯めた答えの末尾を捨ててやり直すだけである（ADR-0008）。**同じ盤面と同じ答えの並びからは
-   * 必ず同じところまで進む**ので、1 つ前と同じことをもう一度聞かれる。
+   * 貯めた答えの末尾を捨ててやり直すだけである（ADR-0008）。同じ盤面と同じ答えの並びからは
+   * 必ず同じところまで進むので、1 つ前と同じことをもう一度聞かれる。
    */
   it('ひとつ戻ると、1 つ前の選択をやり直せる', () => {
     const { outcome, acting } = choosingTwice()
@@ -892,7 +915,7 @@ describe('入り直す', () => {
   })
 
   /**
-   * #95。**ログは盤面の一部として届く**（`log.ts`）ので、追いつかせる仕組みは要らない。
+   * #95。ログは盤面の一部として届く（`log.ts`）ので、追いつかせる仕組みは要らない。
    * 入り直した人にいまの盤面を送り直せば、それまでのできごともそのまま届く。
    */
   /**
@@ -930,7 +953,7 @@ describe('入り直す', () => {
  * #92。対戦を 1 回終えたら、同じ名乗りのまま別の部屋に入れる。
  *
  * 切断では部屋から抜けない（ADR-0009）ので、意図して抜ける口が別に要る。違う合言葉で入り直す
- * ことがそれにあたり、**打っている途中の部屋だけは抜けられない**。
+ * ことがそれにあたり、打っている途中の部屋だけは抜けられない。
  */
 describe('別の部屋に移る', () => {
   const OTHER = 'べつのあいことば'
@@ -1006,7 +1029,7 @@ describe('別の部屋に移る', () => {
 })
 
 /**
- * #142。**選ぶ人が見るのは、その選択が起きている盤面である。**
+ * #142。選ぶ人が見るのは、その選択が起きている盤面である。
  *
  * 行動が終わるまで `duel.state` は動かない（ADR-0008）ので、そのまま送ると、選ぶ人が見るのは
  * 行動を始める前の盤面になる。何を見て選べばよいのか分からない。
@@ -1084,6 +1107,208 @@ describe('見てしまったら戻れない', () => {
     expect(to(refused.deliveries, acting)).toEqual([
       { kind: '行えなかった', reason: '見てしまったので戻れない' },
     ])
+  })
+})
+
+/**
+ * ADR-0081。選ぶ人が答えを戻せる間（ADR-0052）は、選ばないほうのプレイヤーに途中の盤面を送らず、
+ * 選ぶ人が戻れる最も前の盤面を送る。選ぶ人には、その選択が起きている盤面を送る（#142）。
+ * 選んでいる間は、誰にも行える手を送らない（#141）。
+ */
+describe('選ばないほうのプレイヤーに送る盤面（ADR-0081）', () => {
+  const otherOf = (participant: ParticipantId): ParticipantId => (participant === 'あ' ? 'い' : 'あ')
+  /** その盤面のログに、手札からプレイしたことが含まれるか。 */
+  const showsPlay = (board: WirePerspective): boolean =>
+    board.log.some(({ event }) => event.kind === '行動した' && event.action === 'カードをプレイする')
+
+  it('行動した人が選んでいて取り消せる間は、行動を始める前の盤面が届き、行える手は空（ADR-0081・#141）', () => {
+    const { outcome, acting, before } = playingStrategy(DECKS, STRATEGY_NAME)
+    const other = otherOf(acting)
+
+    expect(choiceOf(outcome.deliveries, acting)).toMatchObject({ mayCancel: true, mayGoBack: true })
+    expect(showsPlay(boardOf(outcome.deliveries, acting))).toBe(true)
+    expect(boardOf(outcome.deliveries, other)).toEqual(latestBoard(before.deliveries, other))
+    expect(actionsOf(outcome.deliveries, other)).toEqual([])
+    expect(to(outcome.deliveries, other).map((message) => message.kind)).toEqual(['盤面'])
+  })
+
+  it('戻れる間は、答えを重ねても、届く盤面は進まない（ADR-0081）', () => {
+    const { outcome, acting, before } = playingStrategy(DECKS, STRATEGY_NAME)
+    const other = otherOf(acting)
+
+    const second = send(outcome.rooms, acting, { kind: '選ぶ', answer: 0 })
+
+    expect(choiceOf(second.deliveries, acting)).toMatchObject({ answered: 1, mayCancel: true, mayGoBack: true })
+    expect(boardOf(second.deliveries, other)).toEqual(latestBoard(before.deliveries, other))
+    expect(actionsOf(second.deliveries, other)).toEqual([])
+  })
+
+  it('戻れなくなったら、その選択が起きている盤面が届く（ADR-0081・#142）', () => {
+    const { outcome, acting, before } = playingStrategy(REVEALING_DECKS, REVEALING_NAME)
+    const other = otherOf(acting)
+
+    expect(choiceOf(outcome.deliveries, acting).mayGoBack).toBe(false)
+    const received = boardOf(outcome.deliveries, other)
+    expect(showsPlay(received)).toBe(true)
+    // 捨札はどちらにも見えるので、めくれた 1 枚が、プレイの前の盤面より増えている。
+    const previous = latestBoard(before.deliveries, other)
+    const actor = boardOf(outcome.deliveries, acting).viewer
+    expect(received.zones[actor].捨札).toHaveLength(previous.zones[actor].捨札.length + 1)
+    expect(actionsOf(outcome.deliveries, other)).toEqual([])
+  })
+
+  it('1 度戻れなくなった後で戻れるようになっても、最後に戻れなかった選択の盤面を送り続ける（ADR-0081）', () => {
+    const { outcome, acting } = playingStrategy(HIDING_DECKS, HIDING_NAME)
+    const other = otherOf(acting)
+    expect(choiceOf(outcome.deliveries, acting).mayGoBack).toBe(false)
+
+    const second = send(outcome.rooms, acting, { kind: '選ぶ', answer: 0 })
+
+    expect(choiceOf(second.deliveries, acting)).toMatchObject({ answered: 1, mayGoBack: true })
+    // 前提: 選ぶ人の盤面は進んでいる（見えていたカードが山札へ戻った）。
+    expect(boardOf(second.deliveries, acting)).not.toEqual(boardOf(outcome.deliveries, acting))
+    expect(boardOf(second.deliveries, other)).toEqual(boardOf(outcome.deliveries, other))
+
+    const back = send(second.rooms, acting, { kind: 'ひとつ戻る' })
+    expect(boardOf(back.deliveries, other)).toEqual(boardOf(outcome.deliveries, other))
+
+    const again = send(second.rooms, other, entering(CODE))
+    expect(boardOf(again.deliveries, other)).toEqual(boardOf(outcome.deliveries, other))
+  })
+
+  it('行動が確定したら、確定した盤面と行える手が届く（ADR-0081）', () => {
+    const { outcome, acting } = playingStrategy(DECKS, STRATEGY_NAME)
+    const other = otherOf(acting)
+    const second = send(outcome.rooms, acting, { kind: '選ぶ', answer: 0 })
+
+    const done = send(second.rooms, acting, { kind: '選ぶ', answer: 0 })
+
+    expect(showsPlay(boardOf(done.deliveries, other))).toBe(true)
+    // ログの内容はプレイヤーごとに落とされる（#95）ので、行数で比べる。
+    expect(boardOf(done.deliveries, other).log).toHaveLength(boardOf(done.deliveries, acting).log.length)
+    // 行動すると、相手（非アクティブプレイヤー）が優先権を得る（総合ルール 第3部 第4章 3）。
+    expect(actionsOf(done.deliveries, other)).not.toEqual([])
+  })
+
+  it('選択が回った人には、その選択が起きている盤面と「選んでほしい」が届く（ADR-0081・ADR-0052）', () => {
+    const { outcome, acting, before } = playingStrategy(ALTERNATING_DECKS, ALTERNATING_NAME)
+    const other = otherOf(acting)
+    expect(boardOf(outcome.deliveries, other)).toEqual(latestBoard(before.deliveries, other))
+
+    const asked = send(outcome.rooms, acting, { kind: '選ぶ', answer: 0 })
+
+    expect(to(asked.deliveries, other).map((message) => message.kind)).toEqual(['盤面', '選んでほしい'])
+    expect(showsPlay(boardOf(asked.deliveries, other))).toBe(true)
+    // 行動した側は、選択が回った所より前へは戻れないので、そこの盤面が届く。
+    expect(showsPlay(boardOf(asked.deliveries, acting))).toBe(true)
+  })
+
+  it('選択が行動した人に戻った後は、続けて答えても「ひとつ戻る」でも、相手の盤面は前へ戻らない（ADR-0081・ADR-0052）', () => {
+    const { outcome, acting } = playingStrategy(DISCARD_THEN_CHOOSING_DECKS, DISCARD_THEN_CHOOSING_NAME)
+    const other = otherOf(acting)
+    const first = send(outcome.rooms, other, { kind: '選ぶ', answer: 0 })
+    const returned = send(first.rooms, other, { kind: '選ぶ', answer: 0 })
+    expect(choiceOf(returned.deliveries, acting)).toMatchObject({ answered: 0, mayCancel: false })
+    const received = boardOf(returned.deliveries, other)
+    // 前提: 相手が捨てた後の盤面で、行動を始める前の盤面ではない。
+    expect(received.zones[received.viewer].捨札).toHaveLength(2)
+
+    const answered = send(returned.rooms, acting, { kind: '選ぶ', answer: 0 })
+    expect(boardOf(answered.deliveries, other)).toEqual(received)
+
+    const back = send(answered.rooms, acting, { kind: 'ひとつ戻る' })
+    expect(boardOf(back.deliveries, other)).toEqual(received)
+    expect(actionsOf(back.deliveries, other)).toEqual([])
+
+    const again = send(back.rooms, other, entering(CODE))
+    expect(boardOf(again.deliveries, other)).toEqual(received)
+  })
+
+  it('「ひとつ戻る」と「取り消す」では、同じ盤面がもう一度届く（ADR-0081）', () => {
+    const { outcome, acting, before } = playingStrategy(DECKS, STRATEGY_NAME)
+    const other = otherOf(acting)
+    const second = send(outcome.rooms, acting, { kind: '選ぶ', answer: 0 })
+
+    const back = send(second.rooms, acting, { kind: 'ひとつ戻る' })
+    expect(boardOf(back.deliveries, other)).toEqual(latestBoard(before.deliveries, other))
+
+    const cancelled = send(back.rooms, acting, { kind: '取り消す' })
+    expect(boardOf(cancelled.deliveries, other)).toEqual(latestBoard(before.deliveries, other))
+  })
+
+  it('選ばないほうが入り直すと、行動を始める前の盤面が届き、途中の盤面は届かない（ADR-0081）', () => {
+    const { outcome, acting, before } = playingStrategy(DECKS, STRATEGY_NAME)
+    const other = otherOf(acting)
+    const second = send(outcome.rooms, acting, { kind: '選ぶ', answer: 0 })
+
+    const again = send(second.rooms, other, entering(CODE))
+
+    expect(to(again.deliveries, other).map((message) => message.kind)).toEqual(['席についた', '盤面'])
+    expect(boardOf(again.deliveries, other)).toEqual(latestBoard(before.deliveries, other))
+    expect(actionsOf(again.deliveries, other)).toEqual([])
+  })
+
+  it('選ぶ人が入り直すと、その選択が起きている盤面と「選んでほしい」が届く（ADR-0081・#142）', () => {
+    const { outcome, acting } = playingStrategy(DECKS, STRATEGY_NAME)
+
+    const again = send(outcome.rooms, acting, entering(CODE))
+
+    expect(to(again.deliveries, acting).map((message) => message.kind)).toEqual(['席についた', '盤面', '選んでほしい'])
+    expect(boardOf(again.deliveries, acting)).toEqual(boardOf(outcome.deliveries, acting))
+    expect(choiceOf(again.deliveries, acting)).toEqual(choiceOf(outcome.deliveries, acting))
+  })
+
+  /**
+   * CPU は部屋の中で、その選択が起きている盤面を直に使って答える（`cpuStep`）。CPU 宛てに送るものは
+   * 落とすので、ここで確認するのは人の側に届く盤面である。ログは積むだけなので、短くなれば前へ戻っている。
+   */
+  it.each([
+    ['選ぶ人が行動した側から相手へ移り、また戻る', ALTERNATING_DECKS, ALTERNATING_NAME],
+    ['相手が先に選び、行動した側が続けて選ぶ', DISCARD_THEN_CHOOSING_DECKS, DISCARD_THEN_CHOOSING_NAME],
+  ])('CPU 戦で人に届く盤面は前へ戻らない: %s（ADR-0081）', (_, decks, name) => {
+    let logLength = 0
+    /** そのストラテジーをプレイして解決まで進んだ席。人と CPU の両方を通ったことを確認する。 */
+    const playedBy = new Set<'人' | 'CPU'>()
+    let current = receive(emptyRooms(), 'あ', making('ひとり', 'CPU'), SETUP, decks, ALL_LINKED)
+    const play = (message: FromClient): void => {
+      current = receive(current.rooms, 'あ', message, SETUP, decks, ALL_LINKED)
+    }
+
+    for (let steps = 0; steps < 300; steps += 1) {
+      for (const message of to(current.deliveries, 'あ')) {
+        if (message.kind !== '盤面') continue
+        expect(message.perspective.log.length).toBeGreaterThanOrEqual(logLength)
+        logLength = message.perspective.log.length
+        const { viewer, zones, log } = message.perspective
+        const cpuSeat = viewer === '先攻' ? '後攻' : '先攻'
+        for (const [who, seat] of [['人', viewer], ['CPU', cpuSeat]] as const) {
+          const resolved = zones[seat].捨札.some(
+            (card) =>
+              card.kind === '見えている' &&
+              card.instance.card.name === name &&
+              log.some(
+                ({ event }) =>
+                  event.kind === '行動した' && event.action === 'カードをプレイする' && event.card === card.instance.id,
+              ),
+          )
+          if (resolved) playedBy.add(who)
+        }
+      }
+      if (current.deliveries.some((delivery) => delivery.message.kind === '選んでほしい')) {
+        play({ kind: '選ぶ', answer: 0 })
+        continue
+      }
+
+      const last = to(current.deliveries, 'あ').filter((message) => message.kind === '盤面').at(-1)
+      if (last === undefined || last.perspective.result !== undefined) break
+      const handId = cardInHand({ ...current, deliveries: [{ to: 'あ', message: last }] }, 'あ', name)
+      const action = last.actions.find(
+        (each) => each.kind === 'カードをプレイする' && each.declaration.card === handId,
+      )
+      play(action === undefined ? PASS : { kind: '行動する', action })
+    }
+
+    expect([...playedBy].sort()).toEqual(['CPU', '人'])
   })
 })
 
@@ -1239,8 +1464,8 @@ describe('選ぶ人が入れ替わる行動の戻る・取り消す', () => {
 /**
  * #175。打つ前に合言葉を決めておかなくても、部屋を作れば入れる。
  *
- * 合言葉を決めるのはサーバである。ロビーに並んだものから選んで入るので、**相手と申し合わせて
- * おく必要が無い。**
+ * 合言葉を決めるのはサーバである。ロビーに並んだものから選んで入るので、相手と申し合わせて
+ * おく必要が無い。
  */
 describe('部屋を作る', () => {
   const MAKE = making('てすとのへや', '人間')
@@ -1301,8 +1526,8 @@ describe('部屋を作る', () => {
 /**
  * #175。CPU と対戦する。
  *
- * CPU は繋がっていないだけの参加者で、部屋から見れば人と変わらない（`cpu.ts`）。**進め方も
- * 人と同じ道筋を通る。**
+ * CPU は繋がっていないだけの参加者で、部屋から見れば人と変わらない（`cpu.ts`）。進め方も
+ * 人と同じ道筋を通る。
  */
 describe('CPU と対戦する', () => {
   const AGAINST_CPU = making('ひとり', 'CPU')
@@ -1339,7 +1564,7 @@ describe('CPU と対戦する', () => {
   })
 
   /**
-   * 人が打ち終わったら、CPU の番が終わって人に優先権が戻るところまで進む。**人は待たされない。**
+   * 人が打ち終わったら、CPU の番が終わって人に優先権が戻るところまで進む。人は待たされない。
    *
    * 見るのは最後に届いた盤面である。CPU が打つたびに盤面が届く（`withCpu`）ので、途中のものは
    * まだ CPU の番でありうる。
@@ -1517,7 +1742,7 @@ describe('ロビーに戻る', () => {
 
   /**
    * #175。相手が画面を閉じるとその席には誰も戻ってこない（名乗りは画面が覚えているもので、
-   * 閉じれば消える、ADR-0009）。**残された側が永久に待たされてはならない。**
+   * 閉じれば消える、ADR-0009）。残された側が永久に待たされてはならない。
    */
   it('相手が繋がっていないなら、打っている途中でも出られる', () => {
     const alone: ReadonlySet<ParticipantId> = new Set(['あ'])
@@ -1528,7 +1753,7 @@ describe('ロビーに戻る', () => {
   })
 
   /**
-   * #175。**投げ出された対戦はもう続けられない。** 席は 2 つで、抜けた席に座り直す人はいない
+   * #175。投げ出された対戦はもう続けられない。 席は 2 つで、抜けた席に座り直す人はいない
    * （`enter` が断る）。残しておくと、動かない対戦がロビーに「対戦中」として残る。
    */
   it('打っている途中で出られた部屋は、そのまま無くなる', () => {
@@ -1553,7 +1778,7 @@ describe('ロビーに戻る', () => {
   })
 
   /**
-   * #175。閉じていた側が後から戻ってくることはある。**戻る先はもう無い。** 投げ出された時点で
+   * #175。閉じていた側が後から戻ってくることはある。戻る先はもう無い。 投げ出された時点で
    * その対戦は続けられなくなっており、部屋ごと消えている。
    */
   it('出ていかれた後に戻っても、その対戦はもう無い', () => {
@@ -1572,7 +1797,7 @@ describe('ロビーに戻る', () => {
     expect(room.participants).toEqual(['い'])
   })
 
-  /** 出ていった人は、その席に戻れない。**残っている人の対戦を、後から上書きさせない。** */
+  /** 出ていった人は、その席に戻れない。残っている人の対戦を、後から上書きさせない。 */
   it('決着した部屋を出ていった人は、その部屋に戻れない', () => {
     const left = send(ended().rooms, 'あ', { kind: 'ロビーに戻る' })
 
@@ -1607,7 +1832,7 @@ describe('ロビー', () => {
   })
 
   /**
-   * ADR-0020。**部屋は名前を持たない。** 預かっているのは置き場で、引き方を渡してもらう。
+   * ADR-0020。部屋は名前を持たない。 預かっているのは置き場で、引き方を渡してもらう。
    * 渡されなければ、識別子がそのまま名前になる（手元で立てたときの形）。
    */
   it('そこにいる人の表示名が並ぶ', () => {
@@ -1628,7 +1853,7 @@ describe('ロビー', () => {
 describe('相手が誰か', () => {
   const names = (participant: ParticipantId): string => (participant === 'あ' ? 'かずお' : 'あいて')
 
-  /** **2 人ぶんで別のものになる。** それぞれの相手はもう一方である。 */
+  /** 2 人ぶんで別のものになる。 それぞれの相手はもう一方である。 */
   it('人が相手なら、その表示名が届く', () => {
     const outcome = receive(
       receive(emptyRooms(), 'あ', entering(CODE), SETUP, DECKS, ALL_LINKED).rooms,
@@ -1675,7 +1900,7 @@ describe('相手が誰か', () => {
     })
   })
 
-  /** 入り直した時にも届く（ADR-0016、`rejoin`）。**その時のいまの名前で届く。** */
+  /** 入り直した時にも届く（ADR-0016、`rejoin`）。その時のいまの名前で届く。 */
   it('入り直しても、相手の表示名が届く', () => {
     const outcome = receive(started().rooms, 'あ', entering(CODE), SETUP, DECKS, ALL_LINKED, names)
 
@@ -1724,7 +1949,7 @@ describe('持ち込むデッキを選ぶ', () => {
     expect(brought).toEqual(deckKeys(CARDS))
   })
 
-  /** 2 人が別のデッキを持ち込める。**どちらの席のものかは、記録の並びで分かる。** */
+  /** 2 人が別のデッキを持ち込める。どちらの席のものかは、記録の並びで分かる。 */
   it('2 人が別々のデッキで座れる', () => {
     const first = send(emptyRooms(), 'あ', entering(CODE, '既製1'))
 
@@ -1740,7 +1965,7 @@ describe('持ち込むデッキを選ぶ', () => {
   })
 
   /**
-   * 相手を待っている間は選び直せる。**繋ぎ直しでは上書きしない**——入り直しに飛ぶのも同じ
+   * 相手を待っている間は選び直せる。繋ぎ直しでは上書きしない——入り直しに飛ぶのも同じ
    * メッセージで、そこに選んだものは入っていない（`FromClient` の `部屋に入る`）。
    */
   it('相手を待っている間に選び直せる', () => {
@@ -2064,7 +2289,7 @@ describe('部屋のルール', () => {
   /**
    * 禁止／制限リストを渡したデッキの引き方。先頭のリストは、どの既製デッキも通す。
    *
-   * 「既製3」だけが `IN_PRESETS` を含まない。**既定のデッキ（先頭の既製1）は含む**ので、禁じる
+   * 「既製3」だけが `IN_PRESETS` を含まない。既定のデッキ（先頭の既製1）は含むので、禁じる
    * リストの部屋に既定のデッキで座ろうとすると断られる。
    */
   const RESTRICTED: DeckSource = deckSourceFrom({
@@ -2282,7 +2507,7 @@ describe('部屋のルール', () => {
     })
 
     /**
-     * 渡す側がリストを差し替えた後に立て直した場合。**対戦中のデッキは確かめ直さない**——差し替えた
+     * 渡す側がリストを差し替えた後に立て直した場合。対戦中のデッキは確かめ直さない——差し替えた
      * 先のリストでは通らないデッキで打っていても、部屋は作り直せる。
      */
     it('記録されたリストがもう渡されていなければ、渡されたリストの先頭を当てる', () => {
