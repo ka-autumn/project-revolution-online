@@ -48,7 +48,7 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
-/** 対戦サーバの返事を、テストが決めた時点で届ける。 */
+/** 対戦サーバの返事を、テストが決定した時点で届ける。 */
 function pendingReply(): (response: Response) => void {
   let reply: (response: Response) => void = () => undefined
   vi.stubGlobal('fetch', () => new Promise<Response>((resolve) => (reply = resolve)))

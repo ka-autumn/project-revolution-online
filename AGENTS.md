@@ -19,7 +19,7 @@ CI で install するときは `pnpm install --frozen-lockfile` を使う。`pnp
 ## 規約
 
 - ドメイン用語は型名を英語、値を日本語にする（ADR-0003）。用語の正は `CONTEXT.md`
-- テストは `packages/*/src/**/*.test.ts`（JSX を書くものは `*.test.tsx`）に置き、実装と並べる
+- テストは `packages/*/src/**/*.test.ts`（JSX を使うものは `*.test.tsx`）に置き、実装と並べる
   （`private/` 以下も同じ）。DOM が要るファイルは先頭の `// @vitest-environment happy-dom` で指定する。
   本物のブラウザの筋書きだけは `packages/client/browser-tests/*.spec.ts` に置く
 - ルールの挙動を検証するテストには、根拠となる総合ルールの条番号を付ける（ADR-0006）。

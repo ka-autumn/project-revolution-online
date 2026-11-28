@@ -104,13 +104,15 @@
 ### 根を包む PR
 
 - ライブラリは Preact 11.2.0（版を固定する）。`packages/client` の `dependencies` に置く。テスト用は @testing-library/preact 3.2.6。
-- 部品は JSX（`.tsx`）で書く。変換は Vite に任せ、`packages/client/tsconfig.json` の `jsx: "react-jsx"` と `jsxImportSource: "preact"` で指定する。Preact の Vite プラグインは入れない。部品のテストは `*.test.tsx` に書ける。
+- 部品は JSX（`.tsx`）で実装する。変換は Vite に任せ、`packages/client/tsconfig.json` の `jsx: "react-jsx"` と `jsxImportSource: "preact"` で指定する。Preact の Vite プラグインは入れない。部品のテストは `*.test.tsx` に置く。
 - 根の部品は `packages/client/src/screen-root.tsx` の `ScreenRoot` で、`showScreen` が `#board` に描画する。表示するもの（`Screen`）は、組み立てるかたまり（`かたまり`）か、1 行の文（`一行`）である。
-- `draw` が作る DOM は、`ScreenRoot` の下の 1 つの要素（`.screen-chunk`）の中に置く。Preact はこの要素の中身に差分を当てず、`draw` が今までどおり中身を捨てて作成し直す。この要素には `display: contents` を当て、`#board` の縦の箱の子は今までと同じにする。
+- `draw` が作成する DOM は、`ScreenRoot` の下の 1 つの要素（`.screen-chunk`）の中に置く。Preact はこの要素の中身に差分を当てず、`draw` が今までどおり中身を捨てて作成し直す。この要素には `display: contents` を当て、`#board` の縦の箱の子は今までと同じにする。
 - `draw` は、かたまりの部品の layout effect の中で呼ぶ。投げたものを、例外を受け止める部品が受け止めるためである。layout effect は `render` が返る前に走るので、`draw` の後に呼ぶ処理の順番は変化しない。
-- 画面が白くなるのを防ぐ処理は 2 つに分けた。`draw` で投げたものは `ScreenRoot` が受け止める。`redraw` のうち Preact の外で呼ぶ処理（状態を整える処理、描いた後の寸法の計測・スクロール・フォーカスの移動）は `try` で包んだままにし、`catch` からも `showScreen` で断りの 1 行を表示する。`draw` で投げた時は、後の処理を呼ばない。
+- 画面が白くなるのを防ぐ処理は 2 つに分けた。`draw` で投げたものは `ScreenRoot` が受け止める。`redraw` のうち Preact の外で呼ぶ処理（状態を整える処理、描いた後の寸法の計測・スクロール）は `try` で包んだままにし、`catch` からも `showScreen` で断りの 1 行を表示する。`draw` で投げた時は、後の処理を呼ばない。
+- `draw` が投げた時、`console.error` への出力は同期で行われるが、断りの 1 行の表示はマイクロタスク 1 つ分遅れる。Preact 11 が状態の更新を `queueMicrotask` で積むためである。
 - 断りの表示の後に画面を渡されたら、組み立て直す。前の描き方でも、次の描き直しで組み立て直していた。
 - 寸法を測る処理は、layout effect へ移さず、`redraw` が `showScreen` の後に呼ぶ。Preact の `render` が同期で終わるので順番が保てて、呼ぶ処理と渡すものを今のまま残せるためである。
 - 「ログインへ移動しています」も `showScreen` で表示する。`#board` は Preact の外から書き換えない。
+- `mount` の後片付けでは `render(null, root)` を呼び（`screen-root.tsx` の `removeScreen`）、`#board` から Preact の木を外す。
 - `/share/<鍵>` の公開ページ（`public-share.ts`）も、読み込み中・見つからない・本体の 3 つの表示を、同じ `showScreen` でかたまりとして表示する。要素はかたまりの組み立ての中で作成し、投げたものを `ScreenRoot` が受け止める。
 - スクロール位置とフォーカスを戻す属性・押下を待つ仕組み・変換中を待つ仕組みは残す。外すのは各画面の PR である。

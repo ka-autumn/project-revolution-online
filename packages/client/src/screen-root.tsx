@@ -46,6 +46,10 @@ interface State {
  *
  * 受け止めるのは、部品の描画と effect の中で投げたものだけである。Preact の外で呼ぶ処理は、
  * 呼ぶ側が受け止める（`index.ts` の `redraw`）。
+ *
+ * `build` が投げた時、`console.error` への出力は同期で行われるが、`BUILD_FAILED` の表示は
+ * マイクロタスク 1 つ分遅れる。Preact 11 が状態の更新を `queueMicrotask` で積むためである。
+ * `showScreen` が返った直後の `root` には、まだ表示されていない。
  */
 export class ScreenRoot extends Component<{ readonly screen: Screen }, State> {
   override state: State = { screen: undefined, failed: false }
@@ -74,4 +78,9 @@ export class ScreenRoot extends Component<{ readonly screen: Screen }, State> {
 /** `root`（`#board`）に表示するものを替える。 */
 export function showScreen(root: HTMLElement, screen: Screen): void {
   render(<ScreenRoot screen={screen} />, root)
+}
+
+/** `root` から Preact の木を外す。表示していたものは無くなる。 */
+export function removeScreen(root: HTMLElement): void {
+  render(null, root)
 }

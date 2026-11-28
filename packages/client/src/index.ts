@@ -172,7 +172,7 @@ import { wireFingerOnHand } from './phone-touch.js'
 import { settlePhoneFocus } from './phone-focus.js'
 import { openPayList, settlePayState } from './pay-list.js'
 import type { PayEvent, PayState } from './pay-list.js'
-import { BUILD_FAILED, showScreen } from './screen-root.js'
+import { BUILD_FAILED, removeScreen, showScreen } from './screen-root.js'
 
 /**
  * クライアントの起動点。
@@ -2824,5 +2824,6 @@ export function mount(root: HTMLElement, options: MountOptions): () => void {
     window.removeEventListener('compositionstart', onCompositionStart, true)
     window.removeEventListener('compositionend', onCompositionEnd, true)
     connection.close()
+    removeScreen(root)
   }
 }

@@ -100,6 +100,16 @@ describe('根の部品を通して表示する（ADR-0078）', () => {
     expect(replaced).not.toHaveBeenCalled()
   })
 
+  it('後片付けをすると、#board から Preact の木を外す', () => {
+    start()
+    expect(root.querySelector('.screen-chunk')).not.toBeNull()
+
+    close!()
+    close = undefined
+
+    expect(root.childNodes).toHaveLength(0)
+  })
+
   it('組み立てで投げた時は、描いた後の処理へ進まない', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const socket = start()
