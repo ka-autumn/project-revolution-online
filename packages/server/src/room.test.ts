@@ -237,7 +237,11 @@ const WITTY_DECKS = deckSource({ ...CARDS, 'TEST-S': WITTY })
 
 /**
  * 山札の 1 番上を捨札へ置いて選ばせ、そのカードを山札の 1 番下に戻してから、また選ばせるストラテジー。
- * 1 度戻れなくなった後で、見えていたカードが隠れ、続く選択がまた戻れるようになる場面を作成する。
+ * 見えたカードが山札へ戻ると、エンジンがまた戻れると判定する場面を作成する。これはエンジンの
+ * 既知の穴で、別の PR でエンジン側を直す。このカードを使うテストの前提は今のエンジンの挙動に
+ * 依存している。エンジンを直したら書き直す。
+ *
+ * この状態で取り消すと、選ばないほうのプレイヤーの盤面はまだ巻き戻る。
  */
 const HIDING_NAME = 'テスト・部屋の戻して隠す'
 
@@ -1157,7 +1161,8 @@ describe('選ばないほうのプレイヤーに送る盤面（ADR-0081）', ()
     expect(actionsOf(outcome.deliveries, other)).toEqual([])
   })
 
-  it('1 度戻れなくなった後で戻れるようになっても、最後に戻れなかった選択の盤面を送り続ける（ADR-0081）', () => {
+  // このテストの前提は今のエンジンの挙動に依存している。エンジンを直したら書き直す。
+  it('エンジンがまた戻れると誤って判定しても、ひとつ戻る・入り直しでは、最後に戻れなかった選択の盤面が届く（ADR-0081）', () => {
     const { outcome, acting } = playingStrategy(HIDING_DECKS, HIDING_NAME)
     const other = otherOf(acting)
     expect(choiceOf(outcome.deliveries, acting).mayGoBack).toBe(false)
@@ -1201,6 +1206,27 @@ describe('選ばないほうのプレイヤーに送る盤面（ADR-0081）', ()
     expect(showsPlay(boardOf(asked.deliveries, other))).toBe(true)
     // 行動した側は、選択が回った所より前へは戻れないので、そこの盤面が届く。
     expect(showsPlay(boardOf(asked.deliveries, acting))).toBe(true)
+  })
+
+  it('選択が相手に回って答えが返った後も、行動が確定するまで、相手の盤面は前へ戻らない（ADR-0081・ADR-0052）', () => {
+    const { outcome, acting } = playingStrategy(ALTERNATING_DECKS, ALTERNATING_NAME)
+    const other = otherOf(acting)
+    const asked = send(outcome.rooms, acting, { kind: '選ぶ', answer: 0 })
+    const first = send(asked.rooms, other, { kind: '選ぶ', answer: 0 })
+    // 相手が選んでいる間に持っていた盤面のログの行数。
+    const heldWhileChoosing = Math.max(
+      boardOf(asked.deliveries, other).log.length,
+      boardOf(first.deliveries, other).log.length,
+    )
+
+    const returned = send(first.rooms, other, { kind: '選ぶ', answer: 0 })
+    expect(choiceOf(returned.deliveries, acting)).toMatchObject({ answered: 0, mayCancel: false })
+    const afterAnswer = boardOf(returned.deliveries, other).log.length
+    expect(afterAnswer).toBeGreaterThanOrEqual(heldWhileChoosing)
+
+    const done = send(returned.rooms, acting, { kind: '選ぶ', answer: 0 })
+    expect(to(done.deliveries, other).map((message) => message.kind)).toEqual(['盤面'])
+    expect(boardOf(done.deliveries, other).log.length).toBeGreaterThanOrEqual(afterAnswer)
   })
 
   it('選択が行動した人に戻った後は、続けて答えても「ひとつ戻る」でも、相手の盤面は前へ戻らない（ADR-0081・ADR-0052）', () => {
@@ -1259,56 +1285,55 @@ describe('選ばないほうのプレイヤーに送る盤面（ADR-0081）', ()
   })
 
   /**
+   * CPU が選んでいる間も、人の側には途中の盤面を送らない（ADR-0081）。止めるかどうかは戻せるかだけで
+   * 決定し、誰が選んでいるかは参照しない。CPU は答えを戻さないが、CPU が選ぶ時だけ途中の盤面を送る
+   * 分岐を追加すると、このテストが落ちる。
+   *
    * CPU は部屋の中で、その選択が起きている盤面を直に使って答える（`cpuStep`）。CPU 宛てに送るものは
-   * 落とすので、ここで確認するのは人の側に届く盤面である。ログは積むだけなので、短くなれば前へ戻っている。
+   * 落とすので、確認するのは人の側に届く盤面である。ログは積むだけなので、短くなれば前へ戻っている。
    */
-  it.each([
-    ['選ぶ人が行動した側から相手へ移り、また戻る', ALTERNATING_DECKS, ALTERNATING_NAME],
-    ['相手が先に選び、行動した側が続けて選ぶ', DISCARD_THEN_CHOOSING_DECKS, DISCARD_THEN_CHOOSING_NAME],
-  ])('CPU 戦で人に届く盤面は前へ戻らない: %s（ADR-0081）', (_, decks, name) => {
-    let logLength = 0
-    /** そのストラテジーをプレイして解決まで進んだ席。人と CPU の両方を通ったことを確認する。 */
-    const playedBy = new Set<'人' | 'CPU'>()
-    let current = receive(emptyRooms(), 'あ', making('ひとり', 'CPU'), SETUP, decks, ALL_LINKED)
-    const play = (message: FromClient): void => {
-      current = receive(current.rooms, 'あ', message, SETUP, decks, ALL_LINKED)
-    }
-
+  it('CPU が選んでいる間も、人には行動を始める前の盤面が届き、その後も前へ戻らない（ADR-0081）', () => {
+    const received: ToClient[] = []
+    let current = receive(emptyRooms(), 'あ', making('ひとり', 'CPU'), SETUP, ALTERNATING_DECKS, ALL_LINKED)
     for (let steps = 0; steps < 300; steps += 1) {
-      for (const message of to(current.deliveries, 'あ')) {
-        if (message.kind !== '盤面') continue
-        expect(message.perspective.log.length).toBeGreaterThanOrEqual(logLength)
-        logLength = message.perspective.log.length
-        const { viewer, zones, log } = message.perspective
-        const cpuSeat = viewer === '先攻' ? '後攻' : '先攻'
-        for (const [who, seat] of [['人', viewer], ['CPU', cpuSeat]] as const) {
-          const resolved = zones[seat].捨札.some(
-            (card) =>
-              card.kind === '見えている' &&
-              card.instance.card.name === name &&
-              log.some(
-                ({ event }) =>
-                  event.kind === '行動した' && event.action === 'カードをプレイする' && event.card === card.instance.id,
-              ),
-          )
-          if (resolved) playedBy.add(who)
-        }
+      received.push(...to(current.deliveries, 'あ'))
+      let message: FromClient = { kind: '選ぶ', answer: 0 }
+      if (!current.deliveries.some((delivery) => delivery.message.kind === '選んでほしい')) {
+        const last = to(current.deliveries, 'あ').filter((each) => each.kind === '盤面').at(-1)
+        if (last === undefined || last.perspective.result !== undefined) break
+        const handId = cardInHand({ ...current, deliveries: [{ to: 'あ', message: last }] }, 'あ', ALTERNATING_NAME)
+        const play = last.actions.find(
+          (each) => each.kind === 'カードをプレイする' && each.declaration.card === handId,
+        )
+        message = play === undefined ? PASS : { kind: '行動する', action: play }
       }
-      if (current.deliveries.some((delivery) => delivery.message.kind === '選んでほしい')) {
-        play({ kind: '選ぶ', answer: 0 })
-        continue
-      }
-
-      const last = to(current.deliveries, 'あ').filter((message) => message.kind === '盤面').at(-1)
-      if (last === undefined || last.perspective.result !== undefined) break
-      const handId = cardInHand({ ...current, deliveries: [{ to: 'あ', message: last }] }, 'あ', name)
-      const action = last.actions.find(
-        (each) => each.kind === 'カードをプレイする' && each.declaration.card === handId,
-      )
-      play(action === undefined ? PASS : { kind: '行動する', action })
+      current = receive(current.rooms, 'あ', message, SETUP, ALTERNATING_DECKS, ALL_LINKED)
     }
 
-    expect([...playedBy].sort()).toEqual(['CPU', '人'])
+    let logLength = 0
+    for (const message of received) {
+      if (message.kind !== '盤面') continue
+      expect(message.perspective.log.length).toBeGreaterThanOrEqual(logLength)
+      logLength = message.perspective.log.length
+    }
+
+    // 人が捨てる手札を最初に聞かれるのは、CPU がプレイして 1 つ目を選んだ直後である。その 3 つ前からが、
+    // CPU が打つ前の盤面、CPU が選んでいる間の盤面、選択が人に回った盤面の順になる。
+    let askedAfterCpu = 0
+    received.forEach((message, index) => {
+      if (message.kind !== '選んでほしい' || message.choice.purpose !== '捨てる手札') return
+      if (message.choice.answered !== 0) return
+      const [before, whileChoosing, passed] = received.slice(index - 3, index)
+      if (before?.kind !== '盤面' || whileChoosing?.kind !== '盤面' || passed?.kind !== '盤面') {
+        throw new Error('盤面が 3 つ続いて届いたはずだった')
+      }
+      askedAfterCpu += 1
+      expect(whileChoosing.perspective).toEqual(before.perspective)
+      expect(whileChoosing.actions).toEqual([])
+      // 前提: 選択が人に回った盤面には、CPU のプレイが含まれる。
+      expect(passed.perspective.log.length).toBeGreaterThan(whileChoosing.perspective.log.length)
+    })
+    expect(askedAfterCpu).toBeGreaterThan(0)
   })
 })
 
